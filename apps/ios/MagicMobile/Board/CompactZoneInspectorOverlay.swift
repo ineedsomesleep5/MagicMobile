@@ -3,6 +3,7 @@ import PhotosUI
 import UIKit
 
 struct CompactZoneInspectorOverlay: View {
+    @Environment(\.tavernBoard) private var tavern
     let title: String
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
@@ -129,8 +130,7 @@ struct CompactZoneInspectorOverlay: View {
         }
         .frame(maxWidth: 360)
         .frame(height: min(availableHeight, cards.isEmpty ? 150 : (cards.count <= 3 ? 290 : 410)))
-        .background(MagicPalette.iron.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(MagicPalette.antiqueGold.opacity(0.38), lineWidth: 1))
+        .modifier(TavernPanelChrome(tavern: tavern))
         .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
     }
 }

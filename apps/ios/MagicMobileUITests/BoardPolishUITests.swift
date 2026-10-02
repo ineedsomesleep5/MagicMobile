@@ -201,8 +201,8 @@ final class BoardPolishUITests: XCTestCase {
     func testLandscapeCrowdedBattlefield() { runMatrix(portrait: false, selectedFixtures: ["crowded-battlefield"]) }
     func testPortraitAttachments() { runMatrix(portrait: true, selectedFixtures: ["attached-permanents"]) }
     func testLandscapeAttachments() { runMatrix(portrait: false, selectedFixtures: ["attached-permanents"]) }
-    func testSixBattlefieldBackgroundsInPortraitAndLandscape() {
-        for theme in ["arena", "midnight", "wood", "moss", "ember", "tide"] {
+    func testEveryBattlefieldBackgroundInPortraitAndLandscape() {
+        for theme in ["arena", "midnight", "wood", "moss", "ember", "tide", "tavern"] {
             app?.terminate()
             let application = XCUIApplication()
             app = application
@@ -238,7 +238,7 @@ final class BoardPolishUITests: XCTestCase {
         }
     }
 
-    func testSettingsOffersAllSixBattlefieldBackgrounds() {
+    func testSettingsOffersEveryBattlefieldBackground() {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
@@ -251,7 +251,7 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertTrue(application.buttons["menu.settings"].isHittable)
         application.buttons["menu.settings"].press(forDuration: 0.15)
         XCTAssertTrue(application.navigationBars["Settings"].waitForExistence(timeout: 10))
-        for title in ["Stone Arena", "Midnight", "Classic Wood", "Moss Sanctuary", "Obsidian Ember", "Tidal Slate"] {
+        for title in ["Stone Arena", "Midnight", "Classic Wood", "Moss Sanctuary", "Obsidian Ember", "Tidal Slate", "Walnut Tavern"] {
             let choice = application.buttons[title + " battlefield"]
             for _ in 0..<3 {
                 if choice.isHittable { break }
@@ -311,6 +311,69 @@ final class BoardPolishUITests: XCTestCase {
 
     func testRotateToLandscapeStackPresentation() {
         runMatrix(portrait: false, selectedFixtures: ["stack-response-prompt"], rotateDuringTest: true)
+    }
+
+    /// The tavern pass button turns its glass disc over on a tap (a gesture layered over the
+    /// button); the tap must still send the pass.
+    func testTavernPassButtonTurnsOverAndStillPasses() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        let pass = application.buttons["board.action.primary"]
+        XCTAssertTrue(pass.waitForExistence(timeout: 10))
+        captureImage(name: "tavern-pass-before")
+        // A full-screen accessibility container (see the board's overlay layer) makes
+        // isHittable unreliable here; tap the button's centre like a finger.
+        pass.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // Frames across the turn (0.45 s each way) for review; the pass itself is asserted.
+        for index in 0..<6 {
+            captureImage(name: "tavern-pass-turn-\(index)")
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTAssertTrue(application.staticTexts["preview.captured-command"].waitForExistence(timeout: 5),
+                      "Tapping the turning pass button must still send the pass")
+        captureImage(name: "tavern-pass-after")
+    }
+
+    /// The tavern's controls ring and medallion open leather pop-overs instead of system menus,
+    /// and a chosen row still does its job once the pop-over has closed.
+    func testTavernMenusOpenAndTheirRowsAct() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+
+        let controls = application.buttons["Game controls"]
+        XCTAssertTrue(controls.waitForExistence(timeout: 10))
+        controls.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let log = application.buttons["Game Log"]
+        XCTAssertTrue(log.waitForExistence(timeout: 5), "The controls ring opens its menu")
+        captureImage(name: "tavern-controls-menu")
+        log.tap()
+        XCTAssertTrue(application.buttons["Close game log"].waitForExistence(timeout: 5), "A menu row still opens the game log")
+        captureImage(name: "tavern-game-log")
+        application.buttons["Close game log"].tap()
+        XCTAssertTrue(application.buttons["Close game log"].waitForNonExistence(timeout: 5))
+
+        let medallion = application.buttons["board.lifeOrb"]
+        XCTAssertTrue(medallion.waitForExistence(timeout: 5))
+        medallion.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(application.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Graveyard")).firstMatch
+            .waitForExistence(timeout: 5), "Your medallion opens your zones")
+        captureImage(name: "tavern-zone-menu")
     }
 
     private func runMatrix(portrait: Bool, selectedFixtures: [String], rotateDuringTest: Bool = false) {

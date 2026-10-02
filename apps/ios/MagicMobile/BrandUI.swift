@@ -1,15 +1,20 @@
 import SwiftUI
+import UIKit
 
-/// MagicMobile's brand, shared with the app icon and the download site (apps/site/DESIGN.md):
-/// charcoal canvas, ember coral, warm-white ink, heavy sans type and small-corner controls.
-/// Everything is drawn in SwiftUI, so it scales to any screen without image assets.
+/// MagicMobile's brand, "Walnut & Ember" (chosen 2026-10-01): dark carved walnut, tooled
+/// leather, parchment ink, brass edges and the ember coral of the app icon. Panels, buttons
+/// and icon buttons draw with the tavern kit (Board/BoardChrome.swift) when its assets are
+/// installed, and fall back to these colours alone.
 enum BrandTheme {
-    static let canvas = Color(red: 20 / 255, green: 21 / 255, blue: 24 / 255)          // #141518
-    static let surface = Color(red: 37 / 255, green: 38 / 255, blue: 42 / 255)         // #25262a
-    static let surfaceRaised = Color(red: 46 / 255, green: 47 / 255, blue: 52 / 255)
-    static let border = Color(red: 69 / 255, green: 70 / 255, blue: 74 / 255)          // #45464a
-    static let ink = Color(red: 243 / 255, green: 241 / 255, blue: 236 / 255)          // #f3f1ec
-    static let inkSecondary = Color(red: 177 / 255, green: 178 / 255, blue: 182 / 255)
+    static let canvas = Color(red: 27 / 255, green: 18 / 255, blue: 11 / 255)          // #1b120b walnut
+    static let surface = Color(red: 43 / 255, green: 27 / 255, blue: 17 / 255)         // #2b1b11 leather
+    static let surfaceRaised = Color(red: 58 / 255, green: 36 / 255, blue: 22 / 255)   // #3a2416
+    static let border = Color(red: 138 / 255, green: 106 / 255, blue: 60 / 255)        // #8a6a3c dim brass
+    static let ink = Color(red: 243 / 255, green: 230 / 255, blue: 200 / 255)          // #f3e6c8 parchment
+    static let inkSecondary = Color(red: 194 / 255, green: 171 / 255, blue: 134 / 255)
+    static let brass = Color(red: 0.88, green: 0.68, blue: 0.36)
+    static let brassGradient = LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                              startPoint: .top, endPoint: .bottom)
     static let ember = Color(red: 1, green: 128 / 255, blue: 88 / 255)                 // #ff8058
     static let emberLight = Color(red: 1, green: 157 / 255, blue: 126 / 255)           // #ff9d7e
     static let rust = Color(red: 167 / 255, green: 68 / 255, blue: 41 / 255)           // #a74429
@@ -84,7 +89,10 @@ struct BrandMark: View {
                 spark.rotate(by: .degrees(12 * flash))
                 spark.translateBy(x: -center.x, y: -center.y)
                 spark.fill(BrandMarkPaths.sparkle(in: mark), with: .color(flash > 0.5 ? BrandTheme.emberLight : BrandTheme.markCoral))
-                context.fill(BrandMarkPaths.monogram(in: mark), with: .color(BrandTheme.markCream))
+                // Walnut & Ember: the monogram is cast in brass.
+                context.fill(BrandMarkPaths.monogram(in: mark),
+                             with: .linearGradient(Gradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.82, green: 0.58, blue: 0.24)]),
+                                                   startPoint: CGPoint(x: mark.midX, y: mark.minY), endPoint: CGPoint(x: mark.midX, y: mark.maxY)))
             }
         }
         .frame(width: size, height: size)
@@ -126,6 +134,14 @@ struct BrandBackdrop: View {
         GeometryReader { proxy in
             ZStack {
                 BrandTheme.canvas
+                // Walnut & Ember: a dim tavern wall with candles at the edges.
+                if let wall = UIImage(named: "menu-backdrop-tavern") {
+                    Image(uiImage: wall)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                }
                 RadialGradient(colors: [BrandTheme.ember.opacity(0.22), BrandTheme.rust.opacity(0.08), .clear],
                                center: UnitPoint(x: 0.5, y: 1.08), startRadius: 0, endRadius: proxy.size.height * 0.62)
                 RadialGradient(colors: [Color.white.opacity(0.06), .clear], center: UnitPoint(x: 0.5, y: -0.05),
@@ -148,7 +164,8 @@ struct BrandBackdrop: View {
     }
 
     private func draw(_ context: inout GraphicsContext, _ size: CGSize, t: Double) {
-        if cards { drawFan(&context, size, t: t) }
+        // The tavern wall replaces the card fan; the sparks stay.
+        if cards && UIImage(named: "menu-backdrop-tavern") == nil { drawFan(&context, size, t: t) }
         // Ember sparks rising from the hearth.
         for i in 0..<42 {
             let seed = Double(i) * 12.9898
@@ -208,8 +225,8 @@ struct BrandBackdrop: View {
 extension View {
     /// Heavy display type, as on the download site.
     func brandTitle(_ size: CGFloat) -> some View {
-        font(.system(size: size, weight: .black))
-            .tracking(-0.6)
+        font(.system(size: size, weight: .heavy, design: .serif))
+            .tracking(-0.3)
             .foregroundStyle(BrandTheme.ink)
             .shadow(color: .black.opacity(0.6), radius: 10, y: 4)
     }
@@ -224,13 +241,13 @@ struct BrandDivider: View {
     var body: some View {
         HStack(spacing: 9) {
             line(leading: true)
-            BrandSparkle(size: 9)
+            BrandSparkle(size: 9, color: BrandTheme.brass)
             if let title {
                 Text(title.uppercased())
-                    .font(.system(size: 11, weight: .heavy)).tracking(2.4)
-                    .foregroundStyle(BrandTheme.ember)
+                    .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(2.4)
+                    .foregroundStyle(BrandTheme.brassGradient)
                     .fixedSize()
-                BrandSparkle(size: 9)
+                BrandSparkle(size: 9, color: BrandTheme.brass)
             }
             line(leading: false)
         }
@@ -239,7 +256,7 @@ struct BrandDivider: View {
 
     private func line(leading: Bool) -> some View {
         Rectangle()
-            .fill(LinearGradient(colors: [BrandTheme.ember.opacity(0), BrandTheme.ember.opacity(0.7)],
+            .fill(LinearGradient(colors: [BrandTheme.brass.opacity(0), BrandTheme.brass.opacity(0.8)],
                                  startPoint: leading ? .leading : .trailing, endPoint: leading ? .trailing : .leading))
             .frame(height: 1)
     }
@@ -250,7 +267,19 @@ struct BrandPanel: ViewModifier {
     var padding: CGFloat = 18
     private let radius: CGFloat = 16
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        if TavernUIKit.available {
+            content
+                .padding(padding)
+                .modifier(TavernPanelChrome(tavern: true, cornerRadius: 12))
+                .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
+        } else {
+            plain(content)
+        }
+    }
+
+    private func plain(_ content: Content) -> some View {
         content
             .padding(padding)
             .background {
@@ -297,6 +326,50 @@ private struct BrandButtonFace<Label: View>: View {
     @Environment(\.brandAmbientMotion) private var ambient
 
     var body: some View {
+        if TavernUIKit.available { tavernFace } else { plainFace }
+    }
+
+    /// Walnut & Ember: a riveted brass plaque, ember glass for the call to action, leather for
+    /// the rest, oxblood leather for a destructive choice.
+    private var tavernFace: some View {
+        let primary = kind == .primary
+        let shape = RoundedRectangle(cornerRadius: 21, style: .continuous)
+        return label
+            .pressSound(primary ? .uiConfirm : nil, isPressed: pressed)
+            .font(.system(size: primary ? 19 : 17, weight: .heavy, design: .serif))
+            .foregroundStyle(primary ? Color(red: 1, green: 0.91, blue: 0.66)
+                             : kind == .destructive ? Color(red: 1, green: 0.8, blue: 0.72) : TavernPalette.parchment)
+            .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
+            .padding(.horizontal, 22)
+            .padding(.vertical, primary ? 14 : 11)
+            .frame(maxWidth: .infinity, minHeight: primary ? 58 : 50)
+            .contentShape(shape)
+            .background {
+                Group {
+                    switch kind {
+                    case .primary: TavernFill(material: .ember)
+                    case .secondary: TavernFill(material: .leather)
+                    case .destructive: TavernFill(material: .leather).overlay(MagicPalette.oxblood.opacity(0.7))
+                    }
+                }
+                .clipShape(shape)
+                .padding(3)
+            }
+            .overlay {
+                if primary && isEnabled && !reduceMotion && ambient { ShineSweep().clipShape(shape).padding(3).allowsHitTesting(false) }
+            }
+            .overlay { TavernCapsuleRim() }
+            .shadow(color: primary ? BrandTheme.ember.opacity(isEnabled ? 0.4 : 0) : .black.opacity(0.4),
+                    radius: primary ? 14 : 6, y: primary ? 2 : 3)
+            .saturation(isEnabled ? 1 : 0.15)
+            .opacity(isEnabled ? 1 : 0.55)
+            .brightness(pressed ? -0.08 : 0)
+            .offset(y: pressed ? 1 : 0)
+            .scaleEffect(pressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: pressed)
+    }
+
+    private var plainFace: some View {
         let primary = kind == .primary
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return label
@@ -368,16 +441,17 @@ struct BrandIconButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
+                // A round brass medallion with a leather face.
                 Image(systemName: systemImage)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(BrandTheme.ember)
-                    .frame(width: 52, height: 46)
-                    .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(LinearGradient(colors: [BrandTheme.surfaceRaised, BrandTheme.surface], startPoint: .top, endPoint: .bottom)))
-                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(BrandTheme.border, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.45), radius: 6, y: 3)
+                    .foregroundStyle(BrandTheme.brassGradient)
+                    .frame(width: 50, height: 50)
+                    .background { TavernFill(material: .leather).clipShape(Circle()) }
+                    .overlay(Circle().strokeBorder(BrandTheme.brassGradient, lineWidth: 3))
+                    .overlay(Circle().strokeBorder(.black.opacity(0.35), lineWidth: 1).padding(3))
+                    .shadow(color: .black.opacity(0.5), radius: 6, y: 3)
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold, design: .serif))
                     .foregroundStyle(BrandTheme.inkSecondary)
             }
             .frame(minWidth: 72, minHeight: 44)
@@ -545,5 +619,63 @@ struct VersusIntroOverlay: View {
                 .minimumScaleFactor(0.6)
                 .frame(maxWidth: width + 20)
         }
+    }
+}
+
+// MARK: - System controls
+
+/// The system controls the app keeps (they carry the accessibility and UI-test contracts),
+/// dressed in Walnut & Ember: leather segmented controls with an ember selection and serif
+/// labels, ember switches, brass-ringed stepper buttons and serif navigation titles.
+enum TavernAppearance {
+    @MainActor static func apply() {
+        let parchment = UIColor(red: 0.95, green: 0.90, blue: 0.78, alpha: 1)
+        let ember = UIColor(red: 1, green: 0.5, blue: 0.35, alpha: 1)
+        let leather = UIColor(red: 0.20, green: 0.12, blue: 0.075, alpha: 1)
+        let segmented = UISegmentedControl.appearance()
+        segmented.selectedSegmentTintColor = ember
+        segmented.backgroundColor = leather
+        segmented.setTitleTextAttributes([.font: serif(13, .semibold), .foregroundColor: parchment], for: .normal)
+        segmented.setTitleTextAttributes([.font: serif(13, .bold),
+                                          .foregroundColor: UIColor(red: 0.16, green: 0.08, blue: 0.04, alpha: 1)], for: .selected)
+        UISwitch.appearance().onTintColor = ember
+        let stepper = UIStepper.appearance()
+        let clear = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).image { _ in }
+        stepper.setBackgroundImage(clear, for: .normal)
+        stepper.setDividerImage(clear, forLeftSegmentState: .normal, rightSegmentState: .normal)
+        stepper.setIncrementImage(ring("plus"), for: .normal)
+        stepper.setDecrementImage(ring("minus"), for: .normal)
+        UINavigationBar.appearance().titleTextAttributes = [.font: serif(17, .semibold)]
+        UINavigationBar.appearance().largeTitleTextAttributes = [.font: serif(32, .bold)]
+    }
+
+    private static func serif(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = base.fontDescriptor.withDesign(.serif) else { return base }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+
+    /// A 30 pt brass ring with a leather face and a gold symbol, for stepper buttons.
+    private static func ring(_ symbol: String) -> UIImage {
+        let size = CGSize(width: 30, height: 30)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1.5, dy: 1.5)
+            UIColor(red: 0.24, green: 0.14, blue: 0.08, alpha: 1).setFill()
+            UIBezierPath(ovalIn: rect).fill()
+            let colors = [UIColor(red: 1, green: 0.88, blue: 0.56, alpha: 1).cgColor, UIColor(red: 0.62, green: 0.42, blue: 0.15, alpha: 1).cgColor]
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1]) {
+                context.cgContext.saveGState()
+                let ring = UIBezierPath(ovalIn: rect)
+                ring.append(UIBezierPath(ovalIn: rect.insetBy(dx: 2.5, dy: 2.5)).reversing())
+                ring.addClip()
+                context.cgContext.drawLinearGradient(gradient, start: CGPoint(x: 0, y: rect.minY), end: CGPoint(x: 0, y: rect.maxY), options: [])
+                context.cgContext.restoreGState()
+            }
+            let config = UIImage.SymbolConfiguration(pointSize: 13, weight: .heavy)
+            if let glyph = UIImage(systemName: symbol, withConfiguration: config)?
+                .withTintColor(UIColor(red: 1, green: 0.86, blue: 0.52, alpha: 1), renderingMode: .alwaysOriginal) {
+                glyph.draw(at: CGPoint(x: (size.width - glyph.size.width) / 2, y: (size.height - glyph.size.height) / 2))
+            }
+        }.withRenderingMode(.alwaysOriginal)
     }
 }

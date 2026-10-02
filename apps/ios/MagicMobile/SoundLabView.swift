@@ -113,6 +113,10 @@ struct SoundLabView: View {
                 String(localized: "Recordings from the Sonniss.com GDC Game Audio Bundles (royalty-free), by David Dumais Audio, Sound Spark LLC, Gamemaster Audio, Articulated Sounds, Airborne Sound, Double Trouble Audio, Bluezone, 3maze, Timothy McHugh, Sound Ex Machina and more."),
                 String(localized: "Card recordings from Kenney.nl Casino Audio (CC0).")
             ])
+            creditBlock(String(localized: "Table art"), lines: [
+                String(localized: "3D props made with Meshy (meshy.ai). The medallion, corner ornament, candle and tankard are licensed under Creative Commons: By Attribution 4.0 License."),
+                String(localized: "Wood and leather textures from Poly Haven (polyhaven.com, CC0).")
+            ])
         }
         .brandPanel(padding: 14)
         .accessibilityIdentifier("soundlab.credits")

@@ -60,32 +60,62 @@ struct UniversalPromptActionPanel: View {
         MobilePromptPresentation.make(snapshot: snapshot, legalActions: snapshot.legalActions ?? [])
     }
 
+    @Environment(\.tavernBoard) private var tavern
+
+    /// The tavern's leather title bar: the prompt in engraved gold, whose turn it is on a tag
+    /// and a wax seal to close.
+    private var tavernHeader: some View {
+        HStack(spacing: 8) {
+            TavernPanelTitle(text: promptPresentation?.title ?? "Prompt")
+            Spacer(minLength: 4)
+            TavernTag(text: priorityLabel, leather: true)
+            Button {
+                GameHaptics.selection()
+                dismiss()
+            } label: {
+                TavernSealLabel()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel prompt details")
+            .accessibilityHint("Returns to the battlefield without submitting a choice")
+        }
+        .modifier(TavernTitleBar())
+    }
+
+    private var classicHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+            Text(promptPresentation?.title.uppercased() ?? "PROMPT")
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(MagicPalette.antiqueGold)
+            Spacer(minLength: 4)
+            Text(priorityLabel)
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(.white.opacity(0.68))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Group {
+                Button {
+                    GameHaptics.selection()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(IconButtonStyle(small: true))
+                .accessibilityLabel("Cancel prompt details")
+                .accessibilityHint("Returns to the battlefield without submitting a choice")
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundStyle(MagicPalette.antiqueGold)
-                Text(promptPresentation?.title.uppercased() ?? "PROMPT")
-                    .font(.system(size: 10, weight: .black))
-                    .foregroundStyle(MagicPalette.antiqueGold)
-                Spacer(minLength: 4)
-                Text(priorityLabel)
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(.white.opacity(0.68))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Group {
-                    Button {
-                        GameHaptics.selection()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .buttonStyle(IconButtonStyle(small: true))
-                    .accessibilityLabel("Cancel prompt details")
-                    .accessibilityHint("Returns to the battlefield without submitting a choice")
-                }
+            if tavern && TavernUIKit.available {
+                tavernHeader
+            } else {
+                classicHeader
             }
 
             ScrollView {
@@ -214,8 +244,9 @@ struct UniversalPromptActionPanel: View {
                         $0.label.localizedCaseInsensitiveContains(choiceSearch)
                 }
                 if choices.count > 20 {
-                    TextField("Search choices", text: $choiceSearch)
-                        .textFieldStyle(.roundedBorder)
+                    TextField("Search choices", text: $choiceSearch,
+                              prompt: tavern ? Text("Search choices").foregroundStyle(TavernPalette.ink.opacity(0.5)) : nil)
+                        .modifier(TavernFieldChrome(tavern: tavern))
                         .accessibilityIdentifier("prompt.choices.search")
                         .onAppear { choiceSearch = "" }
                         .onChange(of: "\(prompt.id):\(prompt.messageId)") { _, _ in choiceSearch = "" }
@@ -1643,13 +1674,42 @@ struct PromptPanelSection<Content: View>: View {
     var isHighlighted = false
     var isEmbedded = false
     @ViewBuilder let content: Content
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
         if isEmbedded {
             VStack(alignment: .leading, spacing: 7) { content }
+        } else if tavern && TavernUIKit.available {
+            tavernSection
         } else {
             framedSection
         }
+    }
+
+    /// A box pressed into the tavern sheet's leather, edged with a brass hairline.
+    private var tavernSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .heavy, design: .serif))
+                    .tracking(1)
+                    .foregroundStyle(isHighlighted ? MagicPalette.warningAmber : Color(red: 0.96, green: 0.80, blue: 0.48))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 3)
+                Text(detail.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.7))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            content
+        }
+        .padding(9)
+        .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(isHighlighted ? AnyShapeStyle(MagicPalette.warningAmber.opacity(0.7)) : AnyShapeStyle(TavernPalette.brassLine),
+                          lineWidth: 1))
     }
 
     private var framedSection: some View {
@@ -1685,10 +1745,19 @@ struct PromptMiniLabel: View {
         self.title = title
     }
 
+    @Environment(\.tavernBoard) private var tavern
+
     var body: some View {
-        Text(title.uppercased())
-            .font(.system(size: 7, weight: .black))
-            .foregroundStyle(.white.opacity(0.54))
+        if tavern {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .heavy, design: .serif))
+                .tracking(0.8)
+                .foregroundStyle(Color(red: 0.96, green: 0.80, blue: 0.48).opacity(0.85))
+        } else {
+            Text(title.uppercased())
+                .font(.system(size: 7, weight: .black))
+                .foregroundStyle(.white.opacity(0.54))
+        }
     }
 }
 
@@ -1701,17 +1770,18 @@ struct PromptButtonLabel: View {
     var cardName: String? = nil
     /// Full-width option rows: larger type and the whole text, never truncated.
     var large = false
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
         HStack(spacing: large ? 10 : 6) {
             if isPending {
                 ProgressView()
-                    .tint(.white)
+                    .tint(tavern ? TavernPalette.ink : .white)
                     .scaleEffect(large ? 0.8 : 0.58)
             } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(.system(size: large ? 15 : 11, weight: .black))
-                    .foregroundStyle(MagicPalette.parchment)
+                    .foregroundStyle(tavern ? AnyShapeStyle(.primary) : AnyShapeStyle(MagicPalette.parchment))
             }
             VStack(alignment: .leading, spacing: 2) {
                 let text = PromptDisplayText.clean(title)
@@ -1746,8 +1816,57 @@ struct PanelActionButtonStyle: ButtonStyle {
     var isDanger = false
     var isPrimary = false
     var compact = false
+    @Environment(\.tavernBoard) private var tavern
+    @Environment(\.isEnabled) private var isEnabled
 
+    @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
+        if tavern && TavernUIKit.available {
+            tavernBody(configuration)
+        } else {
+            classicBody(configuration)
+        }
+    }
+
+    /// Tavern rows: a primary choice is parchment in brass trim with dark ink (choice lists mark
+    /// every option primary), a plain one dark leather with a brass hairline, a dangerous one
+    /// oxblood leather. Ember glass stays for the pass button and plaque buttons.
+    private func tavernBody(_ configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 10)
+        let parchment = isPrimary && !isDanger
+        return configuration.label
+            .foregroundStyle(parchment ? TavernPalette.ink : TavernPalette.parchment)
+            .shadow(color: parchment ? .clear : .black.opacity(0.6), radius: 1, y: 1)
+            .padding(.horizontal, compact ? 9 : 11)
+            .padding(.vertical, compact ? 4 : 5)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background {
+                Group {
+                    if isDanger {
+                        TavernFill(material: .leather).overlay(MagicPalette.oxblood.opacity(0.7))
+                    } else if parchment {
+                        TavernFill(material: .parchment)
+                    } else {
+                        TavernFill(material: .leather).overlay(Color.white.opacity(0.06))
+                    }
+                }
+                .clipShape(shape)
+            }
+            .overlay {
+                if parchment {
+                    TavernBrassFrame(scale: 0.42)
+                } else {
+                    shape.strokeBorder(TavernPalette.brassLine, lineWidth: 1.2)
+                }
+            }
+            .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+            .saturation(isEnabled ? 1 : 0.35)
+            .opacity(isEnabled ? 1 : 0.6)
+            .brightness(configuration.isPressed ? -0.06 : 0)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+
+    private func classicBody(_ configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
             .padding(.horizontal, compact ? 6 : 7)

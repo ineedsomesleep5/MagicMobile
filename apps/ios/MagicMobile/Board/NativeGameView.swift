@@ -125,6 +125,8 @@ struct NativeGameView: View {
     let viewZone: (String, [ZoneCard]) -> Void
     @State private var isLogOpen = false
     @State private var isGameMenuOpen = false
+    @State private var isTavernStackOpen = false
+    @AppStorage(BoardAppearancePreference.key) private var boardAppearance = BoardAppearancePreference.defaultValue
     @State private var isPromptInspectorOpen = false
     @State private var protocolDebug: XmageProtocolDebug?
     @State private var protocolDebugError: String?
@@ -343,6 +345,10 @@ struct NativeGameView: View {
                             opponentName: opponentName,
                             sideCombatHighlights: sideCombatHighlights
                         )
+                        .environment(\.tavernBoard, isTavernBoard)
+                        .environment(\.tavernCanvas, isTavernBoard ? CGSize(
+                            width: rootProxy.size.width + rootProxy.safeAreaInsets.leading + rootProxy.safeAreaInsets.trailing,
+                            height: rootProxy.size.height + rootProxy.safeAreaInsets.top + rootProxy.safeAreaInsets.bottom) : nil)
                     } else {
                     HStack(spacing: 0) {
                     // LEFT COLUMN
@@ -797,6 +803,7 @@ struct NativeGameView: View {
                         close: { isLogOpen = false }
                     )
                     .padding(14)
+                    .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
@@ -820,6 +827,7 @@ struct NativeGameView: View {
                     )
                     .id("\(snapshot.promptEnvelopeV2?.id ?? ""):\(snapshot.promptEnvelopeV2?.messageId ?? 0)")
                     .padding(14)
+                    .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
@@ -834,12 +842,15 @@ struct NativeGameView: View {
                             isPromptInspectorOpen = true
                         },
                         confirmStartNew: {
+                            if isTavernBoard { isGameMenuOpen = false }
                             gameMenuConfirmation = .startNew
                         },
                         confirmQuit: {
+                            if isTavernBoard { isGameMenuOpen = false }
                             gameMenuConfirmation = .quit
                         }
                     )
+                    .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
@@ -859,39 +870,36 @@ struct NativeGameView: View {
                         .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
                 }
-                .confirmationDialog(
-                    gameMenuConfirmation?.title ?? "Leave game?",
+                .tavernConfirmation(
+                    active: isTavernBoard,
+                    title: gameMenuConfirmation?.title ?? "Leave game?",
+                    message: gameMenuConfirmation?.message,
                     isPresented: Binding(
                         get: { gameMenuConfirmation != nil },
                         set: { if !$0 { gameMenuConfirmation = nil } }
                     ),
-                    titleVisibility: .visible
-                ) {
-                    if gameMenuConfirmation == .startNew {
-                        Button("Start New Game", role: .destructive) {
+                    actions: gameMenuConfirmation == .startNew
+                        ? [TavernDialogAction(title: "Start New Game", destructive: true) {
                             gameMenuConfirmation = nil
                             isGameMenuOpen = false
                             newGame()
-                        }
-                    } else if gameMenuConfirmation == .quit {
-                        Button("Quit to Menu", role: .destructive) {
-                            gameMenuConfirmation = nil
-                            isGameMenuOpen = false
-                            quitGame()
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {
-                        gameMenuConfirmation = nil
-                    }
-                } message: {
-                    Text(gameMenuConfirmation?.message ?? "")
-                }
+                        }]
+                        : gameMenuConfirmation == .quit
+                            ? [TavernDialogAction(title: "Quit to Menu", destructive: true) {
+                                gameMenuConfirmation = nil
+                                isGameMenuOpen = false
+                                quitGame()
+                            }]
+                            : [],
+                    onCancel: { gameMenuConfirmation = nil }
+                )
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
                 .environment(\.inspectorBattlefield, snapshot.visibleBattlefield)
                 .overlay {
                     if let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {
                         OpeningHandOverlay(choice: choice, cards: hand, pending: pendingActionId != nil, answer: runCommand)
+                            .environment(\.tavernBoard, isTavernBoard)
                             .transition(.opacity)
                     }
                 }
@@ -909,6 +917,7 @@ struct NativeGameView: View {
                 .overlay {
                     if snapshot.isCompleted {
                         GameCompletionOverlay(snapshot: snapshot, stats: gameStats, newGame: newGame, quitGame: quitGame)
+                            .environment(\.tavernBoard, isTavernBoard)
                             .transition(boardOverlayTransition)
                     }
                 }
@@ -1107,6 +1116,7 @@ struct NativeGameView: View {
                     BoardCardChoiceView(snapshot: snapshot, prompt: prompt, pendingActionId: pendingActionId,
                                         runCommand: runCommand, runAction: runAction,
                                         commitPlan: commitCardChoicePlan, close: { isCardChoiceOpen = false })
+                        .environment(\.tavernBoard, isTavernBoard)
                         .id(key)
                 }
             }
@@ -1150,6 +1160,7 @@ struct NativeGameView: View {
                 if showsTurnBanner, let active = snapshot.activePlayerId, !isCardChoiceOpen, !isPromptDetailOpen {
                     BoardTurnBanner(title: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn",
                                     turn: snapshot.turn, isViewer: snapshot.isViewer(active))
+                        .environment(\.tavernBoard, isTavernBoard)
                         // Leaves by shrinking up toward the top bar's turn label.
                         .transition(.asymmetric(insertion: .opacity,
                                                 removal: .scale(scale: 0.2, anchor: .top).combined(with: .offset(y: -220)).combined(with: .opacity)))
@@ -1274,6 +1285,9 @@ struct NativeGameView: View {
     }
 
     @ViewBuilder
+    /// The Walnut Tavern table is portrait-only for now; landscape keeps the classic controls.
+    private var isTavernBoard: Bool { BattlefieldBackdrop.resolved(boardAppearance) == .tavern }
+
     private func portraitGameContent(
         snapshot: GameSnapshot,
         human: PlayerGameState,
@@ -1284,7 +1298,8 @@ struct NativeGameView: View {
     ) -> some View {
         GeometryReader { proxy in
             let metrics = PortraitBattlefieldLayoutMetrics(proxy: proxy, paymentActive: InlinePaymentPromptState.isActive(in: snapshot), largeText: GameBoardMotion.largeText(dynamicTypeSize),
-                centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil))
+                centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil),
+                tavernDock: isTavernBoard)
             let actions = snapshot.legalActions ?? []
             let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
             let combatHighlights = CombatHighlightSet(
@@ -1423,10 +1438,16 @@ struct NativeGameView: View {
                     openPromptDetails: openPromptDetails,
                     viewZone: { localViewZone(title: $0, cards: $1) },
                     runAction: runAction,
-                    runCommand: runCommand
+                    runCommand: runCommand,
+                    openStack: isTavernBoard ? { isTavernStackOpen = true } : nil
                 )
                 .frame(width: metrics.bottomControlsRect.width, height: metrics.bottomControlsRect.height)
                 .position(x: metrics.bottomControlsRect.midX, y: metrics.bottomControlsRect.midY)
+                .sheet(isPresented: $isTavernStackOpen) {
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                        .tavernSheet(true)
+                }
+                .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
                 }
 
                 if CombatSelectionState.isDeclareAttackers(snapshot) {

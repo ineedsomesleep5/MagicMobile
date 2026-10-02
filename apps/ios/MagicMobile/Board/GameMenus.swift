@@ -268,6 +268,7 @@ struct PromptDebugInspector: View {
 struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.gameConcede) private var gameConcede
+    @Environment(\.tavernBoard) private var tavern
     @State private var confirmingConcede = false
     @State private var showHowToPlay = false
     let snapshot: GameSnapshot
@@ -351,17 +352,19 @@ struct GameManagementMenu: View {
         }
         .background(BattlefieldSurface().ignoresSafeArea())
         .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
-        .confirmationDialog("Concede this game?", isPresented: $confirmingConcede, titleVisibility: .visible) {
-            Button("Concede", role: .destructive) {
+        .tavernConfirmation(
+            active: tavern,
+            title: "Concede this game?",
+            message: snapshot.remainingOpponents.count > 1
+                ? "You leave the game and can keep watching the others play it out."
+                : "Your opponent wins this game.",
+            isPresented: $confirmingConcede,
+            actions: [TavernDialogAction(title: "Concede", destructive: true) {
                 dismiss()
                 if let gameConcede { gameConcede.concede() } else if let concedeAction { runAction(concedeAction) }
-            }
-            Button("Keep Playing", role: .cancel) {}
-        } message: {
-            Text(snapshot.remainingOpponents.count > 1
-                 ? "You leave the game and can keep watching the others play it out."
-                 : "Your opponent wins this game.")
-        }
+            }],
+            cancelTitle: "Keep Playing"
+        )
     }
 
     /// Engine concede on device; XMage's own action on hosted games. Never after you're out.

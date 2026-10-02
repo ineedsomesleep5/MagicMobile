@@ -30,20 +30,27 @@ struct CompactPromptPopup: View {
         return nil
     }
 
+    @Environment(\.tavernBoard) private var tavern
+    private var tavernKit: Bool { tavern && TavernUIKit.available }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: tavernKit ? .center : .firstTextBaseline, spacing: 8) {
                 GameRulesText(source: PromptDisplayText.clean(messageText), symbolSize: 14)
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundStyle(.white.opacity(0.94))
+                    .font(tavernKit ? .system(size: 15, weight: .semibold, design: .serif) : .system(size: 14, weight: .black))
+                    .foregroundStyle(tavernKit ? TavernPalette.parchment : .white.opacity(0.94))
                     .lineLimit(3)
                     .minimumScaleFactor(0.72)
                 Spacer(minLength: 4)
-                Text(priorityLabel)
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(.white.opacity(0.68))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
+                if tavernKit {
+                    TavernTag(text: priorityLabel, leather: true)
+                } else {
+                    Text(priorityLabel)
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
             }
 
             if let prompt = paymentPrompt {
@@ -71,18 +78,9 @@ struct CompactPromptPopup: View {
                 compactLegacyPrompt(prompt)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(
-            LinearGradient(
-                colors: [MagicPalette.iron.opacity(0.92), MagicPalette.leather.opacity(0.86)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(borderColor.opacity(0.60), lineWidth: 1.2))
-        .shadow(color: .black.opacity(0.30), radius: 10, x: 0, y: 5)
+        .padding(.horizontal, tavernKit ? 12 : 10)
+        .padding(.vertical, tavernKit ? 11 : 9)
+        .modifier(PopupPanelBackground(tavern: tavernKit, borderColor: borderColor))
     }
 
     static func shouldShow(for snapshot: GameSnapshot, pendingActionId: String?) -> Bool {
@@ -676,6 +674,7 @@ struct ManaPaymentTray: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     var compact = false
+    @Environment(\.tavernBoard) private var tavern
 
     private var remainingPips: ManaPips? { snapshot.manaPayment?.remaining }
 
@@ -744,8 +743,15 @@ struct ManaPaymentTray: View {
             HStack(spacing: 7) {
             paymentPipRow
             if let choices = prompt.manaChoices, !choices.isEmpty {
-                Divider().frame(height: 24)
-                Text("Use floating mana").font(.caption2.bold()).foregroundStyle(MagicPalette.parchment)
+                if tavern {
+                    Rectangle().fill(TavernPalette.brass.opacity(0.7)).frame(width: 1, height: 24)
+                    Text("Use floating mana")
+                        .font(.system(size: 13, weight: .semibold, design: .serif))
+                        .foregroundStyle(TavernPalette.parchment)
+                } else {
+                    Divider().frame(height: 24)
+                    Text("Use floating mana").font(.caption2.bold()).foregroundStyle(MagicPalette.parchment)
+                }
                 // Keep every supplied payment choice reachable while cancel stays fixed.
                 ForEach(choices) { choice in
                     let symbol = choice.manaType ?? choice.id
@@ -783,13 +789,17 @@ struct ManaPaymentTray: View {
         if let pips = remainingPips, pips.total > 0 {
             HStack(spacing: 3) {
                 if pips.generic > 0 {
-                    ZStack {
-                        Circle().fill(Color.gray.opacity(0.55))
-                        Text("\(pips.generic)")
-                            .font(.system(size: 11, weight: .black))
-                            .foregroundStyle(.white)
+                    if tavern {
+                        TavernGenericGem(value: pips.generic, size: 30)
+                    } else {
+                        ZStack {
+                            Circle().fill(Color.gray.opacity(0.55))
+                            Text("\(pips.generic)")
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 18, height: 18)
                     }
-                    .frame(width: 18, height: 18)
                 }
                 ForEach(Array(pips.orderedColors.enumerated()), id: \.offset) { entry in
                     ForEach(0..<entry.element.count, id: \.self) { _ in
@@ -937,7 +947,8 @@ struct ManaPaymentTray: View {
                 runCommand(command, label, pendingId)
             }
         } label: {
-            ManaSymbolView(symbol: symbol, size: size)
+            // Tavern gems match the generic crystal's 30 pt.
+            TavernAwareManaSymbol(symbol: symbol, size: tavern ? 25 : size)
                 .opacity(canPay(symbol) && promptExposesManaChoice(symbol) ? 1 : 0.42)
                 .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
@@ -960,4 +971,36 @@ struct ManaPaymentTray: View {
         return choices.contains { ($0.manaType ?? $0.id) == symbol }
     }
 
+}
+
+/// The compact prompt's panel: dark iron and leather, or on the tavern board tooled leather in
+/// brass trim.
+private struct PopupPanelBackground: ViewModifier {
+    let tavern: Bool
+    let borderColor: Color
+
+    func body(content: Content) -> some View {
+        if tavern {
+            content
+                .background {
+                    TavernFill(material: .leather)
+                        .overlay(LinearGradient(colors: [.clear, .black.opacity(0.3)], startPoint: .top, endPoint: .bottom))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .overlay { TavernBrassFrame(scale: 0.5) }
+                .shadow(color: .black.opacity(0.45), radius: 10, x: 0, y: 5)
+        } else {
+            content
+                .background(
+                    LinearGradient(
+                        colors: [MagicPalette.iron.opacity(0.92), MagicPalette.leather.opacity(0.86)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(borderColor.opacity(0.60), lineWidth: 1.2))
+                .shadow(color: .black.opacity(0.30), radius: 10, x: 0, y: 5)
+        }
+    }
 }

@@ -304,8 +304,32 @@ struct PromptPill: View {
     private var guidance: PromptGuidance {
         PromptGuidance(snapshot: snapshot, isWaitingOnHuman: isWaitingOnHuman, combatSelection: combatSelection)
     }
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
+        if tavern && TavernUIKit.available {
+            tavernRibbon
+        } else {
+            classicPill
+        }
+    }
+
+    /// The tavern's leather ribbon; the tag's jewel keeps the prompt's colour cue.
+    private var tavernRibbon: some View {
+        HStack(spacing: 10) {
+            TavernTag(text: guidance.label, accent: guidance.color)
+            Text(guidance.message)
+                .font(.system(size: 13, weight: .semibold, design: .serif))
+                .foregroundStyle(TavernPalette.parchment)
+                .shadow(color: .black.opacity(0.6), radius: 1, y: 1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+            Spacer(minLength: 0)
+        }
+        .modifier(TavernRibbon())
+    }
+
+    private var classicPill: some View {
         HStack(spacing: 10) {
             Circle()
                 .fill(guidance.color)
@@ -357,8 +381,49 @@ struct InlinePaymentPromptBar: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let openDetails: () -> Void
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
+        if tavern && TavernUIKit.available {
+            tavernRibbon
+        } else {
+            classicBar
+        }
+    }
+
+    /// The tavern's leather ribbon: a parchment PAY COST tag, the remaining cost on brass
+    /// coins and crystal gems.
+    private var tavernRibbon: some View {
+        HStack(spacing: 8) {
+            TavernTag(text: "PAY COST")
+            if let prompt = InlinePaymentPromptState.paymentPrompt(in: snapshot) {
+                ManaPaymentTray(
+                    snapshot: snapshot,
+                    prompt: prompt,
+                    pendingActionId: pendingActionId,
+                    runAction: runAction,
+                    runCommand: runCommand,
+                    compact: true
+                )
+            } else {
+                Text("Tap mana sources")
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment)
+            }
+            Spacer(minLength: 0)
+            if snapshot.source == "xmage-ondevice" {
+                Button(action: openDetails) {
+                    Image(systemName: "list.bullet.rectangle")
+                }
+                .buttonStyle(IconButtonStyle(small: true))
+                .disabled(pendingActionId != nil)
+                .accessibilityLabel("Payment choices")
+            }
+        }
+        .modifier(TavernRibbon())
+    }
+
+    private var classicBar: some View {
         HStack(spacing: 10) {
             Circle()
                 .fill(MagicPalette.antiqueGold)

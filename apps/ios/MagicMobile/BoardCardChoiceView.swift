@@ -4,6 +4,7 @@ import SwiftUI
 /// deselection and ordering prompts; the UI never invents a batch response.
 struct BoardCardChoiceView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.tavernBoard) private var tavern
     let snapshot: GameSnapshot
     let prompt: PromptEnvelopeV2
     let pendingActionId: String?
@@ -183,8 +184,8 @@ struct BoardCardChoiceView: View {
         }
         .padding(layout.keyboardCompact ? 8 : 12)
         .frame(width: layout.width, height: layout.height)
-        .background(MagicPalette.iron, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(MagicPalette.antiqueGold.opacity(0.6)))
+        .modifier(TavernPanelChrome(tavern: tavern, cornerRadius: 18, classicFill: MagicPalette.iron,
+                                    classicStroke: MagicPalette.antiqueGold.opacity(0.6)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Card choice dialog")
         .accessibilityIdentifier("board.choice.dialog")
@@ -203,8 +204,13 @@ struct BoardCardChoiceView: View {
 
     private var closeButton: some View {
         Button(action: close) {
-            Image(systemName: "xmark").frame(width: 44, height: 44)
+            if tavern && TavernUIKit.available {
+                TavernSealLabel()
+            } else {
+                Image(systemName: "xmark").frame(width: 44, height: 44)
+            }
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Close card choices")
     }
 
@@ -509,7 +515,7 @@ struct BoardCardChoiceView: View {
 
     private var confirmationButton: some View {
         Button(draftActive ? "Confirm plan" : confirmationLabel, action: confirmSelection)
-            .buttonStyle(PanelActionButtonStyle(isPrimary: true))
+            .modifier(ConfirmChrome(tavern: tavern && TavernUIKit.available))
             .disabled((!draftActive && selected == nil) || pendingActionId != nil ||
                       (draftKind == .selection && !draftCountIsValid) ||
                       (draftKind == .topOrder || draftKind == .bottomOrder) && draftIDs.count != selectableIDs.count)
@@ -565,5 +571,18 @@ struct BoardCardChoiceView: View {
                     .accessibilityIdentifier("board.choice.inspection.close")
             }
             .inspectionTouchPassthrough()
+    }
+}
+
+/// The dialog's confirm button: a bronze row, or on the tavern board the full-width ember plaque.
+private struct ConfirmChrome: ViewModifier {
+    let tavern: Bool
+
+    func body(content: Content) -> some View {
+        if tavern {
+            content.buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
+        } else {
+            content.buttonStyle(PanelActionButtonStyle(isPrimary: true))
+        }
     }
 }

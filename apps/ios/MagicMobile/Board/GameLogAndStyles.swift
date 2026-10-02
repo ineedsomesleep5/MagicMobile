@@ -139,9 +139,16 @@ struct GameLogDrawer: View {
 struct CompactActionButtonStyle: ButtonStyle {
     var isDanger = false
     var isPrimary = false
+    @Environment(\.tavernBoard) private var tavern
 
+    @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
-        CompactActionFace(label: configuration.label, pressed: configuration.isPressed, style: self)
+        if tavern && TavernUIKit.available {
+            TavernButtonStyle(kind: isDanger ? .danger : (isPrimary ? .primary : .secondary), compact: true)
+                .makeBody(configuration: configuration)
+        } else {
+            CompactActionFace(label: configuration.label, pressed: configuration.isPressed, style: self)
+        }
     }
 
     fileprivate func backgroundColor(isPressed: Bool) -> Color {

@@ -15,9 +15,15 @@ struct PortraitOpponentStatusBar: View {
     var selectOpponent: ((String) -> Void)? = nil
     @Environment(\.boardHUDPulse) private var hudPulse
     @Environment(\.emoteCenter) private var emoteCenter
+    @Environment(\.tavernBoard) private var tavern
+    @Environment(\.tavernCanvas) private var tavernCanvas
     @State private var pulse = false
 
     var body: some View {
+        if tavern { tavernBar } else { classicBar }
+    }
+
+    private var classicBar: some View {
         HStack(spacing: 6) {
             Button { if combatTargetable { combatTargetAction() } } label: {
                 HStack(spacing: 6) {
@@ -39,45 +45,8 @@ struct PortraitOpponentStatusBar: View {
             .padding(.vertical, 3)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(combatTargetable ? Color.red : .clear, lineWidth: 2))
             .accessibilityLabel(opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life")
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Circle().fill(turn.color).frame(width: 7, height: 7).shadow(color: turn.color, radius: 3)
-                    // The phase drops first when a pod's extra controls leave less room.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 5) {
-                            Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
-                            Text("· \((snapshot.step ?? snapshot.phase).arenaPhaseTitle)").font(.caption.bold())
-                        }
-                        Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
-                        Text(turn.owner).font(.caption2.weight(.black)).foregroundStyle(turn.color)
-                            .lineLimit(1).minimumScaleFactor(0.6)
-                    }
-                    .lineLimit(1)
-                }
-                .padding(.horizontal, 4).padding(.vertical, 1)
-                .background(turn.color.opacity(pulse ? 0.35 : 0), in: Capsule())
-                .scaleEffect(pulse ? 1.06 : 1, anchor: .leading)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("board.turn.owner")
-                Group {
-                    if BoardResponseCue.make(snapshot) == nil, let thinker = snapshot.thinkingPlayerID {
-                        ThinkingLabel(name: snapshot.playerLabel(thinker))
-                            .foregroundStyle(BoardTurnColors.opponent)
-                    } else if BoardResponseCue.make(snapshot) == nil, snapshot.isSpectating {
-                        Text("You’re watching")
-                    } else {
-                        Text(BoardResponseCue.make(snapshot)?.title ?? snapshot.priorityStatusText)
-                            .foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold)
-                    }
-                }
-                .font(.caption2.bold()).lineLimit(2).minimumScaleFactor(0.75)
-                .accessibilityIdentifier("board.response.status")
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            if let selectOpponent { OpponentFocusMenu(snapshot: snapshot, selectOpponent: selectOpponent) }
-            BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
-            if let viewZone { PlayerZoneMenu(player: opponent, viewZone: viewZone) }
-            Button(action: openLog) { Image(systemName: "text.book.closed").frame(width: 44, height: 44) }
-                .accessibilityLabel("Game log")
+            turnColumn.frame(maxWidth: .infinity, alignment: .leading)
+            trailingControls
         }
         .foregroundStyle(MagicPalette.parchment)
         .padding(.horizontal, 5)
@@ -106,6 +75,139 @@ struct PortraitOpponentStatusBar: View {
                 try? await Task.sleep(for: .milliseconds(450))
                 withAnimation(.easeOut(duration: 0.4)) { pulse = false }
             }
+        }
+    }
+
+    private var turnColumn: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Circle().fill(turn.color).frame(width: 7, height: 7).shadow(color: turn.color, radius: 3)
+                // The phase drops first when a pod's extra controls leave less room.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 5) {
+                        Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
+                        Text("· \((snapshot.step ?? snapshot.phase).arenaPhaseTitle)").font(.caption.bold())
+                    }
+                    Text(turn.owner).font(.caption.weight(.black)).foregroundStyle(turn.color)
+                    Text(turn.owner).font(.caption2.weight(.black)).foregroundStyle(turn.color)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                }
+                .lineLimit(1)
+            }
+            .padding(.horizontal, 4).padding(.vertical, 1)
+            .background(turn.color.opacity(pulse ? 0.35 : 0), in: Capsule())
+            .scaleEffect(pulse ? 1.06 : 1, anchor: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("board.turn.owner")
+            Group {
+                if BoardResponseCue.make(snapshot) == nil, let thinker = snapshot.thinkingPlayerID {
+                    ThinkingLabel(name: snapshot.playerLabel(thinker))
+                        .foregroundStyle(BoardTurnColors.opponent)
+                } else if BoardResponseCue.make(snapshot) == nil, snapshot.isSpectating {
+                    Text("You’re watching")
+                } else {
+                    Text(BoardResponseCue.make(snapshot)?.title ?? snapshot.priorityStatusText)
+                        .foregroundStyle(BoardResponseCue.make(snapshot) == nil ? MagicPalette.parchment : MagicPalette.antiqueGold)
+                }
+            }
+            .font(.caption2.bold()).lineLimit(2).minimumScaleFactor(0.75)
+            .accessibilityIdentifier("board.response.status")
+        }
+    }
+
+    @ViewBuilder private var trailingControls: some View {
+        if let selectOpponent { OpponentFocusMenu(snapshot: snapshot, selectOpponent: selectOpponent) }
+        BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
+        if let viewZone { PlayerZoneMenu(player: opponent, viewZone: viewZone) }
+        Button(action: openLog) { Image(systemName: "text.book.closed").frame(width: 44, height: 44) }
+            .accessibilityLabel("Game log")
+    }
+
+    /// Walnut Tavern: the opponent's commander medallion sits in the table's top socket and
+    /// opens their zones (and, in a pod, the other opponents); while they can be attacked a
+    /// tap declares the attack. Turn and priority are engraved on the leather band to the
+    /// left; their hand shows as card backs and the log is a brass ring to the right.
+    private var tavernBar: some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .global).origin
+            if let canvas = tavernCanvas {
+                let center = TavernDesign.opponentMedallion
+                ZStack {
+                    // Name, turn and priority on a leather nameplate in brass trim.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(opponentName)
+                            .font(.system(size: 12, weight: .semibold, design: .serif))
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                            .foregroundStyle(TavernPalette.parchment.opacity(0.9))
+                        turnColumn
+                    }
+                    .shadow(color: .black.opacity(0.6), radius: 1, y: 1)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .frame(width: canvas.tavernLength(118), alignment: .leading)
+                    .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
+                    .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+                    .tavernPosition(CGPoint(x: center.x - 110, y: center.y + 8), canvas: canvas, origin: origin)
+                    TavernCardBackFan(count: opponent.zones.visibleHandCount)
+                        .tavernPosition(CGPoint(x: center.x, y: center.y - 40), canvas: canvas, origin: origin)
+                    HStack(spacing: 0) {
+                        BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
+                        Button(action: openLog) { Image(systemName: "text.book.closed") }
+                            .buttonStyle(GameplayDockMenuButtonStyle())
+                            .accessibilityLabel("Game log")
+                    }
+                    .tavernPosition(CGPoint(x: center.x + 146, y: center.y + 4), canvas: canvas, origin: origin)
+                    opponentMedallion(diameter: canvas.tavernLength(TavernDesign.opponentHoleRadius * 2))
+                        .tavernPosition(center, canvas: canvas, origin: origin)
+                }
+            }
+        }
+        .foregroundStyle(TavernPalette.parchment)
+        .overlay(alignment: .bottomLeading) {
+            if let emoteCenter {
+                OpponentEmoteSlot(center: emoteCenter, snapshot: snapshot, focusedID: opponent.playerId)
+                    .fixedSize()
+                    .offset(x: 8, y: 44)
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: turn.owner)
+        .onChange(of: hudPulse) { _, _ in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) { pulse = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(450))
+                withAnimation(.easeOut(duration: 0.4)) { pulse = false }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func opponentMedallion(diameter: CGFloat) -> some View {
+        let medallion = TavernMedallion(diameter: diameter, life: opponent.isOut ? nil : opponent.life,
+                                        active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable) {
+            PlayerPortrait(player: opponent, size: diameter, active: false,
+                           thinking: snapshot.thinkingPlayerID == opponent.playerId)
+        }
+        .opacity(opponent.isOut ? 0.45 : 1)
+        .frame(width: diameter + 8, height: diameter + 8)
+        let label = opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life"
+        if combatTargetable || viewZone == nil {
+            Button { if combatTargetable { combatTargetAction() } } label: { medallion }
+                .buttonStyle(.plain)
+                .accessibilityLabel(label)
+                .accessibilityHint(combatTargetable ? "Attacks this player" : "")
+        } else if let viewZone {
+            let opponents = BoardOpponentFocus.opponents(in: snapshot)
+            PlayerZoneMenu(
+                player: opponent, viewZone: viewZone,
+                customLabel: AnyView(medallion),
+                extraItems: opponents.count > 1 ? AnyView(ForEach(opponents) { player in
+                    TavernMenuItem(title: "View \(snapshot.playerLabel(player.playerId))",
+                                   systemImage: player.playerId == opponent.playerId ? "checkmark.circle.fill" : "person.fill") {
+                        selectOpponent?(player.playerId)
+                    }
+                }) : nil,
+                accessibilityOverride: (label, "board.zones.\(opponent.playerId)")
+            )
         }
     }
 
@@ -347,6 +449,8 @@ struct PortraitHandRow: View {
     /// A spectator's stand-in: their hand stays hidden and only its size shows.
     var hiddenCount: Int? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// On the tavern table the hand rests as a full, curved fan: no tuck, no expand button.
+    @Environment(\.tavernBoard) private var tavern
     @State private var draggingCardId: String?
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartCenter: CGPoint = .zero
@@ -361,6 +465,11 @@ struct PortraitHandRow: View {
 
     private var handSpacing: CGFloat { ArenaHandLayout.spacing(count: cards.count, width: rowWidth, cardWidth: cardWidth, expanded: handExpanded) }
     private var contentWidth: CGFloat { CGFloat(cards.count) * cardWidth + CGFloat(max(cards.count - 1, 0)) * handSpacing }
+
+    /// Height of the hand when it is not expanded: tucked classically, whole on the tavern table.
+    private var restingHeight: CGFloat {
+        tavern ? ArenaHandLayout.tavernHeight(cardHeight: cardHeight) : ArenaHandLayout.restingHeight(cardHeight: cardHeight)
+    }
 
     var body: some View {
         let layout = handExpanded
@@ -393,13 +502,13 @@ struct PortraitHandRow: View {
                                 Color.clear.preference(key: HandCardBoundsKey.self,
                                     value: [card.id: geometry.frame(in: .named("portrait-board"))])
                             } }
-                            .visualEffect { [fansHand] content, proxy in
+                            .visualEffect { [fansHand, tavern] content, proxy in
                                 let frame = proxy.frame(in: .scrollView(axis: .horizontal))
                                 let viewport = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? frame.width
                                 let spread = fansHand ? min(max((frame.midX - viewport / 2) / max(viewport / 2, 1), -1), 1) : 0
                                 return content
-                                    .rotationEffect(.degrees(spread * 7), anchor: .bottom)
-                                    .offset(y: spread * spread * 9)
+                                    .rotationEffect(.degrees(spread * (tavern ? 11 : 7)), anchor: .bottom)
+                                    .offset(y: spread * spread * (tavern ? 18 : 9))
                             }
                             .scaleEffect(selected ? 1.05 : 1.0)
                             .offset(y: selected ? -10 : 0)
@@ -464,7 +573,7 @@ struct PortraitHandRow: View {
                                             runAction(action)
                                         }
                                     }, inspect: { selectedCard = nil; inspectedCard = card }, tap: {
-                                        if handExpanded { selectedCard = nil; inspectedCard = card }
+                                        if handExpanded || tavern { selectedCard = nil; inspectedCard = card }
                                         else { withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded = true } }
                                     }, releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } })
                             }
@@ -475,16 +584,17 @@ struct PortraitHandRow: View {
                     .padding(.horizontal, 4)
                     .background(HandScrollConnection(controller: handScroll))
                 }
-                .frame(height: handExpanded ? cardHeight + 20 : ArenaHandLayout.restingHeight(cardHeight: cardHeight), alignment: .top)
+                .frame(height: handExpanded ? cardHeight + 20 : restingHeight, alignment: .top)
                 // Tuck the resting hand at the bottom only; the playable glow, cost badges
                 // and fan tilt may draw above the row.
                 .scrollClipDisabled()
-                .mask { Rectangle().padding(.top, -48).padding(.horizontal, -12) }
+                .mask { Rectangle().padding(.top, -48).padding(.horizontal, -12).padding(.bottom, tavern ? -40 : 0) }
                 .accessibilityIdentifier("board.hand.scroll")
                 .background { GeometryReader { geometry in
                     Color.clear.preference(key: HandViewportKey.self, value: geometry.frame(in: .named("portrait-board")))
                 } }
 
+                if !tavern {
                 HStack(spacing: 12) {
                     Button {
                         withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2)) { handExpanded.toggle() }
@@ -500,8 +610,9 @@ struct PortraitHandRow: View {
                     PortraitScrollScrubber(progress: handScroll.progress, visible: contentWidth + 8 > rowWidth + 1,
                                            drag: handScroll.scroll)
                 }
+                }
             }
-            .frame(height: ArenaHandLayout.restingHeight(cardHeight: cardHeight), alignment: .bottom)
+            .frame(height: restingHeight, alignment: .bottom)
             .onPreferenceChange(HandCardBoundsKey.self) { handCardBounds = $0; handScroll.refreshProgress() }
             .onPreferenceChange(HandViewportKey.self) { handViewport = $0; handScroll.refreshProgress() }
             .overlay {
