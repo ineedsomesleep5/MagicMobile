@@ -491,3 +491,7 @@ single MIT file with its license header when that is enough.
   testTavernPlayerPopoverShowsStatusIconsAndSwapsOpponents. BoardPolish's "Control/label is
   obscured" failures are the known full-screen accessibility container (real taps work), not
   build 24.
+  Shipped as TestFlight 0.1.1 (24), internal only (`IN_BETA_TESTING`, delivery `41ced09a…`),
+  from `codex/ios-build-24` (PR #98, stacked on #97) with the build 21/22 engine (preflight
+  14/14, equivalent-source). Landscape reference for the next step:
+  `ui-ref/landscape-tavern-ref.png` (not built; drop its deck pile and the PASS word).
