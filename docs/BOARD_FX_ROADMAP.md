@@ -446,4 +446,21 @@ single MIT file with its license header when that is enough.
   references (Codex, from real screenshots): menu-ref/menus-home-and-setup.png and
   menu-ref/menus-decks-and-studio.png; not built yet. Still system: keyboard, photo
   picker, share sheet, permission prompts (iOS does not allow restyling them).
+- 2026-10-02 (Claude, menus and build 23): the menus moved to Walnut & Ember from the
+  references. BrandUI.swift: palette (walnut canvas, leather surfaces, parchment ink, brass
+  border), BrandPanel = TavernPanelChrome, BrandButtonStyle = riveted plaques (ember /
+  leather / oxblood), BrandIconButton = brass medallions, brass BrandDivider, serif
+  brandTitle, brass monogram in BrandMark, BrandBackdrop over `menu-backdrop-tavern` (Codex
+  tavern wall; installed by install_tavern_assets.sh) without the old card fan.
+  TavernAppearance.apply() (app delegate) dresses the system controls the setup tests drive
+  (segmented: leather/ember/serif; switches: ember; steppers: brass rings; serif nav titles)
+  instead of replacing them, so accessibility and UI tests keep their contracts; picker
+  menus stay system (not stylable). Deck Studio's palette is parchment and
+  DeckStudioButtonStyle forwards to TavernButtonStyle. Home deck label is a parchment plate.
+  The capsule rim lost its mid-cap rivets so taller plaques stretch cleanly. Menu suites
+  passed except rotation-dependent Deck Studio tests while the simulator's orientation was
+  stuck (a simulator restart fixed rotation; the partner-deck landscape test then passed)
+  and timing flakes that passed on rerun. Shipped as TestFlight 0.1.1 (23), internal only,
+  from `codex/ios-build-23` (stacked on PR #95) with the build 21/22 engine (preflight:
+  equivalent-source).
 
