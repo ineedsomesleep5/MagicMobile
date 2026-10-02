@@ -179,7 +179,7 @@ single MIT file with its license header when that is enough.
 | 9 Next level (build 19) | Recorded audio (Sonniss GDC + Kenney CC0 effects, Kevin MacLeod CC BY playlists and stingers, SoundLabView.swift), fewer and quieter cues, concede with pod spectating (engine op), Arena-style attachment stacks and inspector attachment text, opponent portraits with AI-thinking ring, opening-hand screen, result summary (GameStats.swift), quick chat (GameEmotes.swift), weighted big hits, deck covers. Unit, real-XMage JVM and UI tests pass; phone feel and audio choices pending Caleb. |
 | 10 Android parity (Android build 8) | Phases 1–4 and 6–9 are ported to the Compose app in portrait and landscape: the timeline, overlay, card motion, dissolve and foil shaders, recorded audio with the Sound Lab, and the game-feel pieces. Each lives in the same-named Kotlin file (map in docs/ANDROID_PARITY.md). All 34 iOS preview states render on the emulator, and emulator games pass. Android phone feel is pending. |
 | 11 Playtest fixes (iOS build 18 / Android build 9) | On both platforms, in `codex/build18-integration`: the top of the board follows the active player (Follow Turns setting); a spectator's bottom seat goes to the next living player; copy tokens draw as their own frame with a "Token copy" tag; the held-card inspector fits its rules without scrolling; the ability banner sits below the card; combat keyword badges (live, so gained double strike shows); the first-strike damage step is its own beat; clipped battlefield rows fade and show "+N". Unit and parity tests, simulator and emulator previews pass; phone feel pending Caleb. |
-| 12 Walnut Tavern table (iOS portrait) | In `codex/walnut-board-poc`, not committed. Tavern backdrop matched to the approved concept (`tavern-mock-v4.png`): a top-down Blender table (`scripts/brand/tavern_table.py`) built from `scripts/brand/tavern_layout.json`, with Poly Haven CC0 walnut, planks and leather, a Codex compass emblem, and Meshy props (crest, medallion ring, corner ornaments, candle, tankard, books, coins, ivy; cut-crystal mana gems as sprites), a painted porthole pass button. With it selected, portrait controls sit on the table's sockets (TavernDesign): opponent commander medallion in the crest (opens their zones and lists opponents; a tap attacks when they are a target), your commander medallion bottom left (opens your zones), six crystal mana gems in the rail, the pass button (icon only when passing) with Skip and controls rings, the hand as a resting curved fan with no expand button, parchment battlefield cards with stat gems, and the stack as a right-edge tab. Classic controls unchanged elsewhere. Landscape keeps classic controls. Android not started. |
+| 12 Walnut Tavern table (iOS portrait) | Default board since build 24 (shipped in TestFlight builds 23 and 24). Blender table from `scripts/brand/tavern_layout.json`, controls on the table's sockets (TavernDesign), leather/brass UI kit for pop-ups, menus and the setup lobby. Battlefield permanents wear option B painted frames by type (`scripts/brand/card_frames.sh`, TavernFrameKind) with a name ribbon and hex stat gems; hand cards stay printed. Phase plate at the top right; medallion pop-overs show status icons and swap opponents. Landscape keeps classic controls (reference image pending); Android not started. |
 
 ## Log
 
@@ -463,4 +463,31 @@ single MIT file with its license header when that is enough.
   and timing flakes that passed on rerun. Shipped as TestFlight 0.1.1 (23), internal only,
   from `codex/ios-build-23` (stacked on PR #95) with the build 21/22 engine (preflight:
   equivalent-source).
-
+- 2026-10-02 (Claude, build 24, branch `codex/walnut-build-24`): Caleb's build 23 notes.
+  Walnut Tavern is the default board (`BoardAppearancePreference.defaultValue`, unknown
+  values resolve to it); classic UI tests pin `-magicmobile.boardAppearance arena`. Scryfall
+  live images were already on by default for new installs (explicit choices kept). Themed:
+  card inspector (TavernPanelChrome, parchment chips), phase cue (leather band, brass frame),
+  cast/stack name plate (brass plate in BoardFXOverlay), turn banner. Setup lobby controls are
+  TavernToggle / TavernStepper / TavernPicker (BrandUI.swift); each overlays the real control
+  nearly invisible so accessibility and UI-test contracts stay; long pickers scroll and open
+  on the current choice. Board: the options ring orbits the pass button below Skip, the
+  commander medallion mirrors the pass button's inset (tavern_layout.json, plate re-rendered),
+  the opponent zones pop-over opens downward, lanes are inset to the mat's stitching
+  (`laneInset`), and TavernPhasePlate (turn, step, five pips) replaced the log ring (log is in
+  the controls menu). Card frames: Caleb rejected the Meshy filigree frame and chose option B
+  of `ui-ref/hs-frames-b.png` (Hearthstone-like arched windows): creatures gold, creature
+  tokens walnut, artifacts silver, enchantments rose-gold, lands stone (TavernFrameKind; a
+  current creature of any type wears gold). Meshy image-to-3D could not take uploads from the
+  in-app browser (no file chooser, localhost and clipboard blocked), so the frames are the
+  approved painted art: Codex frames per type on a key colour, keyed and fitted to the
+  1 : 1.08 tile by `scripts/brand/card_frames.sh`, which prints each art window for
+  TavernFrameKind.window. Medallion pop-overs now start with the player's status as icons
+  (PlayerStatusSummary: Phyrexian glyph for poison, energy, experience, rad, tickets, monarch,
+  initiative, commander damage taken with the commander's art, red ring near lethal) and the
+  cards attached to them; an opponent's pop-over in a pod ends with a swap row that refocuses
+  the board without closing; a glance badge beside each medallion shows poison and the worst
+  commander damage. New tests: testTavernFramesFollowTheCardsCurrentType,
+  testTavernPlayerPopoverShowsStatusIconsAndSwapsOpponents. BoardPolish's "Control/label is
+  obscured" failures are the known full-screen accessibility container (real taps work), not
+  build 24.

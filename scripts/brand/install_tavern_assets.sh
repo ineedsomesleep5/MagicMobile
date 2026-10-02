@@ -63,6 +63,15 @@ if [[ -f $BACKDROP ]]; then
   sips -s format jpeg -s formatOptions 85 $BACKDROP --out "$(imageset menu-backdrop-tavern menu-backdrop-tavern.jpg)" >/dev/null
   print "menu backdrop: menu-backdrop-tavern"
 fi
+# Battlefield card frames, ribbon and stat gems (scripts/brand/card_frames.sh, into
+# <render dir>/frames): one frame per card type, art showing through the arched window.
+if [[ -d $SRC/frames ]]; then
+  for part in $SRC/frames/tavern-*.png(N); do
+    name=${part:t:r}
+    cp $part "$(imageset $name $name.png)"
+  done
+  print "card frames: $(ls $SRC/frames/tavern-*.png | wc -l | tr -d ' ') parts"
+fi
 for sprite in tavern-hourglass-button tavern-mana-W tavern-mana-U tavern-mana-B tavern-mana-R tavern-mana-G tavern-mana-C tavern-mana-generic; do
   if [[ -f $SRC/$sprite.png ]]; then
     cp $SRC/$sprite.png "$(imageset $sprite $sprite.png)"

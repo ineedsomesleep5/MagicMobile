@@ -6,7 +6,7 @@ final class NativeDownloadsUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
@@ -41,7 +41,7 @@ final class NativeDownloadsUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
@@ -76,7 +76,7 @@ final class NativeDownloadsUITests: XCTestCase {
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        app.launchArguments = ["--ondevice-setup-ui-test"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
@@ -102,7 +102,7 @@ final class NativeDownloadsUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer {

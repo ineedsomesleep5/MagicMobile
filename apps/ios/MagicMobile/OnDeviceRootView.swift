@@ -820,8 +820,7 @@ struct OnDeviceRootView: View {
                     BrandDivider(title: "Your seat")
                     TextField("Player name", text: $playerDisplayName)
                         .textContentType(.nickname).autocorrectionDisabled()
-                        .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BrandTheme.border, lineWidth: 1))
+                        .modifier(TavernFieldChrome(tavern: true))
                         .disabled(account.username != nil)
                         .accessibilityIdentifier("ondevice.playerName")
                     if account.username != nil {
@@ -830,16 +829,11 @@ struct OnDeviceRootView: View {
                     } else {
                         Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
                     }
-                    Toggle("Auto-Rotate", isOn: $portraitModeEnabled)
-                        .font(.subheadline).tint(CommanderPresentation.accent)
-                    Picker("Your deck", selection: $selectedDeckID) {
-                        Section("Included precons") {
-                            ForEach(PreconCatalog.all) { Text($0.name).tag("precon:\($0.id)") }
-                        }
-                        Section("Saved on this device") {
-                            ForEach(library.decks) { Text($0.name).tag("local:\($0.id)") }
-                        }
-                    }
+                    TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
+                    TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: [
+                        .init(title: "Included precons", options: PreconCatalog.all.map { ($0.name, "precon:\($0.id)") }),
+                        .init(title: "Saved on this device", options: library.decks.map { ($0.name, "local:\($0.id)") })
+                    ])
                     Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(CommanderActionStyle(primary: false))
                     NativeArtworkPreferenceView()
@@ -855,9 +849,9 @@ struct OnDeviceRootView: View {
                     }.pickerStyle(.segmented).disabled(setup.isBusy || setup.needsLeave)
                     if playWithFriends {
                         if !(playOnline && setup.multiplayer?.isRelayTable == true) {
-                            Picker("Human players", selection: $playerCount) {
-                                ForEach(2...4, id: \.self) { Text("\($0) players").tag($0) }
-                            }.disabled(setup.isBusy || setup.needsLeave)
+                            TavernPicker(title: "Human players", selection: $playerCount,
+                                         sections: [.init(options: (2...4).map { ("\($0) players", $0) })])
+                                .disabled(setup.isBusy || setup.needsLeave)
                         }
                         if playOnline {
                             RelayTablePanel(multiplayer: setup.multiplayer, code: $relayJoinCode, mayEnter: mayStart && !setup.needsLeave,
@@ -879,19 +873,17 @@ struct OnDeviceRootView: View {
                                                 setup.readyForMatch(name: playerDisplayName, deck: deck)
                                             })
                         } else {
-                            Stepper("AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
-                                    in: 0...max(0, 4 - playerCount))
+                            TavernStepper(title: "AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
+                                          range: 0...max(0, 4 - playerCount), identifier: "ondevice.gameCenterAI.count")
                                 .disabled(setup.isBusy || setup.needsLeave)
-                                .accessibilityIdentifier("ondevice.gameCenterAI.count")
                             ForEach(0..<gameCenterAICount, id: \.self) { index in
-                                Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
-                                    ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
-                                }
-                                .disabled(setup.isBusy || setup.needsLeave)
-                                .accessibilityIdentifier("ondevice.gameCenterAI.deck.\(index + 1)")
+                                TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
+                                             sections: [.init(options: PreconCatalog.all.map { ($0.name, $0.id) })],
+                                             identifier: "ondevice.gameCenterAI.deck.\(index + 1)")
+                                    .disabled(setup.isBusy || setup.needsLeave)
                             }
                             if gameCenterAICount > 0 {
-                                Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
+                                TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10)
                                     .disabled(setup.isBusy || setup.needsLeave)
                                 Text("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
                                     .font(.caption).foregroundStyle(.secondary)
@@ -916,22 +908,20 @@ struct OnDeviceRootView: View {
                                 .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
                         }
                     } else {
-                        Stepper("AI opponents: \(opponentCount)", value: $opponentCount, in: 1...3)
+                        TavernStepper(title: "AI opponents: \(opponentCount)", value: $opponentCount, range: 1...3,
+                                      identifier: "ondevice.aiCount")
                             .disabled(setup.isBusy || setup.needsLeave)
-                            .accessibilityIdentifier("ondevice.aiCount")
                         ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("AI \(index + 1) deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                                Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
-                                    ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
-                                }
-                                .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
-                                .disabled(setup.isBusy || setup.needsLeave)
+                                TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
+                                             sections: [.init(options: PreconCatalog.all.map { ($0.name, $0.id) })],
+                                             identifier: "ondevice.aiDeck.\(index + 1)", showsTitle: false)
+                                    .disabled(setup.isBusy || setup.needsLeave)
                             }
                         }
-                        Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10)
+                        TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10, identifier: "onDevice.aiSkill")
                             .disabled(setup.isBusy || setup.needsLeave)
-                            .accessibilityIdentifier("onDevice.aiSkill")
                         Text("Higher skill levels allow more thinking and may slow turns.").font(.caption).foregroundStyle(.secondary)
                         Picker("Who goes first?", selection: $aiStartingPlayerMode) {
                             Text("Choose").tag("choose")

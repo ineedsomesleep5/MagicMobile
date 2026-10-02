@@ -303,8 +303,7 @@ struct NativeArtworkPreferenceView: View {
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Scryfall live images", isOn: $remoteArtwork)
-                .accessibilityIdentifier("nativeArtwork.downloads")
+            TavernToggle(title: "Scryfall live images", isOn: $remoteArtwork, identifier: "nativeArtwork.downloads")
             Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.")
                 .font(.caption).foregroundStyle(.secondary)
             Text("Scryfall receives card names—including your hand—and your IP address.")

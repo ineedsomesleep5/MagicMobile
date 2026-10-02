@@ -36,6 +36,8 @@ struct BoardFXOverlay: View {
     let anchors: BoardFXAnchors
     let clock: BoardFXClock
     let prune: () -> Void
+    /// Walnut Tavern: names under showcased cards are engraved brass plates.
+    var tavern = false
 
     /// Cards that just left the battlefield no longer report bounds; keep their last rectangle.
     @State private var lastKnownBounds: [String: CGRect] = [:]
@@ -186,7 +188,7 @@ struct BoardFXOverlay: View {
             let title = BoardFXBannerPlan.title(name: name, isAbility: weight == .ability, sourceName: subjects[stackID]?.card.name)
             BoardFXPainter.banner(title, subtitle: weight == .commander ? "COMMANDER" : nil,
                                   at: CGPoint(x: center.x, y: bannerY), color: weight == .commander ? BoardFXPainter.gold : tint.color,
-                                  progress: p, in: &context)
+                                  progress: p, tavern: tavern, in: &context)
         case let .enteredBattlefield(cardID, _, _, tint, entrance):
             guard let rect = rect(cardID) else { return }
             // With a flight, the glow is the landing; without one it plays immediately.
@@ -208,7 +210,7 @@ struct BoardFXOverlay: View {
                     BoardFXPainter.banner(name, subtitle: entrance == .commander ? "COMMANDER" : nil,
                                           at: CGPoint(x: center.x, y: center.y + showcase.height / 2 + 22),
                                           color: entrance == .commander ? BoardFXPainter.gold : tint.color,
-                                          progress: min(1, p / (landing * 0.8)), in: &context)
+                                          progress: min(1, p / (landing * 0.8)), tavern: tavern, in: &context)
                 }
             }
             guard !flying || p >= landing else { return }
@@ -576,9 +578,13 @@ enum BoardFXPainter {
     }
 
     static func banner(_ title: String, subtitle: String? = nil, at point: CGPoint, color: Color, progress p: Double,
-                       in context: inout GraphicsContext) {
+                       tavern: Bool = false, in context: inout GraphicsContext) {
         let fade = window(p, fadeIn: 0.08, fadeOut: 0.82)
         guard fade > 0 else { return }
+        if tavern {
+            brassPlate(title, subtitle: subtitle, at: point, opacity: fade, in: &context)
+            return
+        }
         var layer = context
         layer.opacity = fade
         let text = layer.resolve(Text(title).font(.system(size: 16, weight: .heavy, design: .serif)).foregroundStyle(.white))
@@ -593,6 +599,43 @@ enum BoardFXPainter {
         layer.stroke(Path(roundedRect: frame, cornerRadius: 12), with: .color(color), lineWidth: 1.5)
         if let caption {
             layer.draw(caption, at: CGPoint(x: point.x, y: frame.minY + 11))
+            layer.draw(text, at: CGPoint(x: point.x, y: point.y + captionHeight / 2))
+        } else {
+            layer.draw(text, at: point)
+        }
+    }
+
+    /// An engraved brass plate with a rivet at each end, the tavern's name label.
+    static func brassPlate(_ title: String, subtitle: String?, at point: CGPoint, opacity: Double,
+                           in context: inout GraphicsContext) {
+        var layer = context
+        layer.opacity = opacity
+        let ink = Color(red: 0.22, green: 0.11, blue: 0.04)
+        let text = layer.resolve(Text(title).font(.system(size: 17, weight: .heavy, design: .serif)).foregroundStyle(ink))
+        let size = text.measure(in: CGSize(width: 300, height: 44))
+        let caption = subtitle.map {
+            layer.resolve(Text($0).font(.system(size: 9, weight: .heavy, design: .serif)).tracking(2)
+                .foregroundStyle(Color(red: 0.55, green: 0.18, blue: 0.08)))
+        }
+        let captionHeight: CGFloat = caption == nil ? 0 : 12
+        let frame = CGRect(x: point.x - size.width / 2 - 24, y: point.y - size.height / 2 - 7 - captionHeight / 2,
+                           width: size.width + 48, height: size.height + 14 + captionHeight)
+        let plate = Path(roundedRect: frame, cornerRadius: 6)
+        var shadow = layer
+        shadow.addFilter(.shadow(color: .black.opacity(0.6), radius: 5, y: 3))
+        shadow.fill(plate, with: .linearGradient(Gradient(colors: [Color(red: 0.98, green: 0.84, blue: 0.52), Color(red: 0.78, green: 0.55, blue: 0.22),
+                                                                   Color(red: 0.58, green: 0.38, blue: 0.13)]),
+                                                 startPoint: CGPoint(x: frame.midX, y: frame.minY), endPoint: CGPoint(x: frame.midX, y: frame.maxY)))
+        layer.stroke(plate, with: .color(Color(red: 0.36, green: 0.22, blue: 0.07)), lineWidth: 1.2)
+        layer.stroke(Path(roundedRect: frame.insetBy(dx: 2.5, dy: 2.5), cornerRadius: 4), with: .color(.white.opacity(0.25)), lineWidth: 0.8)
+        for x in [frame.minX + 10, frame.maxX - 10] {
+            let r: CGFloat = 3
+            layer.fill(Path(ellipseIn: CGRect(x: x - r, y: frame.midY - r, width: r * 2, height: r * 2)),
+                       with: .radialGradient(Gradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.45, green: 0.29, blue: 0.09)]),
+                                             center: CGPoint(x: x - 1, y: frame.midY - 1), startRadius: 0, endRadius: r))
+        }
+        if let caption {
+            layer.draw(caption, at: CGPoint(x: point.x, y: frame.minY + 10))
             layer.draw(text, at: CGPoint(x: point.x, y: point.y + captionHeight / 2))
         } else {
             layer.draw(text, at: point)

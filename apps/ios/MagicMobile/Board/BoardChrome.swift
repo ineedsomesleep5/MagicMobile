@@ -991,11 +991,11 @@ enum TavernDesign {
     static let canvas = CGSize(width: 440, height: 956)
     static let opponentMedallion = CGPoint(x: 219.2, y: 95)
     static let opponentHoleRadius: CGFloat = 31
-    static let lifeMedallion = CGPoint(x: 50.5, y: 882.6)
+    static let lifeMedallion = CGPoint(x: 74, y: 882.6)  // mirrors the pass button: 74 pt from its edge
     static let lifeHoleRadius: CGFloat = 35.5
     static let passButton = CGPoint(x: 366, y: 877)
     /// The stack tray's slot below the mana rail, between your medallion and the pass button.
-    static let stackTray = CGPoint(x: 212, y: 893)
+    static let stackTray = CGPoint(x: 211, y: 893)
     static let passHoleRadius: CGFloat = 48
     /// The pass button's frame: its brass ring matches the life medallion's frame.
     static func passDiameter(in canvas: CGSize?) -> CGFloat {
@@ -1592,7 +1592,7 @@ struct TavernStackTray: View {
             }
             .padding(.leading, 6)
             .padding(.trailing, 10)
-            .frame(width: 156, height: 42)
+            .frame(width: 124, height: 42)
             .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
             .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
             .contentShape(Rectangle())
@@ -1646,6 +1646,10 @@ extension EnvironmentValues {
 /// runs, so actions that open sheets are not blocked by the closing pop-over.
 struct TavernMenu<Label: View, Items: View>: View {
     var arrowEdge: Edge = .bottom
+    /// Long lists (decks) scroll inside a pop-over of this height.
+    var scrollHeight: CGFloat? = nil
+    /// The row (by `.id`) a scrolling pop-over opens on, such as the current choice.
+    var scrollAnchor: AnyHashable? = nil
     @ViewBuilder let items: Items
     @ViewBuilder let label: Label
     @State private var open = false
@@ -1654,8 +1658,17 @@ struct TavernMenu<Label: View, Items: View>: View {
     var body: some View {
         Button { open = true } label: { label }
             .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: arrowEdge) {
-                VStack(alignment: .leading, spacing: 6) { items }
-                    .padding(10)
+                Group {
+                    if let scrollHeight {
+                        ScrollViewReader { proxy in
+                            ScrollView { VStack(alignment: .leading, spacing: 6) { items }.padding(10) }
+                                .frame(height: scrollHeight)
+                                .onAppear { if let scrollAnchor { proxy.scrollTo(scrollAnchor, anchor: .center) } }
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) { items }.padding(10)
+                    }
+                }
                     .frame(width: 270)
                     .environment(\.tavernBoard, true)
                     .environment(\.tavernMenuSelect) { action in
@@ -1799,5 +1812,318 @@ private struct TavernConfirmationModifier: ViewModifier {
     private func cancel() {
         isPresented = false
         onCancel()
+    }
+}
+
+/// The step of the turn in plain words, and which of the five phases it belongs to.
+enum TavernPhaseTrack {
+    static let phases = ["Beginning", "Main 1", "Combat", "Main 2", "End"]
+
+    static func describe(_ raw: String?) -> (title: String, phase: Int?) {
+        guard let raw, !raw.isEmpty else { return ("", nil) }
+        switch raw.lowercased().replacingOccurrences(of: "_", with: "-") {
+        case "beginning", "untap": return ("Untap step", 0)
+        case "upkeep": return ("Upkeep", 0)
+        case "draw": return ("Draw step", 0)
+        case "precombat-main", "main1": return ("Main phase 1", 1)
+        case "combat", "begin-combat": return ("Beginning of combat", 2)
+        case "declare-attackers": return ("Declare attackers", 2)
+        case "declare-blockers": return ("Declare blockers", 2)
+        case "first-combat-damage", "first-strike-damage": return ("First-strike damage", 2)
+        case "combat-damage": return ("Combat damage", 2)
+        case "end-combat": return ("End of combat", 2)
+        case "postcombat-main", "main2": return ("Main phase 2", 3)
+        case "ending", "end", "end-turn": return ("End step", 4)
+        case "cleanup": return ("Cleanup", 4)
+        default: return (EngineDisplayText.phaseLabel(raw), nil)
+        }
+    }
+}
+
+/// The tavern's phase plate, mirroring the opponent's nameplate: the turn number, the step in
+/// words and a track of the five phases with the current one lit in ember.
+struct TavernPhasePlate: View {
+    let step: String?
+    let turn: Int
+    var width: CGFloat = 118
+
+    var body: some View {
+        let described = TavernPhaseTrack.describe(step)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("TURN \(turn)")
+                .font(.system(size: 9, weight: .heavy, design: .serif)).tracking(1)
+                .foregroundStyle(BrandTheme.brassGradient)
+            Text(described.title)
+                .font(.system(size: 12.5, weight: .semibold, design: .serif))
+                .foregroundStyle(TavernPalette.parchment)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            HStack(spacing: 4) {
+                ForEach(0..<TavernPhaseTrack.phases.count, id: \.self) { index in
+                    let current = index == described.phase
+                    Capsule()
+                        .fill(current ? AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.62, blue: 0.36), BrandTheme.ember],
+                                                                     startPoint: .top, endPoint: .bottom))
+                                      : AnyShapeStyle(BrandTheme.brass.opacity(0.32)))
+                        .frame(height: current ? 5 : 4)
+                        .shadow(color: current ? BrandTheme.ember.opacity(0.9) : .clear, radius: 3)
+                }
+            }
+        }
+        .shadow(color: .black.opacity(0.6), radius: 1, y: 1)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .frame(width: width, alignment: .leading)
+        .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
+        .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+        .animation(.easeInOut(duration: 0.3), value: described.phase)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(described.title.isEmpty ? "Turn \(turn)" : "Turn \(turn), \(described.title)")
+        .accessibilityIdentifier("board.phase.plate")
+    }
+}
+
+// MARK: - Player status in the tavern zones pop-over
+
+/// Poison as the Phyrexian symbol: a ring split by an upright stroke.
+struct PhyrexianGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addEllipse(in: rect.insetBy(dx: rect.width * 0.2, dy: rect.height * 0.24))
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        return path
+    }
+}
+
+/// What a player carries besides their zones (Caleb, 2026-10-02): counters, the monarch and
+/// the initiative, commander damage taken and cards attached to them. Shown as icons, never
+/// words; each badge still names itself to VoiceOver.
+struct PlayerStatusSummary {
+    struct Badge: Identifiable {
+        enum Icon { case poison, symbol(String), commander(ZoneCard?) }
+        let id: String
+        let icon: Icon
+        let tint: Color
+        let count: Int?
+        let label: String
+        /// Close to losing to it: ten poison, twenty-one commander damage.
+        var nearLethal = false
+    }
+
+    let badges: [Badge]
+    let attachments: [ZoneCard]
+
+    var isEmpty: Bool { badges.isEmpty && attachments.isEmpty }
+
+    init(player: PlayerGameState, snapshot: GameSnapshot?) {
+        var badges: [Badge] = BoardPlayerStatus.counters(player).map { counter in
+            let name = counter.name.lowercased()
+            let (icon, tint): (Badge.Icon, Color) = switch name {
+            case "poison": (.poison, Color(red: 0.55, green: 0.9, blue: 0.35))
+            case "energy": (.symbol("bolt.fill"), Color(red: 1, green: 0.82, blue: 0.3))
+            case "experience": (.symbol("sparkles"), Color(red: 0.98, green: 0.92, blue: 0.7))
+            case "rad": (.symbol("atom"), Color(red: 0.75, green: 1, blue: 0.4))
+            case "ticket": (.symbol("ticket.fill"), Color(red: 1, green: 0.5, blue: 0.4))
+            default: (.symbol("seal.fill"), TavernPalette.parchment)
+            }
+            return Badge(id: "counter-\(name)", icon: icon, tint: tint, count: counter.count,
+                         label: "\(counter.name.capitalized) \(counter.count)",
+                         nearLethal: name == "poison" && counter.count >= 7)
+        }
+        if player.monarch == true {
+            badges.append(Badge(id: "monarch", icon: .symbol("crown.fill"), tint: Color(red: 1, green: 0.8, blue: 0.4), count: nil, label: "Monarch"))
+        }
+        if player.initiative == true {
+            badges.append(Badge(id: "initiative", icon: .symbol("flag.fill"), tint: Color(red: 0.95, green: 0.55, blue: 0.35),
+                                count: nil, label: "Has the initiative"))
+        }
+        if let snapshot {
+            // Each opposing commander that has hit this player, with its art when it is visible.
+            for owner in snapshot.players where owner.playerId != player.playerId {
+                for commander in owner.commanders ?? [] {
+                    guard let damage = commander.damageToPlayers?[player.playerId], damage > 0 else { continue }
+                    let zones = owner.zones
+                    let card = (zones.command + zones.battlefield + zones.graveyard + zones.exile + zones.hand)
+                        .first { $0.instanceId == commander.id }
+                    badges.append(Badge(id: "commander-\(commander.id)", icon: .commander(card), tint: TavernPalette.ember, count: damage,
+                                        label: "\(commander.name ?? "Commander") dealt \(damage) commander damage",
+                                        nearLethal: damage >= 15))
+                }
+            }
+            attachments = ZoneCard.enchanting(playerID: player.playerId, cards: snapshot.players.flatMap { $0.zones.battlefield })
+        } else {
+            attachments = []
+        }
+        self.badges = badges
+    }
+
+    var accessibilityText: String {
+        (badges.map(\.label) + attachments.map { "\($0.card.name) attached" }).joined(separator: ", ")
+    }
+}
+
+/// One status badge: a leather coin in a brass ring with its symbol, and its count on a
+/// brass coin at the corner. A red ring warns when the player is close to losing to it.
+struct TavernStatusBadge: View {
+    let badge: PlayerStatusSummary.Badge
+    var size: CGFloat = 40
+
+    var body: some View {
+        ZStack {
+            Circle().fill(RadialGradient(colors: [Color(red: 0.3, green: 0.17, blue: 0.09), TavernPalette.leather],
+                                         center: .init(x: 0.4, y: 0.3), startRadius: 0, endRadius: size * 0.6))
+            symbol
+            Circle().strokeBorder(badge.nearLethal ? Color(red: 0.95, green: 0.2, blue: 0.12) : TavernPalette.brass,
+                                  lineWidth: badge.nearLethal ? 2.4 : 1.6)
+        }
+        .frame(width: size, height: size)
+        .overlay(alignment: .bottomTrailing) {
+            if let count = badge.count {
+                TavernCoin(value: count, size: size * 0.5).offset(x: size * 0.12, y: size * 0.1)
+            }
+        }
+        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(badge.label)
+    }
+
+    @ViewBuilder private var symbol: some View {
+        switch badge.icon {
+        case .poison:
+            PhyrexianGlyph()
+                .stroke(badge.tint, style: StrokeStyle(lineWidth: size * 0.08, lineCap: .round))
+                .frame(width: size * 0.5, height: size * 0.56)
+                .shadow(color: badge.tint.opacity(0.7), radius: 3)
+        case .symbol(let name):
+            Image(systemName: name)
+                .font(.system(size: size * 0.42, weight: .bold))
+                .foregroundStyle(badge.tint)
+                .shadow(color: badge.tint.opacity(0.5), radius: 2)
+        case .commander(let card):
+            ZStack {
+                if let card {
+                    TavernArtCrop(card: card, zoneName: "Command")
+                        .clipShape(Circle())
+                        .padding(2)
+                } else {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: size * 0.4, weight: .bold))
+                        .foregroundStyle(badge.tint)
+                }
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: size * 0.26, weight: .heavy))
+                    .foregroundStyle(TavernPalette.parchment)
+                    .shadow(color: .black, radius: 1.5)
+                    .offset(x: -size * 0.3, y: -size * 0.3)
+            }
+        }
+    }
+}
+
+/// The top of a player's zones pop-over: their name, their status badges and the cards
+/// attached to them (tap one to inspect it).
+struct TavernPlayerStatusPanel: View {
+    let name: String
+    let summary: PlayerStatusSummary
+    var inspect: ((String, [ZoneCard]) -> Void)?
+    @Environment(\.tavernMenuSelect) private var select
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(name.uppercased())
+                .font(.system(size: 13, weight: .heavy, design: .serif))
+                .tracking(1)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                                startPoint: .top, endPoint: .bottom))
+                .frame(maxWidth: .infinity)
+            if !summary.badges.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(44), spacing: 8), count: 5), alignment: .leading, spacing: 8) {
+                    ForEach(summary.badges) { TavernStatusBadge(badge: $0) }
+                }
+                .padding(.trailing, 6)
+                .accessibilityIdentifier("board.zones.status")
+            }
+            if !summary.attachments.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "link")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(TavernPalette.brass)
+                        .accessibilityHidden(true)
+                    ForEach(summary.attachments) { card in
+                        Button { select { inspect?("Attached to \(name)", [card]) } } label: {
+                            TavernArtCrop(card: card, zoneName: "Battlefield")
+                                .frame(width: 38, height: 38)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(TavernPalette.brass, lineWidth: 1.2))
+                                .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(card.card.name), attached")
+                        .accessibilityIdentifier("board.zones.attached.\(card.instanceId)")
+                    }
+                }
+            }
+            if !summary.isEmpty { TavernMenuDivider() }
+        }
+    }
+}
+
+/// The bottom of an opponent's pop-over in a pod: swap to another opponent's information.
+/// The current one carries an ember ring.
+struct TavernOpponentSwap: View {
+    let opponents: [PlayerGameState]
+    let current: String
+    let label: (String) -> String
+    let select: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            TavernMenuDivider()
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.left.arrow.right.circle.fill")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), TavernPalette.brass],
+                                                    startPoint: .top, endPoint: .bottom))
+                    .accessibilityHidden(true)
+                ForEach(opponents) { opponent in
+                    let chosen = opponent.playerId == current
+                    Button { select(opponent.playerId) } label: {
+                        PlayerPortrait(player: opponent, size: 36)
+                            .overlay(Circle().strokeBorder(chosen ? TavernPalette.ember : TavernPalette.brass.opacity(0.6),
+                                                           lineWidth: chosen ? 2.5 : 1.2))
+                            .opacity(opponent.isOut ? 0.45 : 1)
+                            .shadow(color: chosen ? TavernPalette.ember.opacity(0.7) : .clear, radius: 4)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Swap to \(label(opponent.playerId))")
+                    .accessibilityAddTraits(chosen ? .isSelected : [])
+                    .accessibilityIdentifier("board.zones.swap.\(opponent.playerId)")
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+}
+
+/// A glance at the most pressing status beside a medallion: poison and the worst commander
+/// damage. Taps pass through to the medallion, whose pop-over shows everything.
+struct TavernStatusGlance: View {
+    let summary: PlayerStatusSummary
+
+    var body: some View {
+        let pressing = summary.badges.filter {
+            if case .poison = $0.icon { return true }
+            if case .commander = $0.icon { return true }
+            return false
+        }
+        let worstCommander = pressing.filter { if case .commander = $0.icon { return true } else { return false } }
+            .max { ($0.count ?? 0) < ($1.count ?? 0) }
+        let shown = pressing.filter { if case .poison = $0.icon { return true } else { return false } } + (worstCommander.map { [$0] } ?? [])
+        HStack(spacing: 6) {
+            ForEach(shown) { TavernStatusBadge(badge: $0, size: 22) }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

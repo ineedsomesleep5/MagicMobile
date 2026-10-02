@@ -679,3 +679,173 @@ enum TavernAppearance {
         }.withRenderingMode(.alwaysOriginal)
     }
 }
+
+// MARK: - Walnut & Ember controls
+
+/// A brass-rimmed switch: dark leather when off, glowing ember glass with the brass knob to
+/// the right when on. Drawn under the real Toggle, which stays on top nearly invisible so
+/// taps, VoiceOver and UI tests keep the system contract.
+struct TavernToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+    var identifier: String? = nil
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 16, weight: .semibold, design: .serif))
+            Spacer(minLength: 8)
+            TavernSwitchFace(isOn: isOn)
+                .frame(width: 51, height: 31)
+                .overlay {
+                    Toggle(title, isOn: $isOn)
+                        .labelsHidden()
+                        .opacity(0.02)
+                        .accessibilityIdentifier(identifier ?? title)
+                }
+        }
+        .frame(minHeight: 44)
+        .opacity(isEnabled ? 1 : 0.5)
+    }
+}
+
+struct TavernSwitchFace: View {
+    let isOn: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack(alignment: isOn ? .trailing : .leading) {
+            Capsule()
+                .fill(isOn ? AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.55, blue: 0.3), Color(red: 0.72, green: 0.22, blue: 0.08)],
+                                                          startPoint: .top, endPoint: .bottom))
+                           : AnyShapeStyle(Color(red: 0.16, green: 0.10, blue: 0.06)))
+                .overlay(Capsule().strokeBorder(BrandTheme.brassGradient, lineWidth: 1.5))
+                .shadow(color: isOn ? BrandTheme.ember.opacity(0.55) : .clear, radius: 5)
+            Circle()
+                .fill(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.70, green: 0.48, blue: 0.17),
+                                              Color(red: 0.40, green: 0.25, blue: 0.08)],
+                                     center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 15))
+                .frame(width: 25, height: 25)
+                .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+                .padding(3)
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.75), value: isOn)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A stepper as two brass rings (−, +) at the spots the real Stepper's halves occupy; the
+/// real Stepper sits on top nearly invisible, so taps, VoiceOver and UI tests use it.
+struct TavernStepper: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    var identifier: String? = nil
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 16, weight: .semibold, design: .serif))
+            Spacer(minLength: 8)
+            HStack(spacing: 15) {
+                ring("minus", enabled: value > range.lowerBound)
+                ring("plus", enabled: value < range.upperBound)
+            }
+            .frame(width: 94, height: 32)
+            .overlay {
+                Stepper(title, value: $value, in: range)
+                    .labelsHidden()
+                    .opacity(0.02)
+                    .accessibilityIdentifier(identifier ?? title)
+            }
+        }
+        .frame(minHeight: 44)
+        .opacity(isEnabled ? 1 : 0.5)
+    }
+
+    private func ring(_ symbol: String, enabled: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 13, weight: .heavy))
+            .foregroundStyle(BrandTheme.brassGradient)
+            .frame(width: 32, height: 32)
+            .background { TavernFill(material: .leather).clipShape(Circle()) }
+            .overlay(Circle().strokeBorder(BrandTheme.brassGradient, lineWidth: 2.5))
+            .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
+            .opacity(enabled ? 1 : 0.4)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A choice as a recessed parchment slot (its title in brass, the current choice in ink)
+/// that opens the tavern's leather pop-over instead of the system menu.
+struct TavernPicker<Value: Hashable>: View {
+    struct Section {
+        var title: String?
+        var options: [(label: String, value: Value)]
+    }
+
+    let title: String
+    @Binding var selection: Value
+    let sections: [Section]
+    var identifier: String? = nil
+    /// Off when a caption above already names the choice.
+    var showsTitle = true
+
+    private var current: String {
+        sections.flatMap(\.options).first { $0.value == selection }?.label ?? "Choose"
+    }
+
+    var body: some View {
+        let count = sections.reduce(0) { $0 + $1.options.count + ($1.title == nil ? 0 : 1) }
+        TavernMenu(arrowEdge: .top, scrollHeight: count > 7 ? 420 : nil, scrollAnchor: AnyHashable(selection)) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                if let heading = section.title {
+                    Text(heading.uppercased())
+                        .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(1.6)
+                        .foregroundStyle(BrandTheme.brassGradient)
+                        .padding(.top, 4)
+                }
+                ForEach(Array(section.options.enumerated()), id: \.offset) { _, option in
+                    TavernMenuItem(title: option.label, systemImage: option.value == selection ? "checkmark" : nil) {
+                        selection = option.value
+                    }
+                    .id(AnyHashable(option.value))
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 1) {
+                    if showsTitle {
+                        Text(title.uppercased())
+                            .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(1.4)
+                            .foregroundStyle(DeckStudioPalette.accent)
+                    }
+                    Text(current)
+                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .foregroundStyle(TavernPalette.ink)
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(DeckStudioPalette.accent)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .background {
+                TavernFill(material: .parchment)
+                    .overlay(LinearGradient(colors: [.black.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        .accessibilityLabel("\(title), \(current)")
+        .accessibilityIdentifier(identifier ?? title)
+    }
+}

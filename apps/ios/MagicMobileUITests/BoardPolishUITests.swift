@@ -25,7 +25,7 @@ final class BoardPolishUITests: XCTestCase {
         app = application
         application.launchEnvironment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] = "1"
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
+        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
             "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
@@ -99,7 +99,7 @@ final class BoardPolishUITests: XCTestCase {
         currentCapture = "starting-roll-covers-choice"
         application.launchEnvironment["MAGICMOBILE_STARTING_ROLL_FIXTURE"] = "1"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         let tapToRoll = application.buttons["multiplayerD20.tapToRoll"]
@@ -157,7 +157,7 @@ final class BoardPolishUITests: XCTestCase {
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.playerDisplayName", "Test Player"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
@@ -242,7 +242,7 @@ final class BoardPolishUITests: XCTestCase {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         XCTAssertTrue(application.buttons["menu.settings"].waitForExistence(timeout: 20))
@@ -376,6 +376,48 @@ final class BoardPolishUITests: XCTestCase {
         captureImage(name: "tavern-zone-menu")
     }
 
+    /// A player's medallion pop-over shows what they carry as icons (counters, commander damage
+    /// taken) and, in a pod, swaps between opponents without closing.
+    func testTavernPlayerPopoverShowsStatusIconsAndSwapsOpponents() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "four-player-focus"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        UITestHarness.settleFirstTouch(application)
+
+        let opponent = application.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.zones.ai")).firstMatch
+        XCTAssertTrue(opponent.waitForExistence(timeout: 10))
+        opponent.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let swapToKozilek = application.buttons["board.zones.swap.ai-2"]
+        XCTAssertTrue(swapToKozilek.waitForExistence(timeout: 5), "A pod's opponent pop-over offers a swap")
+        captureImage(name: "tavern-opponent-popover")
+        swapToKozilek.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // Kozilek carries poison and experience and took Aurelia's commander damage: icons only.
+        XCTAssertTrue(application.descendants(matching: .any)["Poison 4"].waitForExistence(timeout: 5),
+                      "The swap shows the other opponent's counters in the same pop-over")
+        XCTAssertTrue(application.descendants(matching: .any)["Experience 2"].exists)
+        XCTAssertTrue(application.descendants(matching: .any)["Aurelia, the Warleader dealt 3 commander damage"].exists)
+        XCTAssertFalse(application.staticTexts["Poison"].exists, "Counters are icons, not words")
+        captureImage(name: "tavern-opponent-popover-swapped")
+
+        // Close it with a tap on the table's right edge, clear of the pop-over's rows.
+        application.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.6)).tap()
+        XCTAssertTrue(swapToKozilek.waitForNonExistence(timeout: 5))
+        let mine = application.buttons["board.lifeOrb"]
+        XCTAssertTrue(mine.waitForExistence(timeout: 5))
+        mine.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(application.descendants(matching: .any)["Kozilek, the Great Distortion dealt 17 commander damage"]
+            .waitForExistence(timeout: 5), "Your own pop-over shows the commander damage you took")
+        XCTAssertFalse(application.buttons["board.zones.swap.ai-2"].exists, "Only an opponent's pop-over swaps")
+        captureImage(name: "tavern-own-popover")
+    }
+
     private func runMatrix(portrait: Bool, selectedFixtures: [String], rotateDuringTest: Bool = false) {
         for fixture in selectedFixtures {
             XCTContext.runActivity(named: "\(portrait ? "portrait" : "landscape") / \(fixture)") { _ in
@@ -383,7 +425,7 @@ final class BoardPolishUITests: XCTestCase {
                 let application = XCUIApplication()
                 app = application
                 currentCapture = "\(portrait ? "portrait" : "landscape")-\(fixture)"
-                application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                application.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                                "-magicmobile.portraitModeEnabled", portrait || rotateDuringTest ? "YES" : "NO"]
                 application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
                 application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"

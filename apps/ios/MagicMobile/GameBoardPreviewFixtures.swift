@@ -305,6 +305,14 @@ enum GameBoardPreviewFixtures {
             players[index]["isHuman"] = index == 0
             if index > 0 {
                 players[index]["commanders"] = [["id": "\(seat)-commander", "name": ["", "Aurelia, the Warleader", "Kozilek, the Great Distortion", "Meren of Clan Nel Toth"][index], "ownerPlayerId": seat]]
+                if state == .fourPlayerFocus {
+                    // Commander damage and poison for the zones pop-over's status badges.
+                    var commanders = players[index]["commanders"] as! [[String: Any]]
+                    let damage: [[String: Int]] = [[:], ["human": 6, "ai-2": 3], ["human": 17], [:]]
+                    commanders[0]["damageToPlayers"] = damage[index]
+                    players[index]["commanders"] = commanders
+                    if index == 2 { players[index]["poison"] = 4; players[index]["counters"] = ["Poison": 4, "Experience": 2] }
+                }
             }
             var zones = players[index]["zones"] as! [String: Any]
             var battlefield = zones["battlefield"] as! [[String: Any]]

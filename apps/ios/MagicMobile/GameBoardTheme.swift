@@ -30,7 +30,7 @@ enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
     }
     /// Composed art carries its own lamp and vignette; the generic shading would muddy it.
     var hasBakedLighting: Bool { composedAssetNames != nil }
-    static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .arena }
+    static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .tavern }
 }
 
 /// A square material crop keeps both orientations independent of painted slots,

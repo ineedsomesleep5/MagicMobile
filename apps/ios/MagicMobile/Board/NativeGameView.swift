@@ -1003,11 +1003,12 @@ struct NativeGameView: View {
             viewerID: snapshot.viewerID,
             viewerPoint: viewerLife ?? CGPoint(x: playerRect.minX + 50, y: playerRect.maxY - 20),
             opponentPoint: opponentLife ?? CGPoint(x: opponentRect.minX + 50, y: opponentRect.minY + 20),
-            stackPoint: CGPoint(x: stackRect.midX, y: stackRect.midY),
+            // On the tavern table the showcase sits higher, clear of the cost and target ribbons.
+            stackPoint: CGPoint(x: stackRect.midX, y: isTavernBoard ? min(stackRect.midY, (opponentRect.midY + stackRect.midY) / 2) : stackRect.midY),
             viewerHandPoint: CGPoint(x: handRect.midX, y: handRect.midY),
             opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40))
         return BoardFXOverlay(effects: boardFX.active, subjects: boardFX.subjects, cardBounds: bounds, anchors: anchors,
-                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) })
+                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) }, tavern: isTavernBoard)
     }
 
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
@@ -1171,21 +1172,25 @@ struct NativeGameView: View {
                 if showsTurnCue, let cue = BoardPhaseAnnouncement.make(snapshot), !isCardChoiceOpen, !isPromptDetailOpen {
                     // A compact pill under the top HUD keeps the middle of the board clear for combat.
                     HStack(spacing: 8) {
-                        Text(cue.owner.uppercased()).font(.caption2.weight(.heavy)).tracking(1)
-                            .foregroundStyle(MagicPalette.antiqueGold)
+                        if isTavernBoard && TavernUIKit.available {
+                            TavernTag(text: cue.owner.uppercased(), leather: true)
+                        } else {
+                            Text(cue.owner.uppercased()).font(.caption2.weight(.heavy)).tracking(1)
+                                .foregroundStyle(MagicPalette.antiqueGold)
+                        }
                         Text(cue.title).font(.system(size: 17, weight: .bold, design: .serif))
                             .lineLimit(1).minimumScaleFactor(0.7)
                     }
                         .foregroundStyle(MagicPalette.parchment)
                         .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(MagicPalette.iron.opacity(0.92), in: Capsule())
-                        .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+                        .modifier(PhaseCueChrome(tavern: isTavernBoard))
                         .shadow(color: .black.opacity(0.4), radius: 10)
                         .scaleEffect(phaseCueMerging ? 0.5 : 1)
                         .offset(y: phaseCueMerging ? -46 : 0)
                         .opacity(phaseCueMerging ? 0 : 1)
                         .frame(maxHeight: .infinity, alignment: .top)
-                        .padding(.top, verticalSizeClass == .compact ? 8 : 64)
+                        // On the tavern table it sits under the nameplate and phase plate.
+                        .padding(.top, verticalSizeClass == .compact ? 8 : (isTavernBoard ? 96 : 64))
                         .transition(GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .move(edge: .top).combined(with: .opacity))
                         .allowsHitTesting(false)
                         .accessibilityIdentifier("board.phase.announcement")
@@ -1816,5 +1821,22 @@ struct NativeGameView: View {
 
     private func nonLandPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
         BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: false, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []))
+    }
+}
+
+/// The phase cue's backing: a dark pill, or on the tavern board a leather ribbon in brass.
+private struct PhaseCueChrome: ViewModifier {
+    let tavern: Bool
+
+    func body(content: Content) -> some View {
+        if tavern && TavernUIKit.available {
+            content
+                .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 5.4)) }
+                .overlay { TavernBrassFrame(scale: 0.45) }
+        } else {
+            content
+                .background(MagicPalette.iron.opacity(0.92), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+        }
     }
 }

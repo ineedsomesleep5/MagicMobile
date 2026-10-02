@@ -26,7 +26,7 @@ final class CardChoiceDraftUITests: XCTestCase {
         app.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
         app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
         if commandFailure { app.launchEnvironment["MAGICMOBILE_UI_TEST_CARD_CHOICE_FAILURE"] = "1" }
-        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                "-magicmobile.portraitModeEnabled", portrait ? "YES" : "NO"]
         XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
         app.launch()
