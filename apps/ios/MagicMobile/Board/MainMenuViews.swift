@@ -137,7 +137,38 @@ struct TavernMainMenu: View {
         }
     }
 
-    private var deckTile: some View {
+    @ViewBuilder private var deckTile: some View {
+        if TavernUIKit.available { parchmentDeckTile } else { plainDeckTile }
+    }
+
+    /// Walnut & Ember: the deck's name on a parchment label in brass trim.
+    private var parchmentDeckTile: some View {
+        VStack(spacing: 2) {
+            Text("YOUR DECK")
+                .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.2)
+                .foregroundStyle(DeckStudioPalette.accent)
+            Text(deckName)
+                .font(.system(size: 21, weight: .heavy, design: .serif))
+                .foregroundStyle(TavernPalette.ink)
+            if let commanderName, !commanderName.isEmpty {
+                Text(commanderName)
+                    .font(.system(size: 13, weight: .regular, design: .serif))
+                    .italic()
+                    .foregroundStyle(DeckStudioPalette.secondaryInk)
+            }
+        }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 9)
+        .background { TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 9)) }
+        .overlay { TavernBrassFrame(scale: 0.6) }
+        .shadow(color: .black.opacity(0.45), radius: 6, y: 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(commanderName.map { "Your deck: \(deckName), commander \($0)" } ?? "Your deck: \(deckName)")
+    }
+
+    private var plainDeckTile: some View {
         VStack(spacing: 4) {
             Text("YOUR DECK")
                 .font(.caption2.weight(.heavy)).tracking(2.4)

@@ -145,8 +145,21 @@ struct OpeningHandOverlay: View {
 private struct OpeningHandButtonStyle: ButtonStyle {
     let primary: Bool
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.tavernBoard) private var tavern
 
+    @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
+        if tavern && TavernUIKit.available {
+            // Keep is the ember plaque, Mulligan the leather one.
+            TavernButtonStyle(kind: primary ? .primary : .secondary, fontSize: 17)
+                .makeBody(configuration: configuration)
+                .pressSound(primary ? .uiConfirm : nil, isPressed: configuration.isPressed)
+        } else {
+            classicBody(configuration)
+        }
+    }
+
+    private func classicBody(_ configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 17, weight: .black, design: .rounded))
             .foregroundStyle(primary ? Color(red: 0.16, green: 0.11, blue: 0.05) : MagicPalette.parchment)

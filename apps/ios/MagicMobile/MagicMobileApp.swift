@@ -64,6 +64,7 @@ final class MagicMobileOrientationController {
 final class MagicMobileAppDelegate: NSObject, UIApplicationDelegate {
     private var artworkConsentObserver: NSObjectProtocol?
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        TavernAppearance.apply()
         MainActor.assumeIsolated {
             // Live Scryfall art is on unless the player turned it off; UI tests keep their own store,
             // offline. Registered here, before the observer below: registering posts a change

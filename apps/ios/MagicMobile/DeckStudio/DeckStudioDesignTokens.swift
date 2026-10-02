@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// A quiet ivory workspace lets real card artwork supply the color.
+/// Walnut & Ember's workbench: aged parchment pages in dark brown ink, so real card artwork
+/// still supplies the colour.
 enum DeckStudioPalette {
-    static let background = Color(red: 0.94, green: 0.935, blue: 0.91)
-    static let surface = Color(red: 0.98, green: 0.976, blue: 0.96)
-    static let surfaceElevated = Color.white
-    static let ink = Color(red: 0.13, green: 0.15, blue: 0.15)
-    static let secondaryInk = Color(red: 0.34, green: 0.36, blue: 0.35)
-    // The menu's ember hue, darkened for readable text on ivory.
-    static let accent = Color(red: 0.57, green: 0.25, blue: 0.15)
-    static let success = Color(red: 0.17, green: 0.36, blue: 0.26)
-    static let warning = Color(red: 0.48, green: 0.27, blue: 0.07)
-    static let danger = Color(red: 0.64, green: 0.15, blue: 0.15)
-    static let separator = Color(red: 0.83, green: 0.83, blue: 0.81)
+    static let background = Color(red: 0.87, green: 0.79, blue: 0.64)
+    static let surface = Color(red: 0.95, green: 0.90, blue: 0.79)
+    static let surfaceElevated = Color(red: 0.98, green: 0.95, blue: 0.87)
+    static let ink = Color(red: 0.20, green: 0.11, blue: 0.05)
+    static let secondaryInk = Color(red: 0.40, green: 0.29, blue: 0.18)
+    // The menu's ember hue, darkened for readable text on parchment.
+    static let accent = Color(red: 0.60, green: 0.23, blue: 0.10)
+    static let success = Color(red: 0.17, green: 0.36, blue: 0.20)
+    static let warning = Color(red: 0.50, green: 0.28, blue: 0.06)
+    static let danger = Color(red: 0.62, green: 0.13, blue: 0.10)
+    static let separator = Color(red: 0.74, green: 0.60, blue: 0.38)
 }
 
 /// Geometry and motion shared with the rest of the app, so a Deck Studio control has the
@@ -31,7 +32,17 @@ struct DeckStudioButtonStyle: ButtonStyle {
     var primary = true
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
+        if TavernUIKit.available {
+            // Walnut & Ember plaques: ember glass for the main action, leather for the rest.
+            TavernButtonStyle(kind: primary ? .primary : .secondary, fontSize: 15).makeBody(configuration: configuration)
+        } else {
+            plain(configuration)
+        }
+    }
+
+    private func plain(_ configuration: Configuration) -> some View {
         configuration.label.font(.body.weight(.semibold))
             .padding(.horizontal, 16).padding(.vertical, 12).frame(minHeight: DeckStudioMetrics.controlHeight)
             .foregroundStyle(primary ? .white : DeckStudioPalette.ink)

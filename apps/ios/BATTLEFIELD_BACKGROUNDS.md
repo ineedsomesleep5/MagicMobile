@@ -2,6 +2,10 @@
 
 Six stable preferences: `arena`, `midnight`, `wood`, `moss`, `ember`, `tide`. Midnight preserves the existing native gradient. Five raster materials replace the old painted stone/wood treatment and add moss, obsidian and tidal slate. The old stone and painted menu/board backgrounds (`commander-stone-arena`, `mage-mobile-*-background`) were removed from the iOS asset catalog on 2026-09-27 with the legacy menu that used them.
 
+## Walnut Tavern (composed)
+
+`tavern` is the exception to the square-material rule: a composed table rendered per orientation (`battlefield-tavern-portrait`, `battlefield-tavern-landscape`) by `scripts/brand/tavern_table.py` from `scripts/brand/tavern_layout.json`, with sockets placed under the tavern controls. It carries its own lighting, so `BattlefieldSurface` skips the generic shading (`hasBakedLighting`). See docs/BOARD_FX_ROADMAP.md phase 12. Android does not have it yet and resolves it to the default.
+
 ## Integration
 
 Use `BattlefieldBackdrop.allCases` for the selector and `BattlefieldBackdropArt(theme: .resolved(value))` for both the selector preview and battlefield. Frame and clip at the consumer. Each image is square, with a quiet center and no artwork encoding seats, cards, health or legal actions. Existing saved `arena`, `midnight`, `wood` preferences remain valid. New enum and artwork view are in `GameBoardTheme.swift`. Android should use identical identifiers and the same art.

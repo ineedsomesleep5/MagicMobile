@@ -425,9 +425,26 @@ struct ArenaBattlefieldCard: View {
     let width: CGFloat
     let height: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Tavern table: parchment frame, ink banner and stat gems, like the board concept.
+    @Environment(\.tavernBoard) private var tavern
 
     private var accent: Color {
-        card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald : .white.opacity(0.35)
+        card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald
+            : tavern ? Color(red: 0.36, green: 0.24, blue: 0.11) : .white.opacity(0.35)
+    }
+
+    private static let tavernInk = Color(red: 0.17, green: 0.10, blue: 0.05)
+
+    private func statGem(_ value: String, color: Color) -> some View {
+        Text(value)
+            .font(.system(size: max(10, width * 0.15), weight: .heavy, design: .serif))
+            .foregroundStyle(.white)
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .frame(width: max(17, width * 0.25), height: max(17, width * 0.25))
+            .background(RadialGradient(colors: [color.opacity(0.95), color.opacity(0.55), .black.opacity(0.8)],
+                                       center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: width * 0.16), in: Circle())
+            .overlay(Circle().strokeBorder(Color(red: 0.86, green: 0.70, blue: 0.40), lineWidth: 1.2))
+            .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
     }
 
     private var isLegendary: Bool { card.card.typeLine.localizedCaseInsensitiveContains("legendary") }
@@ -463,8 +480,9 @@ struct ArenaBattlefieldCard: View {
         VStack(spacing: 0) {
             Text(card.card.name)
                 .font(.system(size: max(8, width * 0.115), weight: .semibold, design: .serif))
+                .foregroundStyle(tavern ? Self.tavernInk : .white)
                 .lineLimit(1).minimumScaleFactor(0.62)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 3)
+                .frame(maxWidth: .infinity, alignment: tavern ? .center : .leading).padding(.horizontal, 3)
                 .frame(height: 15)
             ZStack(alignment: .top) {
                 // BattlefieldCardFaceLayout.tileFrame: the token copy tag ends before the counter column.
@@ -476,7 +494,26 @@ struct ArenaBattlefieldCard: View {
                     .allowsHitTesting(false).accessibilityIdentifier("").accessibilityHidden(true)
             }
             .frame(width: width, height: max(12, height - 15 - (showsFooter ? 20 : 0)), alignment: .top).clipped()
-            if showsFooter {
+            .overlay { if tavern { Rectangle().strokeBorder(Self.tavernInk.opacity(0.55), lineWidth: 1) } }
+            .padding(.horizontal, tavern ? 3 : 0)
+            if showsFooter && tavern {
+                HStack(spacing: 2) {
+                    if card.showsPowerToughness, let power = card.displayPower {
+                        statGem(power, color: Color(red: 0.16, green: 0.36, blue: 0.72))
+                    }
+                    Spacer(minLength: 0)
+                    if card.isCreature && card.summoningSickness == true {
+                        Image(systemName: "hourglass").font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(red: 0.55, green: 0.32, blue: 0.08))
+                    }
+                    Spacer(minLength: 0)
+                    if card.showsPowerToughness, let toughness = card.displayToughness {
+                        statGem(toughness, color: Color(red: 0.70, green: 0.12, blue: 0.08))
+                    }
+                }
+                .padding(.horizontal, 2).frame(height: 20)
+                .offset(y: -3)
+            } else if showsFooter {
                 HStack(spacing: 2) {
                     if card.isCreature && card.summoningSickness == true {
                         Image(systemName: "hourglass").foregroundStyle(MagicPalette.warningAmber)
@@ -492,8 +529,16 @@ struct ArenaBattlefieldCard: View {
         }
         .foregroundStyle(.white)
         .frame(width: width, height: height)
-        .background(Color(red: 0.07, green: 0.08, blue: 0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .background {
+            if tavern {
+                LinearGradient(colors: [Color(red: 0.93, green: 0.86, blue: 0.70), Color(red: 0.78, green: 0.67, blue: 0.48)],
+                               startPoint: .top, endPoint: .bottom)
+            } else {
+                Color(red: 0.07, green: 0.08, blue: 0.10)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: tavern ? 4 : 7))
+        .shadow(color: .black.opacity(tavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
         .overlay(alignment: .bottomLeading) {
             BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
                 .padding(.leading, 2).padding(.bottom, showsFooter ? 22 : 2)
@@ -570,6 +615,8 @@ enum ArenaHandLayout {
         return stride - cardWidth
     }
     static func restingHeight(cardHeight: CGFloat) -> CGFloat { cardHeight * 0.62 + 48 }
+    /// The tavern hand shows whole cards, with room above for cost gems and the fan's dip.
+    static func tavernHeight(cardHeight: CGFloat) -> CGFloat { cardHeight + 22 }
 }
 
 enum HandScrubberGeometry {

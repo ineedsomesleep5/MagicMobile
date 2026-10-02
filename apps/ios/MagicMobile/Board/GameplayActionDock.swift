@@ -20,6 +20,8 @@ struct GameplayActionDock: View {
     var compact = false
     var landscapeSidebar = false
     var horizontal = false
+    /// Tavern table only: render just one part of the horizontal dock.
+    var tavernPart: TavernDockPart? = nil
     let openPromptDetails: () -> Void
     let openLog: () -> Void
     let openSettings: () -> Void
@@ -44,8 +46,21 @@ struct GameplayActionDock: View {
         )
     }
 
+    enum TavernDockPart { case skip, menu, primary }
+
     var body: some View {
-        if horizontal {
+        if let tavernPart {
+            switch tavernPart {
+            case .skip: secondaryControl.frame(width: 44, height: 44)
+            case .menu: controlsMenu
+            case .primary:
+                if TavernPassAssets.flips {
+                    TavernPassStage(enabled: model.isPrimaryEnabled, turnsOnTap: model.primaryAction != nil) { primaryButton }
+                } else {
+                    primaryButton
+                }
+            }
+        } else if horizontal {
             HStack(spacing: 6) {
                 secondaryControl.frame(width: 44)
                 controlsMenu
@@ -69,24 +84,29 @@ struct GameplayActionDock: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: model.mode == .prompt ? "sparkles" : "forward.end.fill")
-                            .font(.system(size: compact ? 10 : 11, weight: .black))
+                        if tavernPart == nil {
+                            Image(systemName: model.mode == .prompt ? "sparkles" : "forward.end.fill")
+                                .font(.system(size: compact ? 10 : 11, weight: .black))
+                        }
                         Text(model.primaryTitle)
-                            .font(.system(size: compact ? 13 : 15, weight: .bold, design: .serif))
-                            .lineLimit(landscapeSidebar ? LandscapeActionDockLayout.primaryLineLimit : 2)
+                            // The tavern's ring plate engraves one small line.
+                            .font(tavernPart != nil ? .system(size: 9, weight: .heavy, design: .serif)
+                                                    : .system(size: compact ? 13 : 15, weight: .bold, design: .serif))
+                            .lineLimit(tavernPart != nil ? 1 : (landscapeSidebar ? LandscapeActionDockLayout.primaryLineLimit : 2))
                             .minimumScaleFactor(0.62)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(GameplayDockButtonStyle(isPrimary: true))
+                .modifier(PrimaryDockButtonStyle(tavern: tavernPart == .primary, showsTitle: !isPlainPass && model.isPrimaryEnabled))
                 .disabled(!model.isPrimaryEnabled)
+                .accessibilityLabel(Text(model.primaryTitle))
                 .accessibilityIdentifier("board.action.primary")
                 .accessibilityHint(showsPriorityHelp ? GameplayActionPresentation.priorityHint(hasStack: hasStackForPriority) : "")
                 // A finger-down on Pass must not become a new prompt's action
                 // if an engine update replaces this control before finger-up.
                 .id("\(model.primaryAction?.id ?? "none"):\(snapshot.promptEnvelopeV2?.id ?? "none"):\(model.primaryAction?.messageId ?? snapshot.promptEnvelopeV2?.messageId ?? -1)")
             // The landscape sidebar keeps its height for the stack; the hint stays in VoiceOver.
-            if showsPriorityHelp && !landscapeSidebar {
+            if showsPriorityHelp && !landscapeSidebar && tavernPart == nil {
                 Text(GameplayActionPresentation.priorityDetail(hasStack: hasStackForPriority))
                     .font(.caption2)
                     .foregroundStyle(MagicPalette.parchment.opacity(0.8))
@@ -97,6 +117,12 @@ struct GameplayActionDock: View {
         }
     }
 
+    /// Passing priority is the hourglass alone on the tavern table (and waiting is its dim
+    /// face), so neither shows a title.
+    private var isPlainPass: Bool {
+        model.mode == .priority && model.primaryAction?.type == "pass_priority"
+    }
+
     private var showsPriorityHelp: Bool {
         model.mode == .priority && model.isPrimaryEnabled && model.primaryAction?.type == "pass_priority"
     }
@@ -105,7 +131,39 @@ struct GameplayActionDock: View {
         !snapshot.stackTopFirst.isEmpty || snapshot.players.contains { !$0.zones.stack.isEmpty }
     }
 
-    private var controlsMenu: some View {
+    @ViewBuilder private var controlsMenu: some View {
+        if tavernPart != nil && TavernUIKit.available {
+            tavernControlsMenu
+        } else {
+            systemControlsMenu
+        }
+    }
+
+    /// The tavern's controls ring opens a leather pop-over instead of the system menu.
+    private var tavernControlsMenu: some View {
+        TavernMenu(arrowEdge: .bottom) {
+            if model.mode == .prompt {
+                ForEach(model.promptActions.filter { $0.id != model.primaryAction?.id }) { action in
+                    TavernMenuItem(title: action.label) { runAction(action) }
+                        .disabled(pendingActionId != nil)
+                }
+                TavernMenuItem(title: "All Choices", systemImage: "list.bullet.rectangle.portrait", action: openPromptDetails)
+                TavernMenuDivider()
+            }
+            TavernMenuItem(title: "Game Log", systemImage: "list.bullet.rectangle", action: openLog)
+            if snapshot.source == "xmage-ondevice", model.mode != .prompt {
+                TavernMenuItem(title: "More actions", systemImage: "ellipsis", action: openPromptDetails)
+            }
+            TavernMenuItem(title: "Game Settings", systemImage: "gearshape.fill", action: openSettings)
+        } label: {
+            Image(systemName: model.mode == .prompt && model.promptActions.count > 1 ? "ellipsis.circle.fill" : "slider.horizontal.3")
+                .font(.system(size: 14, weight: .black))
+        }
+        .buttonStyle(GameplayDockMenuButtonStyle())
+        .accessibilityLabel(model.mode == .prompt && model.promptActions.count > 1 ? "More choices and game controls" : "Game controls")
+    }
+
+    private var systemControlsMenu: some View {
         Menu {
                     if model.mode == .prompt {
                         ForEach(model.promptActions.filter { $0.id != model.primaryAction?.id }) { action in
@@ -143,6 +201,21 @@ struct GameplayActionDock: View {
                     .modifier(DockSecondaryButtonStyle(circular: horizontal))
                     .accessibilityLabel("Stop skipping")
                     .accessibilityHint(control.status ?? "Stops future automatic passes")
+                } else if tavernPart != nil && TavernUIKit.available {
+                    TavernMenu(arrowEdge: .bottom) {
+                        TavernMenuItem(title: "End turn — skip stack responses", action: control.skipResponses)
+                            .disabled(!control.canSkipResponses)
+                        TavernMenuItem(title: "Skip to my turn — skip stack responses", action: control.skipToMyTurn)
+                            .disabled(!control.canSkipToMyTurn)
+                        TavernMenuItem(title: "End turn — stop for responses", action: control.endTurn)
+                            .disabled(!control.canEndTurn)
+                    } label: {
+                        secondaryLabel("Skip…", icon: "forward.end")
+                    }
+                    .modifier(DockSecondaryButtonStyle(circular: horizontal))
+                    .disabled(!control.canEndTurn && !control.canSkipResponses && !control.canSkipToMyTurn)
+                    .accessibilityLabel("Skip options")
+                    .accessibilityHint("Choose how long to skip responses. Required choices always stop skipping.")
                 } else {
                     Menu {
                         Button("End turn — skip stack responses", action: control.skipResponses)
@@ -183,6 +256,16 @@ struct GameplayActionDock: View {
         }
         .font(.system(size: 14, weight: .semibold))
         .frame(maxWidth: .infinity, minHeight: 44)
+    }
+}
+
+/// The primary action: the orange capsule, or the brass hourglass on the tavern table.
+struct PrimaryDockButtonStyle: ViewModifier {
+    let tavern: Bool
+    var showsTitle = true
+    func body(content: Content) -> some View {
+        if tavern { content.buttonStyle(TavernPrimaryButtonStyle(showsTitle: showsTitle)) }
+        else { content.buttonStyle(GameplayDockButtonStyle(isPrimary: true)) }
     }
 }
 
@@ -242,7 +325,16 @@ struct CompactOrCircleButtonStyle: ViewModifier {
 }
 
 struct GameplayDockMenuButtonStyle: ButtonStyle {
+    @Environment(\.tavernBoard) private var tavern
     func makeBody(configuration: Configuration) -> some View {
+        if tavern {
+            configuration.label.modifier(TavernRingLabel(pressed: configuration.isPressed))
+        } else {
+            classic(configuration)
+        }
+    }
+
+    private func classic(_ configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(MagicPalette.parchment)
             .frame(width: 44, height: 44)
@@ -269,81 +361,18 @@ struct PortraitBottomCommandBar: View {
     let viewZone: (String, [ZoneCard]) -> Void
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
+    /// Opens the stack sheet from the tavern's stack tray.
+    var openStack: (() -> Void)? = nil
     @State private var isStackOpen = false
     @State private var isEmotePickerOpen = false
     @Environment(\.emoteCenter) private var emoteCenter
+    @Environment(\.tavernBoard) private var tavern
+    @Environment(\.tavernCanvas) private var tavernCanvas
 
     var body: some View {
-        GeometryReader { proxy in
-            VStack(spacing: 6) {
-                HStack(spacing: 4) {
-                    PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
-                    BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        ManaPoolHUD(manaPool: manaPool, compact: true,
-                            payableSymbols: GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId),
-                            payMana: { symbol in
-                                if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
-                                    runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
-                                }
-                            })
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityLabel("Floating mana; swipe to view all colors")
-                    BoardStackTray(objects: snapshot.stackTopFirst,
-                                   count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
-                    if let emoteCenter { TableChatButton(center: emoteCenter) }
-                }
-                HStack(spacing: 8) {
-                    Button {
-                        if emoteCenter != nil { isEmotePickerOpen = true }
-                    } label: {
-                        VStack(spacing: 0) {
-                            Image(systemName: "heart.fill").font(.system(size: 9))
-                                .foregroundStyle(MagicPalette.antiqueGold)
-                            BoardLifeTotal(life: human.life).id(human.playerId)
-                                .font(.system(size: 23, weight: .bold, design: .serif))
-                                .foregroundStyle(.white).monospacedDigit()
-                        }
-                        .frame(width: 52, height: 52)
-                        .background(.black.opacity(0.85), in: Circle())
-                        .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 1 : 0.65),
-                                                       lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
-                        .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
-                        .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
-                    }
-                    .buttonStyle(.plain)
-                    .overlay(alignment: .bottomLeading) {
-                        if let emoteCenter {
-                            EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
-                                .fixedSize()
-                                .offset(y: -62)
-                        }
-                    }
-                    .popover(isPresented: $isEmotePickerOpen) {
-                        if let emoteCenter {
-                            EmotePicker(center: emoteCenter, snapshot: snapshot) { isEmotePickerOpen = false }
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Your life: \(human.life)")
-                    .accessibilityHint(emoteCenter == nil ? "" : "Opens quick chat")
-                    .accessibilityAddTraits(emoteCenter == nil ? [] : .isButton)
-                    .accessibilityIdentifier("board.lifeOrb")
-                    GameplayActionDock(
-                        snapshot: snapshot,
-                        passAction: passAction,
-                        yieldActions: yieldActions,
-                        pendingActionId: pendingActionId,
-                        horizontal: true,
-                        openPromptDetails: openPromptDetails,
-                        openLog: openLog,
-                        openSettings: openSettings,
-                        runAction: runAction
-                    )
-                    .frame(maxWidth: .infinity)
-                }
+        GeometryReader { _ in
+            Group {
+                if tavern { tavernLayout } else { classicLayout }
             }
             .padding(.horizontal, 4)
             .onAppear {
@@ -357,11 +386,183 @@ struct PortraitBottomCommandBar: View {
             .onChange(of: isStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
         }
     }
+
+    private var classicLayout: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ManaPoolHUD(manaPool: manaPool, compact: true,
+                        payableSymbols: GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId),
+                        payMana: { symbol in
+                            if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
+                                runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
+                            }
+                        })
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("Floating mana; swipe to view all colors")
+                BoardStackTray(objects: snapshot.stackTopFirst,
+                               count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
+                if let emoteCenter { TableChatButton(center: emoteCenter) }
+            }
+            HStack(spacing: 8) {
+                lifeOrb
+                dock(nil).frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Walnut Tavern: every control sits on a socket of the table plate (TavernDesign):
+    /// your commander medallion (it opens your zones), the mana gems in the rail, the
+    /// hourglass with Skip and the controls menu as small rings.
+    private var tavernLayout: some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .global).origin
+            if let canvas = tavernCanvas {
+                let pass = TavernDesign.passButton
+                ZStack {
+                    tavernMedallion(canvas: canvas)
+                        .tavernPosition(TavernDesign.lifeMedallion, canvas: canvas, origin: origin)
+                    ForEach(Array(tavernManaValues.enumerated()), id: \.offset) { index, value in
+                        tavernManaGem(symbol: value.0, count: value.1, canvas: canvas)
+                            .tavernPosition(CGPoint(x: TavernDesign.manaSocketXs[index], y: TavernDesign.manaSocketY),
+                                            canvas: canvas, origin: origin)
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Floating mana")
+                    dock(.primary)
+                        .tavernPosition(pass, canvas: canvas, origin: origin)
+                    // Controls ring at the hourglass's bottom-right, Skip at its bottom-left.
+                    dock(.menu)
+                        .tavernPosition(CGPoint(x: pass.x + 50, y: pass.y + 50), canvas: canvas, origin: origin)
+                    dock(.skip)
+                        .tavernPosition(CGPoint(x: pass.x - 60, y: pass.y + 34), canvas: canvas, origin: origin)
+                    let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
+                    if stackCount > 0, let openStack {
+                        TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack)
+                            .tavernPosition(TavernDesign.stackTray, canvas: canvas, origin: origin)
+                    }
+                    HStack(spacing: 2) {
+                        BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
+                        if let emoteCenter { TableChatButton(center: emoteCenter) }
+                    }
+                    .tavernPosition(CGPoint(x: TavernDesign.lifeMedallion.x + 56, y: TavernDesign.lifeMedallion.y + 48),
+                                    canvas: canvas, origin: origin)
+                }
+            }
+        }
+    }
+
+    private var tavernManaValues: [(String, Int)] {
+        [("W", manaPool?.W ?? 0), ("U", manaPool?.U ?? 0), ("B", manaPool?.B ?? 0),
+         ("R", manaPool?.R ?? 0), ("G", manaPool?.G ?? 0), ("C", manaPool?.C ?? 0)]
+    }
+
+    /// A mana gem centred on its rail socket; a payable gem is a button, exactly like the
+    /// classic mana row. Gems are a little narrower than the socket pitch so they never touch.
+    @ViewBuilder
+    private func tavernManaGem(symbol: String, count: Int, canvas: CGSize) -> some View {
+        let payable = GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId).contains(symbol)
+        let gem = TavernManaGemFace(symbol: symbol, count: count, payable: payable, diameter: canvas.tavernLength(26))
+        if payable {
+            Button {
+                if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
+                    runCommand(command, "Spend floating {\(symbol)}", "floating-\(snapshot.promptEnvelopeV2?.id ?? "")-\(symbol)")
+                }
+            } label: { gem.frame(minWidth: 44, minHeight: 44) }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Spend floating \(symbol) mana, \(count) available")
+            .accessibilityIdentifier("board.mana.spend.\(symbol)")
+        } else {
+            gem.accessibilityLabel("\(symbol) mana, \(count)")
+        }
+    }
+
+    /// Your commander's portrait in the life socket; it opens your zones like the old grid button.
+    private func tavernMedallion(canvas: CGSize) -> some View {
+        let diameter = canvas.tavernLength(TavernDesign.lifeHoleRadius * 2)
+        let commanderReady = GameplayAffordances.commanderCastAvailable(player: human, snapshot: snapshot, pendingActionID: pendingActionId)
+        return PlayerZoneMenu(
+            player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId,
+            customLabel: AnyView(
+                TavernMedallion(diameter: diameter, life: human.life,
+                                active: snapshot.isViewer(snapshot.activePlayerId) || commanderReady) {
+                    PlayerPortrait(player: human, size: diameter)
+                }
+                .frame(width: diameter + 8, height: diameter + 8)
+            ),
+            accessibilityOverride: ("Your life: \(human.life)\(commanderReady ? ", commander cast available" : "")", "board.lifeOrb")
+        )
+        .overlay(alignment: .top) {
+            if let emoteCenter {
+                EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
+                    .fixedSize()
+                    .offset(y: -56)
+            }
+        }
+    }
+
+    private var lifeOrb: some View {
+        Button {
+            if emoteCenter != nil { isEmotePickerOpen = true }
+        } label: {
+            VStack(spacing: 0) {
+                Image(systemName: "heart.fill").font(.system(size: 9))
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                BoardLifeTotal(life: human.life).id(human.playerId)
+                    .font(.system(size: 23, weight: .bold, design: .serif))
+                    .foregroundStyle(.white).monospacedDigit()
+            }
+            .frame(width: 52, height: 52)
+            .background(.black.opacity(0.85), in: Circle())
+            .overlay(Circle().strokeBorder(MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 1 : 0.65),
+                                           lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
+            .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
+            .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottomLeading) {
+            if let emoteCenter {
+                EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
+                    .fixedSize()
+                    .offset(y: -62)
+            }
+        }
+        .popover(isPresented: $isEmotePickerOpen) {
+            if let emoteCenter {
+                EmotePicker(center: emoteCenter, snapshot: snapshot) { isEmotePickerOpen = false }
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your life: \(human.life)")
+        .accessibilityHint(emoteCenter == nil ? "" : "Opens quick chat")
+        .accessibilityAddTraits(emoteCenter == nil ? [] : .isButton)
+        .accessibilityIdentifier("board.lifeOrb")
+    }
+
+    private func dock(_ part: GameplayActionDock.TavernDockPart?) -> some View {
+                GameplayActionDock(
+                        snapshot: snapshot,
+                        passAction: passAction,
+                        yieldActions: yieldActions,
+                        pendingActionId: pendingActionId,
+                        horizontal: true,
+                    tavernPart: part,
+                        openPromptDetails: openPromptDetails,
+                        openLog: openLog,
+                        openSettings: openSettings,
+                        runAction: runAction
+                    )
+    }
 }
 
 struct BoardStackInspector: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.nativeTurnControl) private var turnControl
+    @Environment(\.tavernBoard) private var tavern
     let snapshot: GameSnapshot
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
@@ -370,14 +571,20 @@ struct BoardStackInspector: View {
         GeometryReader { geometry in
         VStack(spacing: 0) {
             HStack {
-                Text("Stack").font(.headline)
+                if tavern && TavernUIKit.available {
+                    TavernPanelTitle(text: "Stack")
+                } else {
+                    Text("Stack").font(.headline)
+                }
                 Spacer()
                 if let turnControl, turnControl.isAutoPassing {
                     Button("Stop skipping", action: turnControl.stop)
                         .frame(minHeight: 44)
+                        .tavernPlaque(tavern, kind: .danger)
                 }
                 Button("Done") { inspectedCard = nil; dismiss() }
                     .frame(minHeight: 44)
+                    .tavernPlaque(tavern, kind: .secondary)
                     .accessibilityIdentifier("board.stack.done")
             }
             PortraitStackLane(snapshot: snapshot, humanStack: snapshot.human?.zones.stack ?? [],
@@ -410,12 +617,57 @@ struct PlayerZoneMenu: View {
     let viewZone: (String, [ZoneCard]) -> Void
     var snapshot: GameSnapshot? = nil
     var pendingActionID: String? = nil
+    /// Tavern table: the player's medallion opens the zones instead of the grid button.
+    var customLabel: AnyView? = nil
+    var extraItems: AnyView? = nil
+    var accessibilityOverride: (label: String, identifier: String)? = nil
 
     private var commanderReady: Bool {
         snapshot.map { GameplayAffordances.commanderCastAvailable(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? false
     }
 
     var body: some View {
+        if customLabel != nil && TavernUIKit.available {
+            tavernMenu
+        } else {
+            systemMenu
+        }
+    }
+
+    /// The tavern table's medallions open their zones in a leather pop-over.
+    private var tavernMenu: some View {
+        TavernMenu(arrowEdge: .bottom) {
+            TavernMenuItem(title: commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)",
+                           systemImage: "crown") { open(.command, player.zones.command) }
+            TavernMenuItem(title: "Graveyard · \(player.zones.graveyard.count)", systemImage: "leaf") { open(.graveyard, player.zones.graveyard) }
+            TavernMenuItem(title: "Exile · \(player.zones.exile.count)", systemImage: "sparkles") { open(.exile, player.zones.exile) }
+            TavernMenuItem(title: "Hand · \(player.zones.visibleHandCount)", systemImage: "hand.raised") { open(.hand, player.zones.hand) }
+            TavernMenuItem(title: "Library · \(player.zones.visibleLibraryCount)", systemImage: "books.vertical") { open(.library, player.zones.library) }
+            TavernMenuItem(title: "Battlefield · \(player.zones.battlefield.count)", systemImage: "square.grid.2x2") { open(.battlefield, player.zones.battlefield) }
+            if let snapshot {
+                let references = BoardZoneReference.namedReferences(in: snapshot)
+                if !references.isEmpty { TavernMenuDivider() }
+                ForEach(references, id: \.self) { reference in
+                    TavernMenuItem(title: "\(reference.title(in: snapshot)) · \(reference.cards(in: snapshot).count)") {
+                        if let inspectZone { inspectZone(reference) }
+                        else { viewZone(reference.title(in: snapshot), reference.cards(in: snapshot)) }
+                    }
+                }
+            }
+            if let extraItems {
+                TavernMenuDivider()
+                extraItems
+            }
+        } label: {
+            if let customLabel { customLabel } else { defaultLabel }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityOverride?.label
+            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+        .accessibilityIdentifier(accessibilityOverride?.identifier ?? "board.zones.\(player.playerId)")
+    }
+
+    private var systemMenu: some View {
         Menu {
             Button(commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
             Button("Graveyard · \(player.zones.graveyard.count)") { open(.graveyard, player.zones.graveyard) }
@@ -432,7 +684,19 @@ struct PlayerZoneMenu: View {
                     }
                 }
             }
+            if let extraItems {
+                Divider()
+                extraItems
+            }
         } label: {
+            if let customLabel { customLabel } else { defaultLabel }
+        }
+        .accessibilityLabel(accessibilityOverride?.label
+            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+        .accessibilityIdentifier(accessibilityOverride?.identifier ?? "board.zones.\(player.playerId)")
+    }
+
+    private var defaultLabel: some View {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 12, weight: .semibold))
                 .frame(minWidth: 44, minHeight: 44)
@@ -440,9 +704,6 @@ struct PlayerZoneMenu: View {
                 .background(commanderReady ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(commanderReady ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
                 .shadow(color: commanderReady ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
-        }
-        .accessibilityLabel("\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
-        .accessibilityIdentifier("board.zones.\(player.playerId)")
     }
 
     private func open(_ zone: BoardZoneReference.PlayerZone, _ cards: [ZoneCard]) {

@@ -179,6 +179,7 @@ single MIT file with its license header when that is enough.
 | 9 Next level (build 19) | Recorded audio (Sonniss GDC + Kenney CC0 effects, Kevin MacLeod CC BY playlists and stingers, SoundLabView.swift), fewer and quieter cues, concede with pod spectating (engine op), Arena-style attachment stacks and inspector attachment text, opponent portraits with AI-thinking ring, opening-hand screen, result summary (GameStats.swift), quick chat (GameEmotes.swift), weighted big hits, deck covers. Unit, real-XMage JVM and UI tests pass; phone feel and audio choices pending Caleb. |
 | 10 Android parity (Android build 8) | Phases 1–4 and 6–9 are ported to the Compose app in portrait and landscape: the timeline, overlay, card motion, dissolve and foil shaders, recorded audio with the Sound Lab, and the game-feel pieces. Each lives in the same-named Kotlin file (map in docs/ANDROID_PARITY.md). All 34 iOS preview states render on the emulator, and emulator games pass. Android phone feel is pending. |
 | 11 Playtest fixes (iOS build 18 / Android build 9) | On both platforms, in `codex/build18-integration`: the top of the board follows the active player (Follow Turns setting); a spectator's bottom seat goes to the next living player; copy tokens draw as their own frame with a "Token copy" tag; the held-card inspector fits its rules without scrolling; the ability banner sits below the card; combat keyword badges (live, so gained double strike shows); the first-strike damage step is its own beat; clipped battlefield rows fade and show "+N". Unit and parity tests, simulator and emulator previews pass; phone feel pending Caleb. |
+| 12 Walnut Tavern table (iOS portrait) | In `codex/walnut-board-poc`, not committed. Tavern backdrop matched to the approved concept (`tavern-mock-v4.png`): a top-down Blender table (`scripts/brand/tavern_table.py`) built from `scripts/brand/tavern_layout.json`, with Poly Haven CC0 walnut, planks and leather, a Codex compass emblem, and Meshy props (crest, medallion ring, corner ornaments, candle, tankard, books, coins, ivy; cut-crystal mana gems as sprites), a painted porthole pass button. With it selected, portrait controls sit on the table's sockets (TavernDesign): opponent commander medallion in the crest (opens their zones and lists opponents; a tap attacks when they are a target), your commander medallion bottom left (opens your zones), six crystal mana gems in the rail, the pass button (icon only when passing) with Skip and controls rings, the hand as a resting curved fan with no expand button, parchment battlefield cards with stat gems, and the stack as a right-edge tab. Classic controls unchanged elsewhere. Landscape keeps classic controls. Android not started. |
 
 ## Log
 
@@ -336,4 +337,130 @@ single MIT file with its license header when that is enough.
   - Shared parity cases: `focus-cases.json`, `spectator-cases.json` and `combat-cases.json`.
   - New previews: `four-player-spectating`, `token-copy-inspection`, `ability-showcase` and
     `first-strike`.
+- 2026-10-02 (Claude): Walnut Tavern table, chosen by Caleb from Codex concepts (option A,
+  then top-down, no people, no side medallions, mana rail at the bottom).
+  - Plate: `blender -b -P scripts/brand/tavern_table.py -- --scale 3 --out-dir build_output/tavern`,
+    then `zsh scripts/brand/install_tavern_assets.sh build_output/tavern`. Orthographic camera,
+    about 2.5 minutes on the 8 GB Mac under `scripts/dev/heavy.sh`. Inputs live outside the repo
+    in `~/Movies/motion-assets/magicmobile-brand/` (`textures/`, `meshy/`, `compass-emblem.png`).
+  - Controls: `tavernBoard` environment value (Board/BoardChrome.swift) set by NativeGameView in
+    portrait; `TavernMedallion`, `TavernPrimaryButtonStyle`, `TavernStackTab` in BoardChrome.swift;
+    `PortraitOpponentStatusBar.tavernBar`, `PortraitBottomCommandBar.tavernLayout`,
+    `GameplayActionDock.tavernPart`. Accessibility identifiers and labels are unchanged.
+  - Socket positions in `tavern_layout.json` were measured from the iPhone 17 Pro Max simulator;
+    other phone sizes crop the plate with scaledToFill and need their own render or tuning.
+  - Tests: BattlefieldBackdropTests 3/3; classic theme UI tests passed (portrait stack, life
+    change, spectator bar, controls menu); tavern theme passed portrait stack, life change and
+    spectator bar. `testPortraitCrowdedBattlefield` and the background matrix fail on the
+    Isamaru card "obscured" check with classic and tavern alike, and on main before this work.
+  - Next: download the Meshy GLBs into `meshy/` (needs Meshy Pro), re-render plate and sprites,
+    tune `TavernMedallion` frame scale to the sprite's hole, add Meshy (CC BY 4.0 if generated
+    on the free plan) and Poly Haven (CC0) credits, phone check, then landscape and Android.
+
+- 2026-10-02 (Claude, later): concept-matched tavern layout. Socket points measured from
+  the concept plate and kept in `TavernDesign` (Board/BoardChrome.swift) and
+  `tavern_layout.json`; controls are placed through the `tavernCanvas` environment value
+  (full-screen size) so they land on the plate on any safe-area inset. Meshy Pro models
+  were downloaded from the web app into `~/Movies/motion-assets/magicmobile-brand/meshy/`;
+  the five made on the free plan are CC BY 4.0 and credited in the Sound Lab credits with
+  Poly Haven. glTF imports use quaternion rotation: `_load_template` switches to XYZ before
+  turning flat props face-up (-90° about X). No deck on the table (Caleb may drop it).
+  Quick chat opens from the chat button now that the medallion opens zones.
+- 2026-10-02 (Claude, final for the day): the installed plate is now the Blender + Meshy
+  render (no longer the concept painting). Meshes are decimated to 60k faces at load
+  (`--max-faces`), so a full 1320x2868 render at 48 samples takes about 10 minutes on the
+  A18 Pro Mac (6-core CPU + 5-core GPU, both enabled) instead of 30+. Codex tooled-leather
+  pattern (`tooled-leather-pattern.png`, height in alpha) on the red bands; riveted brass
+  rails; concept-style gem rail. Tests on the final build: BattlefieldBackdropTests 3/3; UI
+  portrait stack, life change, spectator and Sound Lab credits pass on the classic board;
+  portrait stack, life change and spectator pass on the tavern board. Not yet: phone check,
+  other iPhone sizes (the plate is drawn for 440x956 and stretches elsewhere), landscape,
+  Android, the Meshy MCP (needs Caleb's API key).
+- 2026-10-02 (Claude, follow-up): Caleb's tweaks. The tavern hand is no longer masked at the
+  bottom (the fan's tilted corners show whole cards); the controls ring moved to the
+  hourglass's top-right (Skip stays bottom-left); the opponent's hand is a fan of card backs
+  above their medallion, one per card up to 20 (the Dynamic Island may cover part of it);
+  six Meshy mana gems (`gem-{W,U,B,R,G,C}.glb`, rendered with `--sprites-only` to
+  `tavern-mana-*`) sit in the rail and glow in their colour and breathe while that mana is
+  floating (`TavernManaGemFace`; no breathing under Reduce Motion). Tests: backdrop unit
+  tests and classic portrait stack/life/spectator pass; tavern stack and spectator pass;
+  tavern life change failed once on a 5 s wait and passed on rerun.
+- 2026-10-02 (Claude, gems and pass button): Caleb found the gems unlike the mana symbols,
+  bumping each other, with plate rings showing behind them, and wanted the pass button red
+  with a copper ring like the concept. Now all six gems come from one Meshy Pro model
+  (`gem-blank.glb`): `seat_crystal` deletes its moulded dome, seats a foil disc and a
+  flat-shaded brilliant-cut glass crown in the brass bezel, tinted per colour (`MANA_TINTS`),
+  and `import_glyph` raises the app's own mana glyph (`mana-x.svg` minus its disc) in pale
+  gold on the table facet. The rail lost its cups (`SocketLip`) and the pass socket its lip.
+  In the app the gems are 26 pt, centred on the sockets, with the amount as a badge only
+  while mana floats. The pass button is painted art (`pass-button-art.png`, Codex from
+  Caleb's porthole reference; no words). Caleb then asked for Hearthstone's end-turn feel:
+  `scripts/brand/cut_pass_layers.sh` cuts the art into a still brass ring and the glass
+  face (plus a dim bronze back), and `scripts/brand/pass_button_flip.py` renders a real 3D
+  disc (both faces, copper edge) turning a full circle in 48 frames
+  (`tavern-pass-flip-00…47`, installed with `tavern-pass-ring` by
+  `install_tavern_assets.sh`). `TavernPassStage` owns the disc outside the button (whose
+  `.id` changes per action) and plays the frames through an `Animatable` view: a tap turns
+  it to the waiting face, and it turns back when priority returns (a full spin when you
+  keep priority); Reduce Motion swaps faces without the turn. No halo (Caleb: the bright red
+  face already says it can be tapped, the dim face that it cannot). No title over it:
+  waiting shows the dim face, other actions put their title on a plaque to its left. The button's ring
+  matches the life medallion's frame, which shrank (hole 37 → 32 pt; pass socket 48 pt);
+  the controls and Skip rings moved out to clear it. Without the flip frames the whole
+  painted sprite (`tavern-hourglass-button`) is drawn. Meshy's textured pass button
+  attempt (`pass-button-meshy.glb`, an upright trophy) is unused.
+- 2026-10-02 (Claude, UI kit): Caleb asked for the pop-ups to match the table. References
+  (Codex, from real screenshots plus the v4 concept): `ui-ref/tavern-ui-kit.png` and
+  `ui-ref/tavern-popups-in-context.png` under ~/Movies/motion-assets/magicmobile-brand. Kit
+  parts: brass trim frame (9-slice), riveted capsule (3-slice, rivets tile), thin capsule,
+  coin, bullet and ribbon end caps modelled in Blender (`scripts/brand/tavern_ui_kit.py`),
+  the wax-seal close button from a Meshy Pro model (`meshy/wax-seal.glb`), leather (Poly
+  Haven), generated seamless parchment and ember glass from the pass face
+  (`scripts/brand/tavern_ui_textures.sh`); installed at @3x by `install_tavern_assets.sh` so
+  cap insets are in points. SwiftUI pieces live at the end of Board/BoardChrome.swift
+  (TavernFill, TavernBrassFrame, TavernCapsuleRim, TavernButtonStyle, TavernTag, TavernCoin,
+  TavernRibbon, TavernSheetBackground, TavernPanelTitle, TavernSealLabel, TavernTitleBar,
+  TavernPanelChrome, TavernFieldChrome, `.tavernSheet`, `.tavernPlaque`); kept out of a new
+  file because `xcodegen generate` would drop the native-link sources. All gated on
+  `tavernBoard` and the assets being present; classic boards unchanged; text stays live.
+  Applied: casting-cost ribbon and target/combat banners (InlinePaymentPromptBar,
+  PromptPill), cost coins and crystal gems in the payment tray, prompt sheets (title bar,
+  parchment rows for primary choices, leather rows, oxblood danger, inset sections, search
+  slot, leather sheet backing), the compact prompt box, Mulligan/Keep, compact action
+  buttons (Victory, AI wait, spectator), Victory panel, zone overlay, card-choice dialog
+  (Scry), stack sheet, game log and menu sheets. Not yet: card inspector, game log/menu
+  contents, landscape tavern, Android.
+- 2026-10-02 (Claude, HUD and system UI): Caleb's next round. Opponent name/turn/priority on a
+  leather nameplate in brass (PortraitOpponentStatusBar.tavernBar); the turn banner is a
+  leather ribbon with large pennant caps (BoardTurnBanner `tavernBand`). Life medallion hole
+  37 → 35.5 pt (bigger, to match the pass button visually); pass socket moved to (366, 877)
+  so the controls ring fits at its bottom-right (Skip stays bottom-left); plate re-rendered.
+  The stack moved from the right-edge tab to TavernStackTray in the slot under the mana rail
+  (TavernDesign.stackTray; same accessibility id board.stack.tray). Non-pass actions name
+  themselves on an engraved brass TavernNamePlate on the ring top. Generic costs use a smoky
+  crystal (`tavern-mana-generic`, number engraved in the app via TavernGenericGem); tavern
+  payment gems are 30 pt. No system UI on the tavern board: TavernMenu (leather pop-over,
+  rows close it then act after 0.35 s) replaces the controls, Skip and zone menus;
+  `.tavernConfirmation` replaces the new game/quit and concede dialogs (the game menu sheet
+  closes first so the dialog shows). Test: testTavernMenusOpenAndTheirRowsAct. Menu/lobby
+  references (Codex, from real screenshots): menu-ref/menus-home-and-setup.png and
+  menu-ref/menus-decks-and-studio.png; not built yet. Still system: keyboard, photo
+  picker, share sheet, permission prompts (iOS does not allow restyling them).
+- 2026-10-02 (Claude, menus and build 23): the menus moved to Walnut & Ember from the
+  references. BrandUI.swift: palette (walnut canvas, leather surfaces, parchment ink, brass
+  border), BrandPanel = TavernPanelChrome, BrandButtonStyle = riveted plaques (ember /
+  leather / oxblood), BrandIconButton = brass medallions, brass BrandDivider, serif
+  brandTitle, brass monogram in BrandMark, BrandBackdrop over `menu-backdrop-tavern` (Codex
+  tavern wall; installed by install_tavern_assets.sh) without the old card fan.
+  TavernAppearance.apply() (app delegate) dresses the system controls the setup tests drive
+  (segmented: leather/ember/serif; switches: ember; steppers: brass rings; serif nav titles)
+  instead of replacing them, so accessibility and UI tests keep their contracts; picker
+  menus stay system (not stylable). Deck Studio's palette is parchment and
+  DeckStudioButtonStyle forwards to TavernButtonStyle. Home deck label is a parchment plate.
+  The capsule rim lost its mid-cap rivets so taller plaques stretch cleanly. Menu suites
+  passed except rotation-dependent Deck Studio tests while the simulator's orientation was
+  stuck (a simulator restart fixed rotation; the partner-deck landscape test then passed)
+  and timing flakes that passed on rerun. Shipped as TestFlight 0.1.1 (23), internal only,
+  from `codex/ios-build-23` (stacked on PR #95) with the build 21/22 engine (preflight:
+  equivalent-source).
 

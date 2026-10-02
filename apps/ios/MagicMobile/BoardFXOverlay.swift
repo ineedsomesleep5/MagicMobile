@@ -1133,18 +1133,27 @@ struct BoardTurnBanner: View {
     let turn: Int
     let isViewer: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.tavernBoard) private var tavern
     @State private var shown = false
     @State private var sweep: CGFloat = -1
+
+    private var tavernKit: Bool { tavern && TavernUIKit.available }
 
     var body: some View {
         let accent = isViewer ? BoardFXPainter.gold : Color(red: 0.62, green: 0.74, blue: 1)
         ZStack {
-            LinearGradient(colors: [.clear, Color.black.opacity(0.86), Color.black.opacity(0.86), .clear],
-                           startPoint: .leading, endPoint: .trailing)
-                .frame(height: 104)
-                .overlay(alignment: .top) { edge(accent) }
-                .overlay(alignment: .bottom) { edge(accent) }
-                .scaleEffect(x: shown ? 1 : 0.05, y: 1)
+            Group {
+                if tavernKit {
+                    tavernBand
+                } else {
+                    LinearGradient(colors: [.clear, Color.black.opacity(0.86), Color.black.opacity(0.86), .clear],
+                                   startPoint: .leading, endPoint: .trailing)
+                        .frame(height: 104)
+                        .overlay(alignment: .top) { edge(accent) }
+                        .overlay(alignment: .bottom) { edge(accent) }
+                }
+            }
+            .scaleEffect(x: shown ? 1 : 0.05, y: 1)
             VStack(spacing: 2) {
                 Text(title.uppercased())
                     .font(.system(size: 40, weight: .black, design: .serif))
@@ -1164,10 +1173,14 @@ struct BoardTurnBanner: View {
                     }
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
-                Text("Turn \(turn)")
-                    .font(.caption.weight(.heavy))
-                    .tracking(2)
-                    .foregroundStyle(accent.opacity(0.85))
+                if tavernKit {
+                    TavernTag(text: "TURN \(turn)")
+                } else {
+                    Text("Turn \(turn)")
+                        .font(.caption.weight(.heavy))
+                        .tracking(2)
+                        .foregroundStyle(accent.opacity(0.85))
+                }
             }
             .shadow(color: accent.opacity(0.6), radius: 14)
             .offset(y: shown ? 0 : 14)
@@ -1181,6 +1194,26 @@ struct BoardTurnBanner: View {
             if reduceMotion { shown = true; return }
             withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true }
             withAnimation(.easeInOut(duration: 1.1).delay(0.25)) { sweep = 1 }
+        }
+    }
+
+    /// The tavern's banner: a leather ribbon in brass trim with large pennant end caps.
+    private var tavernBand: some View {
+        TavernFill(material: .leather)
+            .overlay(LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.4)], startPoint: .top, endPoint: .bottom))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay { TavernBrassFrame(scale: 0.75) }
+            .overlay(alignment: .leading) { bannerCap("tavern-ui-cap-left").offset(x: -33) }
+            .overlay(alignment: .trailing) { bannerCap("tavern-ui-cap-right").offset(x: 33) }
+            .frame(height: 100)
+            .padding(.horizontal, 30)
+            .shadow(color: .black.opacity(0.55), radius: 10, y: 5)
+    }
+
+    @ViewBuilder
+    private func bannerCap(_ name: String) -> some View {
+        if let image = UIImage(named: name) {
+            Image(uiImage: image).resizable().frame(width: 54, height: 54)
         }
     }
 

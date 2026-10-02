@@ -344,10 +344,15 @@ struct PortraitBattlefieldLayoutMetrics {
     var largeText = false
     var paymentActive = false
     var centerControlsVisible = true
+    /// The Walnut Tavern dock is one low row (medallion, mana rail, hourglass), so the
+    /// hand gets the height the classic two-row dock used.
+    var tavernDock = false
     var centerStripHeight: CGFloat { paymentActive ? 60 : centerControlsVisible ? 36 : 0 }
 
-    init(proxy: GeometryProxy, paymentActive: Bool = false, largeText: Bool = false, centerControlsVisible: Bool = true) {
+    init(proxy: GeometryProxy, paymentActive: Bool = false, largeText: Bool = false, centerControlsVisible: Bool = true,
+         tavernDock: Bool = false) {
         self.centerControlsVisible = centerControlsVisible
+        self.tavernDock = tavernDock
         self.largeText = largeText
         self.paymentActive = paymentActive
         size = proxy.size
@@ -406,14 +411,23 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var bottomControlsRect: CGRect {
-        let height: CGFloat = 110
+        let height: CGFloat = tavernDock ? 84 : 110
         return CGRect(x: safeFrame.minX, y: safeFrame.maxY - height, width: safeFrame.width, height: height)
+    }
+
+    /// The hand's resting height: tucked on the classic board, whole cards on the tavern table.
+    var handRowHeight: CGFloat {
+        tavernDock ? ArenaHandLayout.tavernHeight(cardHeight: handCardHeight)
+                   : ArenaHandLayout.restingHeight(cardHeight: handCardHeight)
     }
 
     var handRect: CGRect {
         let top = playerLandsRect.maxY + 8
         let bottom = bottomControlsRect.minY - 8
-        return CGRect(x: safeFrame.minX, y: top, width: safeFrame.width, height: max(bottom - top, 0))
+        // On the tavern table the hand stays clear of the frame's carved edges.
+        let leading: CGFloat = tavernDock ? 6 : 0, trailing: CGFloat = tavernDock ? 6 : 0
+        return CGRect(x: safeFrame.minX + leading, y: top, width: safeFrame.width - leading - trailing,
+                      height: max(bottom - top, 0))
     }
 
     var bottomHUDRect: CGRect {
@@ -520,7 +534,7 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var permanentGroupHeight: CGFloat {
-        max(80, (safeFrame.height - topHUDRect.height - bottomControlsRect.height - ArenaHandLayout.restingHeight(cardHeight: handCardHeight) - 6 - centerStripHeight - (usesCompactLanes ? 0 : 2 * (landCardHeight + 8)) - 56) / 2)
+        max(80, (safeFrame.height - topHUDRect.height - bottomControlsRect.height - handRowHeight - 6 - centerStripHeight - (usesCompactLanes ? 0 : 2 * (landCardHeight + 8)) - 56) / 2)
     }
 
     // Preserve readable hand height on short phones by putting lands beside

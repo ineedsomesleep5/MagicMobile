@@ -89,35 +89,41 @@ struct BattlefieldSurface: View {
     @AppStorage(BoardAppearancePreference.key) private var appearance = BoardAppearancePreference.defaultValue
 
     var body: some View {
+        let theme = BattlefieldBackdrop.resolved(appearance)
         GeometryReader { proxy in
             ZStack {
-                BattlefieldBackdropArt(theme: .resolved(appearance))
+                BattlefieldBackdropArt(theme: theme)
                     .frame(width: proxy.size.width, height: proxy.size.height).clipped()
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                .black.opacity(0.34),
-                                .black.opacity(0.05),
-                                .black.opacity(0.08),
-                                .black.opacity(0.38)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                RadialGradient(
-                    colors: [
-                        .clear,
-                        .black.opacity(0.10),
-                        .black.opacity(0.24)
-                    ],
-                    center: .center,
-                    startRadius: min(proxy.size.width, proxy.size.height) * 0.20,
-                    endRadius: max(proxy.size.width, proxy.size.height) * 0.62
-                )
+                if !theme.hasBakedLighting { shading(in: proxy.size) }
             }
         }
+    }
+
+    @ViewBuilder
+    private func shading(in size: CGSize) -> some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        .black.opacity(0.34),
+                        .black.opacity(0.05),
+                        .black.opacity(0.08),
+                        .black.opacity(0.38)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        RadialGradient(
+            colors: [
+                .clear,
+                .black.opacity(0.10),
+                .black.opacity(0.24)
+            ],
+            center: .center,
+            startRadius: min(size.width, size.height) * 0.20,
+            endRadius: max(size.width, size.height) * 0.62
+        )
     }
 }
 
@@ -219,6 +225,7 @@ struct GameCompletionOverlay: View {
 
     private var isVictory: Bool { snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.tavernBoard) private var tavern
     @State private var revealed = false
 
     var body: some View {
@@ -277,8 +284,8 @@ struct GameCompletionOverlay: View {
             }
             .padding(24)
             .frame(maxWidth: 420)
-            .background(MagicPalette.iron.opacity(0.9), in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke((isVictory ? MagicPalette.antiqueGold : Color(red: 0.6, green: 0.2, blue: 0.18)).opacity(0.8), lineWidth: 1.5))
+            .modifier(TavernPanelChrome(tavern: tavern, cornerRadius: 16, classicFill: MagicPalette.iron.opacity(0.9),
+                                        classicStroke: (isVictory ? MagicPalette.antiqueGold : Color(red: 0.6, green: 0.2, blue: 0.18)).opacity(0.8)))
             .shadow(color: .black.opacity(0.48), radius: 18, y: 8)
             .padding(.horizontal, 20)
         }
@@ -746,5 +753,1051 @@ enum GameplayAffordances {
             promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId,
             ids: [symbol], manaType: symbol
         )
+    }
+}
+
+// MARK: - Walnut Tavern chrome
+
+struct TavernBoardKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// True on the portrait board while the Walnut Tavern table is the backdrop. Controls
+    /// then draw as table objects that sit in the sockets of the rendered plate
+    /// (scripts/brand/tavern_layout.json, scripts/brand/tavern_table.py).
+    var tavernBoard: Bool {
+        get { self[TavernBoardKey.self] }
+        set { self[TavernBoardKey.self] = newValue }
+    }
+}
+
+enum TavernPalette {
+    static let brass = Color(red: 0.86, green: 0.64, blue: 0.30)
+    static let brassDark = Color(red: 0.36, green: 0.22, blue: 0.08)
+    static let leather = Color(red: 0.16, green: 0.08, blue: 0.045)
+    static let enamel = Color(red: 0.42, green: 0.07, blue: 0.05)
+    static let ember = Color(red: 1.0, green: 0.50, blue: 0.34)
+    static let parchment = Color(red: 0.95, green: 0.88, blue: 0.74)
+}
+
+/// A rendered sprite from the tavern asset set, or a drawn stand-in while it is missing.
+private struct TavernSprite<Fallback: View>: View {
+    let name: String
+    @ViewBuilder let fallback: Fallback
+    var body: some View {
+        if let image = UIImage(named: name) {
+            Image(uiImage: image).resizable().scaledToFit()
+        } else {
+            fallback
+        }
+    }
+}
+
+/// A carved brass medallion: a round portrait under the brass frame, with the life total
+/// in an enamel badge at the bottom, the way the table's sockets are drawn.
+struct TavernMedallion<Portrait: View>: View {
+    let diameter: CGFloat
+    let life: Int?
+    var active = false
+    var targetable = false
+    @ViewBuilder let portrait: Portrait
+
+    var body: some View {
+        ZStack {
+            portrait
+                .frame(width: diameter, height: diameter)
+                .clipShape(Circle())
+            // The table's own brass ring frames the portrait until the Meshy frame ships.
+            TavernSprite(name: "tavern-medallion-frame") {
+                Circle().strokeBorder(.black.opacity(0.55), lineWidth: 2)
+                    .frame(width: diameter, height: diameter)
+            }
+            .frame(width: diameter * 1.35, height: diameter * 1.35)
+            .allowsHitTesting(false)
+            if let life {
+                BoardLifeTotal(life: life)
+                    .font(.system(size: diameter * 0.30, weight: .heavy, design: .serif))
+                    .monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                    .frame(width: diameter * 0.58, height: diameter * 0.40)
+                    .background(
+                        Capsule().fill(RadialGradient(colors: [TavernPalette.enamel, .black.opacity(0.92)],
+                                                      center: .center, startRadius: 0, endRadius: diameter * 0.32))
+                    )
+                    .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1.5))
+                    .offset(y: diameter * 0.47)
+            }
+        }
+        .shadow(color: active ? TavernPalette.ember.opacity(0.75) : .black.opacity(0.5), radius: active ? 10 : 4)
+        .overlay(Circle().stroke(Color.red, lineWidth: targetable ? 3 : 0).frame(width: diameter * 1.1, height: diameter * 1.1))
+        .animation(.easeInOut(duration: 0.35), value: active)
+    }
+}
+
+/// A dark leather plaque with a brass edge, behind text that sits on the table.
+struct TavernPlaque: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                LinearGradient(colors: [TavernPalette.leather.opacity(0.94), .black.opacity(0.86)],
+                               startPoint: .top, endPoint: .bottom),
+                in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(TavernPalette.brass.opacity(0.7), lineWidth: 1))
+            .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+    }
+}
+
+/// The primary action on the tavern table. With the flip frames installed the button draws
+/// only the still brass ring and TavernPassStage turns the glass disc beneath it; otherwise
+/// it draws the whole painted button. Passing and waiting need no words; other actions
+/// (Confirm, Attack…) show a small plaque beside the button, never over it.
+struct TavernPrimaryButtonStyle: ButtonStyle {
+    var showsTitle = true
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.tavernCanvas) private var canvas
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let diameter = TavernDesign.passDiameter(in: canvas)
+        Group {
+            if TavernPassAssets.flips {
+                TavernSprite(name: "tavern-pass-ring") { EmptyView() }
+                    .frame(width: diameter, height: diameter)
+            } else {
+                TavernSprite(name: "tavern-hourglass-button") {
+                    ZStack {
+                        Circle().fill(RadialGradient(colors: [Color(red: 1, green: 0.62, blue: 0.30), TavernPalette.enamel, Color(red: 0.18, green: 0.03, blue: 0.02)],
+                                                     center: .center, startRadius: 0, endRadius: diameter / 2))
+                        Circle().strokeBorder(.black.opacity(0.45), lineWidth: 2)
+                        Image(systemName: "hourglass")
+                            .font(.system(size: diameter * 0.40, weight: .heavy))
+                            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.55), TavernPalette.brass],
+                                                            startPoint: .top, endPoint: .bottom))
+                    }
+                }
+                .frame(width: diameter, height: diameter)
+                .saturation(isEnabled ? 1 : 0.35)
+                .brightness(isEnabled ? 0 : -0.18)
+                .scaleEffect(configuration.isPressed ? 0.94 : 1)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
+            }
+        }
+        .overlay(alignment: .top) {
+            // Other actions name themselves on a brass plate riveted to the ring's top, never
+            // over the glass.
+            if showsTitle {
+                TavernNamePlate { configuration.label }
+                    .frame(maxWidth: diameter * 0.86)
+                    .offset(y: 1)
+            }
+        }
+        .pressSound(.uiTap, isPressed: configuration.isPressed)
+        .frame(width: diameter, height: diameter)
+        // The whole square takes taps: a slightly bigger target than the round face, and UI
+        // tests that aim near the frame's edge still land on the button.
+        .contentShape(Rectangle())
+    }
+}
+
+/// The rendered pass button parts (scripts/brand/pass_button_flip.py): the still ring and
+/// the disc's full turn in `frameCount` frames, frame 0 the glowing face.
+enum TavernPassAssets {
+    static let frameCount = 48
+    static let flips = UIImage(named: "tavern-pass-ring") != nil && UIImage(named: "tavern-pass-flip-00") != nil
+}
+
+/// The pass button's glass disc, turning inside the still brass ring like Hearthstone's
+/// end-turn button: the bright red face while you hold priority, the dim bronze face while
+/// you wait (no halo; the face itself says whether it can be tapped). A tap turns it over at once and it turns back when priority returns, so a pass that
+/// leaves you with priority spins it all the way round. It lives outside the button, whose
+/// identity changes with every action, so a turn is never cut short.
+struct TavernPassStage<Content: View>: View {
+    let enabled: Bool
+    let turnsOnTap: Bool
+    let content: Content
+    @Environment(\.tavernCanvas) private var canvas
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Half turns: even shows the glowing face, odd the waiting face.
+    @State private var turns: Double
+    @State private var wantsFront: Bool
+    @State private var turning = false
+
+    init(enabled: Bool, turnsOnTap: Bool, @ViewBuilder content: () -> Content) {
+        self.enabled = enabled
+        self.turnsOnTap = turnsOnTap
+        self.content = content()
+        _turns = State(initialValue: enabled ? 0 : 1)
+        _wantsFront = State(initialValue: enabled)
+    }
+
+    var body: some View {
+        let diameter = TavernDesign.passDiameter(in: canvas)
+        ZStack {
+            Circle().fill(Color(red: 0.05, green: 0.03, blue: 0.02))
+                .frame(width: diameter * 0.74, height: diameter * 0.74)
+            TavernPassDisc(turns: turns)
+                .frame(width: diameter, height: diameter)
+            content
+        }
+        .simultaneousGesture(TapGesture().onEnded { if enabled && turnsOnTap { turnOver() } })
+        .onChange(of: enabled) { _, now in
+            wantsFront = now
+            settle()
+        }
+    }
+
+    private var showsFront: Bool { Int(turns.rounded()) % 2 == 0 }
+
+    private func turnOver() {
+        guard !turning else { return }
+        turning = true
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
+            turns += 1
+        } completion: {
+            turning = false
+            settle()
+        }
+    }
+
+    /// Turns to the face that matches who holds priority, unless it is already showing.
+    private func settle() {
+        guard !turning, showsFront != wantsFront else { return }
+        turnOver()
+    }
+}
+
+/// One frame of the disc's turn, picked from the animated number of half turns.
+private struct TavernPassDisc: View, Animatable {
+    var turns: Double
+    var animatableData: Double {
+        get { turns }
+        set { turns = newValue }
+    }
+
+    var body: some View {
+        let count = TavernPassAssets.frameCount
+        let phase = turns.truncatingRemainder(dividingBy: 2) / 2
+        let index = Int((phase * Double(count)).rounded()) % count
+        Image(String(format: "tavern-pass-flip-%02d", index))
+            .resizable().scaledToFit()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Where the tavern table's sockets are, in points on the 440×956 design canvas the plate is
+/// painted for (the plate fills the whole screen, so other sizes scale both axes). Measured
+/// from the approved concept plate; the Blender/Meshy render must keep the same points.
+enum TavernDesign {
+    static let canvas = CGSize(width: 440, height: 956)
+    static let opponentMedallion = CGPoint(x: 219.2, y: 95)
+    static let opponentHoleRadius: CGFloat = 31
+    static let lifeMedallion = CGPoint(x: 50.5, y: 882.6)
+    static let lifeHoleRadius: CGFloat = 35.5
+    static let passButton = CGPoint(x: 366, y: 877)
+    /// The stack tray's slot below the mana rail, between your medallion and the pass button.
+    static let stackTray = CGPoint(x: 212, y: 893)
+    static let passHoleRadius: CGFloat = 48
+    /// The pass button's frame: its brass ring matches the life medallion's frame.
+    static func passDiameter(in canvas: CGSize?) -> CGFloat {
+        let design = passHoleRadius * 2 * 1.04
+        return canvas?.tavernLength(design) ?? design
+    }
+    static let manaSocketXs: [CGFloat] = [146.0, 175.4, 204.8, 234.7, 264.1, 293.5]
+    static let manaSocketY: CGFloat = 846.9
+    static let manaSocketRadius: CGFloat = 12.9
+    static let matTop: CGFloat = 138.6
+    static let matBottom: CGFloat = 723
+}
+
+/// The full screen in global coordinates while the tavern table is drawn, so controls can
+/// be placed on the plate's sockets regardless of safe-area insets.
+struct TavernCanvasKey: EnvironmentKey { static let defaultValue: CGSize? = nil }
+
+extension EnvironmentValues {
+    var tavernCanvas: CGSize? {
+        get { self[TavernCanvasKey.self] }
+        set { self[TavernCanvasKey.self] = newValue }
+    }
+}
+
+extension CGSize {
+    /// A design-canvas point on this screen, in global coordinates.
+    func tavernPoint(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x * width / TavernDesign.canvas.width, y: point.y * height / TavernDesign.canvas.height)
+    }
+    func tavernLength(_ value: CGFloat) -> CGFloat { value * width / TavernDesign.canvas.width }
+}
+
+extension View {
+    /// Positions a view on a tavern socket. `origin` is the global origin of the
+    /// coordinate space the view is positioned in.
+    func tavernPosition(_ point: CGPoint, canvas: CGSize, origin: CGPoint) -> some View {
+        let global = canvas.tavernPoint(point)
+        return position(x: global.x - origin.x, y: global.y - origin.y)
+    }
+}
+
+/// A small brass ring button that sits on the table beside the hourglass.
+struct TavernRingLabel: ViewModifier {
+    var pressed = false
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: 13, weight: .black))
+            .foregroundStyle(TavernPalette.parchment)
+            .frame(width: 34, height: 34)
+            .background(
+                RadialGradient(colors: [pressed ? TavernPalette.brassDark : Color(red: 0.24, green: 0.13, blue: 0.07), .black.opacity(0.92)],
+                               center: .center, startRadius: 0, endRadius: 18),
+                in: Circle())
+            .overlay(Circle().strokeBorder(
+                LinearGradient(colors: [TavernPalette.brass, TavernPalette.brassDark], startPoint: .top, endPoint: .bottom),
+                lineWidth: 2.5))
+            .shadow(color: .black.opacity(0.55), radius: 3, y: 2)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+    }
+}
+
+/// The opponent's hand as face-down cards fanned above their medallion, one per card, the
+/// way a player across the table holds them. The notch may cover the top of a big hand.
+struct TavernCardBackFan: View {
+    let count: Int
+    var body: some View {
+        let shown = min(count, 20)
+        let arc = min(Double(shown) * 7, 84)
+        let width = min(CGFloat(shown) * 11, 150)
+        ZStack(alignment: .bottom) {
+            ForEach(0..<shown, id: \.self) { index in
+                let spread = shown > 1 ? (Double(index) / Double(shown - 1) - 0.5) : 0
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(LinearGradient(colors: [Color(red: 0.12, green: 0.15, blue: 0.24), Color(red: 0.06, green: 0.07, blue: 0.12)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(TavernPalette.brass, lineWidth: 1.2))
+                    .overlay(Image(systemName: "sparkle").font(.system(size: 9, weight: .bold)).foregroundStyle(TavernPalette.brass))
+                    .frame(width: 24, height: 34)
+                    .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
+                    .rotationEffect(.degrees(spread * arc), anchor: .bottom)
+                    .offset(x: spread * width, y: abs(spread) * 8)
+            }
+        }
+        .frame(height: 40, alignment: .bottom)
+        .allowsHitTesting(false)
+        .accessibilityElement()
+        .accessibilityLabel(count == 1 ? "1 card in hand" : "\(count) cards in hand")
+    }
+}
+
+/// One mana gem in the tavern rail: the rendered Meshy gem (or the mana symbol until it
+/// ships), centred on its socket. It glows in its colour and breathes while that mana is
+/// floating, with the amount on a small badge, and sits dim and unlit when the pool has none.
+struct TavernManaGemFace: View {
+    let symbol: String
+    let count: Int
+    var payable = false
+    var diameter: CGFloat = 26
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathing = false
+
+    private var glowColor: Color {
+        switch symbol {
+        case "W": return Color(red: 1, green: 0.93, blue: 0.70)
+        case "U": return Color(red: 0.35, green: 0.62, blue: 1)
+        case "B": return Color(red: 0.66, green: 0.42, blue: 0.86)
+        case "R": return Color(red: 1, green: 0.38, blue: 0.20)
+        case "G": return Color(red: 0.32, green: 0.88, blue: 0.42)
+        default: return Color(red: 0.86, green: 0.86, blue: 0.92)
+        }
+    }
+
+    var body: some View {
+        let lit = count > 0
+        Group {
+            if let image = UIImage(named: "tavern-mana-\(symbol)") {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                ManaSymbolView(symbol: symbol, size: diameter * 0.8)
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .saturation(lit ? 1.15 : 0.75)
+        .brightness(lit ? (breathing ? 0.12 : 0.04) : -0.08)
+        .shadow(color: lit || payable ? glowColor.opacity(breathing ? 0.95 : 0.7) : .black.opacity(0.6),
+                radius: lit || payable ? (breathing ? 9 : 6) : 1.5)
+        .overlay(alignment: .bottomTrailing) {
+            if lit {
+                Text("\(count)")
+                    .font(.system(size: diameter * 0.36, weight: .heavy, design: .serif)).monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 3)
+                    .background(Capsule().fill(.black.opacity(0.8)))
+                    .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1))
+                    .offset(x: diameter * 0.12, y: diameter * 0.12)
+            }
+        }
+        .onAppear { updateBreathing(lit) }
+        .onChange(of: lit) { _, now in updateBreathing(now) }
+    }
+
+    private func updateBreathing(_ lit: Bool) {
+        guard lit, !reduceMotion else {
+            breathing = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { breathing = true }
+    }
+}
+
+// MARK: - Walnut Tavern UI kit
+
+/// The Walnut Tavern UI kit: brass parts rendered in Blender (scripts/brand/tavern_ui_kit.py)
+/// and leather, parchment and ember fills (scripts/brand/tavern_ui_textures.sh), installed at
+/// @3x so the cap insets below are in points. Pop-ups on the tavern board are dressed with
+/// these; their text stays live SwiftUI text. Without the assets each piece draws plainly.
+enum TavernUIKit {
+    static let available = UIImage(named: "tavern-ui-frame") != nil
+}
+
+/// A material fill: leather and parchment tile seamlessly, ember glass stretches.
+struct TavernFill: View {
+    enum Material: String {
+        case leather = "tavern-ui-leather"
+        case parchment = "tavern-ui-parchment"
+        case ember = "tavern-ui-ember"
+    }
+
+    let material: Material
+
+    var body: some View {
+        if let image = UIImage(named: material.rawValue) {
+            if material == .ember {
+                Image(uiImage: image).resizable()
+            } else {
+                Image(uiImage: image).resizable(resizingMode: .tile)
+            }
+        } else {
+            switch material {
+            case .leather: TavernPalette.leather
+            case .parchment: TavernPalette.parchment
+            case .ember: TavernPalette.enamel
+            }
+        }
+    }
+}
+
+/// Brass trim around a rectangle, 9-sliced from tavern-ui-frame (96 pt, 24 pt corners with
+/// rivets). `scale` shrinks the trim for small plaques: 0.5 gives 12 pt corners.
+struct TavernBrassFrame: View {
+    var scale: CGFloat = 1
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let image = UIImage(named: "tavern-ui-frame") {
+                Image(uiImage: image)
+                    .resizable(capInsets: EdgeInsets(top: 24, leading: 24, bottom: 24, trailing: 24))
+                    .frame(width: proxy.size.width / scale, height: proxy.size.height / scale)
+                    .scaleEffect(scale, anchor: .topLeading)
+            } else {
+                RoundedRectangle(cornerRadius: 12 * scale).strokeBorder(TavernPalette.brass, lineWidth: 2)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A brass capsule rim: riveted for buttons (44 pt tall; its rivets tile as it widens) or
+/// thin and plain for tags (22 pt).
+struct TavernCapsuleRim: View {
+    var thin = false
+
+    var body: some View {
+        Group {
+            if let image = UIImage(named: thin ? "tavern-ui-capsule-thin" : "tavern-ui-capsule") {
+                let cap: CGFloat = thin ? 11 : 22
+                Image(uiImage: image)
+                    .resizable(capInsets: EdgeInsets(top: cap - 1, leading: cap, bottom: cap - 1, trailing: cap),
+                               resizingMode: thin ? .stretch : .tile)
+            } else {
+                Capsule().strokeBorder(TavernPalette.brass, lineWidth: thin ? 1.5 : 2.5)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Plaque buttons from the kit: primary is ember glass, secondary dark leather, both in a
+/// riveted brass rim, like the pass button.
+struct TavernButtonStyle: ButtonStyle {
+    enum Kind { case primary, secondary, danger }
+
+    var kind: Kind = .primary
+    var compact = false
+    var fontSize: CGFloat?
+    var fullWidth = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: fontSize ?? (compact ? 12 : 14), weight: .heavy, design: .serif))
+            .foregroundStyle(kind == .secondary ? TavernPalette.parchment : Color(red: 1, green: 0.91, blue: 0.66))
+            .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
+            .lineLimit(2)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, compact ? 16 : 22)
+            .padding(.vertical, 6)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 44)
+            .background {
+                Group {
+                    switch kind {
+                    case .primary: TavernFill(material: .ember)
+                    case .secondary: TavernFill(material: .leather)
+                    case .danger: TavernFill(material: .leather).overlay(MagicPalette.oxblood.opacity(0.7))
+                    }
+                }
+                .clipShape(Capsule())
+                .padding(3)
+            }
+            .overlay { TavernCapsuleRim() }
+            .contentShape(Capsule())
+            .saturation(isEnabled ? 1 : 0.15)
+            .brightness(isEnabled ? (configuration.isPressed ? 0.08 : 0) : -0.12)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// A small tag in a thin brass rim: parchment for labels ("PAY COST"), leather for status
+/// chips. `accent` adds a little coloured jewel that keeps the prompt's colour cue.
+struct TavernTag: View {
+    let text: String
+    var leather = false
+    var accent: Color?
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let accent {
+                Circle()
+                    .fill(RadialGradient(colors: [.white.opacity(0.9), accent, accent.opacity(0.6)],
+                                         center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 5))
+                    .frame(width: 8, height: 8)
+                    .shadow(color: accent.opacity(0.9), radius: 3)
+            }
+            Text(text)
+                .font(.system(size: 10, weight: .heavy, design: .serif))
+                .tracking(0.8)
+                .foregroundStyle(leather ? Color(red: 0.98, green: 0.82, blue: 0.48) : Color(red: 0.24, green: 0.12, blue: 0.05))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 22)
+        .background {
+            TavernFill(material: leather ? .leather : .parchment)
+                .clipShape(Capsule())
+                .padding(1.5)
+        }
+        .overlay { TavernCapsuleRim(thin: true) }
+        .fixedSize()
+    }
+}
+
+/// A number struck on a brass coin (a generic mana cost, a count).
+struct TavernCoin: View {
+    let value: Int
+    var size: CGFloat = 24
+
+    var body: some View {
+        ZStack {
+            if let image = UIImage(named: "tavern-ui-coin") {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                Circle().fill(TavernPalette.brass)
+            }
+            Text("\(value)")
+                .font(.system(size: size * 0.52, weight: .black, design: .serif))
+                .monospacedDigit()
+                .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04))
+                .shadow(color: .white.opacity(0.35), radius: 0, y: 1)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// A leather ribbon in brass trim with pennant end caps, for the banners across the board
+/// (casting cost, targets, combat).
+struct TavernRibbon: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 16)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 6)) }
+            .overlay { TavernBrassFrame(scale: 0.5) }
+            .overlay(alignment: .leading) { cap("tavern-ui-cap-left").offset(x: -22) }
+            .overlay(alignment: .trailing) { cap("tavern-ui-cap-right").offset(x: 22) }
+            .shadow(color: .black.opacity(0.5), radius: 6, y: 3)
+            // Room for the end caps inside the banner's slot.
+            .padding(.horizontal, 12)
+    }
+
+    @ViewBuilder
+    private func cap(_ name: String) -> some View {
+        if let image = UIImage(named: name) {
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: 36, height: 36)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// A mana symbol drawn as the tavern's crystal gem on the tavern board.
+struct TavernAwareManaSymbol: View {
+    let symbol: String
+    let size: CGFloat
+    @Environment(\.tavernBoard) private var tavern
+
+    var body: some View {
+        if tavern, let image = UIImage(named: "tavern-mana-\(symbol.uppercased())") {
+            Image(uiImage: image).resizable().scaledToFit().frame(width: size * 1.2, height: size * 1.2)
+        } else {
+            ManaSymbolView(symbol: symbol, size: size)
+        }
+    }
+}
+
+/// The backing of tavern sheets: dark tooled leather under a brass rule along the top.
+struct TavernSheetBackground: View {
+    var body: some View {
+        TavernFill(material: .leather)
+            .overlay(LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom))
+            .overlay(alignment: .top) {
+                LinearGradient(colors: [TavernPalette.brass, Color(red: 0.42, green: 0.28, blue: 0.09)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: 3)
+            }
+            .ignoresSafeArea()
+    }
+}
+
+/// A panel title engraved in gold.
+struct TavernPanelTitle: View {
+    let text: String
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 16, weight: .heavy, design: .serif))
+            .tracking(1.2)
+            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                            startPoint: .top, endPoint: .bottom))
+            .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+    }
+}
+
+/// The wax-seal close button of tavern panels: the rendered Meshy seal once installed.
+struct TavernSealLabel: View {
+    var body: some View {
+        Group {
+            if let image = UIImage(named: "tavern-ui-seal") {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                ZStack {
+                    Circle().fill(RadialGradient(colors: [Color(red: 0.85, green: 0.16, blue: 0.12), Color(red: 0.45, green: 0.04, blue: 0.03)],
+                                                 center: .init(x: 0.4, y: 0.35), startRadius: 0, endRadius: 16))
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(Color(red: 1, green: 0.78, blue: 0.62))
+                }
+            }
+        }
+        .frame(width: 32, height: 32)
+        .shadow(color: .black.opacity(0.5), radius: 3, y: 2)
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+    }
+}
+
+/// The leather title bar of tavern panels, in brass trim.
+struct TavernTitleBar: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.leading, 12)
+            .padding(.trailing, 2)
+            .frame(minHeight: 48)
+            .background {
+                TavernFill(material: .leather)
+                    .overlay(Color.black.opacity(0.22))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .overlay { TavernBrassFrame(scale: 0.5) }
+    }
+}
+
+extension TavernPalette {
+    /// Dark ink for text on parchment.
+    static let ink = Color(red: 0.22, green: 0.11, blue: 0.04)
+    /// A brass hairline for parchment rows and inset boxes.
+    static let brassLine = LinearGradient(colors: [Color(red: 0.92, green: 0.72, blue: 0.38), Color(red: 0.50, green: 0.33, blue: 0.11)],
+                                          startPoint: .top, endPoint: .bottom)
+}
+
+extension View {
+    /// A sheet opened from the tavern board: leather backing, and the tavern kit inside.
+    @ViewBuilder
+    func tavernSheet(_ active: Bool) -> some View {
+        if active && TavernUIKit.available {
+            environment(\.tavernBoard, true)
+                .presentationBackground { TavernSheetBackground() }
+        } else {
+            self
+        }
+    }
+}
+
+/// A floating panel's backing: the classic fill and edge, or on the tavern board tooled leather
+/// in brass trim whose corners follow `cornerRadius` (12 pt is the trim's full size).
+struct TavernPanelChrome: ViewModifier {
+    let tavern: Bool
+    var cornerRadius: CGFloat = 12
+    var classicFill: Color = MagicPalette.iron.opacity(0.94)
+    var classicStroke: Color = MagicPalette.antiqueGold.opacity(0.38)
+
+    func body(content: Content) -> some View {
+        if tavern && TavernUIKit.available {
+            let scale = min(max(cornerRadius / 12, 0.4), 1)
+            content
+                .background {
+                    TavernFill(material: .leather)
+                        .overlay(LinearGradient(colors: [.clear, .black.opacity(0.3)], startPoint: .top, endPoint: .bottom))
+                        .clipShape(RoundedRectangle(cornerRadius: 12 * scale))
+                }
+                .overlay { TavernBrassFrame(scale: scale) }
+        } else {
+            content
+                .background(classicFill, in: RoundedRectangle(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(classicStroke, lineWidth: 1))
+        }
+    }
+}
+
+/// A search field: the system rounded field, or on the tavern board a recessed parchment slot.
+struct TavernFieldChrome: ViewModifier {
+    let tavern: Bool
+
+    func body(content: Content) -> some View {
+        if tavern && TavernUIKit.available {
+            content
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .medium, design: .serif))
+                .foregroundStyle(TavernPalette.ink)
+                .tint(TavernPalette.ink)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 40)
+                .background {
+                    TavernFill(material: .parchment)
+                        .overlay(LinearGradient(colors: [.black.opacity(0.18), .clear], startPoint: .top, endPoint: .center))
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                }
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
+        } else {
+            content.textFieldStyle(.roundedBorder)
+        }
+    }
+}
+
+extension View {
+    /// A text button as a tavern plaque on the tavern board; untouched elsewhere.
+    @ViewBuilder
+    func tavernPlaque(_ active: Bool, kind: TavernButtonStyle.Kind) -> some View {
+        if active && TavernUIKit.available {
+            buttonStyle(TavernButtonStyle(kind: kind, compact: true))
+        } else {
+            self
+        }
+    }
+}
+
+/// An engraved brass nameplate with a rivet at each end, like the label on a ship's porthole.
+struct TavernNamePlate<Label: View>: View {
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        HStack(spacing: 5) {
+            rivet
+            label
+                .font(.system(size: 8.5, weight: .heavy, design: .serif))
+                .textCase(.uppercase)
+                .tracking(0.4)
+                .foregroundStyle(TavernPalette.ink)
+                .shadow(color: .white.opacity(0.35), radius: 0, y: 1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            rivet
+        }
+        .padding(.horizontal, 4)
+        .frame(minHeight: 16)
+        .background {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(LinearGradient(colors: [Color(red: 0.98, green: 0.84, blue: 0.52), Color(red: 0.78, green: 0.55, blue: 0.22),
+                                              Color(red: 0.58, green: 0.38, blue: 0.13)],
+                                     startPoint: .top, endPoint: .bottom))
+        }
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(red: 0.36, green: 0.22, blue: 0.07), lineWidth: 1))
+        .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var rivet: some View {
+        Circle()
+            .fill(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.45, green: 0.29, blue: 0.09)],
+                                 center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 3))
+            .frame(width: 5, height: 5)
+    }
+}
+
+/// The stack on the tavern table: a leather tray below the mana rail with the top spell and
+/// how many are waiting; a tap opens the full stack.
+struct TavernStackTray: View {
+    let count: Int
+    let topName: String?
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 8) {
+                ZStack {
+                    TavernCoin(value: count, size: 26)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("STACK")
+                        .font(.system(size: 9, weight: .heavy, design: .serif))
+                        .tracking(1)
+                        .foregroundStyle(Color(red: 0.96, green: 0.80, blue: 0.48))
+                    Text(topName ?? "")
+                        .font(.system(size: 13, weight: .semibold, design: .serif))
+                        .foregroundStyle(TavernPalette.parchment)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(Color(red: 0.96, green: 0.80, blue: 0.48))
+            }
+            .padding(.leading, 6)
+            .padding(.trailing, 10)
+            .frame(width: 156, height: 42)
+            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
+            .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Inspect stack")
+        .accessibilityValue(topName.map { "\(count) on the stack, top: \($0)" } ?? "\(count) on the stack")
+        .accessibilityIdentifier("board.stack.tray")
+        .transition(.scale(scale: 0.85).combined(with: .opacity))
+    }
+}
+
+/// A generic mana cost: the smoky crystal (tavern-mana-generic) with the number engraved in gold.
+struct TavernGenericGem: View {
+    let value: Int
+    var size: CGFloat = 30
+
+    var body: some View {
+        ZStack {
+            if let image = UIImage(named: "tavern-mana-generic") {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                TavernCoin(value: value, size: size)
+            }
+            Text("\(value)")
+                .font(.system(size: size * 0.46, weight: .black, design: .serif))
+                .monospacedDigit()
+                .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.9, blue: 0.6), Color(red: 0.86, green: 0.6, blue: 0.24)],
+                                                startPoint: .top, endPoint: .bottom))
+                .shadow(color: .black.opacity(0.8), radius: 1, y: 1)
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel("\(value) generic mana")
+    }
+}
+
+/// How a tavern menu row hands its action to the menu: close first, then act.
+private struct TavernMenuSelectKey: EnvironmentKey {
+    static let defaultValue: (@escaping () -> Void) -> Void = { $0() }
+}
+
+extension EnvironmentValues {
+    var tavernMenuSelect: (@escaping () -> Void) -> Void {
+        get { self[TavernMenuSelectKey.self] }
+        set { self[TavernMenuSelectKey.self] = newValue }
+    }
+}
+
+/// A menu in the tavern's style instead of the system's: a leather pop-over of brass-edged
+/// parchment rows anchored to its button. A chosen row closes the pop-over before its action
+/// runs, so actions that open sheets are not blocked by the closing pop-over.
+struct TavernMenu<Label: View, Items: View>: View {
+    var arrowEdge: Edge = .bottom
+    @ViewBuilder let items: Items
+    @ViewBuilder let label: Label
+    @State private var open = false
+    @State private var pending: (() -> Void)?
+
+    var body: some View {
+        Button { open = true } label: { label }
+            .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: arrowEdge) {
+                VStack(alignment: .leading, spacing: 6) { items }
+                    .padding(10)
+                    .frame(width: 270)
+                    .environment(\.tavernBoard, true)
+                    .environment(\.tavernMenuSelect) { action in
+                        pending = action
+                        open = false
+                    }
+                    .presentationCompactAdaptation(.popover)
+                    .presentationBackground { TavernSheetBackground() }
+            }
+            .onChange(of: open) { _, isOpen in
+                guard !isOpen, let action = pending else { return }
+                pending = nil
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    action()
+                }
+            }
+    }
+}
+
+/// One row of a tavern menu: a parchment strip (oxblood when destructive).
+struct TavernMenuItem: View {
+    let title: String
+    var systemImage: String?
+    var destructive = false
+    let action: () -> Void
+    @Environment(\.tavernMenuSelect) private var select
+
+    var body: some View {
+        Button { select(action) } label: {
+            HStack(spacing: 8) {
+                if let systemImage {
+                    Image(systemName: systemImage).font(.system(size: 13, weight: .bold))
+                }
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold, design: .serif))
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(PanelActionButtonStyle(isDanger: destructive, isPrimary: true))
+    }
+}
+
+/// A thin brass rule between groups of tavern menu rows.
+struct TavernMenuDivider: View {
+    var body: some View {
+        Rectangle().fill(TavernPalette.brassLine).frame(height: 1).opacity(0.7).padding(.vertical, 2)
+    }
+}
+
+/// One choice in a tavern confirmation.
+struct TavernDialogAction: Identifiable {
+    let id = UUID()
+    let title: String
+    var destructive = false
+    let action: () -> Void
+}
+
+extension View {
+    /// A confirmation: the tavern's leather dialog on the tavern board, the system's elsewhere.
+    func tavernConfirmation(active: Bool, title: String, message: String?, isPresented: Binding<Bool>,
+                            actions: [TavernDialogAction], cancelTitle: String = "Cancel",
+                            onCancel: @escaping () -> Void = {}) -> some View {
+        modifier(TavernConfirmationModifier(active: active, title: title, message: message, isPresented: isPresented,
+                                            actions: actions, cancelTitle: cancelTitle, onCancel: onCancel))
+    }
+}
+
+private struct TavernConfirmationModifier: ViewModifier {
+    let active: Bool
+    let title: String
+    let message: String?
+    @Binding var isPresented: Bool
+    let actions: [TavernDialogAction]
+    let cancelTitle: String
+    let onCancel: () -> Void
+
+    func body(content: Content) -> some View {
+        if active && TavernUIKit.available {
+            content
+                .overlay {
+                    if isPresented { dialog.transition(.opacity) }
+                }
+                .animation(.easeOut(duration: 0.2), value: isPresented)
+        } else {
+            content.confirmationDialog(title, isPresented: $isPresented, titleVisibility: .visible) {
+                ForEach(actions) { choice in
+                    Button(choice.title, role: choice.destructive ? .destructive : nil, action: choice.action)
+                }
+                Button(cancelTitle, role: .cancel, action: onCancel)
+            } message: {
+                if let message { Text(message) }
+            }
+        }
+    }
+
+    private var dialog: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture(perform: cancel)
+                .accessibilityHidden(true)
+            VStack(spacing: 14) {
+                Text(title.uppercased())
+                    .font(.system(size: 17, weight: .heavy, design: .serif))
+                    .tracking(1)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
+                                                    startPoint: .top, endPoint: .bottom))
+                    .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+                if let message {
+                    Text(message)
+                        .font(.system(size: 14, weight: .regular, design: .serif))
+                        .foregroundStyle(TavernPalette.parchment.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(spacing: 10) {
+                    ForEach(actions) { choice in
+                        Button(choice.title) {
+                            isPresented = false
+                            choice.action()
+                        }
+                        .buttonStyle(TavernButtonStyle(kind: choice.destructive ? .danger : .primary, fullWidth: true))
+                    }
+                    Button(cancelTitle, action: cancel)
+                        .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 330)
+            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 16))
+            .shadow(color: .black.opacity(0.6), radius: 18, y: 8)
+            .padding(.horizontal, 24)
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(.isModal)
+        }
+    }
+
+    private func cancel() {
+        isPresented = false
+        onCancel()
     }
 }

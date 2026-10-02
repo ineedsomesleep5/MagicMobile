@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Persisted identifiers are shared with Android; textures contain no game UI.
 enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
-    case arena, midnight, wood, moss, ember, tide
+    case arena, midnight, wood, moss, ember, tide, tavern
 
     var id: String { rawValue }
     var title: String {
@@ -13,21 +13,40 @@ enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
         case .moss: return "Moss Sanctuary"
         case .ember: return "Obsidian Ember"
         case .tide: return "Tidal Slate"
+        case .tavern: return "Walnut Tavern"
         }
     }
+    /// Square material, center-cropped for either orientation.
     var assetName: String? {
-        self == .midnight ? nil : "battlefield-\(rawValue)"
+        switch self {
+        case .midnight, .tavern: return nil
+        default: return "battlefield-\(rawValue)"
+        }
     }
+    /// A composed table rendered for each orientation (scripts/brand/walnut_table.py): its
+    /// frame and play mat are placed for the board layout, so it cannot share one crop.
+    var composedAssetNames: (portrait: String, landscape: String)? {
+        self == .tavern ? ("battlefield-tavern-portrait", "battlefield-tavern-landscape") : nil
+    }
+    /// Composed art carries its own lamp and vignette; the generic shading would muddy it.
+    var hasBakedLighting: Bool { composedAssetNames != nil }
     static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .arena }
 }
 
 /// A square material crop keeps both orientations independent of painted slots,
 /// circles or frames. The actual board owns card placement and readable overlays.
+/// Composed tables are the exception: they pick the render made for the orientation.
 struct BattlefieldBackdropArt: View {
     let theme: BattlefieldBackdrop
 
     var body: some View {
-        if let asset = theme.assetName {
+        if let composed = theme.composedAssetNames {
+            GeometryReader { proxy in
+                Image(proxy.size.height >= proxy.size.width ? composed.portrait : composed.landscape)
+                    .resizable().scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+        } else if let asset = theme.assetName {
             Image(asset).resizable().scaledToFill()
         } else {
             LinearGradient(
