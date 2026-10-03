@@ -69,6 +69,8 @@ fun PortraitGameContent(
     finishAttackers: () -> Unit, finishBlockers: () -> Unit, setCombatSelection: (CombatSelectionState) -> Unit, selectOpponent: (String) -> Unit,
     openLog: () -> Unit, openSettings: () -> Unit, openPromptDetails: () -> Unit, viewZone: (String, List<ZoneCard>) -> Unit,
     openPromptDetailSheet: () -> Unit,
+    /** While declaring attackers or blockers: take back the last creature you declared. */
+    combatBack: (() -> Unit)? = null,
 ) {
     val tavernFrame = LocalTavernFrame.current
     val metrics = PortraitBattlefieldLayoutMetrics(size, paymentActive = InlinePaymentPromptState.isActive(snapshot), largeText = BoardMotion.largeText,
@@ -109,7 +111,7 @@ fun PortraitGameContent(
                 if (InlinePaymentPromptState.isActive(snapshot)) {
                     InlinePaymentPromptBar(snapshot, pendingActionId, runAction, runCommand, openPromptDetails, Modifier.weight(1f))
                 } else if (BoardDecisionPresentation.showsGuidance(snapshot)) {
-                    PromptPill(snapshot, Modifier.weight(1f), combatSelection)
+                    PromptPill(snapshot, Modifier.weight(1f), combatSelection, combatBack)
                 }
                 val revealed = snapshot.xmage?.revealed?.flatMap { it.cards } ?: emptyList()
                 val lookedAt = snapshot.xmage?.lookedAt?.flatMap { it.cards } ?: emptyList()

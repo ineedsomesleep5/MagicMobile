@@ -190,6 +190,8 @@ fun NativeGameView(
     var dragActionChoice by remember { mutableStateOf<DragActionChoice?>(null) }
     var combatSelection by remember { mutableStateOf(CombatSelectionState()) }
     var combatPreviewArrows by remember { mutableStateOf(listOf<CombatArrow>()) }
+    /** The order in which your attackers or blockers were declared, oldest first (CombatDeclarationObserver). */
+    var combatDeclarationOrder by remember { mutableStateOf(listOf<String>()) }
     /** Which opponent the top of the board shows; it follows the turn (BoardFocusTracker). */
     var focusTracker by remember { mutableStateOf(BoardFocusTracker()) }
     val followTurns by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
@@ -407,6 +409,33 @@ fun NativeGameView(
         return false
     }
 
+    /** Your creatures already declared in this combat step: attacking while you declare attackers, blocking while you declare blockers. */
+    fun declaredCombatCards(snap: GameSnapshot): List<ZoneCard> {
+        val you = snap.human ?: return emptyList()
+        val step = (snap.step ?: snap.phase).lowercase().replace("_", "-")
+        val attackers = step.contains("declare-attack")
+        val blockers = step.contains("declare-block")
+        return you.zones.battlefield.filter { card -> (attackers && card.isAttacking == true) || (blockers && !card.blocking.isNullOrEmpty()) }
+    }
+
+    /**
+     * Back while declaring attackers or blockers: select the latest declared creature again, which XMage takes as
+     * taking it back (the adapter keeps it an exposed target).
+     */
+    fun combatBackAction(snap: GameSnapshot): (() -> Unit)? {
+        if (pendingActionId != null) return null
+        val targetable = GameBoardInteractionState.boardTargetableIds(snap)
+        val candidates = declaredCombatCards(snap).filter { targetable.contains(it.id) || targetable.contains(it.instanceId) }
+        val fallback = candidates.lastOrNull() ?: return null
+        val latest = combatDeclarationOrder.lastOrNull { id -> candidates.any { it.id == id } }
+        val card = candidates.firstOrNull { it.id == latest } ?: fallback
+        return {
+            GameHaptics.selection(view)
+            submitTarget(card)
+            onInteractionFeedback("Took back ${card.card.name}")
+        }
+    }
+
     fun ingestBoardFX(snap: GameSnapshot) {
         val level = BoardFXLevel.resolved(boardFXLevel, BoardMotion.reduceMotion)
         val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis())
@@ -539,6 +568,9 @@ fun NativeGameView(
         io.magicmobile.android.ui.GameSoundSignature.cues(old.signature, new.signature).forEachIndexed { index, sound -> GameAudio.play(sound, index * 0.11) }
     }
     OnChange(board.aiWaitSignature) { _, _ -> updateAIWaitStart(board) }
+    OnChange(declaredCombatCards(board).map { it.id }) { _, current ->
+        combatDeclarationOrder = combatDeclarationOrder.filter { it in current } + current.filter { it !in combatDeclarationOrder }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             delay(2000)
@@ -631,7 +663,7 @@ fun NativeGameView(
                             onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
                             ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
                             { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
-                            { isStackSheetOpen = true })
+                            { isStackSheetOpen = true }, combatBackAction(board))
                     } else PortraitGameContent(board, human, opponent, size, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
                         combatSelection, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it }, { interactionMode = it },
                         inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, { inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null },
@@ -639,7 +671,8 @@ fun NativeGameView(
                         didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
                         onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
                         ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
-                        { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true })
+                        { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
+                        combatBackAction(board))
                     }
                 }
                 if (board.source == "design-preview") {

@@ -77,6 +77,15 @@ object OnDevicePromptAdapter {
                             if (!isUuid(card.id)) throw invalid("Invalid combat UUID")
                             if (targets.none { it.first == card.id }) targets += card.id to EngineDisplayText.label(card.card.name)
                         }
+                        // Likewise for blocks: selecting a creature that already blocks takes the block back (XMage's own
+                        // toggle), so the viewer's blockers stay selectable to change a block.
+                        if (key == "possibleBlockers") {
+                            for (card in players.firstOrNull { it.playerId == viewerPlayerID }?.zones?.battlefield ?: emptyList()) {
+                                if (card.blocking.isNullOrEmpty()) continue
+                                if (!isUuid(card.id)) throw invalid("Invalid combat UUID")
+                                if (targets.none { it.first == card.id }) targets += card.id to EngineDisplayText.label(card.card.name)
+                            }
+                        }
                         fields["targets"] = JsonArray(targets.map { jsonObject("id" to s(it.first), "label" to s(it.second)) })
                         if (prompt.responseTypes.contains("boolean")) actions += action("answer_yes_no", "Done", mapOf("confirmed" to b(true)))
                     }

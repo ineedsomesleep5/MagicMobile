@@ -79,6 +79,8 @@ import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernField
+import io.magicmobile.android.ui.tavernTitleBar
 import kotlinx.serialization.json.JsonPrimitive
 
 /** PromptPanelSection: a titled, bronze-edged group in the choices panel. */
@@ -351,12 +353,13 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
     fun abilityPicker(abilities: List<XmagePromptAbility>, prompt: PromptEnvelopeV2) {
         PromptMiniLabel("Abilities")
         val compactHeight = LocalConfigurationHeightCompact()
-        AdaptiveGrid(160f, 12f, abilities.size) { index ->
-            // Occurrences are distinct rows even if XMage repeats an ability UUID.
+        fun choiceCommand(index: Int) = command("choose_ability", prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, listOf(abilities[index].id))
+        // Rows of two, every cell top-aligned and as tall as its row, so the cards line up whatever the length of each
+        // ability's text. Occurrences are distinct rows even if XMage repeats an ability UUID.
+        EqualHeightAbilityRows(abilities.size, top = { index ->
             val ability = abilities[index]
-            val choiceCommand = command("choose_ability", prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, listOf(ability.id))
-            Column(Modifier.fillMaxWidth().background(MagicPalette.iron.copy(alpha = 0.7f), RoundedCornerShape(12.dp)).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val choiceCommand = choiceCommand(index)
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val source = ability.sourceCard
                 if (source != null) {
                     val enabled = pendingActionId == null && choiceCommand != null
@@ -371,9 +374,10 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
                 Text(ability.sourceName ?: "Ability", color = MagicPalette.parchment, style = SfText.subheadline(SfWeight.bold))
                 GameRulesText(ability.rulesText ?: ability.label, cardName = ability.sourceName, style = SfText.callout(), color = MagicPalette.parchment)
                 if (source == null) Text(ability.sourceUnavailableReason ?: "Source details unavailable", color = MagicPalette.parchment.copy(alpha = 0.6f), style = SfText.caption())
-                promptButton("Choose ability", "${prompt.id}-${ability.id}", choiceCommand, systemImage = "bolt.fill")
             }
-        }
+        }, bottom = { index ->
+            promptButton("Choose ability", "${prompt.id}-${abilities[index].id}", choiceCommand(index), systemImage = "bolt.fill")
+        })
     }
 
     @Composable
@@ -459,10 +463,11 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
             }
         } else {
             PromptMiniLabel("Amount")
-            AdaptiveGrid(44f, 6f, amounts.size) { index ->
+            // The number alone: a "#" icon beside it squeezed the number out of the button.
+            AdaptiveGrid(56f, 8f, amounts.size) { index ->
                 val amount = amounts[index]
                 promptButton("$amount", "${prompt.id}-amount-$amount",
-                    command(type, prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, amount = amount, amounts = listOf(amount)), systemImage = "number")
+                    command(type, prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, amount = amount, amounts = listOf(amount)), large = true)
             }
         }
     }
@@ -597,10 +602,18 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
             if (!choices.isNullOrEmpty()) {
                 LaunchedEffect("${prompt.id}:${prompt.messageId}") { choiceSearch = "" }
                 val matching = choices.filter { choices.size <= 20 || choiceSearch.isEmpty() || it.label.contains(choiceSearch, ignoreCase = true) }
+                // A search slot: the system-style field, or on the tavern board a recessed parchment slot.
+                val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
                 if (choices.size > 20) BasicTextField(choiceSearch, { choiceSearch = it }, Modifier.fillMaxWidth()
-                    .background(Color.Black, RoundedCornerShape(6.dp)).padding(10.dp).semantics { contentDescription = "Search choices" },
-                    singleLine = true, textStyle = SfText.body().copy(color = Color.White), cursorBrush = SolidColor(Color.White),
-                    decorationBox = { inner -> Box { if (choiceSearch.isEmpty()) Text("Search choices", color = Color.White.copy(alpha = 0.4f), style = SfText.body()); inner() } })
+                    .then(if (tavern) Modifier.tavernField() else Modifier.background(Color.Black, RoundedCornerShape(6.dp)).padding(10.dp))
+                    .semantics { contentDescription = "Search choices" },
+                    singleLine = true, textStyle = if (tavern) io.magicmobile.android.ui.tavernFieldTextStyle else SfText.body().copy(color = Color.White),
+                    cursorBrush = SolidColor(if (tavern) io.magicmobile.android.ui.TavernPalette.ink else Color.White),
+                    decorationBox = { inner -> Box(contentAlignment = Alignment.CenterStart) {
+                        if (choiceSearch.isEmpty()) Text("Search choices", color = if (tavern) io.magicmobile.android.ui.TavernPalette.ink.copy(alpha = 0.5f)
+                            else Color.White.copy(alpha = 0.4f), style = if (tavern) io.magicmobile.android.ui.tavernFieldTextStyle else SfText.body())
+                        inner()
+                    } })
                 if (matching.isEmpty()) Text("No matching choices", color = MagicPalette.parchment.copy(alpha = 0.6f), style = SfText.subheadline())
                 else optionGrid(matching.map { it.id to it.label }, prompt, "resolve_choice", "checkmark.circle")
             }
@@ -715,7 +728,15 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
         Column(Modifier.fillMaxSize().glow(Color.Black.copy(alpha = 0.22f), 8.dp, 8.dp)
             .background(Brush.verticalGradient(listOf(MagicPalette.iron.copy(alpha = 0.88f), MagicPalette.leather.copy(alpha = 0.80f), MagicPalette.laneWood.copy(alpha = 0.70f))), shape)
             .border(1.dp, MagicPalette.borderBronze.copy(alpha = 0.46f), shape).padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+                // The tavern's leather title bar: the prompt in engraved gold, whose turn it is on a tag and a wax seal to close.
+                Row(Modifier.fillMaxWidth().tavernTitleBar(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    io.magicmobile.android.ui.TavernPanelTitle(presentation?.title ?: "Prompt", Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.weight(1f))
+                    io.magicmobile.android.ui.TavernTag(priorityLabel, leather = true)
+                    io.magicmobile.android.ui.TavernSealButton({ GameHaptics.selection(haptics); dismiss() }, contentDescription = "Cancel prompt details")
+                }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 SfImage("wand.and.stars", MagicPalette.antiqueGold, 12.dp)
                 Text(presentation?.title?.uppercase() ?: "PROMPT", color = MagicPalette.antiqueGold, style = sf(10f, SfWeight.black))
                 Spacer(Modifier.weight(1f))
@@ -841,6 +862,42 @@ fun MobileSurfacesPanel(snapshot: GameSnapshot, viewZone: (String, List<ZoneCard
         }
         stackNames.firstOrNull()?.let { top ->
             FitText("Stack top: $top", sf(10f, SfWeight.bold), color = MagicPalette.priorityArcane.copy(alpha = 0.88f), minimumScale = 0.64f)
+        }
+    }
+}
+
+/**
+ * Ability choices in rows of two whose cells share their row's height (iOS Grid rows): each cell's card and text at
+ * the top and its button at the bottom, so the cards line up whatever the length of each ability's text.
+ */
+@Composable
+private fun EqualHeightAbilityRows(count: Int, top: @Composable (Int) -> Unit, bottom: @Composable (Int) -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    androidx.compose.ui.layout.Layout(content = {
+        for (i in 0 until count) Box(Modifier.background(MagicPalette.iron.copy(alpha = 0.7f), shape))
+        for (i in 0 until count) Box { top(i) }
+        for (i in 0 until count) Box { bottom(i) }
+    }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+        val columns = 2
+        val gap = 12.dp.roundToPx(); val pad = 12.dp.roundToPx(); val inner = 8.dp.roundToPx()
+        val cellWidth = ((constraints.maxWidth - gap) / columns).coerceAtLeast(0)
+        val content = androidx.compose.ui.unit.Constraints(maxWidth = (cellWidth - pad * 2).coerceAtLeast(0))
+        val tops = measurables.subList(count, 2 * count).map { it.measure(content) }
+        val bottoms = measurables.subList(2 * count, 3 * count).map { it.measure(content) }
+        val rows = (0 until count).chunked(columns)
+        val rowHeights = rows.map { row -> row.maxOf { tops[it].height + inner + bottoms[it].height + pad * 2 } }
+        val backgrounds = (0 until count).map { measurables[it].measure(androidx.compose.ui.unit.Constraints.fixed(cellWidth, rowHeights[it / columns])) }
+        layout(constraints.maxWidth, rowHeights.sum() + gap * maxOf(rows.size - 1, 0)) {
+            var y = 0
+            rows.forEachIndexed { r, row ->
+                row.forEachIndexed { column, i ->
+                    val x = column * (cellWidth + gap)
+                    backgrounds[i].place(x, y)
+                    tops[i].place(x + pad, y + pad)
+                    bottoms[i].place(x + pad, y + rowHeights[r] - pad - bottoms[i].height)
+                }
+                y += rowHeights[r] + gap
+            }
         }
     }
 }
