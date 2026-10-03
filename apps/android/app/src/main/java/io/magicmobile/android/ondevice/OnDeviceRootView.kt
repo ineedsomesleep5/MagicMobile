@@ -1,5 +1,18 @@
 package io.magicmobile.android.ondevice
 
+import androidx.compose.material3.LocalContentColor
+import io.magicmobile.android.ui.SfDesign
+import io.magicmobile.android.ui.glow
+import io.magicmobile.android.ui.engraved
+import io.magicmobile.android.ui.tavernBrassFrame
+import io.magicmobile.android.ui.tavernFill
+import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernTextField
+import io.magicmobile.android.ui.TavernToggle
+import io.magicmobile.android.ui.TavernStepper
+import io.magicmobile.android.ui.TavernPickerSection
+import io.magicmobile.android.ui.TavernPicker
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
@@ -737,78 +750,126 @@ fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks
             val horizontal = maxWidth > maxHeight
             val cardWidth = if (horizontal) minOf(150.dp, maxHeight * 0.36f) else minOf(168.dp, maxWidth * 0.41f, maxHeight * 0.2f)
             val height = maxHeight
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                val content: @Composable () -> Unit = {
-                    Column(Modifier.widthIn(max = 400.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (!horizontal) MenuIdentity(compact = false, playerName)
-                        HeroCommanderCard(commanderName, cardWidth)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.semantics { contentDescription = commanderName?.let { "Your deck: $deckName, commander $it" } ?: "Your deck: $deckName" }) {
-                            Text("YOUR DECK", color = BrandTheme.ember, style = sf(11f, SfWeight.heavy, tracking = 2.4f))
-                            Text(deckName, color = BrandTheme.ink, style = sf(22f, SfWeight.heavy).copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.7f),
-                                androidx.compose.ui.geometry.Offset(0f, 1f), 2f)), textAlign = TextAlign.Center)
-                            if (!commanderName.isNullOrEmpty()) Text(commanderName, color = BrandTheme.inkSecondary, style = SfText.footnote(), textAlign = TextAlign.Center)
+            // Landscape (Caleb, 2026-10-02): no scrolling, so the menu stays in place. Short screens tighten the
+            // brand block; anything still too tall scales to fit.
+            val density = if (!horizontal) 0 else if (height < 400.dp) 2 else if (height < 470.dp) 1 else 0
+            // The deck and commander beside (landscape) or above (portrait) the actions; landscape gives each half the width.
+            val deckPart: @Composable (Modifier) -> Unit = { partModifier ->
+                Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (!horizontal) MenuIdentity(compact = false, playerName, 0)
+                    HeroCommanderCard(commanderName, cardWidth)
+                    MenuDeckTile(deckName, commanderName)
+                }
+            }
+            val actionsPart: @Composable (Modifier) -> Unit = { partModifier ->
+                Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(when (density) { 0 -> 14.dp; 1 -> 10.dp; else -> 8.dp })) {
+                    if (horizontal) Box(Modifier.padding(bottom = if (density == 0) 8.dp else 2.dp)) { MenuIdentity(compact = true, playerName, density) }
+                    BrandButton({ GameAudio.play(GameSound.MENU_PLAY); play() }, Modifier.semantics { contentDescription = "Play Commander" }) {
+                        SfImage("flame.fill", LocalContentColor.current, 19.dp)
+                        Text("Play Commander", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
+                            style = sf(19f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                        SfImage("chevron.right", LocalContentColor.current, 15.dp)
+                    }
+                    BrandButton({ GameAudio.play(GameSound.UI_OPEN); decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
+                        SfImage("rectangle.stack.fill", LocalContentColor.current, 17.dp)
+                        Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
+                            style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                        SfImage("chevron.right", LocalContentColor.current, 14.dp)
+                    }
+                    friends?.let { openFriends ->
+                        BrandButton({ GameAudio.play(GameSound.UI_OPEN); openFriends() }, Modifier.semantics {
+                            contentDescription = if (friendsBadge > 0) "Friends, $friendsBadge online or waiting" else "Friends"
+                        }, kind = BrandButtonKind.SECONDARY) {
+                            SfImage("person.2.fill", LocalContentColor.current, 17.dp)
+                            Text("Friends", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
+                                style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                            if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
+                                color = Color.White, style = sf(13f, SfWeight.black))
+                            SfImage("chevron.right", LocalContentColor.current, 14.dp)
                         }
                     }
-                    Column(Modifier.widthIn(max = 400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        if (horizontal) Box(Modifier.padding(bottom = 8.dp)) { MenuIdentity(compact = true, playerName) }
-                        BrandButton({ GameAudio.play(GameSound.MENU_PLAY); play() }, Modifier.semantics { contentDescription = "Play Commander" }) {
-                            SfImage("flame.fill", BrandTheme.emberInk, 19.dp)
-                            Text("Play Commander", Modifier.weight(1f).padding(start = 4.dp), color = BrandTheme.emberInk, style = sf(19f, SfWeight.heavy))
-                            SfImage("chevron.right", BrandTheme.emberInk, 15.dp)
-                        }
-                        BrandButton({ GameAudio.play(GameSound.UI_OPEN); decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
-                            SfImage("rectangle.stack.fill", BrandTheme.ink, 17.dp)
-                            Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = BrandTheme.ink, style = sf(17f, SfWeight.bold))
-                            SfImage("chevron.right", BrandTheme.ink, 14.dp)
-                        }
-                        friends?.let { openFriends ->
-                            BrandButton({ GameAudio.play(GameSound.UI_OPEN); openFriends() }, Modifier.semantics {
-                                contentDescription = if (friendsBadge > 0) "Friends, $friendsBadge online or waiting" else "Friends"
-                            }, kind = BrandButtonKind.SECONDARY) {
-                                SfImage("person.2.fill", BrandTheme.ink, 17.dp)
-                                Text("Friends", Modifier.weight(1f).padding(start = 4.dp), color = BrandTheme.ink, style = sf(17f, SfWeight.bold))
-                                if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
-                                    color = Color.White, style = sf(13f, SfWeight.black))
-                                SfImage("chevron.right", BrandTheme.ink, 14.dp)
+                    // iOS ViewThatFits: one row with the widest gap that fits, else a column.
+                    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        val count = 1 + listOfNotNull(news, downloads, howToPlay).size
+                        val gap = listOf(20.dp, 8.dp, 0.dp).firstOrNull { 72.dp * count + it * (count - 1) <= maxWidth }
+                        val utilities: @Composable () -> Unit = {
+                            BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
+                            news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
+                            downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
+                            howToPlay?.let {
+                                BrandIconButton(HowToPlayText.TITLE, "questionmark.circle", { GameAudio.play(GameSound.PAGE_FLIP); it() },
+                                    Modifier.testTag("menu.howToPlay"))
                             }
                         }
-                        // iOS ViewThatFits: one row with the widest gap that fits, else a column.
-                        BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                            val count = 1 + listOfNotNull(news, downloads, howToPlay).size
-                            val gap = listOf(20.dp, 8.dp, 0.dp).firstOrNull { 72.dp * count + it * (count - 1) <= maxWidth }
-                            val utilities: @Composable () -> Unit = {
-                                BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
-                                news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
-                                downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
-                                howToPlay?.let {
-                                    BrandIconButton(HowToPlayText.TITLE, "questionmark.circle", { GameAudio.play(GameSound.PAGE_FLIP); it() },
-                                        Modifier.testTag("menu.howToPlay"))
-                                }
-                            }
-                            if (gap != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally)) { utilities() }
-                            else Column { utilities() }
-                        }
+                        if (gap != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally)) { utilities() }
+                        else Column { utilities() }
                     }
                 }
-                Box(Modifier.fillMaxWidth().heightIn(min = height).alpha(alpha).offset(y = offset.dp)
-                    .padding(horizontal = if (horizontal) 36.dp else 26.dp, vertical = if (horizontal) 16.dp else 12.dp), contentAlignment = Alignment.Center) {
-                    if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) { content() }
-                    else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) { content() }
+            }
+            if (horizontal) {
+                // A fixed screen that never scrolls: laid out at its natural height and scaled down only if taller.
+                FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
+                    Row(Modifier.widthIn(max = 960.dp).fillMaxWidth().padding(horizontal = 36.dp, vertical = if (density == 0) 16.dp else 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
+                        deckPart(Modifier.weight(1f)); actionsPart(Modifier.weight(1f))
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.fillMaxWidth().heightIn(min = height).alpha(alpha).offset(y = offset.dp)
+                        .padding(horizontal = 26.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            deckPart(Modifier); actionsPart(Modifier)
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+/** Lays its content out at its natural height and scales it down only if that is taller than the space, keeping it centred. */
 @Composable
-private fun MenuIdentity(compact: Boolean, playerName: String) {
-    Column(horizontalAlignment = if (compact) Alignment.Start else Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        BrandMark(if (compact) 52.dp else 64.dp)
-        Text("MAGICMOBILE", color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.heavy, tracking = 3f))
-        BrandTitle("Your next\ngreat game.", if (compact) 32f else 36f, textAlign = if (compact) TextAlign.Start else TextAlign.Center)
-        if (playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = BrandTheme.inkSecondary, style = SfText.subheadline(),
+private fun FitsHeight(modifier: Modifier, content: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(content, modifier) { measurables, constraints ->
+        val placeable = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
+        val height = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
+        val scale = if (placeable.height > height) height.toFloat() / placeable.height else 1f
+        layout(width, height) {
+            placeable.placeWithLayer((width - placeable.width) / 2, (height - placeable.height) / 2) { scaleX = scale; scaleY = scale }
+        }
+    }
+}
+
+/** Walnut & Ember: the deck's name on a parchment label in brass trim. */
+@Composable
+private fun MenuDeckTile(deckName: String, commanderName: String?) {
+    Column(Modifier.glow(Color.Black.copy(alpha = 0.45f), 6.dp, 9.dp)
+        .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(9.dp)).tavernBrassFrame(0.6f)
+        .padding(horizontal = 22.dp, vertical = 9.dp)
+        .semantics(mergeDescendants = true) { contentDescription = commanderName?.let { "Your deck: $deckName, commander $it" } ?: "Your deck: $deckName" },
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("YOUR DECK", color = io.magicmobile.android.studio.DeckStudioPalette.accent, style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.2f))
+        Text(deckName, color = TavernPalette.ink, style = sf(21f, SfWeight.heavy, SfDesign.SERIF), textAlign = TextAlign.Center)
+        if (!commanderName.isNullOrEmpty()) Text(commanderName, color = io.magicmobile.android.studio.DeckStudioPalette.secondaryInk,
+            style = sf(13f, design = SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), textAlign = TextAlign.Center)
+    }
+}
+
+/** The brand block. `density` 0 is the full layout; 1 and 2 tighten it to fit a short landscape screen. */
+@Composable
+private fun MenuIdentity(compact: Boolean, playerName: String, density: Int) {
+    Column(horizontalAlignment = if (compact) Alignment.Start else Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(if (density == 0) 8.dp else 5.dp)) {
+        BrandMark(if (compact) (when (density) { 0 -> 52.dp; 1 -> 42.dp; else -> 34.dp }) else 64.dp)
+        if (density < 2) Text("MAGICMOBILE", color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.heavy, tracking = 3f))
+        // Tighter landscape layouts set the title on one line.
+        BrandTitle(if (density == 0) "Your next\ngreat game." else "Your next great game.",
+            if (compact) (when (density) { 0 -> 32f; 1 -> 27f; else -> 24f }) else 36f, textAlign = if (compact) TextAlign.Start else TextAlign.Center)
+        if (density < 2 && playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = BrandTheme.inkSecondary, style = SfText.subheadline(),
             textAlign = if (compact) TextAlign.Start else TextAlign.Center)
     }
 }
@@ -876,24 +937,15 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                 Column(Modifier.fillMaxWidth().brandPanel(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     BrandDivider(Modifier.fillMaxWidth(), title = "Your seat")
                     val profileName = LocalPlayerAccount.current?.username
-                    IosTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" },
+                    TavernTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" },
                         enabled = !seatLocked && profileName == null)
                     Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters.",
                         color = setupSecondary, style = SfText.caption())
-                    IosToggle(portraitModeEnabled, setPortraitModeEnabled, tint = setupAccent) {
-                        Text("Auto-Rotate", color = setupInk, style = SfText.subheadline())
-                    }
-                    val deckTitle = setup.deck(selectedDeckID)?.name ?: "Choose a deck"
-                    IosMenuPicker(deckTitle, {
-                        buildList {
-                            add(MenuEntry.Section("Included precons"))
-                            setup.precons.forEach { precon -> add(MenuEntry.Item(precon.name, checked = selectedDeckID == "precon:${precon.id}") { selectDeck("precon:${precon.id}") }) }
-                            if (setup.localDecks.isNotEmpty()) {
-                                add(MenuEntry.Section("Saved on this device"))
-                                setup.localDecks.forEach { saved -> add(MenuEntry.Item(saved.deck.name, checked = selectedDeckID == "local:${saved.id}") { selectDeck("local:${saved.id}") }) }
-                            }
-                        }
-                    }, enabled = !seatLocked, label = "Your deck")
+                    TavernToggle("Auto-Rotate", portraitModeEnabled, setPortraitModeEnabled)
+                    TavernPicker("Your deck", selectedDeckID, listOfNotNull(
+                        TavernPickerSection("Included precons", setup.precons.map { it.name to "precon:${it.id}" }),
+                        setup.localDecks.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection("Saved on this device", decks.map { it.deck.name to "local:${it.id}" }) }),
+                        selectDeck, enabled = !seatLocked)
                     BrandButton(openDecks, kind = BrandButtonKind.SECONDARY, enabled = !seatLocked) {
                         SfImage("rectangle.stack.badge.plus", BrandTheme.ink, 17.dp)
                         BrandButtonText("Browse, import or edit decks", BrandButtonKind.SECONDARY)
@@ -910,16 +962,15 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                                 setup.identity != null && !setup.isBusy && !setup.needsLeave,
                             hostOnline, joinOnline, readyOnline)
                     } else {
-                        IosStepper("AI opponents: $opponentCount", opponentCount, 1..3, setOpponentCount, enabled = !locked, color = setupInk)
+                        TavernStepper("AI opponents: $opponentCount", opponentCount, 1..3, setOpponentCount, enabled = !locked)
                         for (index in 0 until opponentCount.coerceIn(1, 3)) {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("AI ${index + 1} deck", color = setupSecondary, style = SfText.caption())
-                                IosMenuPicker(setup.precons.firstOrNull { it.id == aiIDs[index] }?.name ?: "Choose a deck", {
-                                    setup.precons.map { precon -> MenuEntry.Item(precon.name, checked = precon.id == aiIDs[index]) { selectAIDeck(index, precon.id) } }
-                                }, enabled = !locked, label = "AI ${index + 1} deck")
+                                TavernPicker("AI ${index + 1} deck", aiIDs[index], listOf(TavernPickerSection(null, setup.precons.map { it.name to it.id })),
+                                    { selectAIDeck(index, it) }, enabled = !locked, showsTitle = false)
                             }
                         }
-                        IosStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked, color = setupInk)
+                        TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked)
                         Text("Higher skill levels allow more thinking and may slow turns.", color = setupSecondary, style = SfText.caption())
                         IosSegmented(listOf("choose", "roll"), startingMode, { if (!locked) setStartingMode(it) }, { if (it == "roll") "Roll D20" else "Choose" })
                         Text(if (startingMode == "roll") "Everyone rolls a D20. The highest roll starts; ties reroll." else "Choose the starting player when the match begins.",
@@ -945,9 +996,7 @@ private fun ArtworkPreferenceToggle() {
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(Artwork.enabled(context)) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        IosToggle(enabled, { value -> enabled = value; Artwork.setEnabled(context, value) }, tint = setupAccent) {
-            Text("Scryfall live images", color = setupInk, style = SfText.body())
-        }
+        TavernToggle("Scryfall live images", enabled, { value -> enabled = value; Artwork.setEnabled(context, value) })
         Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.", color = setupSecondary, style = SfText.caption())
         Text("Scryfall receives card names—including your hand—and your IP address.", color = setupSecondary, style = SfText.caption())
     }
@@ -956,7 +1005,8 @@ private fun ArtworkPreferenceToggle() {
 /** AppearanceSettingsView (Board/MainMenuViews.swift). */
 @Composable
 private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, inGame: Boolean, done: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(io.magicmobile.android.ui.rgb(0.08, 0.07, 0.065))) {
+    Column(Modifier.fillMaxWidth().tavernFill(TavernMaterial.LEATHER,
+        overlayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))) {
         IosSheetHeader("Settings", done)
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (inGame) ArtworkPreferenceToggle()
@@ -1015,26 +1065,21 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
     val locked = setup.isBusy || setup.needsLeave
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (table == null) {
-            IosMenuPicker("$players players", { (2..4).map { count -> MenuEntry.Item("$count players", checked = count == players) { setPlayers(count) } } },
-                enabled = !locked, label = "Human players")
-            IosStepper("AI opponents: $aiCount", aiCount, 0..maxOf(0, 4 - players), { storedAICount = it }, enabled = !locked, color = setupInk)
+            TavernPicker("Human players", players, listOf(TavernPickerSection(null, (2..4).map { "$it players" to it })), setPlayers, enabled = !locked)
+            TavernStepper("AI opponents: $aiCount", aiCount, 0..maxOf(0, 4 - players), { storedAICount = it }, enabled = !locked)
             for (index in 0 until aiCount) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("AI ${index + 1} deck", color = setupSecondary, style = SfText.caption())
-                    IosMenuPicker(setup.precons.firstOrNull { it.id == aiIDs[index] }?.name ?: "Choose a deck", {
-                        setup.precons.map { precon -> MenuEntry.Item(precon.name, checked = precon.id == aiIDs[index]) { selectAIDeck(index, precon.id) } }
-                    }, enabled = !locked, label = "AI ${index + 1} deck")
-                }
+                TavernPicker("AI ${index + 1} deck", aiIDs[index], listOf(TavernPickerSection(null, setup.precons.map { it.name to it.id })),
+                    { selectAIDeck(index, it) }, enabled = !locked)
             }
             if (aiCount > 0) {
-                IosStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked, color = setupInk)
+                TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked)
                 Text("The host’s AI choices apply to everyone. Higher skill may slow turns.", color = setupSecondary, style = SfText.caption())
             }
             Text("Share the invite link, or friends type the table code. Every player needs this app version and keeps it open during the match.",
                 color = setupSecondary, style = SfText.caption())
             BrandButton(host, Modifier.semantics { contentDescription = "Host a table" }, enabled = mayHost) { BrandButtonText("Host a table") }
             BrandDivider(Modifier.fillMaxWidth(), title = "or join")
-            IosTextField(code, { value -> setup.relayJoinCode = value.uppercase().filter { it in TableJoinLink.ALPHABET }.take(6) }, "Table code",
+            TavernTextField(code, { value -> setup.relayJoinCode = value.uppercase().filter { it in TableJoinLink.ALPHABET }.take(6) }, "Table code",
                 Modifier.semantics { contentDescription = "Table code" }, enabled = !locked)
             BrandButton({ join(code) }, kind = BrandButtonKind.SECONDARY, enabled = mayHost && code.length == 6) {
                 BrandButtonText("Join table", BrandButtonKind.SECONDARY)

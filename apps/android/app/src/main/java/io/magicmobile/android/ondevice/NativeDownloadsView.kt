@@ -223,10 +223,9 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
                 FormButton("Check for missing artwork", !running && !scanning, "downloads.check") { runScan() }
             }
             FormSection("Download", "You can play or leave the app while images download. Wi-Fi is recommended.") {
-                IosToggle(remoteArtwork, { enabled -> Artwork.setEnabled(context, enabled); if (!enabled && running) ArtworkDownloadService.pause(context) }, tint = BrandTheme.ember,
-                    modifier = Modifier.semantics { contentDescription = "nativeArtwork.downloads" }) {
-                    Text("Download card artwork", color = Color.White, style = sf(17f))
-                }
+                io.magicmobile.android.ui.TavernToggle("Download card artwork", remoteArtwork,
+                    { enabled -> Artwork.setEnabled(context, enabled); if (!enabled && running) ArtworkDownloadService.pause(context) },
+                    Modifier.semantics { contentDescription = "nativeArtwork.downloads" })
                 Text("Uses Scryfall. Online requests share your IP and card names, including your hand.", Modifier.padding(bottom = 8.dp), color = secondary, style = sf(12f))
                 RowDivider()
                 val progress = downloadState.progress

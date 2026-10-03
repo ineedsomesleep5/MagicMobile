@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
@@ -64,6 +65,8 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.TavernStackTray
+import io.magicmobile.android.game.PlayerStatusSummary
 
 /** On-device turn skipping (Swift NativeTurnControl), provided by the session owner. */
 data class NativeTurnControl(val canEndTurn: Boolean, val canSkipResponses: Boolean, val canSkipToMyTurn: Boolean, val isAutoPassing: Boolean,
@@ -99,9 +102,10 @@ private fun DockButton(onClick: () -> Unit, isPrimary: Boolean, enabled: Boolean
     }
 }
 
-/** GameplayDockMenuButtonStyle: a 44-point iron circle. */
+/** GameplayDockMenuButtonStyle: a 44-point iron circle, or on the tavern table a small brass ring beside the hourglass. */
 @Composable
 private fun DockCircle(pressed: Boolean = false, content: @Composable () -> Unit) {
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) { TavernRingLabel(pressed, content); return }
     Box(Modifier.size(44.dp).background(if (pressed) MagicPalette.brass.copy(alpha = 0.62f) else MagicPalette.iron.copy(alpha = 0.84f), CircleShape)
         .iosCircleOutline(), contentAlignment = Alignment.Center) { content() }
 }
@@ -134,11 +138,15 @@ fun YieldActionsControl(snapshot: GameSnapshot, actions: List<LegalAction>, font
     }
 }
 
+/** The tavern table renders one part of the horizontal dock on each socket. */
+enum class TavernDockPart { SKIP, MENU, PRIMARY }
+
 /** Board/GameplayActionDock.swift GameplayActionDock: the primary Pass/Choice button, skip options and the controls menu. */
 @Composable
 fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldActions: List<LegalAction>, pendingActionId: String?,
                        openPromptDetails: () -> Unit, openLog: () -> Unit, openSettings: () -> Unit, runAction: (LegalAction) -> Unit,
-                       modifier: Modifier = Modifier, compact: Boolean = false, landscapeSidebar: Boolean = false, horizontal: Boolean = false) {
+                       modifier: Modifier = Modifier, compact: Boolean = false, landscapeSidebar: Boolean = false, horizontal: Boolean = false,
+                       tavernPart: TavernDockPart? = null, tavernPassDiameter: androidx.compose.ui.unit.Dp = 100.dp) {
     val nativeTurnControl = LocalNativeTurnControl.current
     val promptActions = CompactPromptPopup.compactLegalPromptActions(snapshot)
     // No "Open Choice" while the starting roll covers the board: the roll answers that prompt.
@@ -174,17 +182,21 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
     @Composable
     fun controlsMenu() {
         val many = model.mode == GameActionDockModel.Mode.PROMPT && model.promptActions.size > 1
+        // The tavern's leather pop-over names its rows with icons, like the iOS TavernMenu.
+        val tavernRows = tavernPart != null
         BoardMenu({
             buildList {
                 if (model.mode == GameActionDockModel.Mode.PROMPT) {
                     model.promptActions.filter { it.id != model.primaryAction?.id }.forEach { action ->
                         add(MenuEntry.Item(action.label, enabled = pendingActionId == null) { runAction(action) })
                     }
-                    add(MenuEntry.Item("All Choices", action = openPromptDetails))
+                    add(MenuEntry.Item("All Choices", if (tavernRows) "list.bullet.rectangle.portrait" else null, action = openPromptDetails))
                     add(MenuEntry.Divider)
                 }
                 add(MenuEntry.Item("Game Log", "list.bullet.rectangle", action = openLog))
-                if (snapshot.source == "xmage-ondevice" && model.mode != GameActionDockModel.Mode.PROMPT) add(MenuEntry.Item("More actions", action = openPromptDetails))
+                if (snapshot.source == "xmage-ondevice" && model.mode != GameActionDockModel.Mode.PROMPT) {
+                    add(MenuEntry.Item("More actions", if (tavernRows) "ellipsis" else null, action = openPromptDetails))
+                }
                 add(MenuEntry.Item("Game Settings", "gearshape.fill", action = openSettings))
             }
         }, Modifier.semantics { contentDescription = if (many) "More choices and game controls" else "Game controls" }) {
@@ -233,7 +245,22 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
         }
     }
 
-    if (horizontal) {
+    if (tavernPart != null) {
+        when (tavernPart) {
+            TavernDockPart.SKIP -> secondaryControl(modifier.size(44.dp))
+            TavernDockPart.MENU -> Box(modifier) { controlsMenu() }
+            // Passing priority is the hourglass alone (waiting is its dim face), so neither shows a title.
+            TavernDockPart.PRIMARY -> TavernPassStage(model.isPrimaryEnabled, model.primaryAction != null, model.primaryTitle,
+                showsTitle = !(model.mode == GameActionDockModel.Mode.PRIORITY && model.primaryAction?.type == "pass_priority") && model.isPrimaryEnabled,
+                diameter = tavernPassDiameter,
+                actionKey = "${model.primaryAction?.id ?: "none"}:${snapshot.promptEnvelopeV2?.id ?: "none"}:${model.primaryAction?.messageId ?: snapshot.promptEnvelopeV2?.messageId ?: -1}",
+                onClick = {
+                    val primary = model.primaryAction
+                    if (primary != null) runAction(primary) else if (model.mode == GameActionDockModel.Mode.PROMPT) openPromptDetails()
+                }, modifier = modifier,
+                contentDescription = model.primaryTitle + if (showsPriorityHelp) ". " + GameplayActionPresentation.priorityHint(hasStackForPriority) else "")
+        }
+    } else if (horizontal) {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             secondaryControl(Modifier.width(44.dp))
             controlsMenu()
@@ -260,6 +287,13 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
     var isEmotePickerOpen by remember { mutableStateOf(false) }
     val emoteCenter = LocalEmoteCenter.current
     val viewerActive = snapshot.isViewer(snapshot.activePlayerId)
+    val tavernFrame = LocalTavernFrame.current
+    if (tavernFrame != null) {
+        TavernCommandBar(tavernFrame, human, manaPool, passAction, yieldActions, pendingActionId, snapshot, openLog, openSettings, openPromptDetails,
+            viewZone, runAction, runCommand, { isStackOpen = true }, Modifier.zIndex(5f))
+        if (isStackOpen) BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection) { isStackOpen = false } }
+        return
+    }
     Column(modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             PlayerZoneMenu(human, viewZone, snapshot, pendingActionId)
@@ -303,5 +337,76 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
     }
     if (isStackOpen) {
         BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection) { isStackOpen = false } }
+    }
+}
+
+/**
+ * Walnut Tavern (PortraitBottomCommandBar.tavernLayout): every control sits on a socket of the table plate, as
+ * a full-board layer. Your commander medallion opens your zones, the mana gems sit in the rail, the hourglass
+ * passes, Skip and the controls menu are small rings beside it, and the stack tray waits under the rail.
+ */
+@Composable
+private fun TavernCommandBar(frame: TavernFrame, human: PlayerGameState, manaPool: ManaPool?, passAction: LegalAction?, yieldActions: List<LegalAction>,
+                             pendingActionId: String?, snapshot: GameSnapshot, openLog: () -> Unit, openSettings: () -> Unit,
+                             openPromptDetails: () -> Unit, viewZone: (String, List<ZoneCard>) -> Unit, runAction: (LegalAction) -> Unit,
+                             runCommand: (GameCommand, String, String) -> Unit, openStack: () -> Unit, modifier: Modifier = Modifier) {
+    val sockets = frame.sockets
+    val emoteCenter = LocalEmoteCenter.current
+    @Composable
+    fun dock(part: TavernDockPart, modifier: Modifier) {
+        GameplayActionDock(snapshot, passAction, yieldActions, pendingActionId, openPromptDetails, openLog, openSettings, runAction, modifier,
+            horizontal = true, tavernPart = part, tavernPassDiameter = frame.passDiameter().dp)
+    }
+    Box(modifier.fillMaxSize()) {
+        // Your commander's portrait in the life socket; it opens your zones like the classic grid button.
+        val diameter = frame.length(sockets.lifeHoleRadius * 2).dp
+        val commanderReady = GameplayAffordances.commanderCastAvailable(human, snapshot, pendingActionId)
+        Box(Modifier.tavernPosition(frame, sockets.lifeMedallion)) {
+            Box(Modifier.cardBounds(TavernSeatAnchor.bottom)) {
+                TavernPlayerZoneMenu(human, viewZone, snapshot = snapshot, pendingActionID = pendingActionId,
+                    contentDescription = "Your life: ${human.life}" + if (commanderReady) ", commander cast available" else "") {
+                    TavernMedallion(diameter, human.life, active = snapshot.isViewer(snapshot.activePlayerId), commanderReady = commanderReady) {
+                        PlayerPortrait(human, diameter)
+                    }
+                }
+            }
+            if (emoteCenter != null) {
+                EmoteBubbleSlot(emoteCenter, human.playerId, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-56).dp)
+                    .wrapContentSize(unbounded = true).zIndex(5f))
+            }
+        }
+        // A mana gem centred on its rail socket; a payable gem is a button, exactly like the classic mana row.
+        val payable = GameplayAffordances.floatingManaSymbols(snapshot, pendingActionId)
+        val values = listOf("W" to (manaPool?.W ?: 0), "U" to (manaPool?.U ?: 0), "B" to (manaPool?.B ?: 0), "R" to (manaPool?.R ?: 0),
+            "G" to (manaPool?.G ?: 0), "C" to (manaPool?.C ?: 0))
+        values.forEachIndexed { index, (symbol, count) ->
+            val at = Modifier.tavernPosition(frame, io.magicmobile.android.game.BoardPoint(sockets.manaSocketXs[index], sockets.manaSocketY))
+            val canPay = symbol in payable
+            if (canPay) {
+                PressableBox({
+                    if (pendingActionId == null) GameplayAffordances.floatingManaCommand(symbol, snapshot)?.let { command ->
+                        runCommand(command, "Spend floating {$symbol}", "floating-${snapshot.promptEnvelopeV2?.id ?: ""}-$symbol")
+                    }
+                }, at.size(44.dp).semantics { contentDescription = "Spend floating $symbol mana, $count available" }) {
+                    TavernManaGemFace(symbol, count, payable = true, diameter = frame.length(26f).dp)
+                }
+            } else {
+                TavernManaGemFace(symbol, count, at.semantics { contentDescription = "$symbol mana, $count" }, diameter = frame.length(26f).dp)
+            }
+        }
+        dock(TavernDockPart.PRIMARY, Modifier.tavernPosition(frame, sockets.passButton))
+        // Skip and the controls ring orbit the hourglass.
+        dock(TavernDockPart.SKIP, Modifier.tavernPosition(frame, sockets.skip))
+        dock(TavernDockPart.MENU, Modifier.tavernPosition(frame, sockets.menu))
+        val stackCount = snapshot.xmage?.stack?.size ?: human.zones.stack.size
+        if (stackCount > 0) {
+            TavernStackTray(stackCount, snapshot.stackTopFirst.firstOrNull()?.name, openStack,
+                Modifier.tavernPosition(frame, sockets.stackTray), width = if (frame.isLandscape) 106.dp else 124.dp)
+        }
+        // Counters and attached cards live in the medallion's pop-over; poison and commander damage also show here at a glance.
+        Row(Modifier.tavernPosition(frame, sockets.chat), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            TavernStatusGlance(PlayerStatusSummary(human, snapshot))
+            emoteCenter?.let { TableChatButton(it) }
+        }
     }
 }

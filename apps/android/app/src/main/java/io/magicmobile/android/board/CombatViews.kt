@@ -38,6 +38,7 @@ import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
+import io.magicmobile.android.ui.glow
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -77,8 +78,9 @@ fun PortraitCombatArrowOverlay(snapshot: GameSnapshot, groups: List<XmageCombatG
         if (!(kind == null || kind.lowercase() == "player")) return null
         val rect = when {
             // The bottom seat: the viewer, or their stand-in while they watch.
-            CombatPlayerIdentity.ids(snapshot.seatID, snapshot).contains(id) -> metrics.bottomControlsRect
-            focusedOpponentID != null && CombatPlayerIdentity.ids(focusedOpponentID, snapshot).contains(id) -> metrics.topHUDRect
+            // On the tavern table the arrow ends at the seat's medallion.
+            CombatPlayerIdentity.ids(snapshot.seatID, snapshot).contains(id) -> renderedBounds[TavernSeatAnchor.bottom] ?: metrics.bottomControlsRect
+            focusedOpponentID != null && CombatPlayerIdentity.ids(focusedOpponentID, snapshot).contains(id) -> renderedBounds[TavernSeatAnchor.top] ?: metrics.topHUDRect
             else -> return null
         }
         return BoardPoint(rect.midX, rect.midY)
@@ -128,8 +130,17 @@ fun CombatEdgeIndicators(cards: List<ZoneCard>, combatIDs: Set<String>, bounds: 
         val members = cards.filter { it.instanceId in cluster.cardIDs }
         Box(Modifier.offset { IntOffset(((cluster.point.x - 22) * density).roundToInt(), ((cluster.point.y - 22) * density).roundToInt()) }
             .semantics { contentDescription = "${members.size} offscreen combat cards. Choose a card to inspect" }) {
-            BoardMenu({ members.map { card -> MenuEntry.Item("Inspect ${card.card.name}") { inspect(card) } } }) {
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+            val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
+            BoardMenu({ members.map { card -> MenuEntry.Item("Inspect ${card.card.name}", if (tavern) "magnifyingglass" else null) { inspect(card) } } }) {
+                if (tavern) {
+                    // A brass coin with crossed swords marks fighters scrolled out of view.
+                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(30.dp).glow(Color.Red.copy(alpha = 0.6f), 5.dp, 15.dp).tavernCoinBack(), contentAlignment = Alignment.Center) {
+                            SfImage("figure.fencing", io.magicmobile.android.ui.rgb(1.0, 0.55, 0.4), 13.dp)
+                        }
+                        if (members.size > 1) io.magicmobile.android.ui.TavernCoin(members.size, 16.dp, Modifier.align(Alignment.TopEnd))
+                    }
+                } else Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.size(26.dp).background(Color.White, CircleShape))
                     SfImage("arrow.left.and.right.circle.fill", Color.Red, 26.dp)
                     if (members.size > 1) Text("${members.size}", Modifier.align(Alignment.TopEnd).background(Color.Black, CircleShape).padding(3.dp),

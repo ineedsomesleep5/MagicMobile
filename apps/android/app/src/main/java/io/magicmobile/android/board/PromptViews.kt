@@ -58,6 +58,15 @@ import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.LocalTavernBoard
+import io.magicmobile.android.ui.TavernGenericGem
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.TavernRibbon
+import io.magicmobile.android.ui.TavernTag
+import io.magicmobile.android.ui.engraved
+import io.magicmobile.android.ui.tavernBrassFrame
+import io.magicmobile.android.ui.tavernFill
 
 val GuidanceTone.color: Color get() = when (this) {
     GuidanceTone.GOLD -> MagicPalette.antiqueGold
@@ -67,14 +76,35 @@ val GuidanceTone.color: Color get() = when (this) {
     GuidanceTone.ARCANE -> MagicPalette.arcaneBlue
 }
 
-/** The center-strip guidance: whose decision it is and what to do. */
+/**
+ * The center-strip guidance: whose decision it is and what to do. On the tavern table it is a leather ribbon
+ * whose tag keeps the prompt's colour cue. `back`, while declaring attackers or blockers, takes back the last
+ * creature you declared.
+ */
 @Composable
-fun PromptPill(snapshot: GameSnapshot, modifier: Modifier = Modifier, combatSelection: CombatSelectionState = CombatSelectionState()) {
+fun PromptPill(snapshot: GameSnapshot, modifier: Modifier = Modifier, combatSelection: CombatSelectionState = CombatSelectionState(),
+               back: (() -> Unit)? = null) {
     val waitingOnHuman = snapshot.isViewer(snapshot.waitingOnPlayerId) ||
         (snapshot.waitingOnPlayerId == null && snapshot.isViewer(snapshot.priorityPlayerId)) ||
         CompactPromptPopup.compactLegalPromptActions(snapshot).isNotEmpty()
     val guidance = PromptGuidance(snapshot, waitingOnHuman, combatSelection)
     val color = guidance.tone.color
+    @Composable
+    fun backButton() {
+        CompactActionButton({ back?.invoke() }, Modifier.semantics { contentDescription = "Take back the last declaration" }) {
+            SfImage("arrow.uturn.backward", androidx.compose.material3.LocalContentColor.current, 12.dp)
+            CompactActionText("Back")
+        }
+    }
+    if (LocalTavernBoard.current) {
+        TavernRibbon(modifier) {
+            TavernTag(guidance.label, accent = color)
+            FitText(guidance.message, sf(13f, SfWeight.semibold, SfDesign.SERIF).engraved(0.6f), Modifier.weight(1f),
+                color = TavernPalette.parchment, maxLines = 2, minimumScale = 0.75f)
+            if (back != null) backButton()
+        }
+        return
+    }
     Row(modifier.fillMaxWidth().background(MagicPalette.iron.copy(alpha = 0.74f), RoundedCornerShape(8.dp))
         .border(1.5.dp, color.copy(alpha = if (guidance.isUrgent) 0.72f else 0.5f), RoundedCornerShape(8.dp))
         .padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -82,6 +112,7 @@ fun PromptPill(snapshot: GameSnapshot, modifier: Modifier = Modifier, combatSele
         Text(guidance.label, Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
             color = color, style = sf(9f, SfWeight.black), maxLines = 1)
         FitText(guidance.message, sf(11f, SfWeight.black), Modifier.weight(1f), color = Color.White, maxLines = 2, minimumScale = 0.75f)
+        if (back != null) backButton()
     }
 }
 
@@ -153,6 +184,8 @@ fun ManaPaymentTray(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendingAct
         else ManaPaymentTrayRules.canPay(symbol, snapshot)
     fun exposes(symbol: String): Boolean = prompt.manaChoices?.any { (it.manaType ?: it.id) == symbol } == true
 
+    val tavern = LocalTavernBoard.current
+
     @Composable
     fun manaButton(symbol: String, label: String, pendingId: String, size: Float) {
         val type = if (snapshot.source == "xmage-ondevice") "play_mana" else prompt.responseCommand?.type ?: "play_mana"
@@ -161,7 +194,8 @@ fun ManaPaymentTray(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendingAct
         val enabled = pendingActionId == null && canPay(symbol) && exposes(symbol) && command != null
         PressableBox({ command?.let { runCommand(it, label, pendingId) } }, Modifier.defaultMinSize(44.dp, 44.dp).semantics { contentDescription = label },
             enabled = enabled) {
-            ManaSymbolView(symbol, size.dp, Modifier.alpha(if (canPay(symbol) && exposes(symbol)) 1f else 0.42f))
+            // Tavern gems match the generic crystal's 30 pt.
+            TavernAwareManaSymbol(symbol, if (tavern) 25.dp else size.dp, Modifier.alpha(if (canPay(symbol) && exposes(symbol)) 1f else 0.42f))
         }
     }
 
@@ -169,8 +203,11 @@ fun ManaPaymentTray(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendingAct
     fun pipRow() {
         when {
             remaining != null && remaining.total > 0 -> Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (remaining.generic > 0) Box(Modifier.size(18.dp).background(Color.Gray.copy(alpha = 0.55f), CircleShape), contentAlignment = Alignment.Center) {
-                    Text("${remaining.generic}", color = Color.White, style = sf(11f, SfWeight.black))
+                if (remaining.generic > 0) {
+                    if (tavern) TavernGenericGem(remaining.generic, 30.dp)
+                    else Box(Modifier.size(18.dp).background(Color.Gray.copy(alpha = 0.55f), CircleShape), contentAlignment = Alignment.Center) {
+                        Text("${remaining.generic}", color = Color.White, style = sf(11f, SfWeight.black))
+                    }
                 }
                 remaining.orderedColors.forEachIndexed { offset, (symbol, count) ->
                     repeat(count) { manaButton(symbol, "Pay {$symbol}", "${prompt.id}-pip-$symbol-$offset", 18f) }
@@ -197,8 +234,13 @@ fun ManaPaymentTray(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendingAct
                 pipRow()
                 val choices = prompt.manaChoices
                 if (!choices.isNullOrEmpty()) {
-                    Box(Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.25f)))
-                    Text("Use floating mana", color = MagicPalette.parchment, style = SfText.caption2(SfWeight.bold))
+                    if (tavern) {
+                        Box(Modifier.width(1.dp).height(24.dp).background(TavernPalette.brass.copy(alpha = 0.7f)))
+                        Text("Use floating mana", color = TavernPalette.parchment, style = sf(13f, SfWeight.semibold, SfDesign.SERIF))
+                    } else {
+                        Box(Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.25f)))
+                        Text("Use floating mana", color = MagicPalette.parchment, style = SfText.caption2(SfWeight.bold))
+                    }
                     // Keep every supplied payment choice reachable while cancel stays fixed.
                     for (choice in choices) {
                         val symbol = choice.manaType ?: choice.id
@@ -255,6 +297,21 @@ fun ManaPaymentTray(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendingAct
 @Composable
 fun InlinePaymentPromptBar(snapshot: GameSnapshot, pendingActionId: String?, runAction: (LegalAction) -> Unit,
                            runCommand: (GameCommand, String, String) -> Unit, openDetails: () -> Unit, modifier: Modifier = Modifier) {
+    if (LocalTavernBoard.current) {
+        // The tavern's leather ribbon: a parchment PAY COST tag, the remaining cost on crystal gems.
+        TavernRibbon(modifier) {
+            TavernTag("PAY COST")
+            val prompt = InlinePaymentPromptState.paymentPrompt(snapshot)
+            if (prompt != null) ManaPaymentTray(snapshot, prompt, pendingActionId, runAction, runCommand, Modifier.weight(1f), compact = true)
+            else Text("Tap mana sources", Modifier.weight(1f), color = TavernPalette.parchment, style = sf(13f, SfWeight.semibold, SfDesign.SERIF))
+            if (snapshot.source == "xmage-ondevice") {
+                Box(Modifier.alpha(if (pendingActionId != null) 0.5f else 1f)) {
+                    GameIconButton("list.bullet.rectangle", { if (pendingActionId == null) openDetails() }, small = true, contentDescription = "Payment choices")
+                }
+            }
+        }
+        return
+    }
     Row(modifier.fillMaxWidth().background(MagicPalette.iron.copy(alpha = 0.78f), RoundedCornerShape(8.dp))
         .border(1.5.dp, MagicPalette.antiqueGold.copy(alpha = 0.72f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -420,14 +477,21 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
         }
     }
 
-    Column(modifier.glow(Color.Black.copy(alpha = 0.30f), 10.dp, 10.dp)
+    val tavern = LocalTavernBoard.current
+    // The compact prompt's panel: dark iron and leather, or on the tavern board tooled leather in brass trim.
+    val panel = if (tavern) Modifier.glow(Color.Black.copy(alpha = 0.45f), 10.dp, 12.dp)
+        .tavernFill(TavernMaterial.LEATHER, RoundedCornerShape(12.dp), overlayBrush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.3f))))
+        .tavernBrassFrame(0.5f).padding(horizontal = 12.dp, vertical = 11.dp)
+    else Modifier.glow(Color.Black.copy(alpha = 0.30f), 10.dp, 10.dp)
         .background(Brush.linearGradient(listOf(MagicPalette.iron.copy(alpha = 0.92f), MagicPalette.leather.copy(alpha = 0.86f))), RoundedCornerShape(10.dp))
-        .border(1.2.dp, borderColor.copy(alpha = 0.60f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-            GameRulesText(PromptDisplayText.clean(messageText), Modifier.weight(1f), symbolSize = 14.dp, style = sf(14f, SfWeight.black),
-                color = Color.White.copy(alpha = 0.94f), maxLines = 3)
-            FitText(priorityLabel, sf(8f, SfWeight.black), Modifier.padding(top = 3.dp), color = Color.White.copy(alpha = 0.68f), minimumScale = 0.65f)
+        .border(1.2.dp, borderColor.copy(alpha = 0.60f), RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 9.dp)
+    Column(modifier.then(panel), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = if (tavern) Alignment.CenterVertically else Alignment.Top) {
+            GameRulesText(PromptDisplayText.clean(messageText), Modifier.weight(1f), symbolSize = 14.dp,
+                style = if (tavern) sf(15f, SfWeight.semibold, SfDesign.SERIF) else sf(14f, SfWeight.black),
+                color = if (tavern) TavernPalette.parchment else Color.White.copy(alpha = 0.94f), maxLines = 3)
+            if (tavern) TavernTag(priorityLabel, leather = true)
+            else FitText(priorityLabel, sf(8f, SfWeight.black), Modifier.padding(top = 3.dp), color = Color.White.copy(alpha = 0.68f), minimumScale = 0.65f)
         }
         when {
             paymentPrompt != null -> ManaPaymentTray(snapshot, paymentPrompt, pendingActionId, runAction, runCommand)

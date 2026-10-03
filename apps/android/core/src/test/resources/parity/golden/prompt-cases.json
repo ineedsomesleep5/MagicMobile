@@ -1117,6 +1117,10 @@
           {
             "id" : "55555555-0000-0000-0000-000000000000",
             "label" : "Grizzly Bears"
+          },
+          {
+            "id" : "17171717-0000-0000-0000-000000000000",
+            "label" : "Wall of Spears"
           }
         ],
         "totalMax" : null,
@@ -1124,6 +1128,85 @@
       },
       "manaPayment" : null,
       "name" : "blockers"
+    },
+    {
+      "actions" : [
+        {
+          "abilityId" : null,
+          "cardInstanceId" : null,
+          "cardName" : null,
+          "choiceIds" : null,
+          "compactPromptTitle" : "Done",
+          "confirmed" : true,
+          "id" : "p-block-back:answer_yes_no",
+          "label" : "Done",
+          "messageId" : 41,
+          "playerId" : "00000000-0000-0000-0000-000000000001",
+          "promptId" : "p-block-back",
+          "sourceInstanceId" : null,
+          "sourceZone" : null,
+          "type" : "answer_yes_no"
+        }
+      ],
+      "answers" : [
+        {
+          "kind" : "uuid",
+          "value" : "17171717-0000-0000-0000-000000000000"
+        },
+        {
+          "kind" : "boolean",
+          "value" : true
+        }
+      ],
+      "envelope" : {
+        "abilities" : null,
+        "amounts" : null,
+        "cards" : null,
+        "choices" : null,
+        "chosenTargets" : null,
+        "confirmation" : null,
+        "id" : "p-block-back",
+        "kind" : "target",
+        "manaChoices" : null,
+        "maxChoices" : 1,
+        "message" : "Select blockers",
+        "messageId" : 41,
+        "method" : "GAME_SELECT",
+        "minChoices" : 1,
+        "modes" : null,
+        "multiAmounts" : null,
+        "optionKeys" : [
+          "possibleBlockers"
+        ],
+        "orderedItems" : null,
+        "piles" : null,
+        "playerId" : "00000000-0000-0000-0000-000000000001",
+        "players" : null,
+        "required" : true,
+        "responseCommand" : {
+          "confirmed" : null,
+          "messageId" : 41,
+          "pay" : null,
+          "promptId" : "p-block-back",
+          "type" : "choose_target"
+        },
+        "responseKind" : "target",
+        "targetIds" : null,
+        "targets" : [
+          {
+            "id" : "55555555-0000-0000-0000-000000000000",
+            "label" : "Grizzly Bears"
+          },
+          {
+            "id" : "17171717-0000-0000-0000-000000000000",
+            "label" : "Wall of Spears"
+          }
+        ],
+        "totalMax" : null,
+        "totalMin" : null
+      },
+      "manaPayment" : null,
+      "name" : "blockers-take-back"
     },
     {
       "actions" : [

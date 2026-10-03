@@ -39,6 +39,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.magicmobile.android.ui.GameAudio
+import io.magicmobile.android.ui.LocalTavernBoard
+import io.magicmobile.android.ui.TavernConfirmationDialog
+import io.magicmobile.android.ui.TavernDialogAction
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernMenu
+import io.magicmobile.android.ui.TavernMenuDivider
+import io.magicmobile.android.ui.TavernMenuEdge
+import io.magicmobile.android.ui.TavernMenuHeading
+import io.magicmobile.android.ui.TavernMenuItem
+import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.MagicPalette
 import io.magicmobile.android.ui.SfImage
@@ -61,10 +72,17 @@ private val menuSeparator = Color.White.copy(alpha = 0.12f)
 private val lightMenuBackground = rgb(0.97, 0.97, 0.97).copy(alpha = 0.99f)
 private val lightMenuSeparator = Color.Black.copy(alpha = 0.12f)
 
-/** An iOS-style pull-down menu: a dark rounded panel of 44-point rows anchored to its label. */
+/**
+ * An iOS-style pull-down menu: a dark rounded panel of 44-point rows anchored to its label. On the Walnut
+ * Tavern table it is the tavern's leather pop-over instead (TavernMenu), so the board shows no system UI.
+ */
 @Composable
 fun BoardMenu(entries: () -> List<MenuEntry>, modifier: Modifier = Modifier, enabled: Boolean = true, light: Boolean = false,
-              label: @Composable () -> Unit) {
+              edge: TavernMenuEdge = TavernMenuEdge.ABOVE, label: @Composable () -> Unit) {
+    if (LocalTavernBoard.current && !light) {
+        TavernMenu(modifier, edge, enabled, label = { label() }) { TavernMenuEntries(entries()) }
+        return
+    }
     var open by remember { mutableStateOf(false) }
     val background = if (light) lightMenuBackground else menuBackground
     Box(modifier) {
@@ -106,12 +124,30 @@ private fun MenuEntries(entries: List<MenuEntry>, light: Boolean, dismiss: () ->
     }
 }
 
+/** BoardMenu entries as tavern rows: parchment strips, headings in gold and brass rules. */
+@Composable
+private fun TavernMenuEntries(entries: List<MenuEntry>) {
+    for (entry in entries) when (entry) {
+        is MenuEntry.Item -> TavernMenuItem(entry.title, entry.action, systemImage = if (entry.checked) "checkmark" else entry.icon,
+            destructive = entry.destructive, enabled = entry.enabled)
+        is MenuEntry.Label -> Text(entry.title, Modifier.padding(horizontal = 4.dp, vertical = 2.dp), color = TavernPalette.parchment,
+            style = sf(14f, SfWeight.semibold, io.magicmobile.android.ui.SfDesign.SERIF))
+        is MenuEntry.Section -> TavernMenuHeading(entry.title)
+        MenuEntry.Divider -> TavernMenuDivider()
+    }
+}
+
 /** An iOS `confirmationDialog`: an action sheet with a title, message, actions and Cancel. */
 data class ConfirmationAction(val title: String, val destructive: Boolean = false, val action: () -> Unit)
 
+/** The system-style action sheet, or on the tavern table the tavern's leather dialog (tavernConfirmation). */
 @Composable
 fun ConfirmationDialog(title: String, message: String?, actions: List<ConfirmationAction>, cancelTitle: String = "Cancel", light: Boolean = false,
                        dismiss: () -> Unit) {
+    if (LocalTavernBoard.current && !light) {
+        TavernConfirmationDialog(title, message, actions.map { TavernDialogAction(it.title, it.destructive, it.action) }, cancelTitle, dismiss)
+        return
+    }
     val menuBackground = if (light) Color.White.copy(alpha = 0.97f) else menuBackground
     val menuSeparator = if (light) lightMenuSeparator else menuSeparator
     val caption = if (light) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.6f)
@@ -148,19 +184,25 @@ fun ConfirmationDialog(title: String, message: String?, actions: List<Confirmati
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardSheet(onDismiss: () -> Unit, background: Color = rgb(0.11, 0.11, 0.12), skipPartiallyExpanded: Boolean = false,
-               sound: Boolean = true, content: @Composable () -> Unit) {
+               sound: Boolean = true, tavern: Boolean = LocalTavernBoard.current, content: @Composable () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
     androidx.compose.runtime.LaunchedEffect(Unit) { if (sound) GameAudio.play(GameSound.UI_OPEN) }
     ModalBottomSheet({ if (sound) GameAudio.play(GameSound.UI_CLOSE); onDismiss() }, sheetState = state, containerColor = Color.Transparent,
         contentColor = MagicPalette.parchment, shape = RoundedCornerShape(0.dp), dragHandle = null, tonalElevation = 0.dp,
         scrimColor = Color.Black.copy(alpha = 0.32f), contentWindowInsets = { WindowInsets(0) }) {
         val shape = RoundedCornerShape(36.dp)
+        // A sheet opened from the tavern board: leather backing under a brass rule, and the tavern kit inside (`.tavernSheet`).
+        val backing = if (tavern) Modifier.tavernFill(TavernMaterial.LEATHER, shape,
+            overlayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))
+            .border(1.dp, TavernPalette.brass.copy(alpha = 0.55f), shape)
+        else Modifier.background(background, shape).border(0.5.dp, Color.White.copy(alpha = 0.12f), shape)
         Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp).navigationBarsPadding().padding(bottom = 8.dp)
-            .clip(shape).background(background, shape).border(0.5.dp, Color.White.copy(alpha = 0.12f), shape)) {
+            .clip(shape).then(backing)) {
             Box(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.widthIn(36.dp, 36.dp).height(5.dp).background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(3.dp)))
+                Box(Modifier.widthIn(36.dp, 36.dp).height(5.dp).background(if (tavern) TavernPalette.brass.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.3f),
+                    RoundedCornerShape(3.dp)))
             }
-            content()
+            androidx.compose.runtime.CompositionLocalProvider(LocalTavernBoard provides tavern) { content() }
         }
     }
 }

@@ -122,6 +122,8 @@ import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernBrassFrame
+import io.magicmobile.android.ui.tavernFill
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -188,6 +190,8 @@ fun NativeGameView(
     var dragActionChoice by remember { mutableStateOf<DragActionChoice?>(null) }
     var combatSelection by remember { mutableStateOf(CombatSelectionState()) }
     var combatPreviewArrows by remember { mutableStateOf(listOf<CombatArrow>()) }
+    /** The order in which your attackers or blockers were declared, oldest first (CombatDeclarationObserver). */
+    var combatDeclarationOrder by remember { mutableStateOf(listOf<String>()) }
     /** Which opponent the top of the board shows; it follows the turn (BoardFocusTracker). */
     var focusTracker by remember { mutableStateOf(BoardFocusTracker()) }
     val followTurns by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
@@ -214,6 +218,9 @@ fun NativeGameView(
     var combatReasons by remember { mutableStateOf(emptyMap<String, String>()) }
     val boardFXLevel by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
     val boardSoundsEnabled by AppPreferences.boolean(GameAudio.effectsKey, true)
+    val boardAppearance by AppPreferences.string(BoardAppearancePreference.key, BoardAppearancePreference.defaultValue)
+    /** The Walnut Tavern table: controls sit on the plate's sockets and pop-ups wear the tavern kit. */
+    val isTavernBoard = BattlefieldBackdrop.resolved(boardAppearance) == BattlefieldBackdrop.TAVERN
     val cardBounds = remember { CardBoundsRegistry() }
     val holdInspection = remember { HoldCardInspection() }
     val density = LocalDensity.current.density
@@ -402,6 +409,33 @@ fun NativeGameView(
         return false
     }
 
+    /** Your creatures already declared in this combat step: attacking while you declare attackers, blocking while you declare blockers. */
+    fun declaredCombatCards(snap: GameSnapshot): List<ZoneCard> {
+        val you = snap.human ?: return emptyList()
+        val step = (snap.step ?: snap.phase).lowercase().replace("_", "-")
+        val attackers = step.contains("declare-attack")
+        val blockers = step.contains("declare-block")
+        return you.zones.battlefield.filter { card -> (attackers && card.isAttacking == true) || (blockers && !card.blocking.isNullOrEmpty()) }
+    }
+
+    /**
+     * Back while declaring attackers or blockers: select the latest declared creature again, which XMage takes as
+     * taking it back (the adapter keeps it an exposed target).
+     */
+    fun combatBackAction(snap: GameSnapshot): (() -> Unit)? {
+        if (pendingActionId != null) return null
+        val targetable = GameBoardInteractionState.boardTargetableIds(snap)
+        val candidates = declaredCombatCards(snap).filter { targetable.contains(it.id) || targetable.contains(it.instanceId) }
+        val fallback = candidates.lastOrNull() ?: return null
+        val latest = combatDeclarationOrder.lastOrNull { id -> candidates.any { it.id == id } }
+        val card = candidates.firstOrNull { it.id == latest } ?: fallback
+        return {
+            GameHaptics.selection(view)
+            submitTarget(card)
+            onInteractionFeedback("Took back ${card.card.name}")
+        }
+    }
+
     fun ingestBoardFX(snap: GameSnapshot) {
         val level = BoardFXLevel.resolved(boardFXLevel, BoardMotion.reduceMotion)
         val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis())
@@ -534,6 +568,9 @@ fun NativeGameView(
         io.magicmobile.android.ui.GameSoundSignature.cues(old.signature, new.signature).forEachIndexed { index, sound -> GameAudio.play(sound, index * 0.11) }
     }
     OnChange(board.aiWaitSignature) { _, _ -> updateAIWaitStart(board) }
+    OnChange(declaredCombatCards(board).map { it.id }) { _, current ->
+        combatDeclarationOrder = combatDeclarationOrder.filter { it in current } + current.filter { it !in combatDeclarationOrder }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             delay(2000)
@@ -595,7 +632,8 @@ fun NativeGameView(
 
     CompositionLocalProvider(LocalBoardFXCardMotion provides boardFX.cardMotion(board.viewerID), LocalBoardFXClock provides boardFXClock,
         LocalBoardHUDPulse provides hudPulse, LocalBoardZoneInspectionAction provides ::inspectBoardZone, LocalCardBounds provides cardBounds,
-        LocalHoldCardInspection provides holdInspection, LocalInspectorBattlefield provides board.visibleBattlefield) {
+        LocalHoldCardInspection provides holdInspection, LocalInspectorBattlefield provides board.visibleBattlefield,
+        io.magicmobile.android.ui.LocalTavernBoard provides isTavernBoard) {
         Box(Modifier.fillMaxSize().background(rgb(0.055, 0.085, 0.10))) {
             // The board surface, shaken as one piece by big hits.
             Box(Modifier.fillMaxSize().graphicsLayer { translationX = shakeX * density; translationY = shakeY * density }) {
@@ -603,7 +641,19 @@ fun NativeGameView(
                 BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
                     .onGloballyPositioned { cardBounds.boardOrigin = it.positionInRoot() }) {
                     val size = BoardSize(maxWidth.value, maxHeight.value)
-                    if (!GameOrientationMode.isPortraitLayout(size.width, size.height, portraitModeEnabled)) {
+                    // The full screen and where this safe-area box sits in it: the tavern plate fills the screen, so its
+                    // sockets map from the screen whatever the insets (iOS tavernCanvas).
+                    val insets = WindowInsets.safeDrawing
+                    val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
+                    val densityScope = LocalDensity.current
+                    val insetLeft = insets.getLeft(densityScope, layoutDirection) / density
+                    val insetTop = insets.getTop(densityScope) / density
+                    val canvas = BoardSize(size.width + insetLeft + insets.getRight(densityScope, layoutDirection) / density,
+                        size.height + insetTop + insets.getBottom(densityScope) / density)
+                    val portraitLayout = GameOrientationMode.isPortraitLayout(size.width, size.height, portraitModeEnabled)
+                    val tavernFrame = if (isTavernBoard) TavernFrame(canvas, BoardPoint(insetLeft, insetTop)) else null
+                    CompositionLocalProvider(LocalTavernFrame provides tavernFrame) {
+                    if (!portraitLayout) {
                         LandscapeGameContent(board, human, opponent, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
                             combatSelection, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it }, { interactionMode = it },
                             inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, { inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null },
@@ -612,7 +662,7 @@ fun NativeGameView(
                             onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
                             ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
                             { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
-                            { isStackSheetOpen = true })
+                            { isStackSheetOpen = true }, combatBackAction(board))
                     } else PortraitGameContent(board, human, opponent, size, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
                         combatSelection, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it }, { interactionMode = it },
                         inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, { inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null },
@@ -620,7 +670,9 @@ fun NativeGameView(
                         didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey, boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 },
                         onInteractionFeedback, runAction, runCommand, refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers,
                         ::submitBlockers, ::finishAttackers, ::finishBlockers, { combatSelection = it }, { focusTracker = focusTracker.select(it) },
-                        { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true })
+                        { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
+                        combatBackAction(board))
+                    }
                 }
                 if (board.source == "design-preview") {
                     Text("DEVELOPMENT FIXTURE · NO ENGINE", Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing)
@@ -661,17 +713,26 @@ fun NativeGameView(
             }
             val cue = announcement
             AnimatedVisibility(showsTurnCue && cue != null && !isCardChoiceOpen && !isPromptDetailOpen,
-                Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 64.dp),
+                // On the tavern table it sits under the nameplate and phase plate: 158 pt down the 956 pt plate (iOS: 96 pt under the safe area).
+                if (isTavernBoard) Modifier.align(Alignment.TopCenter).layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val top = (constraints.maxHeight * 158f / 956f).roundToInt()
+                    layout(placeable.width, placeable.height + top) { placeable.place(0, top) }
+                } else Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 64.dp),
                 enter = if (BoardMotion.reduceMotion) fadeIn() else slideInVertically { -it } + fadeIn(),
                 exit = if (BoardMotion.reduceMotion) fadeOut() else slideOutVertically { -it } + fadeOut()) {
                 if (cue != null) {
                     val merge by animateFloatAsState(if (phaseCueMerging) 1f else 0f, tween(300), label = "phaseMerge")
+                    // The phase cue's backing: a dark pill, or on the tavern board a leather ribbon in brass.
+                    val chrome = if (isTavernBoard) Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.LEATHER, RoundedCornerShape(5.4.dp)).tavernBrassFrame(0.45f)
+                        else Modifier.background(MagicPalette.iron.copy(alpha = 0.92f), CircleShape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.7f), CircleShape)
                     Row(Modifier.graphicsLayer { scaleX = 1 - 0.5f * merge; scaleY = 1 - 0.5f * merge; translationY = -46 * merge * density; alpha = 1 - merge }
                         .glow(Color.Black.copy(alpha = 0.4f), 10.dp, 20.dp)
-                        .background(MagicPalette.iron.copy(alpha = 0.92f), CircleShape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.7f), CircleShape)
+                        .then(chrome)
                         .padding(horizontal = 16.dp, vertical = 8.dp).semantics { contentDescription = "board.phase.announcement" },
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(cue.owner.uppercase(), color = MagicPalette.antiqueGold, style = sf(11f, SfWeight.heavy, tracking = 1f))
+                        if (isTavernBoard) io.magicmobile.android.ui.TavernTag(cue.owner.uppercase(), leather = true)
+                        else Text(cue.owner.uppercase(), color = MagicPalette.antiqueGold, style = sf(11f, SfWeight.heavy, tracking = 1f))
                         io.magicmobile.android.ui.FitText(cue.title, sf(17f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF), color = MagicPalette.parchment, minimumScale = 0.7f)
                     }
                 }

@@ -76,9 +76,9 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 /*
- * Port of BrandUI.swift and CommanderPresentation.swift: MagicMobile's brand, shared with
- * the app icon and the download site. Charcoal canvas, ember coral, warm-white ink, heavy
- * sans type and small-corner controls, all drawn in code.
+ * Port of BrandUI.swift and CommanderPresentation.swift: MagicMobile's brand, "Walnut & Ember"
+ * (2026-10-01): dark carved walnut, tooled leather, parchment ink, brass edges and the ember coral
+ * of the app icon. Panels, buttons and icon buttons wear the tavern kit (TavernKit.kt).
  */
 
 /** False while something covers the menu, so ambient animation stops drawing frames nobody sees. */
@@ -120,7 +120,8 @@ fun BrandMark(size: Dp = 72.dp, glint: Boolean = true, tile: Boolean = false, mo
         rotate((12 * flash).toFloat(), center) {
             scale(s, s, center) { drawPath(BrandMarkPaths.sparkle(mark), if (flash > 0.5) BrandTheme.emberLight else BrandTheme.markCoral) }
         }
-        drawPath(BrandMarkPaths.monogram(mark), BrandTheme.markCream)
+        // Walnut & Ember: the monogram is cast in brass.
+        drawPath(BrandMarkPaths.monogram(mark), Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.62), rgb(0.82, 0.58, 0.24)), mark.top, mark.bottom))
     }
 }
 
@@ -141,15 +142,20 @@ fun BrandSparkle(size: Dp = 10.dp, color: Color = BrandTheme.ember) {
  * sparkle, and ember sparks rising through the room. Static under reduced motion.
  */
 @Composable
-fun BrandBackdrop(modifier: Modifier = Modifier, cards: Boolean = true) {
+fun BrandBackdrop(modifier: Modifier = Modifier, @Suppress("UNUSED_PARAMETER") cards: Boolean = true) {
     val still = BoardMotionFlags.reduceMotion || !LocalBrandAmbientMotion.current
     val t = rememberAnimationSeconds(still).toDouble()
+    val resources = androidx.compose.ui.platform.LocalContext.current.resources
+    // Walnut & Ember: a dim tavern wall with candles at the edges replaces the card fan; the sparks stay.
+    val wall = remember { TavernImages.decode(resources, io.magicmobile.android.R.drawable.menu_backdrop_tavern) }
     Canvas(modifier.fillMaxSize()) {
         drawRect(BrandTheme.canvas)
+        val scale = max(size.width / wall.width, size.height / wall.height)
+        val drawn = Size(wall.width * scale, wall.height * scale)
+        drawStretched(wall, Offset((size.width - drawn.width) / 2, (size.height - drawn.height) / 2), drawn)
         drawRect(Brush.radialGradient(listOf(BrandTheme.ember.copy(alpha = 0.22f), BrandTheme.rust.copy(alpha = 0.08f), Color.Transparent),
             Offset(size.width * 0.5f, size.height * 1.08f), max(1f, size.height * 0.62f)))
         drawRect(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.06f), Color.Transparent), Offset(size.width * 0.5f, size.height * -0.05f), max(1f, size.height * 0.5f)))
-        if (cards) drawFan(t)
         // Ember sparks rising from the hearth.
         for (i in 0 until 42) {
             val seed = i * 12.9898
@@ -169,7 +175,8 @@ fun BrandBackdrop(modifier: Modifier = Modifier, cards: Boolean = true) {
     }
 }
 
-/** Three card outlines fanned like the logo, breathing slowly. */
+/** Three card outlines fanned like the logo, breathing slowly (the classic backdrop, before the tavern wall). */
+@Suppress("unused")
 private fun DrawScope.drawFan(t: Double) {
     val cardWidth = min(size.width, size.height) * 0.62f
     val cardHeight = cardWidth / 0.716f
@@ -197,8 +204,8 @@ private fun DrawScope.drawFan(t: Double) {
     drawPath(BrandMarkPaths.sparkle(Rect(left, top, left + unit, top + unit)), BrandTheme.ember.copy(alpha = (0.1 + 0.06 * glow).toFloat()))
 }
 
-/** Heavy display type, as on the download site (`.brandTitle(size)`). */
-fun brandTitleStyle(size: Float): TextStyle = sf(size, SfWeight.black, tracking = -0.6f).copy(color = BrandTheme.ink,
+/** Heavy serif display type (`.brandTitle(size)`). */
+fun brandTitleStyle(size: Float): TextStyle = sf(size, SfWeight.heavy, SfDesign.SERIF, tracking = -0.3f).copy(color = BrandTheme.ink,
     shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 4f), 10f))
 
 @Composable
@@ -206,41 +213,29 @@ fun BrandTitle(text: String, size: Float, modifier: Modifier = Modifier, textAli
     Text(text, modifier, style = brandTitleStyle(size), textAlign = textAlign)
 }
 
-/** A thin rule with the brand sparkle at its center and an optional small label. */
+/** A thin brass rule with the brand sparkle at its center and an optional small serif label. */
 @Composable
 fun BrandDivider(modifier: Modifier = Modifier, title: String? = null) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).height(1.dp).background(Brush.horizontalGradient(listOf(BrandTheme.ember.copy(alpha = 0f), BrandTheme.ember.copy(alpha = 0.7f)))))
-        BrandSparkle(9.dp)
+        Box(Modifier.weight(1f).height(1.dp).background(Brush.horizontalGradient(listOf(BrandTheme.brass.copy(alpha = 0f), BrandTheme.brass.copy(alpha = 0.8f)))))
+        BrandSparkle(9.dp, BrandTheme.brass)
         if (title != null) {
-            Text(title.uppercase(), color = BrandTheme.ember, style = sf(11f, SfWeight.heavy, tracking = 2.4f), maxLines = 1)
-            BrandSparkle(9.dp)
+            Text(title.uppercase(), style = sf(11f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.4f).copy(brush = BrandTheme.brassGradient), maxLines = 1)
+            BrandSparkle(9.dp, BrandTheme.brass)
         }
-        Box(Modifier.weight(1f).height(1.dp).background(Brush.horizontalGradient(listOf(BrandTheme.ember.copy(alpha = 0.7f), BrandTheme.ember.copy(alpha = 0f)))))
+        Box(Modifier.weight(1f).height(1.dp).background(Brush.horizontalGradient(listOf(BrandTheme.brass.copy(alpha = 0.8f), BrandTheme.brass.copy(alpha = 0f)))))
     }
 }
 
-/** Dark surface with a hairline border and a warm edge of light along the top (BrandPanel). */
-fun Modifier.brandPanel(padding: Dp = 18.dp): Modifier {
-    val radius = 16.dp
-    val shape = RoundedCornerShape(radius)
-    return this.glow(Color.Black.copy(alpha = 0.45f), 16.dp, radius)
-        .background(Brush.verticalGradient(listOf(BrandTheme.surface.copy(alpha = 0.96f), rgb(0.11, 0.115, 0.13).copy(alpha = 0.97f))), shape)
-        .border(1.dp, BrandTheme.border, shape)
-        .drawWithContent {
-            drawContent()
-            val inset = radius.toPx()
-            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, BrandTheme.ember.copy(alpha = 0.55f), Color.Transparent), inset, size.width - inset),
-                Offset(inset, 0f), Size(max(0f, size.width - inset * 2), 1.dp.toPx()))
-        }
-        .padding(padding)
-}
+/** BrandPanel: tooled leather in brass trim (the tavern kit's panel chrome). */
+fun Modifier.brandPanel(padding: Dp = 18.dp): Modifier =
+    this.glow(Color.Black.copy(alpha = 0.45f), 16.dp, 12.dp).tavernPanel(12.dp).padding(padding)
 
-enum class BrandButtonKind { PRIMARY, SECONDARY }
+enum class BrandButtonKind { PRIMARY, SECONDARY, DESTRUCTIVE }
 
 /**
- * Ember call to action (dark ink on coral) or a dark secondary button with a hairline border.
- * Presses sink a pixel, darken and click, like the site's download buttons.
+ * BrandButtonStyle in Walnut & Ember: a riveted brass plaque, ember glass for the call to action, leather for
+ * the rest, oxblood leather for a destructive choice. Presses sink a pixel and darken.
  */
 @Composable
 fun BrandButton(onClick: () -> Unit, modifier: Modifier = Modifier, kind: BrandButtonKind = BrandButtonKind.PRIMARY, enabled: Boolean = true,
@@ -252,33 +247,36 @@ fun BrandButton(onClick: () -> Unit, modifier: Modifier = Modifier, kind: BrandB
     val reduceMotion = BoardMotionFlags.reduceMotion
     val ambient = LocalBrandAmbientMotion.current
     val scale by animateFloatAsState(if (pressed && !reduceMotion) 0.985f else 1f, tween(100), label = "brandPress")
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(21.dp)
+    val ink = when (kind) {
+        BrandButtonKind.PRIMARY -> rgb(1.0, 0.91, 0.66)
+        BrandButtonKind.DESTRUCTIVE -> rgb(1.0, 0.8, 0.72)
+        BrandButtonKind.SECONDARY -> TavernPalette.parchment
+    }
+    val material = if (primary) TavernMaterial.EMBER else TavernMaterial.LEATHER
     Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale; translationY = if (pressed) density else 0f }
-        .glow(if (primary) BrandTheme.ember.copy(alpha = if (enabled) 0.45f else 0f) else Color.Black.copy(alpha = 0.35f), if (primary) 16.dp else 8.dp, 12.dp)
+        .glow(if (primary) BrandTheme.ember.copy(alpha = if (enabled) 0.4f else 0f) else Color.Black.copy(alpha = 0.4f), if (primary) 14.dp else 6.dp, 21.dp)
+        .colorAdjust(if (enabled) 1f else 0.15f, if (pressed) -0.08f else 0f)
+        .alpha(if (enabled) 1f else 0.55f)
+        .tavernCapsuleRim()
+        .padding(3.dp)
+        .tavernFill(material, shape, overlay = if (kind == BrandButtonKind.DESTRUCTIVE) MagicPalette.oxblood.copy(alpha = 0.7f) else Color.Transparent)
         .clip(shape)
-        .background(if (primary) BrandTheme.emberVertical() else Brush.verticalGradient(listOf(BrandTheme.surfaceRaised, BrandTheme.surface)))
-        .then(if (primary) Modifier.drawWithContent {
-            drawContent()
-            drawRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), 0f, size.height / 2))
-        } else Modifier)
         .then(if (primary && enabled && !reduceMotion && ambient) Modifier.shineSweep() else Modifier)
-        .border(1.dp, if (primary) Color.White.copy(alpha = 0.22f) else BrandTheme.border, shape)
-        .colorAdjust(if (enabled) 1f else 0.1f, if (pressed) -0.08f else 0f)
-        .alpha(if (enabled) 1f else 0.5f)
         .clickable(interaction, null, enabled, onClick = onClick)
-        .fillMaxWidth().defaultMinSize(minHeight = if (primary) 58.dp else 50.dp)
-        .padding(horizontal = 18.dp, vertical = if (primary) 16.dp else 13.dp), contentAlignment = Alignment.Center) {
-        CompositionLocalProvider(LocalContentColor provides if (primary) BrandTheme.emberInk else BrandTheme.ink) {
+        .fillMaxWidth().defaultMinSize(minHeight = if (primary) 52.dp else 44.dp)
+        .padding(horizontal = 19.dp, vertical = if (primary) 11.dp else 8.dp), contentAlignment = Alignment.Center) {
+        CompositionLocalProvider(LocalContentColor provides ink) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically, content = content)
         }
     }
 }
 
-/** Text in the brand button face's type. */
+/** Text in the brand button face's type: heavy serif, engraved. */
 @Composable
 fun BrandButtonText(text: String, kind: BrandButtonKind = BrandButtonKind.PRIMARY) {
-    Text(text, color = LocalContentColor.current, style = sf(if (kind == BrandButtonKind.PRIMARY) 19f else 17f,
-        if (kind == BrandButtonKind.PRIMARY) SfWeight.heavy else SfWeight.bold), maxLines = 2, textAlign = TextAlign.Center)
+    Text(text, color = LocalContentColor.current, style = sf(if (kind == BrandButtonKind.PRIMARY) 19f else 17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f),
+        maxLines = 2, textAlign = TextAlign.Center)
 }
 
 /** A glint that crosses the button every few seconds, drawn inside it. */
@@ -296,17 +294,18 @@ fun Modifier.shineSweep(): Modifier = this.then(Modifier.composed {
     }
 })
 
-/** Small-corner tile with an icon over a caption (menu utilities). */
+/** BrandIconButton: a round brass medallion with a leather face over a serif caption (menu utilities). */
 @Composable
 fun BrandIconButton(title: String, systemImage: String, action: () -> Unit, modifier: Modifier = Modifier) {
     BrandPressable(action, modifier.defaultMinSize(72.dp, 44.dp)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.requiredSize(52.dp, 46.dp).glow(Color.Black.copy(alpha = 0.45f), 6.dp, 11.dp)
-                .background(Brush.verticalGradient(listOf(BrandTheme.surfaceRaised, BrandTheme.surface)), RoundedCornerShape(11.dp))
-                .border(1.dp, BrandTheme.border, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) {
-                SfImage(systemImage, BrandTheme.ember, 20.dp)
+            Box(Modifier.requiredSize(50.dp).glow(Color.Black.copy(alpha = 0.5f), 6.dp, 25.dp)
+                .tavernFill(TavernMaterial.LEATHER, CircleShape)
+                .border(3.dp, BrandTheme.brassGradient, CircleShape)
+                .padding(3.dp).border(1.dp, Color.Black.copy(alpha = 0.35f), CircleShape), contentAlignment = Alignment.Center) {
+                SfImage(systemImage, BrandTheme.brass, 18.dp)
             }
-            Text(title, color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.semibold))
+            Text(title, color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
         }
     }
 }

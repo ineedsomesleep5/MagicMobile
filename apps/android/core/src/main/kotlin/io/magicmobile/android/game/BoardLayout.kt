@@ -104,7 +104,15 @@ class BattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardInsets = 
 }
 
 class PortraitBattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardInsets = BoardInsets(), val paymentActive: Boolean = false,
-                                       val largeText: Boolean = false, val centerControlsVisible: Boolean = true) {
+                                       val largeText: Boolean = false, val centerControlsVisible: Boolean = true,
+                                       /** The Walnut Tavern dock is one low row (medallion, mana rail, hourglass), so the hand gets the height the classic two-row dock used. */
+                                       val tavernDock: Boolean = false,
+                                       /**
+                                        * Android, on the tavern table: where the plate's top band ends and its dock begins, in this layout's
+                                        * coordinates. iPhones share one set of insets, so iOS takes them from the safe area; Android insets vary,
+                                        * so the lanes and hand are fitted to the plate itself (the iPhone's numbers on the 440 x 956 canvas).
+                                        */
+                                       val tavernTop: Float? = null, val tavernDockTop: Float? = null) {
     companion object { const val magicCardHeightToWidth = BattlefieldLayoutMetrics.magicCardHeightToWidth }
 
     val centerStripHeight get() = if (paymentActive) 60f else if (centerControlsVisible) 36f else 0f
@@ -114,24 +122,29 @@ class PortraitBattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardI
             maxOf(size.width - safeArea.leading - safeArea.trailing - margin * 2, 300f),
             maxOf(size.height - safeArea.top - safeArea.bottom - 16, 0f))
     }
-    val topHUDRect get() = BoardRect(safeFrame.minX, safeFrame.minY, safeFrame.width, if (largeText) 84f else 54f)
-    val opponentBattlefieldRect get() = BoardRect(safeFrame.minX + 10, topHUDRect.maxY + 10, creatureLaneWidth, permanentGroupHeight)
+    val topHUDRect get() = BoardRect(safeFrame.minX, safeFrame.minY, safeFrame.width,
+        tavernTop?.takeIf { tavernDock }?.let { maxOf(it - safeFrame.minY, 0f) } ?: if (largeText) 84f else 54f)
+    val opponentBattlefieldRect get() = BoardRect(safeFrame.minX + laneInset, topHUDRect.maxY + 10, creatureLaneWidth, permanentGroupHeight)
     val opponentLandsRect: BoardRect get() = if (usesCompactLanes) {
-        BoardRect(opponentBattlefieldRect.maxX + 8, opponentBattlefieldRect.minY, safeFrame.maxX - 10 - opponentBattlefieldRect.maxX - 8, permanentGroupHeight)
-    } else BoardRect(safeFrame.minX + 10, opponentBattlefieldRect.maxY + 5, safeFrame.width - 20, landCardHeight + 8)
+        BoardRect(opponentBattlefieldRect.maxX + 8, opponentBattlefieldRect.minY, safeFrame.maxX - laneInset - opponentBattlefieldRect.maxX - 8, permanentGroupHeight)
+    } else BoardRect(safeFrame.minX + laneInset, opponentBattlefieldRect.maxY + 5, safeFrame.width - laneInset * 2, landCardHeight + 8)
     val centerStripRect get() = BoardRect(safeFrame.minX + 8, opponentLandsRect.maxY + 10, safeFrame.width - 16, centerStripHeight)
-    val playerBattlefieldRect get() = BoardRect(safeFrame.minX + 10, centerStripRect.maxY + 10, creatureLaneWidth, permanentGroupHeight)
+    val playerBattlefieldRect get() = BoardRect(safeFrame.minX + laneInset, centerStripRect.maxY + 10, creatureLaneWidth, permanentGroupHeight)
     val playerLandsRect: BoardRect get() = if (usesCompactLanes) {
-        BoardRect(playerBattlefieldRect.maxX + 8, playerBattlefieldRect.minY, safeFrame.maxX - 10 - playerBattlefieldRect.maxX - 8, permanentGroupHeight)
-    } else BoardRect(safeFrame.minX + 10, playerBattlefieldRect.maxY + 5, safeFrame.width - 20, landCardHeight + 8)
+        BoardRect(playerBattlefieldRect.maxX + 8, playerBattlefieldRect.minY, safeFrame.maxX - laneInset - playerBattlefieldRect.maxX - 8, permanentGroupHeight)
+    } else BoardRect(safeFrame.minX + laneInset, playerBattlefieldRect.maxY + 5, safeFrame.width - laneInset * 2, landCardHeight + 8)
     val bottomControlsRect: BoardRect get() {
-        val height = 110f
+        val height = tavernDockTop?.takeIf { tavernDock }?.let { maxOf(safeFrame.maxY - it, 0f) } ?: if (tavernDock) 84f else 110f
         return BoardRect(safeFrame.minX, safeFrame.maxY - height, safeFrame.width, height)
     }
+    /** The hand's resting height: tucked on the classic board, whole cards on the tavern table. */
+    val handRowHeight: Float get() = if (tavernDock) ArenaHandLayout.tavernHeight(handCardHeight) else ArenaHandLayout.restingHeight(handCardHeight)
     val handRect: BoardRect get() {
         val top = playerLandsRect.maxY + 8
         val bottom = bottomControlsRect.minY - 8
-        return BoardRect(safeFrame.minX, top, safeFrame.width, maxOf(bottom - top, 0f))
+        // On the tavern table the hand stays clear of the frame's carved edges.
+        val inset = if (tavernDock) 6f else 0f
+        return BoardRect(safeFrame.minX + inset, top, safeFrame.width - inset * 2, maxOf(bottom - top, 0f))
     }
     val bottomHUDRect get() = BoardRect(bottomControlsRect.minX, bottomControlsRect.minY,
         minOf(maxOf(bottomControlsRect.width * 0.34f, 132f), 146f), bottomControlsRect.height)
@@ -159,11 +172,13 @@ class PortraitBattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardI
     val permanentCardHeight get() = permanentCardWidth * 1.08f
     val permanentRowHeight get() = permanentCardHeight + 8
     val permanentGroupHeight: Float get() = maxOf(80f, (safeFrame.height - topHUDRect.height - bottomControlsRect.height -
-        ArenaHandLayout.restingHeight(handCardHeight) - 6 - centerStripHeight - (if (usesCompactLanes) 0f else 2 * (landCardHeight + 8)) - 56) / 2)
+        handRowHeight - 6 - centerStripHeight - (if (usesCompactLanes) 0f else 2 * (landCardHeight + 8)) - 56) / 2)
     /** Short phones put lands beside permanents to preserve a readable hand. */
     val usesCompactLanes: Boolean get() = safeFrame.height < topHUDRect.height + bottomControlsRect.height + handCardHeight + 36 +
         centerStripHeight + 2 * (landCardHeight + 8) + 56 + 160
-    private val creatureLaneWidth get() = (safeFrame.width - 20) * (if (usesCompactLanes) 0.68f else 1f)
+    private val creatureLaneWidth get() = (safeFrame.width - laneInset * 2) * (if (usesCompactLanes) 0.68f else 1f)
+    /** Cards stay inside the playing area: 10 pt in, or on the tavern table inside the leather mat's stitched edge (34 pt in on the 440 pt canvas). */
+    val laneInset: Float get() = if (tavernDock) maxOf(10f, size.width * 34 / 440 - safeFrame.minX) else 10f
     val landCardWidth get() = 45f
     val landCardHeight get() = landCardWidth * 1.08f
     val handCardWidth get() = minOf(maxOf(safeFrame.width / 4.8f, 78f), 88f)
@@ -355,6 +370,8 @@ object ArenaHandLayout {
         return stride - cardWidth
     }
     fun restingHeight(cardHeight: Float): Float = cardHeight * 0.62f + 48
+    /** The tavern hand shows whole cards, with room above for cost gems and the fan's dip. */
+    fun tavernHeight(cardHeight: Float): Float = cardHeight + 22
 }
 
 object HandScrubberGeometry {
@@ -402,7 +419,12 @@ object CombatViewportAnchors {
             val lane = viewports[index]
             if (rect.midY < lane.minY || rect.midY > lane.maxY) continue
             val point = BoardPoint(minOf(maxOf(rect.midX, lane.minX + 12), lane.maxX - 12), minOf(maxOf(rect.midY, lane.minY + 12), lane.maxY - 12))
-            result[id] = CombatViewportAnchor(point, !lane.contains(rect))
+            // Lanes scroll sideways: off screen means a fifth or more scrolled out of view, not a tapped tile in a
+            // second row overhanging the lane by a few points.
+            val shownWidth = minOf(rect.maxX, lane.maxX) - maxOf(rect.minX, lane.minX)
+            val shownHeight = minOf(rect.maxY, lane.maxY) - maxOf(rect.minY, lane.minY)
+            val clipped = shownWidth <= 0f || shownHeight <= 0f || shownWidth < rect.width * 0.8f
+            result[id] = CombatViewportAnchor(point, clipped)
         }
         return result
     }

@@ -94,7 +94,16 @@ import io.magicmobile.android.ui.brandPanel
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rememberAnimationSeconds
 import io.magicmobile.android.ui.rgb
+import io.magicmobile.android.R
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernPanelChrome
+import io.magicmobile.android.ui.LocalTavernBoard
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernTag
+import io.magicmobile.android.ui.drawStretched
+import io.magicmobile.android.ui.tavernBrassFrame
+import io.magicmobile.android.ui.tavernFill
+import io.magicmobile.android.ui.tavernImage
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -134,8 +143,10 @@ fun BoardTurnBanner(title: String, turn: Int, isViewer: Boolean, modifier: Modif
     val rise by animateFloatAsState(if (shown) 0f else 14f, spring(0.78f, 220f), label = "bannerRise")
     val textAlpha by animateFloatAsState(if (shown) 1f else 0f, spring(0.78f, 220f), label = "bannerAlpha")
     val sweepX by animateFloatAsState(sweep, tween(1100), label = "bannerSweep")
+    val tavern = LocalTavernBoard.current
     Box(modifier.padding(horizontal = 6.dp).semantics { contentDescription = "$title, turn $turn" }, contentAlignment = Alignment.Center) {
-        Box(Modifier.fillMaxWidth().height(104.dp).graphicsLayer { scaleX = band }
+        if (tavern) TavernTurnBand(Modifier.graphicsLayer { scaleX = band })
+        else Box(Modifier.fillMaxWidth().height(104.dp).graphicsLayer { scaleX = band }
             .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.86f), Color.Transparent)))) {
             val edge = Brush.horizontalGradient(listOf(Color.Transparent, accent, accent, Color.Transparent))
             Box(Modifier.fillMaxWidth().height(2.dp).align(Alignment.TopCenter).glow(accent, 6.dp, 1.dp).background(edge))
@@ -154,9 +165,28 @@ fun BoardTurnBanner(title: String, turn: Int, isViewer: Boolean, modifier: Modif
             }.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }) {
                 FitText(title.uppercase(), titleStyle, minimumScale = 0.6f)
             }
-            Text("Turn $turn", color = accent.copy(alpha = 0.85f), style = sf(12f, SfWeight.heavy, tracking = 2f))
+            if (tavern) TavernTag("TURN $turn")
+            else Text("Turn $turn", color = accent.copy(alpha = 0.85f), style = sf(12f, SfWeight.heavy, tracking = 2f))
         }
     }
+}
+
+/** The tavern's turn banner: a leather ribbon in brass trim with large pennant end caps. */
+@Composable
+private fun TavernTurnBand(modifier: Modifier) {
+    val left = tavernImage(R.drawable.tavern_ui_cap_left)
+    val right = tavernImage(R.drawable.tavern_ui_cap_right)
+    Box(modifier.fillMaxWidth().padding(horizontal = 30.dp).height(100.dp)
+        .glow(Color.Black.copy(alpha = 0.55f), 10.dp, 9.dp)
+        .drawWithContent {
+            drawContent()
+            val cap = 54.dp.toPx(); val y = (size.height - cap) / 2
+            drawStretched(left, Offset(-33.dp.toPx(), y), androidx.compose.ui.geometry.Size(cap, cap))
+            drawStretched(right, Offset(size.width - cap + 33.dp.toPx(), y), androidx.compose.ui.geometry.Size(cap, cap))
+        }
+        .tavernFill(TavernMaterial.LEATHER, androidx.compose.foundation.shape.RoundedCornerShape(9.dp),
+            overlayBrush = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.05f), Color.Black.copy(alpha = 0.4f))))
+        .tavernBrassFrame(0.75f))
 }
 
 /**
@@ -259,8 +289,9 @@ fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame:
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)))
         GameResultBackdrop(isVictory)
         Column(Modifier.padding(horizontal = 20.dp).widthIn(max = 420.dp).glow(Color.Black.copy(alpha = 0.48f), 18.dp, 16.dp)
-            .background(MagicPalette.iron.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
-            .border(1.5.dp, (if (isVictory) MagicPalette.antiqueGold else rgb(0.6, 0.2, 0.18)).copy(alpha = 0.8f), RoundedCornerShape(16.dp)).padding(24.dp),
+            // Leather in brass trim on the tavern board (TavernPanelChrome); iron with a victory or defeat edge otherwise.
+            .tavernPanelChrome(io.magicmobile.android.ui.LocalTavernBoard.current, 16.dp, MagicPalette.iron.copy(alpha = 0.9f),
+                (if (isVictory) MagicPalette.antiqueGold else rgb(0.6, 0.2, 0.18)).copy(alpha = 0.8f)).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.glow((if (isVictory) MagicPalette.antiqueGold else Color.Red).copy(alpha = 0.6f), 12.dp, 20.dp)) {
                 SfImage(if (isVictory) "trophy.fill" else "flag.checkered", if (isVictory) MagicPalette.antiqueGold else defeatRed, 44.dp)
@@ -364,6 +395,15 @@ fun OpeningHandOverlay(choice: OpeningHandChoice, cards: List<ZoneCard>, pending
 /** Keep glows gold; Mulligan is a gold-edged outline, both easy to hit. */
 @Composable
 private fun OpeningHandButton(title: String, icon: String, primary: Boolean, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+    if (LocalTavernBoard.current) {
+        // Keep is the ember plaque, Mulligan the leather one.
+        io.magicmobile.android.ui.TavernButton(action, modifier, if (primary) io.magicmobile.android.ui.TavernButtonKind.PRIMARY
+            else io.magicmobile.android.ui.TavernButtonKind.SECONDARY, fontSize = 17f, enabled = enabled, pressSound = if (primary) GameSound.UI_CONFIRM else null) {
+            SfImage(icon, androidx.compose.material3.LocalContentColor.current, 17.dp)
+            io.magicmobile.android.ui.TavernButtonText(title, maxLines = 1)
+        }
+        return
+    }
     PressableBox(action, modifier, enabled, pressSound = if (primary) GameSound.UI_CONFIRM else null) { pressed ->
         val ink = if (primary) rgb(0.16, 0.11, 0.05) else MagicPalette.parchment
         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 50.dp).scale(if (pressed) 0.96f else 1f).alpha(if (enabled) 1f else 0.5f)
@@ -441,8 +481,10 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
         BattlefieldSurface(Modifier.matchParentSize())
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Game Menu", Modifier.weight(1f), color = Color.White, style = sf(22f, SfWeight.black, SfDesign.ROUNDED))
-                IosTextButton("Done", dismiss, Modifier.semantics { contentDescription = "board.menu.done" }, color = MagicPalette.antiqueGold, bold = true)
+                io.magicmobile.android.ui.TavernPanelTitle("Game Menu", Modifier.weight(1f, fill = false))
+                Spacer(Modifier.weight(1f))
+                io.magicmobile.android.ui.TavernPlaqueButton("Done", dismiss, Modifier.semantics { contentDescription = "board.menu.done" },
+                    kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY)
             }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp).semantics { contentDescription = "board.menu.scroll" },
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -451,7 +493,7 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 FollowTurnsToggle()
                 BoardEffectsPicker()
                 CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
-                    SfImage("questionmark.circle", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
+                    SfImage("questionmark.circle", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
                 }
                 if (snapshot.isSpectating) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SfImage("eye.fill", MagicPalette.parchment.copy(alpha = 0.8f), 12.dp)
@@ -460,17 +502,17 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CompactActionButton({ confirmingConcede = true }, Modifier.weight(1f).semantics { contentDescription = "board.menu.concede" }, isDanger = true, enabled = canConcede) {
-                        SfImage("flag.fill", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Concede")
+                        SfImage("flag.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Concede")
                     }
                     CompactActionButton(confirmStartNew, Modifier.weight(1f), isPrimary = true) {
-                        SfImage("arrow.clockwise", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Start New", true)
+                        SfImage("arrow.clockwise", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Start New", true)
                     }
                     CompactActionButton(confirmQuit, Modifier.weight(1f).semantics { contentDescription = "board.menu.quit" }) {
-                        SfImage("rectangle.portrait.and.arrow.right", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Quit")
+                        SfImage("rectangle.portrait.and.arrow.right", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Quit")
                     }
                 }
                 CompactActionButton(openPromptInspector, Modifier.fillMaxWidth()) {
-                    SfImage("ladybug.fill", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")
+                    SfImage("ladybug.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")
                 }
             }
         }

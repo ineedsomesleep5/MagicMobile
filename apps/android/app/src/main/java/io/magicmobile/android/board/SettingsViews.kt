@@ -68,26 +68,43 @@ import io.magicmobile.android.ui.brandPanel
 import io.magicmobile.android.ui.magicPanel
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.SfDesign
+import io.magicmobile.android.ui.TavernButtonKind
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.TavernPanelTitle
+import io.magicmobile.android.ui.TavernPlaqueButton
+import io.magicmobile.android.ui.TavernSlider
+import io.magicmobile.android.ui.TavernToggle
+import io.magicmobile.android.ui.glow
+import io.magicmobile.android.ui.tavernFill
+import io.magicmobile.android.ui.tavernPanelChrome
 
-/** The swatch frame shared by the battlefield and menu pickers. */
+/** The swatch frame shared by the battlefield and menu pickers: dark leather, a brass edge and a brass seal when chosen. */
 @Composable
 private fun AppearanceSwatch(title: String, selected: Boolean, modifier: Modifier = Modifier, art: @Composable () -> Unit) {
-    Column(modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-        .border(2.dp, if (selected) MagicPalette.antiqueGold else Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp)).padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(modifier.glow(if (selected) TavernPalette.ember.copy(alpha = 0.5f) else Color.Transparent, 6.dp, 10.dp)
+        .tavernFill(TavernMaterial.LEATHER, shape, overlay = Color.Black.copy(alpha = 0.25f))
+        .border(if (selected) 2.dp else 1.dp, if (selected) BrandTheme.brassGradient else androidx.compose.ui.graphics.SolidColor(TavernPalette.brass.copy(alpha = 0.3f)), shape)
+        .padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(GameBoardDesignTokens.Radius.panel))) { art() }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            FitText(title, SfText.caption(SfWeight.semibold), Modifier.weight(1f), color = MagicPalette.parchment, minimumScale = 0.7f)
-            SfImage(if (selected) "checkmark.circle.fill" else "circle", MagicPalette.parchment, 13.dp)
+            FitText(title, sf(13f, SfWeight.semibold, SfDesign.SERIF), Modifier.weight(1f), color = TavernPalette.parchment, minimumScale = 0.7f)
+            if (selected) SfImage("checkmark.seal.fill", BrandTheme.brass, 13.dp)
+            else SfImage("circle", TavernPalette.parchment.copy(alpha = 0.5f), 13.dp)
         }
     }
 }
+
+/** One group of settings: a leather panel in brass trim with parchment text (TavernSettingsPanel). */
+fun Modifier.tavernSettingsPanel(): Modifier = this.fillMaxWidth().tavernPanelChrome(true, 10.dp).padding(horizontal = 14.dp, vertical = 10.dp)
 
 @Composable
 fun BoardAppearancePicker() {
     var appearance by AppPreferences.string(BoardAppearancePreference.key, BoardAppearancePreference.defaultValue)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Battlefield", color = MagicPalette.parchment, style = SfText.headline())
+        TavernPanelTitle("Battlefield")
         BoxWithConstraints {
             val columns = maxOf(1, ((maxWidth.value + 12) / (140 + 12)).toInt())
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -104,7 +121,7 @@ fun BoardAppearancePicker() {
                 }
             }
         }
-        Text("Works in portrait and landscape.", color = MagicPalette.parchment.copy(alpha = 0.65f), style = SfText.caption())
+        Text("Works in portrait and landscape.", color = TavernPalette.parchment.copy(alpha = 0.65f), style = sf(12f, design = SfDesign.SERIF))
     }
 }
 
@@ -122,14 +139,14 @@ fun MenuAppearanceArt(value: String, modifier: Modifier = Modifier) {
 fun MenuAppearancePicker() {
     var appearance by AppPreferences.string(MenuAppearancePreference.key, MenuAppearancePreference.defaultValue)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Menu", color = MagicPalette.parchment, style = SfText.headline())
+        TavernPanelTitle("Menu")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             for ((title, value) in listOf("Tavern" to "tavern", "Stone Arena" to "arena", "Midnight" to "midnight")) {
                 AppearanceSwatch(title, appearance == value, Modifier.weight(1f).clickable { appearance = value }
                     .semantics { contentDescription = "$title menu background" }) { MenuAppearanceArt(value, Modifier.fillMaxSize()) }
             }
         }
-        Text("Saved on this device. The battlefield keeps its own setting.", color = MagicPalette.parchment.copy(alpha = 0.65f), style = SfText.caption())
+        Text("Saved on this device. The battlefield keeps its own setting.", color = TavernPalette.parchment.copy(alpha = 0.65f), style = sf(12f, design = SfDesign.SERIF))
     }
 }
 
@@ -137,13 +154,8 @@ object PortraitModePreference { const val key = "magicmobile.portraitModeEnabled
 
 @Composable
 fun PortraitModeToggle(isOn: Boolean, onChange: (Boolean) -> Unit) {
-    Box(Modifier.fillMaxWidth().magicPanel(MagicPanelMaterial.IRON, MagicPanelProminence.QUIET, cornerRadius = 9.dp, padding = 10.dp)) {
-        IosToggle(isOn, onChange) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Auto-Rotate", color = Color.White, style = SfText.callout(SfWeight.black))
-                Text("Portrait and landscape", color = Color.White.copy(alpha = 0.58f), style = SfText.caption2(SfWeight.semibold), maxLines = 2)
-            }
-        }
+    Box(Modifier.tavernSettingsPanel()) {
+        TavernToggle("Auto-Rotate", isOn, onChange, subtitle = "Portrait and landscape", color = TavernPalette.parchment)
     }
 }
 
@@ -151,27 +163,20 @@ fun PortraitModeToggle(isOn: Boolean, onChange: (Boolean) -> Unit) {
 @Composable
 fun FollowTurnsToggle() {
     var isOn by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
-    Box(Modifier.fillMaxWidth().magicPanel(MagicPanelMaterial.IRON, MagicPanelProminence.QUIET, cornerRadius = 9.dp, padding = 10.dp)
-        .semantics { contentDescription = "settings.followTurns" }) {
-        IosToggle(isOn, { isOn = it }) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Follow Turns", color = Color.White, style = SfText.callout(SfWeight.black))
-                Text("Show whose turn it is at the top. A tap on an opponent holds until the next turn.", color = Color.White.copy(alpha = 0.58f),
-                    style = SfText.caption2(SfWeight.semibold), maxLines = 2)
-            }
-        }
+    Box(Modifier.tavernSettingsPanel().semantics { contentDescription = "settings.followTurns" }) {
+        TavernToggle("Follow Turns", isOn, { isOn = it }, subtitle = "Show whose turn it is at the top. A tap on an opponent holds until the next turn.",
+            color = TavernPalette.parchment)
     }
 }
 
 @Composable
 fun BoardEffectsPicker() {
     var level by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
-    Column(Modifier.fillMaxWidth().magicPanel(MagicPanelMaterial.IRON, MagicPanelProminence.QUIET, cornerRadius = 9.dp, padding = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Board Effects", color = Color.White, style = SfText.callout(SfWeight.black))
-            Text("Spell, combat and life animations. Reduce Motion always limits them.", color = Color.White.copy(alpha = 0.58f),
-                style = SfText.caption2(SfWeight.semibold), maxLines = 2)
+            Text("Board Effects", color = TavernPalette.parchment, style = sf(16f, SfWeight.semibold, SfDesign.SERIF))
+            Text("Spell, combat and life animations. Reduce Motion always limits them.", Modifier.alpha(0.65f), color = TavernPalette.parchment,
+                style = sf(12f, design = SfDesign.SERIF), maxLines = 2)
         }
         IosSegmented(BoardFXLevel.entries.toList(), BoardFXLevel.of(level) ?: BoardFXLevel.FULL, { level = it.rawValue }, { it.title },
             Modifier.semantics { contentDescription = "settings.boardEffects" })
@@ -188,28 +193,21 @@ fun GameAudioSettings() {
     var musicVolume by AppPreferences.double(GameAudio.musicVolumeKey, GameAudio.defaultMusicVolume)
     var soundLabOpen by remember { mutableStateOf(false) }
     val musicOn = music && musicVolume > 0
-    val labelStyle = SfText.caption(SfWeight.bold)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        IosToggle(effects, { on -> effects = on; if (on) GameAudio.play(GameSound.UI_TOGGLE) }, tint = GameBoardTheme.antiqueGold) {
-            Text("Effect Sounds", color = Color.White.copy(alpha = 0.85f), style = labelStyle)
-        }
-        if (effects) IosSlider(effectsVolume.toFloat(), { effectsVolume = it.toDouble(); GameAudio.play(GameSound.UI_TICK) }, label = "Effects volume")
-        IosToggle(musicOn, { on ->
+        TavernToggle("Effect Sounds", effects, { on -> effects = on }, Modifier.semantics { contentDescription = "settings.boardSounds" },
+            color = TavernPalette.parchment)
+        if (effects) TavernSlider(effectsVolume.toFloat(), { effectsVolume = it.toDouble(); GameAudio.play(GameSound.UI_TICK) }, label = "Effects volume")
+        TavernToggle("Music", musicOn, { on ->
             // A level of zero reads as off, and switching music back on brings back a level you can hear.
             music = on
             if (on && musicVolume <= 0.02) musicVolume = GameAudio.defaultMusicVolume
             GameAudio.settingsChanged()
-        }, tint = GameBoardTheme.antiqueGold) { Text("Music", color = Color.White.copy(alpha = 0.85f), style = labelStyle) }
-        if (musicOn) IosSlider(musicVolume.toFloat(), { musicVolume = it.toDouble(); GameAudio.settingsChanged() }, label = "Music volume")
+        }, color = TavernPalette.parchment)
+        if (musicOn) TavernSlider(musicVolume.toFloat(), { musicVolume = it.toDouble(); GameAudio.settingsChanged() }, label = "Music volume")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Sounds follow your phone's media volume.", Modifier.weight(1f), color = Color.White.copy(alpha = 0.5f), style = SfText.caption2(SfWeight.semibold))
-            Row(Modifier.defaultMinSize(minHeight = 34.dp).background(Color.White.copy(alpha = 0.1f), CircleShape)
-                .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape).clickable { soundLabOpen = true }.padding(horizontal = 10.dp)
-                .semantics { contentDescription = "settings.soundLab" },
-                horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                SfImage("waveform", Color.White.copy(alpha = 0.85f), 12.dp)
-                Text("Sound Lab", color = Color.White.copy(alpha = 0.85f), style = SfText.caption(SfWeight.heavy))
-            }
+            Text("Sounds follow your phone's media volume.", Modifier.weight(1f).alpha(0.6f), color = TavernPalette.parchment, style = sf(12f, design = SfDesign.SERIF))
+            TavernPlaqueButton("Sound Lab", { soundLabOpen = true }, Modifier.semantics { contentDescription = "settings.soundLab" },
+                kind = TavernButtonKind.SECONDARY, systemImage = "waveform")
         }
     }
     if (soundLabOpen) BoardSheet({ soundLabOpen = false }, BrandTheme.canvas, skipPartiallyExpanded = true) { SoundLabView { soundLabOpen = false } }
@@ -278,6 +276,9 @@ fun SoundLabView(done: () -> Unit) {
                 creditBlock("Sound effects", listOf(
                     "Recordings from the Sonniss.com GDC Game Audio Bundles (royalty-free), by David Dumais Audio, Sound Spark LLC, Gamemaster Audio, Articulated Sounds, Airborne Sound, Double Trouble Audio, Bluezone, 3maze, Timothy McHugh, Sound Ex Machina and more.",
                     "Card recordings from Kenney.nl Casino Audio (CC0)."))
+                creditBlock("Table art", listOf(
+                    "3D props made with Meshy (meshy.ai). The medallion, corner ornament, candle and tankard are licensed under Creative Commons: By Attribution 4.0 License.",
+                    "Wood and leather textures from Poly Haven (polyhaven.com, CC0)."))
             }
         }
     }
@@ -296,12 +297,7 @@ private fun creditBlock(title: String, lines: List<String>) {
 private fun SoundLabCategory(category: GameSoundCategory) {
     var enabled by AppPreferences.boolean(category.key, true)
     Column(Modifier.fillMaxWidth().brandPanel(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        IosToggle(enabled, { enabled = it }, tint = BrandTheme.ember) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(category.title, color = BrandTheme.ink, style = sf(17f, SfWeight.heavy))
-                Text(category.detail, color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.semibold))
-            }
-        }
+        TavernToggle(category.title, enabled, { enabled = it }, subtitle = category.detail)
         val sounds = GameSound.sounds(category)
         AdaptiveGrid(138f, 8f, sounds.size) { index ->
             val sound = sounds[index]

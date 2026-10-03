@@ -77,6 +77,7 @@ import io.magicmobile.android.game.GameplayAffordances
 import io.magicmobile.android.game.ManaPool
 import io.magicmobile.android.game.PhaseTitles
 import io.magicmobile.android.game.PlayerGameState
+import io.magicmobile.android.game.PlayerStatusSummary
 import io.magicmobile.android.game.XmageStackObject
 import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.game.capitalizedWords
@@ -91,6 +92,13 @@ import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.TavernMenu
+import io.magicmobile.android.ui.TavernMenuDivider
+import io.magicmobile.android.ui.TavernMenuEdge
+import io.magicmobile.android.ui.TavernMenuItem
+import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.engraved
+import io.magicmobile.android.ui.tavernPanel
 import kotlinx.coroutines.delay
 
 /** Increments when a phase pill lands in the top bar, which then flashes its turn label. */
@@ -343,23 +351,7 @@ fun PortraitOpponentStatusBar(snapshot: GameSnapshot, opponentName: String, oppo
                     }
                 }
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(Modifier.graphicsLayer { scaleX = pulseScale; scaleY = pulseScale; transformOrigin = TransformOrigin(0f, 0.5f) }
-                    .background(animatedTurnColor.copy(alpha = pulseAlpha), CircleShape).padding(horizontal = 4.dp, vertical = 1.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).glow(animatedTurnColor, 3.dp, 4.dp).background(animatedTurnColor, CircleShape))
-                    // The phase drops first when a pod's extra controls leave less room.
-                    PhaseFittingLabel(owner, animatedTurnColor, PhaseTitles.arenaPhaseTitle(snapshot.step ?: snapshot.phase))
-                }
-                val statusStyle = SfText.caption2(SfWeight.bold)
-                val thinker = snapshot.thinkingPlayerID
-                when {
-                    cue == null && thinker != null -> ThinkingLabel(snapshot.playerLabel(thinker), BoardTurnColors.opponent, statusStyle)
-                    cue == null && snapshot.isSpectating -> Text("You’re watching", color = MagicPalette.parchment, style = statusStyle)
-                    else -> Text(cue?.title ?: snapshot.priorityStatusText,
-                        color = if (cue == null) MagicPalette.parchment else MagicPalette.antiqueGold, style = statusStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            OpponentTurnColumn(snapshot, animatedTurnColor, owner, pulseScale, pulseAlpha, cue, Modifier.weight(1f))
             if (selectOpponent != null) OpponentFocusMenu(snapshot, selectOpponent)
             BoardPlayerEffects(opponent, BattlefieldAttachments.enchanting(opponent.playerId, snapshot.players.flatMap { it.zones.battlefield }), viewZone)
             if (viewZone != null) PlayerZoneMenu(opponent, viewZone)
@@ -369,6 +361,139 @@ fun PortraitOpponentStatusBar(snapshot: GameSnapshot, opponentName: String, oppo
         }
         if (emoteCenter != null) {
             OpponentEmoteSlot(emoteCenter, snapshot, opponent.playerId, Modifier.align(Alignment.BottomStart).offset(x = 8.dp, y = 44.dp).wrapContentSize(unbounded = true).zIndex(5f))
+        }
+    }
+}
+
+/** Whose turn it is (flashing when a phase lands) and who holds priority or is thinking: the opponent bar's middle column. */
+@Composable
+private fun OpponentTurnColumn(snapshot: GameSnapshot, turnColor: Color, owner: String, pulseScale: Float, pulseAlpha: Float,
+                               cue: BoardResponseCue?, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.graphicsLayer { scaleX = pulseScale; scaleY = pulseScale; transformOrigin = TransformOrigin(0f, 0.5f) }
+            .background(turnColor.copy(alpha = pulseAlpha), CircleShape).padding(horizontal = 4.dp, vertical = 1.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).glow(turnColor, 3.dp, 4.dp).background(turnColor, CircleShape))
+            // The phase drops first when a pod's extra controls leave less room.
+            PhaseFittingLabel(owner, turnColor, PhaseTitles.arenaPhaseTitle(snapshot.step ?: snapshot.phase))
+        }
+        val statusStyle = SfText.caption2(SfWeight.bold)
+        val thinker = snapshot.thinkingPlayerID
+        when {
+            cue == null && thinker != null -> ThinkingLabel(snapshot.playerLabel(thinker), BoardTurnColors.opponent, statusStyle)
+            cue == null && snapshot.isSpectating -> Text("You’re watching", color = MagicPalette.parchment, style = statusStyle)
+            else -> Text(cue?.title ?: snapshot.priorityStatusText,
+                color = if (cue == null) MagicPalette.parchment else MagicPalette.antiqueGold, style = statusStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * Walnut Tavern (PortraitOpponentStatusBar.tavernBar): the opponent's commander medallion sits in the
+ * table's top socket and opens their zones (and, in a pod, the other opponents); while they can be attacked
+ * a tap declares the attack. Name, turn and priority are on a leather nameplate to the left, their hand
+ * shows as card backs above, and the phase plate mirrors the nameplate. Drawn as a full-board layer.
+ */
+@Composable
+fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: String, opponent: PlayerGameState, combatTargetable: Boolean,
+                      combatTargetAction: () -> Unit, hudRect: io.magicmobile.android.game.BoardRect, modifier: Modifier = Modifier,
+                      viewZone: ((String, List<ZoneCard>) -> Unit)? = null, selectOpponent: ((String) -> Unit)? = null) {
+    val hudPulse = LocalBoardHUDPulse.current
+    val emoteCenter = LocalEmoteCenter.current
+    var pulse by remember { mutableStateOf(false) }
+    var lastPulse by remember { mutableIntStateOf(hudPulse) }
+    LaunchedEffect(hudPulse) {
+        if (hudPulse != lastPulse) { lastPulse = hudPulse; pulse = true; delay(450); pulse = false }
+    }
+    val (owner, turnColor) = turnOwner(snapshot)
+    val animatedTurnColor by animateColorAsState(turnColor, tween(350), label = "tavernTurnColor")
+    val pulseScale by animateFloatAsState(if (pulse) 1.06f else 1f, if (pulse) spring(0.55f, 630f) else tween(400), label = "tavernPulse")
+    val pulseAlpha by animateFloatAsState(if (pulse) 0.35f else 0f, if (pulse) spring(0.55f, 630f) else tween(400), label = "tavernPulseAlpha")
+    val sockets = frame.sockets
+    val plateWidth = frame.length(if (frame.isLandscape) 106f else 118f).dp
+    Box(modifier.fillMaxSize()) {
+        // Name, turn and priority on a leather nameplate in brass trim.
+        Column(Modifier.tavernPosition(frame, sockets.opponentNameplate).width(plateWidth)
+            .glow(Color.Black.copy(alpha = 0.45f), 4.dp, 7.dp).tavernPanel(7.dp).padding(horizontal = 9.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            FitText(opponentName, sf(12f, SfWeight.semibold, SfDesign.SERIF).engraved(0.6f), color = TavernPalette.parchment.copy(alpha = 0.9f), minimumScale = 0.7f)
+            OpponentTurnColumn(snapshot, animatedTurnColor, owner, pulseScale, pulseAlpha, BoardResponseCue.make(snapshot))
+        }
+        TavernCardBackFan(opponent.zones.visibleHandCount, Modifier.tavernPosition(frame, sockets.opponentHand))
+        // The step of the turn mirrors the nameplate; the log is in the controls menu.
+        TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.turn, Modifier.tavernPosition(frame, sockets.phasePlate), plateWidth)
+        // Counters, commander damage and attached cards are in the medallion's pop-over; poison and the worst commander damage show here too.
+        TavernStatusGlance(PlayerStatusSummary(opponent, snapshot), Modifier.tavernPosition(frame, sockets.opponentGlance))
+        Box(Modifier.tavernPosition(frame, sockets.opponentMedallion).cardBounds(TavernSeatAnchor.top)) {
+            TavernOpponentMedallion(frame.length(sockets.opponentHoleRadius * 2).dp, snapshot, opponentName, opponent, combatTargetable, combatTargetAction,
+                viewZone, selectOpponent)
+        }
+        if (emoteCenter != null) {
+            Box(Modifier.place(hudRect)) {
+                OpponentEmoteSlot(emoteCenter, snapshot, opponent.playerId, Modifier.align(Alignment.BottomStart).offset(x = 8.dp, y = 44.dp)
+                    .wrapContentSize(unbounded = true).zIndex(5f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TavernOpponentMedallion(diameter: Dp, snapshot: GameSnapshot, opponentName: String, opponent: PlayerGameState, combatTargetable: Boolean,
+                                    combatTargetAction: () -> Unit, viewZone: ((String, List<ZoneCard>) -> Unit)?, selectOpponent: ((String) -> Unit)?) {
+    val label = if (opponent.isOut) "$opponentName, out of the game" else "$opponentName, ${opponent.life} life"
+    val medallion: @Composable () -> Unit = {
+        TavernMedallion(diameter, if (opponent.isOut) null else opponent.life, Modifier.alpha(if (opponent.isOut) 0.45f else 1f),
+            active = snapshot.activePlayerId == opponent.playerId, targetable = combatTargetable) {
+            PlayerPortrait(opponent, diameter, active = false, thinking = snapshot.thinkingPlayerID == opponent.playerId)
+        }
+    }
+    if (combatTargetable || viewZone == null) {
+        PressableBox({ if (combatTargetable) combatTargetAction() },
+            Modifier.semantics { contentDescription = label + if (combatTargetable) ". Attacks this player" else "" }) { medallion() }
+    } else {
+        TavernPlayerZoneMenu(opponent, viewZone, statusSnapshot = snapshot, edge = TavernMenuEdge.BELOW,
+            swapOpponents = BoardOpponentFocus.opponents(snapshot), swap = selectOpponent, contentDescription = label) { medallion() }
+    }
+}
+
+/**
+ * PlayerZoneMenu on the tavern table: the player's medallion opens their zones in a leather pop-over that
+ * starts with their status (badges, attached cards) and, in a pod, ends with a row to swap opponents.
+ * `snapshot` adds the shared zone rows (revealed, looked at) and the commander-ready state; leave it out
+ * for an opponent and pass `statusSnapshot` for their status.
+ */
+@Composable
+fun TavernPlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCard>) -> Unit, modifier: Modifier = Modifier,
+                         snapshot: GameSnapshot? = null, pendingActionID: String? = null, statusSnapshot: GameSnapshot? = null,
+                         edge: TavernMenuEdge = TavernMenuEdge.ABOVE, swapOpponents: List<PlayerGameState> = emptyList(),
+                         swap: ((String) -> Unit)? = null, contentDescription: String? = null, label: @Composable () -> Unit) {
+    val inspectZone = LocalBoardZoneInspectionAction.current
+    val commanderReady = snapshot?.let { GameplayAffordances.commanderCastAvailable(player, it, pendingActionID) } ?: false
+    val game = statusSnapshot ?: snapshot
+    fun open(zone: BoardZoneReference.PlayerZone, cards: List<ZoneCard>) {
+        if (inspectZone != null) inspectZone(BoardZoneReference.Player(player.playerId, zone))
+        else viewZone("${player.displayName ?: player.playerId} · ${capitalizedWords(zone.rawValue)}", cards)
+    }
+    TavernMenu(modifier, edge, contentDescription = contentDescription
+        ?: "${player.displayName ?: player.playerId} zones${if (commanderReady) ", commander cast available" else ""}", label = { label() }) {
+        TavernPlayerStatusPanel(game?.playerLabel(player.playerId) ?: player.displayName ?: "Player", PlayerStatusSummary(player, game), viewZone)
+        TavernMenuItem(if (commanderReady) "Command · Cast available" else "Command · ${player.zones.command.size}", { open(BoardZoneReference.PlayerZone.COMMAND, player.zones.command) }, "crown")
+        TavernMenuItem("Graveyard · ${player.zones.graveyard.size}", { open(BoardZoneReference.PlayerZone.GRAVEYARD, player.zones.graveyard) }, "leaf")
+        TavernMenuItem("Exile · ${player.zones.exile.size}", { open(BoardZoneReference.PlayerZone.EXILE, player.zones.exile) }, "sparkles")
+        TavernMenuItem("Hand · ${player.zones.visibleHandCount}", { open(BoardZoneReference.PlayerZone.HAND, player.zones.hand) }, "hand.raised")
+        TavernMenuItem("Library · ${player.zones.visibleLibraryCount}", { open(BoardZoneReference.PlayerZone.LIBRARY, player.zones.library) }, "books.vertical")
+        TavernMenuItem("Battlefield · ${player.zones.battlefield.size}", { open(BoardZoneReference.PlayerZone.BATTLEFIELD, player.zones.battlefield) }, "square.grid.2x2")
+        if (snapshot != null) {
+            val references = BoardZoneReference.namedReferences(snapshot)
+            if (references.isNotEmpty()) TavernMenuDivider()
+            for (reference in references) {
+                TavernMenuItem("${reference.title(snapshot)} · ${reference.cards(snapshot).size}", {
+                    if (inspectZone != null) inspectZone(reference) else viewZone(reference.title(snapshot), reference.cards(snapshot))
+                })
+            }
+        }
+        if (swapOpponents.size > 1 && swap != null) {
+            TavernOpponentSwap(swapOpponents, player.playerId, { game?.playerLabel(it) ?: "Opponent" }, swap)
         }
     }
 }

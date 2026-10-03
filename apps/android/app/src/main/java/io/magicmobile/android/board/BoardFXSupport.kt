@@ -102,8 +102,10 @@ fun Modifier.boardFXCardMotion(cardID: String): Modifier = composed {
         }
     }
 
-    val glow = if (stanceAlpha > 0f) Modifier.glowingStroke(stanceColor.copy(alpha = stanceAlpha), 2.dp,
-        stanceColor.copy(alpha = 0.9f * stanceAlpha), 8.dp, 8.dp, inset = (-2).dp) else Modifier
+    // The tavern board lights attackers and blockers from behind: glow, no outline.
+    val glow = if (stanceAlpha <= 0f) Modifier
+        else if (io.magicmobile.android.ui.LocalTavernBoard.current) Modifier.tavernTileGlow(stanceColor, 0.95f * stanceAlpha)
+        else Modifier.glowingStroke(stanceColor.copy(alpha = stanceAlpha), 2.dp, stanceColor.copy(alpha = 0.9f * stanceAlpha), 8.dp, 8.dp, inset = (-2).dp)
     this.graphicsLayer {
         translationY = (forward + lungeOffset.value * direction) * density
         scaleX = scale; scaleY = scale

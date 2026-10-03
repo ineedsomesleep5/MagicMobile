@@ -53,20 +53,22 @@ val prepareAssets by tasks.registering(Exec::class) {
 // Sync, not Copy: drawables that stop being generated (the old background PNGs) must be removed,
 // or they collide with src/main/res in existing build directories.
 val prepareBrandAssets by tasks.registering(Sync::class) {
-    from(rootProject.file("../ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")) {
-        rename { "magicmobile_icon.png" }
-    }
-    // The iOS asset catalogue is the source for the icon, launch mark and logo. The board and menu
-    // backgrounds are lossy WebP in src/main/res/drawable (iOS ships JPEGs of the same art).
-    from(rootProject.file("../ios/MagicMobile/Assets.xcassets")) {
-        include("mage-mobile-logo.imageset/*.png")
-        eachFile { path = name.replace('-', '_') }
+    val catalogue = rootProject.file("../ios/MagicMobile/Assets.xcassets")
+    // The iOS asset catalogue is the source for the icon, launch mark and tavern art. The classic board
+    // and menu backgrounds are lossy WebP in src/main/res/drawable (iOS ships JPEGs of the same art).
+    into(layout.buildDirectory.dir("generated/magicmobile-res"))
+    from(File(catalogue, "LaunchMark.imageset/launch-mark@3x.png")) { into("drawable"); rename { "launch_mark.png" } }
+    // Walnut Tavern art (iOS builds 23-26), unscaled: the plates are drawn to fill the screen and the
+    // UI kit sprites (rendered at 3 px per point) are drawn at explicit sizes, so density scaling
+    // would only waste memory. The launcher icon is the iOS icon (mipmap-anydpi-v26/ic_launcher.xml).
+    from(File(catalogue, "AppIcon.appiconset/AppIcon-1024.png")) { into("drawable-nodpi"); rename { "magicmobile_icon.png" } }
+    from(catalogue) {
+        include("battlefield-tavern-portrait.imageset/*.jpg", "battlefield-tavern-landscape.imageset/*.jpg",
+            "menu-backdrop-tavern.imageset/*.jpg", "tavern-*.imageset/*.png")
+        // Android resource names are lowercase with underscores: tavern-mana-B -> tavern_mana_b.
+        eachFile { path = "drawable-nodpi/" + name.replace('-', '_').lowercase() }
         includeEmptyDirs = false
     }
-    from(rootProject.file("../ios/MagicMobile/Assets.xcassets/LaunchMark.imageset/launch-mark@3x.png")) {
-        rename { "launch_mark.png" }
-    }
-    into(layout.buildDirectory.dir("generated/magicmobile-res/drawable"))
 }
 val prepareAudio by tasks.registering(Exec::class) {
     val script = rootProject.file("../../scripts/android/prepare_audio.py")

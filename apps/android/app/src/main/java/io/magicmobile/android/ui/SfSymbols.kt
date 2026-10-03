@@ -214,6 +214,11 @@ object SfSymbols {
         "circle.hexagongrid.fill" -> Icons.Filled.Grain
         "hourglass.bottomhalf.filled" -> Icons.Filled.HourglassBottom
         "arrow.forward" -> Icons.Filled.ArrowForward
+        "arrow.left.arrow.right.circle.fill" -> Icons.Filled.SwapHorizontalCircle
+        "atom" -> Icons.Filled.Science
+        "ticket.fill" -> Icons.Filled.ConfirmationNumber
+        "seal.fill" -> Icons.Filled.Verified
+        "figure.fencing" -> Icons.Filled.SportsKabaddi
         else -> Icons.Filled.Circle
     }
 
