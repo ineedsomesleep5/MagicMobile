@@ -4,9 +4,9 @@ Mode: Persuade / Experience. User rejected the initial restrained serif design a
 
 THESIS: Deal a hand of Magic cards into the app, then take the game with you.
 
-OWN-WORLD: Charcoal, warm white, ember-orange. Heavy Archivo display typography and Manrope controls. Genuine card textures on modeled 3D objects, a silver app-reveal scene, and an orange download ending.
+OWN-WORLD: Walnut & Ember, the app's brand (approved 2026-10-01/02): a candlelit tavern wall, carved walnut, tooled leather, brass rims and frames, parchment panels and ember firelight. Source Serif 4 throughout. Genuine card textures on modeled 3D objects, an app reveal on the board's leather table, and a leather download desk with a parchment details card and an ember download plaque. Materials and tokens: [DESIGN.md](DESIGN.md).
 
-STORY: Encounter the hand; imagine a deck; cards gather into the real app; see the battlefield preview; choose a phone download.
+STORY: Encounter the hand; imagine a deck; cards gather into the real app (the landscape main menu); see the portrait and landscape battlefield previews; choose a phone download.
 
 FIRST VIEWPORT: Oversized two-line headline, central layered seven-card hand, clear download access and a small destination dock. Phone composition keeps the headline above the hand and shortens the timeline.
 
