@@ -328,6 +328,7 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
         let pass = application.buttons["board.action.primary"]
         XCTAssertTrue(pass.waitForExistence(timeout: 10))
+        UITestHarness.settleFirstTouch(application)
         captureImage(name: "tavern-pass-before")
         // A full-screen accessibility container (see the board's overlay layer) makes
         // isHittable unreliable here; tap the button's centre like a finger.
@@ -358,6 +359,7 @@ final class BoardPolishUITests: XCTestCase {
 
         let controls = application.buttons["Game controls"]
         XCTAssertTrue(controls.waitForExistence(timeout: 10))
+        UITestHarness.settleFirstTouch(application)
         controls.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let log = application.buttons["Game Log"]
         XCTAssertTrue(log.waitForExistence(timeout: 5), "The controls ring opens its menu")
