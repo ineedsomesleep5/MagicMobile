@@ -516,3 +516,5 @@ single MIT file with its license header when that is enough.
   landscape centre column on the mat with the tavern top bar and command bar as socket layers. New tests:
   testTavernLandscapeTableKeepsItsControls, testDeclaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack.
   Android plan: docs/ANDROID_PARITY.md "Next: Walnut Tavern".
+  Also in build 25: the main menu held sideways is a fixed screen (no scrolling; short screens use a
+  smaller mark and a one-line title, then scale to fit), test testLandscapeMainMenuFitsWithoutScrolling.
