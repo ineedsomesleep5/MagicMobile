@@ -421,13 +421,14 @@ struct PortraitBottomCommandBar: View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .global).origin
             if let canvas = tavernCanvas {
-                let pass = TavernDesign.passButton
+                let sockets = TavernSockets.current(canvas)
+                let pass = sockets.passButton
                 ZStack {
                     tavernMedallion(canvas: canvas)
-                        .tavernPosition(TavernDesign.lifeMedallion, canvas: canvas, origin: origin)
+                        .tavernPosition(sockets.lifeMedallion, canvas: canvas, origin: origin)
                     ForEach(Array(tavernManaValues.enumerated()), id: \.offset) { index, value in
                         tavernManaGem(symbol: value.0, count: value.1, canvas: canvas)
-                            .tavernPosition(CGPoint(x: TavernDesign.manaSocketXs[index], y: TavernDesign.manaSocketY),
+                            .tavernPosition(CGPoint(x: sockets.manaSocketXs[index], y: sockets.manaSocketY),
                                             canvas: canvas, origin: origin)
                     }
                     .accessibilityElement(children: .contain)
@@ -437,13 +438,14 @@ struct PortraitBottomCommandBar: View {
                     // Skip and the controls ring orbit the hourglass's lower-left on one arc
                     // (72 pt out): Skip at its left, controls further round below it.
                     dock(.skip)
-                        .tavernPosition(CGPoint(x: pass.x - 71, y: pass.y + 10), canvas: canvas, origin: origin)
+                        .tavernPosition(sockets.skip, canvas: canvas, origin: origin)
                     dock(.menu)
-                        .tavernPosition(CGPoint(x: pass.x - 51, y: pass.y + 51), canvas: canvas, origin: origin)
+                        .tavernPosition(sockets.menu, canvas: canvas, origin: origin)
                     let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
                     if stackCount > 0, let openStack {
-                        TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack)
-                            .tavernPosition(TavernDesign.stackTray, canvas: canvas, origin: origin)
+                        TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack,
+                                        width: sockets.canvas.width > sockets.canvas.height ? 106 : 124)
+                            .tavernPosition(sockets.stackTray, canvas: canvas, origin: origin)
                     }
                     // Counters and attached cards live in the medallion's pop-over; poison and
                     // commander damage also show here at a glance.
@@ -451,7 +453,7 @@ struct PortraitBottomCommandBar: View {
                         TavernStatusGlance(summary: PlayerStatusSummary(player: human, snapshot: snapshot))
                         if let emoteCenter { TableChatButton(center: emoteCenter) }
                     }
-                    .tavernPosition(CGPoint(x: TavernDesign.lifeMedallion.x + 42, y: TavernDesign.lifeMedallion.y + 52),
+                    .tavernPosition(sockets.chat,
                                     canvas: canvas, origin: origin)
                 }
             }
@@ -485,19 +487,20 @@ struct PortraitBottomCommandBar: View {
 
     /// Your commander's portrait in the life socket; it opens your zones like the old grid button.
     private func tavernMedallion(canvas: CGSize) -> some View {
-        let diameter = canvas.tavernLength(TavernDesign.lifeHoleRadius * 2)
+        let diameter = canvas.tavernLength(TavernSockets.current(canvas).lifeHoleRadius * 2)
         let commanderReady = GameplayAffordances.commanderCastAvailable(player: human, snapshot: snapshot, pendingActionID: pendingActionId)
         return PlayerZoneMenu(
             player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId,
             customLabel: AnyView(
                 TavernMedallion(diameter: diameter, life: human.life,
-                                active: snapshot.isViewer(snapshot.activePlayerId) || commanderReady) {
+                                active: snapshot.isViewer(snapshot.activePlayerId), commanderReady: commanderReady) {
                     PlayerPortrait(player: human, size: diameter)
                 }
                 .frame(width: diameter + 8, height: diameter + 8)
             ),
             accessibilityOverride: ("Your life: \(human.life)\(commanderReady ? ", commander cast available" : "")", "board.lifeOrb")
         )
+        .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
         .overlay(alignment: .top) {
             if let emoteCenter {
                 EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)

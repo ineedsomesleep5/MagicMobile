@@ -267,6 +267,27 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         XCTAssertEqual(try OnDevicePromptAdapter.presentation(target, viewerPlayerID: viewer, cards: [], players: players).envelope.targets?.map(\.id), [second])
     }
 
+    func testDeclaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack() throws {
+        let attacker = "33333333-0000-0000-0000-000000000000"
+        let otherBlocker = "55555555-0000-0000-0000-000000000000"
+        func card(_ id: String, blocking: [String]) -> [String: Any] {
+            ["instanceId": id, "card": ["name": "Creature", "typeLine": "Creature"], "blocking": blocking]
+        }
+        let players = try [
+            player(viewer, battlefield: [card(first, blocking: [attacker]), card(second, blocking: [])]),
+            player(second, battlefield: [card(attacker, blocking: []), card(otherBlocker, blocking: [first])])
+        ]
+        // The engine no longer offers a creature that already blocks; the board still lists it
+        // so a tap sends its UUID again, which XMage takes as removing the block.
+        let p = try prompt("SELECT", types: ["uuid", "boolean"], payload: ["selectMode": .string("blockers"),
+            "options": .object(["possibleBlockers": .array([.string(second)])])], revision: 41)
+        let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [], players: players)
+        XCTAssertEqual(view.envelope.targets?.map(\.id), [second, first], "Only the viewer's own blockers are added")
+        let command = try XCTUnwrap(PromptCommandBuilder.command(gameId: "match", promptEnvelope: view.envelope,
+            type: "choose_target", promptId: p.id, playerId: viewer, ids: [first]))
+        XCTAssertEqual(try OnDevicePromptAdapter.answer(for: command, prompt: p, viewerPlayerID: viewer), EnginePrompt.answer("uuid", .string(first)))
+    }
+
     func testAskRoundTripsThroughExistingCommandBuilder() throws {
         let p = try prompt("ASK", types: ["boolean"])
         let view = try OnDevicePromptAdapter.presentation(p, viewerPlayerID: viewer, cards: [])

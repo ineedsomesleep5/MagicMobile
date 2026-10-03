@@ -294,6 +294,8 @@ enum BoardDecisionPresentation {
 struct PromptPill: View {
     let snapshot: GameSnapshot
     var combatSelection = CombatSelectionState()
+    /// While declaring attackers or blockers: take back the last creature you declared.
+    var back: (() -> Void)? = nil
 
     private var isWaitingOnHuman: Bool {
         snapshot.isViewer(snapshot.waitingOnPlayerId)
@@ -325,8 +327,17 @@ struct PromptPill: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
             Spacer(minLength: 0)
+            if let back { backButton(back).buttonStyle(TavernButtonStyle(kind: .secondary, compact: true)) }
         }
         .modifier(TavernRibbon())
+    }
+
+    private func backButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label("Back", systemImage: "arrow.uturn.backward")
+        }
+        .accessibilityLabel("Take back the last declaration")
+        .accessibilityIdentifier("board.combat.back")
     }
 
     private var classicPill: some View {
@@ -350,6 +361,7 @@ struct PromptPill: View {
                 .minimumScaleFactor(0.75)
 
             Spacer()
+            if let back { backButton(back).buttonStyle(CompactActionButtonStyle(isPrimary: false)) }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

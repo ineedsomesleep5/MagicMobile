@@ -143,14 +143,16 @@ struct BoardFXOverlay: View {
                 let kind: BoardFXFlight.Kind = entrance == .plain
                     ? .arrive(from: origin, to: target)
                     : .showcaseArrive(from: origin, center: anchors.stackPoint, to: target, commander: entrance == .commander)
-                return BoardFXFlight(effect: effect, card: card, kind: kind)
+                return BoardFXFlight(effect: effect, card: card, kind: kind, tavern: tavern)
             case let .leftBattlefield(id, playerID, destination, _):
                 guard let origin = rect(id) else { return nil }
                 let target = destination == .hand ? anchors.handPoint(playerID) : anchors.playerPoint(playerID)
                 return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target, destination: destination))
             case let .spellCast(_, _, controllerID, _, weight):
+                // On the tavern table a commander rises out of its owner's medallion.
+                let origin = tavern && weight == .commander ? anchors.playerPoint(controllerID ?? anchors.viewerID) : anchors.handPoint(controllerID)
                 return BoardFXFlight(effect: effect, card: card,
-                                     kind: .cast(from: anchors.handPoint(controllerID), to: anchors.stackPoint, weight: weight))
+                                     kind: .cast(from: origin, to: anchors.stackPoint, weight: weight), tavern: tavern)
             case let .combatStrike(id, target, _, _):
                 guard let origin = rect(id), let hit = point(target) else { return nil }
                 return BoardFXFlight(effect: effect, card: card, kind: .strike(from: origin, to: hit))
@@ -164,6 +166,24 @@ struct BoardFXOverlay: View {
                       in context: inout GraphicsContext) {
         let motion = fx.usesMotion
         switch fx.event {
+        case let .spellCast(stackID, name, controllerID, tint, weight) where tavern && weight == .commander:
+            // The tavern commander (storyboard): the table dims, the medallion flares, embers
+            // follow the commander up to the middle, firelight holds it and a ribbon names it.
+            let center = anchors.stackPoint
+            let showcase = BoardFXFlight.showcaseSize(.commander, tavern: true)
+            let origin = anchors.playerPoint(controllerID ?? anchors.viewerID)
+            BoardFXPainter.tableDim(size, fade: BoardFXPainter.window(p, fadeIn: 0.1, fadeOut: 0.85), in: &context)
+            BoardFXPainter.fireRing(at: origin, radius: 34, progress: min(1, elapsed / 1.2), elapsed: elapsed, seed: fx.id, in: &context)
+            if motion {
+                BoardFXPainter.emberStream(from: origin, to: center, progress: elapsed / 0.5, seed: fx.id, in: &context)
+                let hold = CGRect(x: center.x - showcase.width / 2, y: center.y - showcase.height / 2,
+                                  width: showcase.width, height: showcase.height)
+                BoardFXPainter.fireHalo(around: hold, elapsed: elapsed, fade: BoardFXPainter.window(p, fadeIn: 0.15, fadeOut: 0.85),
+                                        seed: fx.id, in: &context)
+            }
+            let title = BoardFXBannerPlan.title(name: name, isAbility: false, sourceName: subjects[stackID]?.card.name)
+            BoardFXPainter.ribbonBanner(title, subtitle: "COMMANDER", at: CGPoint(x: center.x, y: center.y + showcase.height / 2 + 48),
+                                        width: max(showcase.width * 1.45, 230), progress: p, in: &context)
         case let .spellCast(stackID, name, _, tint, weight):
             let center = anchors.stackPoint
             let showcase = BoardFXFlight.castSize(weight)
@@ -200,6 +220,17 @@ struct BoardFXOverlay: View {
                 let hold = CGRect(x: center.x - showcase.width / 2, y: center.y - showcase.height / 2,
                                   width: showcase.width, height: showcase.height)
                 let fade = BoardFXPainter.window(p / landing, fadeIn: 0.15, fadeOut: 0.75)
+                if entrance == .commander && tavern {
+                    let framed = BoardFXFlight.showcaseSize(.commander, tavern: true)
+                    let held = CGRect(x: center.x - framed.width / 2, y: center.y - framed.height / 2, width: framed.width, height: framed.height)
+                    BoardFXPainter.tableDim(size, fade: fade, in: &context)
+                    BoardFXPainter.fireHalo(around: held, elapsed: elapsed, fade: fade, seed: fx.id, in: &context)
+                    if let name = subjects[cardID]?.card.name {
+                        BoardFXPainter.ribbonBanner(name, subtitle: "COMMANDER", at: CGPoint(x: center.x, y: held.maxY + 48),
+                                                    width: max(framed.width * 1.45, 230), progress: min(1, p / (landing * 0.85)), in: &context)
+                    }
+                    return
+                }
                 if entrance == .commander {
                     BoardFXPainter.screenFlash(size, color: BoardFXPainter.gold, progress: elapsed / 0.7, in: &context)
                     BoardFXPainter.rays(at: center, color: BoardFXPainter.gold, radius: showcase.height * 1.35,
@@ -215,8 +246,15 @@ struct BoardFXOverlay: View {
             }
             guard !flying || p >= landing else { return }
             let glow = flying ? (p - landing) / (1 - landing) : p
-            let color = entrance == .commander ? BoardFXPainter.gold : tint.color
+            // A tavern commander lands in a burst of ember dust on the leather.
+            let color = entrance == .commander ? (tavern ? BoardFXPainter.ember : BoardFXPainter.gold) : tint.color
             BoardFXPainter.arrivalGlow(rect, color: color, progress: glow, motion: motion, in: &context)
+            if motion && tavern && entrance == .commander {
+                BoardFXPainter.sparks(from: rect, color: BoardFXPainter.emberLight, count: 26, progress: glow, seed: fx.id + 7,
+                                      style: .burst, in: &context)
+                BoardFXPainter.shockwave(at: CGPoint(x: rect.midX, y: rect.maxY - 6), color: BoardFXPainter.ember.opacity(0.6),
+                                         maxRadius: 110, progress: min(1, glow * 1.3), in: &context)
+            }
             if motion {
                 BoardFXPainter.sparks(from: rect, color: color, count: entrance == .commander ? 34 : 16, progress: glow,
                                       seed: fx.id, style: .rise, in: &context)
@@ -795,11 +833,10 @@ struct BoardEffectsPicker: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Board Effects")
-                    .font(.callout.weight(.black))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
                 Text("Spell, combat and life animations. Reduce Motion always limits them.")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .font(.system(size: 12, design: .serif))
+                    .opacity(0.65)
                     .lineLimit(2)
             }
             Picker("Board Effects", selection: $level) {
@@ -809,7 +846,7 @@ struct BoardEffectsPicker: View {
             .accessibilityIdentifier("settings.boardEffects")
             GameAudioSettings()
         }
-        .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
+        .modifier(TavernSettingsPanel())
     }
 }
 
@@ -831,39 +868,28 @@ struct GameAudioSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Toggle("Effect Sounds", isOn: $effects)
-                .accessibilityIdentifier("settings.boardSounds")
+            TavernToggle(title: "Effect Sounds", isOn: $effects, identifier: "settings.boardSounds")
             if effects {
-                Slider(value: $effectsVolume, in: 0...1) { Text("Effects volume") }
-                    .accessibilityIdentifier("settings.effectsVolume")
+                TavernSlider(value: $effectsVolume, label: "Effects volume", identifier: "settings.effectsVolume")
             }
-            Toggle("Music", isOn: musicOn)
-                .accessibilityIdentifier("settings.music")
+            TavernToggle(title: "Music", isOn: musicOn, identifier: "settings.music")
             if musicOn.wrappedValue {
-                Slider(value: $musicVolume, in: 0...1) { Text("Music volume") }
-                    .accessibilityIdentifier("settings.musicVolume")
+                TavernSlider(value: $musicVolume, label: "Music volume", identifier: "settings.musicVolume")
             }
             HStack(spacing: 8) {
                 Text("Sounds follow your iPhone's Silent switch.")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 12, design: .serif))
+                    .opacity(0.6)
                 Spacer(minLength: 4)
                 Button {
                     soundLabOpen = true
                 } label: {
                     Label("Sound Lab", systemImage: "waveform")
-                        .font(.caption.weight(.heavy))
-                        .padding(.horizontal, 10).frame(minHeight: 34)
-                        .background(Capsule().fill(.white.opacity(0.1)))
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                 .accessibilityIdentifier("settings.soundLab")
             }
         }
-        .font(.caption.weight(.bold))
-        .foregroundStyle(.white.opacity(0.85))
-        .tint(GameBoardTheme.current.antiqueGold)
         .onChange(of: effects) { _, on in if on { GameAudio.shared.play(.uiToggle) } }
         .onChange(of: music) { _, _ in GameAudio.shared.settingsChanged() }
         .onChange(of: musicVolume) { _, _ in GameAudio.shared.settingsChanged() }
@@ -899,8 +925,15 @@ struct BoardFXFlight: Identifiable {
     let effect: ActiveBoardFX
     let card: ZoneCard
     let kind: Kind
+    /// Walnut Tavern: a commander's showcase is its framed battlefield tile, not the printed card.
+    var tavern = false
 
     var id: Int { effect.id }
+
+    /// The held size: a tavern commander shows its framed tile (1 : 1.08), others the card.
+    static func showcaseSize(_ weight: BoardFXSpellWeight, tavern: Bool) -> CGSize {
+        tavern && weight == .commander ? CGSize(width: 180, height: 194) : castSize(weight)
+    }
 
     /// Showcase size: large enough to read the card at the center of the board.
     static func castSize(_ weight: BoardFXSpellWeight) -> CGSize {
@@ -948,18 +981,18 @@ struct BoardFXFlight: Identifiable {
 
     /// Rise, hold and exit for a showcase whose total run is `duration` seconds.
     private func showcase(from: CGPoint, center: CGPoint, size: CGSize, progress p: Double, duration: TimeInterval,
-                          holdEnd: Double) -> Placement? {
+                          holdEnd: Double, fullCard: Bool = true) -> Placement? {
         let rise = min(0.3, 0.42 / duration)
         if p < rise {
             let t = BoardFXPainter.easeOut(p / rise)
             return Placement(center: Self.arc(from, center, lift: 50, t: t), size: size, scale: 0.45 + 0.6 * t,
-                             rotation: -8 * (1 - t), opacity: min(1, p / rise * 3), fullCard: true, lift: t)
+                             rotation: -8 * (1 - t), opacity: min(1, p / rise * 3), fullCard: fullCard, lift: t)
         }
         // Hold still (a slow breath) so the card can be read.
         let hold = (p - rise) / max(0.001, holdEnd - rise)
         let bob = sin(min(hold, 1) * .pi * 2) * 3
         return Placement(center: CGPoint(x: center.x, y: center.y + bob), size: size, scale: 1.05 - 0.05 * min(hold, 1),
-                         rotation: 0, opacity: 1, fullCard: true, lift: 1)
+                         rotation: 0, opacity: 1, fullCard: fullCard, lift: 1)
     }
 
     func placement(progress p: Double) -> Placement? {
@@ -975,17 +1008,19 @@ struct BoardFXFlight: Identifiable {
         case let .showcaseArrive(from, center, to, commander):
             let landing = BoardFXScheduler.landingFraction(commander ? .commander : .showcase)
             guard p < landing else { return nil }
-            let size = Self.castSize(commander ? .commander : .spell)
+            let size = Self.showcaseSize(commander ? .commander : .spell, tavern: tavern)
+            let framed = tavern && commander
             let settle = landing - min(0.2, 0.48 / duration)
             if p < settle {
-                return showcase(from: from, center: center, size: size, progress: p, duration: duration, holdEnd: settle)
+                return showcase(from: from, center: center, size: size, progress: p, duration: duration, holdEnd: settle,
+                                fullCard: !framed)
             }
             // Settle into the slot, shrinking to the tile's width.
             let t = BoardFXPainter.easeIn((p - settle) / (landing - settle))
             let target = CGPoint(x: to.midX, y: to.midY)
             let finalScale = to.width / size.width
             return Placement(center: Self.arc(center, target, lift: 20, t: t), size: size,
-                             scale: 1 - (1 - finalScale) * t, rotation: 0, opacity: 1, fullCard: true, lift: 1 - t)
+                             scale: 1 - (1 - finalScale) * t, rotation: 0, opacity: 1, fullCard: !framed, lift: 1 - t)
         case let .depart(from, _, destination) where Self.dissolves(destination):
             // Burn away in place with a slight lift; the shader does the rest.
             let t = BoardFXPainter.easeOut(p)
@@ -996,14 +1031,15 @@ struct BoardFXFlight: Identifiable {
             return Placement(center: Self.arc(CGPoint(x: from.midX, y: from.midY), to, lift: 30, t: t),
                              size: from.size, scale: 1 - 0.6 * t, rotation: 14 * t, opacity: 1 - t, lift: 0.4)
         case let .cast(from, to, weight):
-            let size = Self.castSize(weight)
+            let size = Self.showcaseSize(weight, tavern: tavern)
+            let framed = tavern && weight == .commander
             // Exit: shrink toward the stack and fade over the last third of a second.
             let exit = 1 - min(0.3, 0.35 / duration)
             if p < exit {
-                return showcase(from: from, center: to, size: size, progress: p, duration: duration, holdEnd: exit)
+                return showcase(from: from, center: to, size: size, progress: p, duration: duration, holdEnd: exit, fullCard: !framed)
             }
             let t = BoardFXPainter.easeIn((p - exit) / (1 - exit))
-            return Placement(center: to, size: size, scale: 1 - 0.45 * t, rotation: 0, opacity: 1 - t, fullCard: true, lift: 1 - t)
+            return Placement(center: to, size: size, scale: 1 - 0.45 * t, rotation: 0, opacity: 1 - t, fullCard: !framed, lift: 1 - t)
         case let .strike(from, to):
             let home = CGPoint(x: from.midX, y: from.midY)
             let dx = to.x - home.x, dy = to.y - home.y
@@ -1083,6 +1119,7 @@ struct BoardFXCardMotionModifier: ViewModifier {
     let cardID: String
     @Environment(\.boardFXCardMotion) private var motion
     @Environment(\.boardFXClock) private var clock
+    @Environment(\.tavernBoard) private var tavern
     /// The window currently hiding the tile (for windows that start later).
     @State private var hiding: BoardFXCardMotion.Hidden?
     /// Windows that have finished; the tile shows again unless another window covers it.
@@ -1099,13 +1136,19 @@ struct BoardFXCardMotionModifier: ViewModifier {
         let forward: CGFloat = stance?.moves == true ? CGFloat(stance!.direction) * (stance!.kind == .attacking ? 12 : 7) : 0
         content
             .overlay {
-                if stance != nil {
+                if stance != nil && !tavern {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(stanceColor, lineWidth: 2)
                         .shadow(color: stanceColor.opacity(0.9), radius: 8)
                         .padding(-2)
                         .allowsHitTesting(false)
                         .transition(.opacity)
+                }
+            }
+            .background {
+                // The tavern board lights attackers and blockers from behind: glow, no outline.
+                if stance != nil && tavern {
+                    TavernTileGlow(color: stanceColor).transition(.opacity)
                 }
             }
             .scaleEffect(stance?.moves == true ? 1.05 : 1)
@@ -1332,5 +1375,149 @@ struct GameResultBackdrop: View {
                          with: .color(Color(red: 0.75, green: 0.7, blue: 0.68)))
             }
         }
+    }
+}
+
+// MARK: - The commander's moment on the tavern table (storyboard ui-ref/commander-cast-storyboard.png)
+
+extension BoardFXPainter {
+    static let ember = Color(red: 1, green: 0.52, blue: 0.2)
+    static let emberLight = Color(red: 1, green: 0.85, blue: 0.45)
+
+    /// The table darkens around the commander so the firelight carries the moment.
+    static func tableDim(_ size: CGSize, fade: Double, in context: inout GraphicsContext) {
+        guard fade > 0.01 else { return }
+        var layer = context
+        layer.opacity = 0.6 * fade
+        let center = CGPoint(x: size.width / 2, y: size.height * 0.45)
+        layer.fill(Path(CGRect(origin: .zero, size: size)),
+                   with: .radialGradient(Gradient(colors: [.black.opacity(0.25), .black]), center: center,
+                                         startRadius: 80, endRadius: max(size.width, size.height) * 0.75))
+    }
+
+    /// A ring of flame flaring around the commander's medallion as it leaves its seat.
+    static func fireRing(at center: CGPoint, radius: CGFloat, progress p: Double, elapsed: Double, seed: Int,
+                         in context: inout GraphicsContext) {
+        let fade = window(p, fadeIn: 0.12, fadeOut: 0.55)
+        guard fade > 0.01 else { return }
+        var glow = context
+        glow.blendMode = .plusLighter
+        glow.opacity = fade
+        glow.fill(Path(ellipseIn: CGRect(x: center.x - radius * 1.7, y: center.y - radius * 1.7, width: radius * 3.4, height: radius * 3.4)),
+                  with: .radialGradient(Gradient(colors: [ember.opacity(0.75), Color(red: 1, green: 0.3, blue: 0.08).opacity(0.3), .clear]),
+                                        center: center, startRadius: radius * 0.7, endRadius: radius * 1.7))
+        for i in 0..<40 {
+            let angle = Double(i) / 40 * 2 * .pi + elapsed * 0.9
+            let flicker = 0.55 + 0.45 * sin(elapsed * 11 + Double(i) * 1.7)
+            let inner = radius * 0.98
+            let length = radius * (0.16 + 0.3 * flicker * (0.5 + 0.5 * noise(seed, i, 3)))
+            let start = CGPoint(x: center.x + cos(angle) * inner, y: center.y + sin(angle) * inner)
+            let end = CGPoint(x: center.x + cos(angle) * (inner + length), y: center.y + sin(angle) * (inner + length) - length * 0.35)
+            var tongue = Path()
+            tongue.move(to: start)
+            tongue.addLine(to: end)
+            glow.stroke(tongue, with: .linearGradient(Gradient(colors: [emberLight, ember, .clear]), startPoint: start, endPoint: end),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+        }
+        sparks(from: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2), color: ember,
+               count: 22, progress: p, seed: seed, style: .rise, in: &context)
+    }
+
+    /// Embers streaming behind the rising commander along its arc from `from` to `to`.
+    static func emberStream(from: CGPoint, to: CGPoint, progress p: Double, seed: Int, in context: inout GraphicsContext) {
+        guard p > 0, p < 1.5 else { return }
+        var layer = context
+        layer.blendMode = .plusLighter
+        let head = min(1, p)
+        let tailFade = p < 1 ? 1 : max(0, (1.5 - p) / 0.5)
+        for i in 0..<46 {
+            let t = Double(i) / 46 * head
+            let age = head - t
+            let point = BoardFXFlight.arc(from, to, lift: 50, t: t)
+            let jitter = CGPoint(x: (noise(seed, i, 1) - 0.5) * 16, y: (noise(seed, i, 2) - 0.5) * 16 - age * 34)
+            let size = 1.6 + 3.2 * (1 - age) * noise(seed, i, 4)
+            layer.opacity = max(0, 1 - age * 1.5) * tailFade
+            layer.fill(Path(ellipseIn: CGRect(x: point.x + jitter.x - size / 2, y: point.y + jitter.y - size / 2, width: size, height: size)),
+                       with: .color(i % 3 == 0 ? emberLight : ember))
+        }
+    }
+
+    /// Warm firelight behind a held commander, embers circling it.
+    static func fireHalo(around rect: CGRect, elapsed: Double, fade: Double, seed: Int, in context: inout GraphicsContext) {
+        guard fade > 0.01 else { return }
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        var glow = context
+        glow.blendMode = .plusLighter
+        glow.opacity = 0.6 * fade
+        // The light fades out well inside its own disc, so no edge shows.
+        let reach = rect.height * 0.95
+        glow.fill(Path(ellipseIn: CGRect(x: center.x - reach, y: center.y - reach, width: reach * 2, height: reach * 2)),
+                  with: .radialGradient(Gradient(colors: [ember.opacity(0.85), Color(red: 1, green: 0.3, blue: 0.1).opacity(0.35), .clear]),
+                                        center: center, startRadius: rect.width * 0.3, endRadius: reach))
+        var motes = context
+        motes.blendMode = .plusLighter
+        for i in 0..<36 {
+            let speed = 0.5 + 0.5 * noise(seed, i, 7)
+            let angle = Double(i) / 36 * 2 * .pi + elapsed * speed * 1.3
+            let rx = rect.width * 0.72 + 12 * noise(seed, i, 8)
+            let ry = rect.height * 0.62 + 12 * noise(seed, i, 9)
+            let point = CGPoint(x: center.x + cos(angle) * rx, y: center.y + sin(angle) * ry + sin(elapsed * 3 + Double(i)) * 4)
+            let size = 1.6 + 2.8 * noise(seed, i, 10)
+            motes.opacity = fade * (0.35 + 0.65 * (0.5 + 0.5 * sin(elapsed * 7 + Double(i) * 2.1)))
+            motes.fill(Path(ellipseIn: CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)),
+                       with: .color(i % 3 == 0 ? emberLight : ember))
+        }
+    }
+
+    /// The commander's parchment ribbon unrolling under it: COMMANDER over the name, with a red
+    /// wax seal pressed at its centre.
+    static func ribbonBanner(_ title: String, subtitle: String, at point: CGPoint, width: CGFloat, progress p: Double,
+                             in context: inout GraphicsContext) {
+        let fade = window(p, fadeIn: 0.1, fadeOut: 0.86)
+        guard fade > 0 else { return }
+        let unroll = easeOut(min(1, p / 0.22))
+        let w = width * (0.3 + 0.7 * unroll)
+        let h = width * 0.24
+        let rect = CGRect(x: point.x - w / 2, y: point.y - h / 2, width: w, height: h)
+        var layer = context
+        layer.opacity = fade
+        if let ribbon = TavernCardParts.ribbon {
+            var shadow = layer
+            shadow.addFilter(.shadow(color: .black.opacity(0.6), radius: 5, y: 3))
+            shadow.draw(Image(uiImage: ribbon), in: rect)
+        } else {
+            layer.fill(Path(roundedRect: rect, cornerRadius: 4), with: .color(Color(red: 0.93, green: 0.84, blue: 0.64)))
+        }
+        var text = layer
+        text.opacity = fade * max(0, (unroll - 0.55) / 0.45)
+        let caption = text.resolve(Text(subtitle).font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.5)
+            .foregroundStyle(Color(red: 0.5, green: 0.16, blue: 0.07)))
+        var fontSize: CGFloat = 19
+        var name = text.resolve(Text(title).font(.system(size: fontSize, weight: .heavy, design: .serif))
+            .foregroundStyle(Color(red: 0.2, green: 0.1, blue: 0.04)))
+        while name.measure(in: CGSize(width: 1000, height: 60)).width > width * 0.66 && fontSize > 11 {
+            fontSize -= 1
+            name = text.resolve(Text(title).font(.system(size: fontSize, weight: .heavy, design: .serif))
+                .foregroundStyle(Color(red: 0.2, green: 0.1, blue: 0.04)))
+        }
+        text.draw(caption, at: CGPoint(x: point.x, y: rect.minY + h * 0.3))
+        text.draw(name, at: CGPoint(x: point.x, y: rect.minY + h * 0.58))
+        // The seal presses in once the ribbon is open.
+        let press = max(0, min(1, (p - 0.2) / 0.08))
+        guard press > 0 else { return }
+        let r = h * 0.24 * (1.4 - 0.4 * press)
+        let seal = CGPoint(x: point.x, y: rect.maxY + r * 0.15)
+        var wax = layer
+        wax.opacity = fade * press
+        wax.addFilter(.shadow(color: .black.opacity(0.55), radius: 3, y: 2))
+        wax.fill(Path(ellipseIn: CGRect(x: seal.x - r, y: seal.y - r, width: r * 2, height: r * 2)),
+                 with: .radialGradient(Gradient(colors: [Color(red: 0.86, green: 0.18, blue: 0.12), Color(red: 0.5, green: 0.05, blue: 0.04)]),
+                                       center: CGPoint(x: seal.x - r * 0.3, y: seal.y - r * 0.3), startRadius: 0, endRadius: r * 1.2))
+        var emblem = layer
+        emblem.opacity = fade * press
+        emblem.stroke(Path(ellipseIn: CGRect(x: seal.x - r * 0.7, y: seal.y - r * 0.7, width: r * 1.4, height: r * 1.4)),
+                      with: .color(Color(red: 0.35, green: 0.03, blue: 0.02).opacity(0.7)), lineWidth: 1)
+        emblem.draw(emblem.resolve(Text(Image(systemName: "crown.fill")).font(.system(size: r * 0.8, weight: .bold))
+            .foregroundStyle(Color(red: 0.38, green: 0.03, blue: 0.02))), at: seal)
     }
 }

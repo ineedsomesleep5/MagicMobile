@@ -62,6 +62,54 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | DeckStudio/*, DeckLibrary.swift, OnDeviceDeckEditing.swift, NativeDeckMetadataCatalogue.swift, OnDeviceDeckResolver.swift, OnDeviceDeckLinkImporter.swift | core `studio/`, app `studio/` | Ported (37 iOS tests ported) |
 | NativeDownloadsView.swift | app `ondevice/NativeDownloadsView.kt` (Android's download engine and service) | Ported |
 
+## Next: Walnut Tavern (iOS builds 23–25)
+
+Caleb (2026-10-02): once iOS build 25 ships, Android follows this update. Nothing below is ported yet;
+Android is on the classic board. Port in this order so each step can be checked against iOS previews
+(`MAGICMOBILE_DESIGN_PREVIEW`, both orientations, `-magicmobile.boardAppearance tavern`).
+
+1. **Assets** (no code): extend `prepareBrandAssets` to stage from `apps/ios/MagicMobile/Assets.xcassets`:
+   `battlefield-tavern-portrait.jpg`, `battlefield-tavern-landscape.jpg`, `menu-backdrop-tavern`, the UI kit
+   (`tavern-ui-*`, rendered at 3 px per pt with cap insets in points), the pass button (`tavern-pass-ring`,
+   `tavern-pass-flip-00…`, `tavern-hourglass-button`), mana gems (`tavern-mana-*`), card frames
+   (`tavern-frame-creature|token|artifact|enchantment|land`), `tavern-card-ribbon`, `tavern-gem-power|toughness`.
+   Sources and renderers: `scripts/brand/` (`tavern_table.py` + `tavern_layout.json`, `card_frames.sh`,
+   `install_tavern_assets.sh`).
+2. **Theme and kit:** `BoardChrome.swift` Tavern* views (TavernFill, TavernBrassFrame, TavernButtonStyle,
+   TavernPanelChrome, TavernMenu/TavernMenuItem pop-overs, tavernConfirmation, TavernTag, TavernCoin,
+   TavernPhasePlate, TavernStackTray, glows) and `BrandUI.swift` (TavernToggle with subtitle, TavernStepper,
+   TavernPicker, TavernSlider, Walnut & Ember palette) → app `ui/TavernKit.kt` (new) and `ui/BrandUI.kt`.
+   Serif = Source Serif 4 (already bundled).
+3. **Board default and sockets:** Walnut Tavern is the default (`BoardAppearancePreference.defaultValue`).
+   `TavernDesign` / `TavernSockets` (portrait and landscape socket points, design canvases 440×956 and
+   956×440, orientation-aware mapping) → core `game/TavernSockets.kt`. Keep the numbers identical to
+   `tavern_layout.json`.
+4. **Portrait tavern board:** `PortraitBoardViews.swift` (opponent nameplate, medallion with zones pop-over,
+   card-back fan, phase plate, status glance), `GameplayActionDock.swift` (commander medallion with the
+   commander-ready glow, mana gems, flipping pass disc, Skip and controls rings, stack tray),
+   `BattlefieldViewportMetrics.swift` (lanes inset to the mat), resting hand fan.
+5. **Battlefield tiles:** `ArenaBoardPresentation.swift` — `TavernFrameKind` (gold creature, walnut token,
+   silver artifact, rose-gold enchantment, stone land; a current creature of any type is gold),
+   `framedFace` (art window per kind, ribbon at 72% height, hex gems), glow-only highlights
+   (`TavernTileGlow`), brass coin badges, keyword icons stay icons in combat, attachments as parchment
+   ribbons above a full-size creature (`BattlefieldRow.attachmentGroupTile`, `AttachmentNameTab`).
+6. **Player status pop-over:** `PlayerStatusSummary`, `TavernStatusBadge` (Phyrexian glyph for poison,
+   icons, no words), `TavernPlayerStatusPanel`, `TavernOpponentSwap`, `TavernStatusGlance`.
+7. **Combat:** blockers stay selectable to take a block back — `OnDevicePromptAdapter.swift` adds the
+   viewer's blocking creatures to the blockers SELECT targets (port to core `OnDevicePromptAdapter.kt` and
+   add a parity case; test `testDeclaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack`), and the
+   banner's Back button (`PromptPill.back`, `NativeGameView.combatBackAction`). Attack arrows end at the
+   medallions (`TavernSeatAnchor`).
+8. **Board FX:** the tavern commander moment (`BoardFXPainter` tableDim, fireRing, emberStream, fireHalo,
+   ribbonBanner with wax seal; framed showcase via `BoardFXFlight.showcaseSize`), brass cast plate, turn band.
+9. **Landscape tavern board:** `NativeGameView.tavernLandscapeContent` — the centre column on the landscape
+   plate's mat, opponent bar and command bar as full-screen layers on `TavernSockets.landscape`.
+10. **Menus and lobby:** Walnut & Ember menus, setup lobby controls, game menu panels, Deck Studio palette.
+
+Parity checks for this work: the existing goldens (adapter change above needs a new case), plus side-by-side
+screenshots of `normal-battlefield`, `crowded-battlefield`, `attached-permanents`, `four-player-focus`,
+`combat-arrows`, `card-target-prompt` and `board-fx` in both orientations.
+
 ## Log
 
 - 2026-09-24 (Claude): Started. Engine client, model, adapters, message log, yield policy and

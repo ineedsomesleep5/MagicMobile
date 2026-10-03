@@ -466,10 +466,13 @@ struct PortraitCombatArrowOverlay: View {
     private func playerAnchor(_ id: String, kind: String?) -> CGPoint? {
         guard kind == nil || kind?.lowercased() == "player" else { return nil }
         let rect: CGRect
-        // The bottom seat: the viewer, or their stand-in while they watch.
-        if CombatPlayerIdentity.ids(for: snapshot.seatID, in: snapshot).contains(id) { rect = metrics.bottomControlsRect }
-        else if let focusedOpponentID, CombatPlayerIdentity.ids(for: focusedOpponentID, in: snapshot).contains(id) { rect = metrics.topHUDRect }
-        else { return nil }
+        // The bottom seat: the viewer, or their stand-in while they watch. On the tavern table
+        // the arrow ends at the seat's medallion.
+        if CombatPlayerIdentity.ids(for: snapshot.seatID, in: snapshot).contains(id) {
+            rect = renderedBounds[TavernSeatAnchor.bottom] ?? metrics.bottomControlsRect
+        } else if let focusedOpponentID, CombatPlayerIdentity.ids(for: focusedOpponentID, in: snapshot).contains(id) {
+            rect = renderedBounds[TavernSeatAnchor.top] ?? metrics.topHUDRect
+        } else { return nil }
         return CGPoint(x: rect.midX, y: rect.midY)
     }
 

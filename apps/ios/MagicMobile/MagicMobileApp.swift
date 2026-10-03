@@ -128,6 +128,16 @@ struct OrientationHostingRoot<Content: View>: UIViewControllerRepresentable {
 struct MagicMobileApp: App {
     @UIApplicationDelegateAdaptor(MagicMobileAppDelegate.self) private var appDelegate
 
+    init() {
+        #if DEBUG
+        // UI tests that change the board pick a starting board here: a launch argument would
+        // pin it in the argument domain, so the in-app choice could never take effect.
+        if let board = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_BOARD_APPEARANCE"] {
+            UserDefaults.standard.set(board, forKey: BoardAppearancePreference.key)
+        }
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             OrientationHostingRoot {

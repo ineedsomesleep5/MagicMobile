@@ -343,6 +343,7 @@ struct BattlefieldAbilityBadgePlan {
 private struct BattlefieldAbilityBadges: View {
     let icons: [XmageCardIcon]
     let cardWidth: CGFloat
+    @Environment(\.tavernBoard) private var tavern
 
     private var plan: BattlefieldAbilityBadgePlan { .init(icons: icons, cardWidth: cardWidth) }
     private var size: CGFloat { BattlefieldAbilityBadgePlan.iconSize(for: cardWidth) }
@@ -362,7 +363,9 @@ private struct BattlefieldAbilityBadges: View {
                 }
                 .foregroundStyle(MagicPalette.parchment)
                 .frame(width: size + 4, height: size + 4)
-                .background(MagicPalette.iron.opacity(0.88), in: Circle())
+                .background {
+                    if tavern { TavernCoinBack() } else { Circle().fill(MagicPalette.iron.opacity(0.88)) }
+                }
             }
             if plan.hiddenCount > 0 {
                 Text("+\(plan.hiddenCount)")
@@ -667,7 +670,8 @@ struct ArenaBattlefieldCard: View {
 
     /// Labeled combat keywords while the card attacks or blocks, gained ones included.
     private var combatPlan: CombatKeywordBadgePlan? {
-        guard card.isInCombat, !card.isPhasedOut else { return nil }
+        // A framed tile keeps keywords as icons in its ability row, in combat too.
+        guard card.isInCombat, !card.isPhasedOut, !framedTavern else { return nil }
         let plan = CombatKeywordBadgePlan(keywords: card.combatKeywords, cardWidth: width, cardHeight: height)
         return plan.visible.isEmpty ? nil : plan
     }
@@ -751,6 +755,12 @@ struct ArenaBattlefieldCard: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: framedTavern ? 0 : tavern ? 4 : 7).inset(by: framedTavern ? -width : 0))
         .shadow(color: .black.opacity(tavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
+        .background {
+            // A framed tile glows while it is playable, a target or selected: light only, no line.
+            if framedTavern && (legal || targetable || selected) && !card.isPhasedOut {
+                TavernTileGlow(color: accent, pulsing: legal && !targetable && !selected)
+            }
+        }
         .overlay(alignment: .bottomLeading) {
             BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
                 .padding(.leading, tavernFrame ? 5 : 2)
@@ -778,8 +788,11 @@ struct ArenaBattlefieldCard: View {
                     .font(.system(size: max(8, width * 0.12), weight: .black))
                     .foregroundStyle(MagicPalette.parchment)
                     .frame(width: max(15, width * 0.24), height: max(15, width * 0.24))
-                    .background(.black.opacity(0.78), in: Circle())
-                    .overlay(Circle().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+                    .background {
+                        if tavern { TavernCoinBack() } else {
+                            Circle().fill(.black.opacity(0.78)).overlay(Circle().stroke(MagicPalette.antiqueGold.opacity(0.7), lineWidth: 1))
+                        }
+                    }
                     .padding(.trailing, 3).padding(.bottom, showsFooter ? 23 : 3)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -788,13 +801,7 @@ struct ArenaBattlefieldCard: View {
         .overlay {
             // A framed tile glows around its frame only while it is playable, a target or
             // selected; the painted frame is its border otherwise.
-            if framedTavern {
-                if legal || targetable || selected {
-                    RoundedRectangle(cornerRadius: 6).stroke(accent, lineWidth: 2.5)
-                        .shadow(color: accent.opacity(0.9), radius: 4)
-                        .allowsHitTesting(false)
-                }
-            } else {
+            if !framedTavern {
                 RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1)
             }
         }
@@ -812,7 +819,7 @@ struct ArenaBattlefieldCard: View {
         .saturation(card.tapped == true ? 0.15 : 1)
         .brightness(card.tapped == true ? -0.16 : 0)
         .rotationEffect(.degrees(card.tapped == true ? -7 : 0))
-        .shadow(color: accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
+        .shadow(color: framedTavern ? .clear : accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
         .opacity(card.isPhasedOut ? 0.42 : 1)
         .overlay(alignment: .center) {
             if card.isPhasedOut {
@@ -892,7 +899,10 @@ enum CombatViewportAnchors {
             guard let index = index ?? (viewports.count == 1 ? 0 : nil), viewports.indices.contains(index) else { continue }
             let lane = viewports[index]
             guard rect.midY >= lane.minY && rect.midY <= lane.maxY else { continue }
-            let clipped = !lane.contains(rect)
+            // Lanes scroll sideways: off screen means a fifth or more scrolled out of view, not a
+            // tapped tile in a second row overhanging the lane by a few points.
+            let shown = lane.intersection(rect)
+            let clipped = shown.isNull || shown.width < rect.width * 0.8
             let point = CGPoint(x: min(max(rect.midX, lane.minX + 12), lane.maxX - 12),
                                 y: min(max(rect.midY, lane.minY + 12), lane.maxY - 12))
             result[id] = CombatViewportAnchor(point: point, isClipped: clipped)
@@ -908,11 +918,36 @@ struct CombatEdgeIndicators: View {
     let viewports: [CGRect]
     let laneIndices: [String: Int]
     let inspect: (ZoneCard) -> Void
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
         let anchors = CombatViewportAnchors.resolve(bounds: bounds, authorizedIDs: combatIDs.intersection(Set(cards.map(\.instanceId))), viewports: viewports, laneIndices: laneIndices)
         ForEach(CombatEdgeCluster.groups(anchors: anchors)) { cluster in
             let members = cards.filter { cluster.cardIDs.contains($0.instanceId) }
+            if tavern && TavernUIKit.available {
+                // A brass coin with crossed swords marks fighters scrolled out of view.
+                TavernMenu {
+                    ForEach(members) { card in
+                        TavernMenuItem(title: "Inspect \(card.card.name)", systemImage: "magnifyingglass") { inspect(card) }
+                    }
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "figure.fencing")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color(red: 1, green: 0.55, blue: 0.4))
+                            .frame(width: 30, height: 30)
+                            .background { TavernCoinBack() }
+                            .shadow(color: Color.red.opacity(0.6), radius: 5)
+                            .frame(width: 44, height: 44)
+                        if members.count > 1 {
+                            TavernCoin(value: members.count, size: 16)
+                        }
+                    }
+                }
+                .position(cluster.point)
+                .accessibilityLabel("\(members.count) offscreen combat cards. Choose a card to inspect")
+                .accessibilityIdentifier("board.combat.offscreen.\(cluster.id)")
+            } else {
             Menu {
                 ForEach(members) { card in
                     Button("Inspect \(card.card.name)") { inspect(card) }
@@ -928,6 +963,7 @@ struct CombatEdgeIndicators: View {
             .position(cluster.point)
             .accessibilityLabel("\(members.count) offscreen combat cards. Choose a card to inspect")
             .accessibilityIdentifier("board.combat.offscreen.\(cluster.id)")
+            }
         }
     }
 }
