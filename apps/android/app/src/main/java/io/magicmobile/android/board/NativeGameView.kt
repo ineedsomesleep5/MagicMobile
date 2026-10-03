@@ -651,9 +651,8 @@ fun NativeGameView(
                     val canvas = BoardSize(size.width + insetLeft + insets.getRight(densityScope, layoutDirection) / density,
                         size.height + insetTop + insets.getBottom(densityScope) / density)
                     val portraitLayout = GameOrientationMode.isPortraitLayout(size.width, size.height, portraitModeEnabled)
-                    val tavernFrame = if (isTavernBoard && portraitLayout) TavernFrame(canvas, BoardPoint(insetLeft, insetTop)) else null
-                    CompositionLocalProvider(LocalTavernFrame provides tavernFrame,
-                        io.magicmobile.android.ui.LocalTavernBoard provides (isTavernBoard && portraitLayout)) {
+                    val tavernFrame = if (isTavernBoard) TavernFrame(canvas, BoardPoint(insetLeft, insetTop)) else null
+                    CompositionLocalProvider(LocalTavernFrame provides tavernFrame) {
                     if (!portraitLayout) {
                         LandscapeGameContent(board, human, opponent, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
                             combatSelection, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it }, { interactionMode = it },

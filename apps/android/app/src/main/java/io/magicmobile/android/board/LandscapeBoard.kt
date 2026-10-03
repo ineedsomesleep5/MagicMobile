@@ -82,6 +82,10 @@ import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.game.BoardRect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 
 /** Swift GameOrientationMode: the portrait board only when portrait play is on and the screen is taller than wide. */
 object GameOrientationMode {
@@ -129,6 +133,34 @@ fun LandscapeGameContent(
     val yieldActions = GameplayActionPresentation.yieldActions(actions)
     HideStatusBarWhileShown()
 
+    val tavernFrame = LocalTavernFrame.current
+    if (tavernFrame != null) {
+        // Walnut Tavern held sideways (NativeGameView.tavernLandscapeContent): the battlefield column lies on the landscape plate's
+        // mat down to the hand's foot; the opponent's medallion and nameplate go up the left walnut column above yours, and the
+        // phase plate, stack tray and pass button down the right. The top bar and command bar place their pieces on those sockets.
+        val sockets = tavernFrame.sockets
+        val board = tavernFrame.rect(BoardRect(sockets.mat.minX, sockets.mat.minY, sockets.mat.width, sockets.handBottom - sockets.mat.minY))
+        val opponentTarget = CombatPlayerIdentity.targetID(opponent.playerId, snapshot, sideCombatHighlights.defenderIds)
+        Box(Modifier.fillMaxSize()) {
+            LandscapeCenterColumn(snapshot, human, opponent, selection, pendingActionId, pendingCardInstanceId, combatSelection, combatPreviewArrows,
+                isOverPlayerDropZone, setOverPlayerDropZone, setInteractionMode, inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, closeZone,
+                isPromptDetailOpen, dragActionChoice, setDragActionChoice, boardFX, boardFXClock, pruneFX, onInteractionFeedback, runAction, runCommand,
+                submitTarget, handleCombatCardTap, submitBlockers, finishAttackers, finishBlockers, setCombatSelection, openPromptDetails, openPromptDetailSheet,
+                combatBack, Modifier.place(board))
+            TavernOpponentBar(tavernFrame, snapshot, opponentName, opponent, opponentTarget != null, { opponentTarget?.let(submitAttackers) },
+                tavernFrame.rect(BoardRect(64f, 0f, 128f, 176f)), Modifier.zIndex(3f), viewZone, selectOpponent)
+            if (!snapshot.isSpectating) {
+                PortraitBottomCommandBar(humanName, human, opponent.playerId, human.manaPool, passAction, yieldActions, pendingActionId, snapshot, selection,
+                    openLog, openSettings, openPromptDetails, viewZone, runAction, runCommand)
+            }
+            if (snapshot.isWaitingOnAIOrStalled) {
+                AIWaitFallbackControls(snapshot, pendingActionId, liveUpdateStatus, aiWaitBeganAt, didRefresh, didReconnect, didDiagnose, refreshGame, reconnectGame,
+                    Modifier.requiredWidth(minOf(board.width - 28, 360f).dp).centerAt(board.midX, board.midY).zIndex(80f))
+            }
+        }
+        return
+    }
+
     Row(Modifier.fillMaxSize()) {
         // LEFT COLUMN
         Column(Modifier.width(88.dp).fillMaxHeight().background(railBrush).padding(horizontal = 6.dp)) {
@@ -160,137 +192,11 @@ fun LandscapeGameContent(
         Box(Modifier.width(1.dp).fillMaxHeight().background(MagicPalette.antiqueGold.copy(alpha = 0.28f)))
 
         // CENTER COLUMN
-        BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-            val metrics = BattlefieldLayoutMetrics(BoardSize(maxWidth.value, maxHeight.value),
-                centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false))
-            val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
-            val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
-            val shouldShowCompactPrompt = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, pendingActionId)
-            val interactionMode = GameBoardInteractionState.mode(snapshot, pendingActionId, selection.selectedCard)
-            val playerIDs = snapshot.players.map { it.playerId }.toSet()
-            fun lane(cards: List<ZoneCard>, resources: Boolean) = BattlefieldAttachments.lane(cards, allBattlefield, resources, playerIDs, includesManaRocks = true)
-            val registry = LocalCardBounds.current
-            val manaActive = snapshot.manaPayment?.active == true
-
-            Box(Modifier.fillMaxSize()) {
-                BattlefieldRow("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
-                    metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.opponentBattlefieldRect.width, runAction, submitTarget, handleCombatCardTap,
-                    Modifier.place(metrics.opponentBattlefieldRect), flipped = true, adaptsToDensity = true, availableHeight = metrics.opponentBattlefieldRect.height)
-                BattlefieldRow("Opponent lands", lane(opponent.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
-                    metrics.landCardWidth, metrics.landCardHeight, metrics.opponentLandsRect.width, runAction, submitTarget, handleCombatCardTap,
-                    Modifier.place(metrics.opponentLandsRect), flipped = true, adaptsToDensity = true, availableHeight = metrics.opponentLandsRect.height,
-                    arrangement = BattlefieldRowArrangement.LANDSCAPE_RESOURCES)
-                Box(Modifier.centerAt(metrics.centerStripRect.midX, metrics.centerStripRect.midY)
-                    .requiredWidth(maxOf(metrics.centerStripRect.width - 28, 80f).dp).height(1.5.dp).background(Color.White.copy(alpha = 0.13f)))
-                BattlefieldRow("Your board", lane(human.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
-                    metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.playerBattlefieldRect.width, runAction, submitTarget, handleCombatCardTap,
-                    Modifier.place(metrics.playerBattlefieldRect), adaptsToDensity = true, availableHeight = metrics.playerBattlefieldRect.height,
-                    allowsManaUndo = true, manaPaymentActive = manaActive)
-                BattlefieldRow("Your lands", lane(human.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
-                    metrics.landCardWidth, metrics.landCardHeight, metrics.playerLandsRect.width, runAction, submitTarget, handleCombatCardTap,
-                    Modifier.place(metrics.playerLandsRect), adaptsToDensity = true, availableHeight = metrics.playerLandsRect.height,
-                    arrangement = BattlefieldRowArrangement.LANDSCAPE_RESOURCES, allowsManaUndo = true, manaPaymentActive = manaActive)
-
-                val paymentActive = InlinePaymentPromptState.isActive(snapshot)
-                val stripHeight = maxOf(if (paymentActive) 52f else metrics.centerStripRect.height, metrics.centerStripRect.height)
-                Column(Modifier.place(metrics.centerStripRect.copy(y = metrics.centerStripRect.midY - stripHeight / 2, height = stripHeight)),
-                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (paymentActive) InlinePaymentPromptBar(snapshot, pendingActionId, runAction, runCommand, openPromptDetails, Modifier.weight(1f))
-                        else if (BoardDecisionPresentation.showsGuidance(snapshot)) PromptPill(snapshot, Modifier.weight(1f), combatSelection, combatBack)
-                        val revealed = snapshot.xmage?.revealed?.flatMap { it.cards } ?: emptyList()
-                        val lookedAt = snapshot.xmage?.lookedAt?.flatMap { it.cards } ?: emptyList()
-                        val inspect = LocalBoardZoneInspectionAction.current
-                        if (revealed.isNotEmpty()) FloatingZoneChip("Revealed", revealed.size, "eye") { inspect?.invoke(BoardZoneReference.Collection(BoardZoneReference.NamedKind.REVEALED)) }
-                        if (lookedAt.isNotEmpty()) FloatingZoneChip("Looked", lookedAt.size, "eye.trianglebadge.exclamationmark") {
-                            inspect?.invoke(BoardZoneReference.Collection(BoardZoneReference.NamedKind.LOOKED_AT))
-                        }
-                    }
-                }
-
-                if (isOverPlayerDropZone) {
-                    Box(Modifier.place(metrics.playerDropZone).background(MagicPalette.antiqueGold.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
-                        .border(2.dp, MagicPalette.antiqueGold.copy(alpha = 0.72f), RoundedCornerShape(14.dp)))
-                }
-
-                PortraitHandRow(BoardOpponentFocus.seatHand(snapshot), actions, selection, pendingCardInstanceId, setInteractionMode, metrics.playerDropZone, setOverPlayerDropZone,
-                    metrics.handCardWidth, metrics.handCardHeight, metrics.handRect.width, onInteractionFeedback,
-                    { choiceActions, message -> setDragActionChoice(DragActionChoice(message, choiceActions)) }, runAction,
-                    Modifier.place(metrics.handRect).zIndex(4f), hiddenCount = if (snapshot.isViewer(human.playerId)) null else human.zones.visibleHandCount)
-
-                if (TargetingHelperVisibility.shouldShow(snapshot, pendingActionId, interactionMode, targetableIds)) {
-                    TargetingStatusPill(targetableIds.size, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.bottomActionRect.midY))
-                }
-
-                if (CombatSelectionState.isDeclareAttackers(snapshot)) {
-                    val declared = snapshot.xmage?.combat?.flatMap { it.attackers }?.size ?: 0
-                    val hasPending = combatSelection.selectedAttackerIds.isNotEmpty()
-                    CombatSubmitPill(if (hasPending) "Cancel Selection" else if (declared == 0) "No Attacks" else "Done Attacking",
-                        maxOf(declared, combatSelection.selectedAttackerIds.size), {
-                            if (hasPending) setCombatSelection(combatSelection.clearAttackers()) else finishAttackers()
-                        }, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.centerStripRect.maxY + 18).zIndex(19f))
-                } else if (CombatSelectionState.isDeclareBlockers(snapshot)) {
-                    val declared = snapshot.xmage?.combat?.flatMap { it.blockers }?.size ?: 0
-                    val hasPending = combatSelection.selectedBlockerId != null
-                    CombatSubmitPill(if (hasPending) "Cancel Selection" else if (declared == 0) "No Blocks" else "Done Blocking",
-                        maxOf(declared, combatSelection.blockerPairCount), {
-                            when {
-                                hasPending -> setCombatSelection(combatSelection.clearBlockers())
-                                combatSelection.hasPendingBlockers -> submitBlockers()
-                                else -> finishBlockers()
-                            }
-                        }, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.centerStripRect.maxY + 18).zIndex(19f))
-                }
-
-                // Combat arrows and board effects, drawn over the lanes in board coordinates.
-                val bounds = registry?.bounds ?: emptyMap()
-                if (inspectingZoneTitle == null && selection.inspectedCard == null) {
-                    CombatArrowOverlay(snapshot, snapshot.xmage?.combat ?: emptyList(), combatPreviewArrows, metrics, human.zones.battlefield,
-                        opponent.zones.battlefield, bounds, Modifier.zIndex(6f))
-                    Box(Modifier.fillMaxSize().zIndex(7f)) {
-                        CombatEdgeIndicators(human.zones.battlefield + opponent.zones.battlefield,
-                            CombatArrowModel.arrows(snapshot.xmage?.combat ?: emptyList(), combatPreviewArrows).flatMap { listOf(it.fromId, it.toId) }.toSet(),
-                            bounds, listOf(metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect),
-                            CombatViewportAnchors.laneIndices(human.zones.battlefield, opponent.zones.battlefield)) { selection.inspectedCard = it }
-                    }
-                }
-                BoardFXOverlay(boardFX.active, boardFX.subjects, bounds, BoardFXAnchors(snapshot.viewerID,
-                    viewerPoint = BoardPoint(metrics.playerLandsRect.minX + 34, metrics.playerLandsRect.maxY),
-                    opponentPoint = BoardPoint(metrics.opponentBattlefieldRect.minX + 44, metrics.opponentBattlefieldRect.minY + 26),
-                    stackPoint = BoardPoint(metrics.centerStripRect.midX, metrics.centerStripRect.midY),
-                    viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
-                    opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),
-                    boardFXClock, pruneFX, Modifier.zIndex(8f))
-
-                BoardOverlayTransition(inspectingZoneTitle != null, Modifier.place(metrics.safeFrame).zIndex(70f)) {
-                    val title = inspectingZoneReference?.title(snapshot) ?: inspectingZoneTitle ?: ""
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CompactZoneInspectorOverlay(title, inspectingZoneReference?.cards(snapshot) ?: inspectingZoneCards, actions, pendingActionId, selection,
-                            runAction, closeZone, targetableIDs = targetableIds, runTargetAction = submitTarget)
-                    }
-                }
-
-                selection.inspectedCard?.let { card ->
-                    Box(Modifier.fillMaxSize().zIndex(99f).clickable(remember { MutableInteractionSource() }, null) { selection.inspectedCard = null })
-                    CardInspector(card, Modifier.place(metrics.detailSheetRect).zIndex(100f))
-                }
-
-                BoardOverlayTransition(shouldShowCompactPrompt && !isPromptDetailOpen && CompactPromptPopup.compactLegalPromptActions(snapshot).isEmpty(),
-                    Modifier.requiredSize(minOf(maxOf(metrics.size.width * 0.30f, 260f), 340f).dp, minOf(maxOf(metrics.size.height * 0.20f, 98f), 178f).dp)
-                        .centerAt(metrics.boardColumnRect.midX, metrics.compactPromptRect.midY).zIndex(20f)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CompactPromptPopupView(snapshot, pendingActionId, runAction, runCommand, openPromptDetailSheet, Modifier.fillMaxWidth())
-                    }
-                }
-
-                dragActionChoice?.let { choice ->
-                    DragActionChoicePopup(choice, pendingActionId, { action -> setDragActionChoice(null); selection.selectedCard = null; runAction(action) },
-                        { setDragActionChoice(null); selection.selectedCard = null },
-                        Modifier.requiredWidth(minOf(maxOf(metrics.size.width * 0.30f, 260f), 340f).dp)
-                            .centerAt(metrics.boardColumnRect.midX, metrics.compactPromptRect.midY).zIndex(21f))
-                }
-            }
-        }
+        LandscapeCenterColumn(snapshot, human, opponent, selection, pendingActionId, pendingCardInstanceId, combatSelection, combatPreviewArrows,
+            isOverPlayerDropZone, setOverPlayerDropZone, setInteractionMode, inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference, closeZone,
+            isPromptDetailOpen, dragActionChoice, setDragActionChoice, boardFX, boardFXClock, pruneFX, onInteractionFeedback, runAction, runCommand,
+            submitTarget, handleCombatCardTap, submitBlockers, finishAttackers, finishBlockers, setCombatSelection, openPromptDetails, openPromptDetailSheet,
+            combatBack, Modifier.weight(1f).fillMaxHeight())
         Box(Modifier.width(1.dp).fillMaxHeight().background(MagicPalette.antiqueGold.copy(alpha = 0.28f)))
 
         // RIGHT COLUMN
@@ -321,6 +227,177 @@ fun LandscapeGameContent(
             if (snapshot.isWaitingOnAIOrStalled) {
                 AIWaitFallbackControls(snapshot, pendingActionId, liveUpdateStatus, aiWaitBeganAt, didRefresh, didReconnect, didDiagnose, refreshGame, reconnectGame,
                     Modifier.align(Alignment.Center).padding(horizontal = 10.dp))
+            }
+        }
+    }
+}
+
+/**
+ * The landscape battlefield (NativeGameView.landscapeCenterColumn): both players' lanes, the centre strip, the hand and
+ * their overlays. The classic board frames it between its side rails; the tavern board lays it on the landscape plate's mat.
+ */
+@Composable
+private fun LandscapeCenterColumn(
+    snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState, selection: BoardSelection, pendingActionId: String?,
+    pendingCardInstanceId: String?, combatSelection: CombatSelectionState, combatPreviewArrows: List<CombatArrow>, isOverPlayerDropZone: Boolean,
+    setOverPlayerDropZone: (Boolean) -> Unit, setInteractionMode: (GameBoardInteractionMode) -> Unit, inspectingZoneTitle: String?,
+    inspectingZoneCards: List<ZoneCard>, inspectingZoneReference: BoardZoneReference?, closeZone: () -> Unit, isPromptDetailOpen: Boolean,
+    dragActionChoice: DragActionChoice?, setDragActionChoice: (DragActionChoice?) -> Unit, boardFX: BoardFXDirector, boardFXClock: BoardFXClock,
+    pruneFX: () -> Unit, onInteractionFeedback: (String) -> Unit, runAction: (LegalAction) -> Unit, runCommand: (GameCommand, String, String) -> Unit,
+    submitTarget: (ZoneCard) -> Unit, handleCombatCardTap: (ZoneCard) -> Boolean, submitBlockers: () -> Unit, finishAttackers: () -> Unit,
+    finishBlockers: () -> Unit, setCombatSelection: (CombatSelectionState) -> Unit, openPromptDetails: () -> Unit, openPromptDetailSheet: () -> Unit,
+    combatBack: (() -> Unit)?, modifier: Modifier = Modifier,
+) {
+    val actions = snapshot.legalActions ?: emptyList()
+    val allBattlefield = snapshot.players.flatMap { it.zones.battlefield }
+    val registry = LocalCardBounds.current
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    /** Where this column sits in the board's safe-area box, which card bounds are measured from. */
+    var columnOrigin by remember { mutableStateOf(BoardPoint(0f, 0f)) }
+    BoxWithConstraints(modifier.onGloballyPositioned { coordinates ->
+        val position = coordinates.positionInRoot()
+        val origin = registry?.boardOrigin ?: Offset.Zero
+        val next = BoardPoint((position.x - origin.x) / density, (position.y - origin.y) / density)
+        if (next != columnOrigin) columnOrigin = next
+    }) {
+        val metrics = BattlefieldLayoutMetrics(BoardSize(maxWidth.value, maxHeight.value),
+            centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false))
+        val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
+        val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
+        val shouldShowCompactPrompt = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, pendingActionId)
+        val interactionMode = GameBoardInteractionState.mode(snapshot, pendingActionId, selection.selectedCard)
+        val playerIDs = snapshot.players.map { it.playerId }.toSet()
+        fun lane(cards: List<ZoneCard>, resources: Boolean) = BattlefieldAttachments.lane(cards, allBattlefield, resources, playerIDs, includesManaRocks = true)
+        val manaActive = snapshot.manaPayment?.active == true
+        val tavern = LocalTavernFrame.current != null
+
+        Box(Modifier.fillMaxSize()) {
+            BattlefieldRow("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
+                metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.opponentBattlefieldRect.width, runAction, submitTarget, handleCombatCardTap,
+                Modifier.place(metrics.opponentBattlefieldRect), flipped = true, adaptsToDensity = true, availableHeight = metrics.opponentBattlefieldRect.height)
+            BattlefieldRow("Opponent lands", lane(opponent.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
+                metrics.landCardWidth, metrics.landCardHeight, metrics.opponentLandsRect.width, runAction, submitTarget, handleCombatCardTap,
+                Modifier.place(metrics.opponentLandsRect), flipped = true, adaptsToDensity = true, availableHeight = metrics.opponentLandsRect.height,
+                arrangement = BattlefieldRowArrangement.LANDSCAPE_RESOURCES)
+            if (!tavern) {
+                Box(Modifier.centerAt(metrics.centerStripRect.midX, metrics.centerStripRect.midY)
+                    .requiredWidth(maxOf(metrics.centerStripRect.width - 28, 80f).dp).height(1.5.dp).background(Color.White.copy(alpha = 0.13f)))
+            }
+            BattlefieldRow("Your board", lane(human.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
+                metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.playerBattlefieldRect.width, runAction, submitTarget, handleCombatCardTap,
+                Modifier.place(metrics.playerBattlefieldRect), adaptsToDensity = true, availableHeight = metrics.playerBattlefieldRect.height,
+                allowsManaUndo = true, manaPaymentActive = manaActive)
+            BattlefieldRow("Your lands", lane(human.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
+                metrics.landCardWidth, metrics.landCardHeight, metrics.playerLandsRect.width, runAction, submitTarget, handleCombatCardTap,
+                Modifier.place(metrics.playerLandsRect), adaptsToDensity = true, availableHeight = metrics.playerLandsRect.height,
+                arrangement = BattlefieldRowArrangement.LANDSCAPE_RESOURCES, allowsManaUndo = true, manaPaymentActive = manaActive)
+
+            val paymentActive = InlinePaymentPromptState.isActive(snapshot)
+            val stripHeight = maxOf(if (paymentActive) 52f else metrics.centerStripRect.height, metrics.centerStripRect.height)
+            Column(Modifier.place(metrics.centerStripRect.copy(y = metrics.centerStripRect.midY - stripHeight / 2, height = stripHeight)),
+                verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (paymentActive) InlinePaymentPromptBar(snapshot, pendingActionId, runAction, runCommand, openPromptDetails, Modifier.weight(1f))
+                    else if (BoardDecisionPresentation.showsGuidance(snapshot)) PromptPill(snapshot, Modifier.weight(1f), combatSelection, combatBack)
+                    val revealed = snapshot.xmage?.revealed?.flatMap { it.cards } ?: emptyList()
+                    val lookedAt = snapshot.xmage?.lookedAt?.flatMap { it.cards } ?: emptyList()
+                    val inspect = LocalBoardZoneInspectionAction.current
+                    if (revealed.isNotEmpty()) FloatingZoneChip("Revealed", revealed.size, "eye") { inspect?.invoke(BoardZoneReference.Collection(BoardZoneReference.NamedKind.REVEALED)) }
+                    if (lookedAt.isNotEmpty()) FloatingZoneChip("Looked", lookedAt.size, "eye.trianglebadge.exclamationmark") {
+                        inspect?.invoke(BoardZoneReference.Collection(BoardZoneReference.NamedKind.LOOKED_AT))
+                    }
+                }
+            }
+
+            if (isOverPlayerDropZone) {
+                Box(Modifier.place(metrics.playerDropZone).background(MagicPalette.antiqueGold.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
+                    .border(2.dp, MagicPalette.antiqueGold.copy(alpha = 0.72f), RoundedCornerShape(14.dp)))
+            }
+
+            // The hand measures its cards from the board's origin, so its drop zone is given in those coordinates.
+            val dropZone = metrics.playerDropZone.let { it.copy(x = it.x + columnOrigin.x, y = it.y + columnOrigin.y) }
+            PortraitHandRow(BoardOpponentFocus.seatHand(snapshot), actions, selection, pendingCardInstanceId, setInteractionMode, dropZone, setOverPlayerDropZone,
+                metrics.handCardWidth, metrics.handCardHeight, metrics.handRect.width, onInteractionFeedback,
+                { choiceActions, message -> setDragActionChoice(DragActionChoice(message, choiceActions)) }, runAction,
+                Modifier.place(metrics.handRect).zIndex(4f), hiddenCount = if (snapshot.isViewer(human.playerId)) null else human.zones.visibleHandCount)
+
+            if (TargetingHelperVisibility.shouldShow(snapshot, pendingActionId, interactionMode, targetableIds)) {
+                TargetingStatusPill(targetableIds.size, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.bottomActionRect.midY))
+            }
+
+            if (CombatSelectionState.isDeclareAttackers(snapshot)) {
+                val declared = snapshot.xmage?.combat?.flatMap { it.attackers }?.size ?: 0
+                val hasPending = combatSelection.selectedAttackerIds.isNotEmpty()
+                CombatSubmitPill(if (hasPending) "Cancel Selection" else if (declared == 0) "No Attacks" else "Done Attacking",
+                    maxOf(declared, combatSelection.selectedAttackerIds.size), {
+                        if (hasPending) setCombatSelection(combatSelection.clearAttackers()) else finishAttackers()
+                    }, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.centerStripRect.maxY + 18).zIndex(19f))
+            } else if (CombatSelectionState.isDeclareBlockers(snapshot)) {
+                val declared = snapshot.xmage?.combat?.flatMap { it.blockers }?.size ?: 0
+                val hasPending = combatSelection.selectedBlockerId != null
+                CombatSubmitPill(if (hasPending) "Cancel Selection" else if (declared == 0) "No Blocks" else "Done Blocking",
+                    maxOf(declared, combatSelection.blockerPairCount), {
+                        when {
+                            hasPending -> setCombatSelection(combatSelection.clearBlockers())
+                            combatSelection.hasPendingBlockers -> submitBlockers()
+                            else -> finishBlockers()
+                        }
+                    }, Modifier.centerAt(metrics.bottomActionRect.midX, metrics.centerStripRect.maxY + 18).zIndex(19f))
+            }
+
+            // Combat arrows and board effects, drawn over the lanes. The registry measures from the board's safe-area
+            // box; this column sits inside it (beside the classic rails, on the tavern mat), so bounds are moved into
+            // the column's own coordinates.
+            val bounds = (registry?.bounds ?: emptyMap()).mapValues { (_, r) -> r.copy(x = r.x - columnOrigin.x, y = r.y - columnOrigin.y) }
+            if (inspectingZoneTitle == null && selection.inspectedCard == null) {
+                CombatArrowOverlay(snapshot, snapshot.xmage?.combat ?: emptyList(), combatPreviewArrows, metrics, human.zones.battlefield,
+                    opponent.zones.battlefield, bounds, Modifier.zIndex(6f))
+                Box(Modifier.fillMaxSize().zIndex(7f)) {
+                    CombatEdgeIndicators(human.zones.battlefield + opponent.zones.battlefield,
+                        CombatArrowModel.arrows(snapshot.xmage?.combat ?: emptyList(), combatPreviewArrows).flatMap { listOf(it.fromId, it.toId) }.toSet(),
+                        bounds, listOf(metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect),
+                        CombatViewportAnchors.laneIndices(human.zones.battlefield, opponent.zones.battlefield)) { selection.inspectedCard = it }
+                }
+            }
+            // Life changes rise from the tavern medallions when they are on the table.
+            val viewerSeat = bounds[TavernSeatAnchor.bottom]
+            val opponentSeat = bounds[TavernSeatAnchor.top]
+            BoardFXOverlay(boardFX.active, boardFX.subjects, bounds, BoardFXAnchors(snapshot.viewerID,
+                viewerPoint = viewerSeat?.let { BoardPoint(it.midX, it.minY - 8) } ?: BoardPoint(metrics.playerLandsRect.minX + 34, metrics.playerLandsRect.maxY),
+                opponentPoint = opponentSeat?.let { BoardPoint(it.midX, it.maxY + 10) } ?: BoardPoint(metrics.opponentBattlefieldRect.minX + 44, metrics.opponentBattlefieldRect.minY + 26),
+                // On the tavern table the showcase sits higher, clear of the cost and target ribbons.
+                stackPoint = BoardPoint(metrics.centerStripRect.midX, if (tavern)
+                    minOf(metrics.centerStripRect.midY, (metrics.opponentBattlefieldRect.midY + metrics.centerStripRect.midY) / 2) else metrics.centerStripRect.midY),
+                viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
+                opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),
+                boardFXClock, pruneFX, Modifier.zIndex(8f))
+
+            BoardOverlayTransition(inspectingZoneTitle != null, Modifier.place(metrics.safeFrame).zIndex(70f)) {
+                val title = inspectingZoneReference?.title(snapshot) ?: inspectingZoneTitle ?: ""
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CompactZoneInspectorOverlay(title, inspectingZoneReference?.cards(snapshot) ?: inspectingZoneCards, actions, pendingActionId, selection,
+                        runAction, closeZone, targetableIDs = targetableIds, runTargetAction = submitTarget)
+                }
+            }
+
+            selection.inspectedCard?.let { card ->
+                Box(Modifier.fillMaxSize().zIndex(99f).clickable(remember { MutableInteractionSource() }, null) { selection.inspectedCard = null })
+                CardInspector(card, Modifier.place(metrics.detailSheetRect).zIndex(100f))
+            }
+
+            BoardOverlayTransition(shouldShowCompactPrompt && !isPromptDetailOpen && CompactPromptPopup.compactLegalPromptActions(snapshot).isEmpty(),
+                Modifier.requiredSize(minOf(maxOf(metrics.size.width * 0.30f, 260f), 340f).dp, minOf(maxOf(metrics.size.height * 0.20f, 98f), 178f).dp)
+                    .centerAt(metrics.boardColumnRect.midX, metrics.compactPromptRect.midY).zIndex(20f)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CompactPromptPopupView(snapshot, pendingActionId, runAction, runCommand, openPromptDetailSheet, Modifier.fillMaxWidth())
+                }
+            }
+
+            dragActionChoice?.let { choice ->
+                DragActionChoicePopup(choice, pendingActionId, { action -> setDragActionChoice(null); selection.selectedCard = null; runAction(action) },
+                    { setDragActionChoice(null); selection.selectedCard = null },
+                    Modifier.requiredWidth(minOf(maxOf(metrics.size.width * 0.30f, 260f), 340f).dp)
+                        .centerAt(metrics.boardColumnRect.midX, metrics.compactPromptRect.midY).zIndex(21f))
             }
         }
     }
