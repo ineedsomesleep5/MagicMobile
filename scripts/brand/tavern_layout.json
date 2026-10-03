@@ -1,5 +1,5 @@
 {
- "_doc": "Walnut Tavern board layout in points on the 440x956 design canvas the plate fills, top-left origin. scripts/brand/tavern_table.py renders the table from these numbers; the app places its live controls on the same points (TavernDesign in apps/ios/MagicMobile/Board/BoardChrome.swift). Change both together. Socket points were measured from the approved concept plate (tavern-plate-v4.png) on 2026-10-02. The landscape variant (956 x 440, an iPhone held sideways) has no top band or crest: the opponent's medallion ring sits up the left walnut column above yours, the pass socket at the right column's foot, the mat as big as the screen allows with the hand resting over its foot and the mana rail under it (TavernSockets.landscape in BoardChrome.swift).",
+ "_doc": "Walnut Tavern board layout in points on the 440x956 design canvas the plate fills, top-left origin. scripts/brand/tavern_table.py renders the table from these numbers; the app places its live controls on the same points (TavernDesign in apps/ios/MagicMobile/Board/BoardChrome.swift). Change both together. Socket points were measured from the approved concept plate (tavern-plate-v4.png) on 2026-10-02. The landscape variant (956 x 440, an iPhone held sideways) has no top band or crest: the opponent's medallion ring sits up the left walnut column above yours, the pass socket at the right column's foot, the mat as big as the screen allows with the hand resting over its foot and the mana rail under it (TavernSockets.landscape in BoardChrome.swift). The pad variant (1180 x 860, an iPad held sideways; Caleb, 2026-10-03) is the landscape table scaled up with the same parts: wider walnut columns, larger medallions and pass button, the mat as big as the screen allows (TavernSockets.pad).",
  "portrait": {
   "screen": [
    440,
@@ -338,6 +338,148 @@
       437
      ],
      "width": 42,
+     "rotate": 12
+    }
+   ]
+  }
+ },
+ "pad": {
+  "screen": [
+   1180,
+   860
+  ],
+  "opponentMedallion": {
+   "center": [
+    136,
+    150
+   ],
+   "radius": 44
+  },
+  "mat": [
+   206,
+   14,
+   1000,
+   776
+  ],
+  "lifeMedallion": {
+   "center": [
+    136,
+    690
+   ],
+   "radius": 50
+  },
+  "passButton": {
+   "center": [
+    1060,
+    690
+   ],
+   "radius": 64
+  },
+  "manaRail": {
+   "rect": [
+    484,
+    788,
+    716,
+    824
+   ],
+   "socketXs": [
+    505,
+    543,
+    581,
+    619,
+    657,
+    695
+   ],
+   "socketY": 806,
+   "socketRadius": 16.5
+  },
+  "props": {
+   "candle": {
+    "at": [
+     44,
+     76
+    ],
+    "width": 72
+   },
+   "tankard": {
+    "at": [
+     44,
+     420
+    ],
+    "width": 62,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     1140,
+     420
+    ],
+    "width": 108,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      50,
+      800
+     ],
+     "width": 40
+    },
+    {
+     "at": [
+      1130,
+      800
+     ],
+     "width": 42
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      200,
+      215
+     ],
+     "width": 60,
+     "rotate": 80
+    },
+    {
+     "at": [
+      198,
+      490
+     ],
+     "width": 54,
+     "rotate": 95
+    },
+    {
+     "at": [
+      1004,
+      235
+     ],
+     "width": 64,
+     "rotate": -95
+    },
+    {
+     "at": [
+      1006,
+      512
+     ],
+     "width": 54,
+     "rotate": -80
+    },
+    {
+     "at": [
+      340,
+      852
+     ],
+     "width": 56,
+     "rotate": -10
+    },
+    {
+     "at": [
+      850,
+      854
+     ],
+     "width": 54,
      "rotate": 12
     }
    ]

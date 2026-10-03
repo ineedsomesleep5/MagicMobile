@@ -1447,7 +1447,7 @@
 				SDKROOT = iphoneos;
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]" = "$(inherited) XMAGE_NATIVE_LINKED";
 				"SWIFT_OBJC_BRIDGING_HEADER[sdk=iphoneos*]" = "$(SRCROOT)/MagicMobile/NativeEngine-Bridging-Header.h";
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -1516,7 +1516,7 @@
 				SDKROOT = iphoneos;
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos*]" = "$(inherited) XMAGE_NATIVE_LINKED";
 				"SWIFT_OBJC_BRIDGING_HEADER[sdk=iphoneos*]" = "$(SRCROOT)/MagicMobile/NativeEngine-Bridging-Header.h";
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};

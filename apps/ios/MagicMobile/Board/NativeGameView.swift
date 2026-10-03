@@ -580,7 +580,7 @@ struct NativeGameView: View {
                                         humanName: String, opponentName: String, rootProxy: GeometryProxy) -> some View {
         let canvas = CGSize(width: rootProxy.size.width + rootProxy.safeAreaInsets.leading + rootProxy.safeAreaInsets.trailing,
                             height: rootProxy.size.height + rootProxy.safeAreaInsets.top + rootProxy.safeAreaInsets.bottom)
-        let sockets = TavernSockets.landscape
+        let sockets = TavernSockets.current(canvas)
         let origin = rootProxy.frame(in: .global).origin
         let board = canvas.tavernRect(CGRect(x: sockets.mat.minX, y: sockets.mat.minY, width: sockets.mat.width,
                                              height: sockets.handBottom - sockets.mat.minY))

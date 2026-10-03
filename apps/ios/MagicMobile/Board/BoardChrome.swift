@@ -1071,8 +1071,11 @@ extension EnvironmentValues {
 }
 
 extension CGSize {
-    /// The design canvas this screen maps from: portrait 440 x 956 or landscape 956 x 440.
-    var tavernDesignCanvas: CGSize { width > height ? TavernSockets.landscape.canvas : TavernDesign.canvas }
+    /// The design canvas this screen maps from: portrait 440 x 956, landscape 956 x 440, or the
+    /// iPad's 1180 x 860 once the short side is tablet-sized.
+    var tavernDesignCanvas: CGSize { TavernSockets.current(self).canvas }
+    /// An iPad held sideways: the short side is far past any phone's.
+    var isTavernPad: Bool { width > height && min(width, height) >= 700 }
     /// A design-canvas point on this screen, in global coordinates.
     func tavernPoint(_ point: CGPoint) -> CGPoint {
         CGPoint(x: point.x * width / tavernDesignCanvas.width, y: point.y * height / tavernDesignCanvas.height)
@@ -1146,9 +1149,26 @@ struct TavernSockets {
             mat: CGRect(x: 172, y: 8, width: 610, height: 392), handBottom: 404)
     }()
 
+    /// The iPad plate (tavern_layout.json "pad", 1180 x 860): the landscape table scaled up,
+    /// with wider walnut columns, larger medallions and pass button, and the mat as big as the
+    /// screen allows (Caleb, 2026-10-03: iPad, landscape first).
+    static let pad: TavernSockets = {
+        let pass = CGPoint(x: 1060, y: 690)
+        return TavernSockets(
+            canvas: CGSize(width: 1180, height: 860), opponentMedallion: CGPoint(x: 136, y: 150), opponentHoleRadius: 44,
+            opponentNameplate: CGPoint(x: 136, y: 240), opponentHand: CGPoint(x: 136, y: 88),
+            phasePlate: CGPoint(x: 1050, y: 60), opponentGlance: CGPoint(x: 136, y: 296),
+            lifeMedallion: CGPoint(x: 136, y: 690), lifeHoleRadius: 50,
+            chat: CGPoint(x: 194, y: 772),
+            passButton: pass, skip: CGPoint(x: pass.x - 56, y: pass.y - 88), menu: CGPoint(x: pass.x + 30, y: pass.y - 102),
+            stackTray: CGPoint(x: 1050, y: 250),
+            manaSocketXs: [505, 543, 581, 619, 657, 695], manaSocketY: 806,
+            mat: CGRect(x: 206, y: 14, width: 794, height: 762), handBottom: 782)
+    }()
+
     static func current(_ canvas: CGSize?) -> TavernSockets {
         guard let canvas, canvas.width > canvas.height else { return .portrait }
-        return .landscape
+        return canvas.isTavernPad ? .pad : .landscape
     }
 }
 

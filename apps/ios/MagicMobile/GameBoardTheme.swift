@@ -28,6 +28,10 @@ enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
     var composedAssetNames: (portrait: String, landscape: String)? {
         self == .tavern ? ("battlefield-tavern-portrait", "battlefield-tavern-landscape") : nil
     }
+    /// The iPad plate (tavern_layout.json "pad"), when this theme has one.
+    var padImageName: String? {
+        self == .tavern ? "battlefield-tavern-pad" : nil
+    }
     /// Composed art carries its own lamp and vignette; the generic shading would muddy it.
     var hasBakedLighting: Bool { composedAssetNames != nil }
     static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .tavern }
@@ -42,9 +46,16 @@ struct BattlefieldBackdropArt: View {
     var body: some View {
         if let composed = theme.composedAssetNames {
             GeometryReader { proxy in
-                Image(proxy.size.height >= proxy.size.width ? composed.portrait : composed.landscape)
-                    .resizable().scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                if proxy.size.isTavernPad, let pad = theme.padImageName, UIImage(named: pad) != nil {
+                    // The iPad plate stretches to the screen the way its sockets do, so the painted
+                    // rings sit exactly under the live controls on every iPad.
+                    Image(pad).resizable()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                } else {
+                    Image(proxy.size.height >= proxy.size.width ? composed.portrait : composed.landscape)
+                        .resizable().scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
             }
         } else if let asset = theme.assetName {
             Image(asset).resizable().scaledToFill()
