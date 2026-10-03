@@ -1193,11 +1193,12 @@ struct TavernCardBackFan: View {
         ZStack(alignment: .bottom) {
             ForEach(0..<shown, id: \.self) { index in
                 let spread = shown > 1 ? (Double(index) / Double(shown - 1) - 0.5) : 0
+                // Leather card backs with a brass edge and an ember spark: the tavern's deck, not a blue one.
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(LinearGradient(colors: [Color(red: 0.12, green: 0.15, blue: 0.24), Color(red: 0.06, green: 0.07, blue: 0.12)],
+                    .fill(LinearGradient(colors: [Color(red: 0.30, green: 0.18, blue: 0.08), Color(red: 0.14, green: 0.08, blue: 0.04)],
                                          startPoint: .top, endPoint: .bottom))
                     .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(TavernPalette.brass, lineWidth: 1.2))
-                    .overlay(Image(systemName: "sparkle").font(.system(size: 9, weight: .bold)).foregroundStyle(TavernPalette.brass))
+                    .overlay(Image(systemName: "sparkle").font(.system(size: 9, weight: .bold)).foregroundStyle(BrandTheme.ember))
                     .frame(width: 24, height: 34)
                     .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
                     .rotationEffect(.degrees(spread * arc), anchor: .bottom)
@@ -1586,6 +1587,44 @@ extension View {
     }
 }
 
+/// A stock List or Form sheet in the tavern (Caleb, 2026-10-03): the leather sheet backing, rows
+/// as darker leather cards with brass separators, parchment serif text and brass controls. Without
+/// the kit the sheet is untouched.
+struct TavernListChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        if TavernUIKit.available {
+            content
+                .scrollContentBackground(.hidden)
+                .background(TavernSheetBackground())
+                .listRowBackground(TavernListRow())
+                .listRowSeparatorTint(TavernPalette.brass.opacity(0.35))
+                .foregroundStyle(TavernPalette.parchment)
+                .fontDesign(.serif)
+                .tint(TavernPalette.brass)
+                .toggleStyle(TavernToggleStyle())
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .environment(\.tavernBoard, true)
+                .preferredColorScheme(.dark)
+        } else {
+            content
+        }
+    }
+}
+
+/// One row's backing in a tavern list: leather darkened a shade.
+struct TavernListRow: View {
+    var body: some View {
+        TavernFill(material: .leather)
+            .overlay(Color.black.opacity(0.28))
+    }
+}
+
+extension View {
+    /// A List or Form sheet dressed for the tavern (TavernListChrome).
+    func tavernList() -> some View { modifier(TavernListChrome()) }
+}
+
 /// A floating panel's backing: the classic fill and edge, or on the tavern board tooled leather
 /// in brass trim whose corners follow `cornerRadius` (12 pt is the trim's full size).
 struct TavernPanelChrome: ViewModifier {
@@ -1695,12 +1734,23 @@ struct TavernStackTray: View {
     let open: () -> Void
     /// Narrower in the landscape table's right column.
     var width: CGFloat = 124
+    /// The top of the stack, shown as a small framed picture with the count on a coin.
+    var topCard: ZoneCard? = nil
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 8) {
-                ZStack {
-                    TavernCoin(value: count, size: 26)
+                ZStack(alignment: .bottomTrailing) {
+                    if let topCard {
+                        TavernArtCrop(card: topCard, zoneName: "Stack")
+                            .frame(width: 30, height: 32)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(BrandTheme.brassGradient, lineWidth: 1))
+                            .allowsHitTesting(false)
+                        TavernCoin(value: count, size: 16).offset(x: 5, y: 4)
+                    } else {
+                        TavernCoin(value: count, size: 26)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text("STACK")

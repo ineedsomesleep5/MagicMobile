@@ -444,7 +444,8 @@ struct PortraitBottomCommandBar: View {
                     let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
                     if stackCount > 0, let openStack {
                         TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack,
-                                        width: sockets.canvas.width > sockets.canvas.height ? 106 : 124)
+                                        width: sockets.canvas.width > sockets.canvas.height ? 106 : 124,
+                                        topCard: snapshot.stackTopFirst.first?.displaySourceCard)
                             .tavernPosition(sockets.stackTray, canvas: canvas, origin: origin)
                     }
                     // Counters and attached cards live in the medallion's pop-over; poison and

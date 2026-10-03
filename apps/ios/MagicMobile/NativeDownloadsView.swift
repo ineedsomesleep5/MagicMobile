@@ -221,7 +221,7 @@ struct NativeDownloadsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(CommanderPresentation.canvas)
-            .tint(CommanderPresentation.accent)
+            .tavernList()
             .navigationTitle("Downloads")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

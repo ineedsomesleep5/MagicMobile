@@ -375,6 +375,7 @@ struct TableChatPanel: View {
                 }
                 .padding(.horizontal, 16).padding(.bottom, 12).padding(.top, 4)
             }
+            .tavernList()
             .navigationTitle("Table chat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

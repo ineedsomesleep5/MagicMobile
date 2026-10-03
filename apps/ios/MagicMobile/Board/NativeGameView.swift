@@ -1001,6 +1001,8 @@ struct NativeGameView: View {
                 )
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
+                // The tavern's candle sits under the clock: the status bar leaves during a game.
+                .statusBarHidden(isTavernBoard)
                 .environment(\.inspectorBattlefield, snapshot.visibleBattlefield)
                 .overlay {
                     if let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {

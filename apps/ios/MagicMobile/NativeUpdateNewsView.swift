@@ -16,11 +16,12 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
-                    Label("Friends: see who's online and join their table in one tap.", systemImage: "person.2.fill")
-                    Label("Table chat with quick messages, plus mute, block and report.", systemImage: "bubble.left.and.bubble.right.fill")
-                    Label("Invite links that open straight into your table.", systemImage: "link")
-                    Label("Online games: one starting roll, and your opponent's commander on the versus screen.", systemImage: "checkmark.circle")
-                    Label("Scryfall card art on by default, with an offer to save it for offline play.", systemImage: "photo.on.rectangle")
+                    Label("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage: "table.furniture")
+                    Label("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage: "sparkles")
+                    Label("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage: "person.crop.circle")
+                    Label("Big boards run smoother: identical tokens stack once there are eight.", systemImage: "square.stack.3d.up")
+                    Label("A Back button while declaring attackers and blockers.", systemImage: "arrow.uturn.backward")
+                    Label("Friends, table chat and invite links that open straight into your table.", systemImage: "person.2.fill")
                 }
                 Section {
                     Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {
@@ -48,7 +49,7 @@ struct NativeUpdateNewsView: View {
                         .accessibilityIdentifier("updates.fanContentNotice")
                 }
             }
-            .tint(CommanderPresentation.accent)
+            .tavernList()
             .navigationTitle("Updates")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
