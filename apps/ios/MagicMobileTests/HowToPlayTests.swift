@@ -55,14 +55,19 @@ final class HowToPlayTests: XCTestCase {
     }
 
     func testPagesAreShortAndDistinct() {
-        let pages = HowToPlayText.pages
-        XCTAssertEqual(pages.count, 10)
-        XCTAssertEqual(Set(pages.map(\.id)).count, pages.count)
-        for page in pages {
-            XCTAssertFalse(page.title.isEmpty, page.id)
-            let sentences = page.body.matches(of: #/[.!?](\s|$)/#).count
-            XCTAssertTrue((1...3).contains(sentences), "\(page.id) has \(sentences) sentences")
+        XCTAssertEqual(HowToPlayText.tutorials.map(\.id), ["table", "commander"])
+        XCTAssertEqual(HowToPlayText.pages, HowToPlayText.tutorials[0].pages, "The first visit opens the table's tutorial")
+        for tutorial in HowToPlayText.tutorials {
+            let pages = tutorial.pages
+            XCTAssertEqual(pages.count, tutorial.id == "table" ? 12 : 9, tutorial.id)
+            XCTAssertEqual(Set(pages.map(\.id)).count, pages.count, tutorial.id)
+            XCTAssertFalse(tutorial.subtitle.isEmpty)
+            for page in pages {
+                XCTAssertFalse(page.title.isEmpty, page.id)
+                let sentences = page.body.matches(of: #/[.!?](\s|$)/#).count
+                XCTAssertTrue((1...3).contains(sentences), "\(tutorial.id)/\(page.id) has \(sentences) sentences")
+            }
         }
-        XCTAssertEqual(HowToPlayText.progress(page: 1, of: pages.count), "Page 1 of 10")
+        XCTAssertEqual(HowToPlayText.progress(page: 1, of: 12), "Page 1 of 12")
     }
 }

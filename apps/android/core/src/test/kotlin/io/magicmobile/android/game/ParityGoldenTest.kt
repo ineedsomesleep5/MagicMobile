@@ -221,8 +221,17 @@ class ParityGoldenTest {
         val count = progress["count"].integer!!.toInt()
         assertEquals(progress["text"].string, HowToPlayText.progress(page, count))
         assertEquals(progress["text"].string, progress["format"].string!!.replace("{page}", "$page").replace("{count}", "$count"))
-        assertEquals(root["pages"].array!!.map { mapOf("id" to it["id"].string, "title" to it["title"].string, "body" to it["body"].string) },
-            HowToPlayText.pages.map { mapOf("id" to it.id, "title" to it.title, "body" to it.body) })
+        assertEquals(HowToPlayText.BEGIN, root["begin"].string)
+        val tutorials = root["tutorials"].array!!
+        assertEquals(HowToPlayText.tutorials.size, tutorials.size)
+        for ((expected, tutorial) in tutorials.zip(HowToPlayText.tutorials)) {
+            assertEquals(expected["id"].string, tutorial.id)
+            assertEquals(expected["title"].string, tutorial.title)
+            assertEquals(expected["subtitle"].string, tutorial.subtitle)
+            assertEquals(expected["pages"].array!!.map { mapOf("id" to it["id"].string, "title" to it["title"].string, "body" to it["body"].string) },
+                tutorial.pages.map { mapOf("id" to it.id, "title" to it.title, "body" to it.body) }, tutorial.id)
+        }
+        assertEquals(HowToPlayText.tutorials[0].pages, HowToPlayText.pages)
 
         val launch = root["launch"]!!
         assertEquals(HowToPlayLaunch.SEEN_VERSION_KEY, launch["seenVersionKey"].string)
