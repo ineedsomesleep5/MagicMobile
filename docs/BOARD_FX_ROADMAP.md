@@ -495,3 +495,24 @@ single MIT file with its license header when that is enough.
   from `codex/ios-build-24` (PR #98, stacked on #97) with the build 21/22 engine (preflight
   14/14, equivalent-source). Landscape reference for the next step:
   `ui-ref/landscape-tavern-ref.png` (not built; drop its deck pile and the PASS word).
+- 2026-10-02 (Claude, build 25, branch `codex/walnut-build-25` stacked on `codex/ios-build-24`): Caleb's
+  build 24 notes. No engine changes (Caleb: "don't do anything against the engine"). Game menu and
+  settings panels, chat-free menus, Sound Lab, downloads and the relay table now use the tavern controls
+  (TavernToggle with subtitle, TavernSlider, TavernSettingsPanel, brass swatches). Highlights are light
+  only on the tavern board: TavernTileGlow behind framed tiles (playable breathes, targets/selection
+  steady), attack/block stance glow in BoardFXCardMotionModifier, red glow for an attackable medallion;
+  classic boards keep their outlines. Your medallion glows emerald-gold with a crown spark when the
+  commander can be cast (TavernCommanderReadyGlow). Keywords stay icons in combat on framed tiles (Caleb:
+  Trample stays the icon); tapped stays grey; ability and tapped badges are brass coins. Attachments are
+  parchment ribbons above a full-size creature (no shrinking). Off-screen combat markers only for cards
+  under 80% visible, as brass coins with a tavern pop-over. Combat undo: the adapter keeps the viewer's
+  blockers selectable (XMage's own toggle takes a block back) and the banner has Back
+  (combatBackAction). Attack arrows and life changes aim at the medallions (TavernSeatAnchor). Commander
+  moment (storyboard `ui-ref/commander-cast-storyboard.png`): rises from the owner's medallion in its gold
+  frame through a fire ring and ember stream, firelight halo, parchment ribbon with a wax seal, ember-dust
+  landing (BoardFXPainter tableDim/fireRing/emberStream/fireHalo/ribbonBanner). Landscape Walnut Tavern:
+  new plate (`tavern_layout.json` "landscape", 956 x 440) with the mat as big as the screen allows (Caleb),
+  TavernSockets (portrait and landscape, orientation-aware mapping), tavernLandscapeContent laying the
+  landscape centre column on the mat with the tavern top bar and command bar as socket layers. New tests:
+  testTavernLandscapeTableKeepsItsControls, testDeclaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack.
+  Android plan: docs/ANDROID_PARITY.md "Next: Walnut Tavern".

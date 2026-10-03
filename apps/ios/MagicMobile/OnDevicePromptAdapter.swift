@@ -72,6 +72,17 @@ enum OnDevicePromptAdapter {
                         targets.append(["id": card.id, "label": EngineDisplayText.label(card.card.name)])
                     }
                 }
+                // Likewise for blocks: selecting a creature that already blocks takes the block back
+                // (XMage's own toggle), so the viewer's blockers stay selectable to change a block.
+                if key == "possibleBlockers" {
+                    for card in players.first(where: { $0.playerId == viewerPlayerID })?.zones.battlefield ?? []
+                    where !(card.blocking ?? []).isEmpty {
+                        guard UUID(uuidString: card.id) != nil else { throw invalid("Invalid combat UUID") }
+                        if !targets.contains(where: { $0["id"] == card.id }) {
+                            targets.append(["id": card.id, "label": EngineDisplayText.label(card.card.name)])
+                        }
+                    }
+                }
                 fields["targets"] = targets
                 if prompt.responseTypes.contains("boolean") { actions.append(try action("answer_yes_no", "Done", ["confirmed": true])) }
             default: throw invalid("Unsupported SELECT mode")

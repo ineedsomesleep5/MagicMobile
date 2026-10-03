@@ -689,12 +689,23 @@ struct TavernToggle: View {
     let title: String
     @Binding var isOn: Bool
     var identifier: String? = nil
+    /// A line of explanation under the title, in faded parchment.
+    var subtitle: String? = nil
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
-                .font(.system(size: 16, weight: .semibold, design: .serif))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .regular, design: .serif))
+                        .opacity(0.65)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Spacer(minLength: 8)
             TavernSwitchFace(isOn: isOn)
                 .frame(width: 51, height: 31)
@@ -707,6 +718,49 @@ struct TavernToggle: View {
         }
         .frame(minHeight: 44)
         .opacity(isEnabled ? 1 : 0.5)
+    }
+}
+
+/// A level in the tavern style: an ember-filled groove in a brass rim with a brass knob.
+/// The real Slider sits on top, nearly invisible, so touch, VoiceOver and UI tests use it.
+struct TavernSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double> = 0...1
+    let label: String
+    var identifier: String? = nil
+
+    var body: some View {
+        GeometryReader { proxy in
+            let fraction = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
+            let knob: CGFloat = 22
+            let travel = max(proxy.size.width - knob, 1)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color(red: 0.12, green: 0.07, blue: 0.04))
+                    .frame(height: 8)
+                    .overlay(Capsule().strokeBorder(BrandTheme.brassGradient, lineWidth: 1))
+                Capsule()
+                    .fill(LinearGradient(colors: [Color(red: 1, green: 0.62, blue: 0.32), Color(red: 0.74, green: 0.26, blue: 0.1)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .frame(width: knob / 2 + travel * fraction, height: 6)
+                    .padding(.leading, 1)
+                Circle()
+                    .fill(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.70, green: 0.48, blue: 0.17),
+                                                  Color(red: 0.40, green: 0.25, blue: 0.08)],
+                                         center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: 13))
+                    .frame(width: knob, height: knob)
+                    .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+                    .offset(x: travel * fraction)
+            }
+            .frame(maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+        .frame(height: 34)
+        .overlay {
+            Slider(value: $value, in: range) { Text(label) }
+                .opacity(0.02)
+                .accessibilityIdentifier(identifier ?? label)
+        }
     }
 }
 

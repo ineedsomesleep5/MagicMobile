@@ -304,8 +304,46 @@ struct AttachmentNameTab: View {
     let height: CGFloat
     /// Further attachments not shown as tabs of their own.
     var more = 0
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
+        if tavern, let ribbon = TavernCardParts.ribbon {
+            tavernRibbon(ribbon)
+        } else {
+            classicTab
+        }
+    }
+
+    /// On the tavern table the tab is a small parchment ribbon, like the tiles' name ribbons.
+    private func tavernRibbon(_ ribbon: UIImage) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: card.card.typeLine.localizedCaseInsensitiveContains("equipment") ? "shield.lefthalf.filled" : "sparkles")
+                .font(.system(size: max(7, height * 0.5), weight: .bold))
+                .foregroundStyle(Color(red: 0.55, green: 0.32, blue: 0.1))
+            Text(card.card.name)
+                .font(.system(size: max(7, height * 0.6), weight: .bold, design: .serif))
+                .foregroundStyle(Color(red: 0.17, green: 0.10, blue: 0.05))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            if more > 0 {
+                Text("+\(more)")
+                    .font(.system(size: max(7, height * 0.55), weight: .black, design: .serif))
+                    .foregroundStyle(Color(red: 0.55, green: 0.32, blue: 0.1))
+            }
+        }
+        .padding(.horizontal, height * 1.1)
+        .frame(height: height * 1.25)
+        .frame(maxWidth: .infinity)
+        .background {
+            // The tab is about the ribbon's own shape (about 5 : 1), so it stretches to fit.
+            Image(uiImage: ribbon).resizable().interpolation(.high)
+                .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var classicTab: some View {
         HStack(spacing: 3) {
             Image(systemName: card.card.typeLine.localizedCaseInsensitiveContains("equipment") ? "shield.lefthalf.filled" : "sparkles")
                 .font(.system(size: max(7, height * 0.5), weight: .bold))
@@ -799,10 +837,13 @@ struct TavernMedallion<Portrait: View>: View {
     let life: Int?
     var active = false
     var targetable = false
+    /// Your commander can be cast: its own breathing glow and a crown spark.
+    var commanderReady = false
     @ViewBuilder let portrait: Portrait
 
     var body: some View {
         ZStack {
+            if commanderReady { TavernCommanderReadyGlow(diameter: diameter) }
             portrait
                 .frame(width: diameter, height: diameter)
                 .clipShape(Circle())
@@ -828,8 +869,17 @@ struct TavernMedallion<Portrait: View>: View {
             }
         }
         .shadow(color: active ? TavernPalette.ember.opacity(0.75) : .black.opacity(0.5), radius: active ? 10 : 4)
-        .overlay(Circle().stroke(Color.red, lineWidth: targetable ? 3 : 0).frame(width: diameter * 1.1, height: diameter * 1.1))
+        .background {
+            // A player you can attack glows red: light only, no ring.
+            if targetable {
+                Circle().fill(Color(red: 1, green: 0.18, blue: 0.1))
+                    .frame(width: diameter * 1.3, height: diameter * 1.3)
+                    .blur(radius: diameter * 0.12)
+                    .allowsHitTesting(false)
+            }
+        }
         .animation(.easeInOut(duration: 0.35), value: active)
+        .animation(.easeInOut(duration: 0.35), value: commanderReady)
     }
 }
 
@@ -1021,11 +1071,85 @@ extension EnvironmentValues {
 }
 
 extension CGSize {
+    /// The design canvas this screen maps from: portrait 440 x 956 or landscape 956 x 440.
+    var tavernDesignCanvas: CGSize { width > height ? TavernSockets.landscape.canvas : TavernDesign.canvas }
     /// A design-canvas point on this screen, in global coordinates.
     func tavernPoint(_ point: CGPoint) -> CGPoint {
-        CGPoint(x: point.x * width / TavernDesign.canvas.width, y: point.y * height / TavernDesign.canvas.height)
+        CGPoint(x: point.x * width / tavernDesignCanvas.width, y: point.y * height / tavernDesignCanvas.height)
     }
-    func tavernLength(_ value: CGFloat) -> CGFloat { value * width / TavernDesign.canvas.width }
+    func tavernLength(_ value: CGFloat) -> CGFloat { value * width / tavernDesignCanvas.width }
+    /// A design-canvas rectangle on this screen, in global coordinates.
+    func tavernRect(_ rect: CGRect) -> CGRect {
+        let origin = tavernPoint(rect.origin)
+        let end = tavernPoint(CGPoint(x: rect.maxX, y: rect.maxY))
+        return CGRect(x: origin.x, y: origin.y, width: end.x - origin.x, height: end.y - origin.y)
+    }
+}
+
+/// Where the tavern table's live controls sit, in design points: the portrait plate's sockets
+/// (TavernDesign, tavern_layout.json "portrait") or the landscape plate's ("landscape").
+struct TavernSockets {
+    let canvas: CGSize
+    let opponentMedallion: CGPoint
+    let opponentHoleRadius: CGFloat
+    let opponentNameplate: CGPoint
+    let opponentHand: CGPoint
+    let phasePlate: CGPoint
+    let opponentGlance: CGPoint
+    let lifeMedallion: CGPoint
+    let lifeHoleRadius: CGFloat
+    let chat: CGPoint
+    let passButton: CGPoint
+    let skip: CGPoint
+    let menu: CGPoint
+    let stackTray: CGPoint
+    let manaSocketXs: [CGFloat]
+    let manaSocketY: CGFloat
+    /// The leather mat; in landscape the battlefield column is laid on it down to `handBottom`.
+    let mat: CGRect
+    let handBottom: CGFloat
+
+    static let portrait: TavernSockets = {
+        let center = TavernDesign.opponentMedallion
+        let pass = TavernDesign.passButton
+        return TavernSockets(
+            canvas: TavernDesign.canvas, opponentMedallion: center, opponentHoleRadius: TavernDesign.opponentHoleRadius,
+            opponentNameplate: CGPoint(x: center.x - 110, y: center.y + 8), opponentHand: CGPoint(x: center.x, y: center.y - 40),
+            phasePlate: CGPoint(x: center.x + 110, y: center.y + 8), opponentGlance: CGPoint(x: center.x + 110, y: center.y + 46),
+            lifeMedallion: TavernDesign.lifeMedallion, lifeHoleRadius: TavernDesign.lifeHoleRadius,
+            chat: CGPoint(x: TavernDesign.lifeMedallion.x + 42, y: TavernDesign.lifeMedallion.y + 52),
+            passButton: pass, skip: CGPoint(x: pass.x - 71, y: pass.y + 10), menu: CGPoint(x: pass.x - 51, y: pass.y + 51),
+            stackTray: TavernDesign.stackTray, manaSocketXs: TavernDesign.manaSocketXs, manaSocketY: TavernDesign.manaSocketY,
+            mat: CGRect(x: 26, y: TavernDesign.matTop, width: 388, height: TavernDesign.matBottom - TavernDesign.matTop),
+            handBottom: 830)
+    }()
+
+    /// The landscape plate (tavern_layout.json "landscape", 956 x 440 like an iPhone held
+    /// sideways): the opponent's medallion and nameplate up the left walnut column with your
+    /// medallion at its foot; the phase plate, stack tray and pass button down the right; the
+    /// mat between them; the hand resting on a red band under the mat and the mana rail below.
+    /// Skip and the controls ring orbit the pass button's upper left.
+    static let landscape: TavernSockets = {
+        // Caleb (2026-10-02): the playing board as big as it can be. The walnut columns keep
+        // just the medallions and the pass button inside the safe area (62 pt each side); the
+        // mat runs between them and down to the mana rail, and the hand rests over its foot.
+        let pass = CGPoint(x: 846, y: 344)
+        return TavernSockets(
+            canvas: CGSize(width: 956, height: 440), opponentMedallion: CGPoint(x: 118, y: 76), opponentHoleRadius: 30,
+            opponentNameplate: CGPoint(x: 118, y: 144), opponentHand: CGPoint(x: 118, y: 34),
+            phasePlate: CGPoint(x: 840, y: 42), opponentGlance: CGPoint(x: 118, y: 188),
+            lifeMedallion: CGPoint(x: 118, y: 344), lifeHoleRadius: 34,
+            chat: CGPoint(x: 160, y: 404),
+            passButton: pass, skip: CGPoint(x: pass.x - 40, y: pass.y - 60), menu: CGPoint(x: pass.x + 20, y: pass.y - 70),
+            stackTray: CGPoint(x: 840, y: 180),
+            manaSocketXs: [407, 435, 463, 491, 519, 547], manaSocketY: 416,
+            mat: CGRect(x: 172, y: 8, width: 610, height: 392), handBottom: 404)
+    }()
+
+    static func current(_ canvas: CGSize?) -> TavernSockets {
+        guard let canvas, canvas.width > canvas.height else { return .portrait }
+        return .landscape
+    }
 }
 
 extension View {
@@ -1397,6 +1521,8 @@ struct TavernPanelTitle: View {
             .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
+            // Engraved in capitals, named in normal case (VoiceOver reads capitals letter by letter).
+            .accessibilityLabel(text)
     }
 }
 
@@ -1567,6 +1693,8 @@ struct TavernStackTray: View {
     let count: Int
     let topName: String?
     let open: () -> Void
+    /// Narrower in the landscape table's right column.
+    var width: CGFloat = 124
 
     var body: some View {
         Button(action: open) {
@@ -1592,7 +1720,7 @@ struct TavernStackTray: View {
             }
             .padding(.leading, 6)
             .padding(.trailing, 10)
-            .frame(width: 124, height: 42)
+            .frame(width: width, height: 42)
             .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
             .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
             .contentShape(Rectangle())
@@ -2126,4 +2254,82 @@ struct TavernStatusGlance: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+}
+
+// MARK: - Glows (light only, no outlines)
+
+/// The tavern board's highlight for a battlefield tile: soft light around the frame, no line.
+/// Playable tiles breathe slowly; targets and selections hold steady.
+struct TavernTileGlow: View {
+    let color: Color
+    var pulsing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let glow = RoundedRectangle(cornerRadius: 12)
+            .fill(color)
+            .padding(-4)
+            .blur(radius: 9)
+            .allowsHitTesting(false)
+        if pulsing && !reduceMotion {
+            glow.phaseAnimator([0.55, 1.0]) { view, strength in
+                view.opacity(strength)
+            } animation: { _ in .easeInOut(duration: 1.1) }
+        } else {
+            glow.opacity(0.95)
+        }
+    }
+}
+
+/// The back of a small brass coin, for badges on the tavern board (abilities, tapped, more).
+struct TavernCoinBack: View {
+    var body: some View {
+        Circle()
+            .fill(RadialGradient(colors: [Color(red: 0.32, green: 0.19, blue: 0.09), TavernPalette.leather],
+                                 center: .init(x: 0.4, y: 0.3), startRadius: 0, endRadius: 14))
+            .overlay(Circle().strokeBorder(BrandTheme.brassGradient, lineWidth: 1.2))
+            .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
+    }
+}
+
+/// Your commander medallion when the commander can be cast: an emerald-and-gold ring of light
+/// breathing around it and a crown spark above. Distinct from the ember glow of your turn.
+struct TavernCommanderReadyGlow: View {
+    let diameter: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let ring = Circle()
+            .strokeBorder(AngularGradient(colors: [Color(red: 0.45, green: 1, blue: 0.55), Color(red: 1, green: 0.86, blue: 0.45),
+                                                   Color(red: 0.3, green: 0.9, blue: 0.5), Color(red: 1, green: 0.86, blue: 0.45),
+                                                   Color(red: 0.45, green: 1, blue: 0.55)], center: .center),
+                          lineWidth: diameter * 0.09)
+            .frame(width: diameter * 1.42, height: diameter * 1.42)
+            .blur(radius: diameter * 0.07)
+        let crown = Image(systemName: "crown.fill")
+            .font(.system(size: diameter * 0.26, weight: .bold))
+            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.95, blue: 0.7), Color(red: 0.95, green: 0.7, blue: 0.25)],
+                                            startPoint: .top, endPoint: .bottom))
+            .shadow(color: Color(red: 0.5, green: 1, blue: 0.55).opacity(0.9), radius: 5)
+            .offset(y: -diameter * 0.84)
+        ZStack {
+            if reduceMotion {
+                ring.opacity(0.9)
+            } else {
+                ring.phaseAnimator([0.45, 1.0]) { view, strength in
+                    view.opacity(strength).scaleEffect(0.96 + 0.06 * strength)
+                } animation: { _ in .easeInOut(duration: 0.9) }
+            }
+            crown
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Keys under which the tavern medallions publish their frames (PortraitCardBoundsKey), so
+/// attack arrows and life changes point at the medallion rather than a HUD strip.
+enum TavernSeatAnchor {
+    static let bottom = "tavern-seat:bottom"
+    static let top = "tavern-seat:top"
 }

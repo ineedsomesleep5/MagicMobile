@@ -1572,17 +1572,16 @@ private struct RelayTablePanel: View {
             if let multiplayer, multiplayer.isRelayTable, multiplayer.tableCode != nil {
                 activeTable(multiplayer)
             } else {
-                Stepper("AI opponents: \(aiCount)", value: $aiCount, in: 0...maxAI)
+                TavernStepper(title: "AI opponents: \(aiCount)", value: $aiCount, range: 0...maxAI,
+                              identifier: "ondevice.relay.aiCount")
                     .disabled(locked)
-                    .accessibilityIdentifier("ondevice.relay.aiCount")
                 ForEach(0..<aiCount, id: \.self) { index in
-                    Picker("AI \(index + 1) deck", selection: aiDeckSelection(index)) {
-                        ForEach(PreconCatalog.all) { Text($0.name).tag($0.id) }
-                    }
-                    .disabled(locked)
+                    TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
+                                 sections: [.init(options: PreconCatalog.all.map { ($0.name, $0.id) })])
+                        .disabled(locked)
                 }
                 if aiCount > 0 {
-                    Stepper("AI skill: \(aiSkill)", value: $aiSkill, in: 1...10).disabled(locked)
+                    TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10).disabled(locked)
                     Text("The host’s AI choices apply to everyone. Higher skill may slow turns.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

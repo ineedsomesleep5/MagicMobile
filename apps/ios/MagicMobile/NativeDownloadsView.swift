@@ -142,8 +142,7 @@ struct NativeDownloadsView: View {
                 }
 
                 Section {
-                    Toggle("Download card artwork", isOn: $remoteArtwork)
-                        .accessibilityIdentifier("nativeArtwork.downloads")
+                    TavernToggle(title: "Download card artwork", isOn: $remoteArtwork, identifier: "nativeArtwork.downloads")
                     Text("Uses Scryfall. Online requests share your IP and card names, including your hand.")
                         .font(.caption).foregroundStyle(.secondary)
                     if downloads.isRunning {

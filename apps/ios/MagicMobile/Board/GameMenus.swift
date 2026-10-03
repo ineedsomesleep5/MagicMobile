@@ -282,14 +282,10 @@ struct GameManagementMenu: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-            Text("Game Menu")
-                .font(.system(size: 22, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
+            TavernPanelTitle(text: "Game Menu")
             Spacer()
             Button("Done") { dismiss() }
-                .font(.system(size: 17, weight: .heavy, design: .rounded))
-                .foregroundStyle(MagicPalette.antiqueGold)
-                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                 .accessibilityIdentifier("board.menu.done")
             }
             .padding(.horizontal, 18)

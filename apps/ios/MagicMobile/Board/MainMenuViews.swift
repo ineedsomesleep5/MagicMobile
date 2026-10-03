@@ -234,14 +234,14 @@ struct BoardAppearancePicker: View {
     @AppStorage(BoardAppearancePreference.key) private var appearance = BoardAppearancePreference.defaultValue
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Battlefield").font(.headline).foregroundStyle(MagicPalette.parchment)
+            TavernPanelTitle(text: "Battlefield")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
                 ForEach(BattlefieldBackdrop.allCases) { theme in
                     choice(theme.title, value: theme.rawValue)
                 }
             }
             Text("Works in portrait and landscape.")
-                .font(.caption).foregroundStyle(MagicPalette.parchment.opacity(0.65))
+                .font(.system(size: 12, design: .serif)).foregroundStyle(TavernPalette.parchment.opacity(0.65))
         }
     }
     private func choice(_ title: String, value: String) -> some View {
@@ -273,16 +273,26 @@ struct AppearanceSwatch<Art: View>: View {
                 .overlay { art }
                 .clipped().clipShape(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.panel))
             HStack(spacing: 4) {
-                Text(title).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(title).font(.system(size: 13, weight: .semibold, design: .serif)).lineLimit(1).minimumScaleFactor(0.7)
                 Spacer(minLength: 0)
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.caption)
+                Image(systemName: selected ? "checkmark.seal.fill" : "circle")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(selected ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(TavernPalette.parchment.opacity(0.5)))
             }
         }
         .frame(maxWidth: .infinity)
         .padding(8)
-        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected ? MagicPalette.antiqueGold : .white.opacity(0.15), lineWidth: 2))
-        .foregroundStyle(MagicPalette.parchment)
+        .background {
+            TavernFill(material: .leather)
+                .overlay(Color.black.opacity(0.25))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? AnyShapeStyle(BrandTheme.brassGradient)
+                                                                         : AnyShapeStyle(TavernPalette.brass.opacity(0.3)),
+                                                                  lineWidth: selected ? 2 : 1))
+        .shadow(color: selected ? TavernPalette.ember.opacity(0.5) : .clear, radius: 6)
+        .foregroundStyle(TavernPalette.parchment)
+        .contentShape(RoundedRectangle(cornerRadius: 10))  // the whole swatch takes the tap
     }
 }
 
@@ -309,7 +319,7 @@ struct AppearanceSettingsView: View {
                     BoardEffectsPicker()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
-            .background(Color(red: 0.08, green: 0.07, blue: 0.065))
+            .background { TavernSheetBackground() }
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }.preferredColorScheme(.dark)
@@ -320,20 +330,8 @@ struct PortraitModeToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Auto-Rotate")
-                    .font(.callout.weight(.black))
-                    .foregroundStyle(.white)
-                Text("Portrait and landscape")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .lineLimit(2)
-            }
-        }
-        .toggleStyle(.switch)
-        .tint(GameBoardTheme.current.emeraldPriority)
-        .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
+        TavernToggle(title: "Auto-Rotate", isOn: $isOn, subtitle: "Portrait and landscape")
+            .modifier(TavernSettingsPanel())
     }
 }
 
@@ -342,20 +340,19 @@ struct FollowTurnsToggle: View {
     @AppStorage(BoardFocusTracker.followTurnsKey) private var isOn = true
 
     var body: some View {
-        Toggle(isOn: $isOn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Follow Turns")
-                    .font(.callout.weight(.black))
-                    .foregroundStyle(.white)
-                Text("Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .lineLimit(2)
-            }
-        }
-        .toggleStyle(.switch)
-        .tint(GameBoardTheme.current.emeraldPriority)
-        .magicPanel(.iron, prominence: .quiet, cornerRadius: 9, padding: 10)
-        .accessibilityIdentifier("settings.followTurns")
+        TavernToggle(title: "Follow Turns", isOn: $isOn, identifier: "settings.followTurns",
+                     subtitle: "Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
+            .modifier(TavernSettingsPanel())
+    }
+}
+
+/// One group of settings: a leather panel in brass trim with parchment text.
+struct TavernSettingsPanel: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(TavernPalette.parchment)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 10))
     }
 }

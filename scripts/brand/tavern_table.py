@@ -581,14 +581,16 @@ def build_table(scene):
     off = frame_w * 0.55
     rivet_rail(mx0 - off, my0 - off, mx0 - off, my1 + off, rail_z, brass)
     rivet_rail(mx1 + off, my0 - off, mx1 + off, my1 + off, rail_z, brass)
-    add_emblem(leather, (0, mat_cy), min(mx1 - mx0, my1 - my0) * 0.56)
+    add_emblem(leather, ((mx0 + mx1) / 2, mat_cy), min(mx1 - mx0, my1 - my0) * 0.56)
     inset_panel("Mat", L["mat"], MAT_Z, 0.04, leather, brass)
     stitches(mx0 + 0.07, my0 + 0.07, mx1 - 0.07, my1 - 0.07, 0.058,
              flat_material("Thread", (0.52, 0.36, 0.17), rough=0.85))
 
     # Red tooled-leather bands: behind the opponent's crest and where your hand rests.
-    inset_panel("TopBand", L["topBand"], FRAME_TOP + 0.004, 0.02, red, brass)
-    inset_panel("HandBand", L["handBand"], FRAME_TOP + 0.004, 0.02, red, brass)
+    if "topBand" in L:  # portrait only: the landscape opponent sits in the walnut column
+        inset_panel("TopBand", L["topBand"], FRAME_TOP + 0.004, 0.02, red, brass)
+    if "handBand" in L:  # landscape: the hand rests on the mat itself
+        inset_panel("HandBand", L["handBand"], FRAME_TOP + 0.004, 0.02, red, brass)
 
     # Carved brass corner ornaments on the mat corners.
     orn = os.path.join(ARGS.props, "corner-ornament.glb")
@@ -600,10 +602,13 @@ def build_table(scene):
         import_prop(orn, size, (ox, oy), MAT_Z + 0.004, mirror_x=mxr, mirror_y=myr)
 
     # The opponent's crest and your medallion ring; the app draws portraits in their holes.
-    crest = L["crest"]
-    cx, cy = pt(*crest["center"])
-    if import_prop(os.path.join(ARGS.props, "crest.glb"), crest["width"] * U, (cx, cy), FRAME_TOP + 0.02) is None:
-        ring_prop(os.path.join(ARGS.props, "medallion-frame.glb"), crest["center"],
+    crest = L.get("crest")
+    crest_ob = None
+    if crest:
+        cx, cy = pt(*crest["center"])
+        crest_ob = import_prop(os.path.join(ARGS.props, "crest.glb"), crest["width"] * U, (cx, cy), FRAME_TOP + 0.02)
+    if crest_ob is None:  # no crest (landscape) or no model: the medallion ring alone
+        ring_prop(os.path.join(ARGS.props, "medallion-frame.glb"), L["opponentMedallion"]["center"],
                   L["opponentMedallion"]["radius"], FRAME_TOP + 0.02)
     ring_prop(os.path.join(ARGS.props, "medallion-frame.glb"), L["lifeMedallion"]["center"],
               L["lifeMedallion"]["radius"], FRAME_TOP)

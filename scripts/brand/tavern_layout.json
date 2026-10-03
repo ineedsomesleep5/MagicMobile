@@ -1,204 +1,346 @@
 {
-  "_doc": "Walnut Tavern board layout in points on the 440x956 design canvas the plate fills, top-left origin. scripts/brand/tavern_table.py renders the table from these numbers; the app places its live controls on the same points (TavernDesign in apps/ios/MagicMobile/Board/BoardChrome.swift). Change both together. Socket points were measured from the approved concept plate (tavern-plate-v4.png) on 2026-10-02.",
-  "portrait": {
-    "screen": [
-      440,
-      956
+ "_doc": "Walnut Tavern board layout in points on the 440x956 design canvas the plate fills, top-left origin. scripts/brand/tavern_table.py renders the table from these numbers; the app places its live controls on the same points (TavernDesign in apps/ios/MagicMobile/Board/BoardChrome.swift). Change both together. Socket points were measured from the approved concept plate (tavern-plate-v4.png) on 2026-10-02. The landscape variant (956 x 440, an iPhone held sideways) has no top band or crest: the opponent's medallion ring sits up the left walnut column above yours, the pass socket at the right column's foot, the mat as big as the screen allows with the hand resting over its foot and the mana rail under it (TavernSockets.landscape in BoardChrome.swift).",
+ "portrait": {
+  "screen": [
+   440,
+   956
+  ],
+  "topBand": [
+   40,
+   70,
+   400,
+   136
+  ],
+  "crest": {
+   "center": [
+    219.2,
+    95
+   ],
+   "width": 214
+  },
+  "opponentMedallion": {
+   "center": [
+    219.2,
+    95
+   ],
+   "radius": 31
+  },
+  "mat": [
+   26,
+   138.6,
+   414,
+   723
+  ],
+  "handBand": [
+   12,
+   727,
+   428,
+   768
+  ],
+  "lifeMedallion": {
+   "center": [
+    74,
+    882.6
+   ],
+   "radius": 35.5
+  },
+  "passButton": {
+   "center": [
+    366,
+    877
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    129,
+    831.5,
+    309.5,
+    862.8
+   ],
+   "socketXs": [
+    146.0,
+    175.4,
+    204.8,
+    234.7,
+    264.1,
+    293.5
+   ],
+   "socketY": 846.9,
+   "socketRadius": 12.9
+  },
+  "props": {
+   "candle": {
+    "at": [
+     24,
+     34
     ],
-    "topBand": [
-      40,
-      70,
-      400,
-      136
+    "width": 56
+   },
+   "tankard": {
+    "at": [
+     80,
+     30
     ],
-    "crest": {
-      "center": [
-        219.2,
-        95
-      ],
-      "width": 214
+    "width": 54,
+    "rotate": -20
+   },
+   "coins": [
+    {
+     "at": [
+      404,
+      806
+     ],
+     "width": 34
     },
-    "opponentMedallion": {
-      "center": [
-        219.2,
-        95
-      ],
-      "radius": 31
-    },
-    "mat": [
-      26,
-      138.6,
-      414,
-      723
-    ],
-    "handBand": [
-      12,
-      727,
-      428,
-      768
-    ],
-    "lifeMedallion": {
-      "center": [
-        74,
-        882.6
-      ],
-      "radius": 35.5
-    },
-    "passButton": {
-      "center": [
-        366,
-        877
-      ],
-      "radius": 48
-    },
-    "manaRail": {
-      "rect": [
-        129,
-        831.5,
-        309.5,
-        862.8
-      ],
-      "socketXs": [
-        146.0,
-        175.4,
-        204.8,
-        234.7,
-        264.1,
-        293.5
-      ],
-      "socketY": 846.9,
-      "socketRadius": 12.9
-    },
-    "props": {
-      "candle": {
-        "at": [
-          24,
-          34
-        ],
-        "width": 56
-      },
-      "tankard": {
-        "at": [
-          80,
-          30
-        ],
-        "width": 54,
-        "rotate": -20
-      },
-      "coins": [
-        {
-          "at": [
-            404,
-            806
-          ],
-          "width": 34
-        },
-        {
-          "at": [
-            30,
-            792
-          ],
-          "width": 30
-        }
-      ],
-      "books": {
-        "at": [
-          404,
-          46
-        ],
-        "width": 96,
-        "rotate": 14
-      },
-      "ivy": [
-        {
-          "at": [
-            8,
-            170
-          ],
-          "width": 58,
-          "rotate": 80
-        },
-        {
-          "at": [
-            10,
-            330
-          ],
-          "width": 44,
-          "rotate": 95
-        },
-        {
-          "at": [
-            8,
-            520
-          ],
-          "width": 52,
-          "rotate": 70
-        },
-        {
-          "at": [
-            12,
-            690
-          ],
-          "width": 50,
-          "rotate": 110
-        },
-        {
-          "at": [
-            432,
-            180
-          ],
-          "width": 56,
-          "rotate": -95
-        },
-        {
-          "at": [
-            430,
-            380
-          ],
-          "width": 44,
-          "rotate": -80
-        },
-        {
-          "at": [
-            432,
-            560
-          ],
-          "width": 52,
-          "rotate": -100
-        },
-        {
-          "at": [
-            428,
-            700
-          ],
-          "width": 48,
-          "rotate": -70
-        },
-        {
-          "at": [
-            104,
-            912
-          ],
-          "width": 60,
-          "rotate": -15
-        },
-        {
-          "at": [
-            236,
-            938
-          ],
-          "width": 46,
-          "rotate": 10
-        },
-        {
-          "at": [
-            160,
-            58
-          ],
-          "width": 40,
-          "rotate": 170
-        }
-      ]
+    {
+     "at": [
+      30,
+      792
+     ],
+     "width": 30
     }
+   ],
+   "books": {
+    "at": [
+     404,
+     46
+    ],
+    "width": 96,
+    "rotate": 14
+   },
+   "ivy": [
+    {
+     "at": [
+      8,
+      170
+     ],
+     "width": 58,
+     "rotate": 80
+    },
+    {
+     "at": [
+      10,
+      330
+     ],
+     "width": 44,
+     "rotate": 95
+    },
+    {
+     "at": [
+      8,
+      520
+     ],
+     "width": 52,
+     "rotate": 70
+    },
+    {
+     "at": [
+      12,
+      690
+     ],
+     "width": 50,
+     "rotate": 110
+    },
+    {
+     "at": [
+      432,
+      180
+     ],
+     "width": 56,
+     "rotate": -95
+    },
+    {
+     "at": [
+      430,
+      380
+     ],
+     "width": 44,
+     "rotate": -80
+    },
+    {
+     "at": [
+      432,
+      560
+     ],
+     "width": 52,
+     "rotate": -100
+    },
+    {
+     "at": [
+      428,
+      700
+     ],
+     "width": 48,
+     "rotate": -70
+    },
+    {
+     "at": [
+      104,
+      912
+     ],
+     "width": 60,
+     "rotate": -15
+    },
+    {
+     "at": [
+      236,
+      938
+     ],
+     "width": 46,
+     "rotate": 10
+    },
+    {
+     "at": [
+      160,
+      58
+     ],
+     "width": 40,
+     "rotate": 170
+    }
+   ]
   }
+ },
+ "landscape": {
+  "screen": [
+   956,
+   440
+  ],
+  "opponentMedallion": {
+   "center": [
+    118,
+    76
+   ],
+   "radius": 30
+  },
+  "mat": [
+   172,
+   8,
+   782,
+   400
+  ],
+  "lifeMedallion": {
+   "center": [
+    118,
+    344
+   ],
+   "radius": 34
+  },
+  "passButton": {
+   "center": [
+    846,
+    344
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    391,
+    402.5,
+    563,
+    429.5
+   ],
+   "socketXs": [
+    407,
+    435,
+    463,
+    491,
+    519,
+    547
+   ],
+   "socketY": 416,
+   "socketRadius": 12.4
+  },
+  "props": {
+   "candle": {
+    "at": [
+     34,
+     44
+    ],
+    "width": 54
+   },
+   "tankard": {
+    "at": [
+     34,
+     236
+    ],
+    "width": 46,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     926,
+     236
+    ],
+    "width": 80,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      40,
+      404
+     ],
+     "width": 30
+    },
+    {
+     "at": [
+      918,
+      404
+     ],
+     "width": 32
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      166,
+      110
+     ],
+     "width": 48,
+     "rotate": 80
+    },
+    {
+     "at": [
+      164,
+      250
+     ],
+     "width": 42,
+     "rotate": 95
+    },
+    {
+     "at": [
+      788,
+      120
+     ],
+     "width": 50,
+     "rotate": -95
+    },
+    {
+     "at": [
+      790,
+      262
+     ],
+     "width": 42,
+     "rotate": -80
+    },
+    {
+     "at": [
+      280,
+      436
+     ],
+     "width": 44,
+     "rotate": -10
+    },
+    {
+     "at": [
+      680,
+      437
+     ],
+     "width": 42,
+     "rotate": 12
+    }
+   ]
+  }
+ }
 }

@@ -420,6 +420,41 @@ final class BoardPolishUITests: XCTestCase {
         captureImage(name: "tavern-own-popover")
     }
 
+    /// Walnut Tavern held sideways: the landscape plate with the medallions up the left column,
+    /// the phase plate and pass button down the right and the battlefield on the mat.
+    func testTavernLandscapeTableKeepsItsControls() {
+        for fixture in ["normal-battlefield", "crowded-battlefield", "four-player-focus", "attached-permanents"] {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            XCUIDevice.shared.orientation = .landscapeLeft
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            let landscape = NSPredicate { _, _ in application.frame.width > application.frame.height }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: application)], timeout: 10), .completed)
+            XCTAssertTrue(application.buttons["board.lifeOrb"].waitForExistence(timeout: 10), "Your medallion in \(fixture)")
+            XCTAssertTrue(application.buttons["board.action.primary"].exists, "The pass button in \(fixture)")
+            XCTAssertTrue(application.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.zones.ai")).firstMatch.exists,
+                          "The opponent's medallion in \(fixture)")
+            XCTAssertTrue(application.otherElements["board.phase.plate"].exists || application.staticTexts["board.phase.plate"].exists
+                          || application.descendants(matching: .any)["board.phase.plate"].exists, "The phase plate in \(fixture)")
+            let lifeOrb = application.buttons["board.lifeOrb"].frame
+            let pass = application.buttons["board.action.primary"].frame
+            XCTAssertLessThan(lifeOrb.midX, application.frame.width * 0.25, "Your medallion sits in the left column")
+            XCTAssertGreaterThan(pass.midX, application.frame.width * 0.75, "The pass button sits in the right column")
+            captureImage(name: "tavern-landscape-\(fixture)")
+        }
+        // Leave the simulator upright for the next test.
+        XCUIDevice.shared.orientation = .portrait
+        if let application = app {
+            let portrait = NSPredicate { _, _ in application.frame.height > application.frame.width }
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: portrait, object: application)], timeout: 10)
+        }
+    }
+
     private func runMatrix(portrait: Bool, selectedFixtures: [String], rotateDuringTest: Bool = false) {
         for fixture in selectedFixtures {
             XCTContext.runActivity(named: "\(portrait ? "portrait" : "landscape") / \(fixture)") { _ in

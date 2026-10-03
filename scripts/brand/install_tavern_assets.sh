@@ -21,6 +21,11 @@ if [[ -f $SRC/tavern-portrait.png ]]; then
     --out "$(imageset battlefield-tavern-portrait battlefield-tavern-portrait.jpg)" >/dev/null
   print "plate: battlefield-tavern-portrait"
 fi
+if [[ -f $SRC/tavern-landscape.png ]]; then
+  sips -s format jpeg -s formatOptions 85 $SRC/tavern-landscape.png \
+    --out "$(imageset battlefield-tavern-landscape battlefield-tavern-landscape.jpg)" >/dev/null
+  print "plate: battlefield-tavern-landscape"
+fi
 # The pass button is painted art (Codex, from the approved porthole reference), not a
 # render: trim it to its solid disc, square it and cut a clean feathered circle.
 ART=${PASS_ART:-$HOME/Movies/motion-assets/magicmobile-brand/pass-button-art.png}

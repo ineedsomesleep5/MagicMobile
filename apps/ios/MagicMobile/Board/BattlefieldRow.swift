@@ -268,15 +268,14 @@ struct BattlefieldRow: View {
     }
 
     /// Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab
-    /// above it. The stack shrinks a little to stay within the row.
+    /// above it. The creature keeps its full size (Caleb, 2026-10-02): the tabs rise above it,
+    /// over the gap or the row above, since the lanes do not clip.
     @ViewBuilder
     private func attachmentGroupTile(_ group: BattlefieldCardGroup) -> some View {
         let attachments = Array(group.cards.dropFirst())
-        // Two tabs keep the creature near full size; the rest count on the top tab.
+        // Two tabs at most; the rest count on the top tab.
         let shown = Array(attachments.prefix(2))
         let peek = max(11, min(14, renderedCardHeight * 0.13))
-        let lift = peek * CGFloat(shown.count)
-        let scale = renderedCardHeight / (renderedCardHeight + lift)
         ZStack(alignment: .bottom) {
             ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
                 battlefieldCardTile(card)
@@ -289,8 +288,6 @@ struct BattlefieldRow: View {
             }
             battlefieldCardTile(group.representative)
         }
-        .frame(width: renderedCardWidth, height: renderedCardHeight + lift, alignment: .bottom)
-        .scaleEffect(scale, anchor: .bottom)
         .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
         .accessibilityElement(children: .contain)
     }

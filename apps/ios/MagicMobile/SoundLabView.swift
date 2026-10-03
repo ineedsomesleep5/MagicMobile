@@ -154,15 +154,9 @@ private struct SoundLabCategory: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Toggle(isOn: $enabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(category.title).font(.system(size: 17, weight: .heavy)).foregroundStyle(BrandTheme.ink)
-                    Text(category.detail).font(.system(size: 12, weight: .semibold)).foregroundStyle(BrandTheme.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .tint(BrandTheme.ember)
-            .accessibilityIdentifier("soundlab.category.\(category.rawValue)")
+            TavernToggle(title: category.title, isOn: $enabled, identifier: "soundlab.category.\(category.rawValue)",
+                         subtitle: category.detail)
+                .foregroundStyle(BrandTheme.ink)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], alignment: .leading, spacing: 8) {
                 ForEach(GameSound.sounds(in: category)) { sound in
                     Button {

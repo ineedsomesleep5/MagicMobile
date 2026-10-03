@@ -131,7 +131,8 @@ struct PortraitOpponentStatusBar: View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .global).origin
             if let canvas = tavernCanvas {
-                let center = TavernDesign.opponentMedallion
+                let sockets = TavernSockets.current(canvas)
+                let center = sockets.opponentMedallion
                 ZStack {
                     // Name, turn and priority on a leather nameplate in brass trim.
                     VStack(alignment: .leading, spacing: 2) {
@@ -144,21 +145,22 @@ struct PortraitOpponentStatusBar: View {
                     .shadow(color: .black.opacity(0.6), radius: 1, y: 1)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 6)
-                    .frame(width: canvas.tavernLength(118), alignment: .leading)
+                    .frame(width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118), alignment: .leading)
                     .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
                     .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
-                    .tavernPosition(CGPoint(x: center.x - 110, y: center.y + 8), canvas: canvas, origin: origin)
+                    .tavernPosition(sockets.opponentNameplate, canvas: canvas, origin: origin)
                     TavernCardBackFan(count: opponent.zones.visibleHandCount)
-                        .tavernPosition(CGPoint(x: center.x, y: center.y - 40), canvas: canvas, origin: origin)
+                        .tavernPosition(sockets.opponentHand, canvas: canvas, origin: origin)
                     // The step of the turn mirrors the nameplate; the log is in the controls menu.
                     TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn,
-                                     width: canvas.tavernLength(118))
-                        .tavernPosition(CGPoint(x: center.x + 110, y: center.y + 8), canvas: canvas, origin: origin)
+                                     width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118))
+                        .tavernPosition(sockets.phasePlate, canvas: canvas, origin: origin)
                     // Counters, commander damage and attached cards are in the medallion's
                     // pop-over; poison and the worst commander damage show here too.
                     TavernStatusGlance(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot))
-                        .tavernPosition(CGPoint(x: center.x + 110, y: center.y + 46), canvas: canvas, origin: origin)
-                    opponentMedallion(diameter: canvas.tavernLength(TavernDesign.opponentHoleRadius * 2))
+                        .tavernPosition(sockets.opponentGlance, canvas: canvas, origin: origin)
+                    opponentMedallion(diameter: canvas.tavernLength(sockets.opponentHoleRadius * 2))
+                        .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.top: $0] }
                         .tavernPosition(center, canvas: canvas, origin: origin)
                 }
             }
