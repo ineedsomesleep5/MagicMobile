@@ -184,7 +184,8 @@ fun ConfirmationDialog(title: String, message: String?, actions: List<Confirmati
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardSheet(onDismiss: () -> Unit, background: Color = rgb(0.11, 0.11, 0.12), skipPartiallyExpanded: Boolean = false,
-               sound: Boolean = true, tavern: Boolean = LocalTavernBoard.current, content: @Composable () -> Unit) {
+               // Every sheet wears the tavern (Caleb, 2026-10-03), from the menu as much as from the board.
+               sound: Boolean = true, tavern: Boolean = true, content: @Composable () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
     androidx.compose.runtime.LaunchedEffect(Unit) { if (sound) GameAudio.play(GameSound.UI_OPEN) }
     ModalBottomSheet({ if (sound) GameAudio.play(GameSound.UI_CLOSE); onDismiss() }, sheetState = state, containerColor = Color.Transparent,

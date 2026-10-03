@@ -73,6 +73,8 @@ fun PortraitGameContent(
     combatBack: (() -> Unit)? = null,
 ) {
     val tavernFrame = LocalTavernFrame.current
+    // The tavern's candle sits under the clock: the status bar leaves during a game.
+    if (tavernFrame != null) HideStatusBarWhileShown()
     val metrics = PortraitBattlefieldLayoutMetrics(size, paymentActive = InlinePaymentPromptState.isActive(snapshot), largeText = BoardMotion.largeText,
         centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false), tavernDock = tavernFrame != null,
         // The iPhone's top bar ends 124 pt down and its dock starts at 830 pt on the 440 x 956 plate.

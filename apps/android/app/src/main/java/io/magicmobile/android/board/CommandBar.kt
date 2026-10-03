@@ -400,8 +400,10 @@ private fun TavernCommandBar(frame: TavernFrame, human: PlayerGameState, manaPoo
         dock(TavernDockPart.MENU, Modifier.tavernPosition(frame, sockets.menu))
         val stackCount = snapshot.xmage?.stack?.size ?: human.zones.stack.size
         if (stackCount > 0) {
+            val topCard = snapshot.stackTopFirst.firstOrNull()?.displaySourceCard
             TavernStackTray(stackCount, snapshot.stackTopFirst.firstOrNull()?.name, openStack,
-                Modifier.tavernPosition(frame, sockets.stackTray), width = if (frame.isLandscape) 106.dp else 124.dp)
+                Modifier.tavernPosition(frame, sockets.stackTray), width = if (frame.isLandscape) 106.dp else 124.dp,
+                thumbnail = topCard?.let { card -> { TavernArtCrop(card, "Stack") } })
         }
         // Counters and attached cards live in the medallion's pop-over; poison and commander damage also show here at a glance.
         Row(Modifier.tavernPosition(frame, sockets.chat), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {

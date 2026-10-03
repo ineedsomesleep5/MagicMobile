@@ -1031,11 +1031,12 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
-                IosListRow("Friends: see who's online and join their table in one tap.", systemImage = "person.2.fill")
-                IosListRow("Table chat with quick messages, plus mute, block and report.", systemImage = "bubble.left.and.bubble.right.fill")
-                IosListRow("Invite links that open straight into your table.", systemImage = "link")
-                IosListRow("Online games: one starting roll, and your opponent's commander on the versus screen.", systemImage = "checkmark.circle")
-                IosListRow("Scryfall card art on by default, with an offer to save it for offline play.", systemImage = "photo.on.rectangle")
+                IosListRow("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage = "table.furniture")
+                IosListRow("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage = "sparkles")
+                IosListRow("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage = "person.crop.circle")
+                IosListRow("Big boards run smoother: identical tokens stack once there are eight.", systemImage = "square.stack.3d.up")
+                IosListRow("A Back button while declaring attackers and blockers.", systemImage = "arrow.uturn.backward")
+                IosListRow("Friends, table chat and invite links that open straight into your table.", systemImage = "person.2.fill")
             }
             IosListSection("XMage news", footer = "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.") {
                 IosListRow("XMage release notes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/releases") }
