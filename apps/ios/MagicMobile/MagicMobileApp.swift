@@ -24,8 +24,10 @@ enum GameOrientationMode {
         portraitEnabled && size.height > size.width
     }
 
-    static func supportedOrientations(portraitEnabled: Bool) -> UIInterfaceOrientationMask {
-        portraitEnabled ? [.portrait, .landscapeLeft, .landscapeRight] : [.landscapeLeft, .landscapeRight]
+    static func supportedOrientations(portraitEnabled: Bool, pad: Bool = UIDevice.current.userInterfaceIdiom == .pad) -> UIInterfaceOrientationMask {
+        // iPad is landscape only (Caleb, 2026-10-03): the table has one iPad plate, held sideways.
+        if pad { return [.landscapeLeft, .landscapeRight] }
+        return portraitEnabled ? [.portrait, .landscapeLeft, .landscapeRight] : [.landscapeLeft, .landscapeRight]
     }
 }
 
