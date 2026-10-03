@@ -4,6 +4,27 @@ enum GameBoardPreviewFixtures {
     static func snapshot(_ state: GameBoardDesignPreviewState, step: String? = nil, life: Int? = nil, specialStateAdvanced: Bool = false) -> GameSnapshot {
         var root = try! JSONSerialization.jsonObject(with: Data(json(for: state).utf8)) as! [String: Any]
         enrich(&root, for: state)
+        // Visual and speed QA: MAGICMOBILE_PREVIEW_TOKENS=<n> floods the board with identical tokens
+        // (n squirrels for you, half as many soldiers for the opponent).
+        if let swarm = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TOKENS"].flatMap(Int.init),
+           var players = root["players"] as? [[String: Any]] {
+            for index in players.indices.prefix(2) {
+                let seat = players[index]["playerId"] as! String
+                var zones = players[index]["zones"] as! [String: Any]
+                var battlefield = zones["battlefield"] as! [[String: Any]]
+                for number in 0..<(index == 0 ? swarm : swarm / 2) {
+                    var token = previewCard("\(seat)-swarm-\(number)", index == 0 ? "Squirrel Token" : "Soldier Token",
+                                            index == 0 ? "Token Creature — Squirrel" : "Token Creature — Soldier", "", "", power: 1)
+                    var identity = token["card"] as! [String: Any]
+                    identity["isToken"] = true
+                    token["card"] = identity
+                    battlefield.append(token)
+                }
+                zones["battlefield"] = battlefield
+                players[index]["zones"] = zones
+            }
+            root["players"] = players
+        }
         if state == .attachedPermanents, specialStateAdvanced, var players = root["players"] as? [[String: Any]] {
             for index in players.indices {
                 players[index]["poison"] = 5
@@ -514,15 +535,27 @@ enum GameBoardPreviewFixtures {
         }
         root["xmage"] = xmage
         if state == .abilityChoice {
+            // Two sources whose texts differ in length: the cards must still line up.
             let source = card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}.")
+            let other = card("human-plunderer", "Pitiless Plunderer", "Creature — Human Pirate", "{3}{B}",
+                             "Whenever another creature you control dies, create a Treasure token.", power: 1)
             root["legalActions"] = []
             root["promptEnvelopeV2"] = ["id": "preview-ability", "method": "PICK_ABILITY", "messageId": 12,
                 "playerId": "human", "responseKind": "ability", "message": "Choose which triggered ability goes on the stack first",
                 "required": true, "minChoices": 1, "maxChoices": 1,
                 "abilities": [
                     ["id": "11111111-1111-4111-8111-111111111111", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source],
-                    ["id": "22222222-2222-4222-8222-222222222222", "label": "Add {C}{C}.", "sourceName": "Sol Ring", "sourceCard": source]],
+                    ["id": "22222222-2222-4222-8222-222222222222", "label": "Whenever another creature you control dies, create a Treasure token.",
+                     "sourceName": "Pitiless Plunderer", "sourceCard": other]],
                 "responseCommand": ["type": "choose_ability", "promptId": "preview-ability", "messageId": 12]]
+        }
+        // Visual QA: MAGICMOBILE_PREVIEW_AMOUNT=1 asks for an X value (0...7), like announcing X.
+        if ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_AMOUNT"] == "1" {
+            root["legalActions"] = []
+            root["promptEnvelopeV2"] = ["id": "preview-amount", "method": "GAME_GET_AMOUNT", "messageId": 13,
+                "playerId": "human", "responseKind": "amount", "message": "Announce the value for {X} (Squirrels to sacrifice)",
+                "required": true, "minChoices": 0, "maxChoices": 7, "amounts": Array(0...7),
+                "responseCommand": ["type": "choose_amount", "promptId": "preview-amount", "messageId": 13]]
         }
         if state == .searchSelectPrompt, var prompt = root["promptEnvelopeV2"] as? [String: Any] {
             let types = ["Angel", "Artifact Creature", "Bear", "Beast", "Bird", "Cat", "Cleric", "Dragon",

@@ -2259,24 +2259,28 @@ struct TavernStatusGlance: View {
 // MARK: - Glows (light only, no outlines)
 
 /// The tavern board's highlight for a battlefield tile: soft light around the frame, no line.
-/// Playable tiles breathe slowly; targets and selections hold steady.
+/// A pre-blurred image tinted to `color` (also the framed tiles' drop shadow, in black): a live
+/// blur on every tile was too slow with dozens of tokens on the board.
 struct TavernTileGlow: View {
     let color: Color
-    var pulsing = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var strength: Double = 0.95
+    private static let image = UIImage(named: "tavern-tile-glow")
 
     var body: some View {
-        let glow = RoundedRectangle(cornerRadius: 12)
-            .fill(color)
-            .padding(-4)
-            .blur(radius: 9)
+        if let image = Self.image {
+            GeometryReader { proxy in
+                // The image's light runs 30 px past a 240 x 260 card on a 300 x 320 canvas.
+                Image(uiImage: image).resizable().renderingMode(.template)
+                    .foregroundStyle(color)
+                    .frame(width: proxy.size.width * 300 / 240, height: proxy.size.height * 320 / 260)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
+            .opacity(strength)
             .allowsHitTesting(false)
-        if pulsing && !reduceMotion {
-            glow.phaseAnimator([0.55, 1.0]) { view, strength in
-                view.opacity(strength)
-            } animation: { _ in .easeInOut(duration: 1.1) }
+            .accessibilityHidden(true)
         } else {
-            glow.opacity(0.95)
+            RoundedRectangle(cornerRadius: 12).fill(color).padding(-4).blur(radius: 9)
+                .opacity(strength).allowsHitTesting(false)
         }
     }
 }

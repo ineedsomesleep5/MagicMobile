@@ -248,7 +248,7 @@ struct BoardFXOverlay: View {
             let glow = flying ? (p - landing) / (1 - landing) : p
             // A tavern commander lands in a burst of ember dust on the leather.
             let color = entrance == .commander ? (tavern ? BoardFXPainter.ember : BoardFXPainter.gold) : tint.color
-            BoardFXPainter.arrivalGlow(rect, color: color, progress: glow, motion: motion, in: &context)
+            BoardFXPainter.arrivalGlow(rect, color: color, progress: glow, motion: motion, tavern: tavern, in: &context)
             if motion && tavern && entrance == .commander {
                 BoardFXPainter.sparks(from: rect, color: BoardFXPainter.emberLight, count: 26, progress: glow, seed: fx.id + 7,
                                       style: .burst, in: &context)
@@ -266,7 +266,7 @@ struct BoardFXOverlay: View {
         case let .leftBattlefield(cardID, _, destination, tint):
             guard let rect = rect(cardID) else { return }
             if !(motion && subjects[cardID] != nil) {
-                BoardFXPainter.departure(rect, color: tint.color, destination: destination, progress: p, motion: motion, in: &context)
+                BoardFXPainter.departure(rect, color: tint.color, destination: destination, progress: p, motion: motion, tavern: tavern, in: &context)
             }
             if motion {
                 let style: BoardFXPainter.SparkStyle = destination == .exile ? .rise : .fall
@@ -284,14 +284,14 @@ struct BoardFXOverlay: View {
             BoardFXPainter.number("+\(amount)", at: CGPoint(x: rect.midX, y: rect.minY + 12), color: Color(red: 0.55, green: 1, blue: 0.55), size: 20, progress: p, motion: motion, in: &context)
         case let .attackDeclared(cardID, tint):
             guard let rect = rect(cardID) else { return }
-            BoardFXPainter.arrivalGlow(rect, color: BoardFXPainter.attackRed, progress: p, motion: motion, in: &context)
+            BoardFXPainter.arrivalGlow(rect, color: BoardFXPainter.attackRed, progress: p, motion: motion, tavern: tavern, in: &context)
             if motion {
                 BoardFXPainter.sparks(from: rect, color: tint.color, count: 10, progress: p, seed: fx.id, style: .burst, in: &context)
                 BoardFXPainter.slash(across: rect, color: BoardFXPainter.attackRed, progress: p, in: &context)
             }
         case let .blockDeclared(cardID, attackerID):
             guard let blocker = rect(cardID) else { return }
-            BoardFXPainter.arrivalGlow(blocker, color: BoardFXPainter.blockSteel, progress: p, motion: motion, in: &context)
+            BoardFXPainter.arrivalGlow(blocker, color: BoardFXPainter.blockSteel, progress: p, motion: motion, tavern: tavern, in: &context)
             if let attacker = rect(attackerID) {
                 BoardFXPainter.link(from: blocker, to: attacker, color: BoardFXPainter.blockSteel, progress: p, in: &context)
             }
@@ -567,11 +567,19 @@ enum BoardFXPainter {
         layer.stroke(streak, with: .color(.white.opacity(0.7)), style: StrokeStyle(lineWidth: 3, lineCap: .round))
     }
 
-    static func arrivalGlow(_ rect: CGRect, color: Color, progress p: Double, motion: Bool, in context: inout GraphicsContext) {
+    static func arrivalGlow(_ rect: CGRect, color: Color, progress p: Double, motion: Bool, tavern: Bool = false,
+                            in context: inout GraphicsContext) {
         var layer = context
         layer.blendMode = .plusLighter
         let grow = motion ? 14 * easeOut(p) : 0
         let frame = rect.insetBy(dx: -grow, dy: -grow)
+        if tavern {
+            // The tavern table lights the card from behind: a soft swell of light, no outline.
+            layer.addFilter(.blur(radius: 9 + grow * 0.4))
+            layer.opacity = 0.75 * (1 - p)
+            layer.fill(Path(roundedRect: frame, cornerRadius: 12), with: .color(color))
+            return
+        }
         layer.opacity = 1 - p
         layer.stroke(Path(roundedRect: frame, cornerRadius: 8 + grow / 2), with: .color(color), lineWidth: 1 + 3 * (1 - p))
         layer.opacity = 0.35 * (1 - p)
@@ -579,11 +587,17 @@ enum BoardFXPainter {
     }
 
     static func departure(_ rect: CGRect, color: Color, destination: BoardFXZone?, progress p: Double,
-                          motion: Bool, in context: inout GraphicsContext) {
+                          motion: Bool, tavern: Bool = false, in context: inout GraphicsContext) {
         let shrink = motion ? 0.2 * easeOut(p) : 0
         let drift: Double = motion ? (destination == .exile ? -18 : 14) * easeOut(p) : 0
         let frame = rect.insetBy(dx: rect.width * shrink / 2, dy: rect.height * shrink / 2).offsetBy(dx: 0, dy: drift)
         var layer = context
+        if tavern {
+            layer.addFilter(.blur(radius: 8))
+            layer.opacity = 0.6 * (1 - p)
+            layer.fill(Path(roundedRect: frame, cornerRadius: 10), with: .color(color))
+            return
+        }
         layer.opacity = 0.7 * (1 - p)
         layer.fill(Path(roundedRect: frame, cornerRadius: 6), with: .color(Color.black.opacity(0.55)))
         layer.stroke(Path(roundedRect: frame, cornerRadius: 6), with: .color(color), lineWidth: 2)
@@ -620,7 +634,10 @@ enum BoardFXPainter {
         let fade = window(p, fadeIn: 0.08, fadeOut: 0.82)
         guard fade > 0 else { return }
         if tavern {
-            brassPlate(title, subtitle: subtitle, at: point, opacity: fade, in: &context)
+            let natural = context.resolve(Text(title).font(.system(size: 19, weight: .heavy, design: .serif)))
+                .measure(in: CGSize(width: 2000, height: 60)).width
+            ribbonBanner(title, subtitle: subtitle, at: point, width: min(max(natural / 0.66 + 12, 220), 360),
+                         progress: p, seal: subtitle == "COMMANDER", in: &context)
             return
         }
         var layer = context
@@ -1471,8 +1488,8 @@ extension BoardFXPainter {
 
     /// The commander's parchment ribbon unrolling under it: COMMANDER over the name, with a red
     /// wax seal pressed at its centre.
-    static func ribbonBanner(_ title: String, subtitle: String, at point: CGPoint, width: CGFloat, progress p: Double,
-                             in context: inout GraphicsContext) {
+    static func ribbonBanner(_ title: String, subtitle: String?, at point: CGPoint, width: CGFloat, progress p: Double,
+                             seal: Bool = true, in context: inout GraphicsContext) {
         let fade = window(p, fadeIn: 0.1, fadeOut: 0.86)
         guard fade > 0 else { return }
         let unroll = easeOut(min(1, p / 0.22))
@@ -1490,21 +1507,37 @@ extension BoardFXPainter {
         }
         var text = layer
         text.opacity = fade * max(0, (unroll - 0.55) / 0.45)
-        let caption = text.resolve(Text(subtitle).font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.5)
-            .foregroundStyle(Color(red: 0.5, green: 0.16, blue: 0.07)))
-        var fontSize: CGFloat = 19
-        var name = text.resolve(Text(title).font(.system(size: fontSize, weight: .heavy, design: .serif))
-            .foregroundStyle(Color(red: 0.2, green: 0.1, blue: 0.04)))
-        while name.measure(in: CGSize(width: 1000, height: 60)).width > width * 0.66 && fontSize > 11 {
-            fontSize -= 1
-            name = text.resolve(Text(title).font(.system(size: fontSize, weight: .heavy, design: .serif))
+        // The name shrinks to the ribbon's face and, at the smallest size, ends in an ellipsis:
+        // it never runs off the ribbon.
+        let face = w * 0.66
+        func resolved(_ string: String, _ size: CGFloat) -> GraphicsContext.ResolvedText {
+            text.resolve(Text(string).font(.system(size: size, weight: .heavy, design: .serif))
                 .foregroundStyle(Color(red: 0.2, green: 0.1, blue: 0.04)))
         }
-        text.draw(caption, at: CGPoint(x: point.x, y: rect.minY + h * 0.3))
-        text.draw(name, at: CGPoint(x: point.x, y: rect.minY + h * 0.58))
+        func fits(_ resolvedText: GraphicsContext.ResolvedText) -> Bool {
+            resolvedText.measure(in: CGSize(width: 2000, height: 60)).width <= face
+        }
+        var fontSize: CGFloat = 19
+        var shown = title
+        var name = resolved(shown, fontSize)
+        while !fits(name) && fontSize > 10 {
+            fontSize -= 1
+            name = resolved(shown, fontSize)
+        }
+        while !fits(name) && shown.count > 4 {
+            shown = String(shown.dropLast(2)).trimmingCharacters(in: .whitespaces) + "…"
+            name = resolved(shown, fontSize)
+        }
+        let nameY = subtitle == nil ? rect.midY - h * 0.04 : rect.minY + h * 0.58
+        if let subtitle {
+            let caption = text.resolve(Text(subtitle).font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.5)
+                .foregroundStyle(Color(red: 0.5, green: 0.16, blue: 0.07)))
+            text.draw(caption, at: CGPoint(x: point.x, y: rect.minY + h * 0.3))
+        }
+        text.draw(name, at: CGPoint(x: point.x, y: nameY))
         // The seal presses in once the ribbon is open.
         let press = max(0, min(1, (p - 0.2) / 0.08))
-        guard press > 0 else { return }
+        guard seal, press > 0 else { return }
         let r = h * 0.24 * (1.4 - 0.4 * press)
         let seal = CGPoint(x: point.x, y: rect.maxY + r * 0.15)
         var wax = layer

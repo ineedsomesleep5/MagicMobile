@@ -146,6 +146,7 @@ struct BattlefieldRow: View {
     @State private var expandedGroupIds: Set<String> = []
     @State private var scrollOffsets = BattlefieldRowScrollOffsets()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.tavernBoard) private var tavern
 
     private var visibleCards: [ZoneCard] {
         cardGroups.flatMap { group in
@@ -154,9 +155,28 @@ struct BattlefieldRow: View {
     }
 
     private func isExpanded(_ group: BattlefieldCardGroup) -> Bool {
-        !group.id.hasPrefix("attachment:") && (expandedGroupIds.contains(group.id) ||
-        group.cards.contains { targetableIds.contains($0.instanceId) || targetableIds.contains($0.id) } ||
-        Self.requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds))
+        guard !group.id.hasPrefix("attachment:") else { return false }
+        if expandedGroupIds.contains(group.id) { return true }
+        // Eight or more identical tokens stay one pile even in combat or targeting (Caleb,
+        // 2026-10-02): a tap acts on the next one, a hold opens the pile.
+        if group.count >= Self.stackThreshold { return false }
+        return group.cards.contains { targetableIds.contains($0.instanceId) || targetableIds.contains($0.id) } ||
+            Self.requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds)
+    }
+
+    /// From this many identical cards a group stays stacked while it can be chosen.
+    static let stackThreshold = 8
+
+    /// The card a tap on a stack acts on: the first that can be targeted, then the first that
+    /// combat highlights; nil when the stack simply opens.
+    private func nextChoosable(in group: BattlefieldCardGroup) -> (card: ZoneCard, targetable: Bool)? {
+        if let card = group.cards.first(where: { !$0.isPhasedOut && (targetableIds.contains($0.instanceId) || targetableIds.contains($0.id)) }) {
+            return (card, true)
+        }
+        if let card = group.cards.first(where: { combatHighlightIds.contains($0.instanceId) || combatHighlightIds.contains($0.id) }) {
+            return (card, false)
+        }
+        return nil
     }
 
     static func requiresIndividualCombatCards(_ group: BattlefieldCardGroup, highlightedIDs: Set<String>) -> Bool {
@@ -310,6 +330,19 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
+        .background {
+            // A big stack reads as a pile: two more frames peek out behind it (frame art only).
+            if tavern, group.count >= Self.stackThreshold, let frame = TavernFrameKind(card).image {
+                ForEach(0..<2, id: \.self) { layer in
+                    Image(uiImage: frame).resizable()
+                        .frame(width: renderedCardWidth, height: renderedCardHeight)
+                        .brightness(-0.18 - 0.1 * Double(layer))
+                        .offset(x: CGFloat(layer + 1) * 3.5, y: -CGFloat(layer + 1) * 3.5)
+                        .zIndex(-Double(layer))
+                }
+                .allowsHitTesting(false)
+            }
+        }
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
@@ -325,17 +358,30 @@ struct BattlefieldRow: View {
                 .allowsHitTesting(false)
         }
         .onCardInteraction(tap: {
-            expandedGroupIds.insert(group.id)
-            selectedCard = nil
-            inspectedCard = nil
-            GameHaptics.selection()
+            if let next = nextChoosable(in: group) {
+                // A stack being chosen from: the tap targets or declares its next card.
+                handleCardTap(next.card, action: legalAction(for: next.card), targetable: next.targetable,
+                              combatHighlighted: !next.targetable)
+            } else {
+                expandedGroupIds.insert(group.id)
+                selectedCard = nil
+                inspectedCard = nil
+                GameHaptics.selection()
+            }
         }, inspect: {
-            inspectedCard = card
-            GameHaptics.impact()
+            if nextChoosable(in: group) != nil {
+                // Hold to open the pile and pick a particular card.
+                expandedGroupIds.insert(group.id)
+                GameHaptics.impact()
+            } else {
+                inspectedCard = card
+                GameHaptics.impact()
+            }
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
         .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .accessibilityLabel("\(group.count) grouped \(card.card.name) cards in \(title)")
-        .accessibilityHint("Tap to expand the group. Long press to inspect a card.")
+        .accessibilityHint(nextChoosable(in: group) != nil ? "Tap to choose the next one. Long press to open the group."
+                                                           : "Tap to expand the group. Long press to inspect a card.")
         .accessibilityAction(named: Text("Expand group")) {
             expandedGroupIds.insert(group.id)
         }
