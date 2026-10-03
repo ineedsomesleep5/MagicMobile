@@ -61,12 +61,20 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | OnDeviceMultiplayer.swift, RelayTransport.swift (GameKitTransport has no Android counterpart) | app `ondevice/OnDeviceMultiplayer.kt`, `ondevice/RelayTransport.kt` | Ported; relay tables only |
 | DeckStudio/*, DeckLibrary.swift, OnDeviceDeckEditing.swift, NativeDeckMetadataCatalogue.swift, OnDeviceDeckResolver.swift, OnDeviceDeckLinkImporter.swift | core `studio/`, app `studio/` | Ported (37 iOS tests ported) |
 | NativeDownloadsView.swift | app `ondevice/NativeDownloadsView.kt` (Android's download engine and service) | Ported |
+| BoardChrome.swift Tavern* views, BrandUI.swift tavern controls and TavernAppearance | app `ui/TavernKit.kt` (new), `ui/BrandUI.kt`, `ui/IosControls.kt`, `ui/Theme.kt` | Ported (Walnut Tavern) |
+| TavernDesign, TavernSockets, TavernFrameKind, TavernCardParts, BattlefieldTokenStack, PlayerStatusSummary | core `game/TavernSockets.kt` (new) | Ported, same numbers as `scripts/brand/tavern_layout.json` |
+| PortraitBoardViews.swift and GameplayActionDock.swift tavern pieces (medallions, phase plate, card-back fan, mana gems, pass disc, rings, stack tray, status pop-over) | app `board/TavernBoardViews.kt` (new), `board/HudViews.kt`, `board/CommandBar.kt` | Ported |
+| NativeGameView.tavernLandscapeContent | app `board/LandscapeBoard.kt` (`LandscapeCenterColumn`) | Ported |
 
-## Next: Walnut Tavern (iOS builds 23–25)
+## Walnut Tavern (iOS builds 23–26)
 
-Caleb (2026-10-02): once iOS build 25 ships, Android follows this update. Nothing below is ported yet;
-Android is on the classic board. Port in this order so each step can be checked against iOS previews
-(`MAGICMOBILE_DESIGN_PREVIEW`, both orientations, `-magicmobile.boardAppearance tavern`).
+Caleb (2026-10-02): once iOS build 25 ships, Android follows this update. Ported on 2026-10-03 on
+`codex/android-walnut-tavern` (from `codex/walnut-build-26`), in the order below; Walnut Tavern is the
+Android default board. Not yet checked on an emulator or a phone (see the log for the list). Still classic
+or system-styled on Android: the game log drawer's contents, the Friends and relay table sheets beyond
+their shared controls, How to Play, Deck Studio screens beyond the palette, buttons and toggles, and the
+remaining `IosAlert` dialogs. The steps as planned, for reference against iOS previews
+(`MAGICMOBILE_DESIGN_PREVIEW`, both orientations, `-magicmobile.boardAppearance tavern`):
 
 1. **Assets** (no code): extend `prepareBrandAssets` to stage from `apps/ios/MagicMobile/Assets.xcassets`:
    `battlefield-tavern-portrait.jpg`, `battlefield-tavern-landscape.jpg`, `menu-backdrop-tavern`, the UI kit
@@ -153,3 +161,27 @@ screenshots of `normal-battlefield`, `crowded-battlefield`, `attached-permanents
 - 2026-09-28 (Claude): Android build 12 ships the same features as iOS build 21, and the shared parity fixtures cover them: resume, deck-studio, token, game-summary and tutorial cases. Android-only fixes: the stuck turn banner (#85) and the save budget (#87).
 
 - 2026-09-28 (Claude): Android build 13 matches iOS build 22: chat, invite links, friends and profiles, and the roll fix. The shared cases are in `parity/chat-cases.json`. Android adds verified app links and a `singleTask` main activity.
+
+- 2026-10-03 (Claude): Walnut Tavern ported to Android on `codex/android-walnut-tavern` (iOS builds 23–26,
+  no engine or iOS changes):
+  - `prepareBrandAssets` stages the tavern plates, UI kit, pass ring and flip frames, mana gems, card frames,
+    ribbon, hex gems, tile glow and menu backdrop into `drawable-nodpi`. The adaptive launcher icon is the iOS
+    `AppIcon-1024.png` on walnut.
+  - New `ui/TavernKit.kt` and core `game/TavernSockets.kt`. Walnut Tavern is the default board. The portrait and
+    landscape plates are drawn to fill the screen, and controls sit on the plate's sockets on any phone shape.
+  - Board pieces: framed tiles by type, token piles of 8+, attachment ribbons, glow-only highlights, brass
+    coins, the medallion status pop-over with the swap row, the commander-ready glow, combat Back, the
+    tavern commander moment and ribbon banners. Menus, settings, the lobby, the fixed landscape main menu and
+    Deck Studio's parchment palette are also styled.
+  - Adapter: the viewer's blocking creatures stay in the blockers SELECT targets, as on iOS. This adds the
+    parity case `blockers-take-back` and Wall of Spears to the `blockers` case. The golden entries were written by hand in
+    the iOS format. Confirm them with `MAGICMOBILE_WRITE_PARITY_GOLDENS=1 swift test --package-path apps/ios
+    --filter ParityGoldenTests` (expect no diff) before merging.
+  - New JVM tests: `TavernSocketsTest`, `declaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack` and
+    `commanderCastIsItsOnlyCeremony`. `:core:test` (173) and `:app:testDebugUnitTest` (72) pass.
+  - Checked with local Robolectric screenshots only, which were not committed. Still to check on an
+    emulator or a phone:
+    - blur and glow rendering, the adaptive icon, pop-up menus and the pass-disc flip
+    - landscape status-bar hiding and the hand drop zone
+    - real display cutouts and insets
+    - an online game against an iPhone

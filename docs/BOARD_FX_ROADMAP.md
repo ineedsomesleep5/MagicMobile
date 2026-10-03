@@ -179,7 +179,7 @@ single MIT file with its license header when that is enough.
 | 9 Next level (build 19) | Recorded audio (Sonniss GDC + Kenney CC0 effects, Kevin MacLeod CC BY playlists and stingers, SoundLabView.swift), fewer and quieter cues, concede with pod spectating (engine op), Arena-style attachment stacks and inspector attachment text, opponent portraits with AI-thinking ring, opening-hand screen, result summary (GameStats.swift), quick chat (GameEmotes.swift), weighted big hits, deck covers. Unit, real-XMage JVM and UI tests pass; phone feel and audio choices pending Caleb. |
 | 10 Android parity (Android build 8) | Phases 1–4 and 6–9 are ported to the Compose app in portrait and landscape: the timeline, overlay, card motion, dissolve and foil shaders, recorded audio with the Sound Lab, and the game-feel pieces. Each lives in the same-named Kotlin file (map in docs/ANDROID_PARITY.md). All 34 iOS preview states render on the emulator, and emulator games pass. Android phone feel is pending. |
 | 11 Playtest fixes (iOS build 18 / Android build 9) | On both platforms, in `codex/build18-integration`: the top of the board follows the active player (Follow Turns setting); a spectator's bottom seat goes to the next living player; copy tokens draw as their own frame with a "Token copy" tag; the held-card inspector fits its rules without scrolling; the ability banner sits below the card; combat keyword badges (live, so gained double strike shows); the first-strike damage step is its own beat; clipped battlefield rows fade and show "+N". Unit and parity tests, simulator and emulator previews pass; phone feel pending Caleb. |
-| 12 Walnut Tavern table (iOS portrait) | Default board since build 24 (shipped in TestFlight builds 23 and 24). Blender table from `scripts/brand/tavern_layout.json`, controls on the table's sockets (TavernDesign), leather/brass UI kit for pop-ups, menus and the setup lobby. Battlefield permanents wear option B painted frames by type (`scripts/brand/card_frames.sh`, TavernFrameKind) with a name ribbon and hex stat gems; hand cards stay printed. Phase plate at the top right; medallion pop-overs show status icons and swap opponents. Landscape keeps classic controls (reference image pending); Android not started. |
+| 12 Walnut Tavern table (iOS portrait) | Default board since build 24 (shipped in TestFlight builds 23 and 24). Blender table from `scripts/brand/tavern_layout.json`, controls on the table's sockets (TavernDesign), leather/brass UI kit for pop-ups, menus and the setup lobby. Battlefield permanents wear option B painted frames by type (`scripts/brand/card_frames.sh`, TavernFrameKind) with a name ribbon and hex stat gems; hand cards stay printed. Phase plate at the top right; medallion pop-overs show status icons and swap opponents. Landscape Walnut Tavern since build 25. Android: ported in both orientations on `codex/android-walnut-tavern` (2026-10-03), including the tavern commander moment, ribbon banners and glow-only declarations; emulator and phone check pending. |
 
 ## Log
 
@@ -530,3 +530,16 @@ single MIT file with its license header when that is enough.
   MAGICMOBILE_PREVIEW_TOKENS, MAGICMOBILE_PREVIEW_AMOUNT. UITestHarness.settleFirstTouch spends the first
   touch on the table edge for board fixtures. Website restyle: PR #101. Android port: in progress on
   `codex/android-walnut-tavern`.
+- 2026-10-03 (Claude, Android, branch `codex/android-walnut-tavern` from `codex/walnut-build-26`): Walnut
+  Tavern ported to the Compose app, with no engine or iOS changes. The board FX parts:
+  - The commander's cast is its one ceremony: `BoardEventTimeline.kt` gives a commander whose cast was seen a
+    plain entrance from the stack, and keeps the full moment for a commander with no visible cast. New test:
+    `commanderCastIsItsOnlyCeremony`.
+  - The tavern commander moment is in `BoardFXOverlay.kt` (table dim, fire ring, ember stream, halo,
+    parchment ribbon banner with a wax seal). Ribbon banners fit long names.
+  - Declarations glow only: the attack and block stance glow, with no outline lines.
+  - Arrows and life changes aim at the medallions (`TavernSeatAnchor`) in both orientations. Landscape
+    overlays now measure card bounds from the centre column's origin.
+
+  This was checked with local Robolectric screenshots only, not on an emulator or a phone. Details are in
+  docs/ANDROID_PARITY.md (log, 2026-10-03).
