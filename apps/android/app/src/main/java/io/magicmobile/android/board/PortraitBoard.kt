@@ -72,7 +72,9 @@ fun PortraitGameContent(
 ) {
     val tavernFrame = LocalTavernFrame.current
     val metrics = PortraitBattlefieldLayoutMetrics(size, paymentActive = InlinePaymentPromptState.isActive(snapshot), largeText = BoardMotion.largeText,
-        centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false), tavernDock = tavernFrame != null)
+        centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false), tavernDock = tavernFrame != null,
+        // The iPhone's top bar ends 124 pt down and its dock starts at 830 pt on the 440 x 956 plate.
+        tavernTop = tavernFrame?.point(BoardPoint(0f, 124f))?.y, tavernDockTop = tavernFrame?.point(BoardPoint(0f, 830f))?.y)
     val actions = snapshot.legalActions ?: emptyList()
     val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
     val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())

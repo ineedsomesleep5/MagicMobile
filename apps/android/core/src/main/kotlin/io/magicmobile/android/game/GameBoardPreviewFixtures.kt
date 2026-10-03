@@ -42,6 +42,20 @@ object GameBoardPreviewFixtures {
         @Suppress("UNCHECKED_CAST")
         val root = toKotlin(parser.parseToJsonElement(json(state))) as MutableMap<String, Any?>
         enrich(root, state, environment)
+        // Visual and speed QA: MAGICMOBILE_PREVIEW_TOKENS=<n> floods the board with identical tokens
+        // (n squirrels for you, half as many soldiers for the opponent).
+        environment["MAGICMOBILE_PREVIEW_TOKENS"]?.toIntOrNull()?.let { swarm ->
+            for ((index, player) in players(root).take(2).withIndex()) {
+                val seat = player["playerId"] as String
+                val battlefield = list(zones(player)["battlefield"])
+                for (number in 0 until if (index == 0) swarm else swarm / 2) {
+                    val token = card("$seat-swarm-$number", if (index == 0) "Squirrel Token" else "Soldier Token",
+                        if (index == 0) "Token Creature — Squirrel" else "Token Creature — Soldier", "", "", 1)
+                    map(token["card"])["isToken"] = true
+                    battlefield += token
+                }
+            }
+        }
         if (state == GameBoardDesignPreviewState.ATTACHED_PERMANENTS && specialStateAdvanced) {
             for (player in players(root)) {
                 player["poison"] = 5
@@ -285,6 +299,12 @@ object GameBoardPreviewFixtures {
             if (index > 0) {
                 player["commanders"] = mutableListOf(mutableMapOf("id" to "$seat-commander",
                     "name" to listOf("", "Aurelia, the Warleader", "Kozilek, the Great Distortion", "Meren of Clan Nel Toth")[index], "ownerPlayerId" to seat))
+                if (state == GameBoardDesignPreviewState.FOUR_PLAYER_FOCUS) {
+                    // Commander damage and poison for the zones pop-over's status badges.
+                    val damage = listOf(emptyMap(), mapOf("human" to 6, "ai-2" to 3), mapOf("human" to 17), emptyMap<String, Int>())
+                    map(list(player["commanders"]).first())["damageToPlayers"] = damage[index].toMutableMap()
+                    if (index == 2) { player["poison"] = 4; player["counters"] = mutableMapOf("Poison" to 4, "Experience" to 2) }
+                }
             }
             val zones = zones(player)
             val battlefield = list(zones["battlefield"])
@@ -463,14 +483,26 @@ object GameBoardPreviewFixtures {
         }
         root["xmage"] = xmage
         if (state == GameBoardDesignPreviewState.ABILITY_CHOICE) {
+            // Two sources whose texts differ in length: the cards must still line up.
             val source = card("human-sol-ring", "Sol Ring", "Artifact", "{1}", "{T}: Add {C}{C}.")
+            val other = card("human-plunderer", "Pitiless Plunderer", "Creature — Human Pirate", "{3}{B}",
+                "Whenever another creature you control dies, create a Treasure token.", 1)
             root["legalActions"] = mutableListOf<Any?>()
             root["promptEnvelopeV2"] = mutableMapOf("id" to "preview-ability", "method" to "PICK_ABILITY", "messageId" to 12, "playerId" to "human",
                 "responseKind" to "ability", "message" to "Choose which triggered ability goes on the stack first", "required" to true,
                 "minChoices" to 1, "maxChoices" to 1, "abilities" to mutableListOf(
                     mutableMapOf("id" to "11111111-1111-4111-8111-111111111111", "label" to "Add {C}{C}.", "sourceName" to "Sol Ring", "sourceCard" to source),
-                    mutableMapOf("id" to "22222222-2222-4222-8222-222222222222", "label" to "Add {C}{C}.", "sourceName" to "Sol Ring", "sourceCard" to deepCopy(source))),
+                    mutableMapOf("id" to "22222222-2222-4222-8222-222222222222", "label" to "Whenever another creature you control dies, create a Treasure token.",
+                        "sourceName" to "Pitiless Plunderer", "sourceCard" to other)),
                 "responseCommand" to mutableMapOf("type" to "choose_ability", "promptId" to "preview-ability", "messageId" to 12))
+        }
+        // Visual QA: MAGICMOBILE_PREVIEW_AMOUNT=1 asks for an X value (0...7), like announcing X.
+        if (environment["MAGICMOBILE_PREVIEW_AMOUNT"] == "1") {
+            root["legalActions"] = mutableListOf<Any?>()
+            root["promptEnvelopeV2"] = mutableMapOf("id" to "preview-amount", "method" to "GAME_GET_AMOUNT", "messageId" to 13, "playerId" to "human",
+                "responseKind" to "amount", "message" to "Announce the value for {X} (Squirrels to sacrifice)", "required" to true,
+                "minChoices" to 0, "maxChoices" to 7, "amounts" to (0..7).toMutableList(),
+                "responseCommand" to mutableMapOf("type" to "choose_amount", "promptId" to "preview-amount", "messageId" to 13))
         }
         if (state == GameBoardDesignPreviewState.SEARCH_SELECT_PROMPT) {
             (root["promptEnvelopeV2"] as? MutableMap<String, Any?>)?.let { prompt ->

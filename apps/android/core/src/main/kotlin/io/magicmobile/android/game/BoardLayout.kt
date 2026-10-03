@@ -106,7 +106,13 @@ class BattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardInsets = 
 class PortraitBattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardInsets = BoardInsets(), val paymentActive: Boolean = false,
                                        val largeText: Boolean = false, val centerControlsVisible: Boolean = true,
                                        /** The Walnut Tavern dock is one low row (medallion, mana rail, hourglass), so the hand gets the height the classic two-row dock used. */
-                                       val tavernDock: Boolean = false) {
+                                       val tavernDock: Boolean = false,
+                                       /**
+                                        * Android, on the tavern table: where the plate's top band ends and its dock begins, in this layout's
+                                        * coordinates. iPhones share one set of insets, so iOS takes them from the safe area; Android insets vary,
+                                        * so the lanes and hand are fitted to the plate itself (the iPhone's numbers on the 440 x 956 canvas).
+                                        */
+                                       val tavernTop: Float? = null, val tavernDockTop: Float? = null) {
     companion object { const val magicCardHeightToWidth = BattlefieldLayoutMetrics.magicCardHeightToWidth }
 
     val centerStripHeight get() = if (paymentActive) 60f else if (centerControlsVisible) 36f else 0f
@@ -116,7 +122,8 @@ class PortraitBattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardI
             maxOf(size.width - safeArea.leading - safeArea.trailing - margin * 2, 300f),
             maxOf(size.height - safeArea.top - safeArea.bottom - 16, 0f))
     }
-    val topHUDRect get() = BoardRect(safeFrame.minX, safeFrame.minY, safeFrame.width, if (largeText) 84f else 54f)
+    val topHUDRect get() = BoardRect(safeFrame.minX, safeFrame.minY, safeFrame.width,
+        tavernTop?.takeIf { tavernDock }?.let { maxOf(it - safeFrame.minY, 0f) } ?: if (largeText) 84f else 54f)
     val opponentBattlefieldRect get() = BoardRect(safeFrame.minX + laneInset, topHUDRect.maxY + 10, creatureLaneWidth, permanentGroupHeight)
     val opponentLandsRect: BoardRect get() = if (usesCompactLanes) {
         BoardRect(opponentBattlefieldRect.maxX + 8, opponentBattlefieldRect.minY, safeFrame.maxX - laneInset - opponentBattlefieldRect.maxX - 8, permanentGroupHeight)
@@ -127,7 +134,7 @@ class PortraitBattlefieldLayoutMetrics(val size: BoardSize, val safeArea: BoardI
         BoardRect(playerBattlefieldRect.maxX + 8, playerBattlefieldRect.minY, safeFrame.maxX - laneInset - playerBattlefieldRect.maxX - 8, permanentGroupHeight)
     } else BoardRect(safeFrame.minX + laneInset, playerBattlefieldRect.maxY + 5, safeFrame.width - laneInset * 2, landCardHeight + 8)
     val bottomControlsRect: BoardRect get() {
-        val height = if (tavernDock) 84f else 110f
+        val height = tavernDockTop?.takeIf { tavernDock }?.let { maxOf(safeFrame.maxY - it, 0f) } ?: if (tavernDock) 84f else 110f
         return BoardRect(safeFrame.minX, safeFrame.maxY - height, safeFrame.width, height)
     }
     /** The hand's resting height: tucked on the classic board, whole cards on the tavern table. */

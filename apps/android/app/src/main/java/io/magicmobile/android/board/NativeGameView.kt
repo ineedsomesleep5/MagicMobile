@@ -681,8 +681,12 @@ fun NativeGameView(
             }
             val cue = announcement
             AnimatedVisibility(showsTurnCue && cue != null && !isCardChoiceOpen && !isPromptDetailOpen,
-                // On the tavern table it sits under the nameplate and phase plate.
-                Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = if (isTavernBoard) 96.dp else 64.dp),
+                // On the tavern table it sits under the nameplate and phase plate: 158 pt down the 956 pt plate (iOS: 96 pt under the safe area).
+                if (isTavernBoard) Modifier.align(Alignment.TopCenter).layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val top = (constraints.maxHeight * 158f / 956f).roundToInt()
+                    layout(placeable.width, placeable.height + top) { placeable.place(0, top) }
+                } else Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 64.dp),
                 enter = if (BoardMotion.reduceMotion) fadeIn() else slideInVertically { -it } + fadeIn(),
                 exit = if (BoardMotion.reduceMotion) fadeOut() else slideOutVertically { -it } + fadeOut()) {
                 if (cue != null) {

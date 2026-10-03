@@ -82,6 +82,11 @@ import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.colorAdjust
+import io.magicmobile.android.ui.drawStretched
+import io.magicmobile.android.ui.glow
+import io.magicmobile.android.game.BattlefieldTokenStack
+import androidx.compose.ui.draw.drawBehind
 
 /** BattlefieldBackdrop (GameBoardTheme.swift). Persisted identifiers are shared with iOS. */
 enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
@@ -185,9 +190,25 @@ fun Modifier.horizontalScrollIndicator(state: ScrollState, enabled: Boolean): Mo
     drawRoundRect(Color.White.copy(alpha = 0.45f), Offset(x, size.height - 4.dp.toPx()), Size(thumb, 3.dp.toPx()), CornerRadius(2.dp.toPx()))
 }
 
-/** The visible strip of an attachment tucked behind its creature: its name on a small tab. */
+/** The visible strip of an attachment tucked behind its creature: its name on a small tab (a parchment ribbon on the tavern table). */
 @Composable
 fun AttachmentNameTab(card: ZoneCard, height: Dp, modifier: Modifier = Modifier, more: Int = 0) {
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        val ribbon = io.magicmobile.android.ui.tavernImage(R.drawable.tavern_card_ribbon)
+        val brown = rgb(0.55, 0.32, 0.1)
+        // The tab is about the ribbon's own shape (about 5 : 1), so it stretches to fit.
+        Row(modifier.fillMaxWidth().height(height * 1.25f)
+            .glow(Color.Black.copy(alpha = 0.45f), 1.5.dp, 4.dp)
+            .drawBehind { drawStretched(ribbon) }
+            .padding(horizontal = height * 1.1f), horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically) {
+            SfImage(if (card.card.typeLine.contains("equipment", ignoreCase = true)) "shield.lefthalf.filled" else "sparkles", brown, maxOf(7.dp, height * 0.5f))
+            FitText(card.card.name, sf(maxOf(7f, height.value * 0.6f), SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF), Modifier.weight(1f, fill = false),
+                color = rgb(0.17, 0.10, 0.05), minimumScale = 0.6f)
+            if (more > 0) Text("+$more", color = brown, style = sf(maxOf(7f, height.value * 0.55f), SfWeight.black, io.magicmobile.android.ui.SfDesign.SERIF))
+        }
+        return
+    }
     val shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)
     Row(modifier.fillMaxWidth().height(height)
         .background(Brush.verticalGradient(listOf(MagicPalette.iron, Color.Black.copy(alpha = 0.92f))), shape)
@@ -214,9 +235,23 @@ fun BattlefieldRow(
     val haptics = rememberHaptics()
     val cardGroups = remember(cards) { BattlefieldAttachments.groups(cards) }
 
-    fun isExpanded(group: BattlefieldCardGroup): Boolean = !group.id.startsWith("attachment:") && (expandedGroupIds.contains(group.id) ||
-        group.cards.any { targetableIds.contains(it.instanceId) || targetableIds.contains(it.id) } ||
-        requiresIndividualCombatCards(group, combatHighlightIds))
+    val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
+
+    fun isExpanded(group: BattlefieldCardGroup): Boolean {
+        if (group.id.startsWith("attachment:")) return false
+        if (expandedGroupIds.contains(group.id)) return true
+        // Eight or more identical tokens stay one pile even in combat or targeting (Caleb, 2026-10-02): a tap acts on the next one, a hold opens the pile.
+        if (group.count >= BattlefieldTokenStack.threshold) return false
+        return group.cards.any { targetableIds.contains(it.instanceId) || targetableIds.contains(it.id) } ||
+            requiresIndividualCombatCards(group, combatHighlightIds)
+    }
+
+    /** The card a tap on a stack acts on: the first that can be targeted, then the first that combat highlights; null when the stack simply opens. */
+    fun nextChoosable(group: BattlefieldCardGroup): Pair<ZoneCard, Boolean>? {
+        group.cards.firstOrNull { !it.isPhasedOut && (targetableIds.contains(it.instanceId) || targetableIds.contains(it.id)) }?.let { return it to true }
+        group.cards.firstOrNull { combatHighlightIds.contains(it.instanceId) || combatHighlightIds.contains(it.id) }?.let { return it to false }
+        return null
+    }
 
     val visibleCards = cardGroups.flatMap { if (isExpanded(it)) it.cards else listOf(it.representative) }
     val visibleCardCount = cardGroups.sumOf { if (isExpanded(it)) it.count else 1 }
@@ -284,20 +319,39 @@ fun BattlefieldRow(
         val targetable = targetableIds.any { it in groupIds }
         val combatHighlighted = combatHighlightIds.any { it in groupIds }
         val legal = group.cards.any { legalAction(it) != null }
+        val next = nextChoosable(group)
         Box(Modifier.offset(y = tappedOffset(card))
-            .semantics { contentDescription = "${group.count} grouped ${card.card.name} cards in $title" }
+            .semantics { contentDescription = "${group.count} grouped ${card.card.name} cards in $title. " +
+                if (next != null) "Tap to choose the next one. Long press to open the group." else "Tap to expand the group. Long press to inspect a card." }
             .cardBounds(card.instanceId)
             .boardFXCardMotion(card.instanceId)
             .alpha(if (targetableIds.isNotEmpty() && !targetable) 0.54f else 1f)
             .onCardInteraction(tap = {
-                expandedGroupIds = expandedGroupIds + group.id
-                selection.selectedCard = null
-                selection.inspectedCard = null
-                GameHaptics.selection(haptics)
+                val choosable = nextChoosable(group)
+                if (choosable != null) {
+                    // A stack being chosen from: the tap targets or declares its next card.
+                    handleCardTap(choosable.first, targetable = choosable.second, combatHighlighted = !choosable.second)
+                } else {
+                    expandedGroupIds = expandedGroupIds + group.id
+                    selection.selectedCard = null
+                    selection.inspectedCard = null
+                    GameHaptics.selection(haptics)
+                }
             }, inspect = {
-                selection.inspectedCard = card
+                if (nextChoosable(group) != null) {
+                    // Hold to open the pile and pick a particular card.
+                    expandedGroupIds = expandedGroupIds + group.id
+                } else selection.inspectedCard = card
                 GameHaptics.impact(haptics)
             }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null })) {
+            if (tavern && group.count >= BattlefieldTokenStack.threshold) {
+                // A big stack reads as a pile: two more frames peek out behind it (frame art only).
+                val frame = io.magicmobile.android.ui.tavernImage(tavernFrameDrawable(io.magicmobile.android.game.TavernFrameKind.of(card)))
+                for (layer in 1 downTo 0) {
+                    Box(Modifier.offset(x = (3.5f * (layer + 1)).dp, y = (-3.5f * (layer + 1)).dp).requiredSize(renderedCardWidth.dp, renderedCardHeight.dp)
+                        .colorAdjust(1f, -0.18f - 0.1f * layer).drawBehind { drawStretched(frame) })
+                }
+            }
             ArenaBattlefieldCard(card, title, renderedCardWidth.dp, renderedCardHeight.dp, selected = false, legal = legal,
                 targetable = targetable || combatHighlighted)
             Text("×${group.count}", Modifier.align(Alignment.BottomStart).padding(3.dp)
@@ -307,28 +361,25 @@ fun BattlefieldRow(
         }
     }
 
-    /** Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab above it. */
+    /**
+     * Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab above it. The creature
+     * keeps its full size (Caleb, 2026-10-02): the tabs rise above it, over the gap or the row above.
+     */
     @Composable
     fun attachmentGroupTile(group: BattlefieldCardGroup) {
         val attachments = group.cards.drop(1)
+        // Two tabs at most; the rest count on the top tab.
         val shown = attachments.take(2)
         val peek = maxOf(11f, minOf(14f, renderedCardHeight * 0.13f))
-        val lift = peek * shown.size
-        val scale = renderedCardHeight / (renderedCardHeight + lift)
         Box(Modifier.requiredSize(renderedCardWidth.dp, renderedCardHeight.dp), contentAlignment = Alignment.BottomCenter) {
-            // Bottom-aligned like SwiftUI's `.frame(alignment: .bottom)`: the tabs rise above the creature.
-            Box(Modifier.wrapContentSize(Alignment.BottomCenter, unbounded = true).requiredSize(renderedCardWidth.dp, (renderedCardHeight + lift).dp)
-                .graphicsLayer { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0.5f, 1f) },
-                contentAlignment = Alignment.BottomCenter) {
-                shown.withIndex().reversed().forEach { (index, card) ->
-                    Box(Modifier.offset(y = (-peek * (index + 1)).dp)) {
-                        cardTile(card)
-                        AttachmentNameTab(card, peek.dp, Modifier.align(Alignment.TopCenter).width(renderedCardWidth.dp),
-                            more = if (index == shown.size - 1) attachments.size - shown.size else 0)
-                    }
+            shown.withIndex().reversed().forEach { (index, card) ->
+                Box(Modifier.offset(y = (-peek * (index + 1)).dp)) {
+                    cardTile(card)
+                    AttachmentNameTab(card, peek.dp, Modifier.align(Alignment.TopCenter).width(renderedCardWidth.dp),
+                        more = if (index == shown.size - 1) attachments.size - shown.size else 0)
                 }
-                cardTile(group.representative)
             }
+            cardTile(group.representative)
         }
     }
 

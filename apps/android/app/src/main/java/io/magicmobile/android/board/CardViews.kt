@@ -80,6 +80,8 @@ import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.glowingStroke
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.drawStretched
+import androidx.compose.ui.draw.drawBehind
 
 /**
  * Ports of Board/CardTile.swift's CardTile, CardArtPlaceholder, TokenCopyCardFace, CardCounterBadgeStrip,
@@ -444,9 +446,11 @@ fun HandManaCost(cost: String?, modifier: Modifier = Modifier) {
 private fun BattlefieldAbilityBadges(icons: List<XmageCardIcon>, cardWidth: Dp, modifier: Modifier = Modifier) {
     val plan = BattlefieldAbilityBadgePlan(icons, cardWidth.value)
     val size = BattlefieldAbilityBadgePlan.iconSize(cardWidth.value).dp
+    // On the tavern table each ability sits on the back of a small brass coin.
+    val back = if (io.magicmobile.android.ui.LocalTavernBoard.current) Modifier.tavernCoinBack() else Modifier.background(MagicPalette.iron.copy(alpha = 0.88f), CircleShape)
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
         for (icon in plan.visible) {
-            Box(Modifier.size(size + 4.dp).background(MagicPalette.iron.copy(alpha = 0.88f), CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(size + 4.dp).then(back), contentAlignment = Alignment.Center) {
                 if (icon.textBadge == "Menace") SfImage("person.2.fill", MagicPalette.parchment, size * 0.72f)
                 else xmageIconDrawable(icon.iconType)?.let {
                     Image(painterResource(it), null, Modifier.padding(2.dp).size(size), colorFilter = ColorFilter.tint(MagicPalette.parchment))
@@ -490,10 +494,14 @@ private fun combatKeywordStyle(keyword: CombatKeyword): Pair<Color, Color> = whe
     else -> Color.Black.copy(alpha = 0.8f) to MagicPalette.parchment
 }
 
-/** Compact public permanent face; the complete printed card remains in inspection. */
+/** Compact public permanent face; the complete printed card remains in inspection. On the tavern table it wears its painted frame. */
 @Composable
 fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp, modifier: Modifier = Modifier, selected: Boolean = false,
                          legal: Boolean = false, targetable: Boolean = false, reduceMotion: Boolean = BoardMotion.reduceMotion) {
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        TavernFramedCard(card, zoneName, width, height, modifier, selected, legal, targetable, reduceMotion)
+        return
+    }
     val accent = when {
         card.isPhasedOut -> Color.Gray; targetable -> Color.Red; selected -> MagicPalette.antiqueGold; legal -> MagicPalette.legalEmerald
         else -> Color.White.copy(alpha = 0.35f)
@@ -568,4 +576,107 @@ fun ArenaBattlefieldCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp
                 .background(Color.Black.copy(alpha = 0.88f), CircleShape).padding(3.dp), color = Color.White, style = sf(10f, SfWeight.bold))
         }
     }
+}
+
+private val tavernInk = rgb(0.17, 0.10, 0.05)
+
+/**
+ * The tavern tile (option B, Caleb 2026-10-02; ArenaBattlefieldCard.framedFace): the card's art in an arched
+ * frame of its type (TavernFrameKind), its name on a parchment ribbon and power and toughness on hex gems that
+ * overhang the frame. Highlights are light only (TavernTileGlow), drawn after a tapped tile's grey so a tapped
+ * target still glows red; keywords stay icons in the ability row, in combat too. Hand cards keep the printed card.
+ */
+@Composable
+private fun TavernFramedCard(card: ZoneCard, zoneName: String, width: Dp, height: Dp, modifier: Modifier, selected: Boolean, legal: Boolean,
+                             targetable: Boolean, reduceMotion: Boolean) {
+    val accent = when {
+        card.isPhasedOut -> Color.Gray; targetable -> Color.Red; selected -> MagicPalette.antiqueGold; legal -> rgb(1.0, 0.68, 0.32)
+        else -> rgb(0.36, 0.24, 0.11)
+    }
+    val kind = io.magicmobile.android.game.TavernFrameKind.of(card)
+    val frame = io.magicmobile.android.ui.tavernImage(tavernFrameDrawable(kind))
+    val window = kind.window
+    val showsFooter = card.showsPowerToughness || (card.isCreature && card.summoningSickness == true)
+    val tapped = card.tapped == true
+    val rotation by animateFloatAsState(if (tapped) -7f else 0f, if (reduceMotion) tween(0) else tween(220), label = "tavernTapTilt")
+    val phasedAlpha by animateFloatAsState(if (card.isPhasedOut) 0.42f else 1f, if (reduceMotion) tween(0) else tween(200), label = "tavernPhase")
+    val w = width.value; val h = height.value
+    Box(modifier.requiredSize(width, height)
+        .rotate(rotation)
+        .alpha(phasedAlpha)
+        .semantics { contentDescription = card.accessibilityLabel(zoneName, selected, legal) + card.visibleXmageIcons.filter { it.displayText == null }
+            .joinToString("") { ", " + BattlefieldAbilityBadgePlan.accessibleName(it) } }) {
+        // A framed tile glows while it is playable, a target or selected: light only, no line.
+        if ((legal || targetable || selected) && !card.isPhasedOut) Box(Modifier.fillMaxSize().tavernTileGlow(accent))
+        Box(Modifier.fillMaxSize().colorAdjust(if (tapped) 0.15f else 1f, if (tapped) -0.16f else 0f)) {
+            // The drop shadow is a pre-blurred image: a live shadow per tile is too slow with dozens of tokens.
+            Box(Modifier.fillMaxSize().tavernTileGlow(Color.Black, 0.55f, Offset(1f, 3f)))
+            Box(Modifier.offset((w * window.minX).dp, (h * window.minY).dp).requiredSize((w * window.width).dp, (h * window.height).dp)) {
+                TavernArtCrop(card, zoneName, tagReserve = BattlefieldCardFaceLayout.tagTrailingReserve(w, card.counterBadges.isNotEmpty()).dp)
+            }
+            Box(Modifier.fillMaxSize().drawBehind { drawStretched(frame) })
+            if (kind.showsRibbon(card)) {
+                val ribbon = io.magicmobile.android.ui.tavernImage(R.drawable.tavern_card_ribbon)
+                val ribbonHeight = w * io.magicmobile.android.game.TavernCardParts.ribbonAspect
+                Box(Modifier.align(Alignment.TopCenter).offset(y = (h * io.magicmobile.android.game.TavernFrameKind.ribbonCenterY - ribbonHeight / 2).dp)
+                    .requiredSize(width, ribbonHeight.dp).drawBehind { drawStretched(ribbon) }, contentAlignment = Alignment.Center) {
+                    FitText(card.card.name, sf(maxOf(7.5f, w * 0.105f), SfWeight.bold, SfDesign.SERIF),
+                        Modifier.width((w * 0.62f).dp).offset(y = (-ribbonHeight * 0.06f).dp), color = tavernInk, minimumScale = 0.55f,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
+            if (showsFooter) {
+                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().offset(y = (w * 0.09f).dp), verticalAlignment = Alignment.Bottom) {
+                    if (card.showsPowerToughness) card.displayPower?.let { TavernHexGem(it, true, w) }
+                    Spacer(Modifier.weight(1f))
+                    if (card.isCreature && card.summoningSickness == true) {
+                        SfImage("hourglass", rgb(1.0, 0.86, 0.56), maxOf(8f, w * 0.12f).dp, Modifier.padding(bottom = (h * 0.03f).dp))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (card.showsPowerToughness) card.displayToughness?.let { TavernHexGem(it, false, w) }
+                }
+            }
+            // Ability badges sit above the ribbon.
+            BattlefieldAbilityBadges(card.visibleXmageIcons, width, Modifier.align(Alignment.BottomStart)
+                .padding(start = 5.dp, bottom = (h * (1 - io.magicmobile.android.game.TavernFrameKind.ribbonCenterY) + w * 0.13f).dp))
+            if (card.counterBadges.isNotEmpty()) {
+                val column = if (card.tokenCopySourceName == null) Modifier else Modifier.widthIn(max = BattlefieldCardFaceLayout.counterColumnWidth(w).dp)
+                CardCounterBadgeStrip(card.counterBadges.take(2), width,
+                    Modifier.align(Alignment.TopEnd).padding(top = BattlefieldCardFaceLayout.COUNTER_TOP.dp).then(column))
+            }
+            if (tapped) {
+                val size = maxOf(15.dp, width * 0.24f)
+                Box(Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = if (showsFooter) 23.dp else 3.dp).size(size).tavernCoinBack(),
+                    contentAlignment = Alignment.Center) {
+                    SfImage("arrow.turn.down.right", MagicPalette.parchment, maxOf(8.dp, width * 0.12f))
+                }
+            }
+        }
+        if (card.isPhasedOut) {
+            Text("Phased out", Modifier.align(Alignment.Center).graphicsLayer { alpha = 1f / phasedAlpha.coerceAtLeast(0.1f) }
+                .background(Color.Black.copy(alpha = 0.88f), CircleShape).padding(3.dp), color = Color.White, style = sf(10f, SfWeight.bold))
+        }
+    }
+}
+
+/** A stat on a faceted hex gem in a brass bezel: amber power, red toughness. */
+@Composable
+private fun TavernHexGem(value: String, power: Boolean, cardWidth: Float) {
+    val gemWidth = maxOf(16f, cardWidth * 0.27f)
+    val image = io.magicmobile.android.ui.tavernImage(if (power) R.drawable.tavern_gem_power else R.drawable.tavern_gem_toughness)
+    Box(Modifier.requiredSize(gemWidth.dp, (gemWidth * io.magicmobile.android.game.TavernCardParts.gemAspect).dp)
+        .drawBehind { drawStretched(image) }, contentAlignment = Alignment.Center) {
+        FitText(value, sf(gemWidth * 0.52f, SfWeight.black, SfDesign.SERIF).copy(
+            shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.9f), Offset(0f, 1f), 1f)),
+            Modifier.padding(horizontal = (gemWidth * 0.18f).dp), color = Color.White, minimumScale = 0.5f)
+    }
+}
+
+/** The painted frame for each kind (scripts/brand/card_frames.sh). */
+fun tavernFrameDrawable(kind: io.magicmobile.android.game.TavernFrameKind): Int = when (kind) {
+    io.magicmobile.android.game.TavernFrameKind.CREATURE -> R.drawable.tavern_frame_creature
+    io.magicmobile.android.game.TavernFrameKind.TOKEN -> R.drawable.tavern_frame_token
+    io.magicmobile.android.game.TavernFrameKind.ARTIFACT -> R.drawable.tavern_frame_artifact
+    io.magicmobile.android.game.TavernFrameKind.ENCHANTMENT -> R.drawable.tavern_frame_enchantment
+    io.magicmobile.android.game.TavernFrameKind.LAND -> R.drawable.tavern_frame_land
 }
