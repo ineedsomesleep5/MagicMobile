@@ -441,7 +441,7 @@ struct ArenaBattlefieldCard: View {
     private var tavernFrame: Bool { tavern && TavernUIKit.available }
 
     /// The tile wears its painted frame, whose ribbon and gems overhang the tile's edges.
-    private var framedTavern: Bool { tavernFrame && UIImage(named: TavernFrameKind(card).assetName) != nil }
+    private var framedTavern: Bool { tavernFrame && TavernFrameKind(card).image != nil }
 
     /// The card's colours as a thin enamel line inside the frame: one colour, gold for
     /// several, grey for none. Lands without a cost take their basic land types.
@@ -479,7 +479,7 @@ struct ArenaBattlefieldCard: View {
     /// gems. Hand cards keep the printed card; only permanents wear a frame.
     @ViewBuilder private var tavernFace: some View {
         let kind = TavernFrameKind(card)
-        if let frame = UIImage(named: kind.assetName) {
+        if let frame = kind.image {
             framedFace(kind, frame: frame)
         } else {
             drawnTavernFace
@@ -512,7 +512,6 @@ struct ArenaBattlefieldCard: View {
                         .offset(y: -ribbonHeight * 0.06)
                 }
                 .frame(width: ribbonWidth, height: ribbonHeight)
-                .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
                 .offset(y: height * TavernFrameKind.ribbonCenterY - ribbonHeight / 2)
                 .allowsHitTesting(false)
             }
@@ -550,12 +549,10 @@ struct ArenaBattlefieldCard: View {
                     .font(.system(size: gemWidth * 0.52, weight: .black, design: .serif))
                     .foregroundStyle(.white)
                     .lineLimit(1).minimumScaleFactor(0.5)
-                    .shadow(color: .black, radius: 0.5)
-                    .shadow(color: .black.opacity(0.85), radius: 1.5, y: 1)
+                    .shadow(color: .black.opacity(0.9), radius: 1, y: 1)
                     .padding(.horizontal, gemWidth * 0.18)
             }
             .frame(width: gemWidth, height: gemWidth * TavernCardParts.gemAspect)
-            .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
         } else {
             statGem(value, color: power ? Color(red: 0.16, green: 0.36, blue: 0.72) : Color(red: 0.70, green: 0.12, blue: 0.08))
         }
@@ -754,12 +751,11 @@ struct ArenaBattlefieldCard: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: framedTavern ? 0 : tavern ? 4 : 7).inset(by: framedTavern ? -width : 0))
-        .shadow(color: .black.opacity(tavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
+        // A framed tile's drop shadow is a pre-blurred image: a live shadow per tile is an
+        // offscreen pass each, too slow with dozens of tokens.
+        .shadow(color: .black.opacity(tavern && !framedTavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
         .background {
-            // A framed tile glows while it is playable, a target or selected: light only, no line.
-            if framedTavern && (legal || targetable || selected) && !card.isPhasedOut {
-                TavernTileGlow(color: accent, pulsing: legal && !targetable && !selected)
-            }
+            if framedTavern { TavernTileGlow(color: .black, strength: 0.55).offset(x: 1, y: 3) }
         }
         .overlay(alignment: .bottomLeading) {
             BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
@@ -818,6 +814,13 @@ struct ArenaBattlefieldCard: View {
         }
         .saturation(card.tapped == true ? 0.15 : 1)
         .brightness(card.tapped == true ? -0.16 : 0)
+        .background {
+            // A framed tile glows while it is playable, a target or selected: light only, no line.
+            // Drawn after the tapped tile's grey so a tapped target still glows red.
+            if framedTavern && (legal || targetable || selected) && !card.isPhasedOut {
+                TavernTileGlow(color: accent)
+            }
+        }
         .rotationEffect(.degrees(card.tapped == true ? -7 : 0))
         .shadow(color: framedTavern ? .clear : accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
         .opacity(card.isPhasedOut ? 0.42 : 1)
@@ -1008,6 +1011,12 @@ enum TavernFrameKind: String, CaseIterable {
     }
 
     var assetName: String { "tavern-frame-\(rawValue)" }
+
+    /// Looked up once: dozens of tiles draw a frame on every board update.
+    private static let images: [TavernFrameKind: UIImage] = Dictionary(uniqueKeysWithValues: allCases.compactMap { kind in
+        UIImage(named: kind.assetName).map { (kind, $0) }
+    })
+    var image: UIImage? { Self.images[self] }
 
     /// The arched art window's bounding box in each frame image, as fractions of the tile
     /// (printed by scripts/brand/card_frames.sh, widened 1% under the rim). The frame covers

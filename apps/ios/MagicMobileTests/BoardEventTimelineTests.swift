@@ -206,8 +206,12 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(BoardEventDiffer.events(from: inCommand, to: cast, commanders: ["Atraxa"]),
                        [.spellCast(stackID: "s", name: "Atraxa", controllerID: "a", tint: .multicolor, weight: .commander)])
         let entered = state(cards: [fxCard("cmd-2", "a", name: "Atraxa")])
+        // The cast was the ceremony; the commander then flies off the stack without a second one.
         XCTAssertEqual(BoardEventDiffer.events(from: cast, to: entered, commanders: ["Atraxa"]),
-                       [.enteredBattlefield(cardID: "cmd-2", playerID: "a", from: .stack, tint: .green, entrance: .commander)])
+                       [.enteredBattlefield(cardID: "cmd-2", playerID: "a", from: .stack, tint: .green, entrance: .plain)])
+        // Put straight onto the battlefield (no cast seen), it gets the ceremony on arrival.
+        XCTAssertEqual(BoardEventDiffer.events(from: inCommand, to: entered, commanders: ["Atraxa"]).last,
+                       .enteredBattlefield(cardID: "cmd-2", playerID: "a", from: nil, tint: .green, entrance: .commander))
         let big = state(cards: [], stack: [.init(id: "e", name: "Eldrazi", controllerID: "a", tint: .colorless, manaValue: 10)])
         XCTAssertEqual(BoardEventDiffer.events(from: state(cards: []), to: big).first,
                        .spellCast(stackID: "e", name: "Eldrazi", controllerID: "a", tint: .colorless, weight: .big))

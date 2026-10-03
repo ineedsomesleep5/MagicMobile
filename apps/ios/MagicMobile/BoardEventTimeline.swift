@@ -305,9 +305,14 @@ enum BoardEventDiffer {
             guard let previous, previous.zone == .battlefield else {
                 var source = previous?.zone
                 let entrance: BoardFXEntrance
-                if !card.isToken && commanders.contains(card.name) {
+                if !card.isToken && commanders.contains(card.name) && resolvedNames.contains(card.name) {
+                    // Its cast was the commander's big moment (Caleb, 2026-10-02): coming off the
+                    // stack it simply flies to its place.
+                    entrance = .plain
+                    source = .stack
+                } else if !card.isToken && commanders.contains(card.name) {
+                    // Put onto the battlefield without a visible cast: the ceremony plays here.
                     entrance = .commander
-                    if resolvedNames.contains(card.name) { source = .stack }
                 } else if resolvedNames.contains(card.name) && source != .hand {
                     entrance = .plain
                     source = .stack

@@ -518,3 +518,15 @@ single MIT file with its license header when that is enough.
   Android plan: docs/ANDROID_PARITY.md "Next: Walnut Tavern".
   Also in build 25: the main menu held sideways is a fixed screen (no scrolling; short screens use a
   smaller mark and a one-line title, then scale to fit), test testLandscapeMainMenuFitsWithoutScrolling.
+- 2026-10-02 (Claude, build 26, branch `codex/walnut-build-26`): Caleb's build 25 notes, no engine changes.
+  Eight or more identical tokens stay one pile even in combat or targeting (BattlefieldRow.stackThreshold;
+  tap = next card, hold = open; frames peek behind a pile) — his game slowed with ~70 squirrels spread out.
+  Tile glows and drop shadows are one pre-blurred image (`tavern-tile-glow`, TavernTileGlow) instead of a
+  live blur/shadow and animation per tile; fewer text shadows; frame images cached. A tapped target glows
+  (glow after the tapped grey). X amount buttons show numbers; ability choices sit in equal-height rows.
+  Cast and ability names use the parchment ribbon, shrinking then truncating long names; a commander's cast is
+  its one ceremony (entering off the stack is a plain flight; BoardEventTimeline); attack/block declarations
+  and departures glow instead of outlining on the tavern board. Walnut app icon installed. Debug previews:
+  MAGICMOBILE_PREVIEW_TOKENS, MAGICMOBILE_PREVIEW_AMOUNT. UITestHarness.settleFirstTouch spends the first
+  touch on the table edge for board fixtures. Website restyle: PR #101. Android port: in progress on
+  `codex/android-walnut-tavern`.

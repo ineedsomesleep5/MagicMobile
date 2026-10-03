@@ -676,65 +676,79 @@ struct UniversalPromptActionPanel: View {
     @ViewBuilder
     private func abilityPicker(abilities: [XmagePromptAbility], prompt: PromptEnvelopeV2) -> some View {
         PromptMiniLabel("Abilities")
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+        // Rows of two, every cell top-aligned and as tall as its row, so the cards line up
+        // whatever the length of each ability's text.
+        let items = Array(abilities.enumerated())
+        let rows = stride(from: 0, to: items.count, by: 2).map { Array(items[$0..<min($0 + 2, items.count)]) }
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
             // Occurrences are distinct rows even if XMage repeats an ability UUID.
             // Only presentation identity changes; answers retain the engine UUID.
-            ForEach(Array(abilities.enumerated()), id: \.offset) { _, ability in
-                let choiceCommand = command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
-                VStack(alignment: .leading, spacing: 8) {
-                    if let source = ability.sourceCard {
-                        let selectAbility = {
-                            guard pendingActionId == nil, let choiceCommand else { return }
-                            inspectedCard = nil
-                            runCommand(choiceCommand, "Choose ability", "\(prompt.id)-\(ability.id)")
-                        }
-                        CardTile(card: source, selected: false, legal: false,
-                                 zoneName: "Ability source",
-                                 width: verticalSizeClass == .compact ? 80 : 100,
-                                 height: verticalSizeClass == .compact ? 112 : 140)
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .disabled(pendingActionId != nil || choiceCommand == nil)
-                        .overlay {
-                            AbilityChoiceTouchSurface(
-                                enabled: pendingActionId == nil && choiceCommand != nil,
-                                choose: selectAbility,
-                                inspect: { inspectedCard = source },
-                                releaseInspection: { if inspectedCard?.id == source.id { inspectedCard = nil } }
-                            ).accessibilityHidden(true)
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityLabel("Choose \(source.card.name) ability")
-                        .accessibilityHint("Tap to choose. Hold to inspect the source card.")
-                        .accessibilityAction { selectAbility() }
-                        .accessibilityAction(named: Text("Inspect card")) {
-                            guard pendingActionId == nil else { return }
-                            inspectedCard = source
-                        }
+            ForEach(rows.indices, id: \.self) { row in
+                GridRow(alignment: .top) {
+                    ForEach(rows[row], id: \.offset) { _, ability in
+                        abilityCell(ability, prompt: prompt)
                     }
-                    Text(ability.sourceName ?? "Ability")
-                        .font(.subheadline.bold()).foregroundStyle(MagicPalette.parchment)
-                    GameRulesText(source: ability.rulesText ?? ability.label, cardName: ability.sourceName)
-                        .font(.callout).foregroundStyle(MagicPalette.parchment)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if ability.sourceCard == nil {
-                        Text(ability.sourceUnavailableReason ?? "Source details unavailable")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                promptButton(
-                    label: "Choose ability",
-                    subtitle: nil,
-                    systemImage: "bolt.fill",
-                    pendingId: "\(prompt.id)-\(ability.id)",
-                    command: choiceCommand
-                )
+                    if rows[row].count == 1 { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .background(MagicPalette.iron.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+
+    private func abilityCell(_ ability: XmagePromptAbility, prompt: PromptEnvelopeV2) -> some View {
+        let choiceCommand = command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
+        return VStack(alignment: .leading, spacing: 8) {
+            if let source = ability.sourceCard {
+                let selectAbility = {
+                    guard pendingActionId == nil, let choiceCommand else { return }
+                    inspectedCard = nil
+                    runCommand(choiceCommand, "Choose ability", "\(prompt.id)-\(ability.id)")
+                }
+                CardTile(card: source, selected: false, legal: false,
+                         zoneName: "Ability source",
+                         width: verticalSizeClass == .compact ? 80 : 100,
+                         height: verticalSizeClass == .compact ? 112 : 140)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .disabled(pendingActionId != nil || choiceCommand == nil)
+                .overlay {
+                    AbilityChoiceTouchSurface(
+                        enabled: pendingActionId == nil && choiceCommand != nil,
+                        choose: selectAbility,
+                        inspect: { inspectedCard = source },
+                        releaseInspection: { if inspectedCard?.id == source.id { inspectedCard = nil } }
+                    ).accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Choose \(source.card.name) ability")
+                .accessibilityHint("Tap to choose. Hold to inspect the source card.")
+                .accessibilityAction { selectAbility() }
+                .accessibilityAction(named: Text("Inspect card")) {
+                    guard pendingActionId == nil else { return }
+                    inspectedCard = source
+                }
+            }
+            Text(ability.sourceName ?? "Ability")
+                .font(.subheadline.bold()).foregroundStyle(MagicPalette.parchment)
+            GameRulesText(source: ability.rulesText ?? ability.label, cardName: ability.sourceName)
+                .font(.callout).foregroundStyle(MagicPalette.parchment)
+                .fixedSize(horizontal: false, vertical: true)
+            if ability.sourceCard == nil {
+                Text(ability.sourceUnavailableReason ?? "Source details unavailable")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        Spacer(minLength: 0)
+        promptButton(
+            label: "Choose ability",
+            subtitle: nil,
+            systemImage: "bolt.fill",
+            pendingId: "\(prompt.id)-\(ability.id)",
+            command: choiceCommand
+        )
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(MagicPalette.iron.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder
@@ -806,13 +820,14 @@ struct UniversalPromptActionPanel: View {
             }
         } else {
             PromptMiniLabel("Amount")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 6)], spacing: 6) {
+            // The number alone: a "#" icon beside it squeezed the number out of the button.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56), spacing: 8)], spacing: 8) {
                 ForEach(amounts, id: \.self) { amount in
                     promptButton(
                         label: "\(amount)",
-                        systemImage: "number",
                         pendingId: "\(prompt.id)-amount-\(amount)",
-                        command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amount: amount, amounts: [amount])
+                        command: command(type: type, promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, amount: amount, amounts: [amount]),
+                        large: true
                     )
                 }
             }

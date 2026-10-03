@@ -23,9 +23,16 @@ enum UITestHarness {
     /// or a tap synthesized slowly under load, then shows its pressed state but never
     /// fires. Spend that first touch on the menu's static brand text, which has no action.
     static func settleFirstTouch(_ app: XCUIApplication) {
+        // The menu's brand text; on a board fixture, the bare table edge beside the mat (the
+        // development label sits over the opponent's medallion, which would open its zones).
         let brand = app.staticTexts["MAGICMOBILE"]
-        guard brand.waitForExistence(timeout: 5), brand.isHittable else { return }
-        brand.tap()
+        if brand.waitForExistence(timeout: 2) {
+            brand.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        } else if app.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].exists {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
+        } else {
+            return
+        }
         Thread.sleep(forTimeInterval: 0.3) // Let the focus change land before the real touch.
     }
 
