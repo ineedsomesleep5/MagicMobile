@@ -158,6 +158,8 @@ struct NativeGameView: View {
     @State private var lastTurnBannerKey: String?
     @State private var lastTurnSoundKey: String?
     @State private var showsTurnBanner = false
+    /// While the turn banner holds the centre of the board, showcases wait (BoardFXDirector.ingest).
+    @State private var turnBannerEndsAt: Date?
     /// The phase pill is flying up into the top bar.
     @State private var phaseCueMerging = false
     @State private var hudPulse = 0
@@ -1053,7 +1055,7 @@ struct NativeGameView: View {
 
     private func ingestBoardFX(_ snapshot: GameSnapshot) {
         let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
-        let scheduled = boardFX.ingest(snapshot, level: level, now: Date())
+        let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt)
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
         if boardSoundsEnabled {
@@ -1110,7 +1112,8 @@ struct NativeGameView: View {
             // On the tavern table the showcase sits higher, clear of the cost and target ribbons.
             stackPoint: CGPoint(x: stackRect.midX, y: isTavernBoard ? min(stackRect.midY, (opponentRect.midY + stackRect.midY) / 2) : stackRect.midY),
             viewerHandPoint: CGPoint(x: handRect.midX, y: handRect.midY),
-            opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40))
+            opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40),
+            playerLabels: Dictionary(snapshot.players.map { ($0.playerId, snapshot.playerLabel($0.playerId)) }, uniquingKeysWith: { first, _ in first }))
         return BoardFXOverlay(effects: boardFX.active, subjects: boardFX.subjects, cardBounds: bounds, anchors: anchors,
                               clock: boardFXClock, prune: { boardFX.prune(now: Date()) }, tavern: isTavernBoard)
     }
@@ -1321,9 +1324,14 @@ struct NativeGameView: View {
                     let firstBanner = lastTurnBannerKey == nil
                     lastTurnBannerKey = turnKey
                     if !firstBanner || snapshot.turn > 1 {
+                        // A showcase at the centre finishes first, so the banner and a cast never stack.
+                        if let busy = boardFX.centreBusyUntil, busy > Date() {
+                            do { try await Task.sleep(for: .seconds(min(busy.timeIntervalSinceNow, BoardFXScheduler.maximumHold))) } catch { return }
+                        }
                         // The ribbon plays with the phase pill; it is center stage only briefly.
                         if snapshot.isViewer(snapshot.activePlayerId) { UINotificationFeedbackGenerator().notificationOccurred(.success) }
-                        withAnimation(.easeOut(duration: 0.2)) { showsTurnBanner = true; showsTurnCue = true }
+                        turnBannerEndsAt = Date().addingTimeInterval(1.95)
+                        withAnimation(.easeOut(duration: 0.2)) { showsTurnBanner = true; showsTurnCue = !isTavernBoard }
                         do { try await Task.sleep(for: .seconds(1.6)) } catch { showsTurnBanner = false; return }
                         withAnimation(.easeIn(duration: 0.35)) { showsTurnBanner = false }
                         await mergePhaseCueIntoBar()
@@ -1331,6 +1339,8 @@ struct NativeGameView: View {
                     }
                 }
                 phaseCueMerging = false
+                // The tavern's phase plate already names the phase; it flashes instead of a pill.
+                if isTavernBoard { hudPulse += 1; return }
                 withAnimation(.easeOut(duration: 0.2)) { showsTurnCue = true }
                 do { try await Task.sleep(for: .seconds(1.1)) } catch { return }
                 await mergePhaseCueIntoBar()

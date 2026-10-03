@@ -58,6 +58,7 @@ frame artifact magenta ${ARTIFACT_BAND:-50}
 frame token magenta ${TOKEN_BAND:-47}
 frame enchantment green ${ENCHANTMENT_BAND:-45}
 frame land magenta ${LAND_BAND:-47}
+frame spell magenta ${SPELL_BAND:-47}
 
 # The shared ribbon and stat gems (green key).
 PARTS=$REF/frames-b-parts.png

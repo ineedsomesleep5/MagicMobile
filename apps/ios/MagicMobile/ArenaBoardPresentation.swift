@@ -993,7 +993,7 @@ struct CombatEdgeCluster: Identifiable {
 /// walnut, artifacts silver, enchantments rose-gold, lands stone. A creature of any other type
 /// (an artifact creature, an animated land) is framed as the creature it is now.
 enum TavernFrameKind: String, CaseIterable {
-    case creature, token, artifact, enchantment, land
+    case creature, token, artifact, enchantment, land, spell
 
     init(_ card: ZoneCard) {
         let identity = card.card
@@ -1005,6 +1005,9 @@ enum TavernFrameKind: String, CaseIterable {
             self = .artifact
         } else if identity.isEnchantment {
             self = .enchantment
+        } else if identity.typeLine.localizedCaseInsensitiveContains("Instant") || identity.typeLine.localizedCaseInsensitiveContains("Sorcery") {
+            // Only ever held up at the centre while it is cast: a parchment scroll.
+            self = .spell
         } else {
             self = .creature
         }
@@ -1028,6 +1031,7 @@ enum TavernFrameKind: String, CaseIterable {
         case .artifact: CGRect(x: 0.093, y: 0.164, width: 0.829, height: 0.728)
         case .enchantment: CGRect(x: 0.084, y: 0.17, width: 0.829, height: 0.733)
         case .land: CGRect(x: 0.09, y: 0.15, width: 0.82, height: 0.756)
+        case .spell: CGRect(x: 0.093, y: 0.164, width: 0.814, height: 0.736)
         }
     }
 
