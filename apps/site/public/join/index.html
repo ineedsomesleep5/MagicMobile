@@ -4,27 +4,33 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
-  <meta name="theme-color" content="#141518">
+  <meta name="theme-color" content="#1b120b">
   <title>Join a MagicMobile table</title>
   <meta property="og:title" content="Join my MagicMobile table">
   <meta property="og:description" content="Tap to join a Commander table in MagicMobile on iPhone or Android.">
   <meta property="og:image" content="https://magicmobile-downloads.vercel.app/social.png">
-  <link rel="icon" href="/app-icon.png">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
-    :root { --canvas: #141518; --surface: #202125; --ink: #f3f1ec; --soft: #b5b5af; --accent: #ff8058; --accent-ink: #191513; }
+    /* Walnut & Ember, as on the download site (see ../../DESIGN.md). */
+    :root { --canvas: #1b120b; --leather: #29140b; --brass: #dba34d; --ink: #f3e6c8; --soft: #cfb994; --accent: #ff8058; --plaque-ink: #ffe8a8; }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
-      background: var(--canvas); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      background: radial-gradient(90% 60% at 50% 110%, #ff80582e, transparent 70%), linear-gradient(#110a05b3, #110a05b3), url("/tavern/walnut.webp") 0 0 / 340px, var(--canvas);
+      color: var(--ink); font: 17px/1.5 ui-serif, "New York", Georgia, "Times New Roman", serif; }
     main { width: 100%; max-width: 420px; text-align: center; }
-    img { width: 88px; height: 88px; border-radius: 20px; }
-    h1 { font-size: 26px; line-height: 1.2; margin: 18px 0 6px; font-weight: 800; }
+    img { width: 88px; height: 88px; border-radius: 20px; margin: 0 auto; box-shadow: 0 0 0 1px #dba34d99, 0 10px 24px #0009; }
+    h1 { font-size: 28px; line-height: 1.2; margin: 18px 0 6px; font-weight: 800; }
     p { color: var(--soft); margin: 0 0 18px; }
-    .code { font: 800 38px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 4px; margin: 10px 0 22px;
-      background: var(--surface); border-radius: 14px; padding: 16px 8px; }
-    a.button { display: block; text-decoration: none; font-weight: 800; border-radius: 999px; padding: 15px 20px; margin: 10px 0; }
-    .primary { background: var(--accent); color: var(--accent-ink); }
-    .secondary { background: var(--surface); color: var(--ink); }
-    small { display: block; color: var(--soft); margin-top: 16px; }
+    .code { font: 800 38px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 4px; margin: 10px 0 22px; color: var(--ink);
+      background: linear-gradient(#0000, #0005), url("/tavern/leather.webp") center / 171px, var(--leather);
+      border: 2px solid var(--brass); border-radius: 14px; padding: 16px 8px; box-shadow: inset 0 2px 8px #0008; }
+    a.button { display: block; text-decoration: none; font-weight: 800; border-radius: 16px; padding: 15px 20px; margin: 12px 0;
+      border: 2px solid var(--brass); text-shadow: 0 1px 1px #000c; box-shadow: 0 4px 10px #0008; }
+    .primary { color: var(--plaque-ink); background: linear-gradient(#ffd6a042, #0000 40%, #46080066), url("/tavern/ember.webp") center / 100% 100%, #6b120d; }
+    .secondary { color: var(--ink); background: linear-gradient(#ffe2aa1a, #0000 42%, #0006), url("/tavern/leather.webp") center / 171px, var(--leather); }
+    a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    small { display: block; color: var(--soft); margin-top: 16px; font-size: 14px; }
   </style>
 </head>
 <body>
