@@ -11,7 +11,10 @@ enum UITestHarness {
             app.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = preview
         }
         app.launchArguments = (preview == nil ? ["--ondevice-setup-ui-test"] : [])
-            + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + extraArguments
+            + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            // Classic board unless a test asks for another (Walnut Tavern is the default).
+            + (extraArguments.contains("-magicmobile.boardAppearance") ? [] : ["-magicmobile.boardAppearance", "arena"])
+            + extraArguments
     }
 
     /// The first touch after launch moves keyboard focus to the app. On the iOS 26.5

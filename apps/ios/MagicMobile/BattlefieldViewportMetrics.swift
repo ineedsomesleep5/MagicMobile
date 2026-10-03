@@ -383,15 +383,15 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var opponentBattlefieldRect: CGRect {
-        CGRect(x: safeFrame.minX + 10, y: topHUDRect.maxY + 10, width: creatureLaneWidth, height: permanentGroupHeight)
+        CGRect(x: safeFrame.minX + laneInset, y: topHUDRect.maxY + 10, width: creatureLaneWidth, height: permanentGroupHeight)
     }
 
     var opponentLandsRect: CGRect {
         if usesCompactLanes {
             return CGRect(x: opponentBattlefieldRect.maxX + 8, y: opponentBattlefieldRect.minY,
-                          width: safeFrame.maxX - 10 - opponentBattlefieldRect.maxX - 8, height: permanentGroupHeight)
+                          width: safeFrame.maxX - laneInset - opponentBattlefieldRect.maxX - 8, height: permanentGroupHeight)
         }
-        return CGRect(x: safeFrame.minX + 10, y: opponentBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
+        return CGRect(x: safeFrame.minX + laneInset, y: opponentBattlefieldRect.maxY + 5, width: safeFrame.width - laneInset * 2, height: landCardHeight + 8)
     }
 
     var centerStripRect: CGRect {
@@ -399,15 +399,15 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     var playerBattlefieldRect: CGRect {
-        CGRect(x: safeFrame.minX + 10, y: centerStripRect.maxY + 10, width: creatureLaneWidth, height: permanentGroupHeight)
+        CGRect(x: safeFrame.minX + laneInset, y: centerStripRect.maxY + 10, width: creatureLaneWidth, height: permanentGroupHeight)
     }
 
     var playerLandsRect: CGRect {
         if usesCompactLanes {
             return CGRect(x: playerBattlefieldRect.maxX + 8, y: playerBattlefieldRect.minY,
-                          width: safeFrame.maxX - 10 - playerBattlefieldRect.maxX - 8, height: permanentGroupHeight)
+                          width: safeFrame.maxX - laneInset - playerBattlefieldRect.maxX - 8, height: permanentGroupHeight)
         }
-        return CGRect(x: safeFrame.minX + 10, y: playerBattlefieldRect.maxY + 5, width: safeFrame.width - 20, height: landCardHeight + 8)
+        return CGRect(x: safeFrame.minX + laneInset, y: playerBattlefieldRect.maxY + 5, width: safeFrame.width - laneInset * 2, height: landCardHeight + 8)
     }
 
     var bottomControlsRect: CGRect {
@@ -544,7 +544,13 @@ struct PortraitBattlefieldLayoutMetrics {
     }
 
     private var creatureLaneWidth: CGFloat {
-        (safeFrame.width - 20) * (usesCompactLanes ? 0.68 : 1)
+        (safeFrame.width - laneInset * 2) * (usesCompactLanes ? 0.68 : 1)
+    }
+
+    /// Cards stay inside the playing area: 10 pt in, or on the tavern table inside the leather
+    /// mat's stitched edge (34 pt in on the 440 pt design canvas).
+    var laneInset: CGFloat {
+        tavernDock ? max(10, size.width * 34 / 440 - safeFrame.minX) : 10
     }
 
     var landCardWidth: CGFloat {

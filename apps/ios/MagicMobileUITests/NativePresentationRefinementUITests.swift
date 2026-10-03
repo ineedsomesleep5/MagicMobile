@@ -7,7 +7,7 @@ final class NativePresentationRefinementUITests: XCTestCase {
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         if error { app.launchEnvironment["MAGICMOBILE_UI_TEST_ENGINE_ERROR"] = "1" }
-        app.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 20))

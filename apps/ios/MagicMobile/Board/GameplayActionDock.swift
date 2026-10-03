@@ -434,21 +434,24 @@ struct PortraitBottomCommandBar: View {
                     .accessibilityLabel("Floating mana")
                     dock(.primary)
                         .tavernPosition(pass, canvas: canvas, origin: origin)
-                    // Controls ring at the hourglass's bottom-right, Skip at its bottom-left.
-                    dock(.menu)
-                        .tavernPosition(CGPoint(x: pass.x + 50, y: pass.y + 50), canvas: canvas, origin: origin)
+                    // Skip and the controls ring orbit the hourglass's lower-left on one arc
+                    // (72 pt out): Skip at its left, controls further round below it.
                     dock(.skip)
-                        .tavernPosition(CGPoint(x: pass.x - 60, y: pass.y + 34), canvas: canvas, origin: origin)
+                        .tavernPosition(CGPoint(x: pass.x - 71, y: pass.y + 10), canvas: canvas, origin: origin)
+                    dock(.menu)
+                        .tavernPosition(CGPoint(x: pass.x - 51, y: pass.y + 51), canvas: canvas, origin: origin)
                     let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
                     if stackCount > 0, let openStack {
                         TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack)
                             .tavernPosition(TavernDesign.stackTray, canvas: canvas, origin: origin)
                     }
-                    HStack(spacing: 2) {
-                        BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
+                    // Counters and attached cards live in the medallion's pop-over; poison and
+                    // commander damage also show here at a glance.
+                    HStack(spacing: 6) {
+                        TavernStatusGlance(summary: PlayerStatusSummary(player: human, snapshot: snapshot))
                         if let emoteCenter { TableChatButton(center: emoteCenter) }
                     }
-                    .tavernPosition(CGPoint(x: TavernDesign.lifeMedallion.x + 56, y: TavernDesign.lifeMedallion.y + 48),
+                    .tavernPosition(CGPoint(x: TavernDesign.lifeMedallion.x + 42, y: TavernDesign.lifeMedallion.y + 52),
                                     canvas: canvas, origin: origin)
                 }
             }
@@ -621,6 +624,14 @@ struct PlayerZoneMenu: View {
     var customLabel: AnyView? = nil
     var extraItems: AnyView? = nil
     var accessibilityOverride: (label: String, identifier: String)? = nil
+    /// The tavern pop-over's arrow: opponents at the top of the table open downward.
+    var menuArrowEdge: Edge = .bottom
+    /// The game, for the pop-over's status (counters, commander damage, attached cards) when
+    /// `snapshot` is left out to keep the shared zone rows off an opponent's menu.
+    var statusSnapshot: GameSnapshot? = nil
+    /// In a pod, the opponents the pop-over can swap between.
+    var swapOpponents: [PlayerGameState] = []
+    var swap: ((String) -> Void)? = nil
 
     private var commanderReady: Bool {
         snapshot.map { GameplayAffordances.commanderCastAvailable(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? false
@@ -636,7 +647,10 @@ struct PlayerZoneMenu: View {
 
     /// The tavern table's medallions open their zones in a leather pop-over.
     private var tavernMenu: some View {
-        TavernMenu(arrowEdge: .bottom) {
+        TavernMenu(arrowEdge: menuArrowEdge) {
+            let game = statusSnapshot ?? snapshot
+            TavernPlayerStatusPanel(name: game?.playerLabel(player.playerId) ?? player.displayName ?? "Player",
+                                    summary: PlayerStatusSummary(player: player, snapshot: game), inspect: viewZone)
             TavernMenuItem(title: commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)",
                            systemImage: "crown") { open(.command, player.zones.command) }
             TavernMenuItem(title: "Graveyard · \(player.zones.graveyard.count)", systemImage: "leaf") { open(.graveyard, player.zones.graveyard) }
@@ -657,6 +671,10 @@ struct PlayerZoneMenu: View {
             if let extraItems {
                 TavernMenuDivider()
                 extraItems
+            }
+            if swapOpponents.count > 1, let swap {
+                TavernOpponentSwap(opponents: swapOpponents, current: player.playerId,
+                                   label: { game?.playerLabel($0) ?? "Opponent" }, select: swap)
             }
         } label: {
             if let customLabel { customLabel } else { defaultLabel }

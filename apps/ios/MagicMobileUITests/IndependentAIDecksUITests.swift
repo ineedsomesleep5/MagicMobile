@@ -10,7 +10,7 @@ final class IndependentAIDecksUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         app = XCUIApplication()
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "--ondevice-setup-ui-test"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "--ondevice-setup-ui-test"]
         app.launch()
     }
 
@@ -36,6 +36,11 @@ final class IndependentAIDecksUITests: XCTestCase {
             picker.press(forDuration: 0.15)
             let option = app.buttons[name]
             XCTAssertTrue(option.waitForExistence(timeout: 5))
+            // The deck list scrolls inside its pop-over, opening on the current deck.
+            let list = app.scrollViews.containing(NSPredicate(format: "label == %@", name)).firstMatch
+            for step in 0..<8 where !option.isHittable {
+                if step < 4 { list.swipeUp(velocity: .slow) } else { list.swipeDown(velocity: .slow) }
+            }
             XCTAssertTrue(option.isHittable)
             option.press(forDuration: 0.15)
             assertSelection(index + 1, name)

@@ -80,6 +80,7 @@ struct CardInspector: View {
 
     @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
     @ScaledMetric(relativeTo: .footnote) private var footnoteSize: CGFloat = 13
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
         let card = shown
@@ -104,8 +105,7 @@ struct CardInspector: View {
         }
         .padding(9)
         .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
-        .background(Self.backdrop, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
+        .modifier(InspectorChrome(tavern: tavern))
     }
 
     private func footer(scale: CGFloat, card: ZoneCard, rules: String?, state: [String], reminder: String?,
@@ -191,11 +191,13 @@ struct InspectorAttachmentList: View {
     @ScaledMetric(relativeTo: .caption) private var captionSize: CGFloat = 12
     @ScaledMetric(relativeTo: .footnote) private var rulesSize: CGFloat = 13
 
+    @Environment(\.tavernBoard) private var tavern
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6 * scale) {
             Text(cards.count == 1 ? "ATTACHED" : "ATTACHED · \(cards.count)")
-                .font(.system(size: captionSize * scale, weight: .black)).tracking(1.2)
-                .foregroundStyle(MagicPalette.antiqueGold)
+                .font(.system(size: captionSize * scale, weight: .black, design: tavern ? .serif : .default)).tracking(1.2)
+                .foregroundStyle(tavern ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(MagicPalette.antiqueGold))
             ForEach(cards.prefix(4)) { attachment in
                 HStack(alignment: .top, spacing: 10 * scale) {
                     CardTile(card: attachment, selected: false, zoneName: "Inspector attachment",
@@ -205,8 +207,8 @@ struct InspectorAttachmentList: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(attachment.card.name)
-                            .font(.system(size: nameSize * scale, weight: .heavy))
-                            .foregroundStyle(.white)
+                            .font(.system(size: nameSize * scale, weight: .heavy, design: tavern ? .serif : .default))
+                            .foregroundStyle(tavern ? TavernPalette.parchment : .white)
                         if !attachment.card.typeLine.isEmpty {
                             Text(attachment.card.typeLine)
                                 .font(.system(size: captionSize * scale, weight: .semibold))
@@ -224,8 +226,9 @@ struct InspectorAttachmentList: View {
                     Spacer(minLength: 0)
                 }
                 .padding(7)
-                .background(MagicPalette.iron.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(MagicPalette.antiqueGold.opacity(0.35), lineWidth: 1))
+                .background(tavern ? Color.black.opacity(0.24) : MagicPalette.iron.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .stroke(tavern ? AnyShapeStyle(TavernPalette.brassLine) : AnyShapeStyle(MagicPalette.antiqueGold.opacity(0.35)), lineWidth: 1))
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("inspector.attachment.\(attachment.instanceId)")
             }
@@ -255,17 +258,30 @@ struct InspectorStateChips: View {
     let items: [String]
     var scale: CGFloat = 1
     @ScaledMetric(relativeTo: .subheadline) private var chipSize: CGFloat = 15
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
         InspectorChipFlow(spacing: 6 * scale) {
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                Text(item)
-                    .font(.system(size: chipSize * scale, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 8 * scale).padding(.vertical, 3 * scale)
-                    .background(MagicPalette.iron.opacity(0.9), in: Capsule())
-                    .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
+                if tavern && TavernUIKit.available {
+                    // Parchment tags in a thin brass rim.
+                    Text(item)
+                        .font(.system(size: chipSize * scale, weight: .semibold, design: .serif))
+                        .foregroundStyle(TavernPalette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 11 * scale).padding(.vertical, 4 * scale)
+                        .background { TavernFill(material: .parchment).clipShape(Capsule()) }
+                        .overlay { Capsule().strokeBorder(TavernPalette.brassLine, lineWidth: 1.4) }
+                } else {
+                    Text(item)
+                        .font(.system(size: chipSize * scale, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 8 * scale).padding(.vertical, 3 * scale)
+                        .background(MagicPalette.iron.opacity(0.9), in: Capsule())
+                        .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 1))
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -317,6 +333,21 @@ struct InspectorChipFlow: Layout {
                 x += item.size.width + spacing
             }
             y += height + spacing
+        }
+    }
+}
+
+/// The inspector's backing: solid charcoal, or on the tavern board leather in brass trim.
+private struct InspectorChrome: ViewModifier {
+    let tavern: Bool
+
+    func body(content: Content) -> some View {
+        if tavern && TavernUIKit.available {
+            content.modifier(TavernPanelChrome(tavern: true, cornerRadius: 12))
+        } else {
+            content
+                .background(CardInspector.backdrop, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(.cyan.opacity(0.35)))
         }
     }
 }

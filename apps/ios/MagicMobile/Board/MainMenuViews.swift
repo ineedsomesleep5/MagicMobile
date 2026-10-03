@@ -224,7 +224,8 @@ struct TavernMainMenu: View {
 /// to the real default.
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
-    static let defaultValue = "arena"
+    /// Walnut Tavern is the default board (2026-10-02); a saved choice is kept.
+    static let defaultValue = "tavern"
     static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
 }

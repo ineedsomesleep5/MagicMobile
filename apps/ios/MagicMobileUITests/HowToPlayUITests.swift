@@ -13,7 +13,7 @@ final class HowToPlayUITests: XCTestCase {
         app = XCUIApplication()
         // One private preference suite per test, kept across this test's relaunches.
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "--ondevice-setup-ui-test"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "--ondevice-setup-ui-test"]
     }
 
     override func tearDownWithError() throws {

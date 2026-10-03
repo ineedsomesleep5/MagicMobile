@@ -429,8 +429,204 @@ struct ArenaBattlefieldCard: View {
     @Environment(\.tavernBoard) private var tavern
 
     private var accent: Color {
-        card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold : legal ? MagicPalette.legalEmerald
+        card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold
+            : legal ? (tavernFrame ? Color(red: 1, green: 0.68, blue: 0.32) : MagicPalette.legalEmerald)
             : tavern ? Color(red: 0.36, green: 0.24, blue: 0.11) : .white.opacity(0.35)
+    }
+
+    /// Walnut Tavern with its kit installed: art only, in a carved walnut frame.
+    private var tavernFrame: Bool { tavern && TavernUIKit.available }
+
+    /// The tile wears its painted frame, whose ribbon and gems overhang the tile's edges.
+    private var framedTavern: Bool { tavernFrame && UIImage(named: TavernFrameKind(card).assetName) != nil }
+
+    /// The card's colours as a thin enamel line inside the frame: one colour, gold for
+    /// several, grey for none. Lands without a cost take their basic land types.
+    private var colorEdge: Color {
+        var colors = Set<String>()
+        let cost = card.card.manaCost?.uppercased() ?? ""
+        for symbol in ["W", "U", "B", "R", "G"] where cost.contains(symbol) { colors.insert(symbol) }
+        for color in card.card.tokenColors ?? [] {
+            switch color.lowercased() {
+            case "w", "white": colors.insert("W")
+            case "u", "blue": colors.insert("U")
+            case "b", "black": colors.insert("B")
+            case "r", "red": colors.insert("R")
+            case "g", "green": colors.insert("G")
+            default: break
+            }
+        }
+        if colors.isEmpty {
+            for (land, symbol) in [("Plains", "W"), ("Island", "U"), ("Swamp", "B"), ("Mountain", "R"), ("Forest", "G")]
+            where card.card.typeLine.localizedCaseInsensitiveContains(land) { colors.insert(symbol) }
+        }
+        if colors.count > 1 { return Color(red: 0.93, green: 0.74, blue: 0.32) }
+        switch colors.first {
+        case "W": return Color(red: 0.96, green: 0.92, blue: 0.78)
+        case "U": return Color(red: 0.25, green: 0.52, blue: 0.95)
+        case "B": return Color(red: 0.42, green: 0.30, blue: 0.48)
+        case "R": return Color(red: 0.86, green: 0.22, blue: 0.14)
+        case "G": return Color(red: 0.22, green: 0.66, blue: 0.30)
+        default: return Color(red: 0.62, green: 0.62, blue: 0.66)
+        }
+    }
+
+    /// The tavern tile (option B, Caleb 2026-10-02): the card's art in an arched frame of its
+    /// type (TavernFrameKind), its name on a parchment ribbon and power and toughness on hex
+    /// gems. Hand cards keep the printed card; only permanents wear a frame.
+    @ViewBuilder private var tavernFace: some View {
+        let kind = TavernFrameKind(card)
+        if let frame = UIImage(named: kind.assetName) {
+            framedFace(kind, frame: frame)
+        } else {
+            drawnTavernFace
+        }
+    }
+
+    private func framedFace(_ kind: TavernFrameKind, frame: UIImage) -> some View {
+        let window = kind.window
+        let ribbonWidth = width
+        let ribbonHeight = ribbonWidth * TavernCardParts.ribbonAspect
+        return ZStack(alignment: .topLeading) {
+            TavernArtCrop(card: card, zoneName: zoneName, tagReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
+                cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
+                .frame(width: width * window.width, height: height * window.height)
+                .offset(x: width * window.minX, y: height * window.minY)
+            Image(uiImage: frame).resizable().interpolation(.high)
+                .frame(width: width, height: height)
+                .allowsHitTesting(false)
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+        .overlay(alignment: .top) {
+            if kind.showsRibbon(card), let ribbon = TavernCardParts.ribbon {
+                ZStack {
+                    Image(uiImage: ribbon).resizable().interpolation(.high)
+                    Text(card.card.name)
+                        .font(.system(size: max(7.5, width * 0.105), weight: .bold, design: .serif))
+                        .foregroundStyle(Self.tavernInk)
+                        .lineLimit(1).minimumScaleFactor(0.55)
+                        .frame(width: ribbonWidth * 0.62)
+                        .offset(y: -ribbonHeight * 0.06)
+                }
+                .frame(width: ribbonWidth, height: ribbonHeight)
+                .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
+                .offset(y: height * TavernFrameKind.ribbonCenterY - ribbonHeight / 2)
+                .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showsFooter {
+                HStack(alignment: .bottom, spacing: 0) {
+                    if card.showsPowerToughness, let power = card.displayPower {
+                        hexGem(power, power: true)
+                    }
+                    Spacer(minLength: 0)
+                    if card.isCreature && card.summoningSickness == true {
+                        Image(systemName: "hourglass").font(.system(size: max(8, width * 0.12), weight: .bold))
+                            .foregroundStyle(Color(red: 1, green: 0.86, blue: 0.56))
+                            .shadow(color: .black, radius: 1)
+                            .padding(.bottom, height * 0.03)
+                    }
+                    Spacer(minLength: 0)
+                    if card.showsPowerToughness, let toughness = card.displayToughness {
+                        hexGem(toughness, power: false)
+                    }
+                }
+                .offset(y: width * 0.09)
+            }
+        }
+    }
+
+    /// A stat on a faceted hex gem in a brass bezel; drawn gems stand in while art is missing.
+    @ViewBuilder private func hexGem(_ value: String, power: Bool) -> some View {
+        let gemWidth = max(16, width * 0.27)
+        if let image = power ? TavernCardParts.powerGem : TavernCardParts.toughnessGem {
+            ZStack {
+                Image(uiImage: image).resizable().interpolation(.high)
+                Text(value)
+                    .font(.system(size: gemWidth * 0.52, weight: .black, design: .serif))
+                    .foregroundStyle(.white)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .shadow(color: .black, radius: 0.5)
+                    .shadow(color: .black.opacity(0.85), radius: 1.5, y: 1)
+                    .padding(.horizontal, gemWidth * 0.18)
+            }
+            .frame(width: gemWidth, height: gemWidth * TavernCardParts.gemAspect)
+            .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1)
+        } else {
+            statGem(value, color: power ? Color(red: 0.16, green: 0.36, blue: 0.72) : Color(red: 0.70, green: 0.12, blue: 0.08))
+        }
+    }
+
+    /// The drawn tavern tile, while the frame art is missing: art in a carved walnut frame with a
+    /// brass inner rim, the colour line, brass corner caps, a parchment nameplate and stat gems.
+    private var drawnTavernFace: some View {
+        let plateHeight = max(13, width * 0.19)
+        let cap = max(2.6, width * 0.045)
+        return ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(LinearGradient(colors: [Color(red: 0.32, green: 0.19, blue: 0.10), Color(red: 0.15, green: 0.085, blue: 0.045)],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.black.opacity(0.55), lineWidth: 1))
+            TavernArtCrop(card: card, zoneName: zoneName, tagReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
+                cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
+                .clipShape(RoundedRectangle(cornerRadius: 2.5))
+                .overlay(RoundedRectangle(cornerRadius: 2.5).strokeBorder(colorEdge, lineWidth: 1.5))
+                .overlay(RoundedRectangle(cornerRadius: 3.5).strokeBorder(TavernPalette.brassLine, lineWidth: 1.1).padding(-1.6))
+                .padding(4)
+            Text(card.card.name)
+                .font(.system(size: max(8, width * 0.115), weight: .semibold, design: .serif))
+                .foregroundStyle(Self.tavernInk)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .padding(.horizontal, 5)
+                .frame(maxWidth: .infinity)
+                .frame(height: plateHeight)
+                .background {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(LinearGradient(colors: [Color(red: 0.96, green: 0.90, blue: 0.76), Color(red: 0.83, green: 0.72, blue: 0.52)],
+                                             startPoint: .top, endPoint: .bottom))
+                }
+                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(TavernPalette.brassLine, lineWidth: 0.9))
+                .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
+                .padding(.horizontal, 6)
+                .padding(.top, 2)
+        }
+        .overlay(alignment: .topLeading) { brassCap(cap) }
+        .overlay(alignment: .topTrailing) { brassCap(cap) }
+        .overlay(alignment: .bottomLeading) { brassCap(cap) }
+        .overlay(alignment: .bottomTrailing) { brassCap(cap) }
+        .overlay(alignment: .bottom) {
+            if showsFooter {
+                HStack(spacing: 2) {
+                    if card.showsPowerToughness, let power = card.displayPower {
+                        statGem(power, color: Color(red: 0.16, green: 0.36, blue: 0.72))
+                    }
+                    Spacer(minLength: 0)
+                    if card.isCreature && card.summoningSickness == true {
+                        Image(systemName: "hourglass").font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(red: 1, green: 0.86, blue: 0.56))
+                            .shadow(color: .black, radius: 1)
+                    }
+                    Spacer(minLength: 0)
+                    if card.showsPowerToughness, let toughness = card.displayToughness {
+                        statGem(toughness, color: Color(red: 0.70, green: 0.12, blue: 0.08))
+                    }
+                }
+                .padding(.horizontal, 1)
+                .offset(y: 3)
+            }
+        }
+        .frame(width: width, height: height)
+    }
+
+    private func brassCap(_ radius: CGFloat) -> some View {
+        Circle()
+            .fill(RadialGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), Color(red: 0.62, green: 0.42, blue: 0.14),
+                                          Color(red: 0.32, green: 0.2, blue: 0.06)],
+                                 center: .init(x: 0.35, y: 0.3), startRadius: 0, endRadius: radius * 1.2))
+            .frame(width: radius * 2, height: radius * 2)
+            .padding(1.5)
+            .allowsHitTesting(false)
     }
 
     private static let tavernInk = Color(red: 0.17, green: 0.10, blue: 0.05)
@@ -448,6 +644,14 @@ struct ArenaBattlefieldCard: View {
     }
 
     private var isLegendary: Bool { card.card.typeLine.localizedCaseInsensitiveContains("legendary") }
+
+    /// Ability badges sit above the ribbon on a framed tile, above the gems on a drawn one.
+    private var tavernBadgeInset: CGFloat {
+        if framedTavern {
+            return height * (1 - TavernFrameKind.ribbonCenterY) + width * 0.13
+        }
+        return showsFooter ? max(17, width * 0.25) + 4 : 6
+    }
 
     /// Stats and summoning sickness need the footer. Tapped state is a badge over the art,
     /// so a tapped land keeps its art instead of trading it for an empty black strip.
@@ -477,6 +681,10 @@ struct ArenaBattlefieldCard: View {
     }
 
     var body: some View {
+        Group {
+        if tavernFrame {
+            tavernFace
+        } else {
         VStack(spacing: 0) {
             Text(card.card.name)
                 .font(.system(size: max(8, width * 0.115), weight: .semibold, design: .serif))
@@ -527,21 +735,26 @@ struct ArenaBattlefieldCard: View {
                 .padding(.horizontal, 4).frame(height: 20)
             }
         }
+        }
+        }
         .foregroundStyle(.white)
         .frame(width: width, height: height)
         .background {
-            if tavern {
+            if tavernFrame {
+                Color.clear
+            } else if tavern {
                 LinearGradient(colors: [Color(red: 0.93, green: 0.86, blue: 0.70), Color(red: 0.78, green: 0.67, blue: 0.48)],
                                startPoint: .top, endPoint: .bottom)
             } else {
                 Color(red: 0.07, green: 0.08, blue: 0.10)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: tavern ? 4 : 7))
+        .clipShape(RoundedRectangle(cornerRadius: framedTavern ? 0 : tavern ? 4 : 7).inset(by: framedTavern ? -width : 0))
         .shadow(color: .black.opacity(tavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
         .overlay(alignment: .bottomLeading) {
             BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
-                .padding(.leading, 2).padding(.bottom, showsFooter ? 22 : 2)
+                .padding(.leading, tavernFrame ? 5 : 2)
+                .padding(.bottom, tavernFrame ? tavernBadgeInset : (showsFooter ? 22 : 2))
                 .allowsHitTesting(false)
         }
         .overlay(alignment: .topLeading) {
@@ -572,10 +785,22 @@ struct ArenaBattlefieldCard: View {
                     .accessibilityHidden(true)
             }
         }
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1))
+        .overlay {
+            // A framed tile glows around its frame only while it is playable, a target or
+            // selected; the painted frame is its border otherwise.
+            if framedTavern {
+                if legal || targetable || selected {
+                    RoundedRectangle(cornerRadius: 6).stroke(accent, lineWidth: 2.5)
+                        .shadow(color: accent.opacity(0.9), radius: 4)
+                        .allowsHitTesting(false)
+                }
+            } else {
+                RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1)
+            }
+        }
         .overlay {
             // Legendary permanents wear a gold edge unless a play/target state owns the border.
-            if isLegendary && !(legal || targetable || selected) && !card.isPhasedOut {
+            if isLegendary && !framedTavern && !(legal || targetable || selected) && !card.isPhasedOut {
                 RoundedRectangle(cornerRadius: 7)
                     .strokeBorder(AngularGradient(colors: [MagicPalette.antiqueGold, Color(red: 1, green: 0.93, blue: 0.62),
                                                            Color(red: 0.62, green: 0.44, blue: 0.14), MagicPalette.antiqueGold],
@@ -722,5 +947,99 @@ struct CombatEdgeCluster: Identifiable {
             guard let ids = groups[key]?.sorted(), let first = ids.first, let anchor = clipped[first] else { return nil }
             return CombatEdgeCluster(id: key, point: anchor.point, cardIDs: ids)
         }
+    }
+}
+
+/// Which tavern frame a permanent wears (Caleb, 2026-10-02): creatures gold, creature tokens
+/// walnut, artifacts silver, enchantments rose-gold, lands stone. A creature of any other type
+/// (an artifact creature, an animated land) is framed as the creature it is now.
+enum TavernFrameKind: String, CaseIterable {
+    case creature, token, artifact, enchantment, land
+
+    init(_ card: ZoneCard) {
+        let identity = card.card
+        if card.isCreature {
+            self = identity.isToken == true || identity.typeLine.localizedCaseInsensitiveContains("token") ? .token : .creature
+        } else if identity.isLand {
+            self = .land
+        } else if identity.isArtifact {
+            self = .artifact
+        } else if identity.isEnchantment {
+            self = .enchantment
+        } else {
+            self = .creature
+        }
+    }
+
+    var assetName: String { "tavern-frame-\(rawValue)" }
+
+    /// The arched art window's bounding box in each frame image, as fractions of the tile
+    /// (printed by scripts/brand/card_frames.sh, widened 1% under the rim). The frame covers
+    /// the art outside the arch.
+    var window: CGRect {
+        switch self {
+        case .creature: CGRect(x: 0.078, y: 0.156, width: 0.847, height: 0.75)
+        case .token: CGRect(x: 0.087, y: 0.142, width: 0.835, height: 0.762)
+        case .artifact: CGRect(x: 0.093, y: 0.164, width: 0.829, height: 0.728)
+        case .enchantment: CGRect(x: 0.084, y: 0.17, width: 0.829, height: 0.733)
+        case .land: CGRect(x: 0.09, y: 0.15, width: 0.82, height: 0.756)
+        }
+    }
+
+    /// The name ribbon's centre, as a fraction of the tile height, across the art's lower part.
+    static let ribbonCenterY: CGFloat = 0.72
+
+    /// Basic lands are known by their art; every other permanent names itself on the ribbon.
+    func showsRibbon(_ card: ZoneCard) -> Bool {
+        self != .land || !card.card.typeLine.localizedCaseInsensitiveContains("basic")
+    }
+}
+
+/// The painted parts every framed tile shares (scripts/brand/card_frames.sh).
+enum TavernCardParts {
+    static let ribbon = UIImage(named: "tavern-card-ribbon")
+    static let powerGem = UIImage(named: "tavern-gem-power")
+    static let toughnessGem = UIImage(named: "tavern-gem-toughness")
+    static let ribbonAspect: CGFloat = 164.0 / 846.0
+    static let gemAspect: CGFloat = 306.0 / 266.0
+}
+
+/// Only a card's illustration: the card image scaled so its art box (on a modern frame, 85%
+/// of the width and 44% of the height, centred a third of the way down) fills the window.
+struct TavernArtCrop: View {
+    let card: ZoneCard
+    let zoneName: String
+    var tagReserve: CGFloat = 0
+    /// The card image is missing: its stand-in prints the name large, so the crop would show
+    /// stray letters. Show a quiet art stand-in instead (the nameplate still names it).
+    @State private var artMissing = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            let window = proxy.size
+            let ratio = BattlefieldLayoutMetrics.magicCardHeightToWidth
+            let cardWidth = max(window.width / 0.85, window.height / (0.44 * ratio))
+            let cardHeight = cardWidth * ratio
+            CardTile(card: card, selected: false, zoneName: zoneName, width: cardWidth, height: cardHeight,
+                     ignoreTappedRotation: true, tokenCopyTagTrailingReserve: tagReserve)
+                .frame(width: cardWidth, height: cardHeight)
+                .position(x: window.width / 2, y: window.height / 2 + (0.5 - 0.335) * cardHeight)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
+                .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
+            if artMissing {
+                ZStack {
+                    LinearGradient(colors: [Color(red: 0.20, green: 0.24, blue: 0.17), Color(red: 0.09, green: 0.10, blue: 0.08)],
+                                   startPoint: .top, endPoint: .bottom)
+                    Image(systemName: "sparkle")
+                        .font(.system(size: min(window.width, window.height) * 0.32, weight: .light))
+                        .foregroundStyle(BrandTheme.brassGradient)
+                        .opacity(0.7)
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .clipped()
     }
 }

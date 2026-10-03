@@ -150,13 +150,14 @@ struct PortraitOpponentStatusBar: View {
                     .tavernPosition(CGPoint(x: center.x - 110, y: center.y + 8), canvas: canvas, origin: origin)
                     TavernCardBackFan(count: opponent.zones.visibleHandCount)
                         .tavernPosition(CGPoint(x: center.x, y: center.y - 40), canvas: canvas, origin: origin)
-                    HStack(spacing: 0) {
-                        BoardPlayerEffects(player: opponent, attachments: BattlefieldAttachments.enchanting(playerID: opponent.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
-                        Button(action: openLog) { Image(systemName: "text.book.closed") }
-                            .buttonStyle(GameplayDockMenuButtonStyle())
-                            .accessibilityLabel("Game log")
-                    }
-                    .tavernPosition(CGPoint(x: center.x + 146, y: center.y + 4), canvas: canvas, origin: origin)
+                    // The step of the turn mirrors the nameplate; the log is in the controls menu.
+                    TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn,
+                                     width: canvas.tavernLength(118))
+                        .tavernPosition(CGPoint(x: center.x + 110, y: center.y + 8), canvas: canvas, origin: origin)
+                    // Counters, commander damage and attached cards are in the medallion's
+                    // pop-over; poison and the worst commander damage show here too.
+                    TavernStatusGlance(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot))
+                        .tavernPosition(CGPoint(x: center.x + 110, y: center.y + 46), canvas: canvas, origin: origin)
                     opponentMedallion(diameter: canvas.tavernLength(TavernDesign.opponentHoleRadius * 2))
                         .tavernPosition(center, canvas: canvas, origin: origin)
                 }
@@ -200,13 +201,11 @@ struct PortraitOpponentStatusBar: View {
             PlayerZoneMenu(
                 player: opponent, viewZone: viewZone,
                 customLabel: AnyView(medallion),
-                extraItems: opponents.count > 1 ? AnyView(ForEach(opponents) { player in
-                    TavernMenuItem(title: "View \(snapshot.playerLabel(player.playerId))",
-                                   systemImage: player.playerId == opponent.playerId ? "checkmark.circle.fill" : "person.fill") {
-                        selectOpponent?(player.playerId)
-                    }
-                }) : nil,
-                accessibilityOverride: (label, "board.zones.\(opponent.playerId)")
+                accessibilityOverride: (label, "board.zones.\(opponent.playerId)"),
+                menuArrowEdge: .top,
+                statusSnapshot: snapshot,
+                swapOpponents: opponents,
+                swap: selectOpponent
             )
         }
     }
