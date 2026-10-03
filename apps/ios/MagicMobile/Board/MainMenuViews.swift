@@ -25,91 +25,23 @@ struct TavernMainMenu: View {
         GeometryReader { proxy in
             let horizontal = proxy.size.width > proxy.size.height && !dynamicTypeSize.isAccessibilitySize
             let cardWidth = horizontal ? min(150, proxy.size.height * 0.36) : min(168, proxy.size.width * 0.41, proxy.size.height * 0.2)
-            let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 44)) : AnyLayout(VStackLayout(spacing: 14))
-            ScrollView(.vertical, showsIndicators: false) {
-                layout {
-                    VStack(spacing: 6) {
-                        if !horizontal { identity(compact: false) }
-                        HeroCommanderCard(name: commanderName, namespace: commanderNamespace, width: cardWidth)
-                        deckTile
+            Group {
+                if horizontal {
+                    // Landscape (Caleb, 2026-10-02): no scrolling, so the menu stays in place. Short
+                    // screens tighten the brand block; anything still too tall scales to fit.
+                    let density = proxy.size.height < 400 ? 2 : proxy.size.height < 470 ? 1 : 0
+                    FitsHeight(available: proxy.size.height) {
+                        menuLayout(horizontal: true, cardWidth: cardWidth, density: density, height: proxy.size.height)
                     }
-                    .frame(maxWidth: .infinity)
-                    VStack(alignment: .leading, spacing: 14) {
-                        if horizontal { identity(compact: true).padding(.bottom, 8) }
-                        Button {
-                            GameAudio.shared.play(.menuPlay)
-                            play()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "flame.fill")
-                                Text("Play Commander")
-                                    .multilineTextAlignment(.leading)
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.system(size: 15, weight: .heavy))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(BrandButtonStyle(kind: .primary))
-                        .accessibilityIdentifier("menu.play")
-                        Button {
-                            GameAudio.shared.play(.uiOpen)
-                            decks()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "rectangle.stack.fill")
-                                Text("Decks")
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(BrandButtonStyle(kind: .secondary))
-                        .accessibilityIdentifier("menu.decks")
-                        if let friends {
-                            Button {
-                                GameAudio.shared.play(.uiOpen)
-                                friends()
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "person.2.fill")
-                                    Text("Friends")
-                                    Spacer(minLength: 0)
-                                    if friendsBadge > 0 {
-                                        Text("\(friendsBadge)")
-                                            .font(.system(size: 13, weight: .black)).monospacedDigit()
-                                            .padding(.horizontal, 8).padding(.vertical, 2)
-                                            .background(BrandTheme.ember, in: Capsule())
-                                            .foregroundStyle(.white)
-                                    }
-                                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(BrandButtonStyle(kind: .secondary))
-                            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
-                            .accessibilityIdentifier("menu.friends")
-                        }
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 20) { utilityActions }
-                            HStack(spacing: 8) { utilityActions }
-                            HStack(spacing: 0) { utilityActions }
-                            VStack(alignment: .leading, spacing: 0) { utilityActions }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 6)
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        menuLayout(horizontal: false, cardWidth: cardWidth, density: 0, height: proxy.size.height)
                     }
-                    .frame(maxWidth: 400)
                 }
-                .padding(.horizontal, horizontal ? 36 : 26)
-                .padding(.vertical, horizontal ? 16 : 12)
-                .frame(maxWidth: 960, minHeight: proxy.size.height)
-                .frame(maxWidth: .infinity)
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared || reduceMotion ? 0 : 14)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 14)
         }
         .background(BrandBackdrop().ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -118,17 +50,106 @@ struct TavernMainMenu: View {
         }
     }
 
-    private func identity(compact: Bool) -> some View {
-        VStack(alignment: compact ? .leading : .center, spacing: 8) {
-            BrandMark(size: compact ? 52 : 64)
-            Text("MAGICMOBILE")
-                .font(.caption.weight(.heavy)).tracking(3)
-                .foregroundStyle(BrandTheme.inkSecondary)
-            Text("Your next\ngreat game.")
-                .brandTitle(compact ? 32 : 36)
+    /// The deck and commander beside (landscape) or above (portrait) the actions. `density`
+    /// 0 is the full layout; 1 and 2 tighten the brand block and spacing to fit a short screen.
+    private func menuLayout(horizontal: Bool, cardWidth: CGFloat, density: Int, height: CGFloat) -> some View {
+        let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 44)) : AnyLayout(VStackLayout(spacing: 14))
+        return layout {
+                VStack(spacing: 6) {
+                    if !horizontal { identity(compact: false, density: 0) }
+                    HeroCommanderCard(name: commanderName, namespace: commanderNamespace, width: cardWidth)
+                    deckTile
+                }
+                .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: density == 0 ? 14 : density == 1 ? 10 : 8) {
+                    if horizontal { identity(compact: true, density: density).padding(.bottom, density == 0 ? 8 : 2) }
+                    Button {
+                        GameAudio.shared.play(.menuPlay)
+                        play()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "flame.fill")
+                            Text("Play Commander")
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.system(size: 15, weight: .heavy))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(BrandButtonStyle(kind: .primary))
+                    .accessibilityIdentifier("menu.play")
+                    Button {
+                        GameAudio.shared.play(.uiOpen)
+                        decks()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "rectangle.stack.fill")
+                            Text("Decks")
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(BrandButtonStyle(kind: .secondary))
+                    .accessibilityIdentifier("menu.decks")
+                    if let friends {
+                        Button {
+                            GameAudio.shared.play(.uiOpen)
+                            friends()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.fill")
+                                Text("Friends")
+                                Spacer(minLength: 0)
+                                if friendsBadge > 0 {
+                                    Text("\(friendsBadge)")
+                                        .font(.system(size: 13, weight: .black)).monospacedDigit()
+                                        .padding(.horizontal, 8).padding(.vertical, 2)
+                                        .background(BrandTheme.ember, in: Capsule())
+                                        .foregroundStyle(.white)
+                                }
+                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(BrandButtonStyle(kind: .secondary))
+                        .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
+                        .accessibilityIdentifier("menu.friends")
+                    }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 20) { utilityActions }
+                        HStack(spacing: 8) { utilityActions }
+                        HStack(spacing: 0) { utilityActions }
+                        VStack(alignment: .leading, spacing: 0) { utilityActions }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 6)
+                }
+                .frame(maxWidth: 400)
+        }
+        .padding(.horizontal, horizontal ? 36 : 26)
+        .padding(.vertical, horizontal ? (density == 0 ? 16 : 8) : 12)
+        .frame(maxWidth: 960, minHeight: horizontal ? nil : height)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func identity(compact: Bool, density: Int) -> some View {
+        VStack(alignment: compact ? .leading : .center, spacing: density == 0 ? 8 : 5) {
+            BrandMark(size: compact ? (density == 0 ? 52 : density == 1 ? 42 : 34) : 64)
+            if density < 2 {
+                Text("MAGICMOBILE")
+                    .font(.caption.weight(.heavy)).tracking(3)
+                    .foregroundStyle(BrandTheme.inkSecondary)
+            }
+            // Tighter landscape layouts set the title on one line.
+            Text(density == 0 ? "Your next\ngreat game." : "Your next great game.")
+                .brandTitle(compact ? (density == 0 ? 32 : density == 1 ? 27 : 24) : 36)
                 .multilineTextAlignment(compact ? .leading : .center)
                 .fixedSize(horizontal: false, vertical: true)
-            if !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if density < 2, !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Welcome back, \(playerName)")
                     .font(.subheadline)
                     .foregroundStyle(BrandTheme.inkSecondary)
@@ -217,6 +238,30 @@ struct TavernMainMenu: View {
             .accessibilityIdentifier("menu.howToPlay")
         }
     }
+}
+
+/// Lays its content out at its natural height and scales it down only if that is taller than
+/// `available`, keeping it centred: a fixed screen that never scrolls.
+private struct FitsHeight<Content: View>: View {
+    let available: CGFloat
+    @ViewBuilder let content: Content
+    @State private var natural: CGFloat = 0
+
+    var body: some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: FitsHeightKey.self, value: geometry.size.height)
+            })
+            .onPreferenceChange(FitsHeightKey.self) { natural = $0 }
+            .scaleEffect(natural > available ? available / natural : 1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct FitsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// One spelling for each stored appearance, with a deliberate fallback. An unrecognised

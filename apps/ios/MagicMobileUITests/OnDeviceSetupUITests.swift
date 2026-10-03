@@ -85,6 +85,26 @@ final class OnDeviceSetupUITests: XCTestCase {
         waitFor(start, predicate: "enabled == true")
     }
 
+    /// Held sideways the main menu is a fixed screen: every action is on screen at once and
+    /// nothing scrolls (Caleb, 2026-10-02).
+    func testLandscapeMainMenuFitsWithoutScrolling() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let landscape = NSPredicate { [app] _, _ in (app?.frame.width ?? 0) > (app?.frame.height ?? 0) }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: landscape, object: nil)], timeout: 10), .completed)
+        let screen = app.frame
+        for id in ["menu.play", "menu.decks", "menu.settings", "menu.updates", "menu.downloads", "menu.howToPlay"] {
+            let control = app.buttons[id]
+            guard control.waitForExistence(timeout: 5) else { continue }
+            XCTAssertTrue(screen.contains(control.frame), "\(id) must be fully on screen without scrolling")
+        }
+        XCTAssertFalse(app.scrollViews.containing(.button, identifier: "menu.play").firstMatch.exists,
+                       "The landscape menu does not scroll")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "landscape-main-menu"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testPlayButtonWholeLabelRoutesToSetup() {
         for horizontal in [0.15, 0.5, 0.85] {
             let play = app.buttons["menu.play"]
