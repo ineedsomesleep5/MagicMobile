@@ -37,9 +37,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 
-/** An iOS `Toggle` with the switch style: label on the left, a 51×31 switch on the right. */
+/** An iOS `Toggle` with the switch style: label on the left, a 51×31 switch on the right (ember when on: TavernAppearance). */
 @Composable
-fun IosToggle(isOn: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, tint: Color = GameBoardTheme.emeraldPriority,
+fun IosToggle(isOn: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, tint: Color = TavernPalette.ember,
               label: @Composable RowScope.() -> Unit) {
     val track by animateColorAsState(if (isOn) tint else Color.White.copy(alpha = 0.16f), label = "toggleTrack")
     val knob by animateDpAsState(if (isOn) 22.dp else 2.dp, spring(0.8f, 600f), label = "toggleKnob")
@@ -54,17 +54,21 @@ fun IosToggle(isOn: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = M
     }
 }
 
-/** A `Picker(.segmented)`: dark capsule track, the selected segment raised. */
+/**
+ * A `Picker(.segmented)` dressed in Walnut & Ember like iOS TavernAppearance: a leather track, the selected segment
+ * ember with dark serif ink, the others parchment serif.
+ */
 @Composable
 fun <T> IosSegmented(options: List<T>, selected: T, onSelect: (T) -> Unit, title: (T) -> String, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().height(32.dp).background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(9.dp)).padding(2.dp),
+    Row(modifier.fillMaxWidth().height(32.dp).background(rgb(0.20, 0.12, 0.075), RoundedCornerShape(9.dp)).padding(2.dp),
         horizontalArrangement = Arrangement.spacedBy(0.dp)) {
         for (option in options) {
             val isSelected = option == selected
-            Box(Modifier.weight(1f).height(28.dp).background(if (isSelected) Color.White.copy(alpha = 0.28f) else Color.Transparent, RoundedCornerShape(7.dp))
+            Box(Modifier.weight(1f).height(28.dp).background(if (isSelected) rgb(1.0, 0.5, 0.35) else Color.Transparent, RoundedCornerShape(7.dp))
                 .clickable { onSelect(option) }.semantics { contentDescription = title(option); stateDescription = if (isSelected) "Selected" else "" },
                 contentAlignment = Alignment.Center) {
-                Text(title(option), color = Color.White, style = sf(13f, if (isSelected) SfWeight.semibold else SfWeight.medium), maxLines = 1)
+                Text(title(option), color = if (isSelected) rgb(0.16, 0.08, 0.04) else rgb(0.95, 0.90, 0.78),
+                    style = sf(13f, if (isSelected) SfWeight.bold else SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
             }
         }
     }
@@ -92,17 +96,18 @@ fun IosStepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Un
                color: Color = Color.White) {
     Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.45f), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), color = color, style = sf(17f))
-        Row(Modifier.size(94.dp, 32.dp).background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp)), verticalAlignment = Alignment.CenterVertically) {
+        // Two brass rings with a leather face (TavernAppearance's stepper buttons).
+        Row(Modifier.size(94.dp, 32.dp), horizontalArrangement = Arrangement.spacedBy(15.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
             val canDecrease = enabled && value > range.first
             val canIncrease = enabled && value < range.last
-            Box(Modifier.weight(1f).height(32.dp).clickable(enabled = canDecrease) { GameAudio.play(GameSound.UI_TICK); onChange(value - 1) }
-                .semantics { contentDescription = "Decrement $label" }, contentAlignment = Alignment.Center) {
-                SfImage("minus", Color.White.copy(alpha = if (canDecrease) 1f else 0.3f), 14.dp)
-            }
-            Box(Modifier.width(1.dp).height(18.dp).background(Color.White.copy(alpha = 0.2f)))
-            Box(Modifier.weight(1f).height(32.dp).clickable(enabled = canIncrease) { GameAudio.play(GameSound.UI_TICK); onChange(value + 1) }
-                .semantics { contentDescription = "Increment $label" }, contentAlignment = Alignment.Center) {
-                SfImage("plus", Color.White.copy(alpha = if (canIncrease) 1f else 0.3f), 14.dp)
+            for ((symbol, step) in listOf("minus" to -1, "plus" to 1)) {
+                val canStep = if (step < 0) canDecrease else canIncrease
+                Box(Modifier.size(30.dp).alpha(if (canStep) 1f else 0.4f).background(rgb(0.24, 0.14, 0.08), androidx.compose.foundation.shape.CircleShape)
+                    .border(2.5.dp, BrandTheme.brassGradient, androidx.compose.foundation.shape.CircleShape)
+                    .clickable(enabled = canStep) { GameAudio.play(GameSound.UI_TICK); onChange(value + step) }
+                    .semantics { contentDescription = (if (step < 0) "Decrement " else "Increment ") + label }, contentAlignment = Alignment.Center) {
+                    SfImage(symbol, rgb(1.0, 0.86, 0.52), 13.dp)
+                }
             }
         }
     }
@@ -145,7 +150,7 @@ fun IosTextField(value: String, onChange: (String) -> Unit, placeholder: String,
 fun IosSheetHeader(title: String, done: () -> Unit, modifier: Modifier = Modifier, doneTitle: String = "Done", leading: (@Composable () -> Unit)? = null) {
     Box(modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp)) {
         leading?.let { Box(Modifier.align(Alignment.CenterStart)) { it() } }
-        Text(title, Modifier.align(Alignment.Center), color = Color.White, style = sf(17f, SfWeight.semibold), maxLines = 1)
+        Text(title, Modifier.align(Alignment.Center), color = Color.White, style = sf(17f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
         Box(Modifier.align(Alignment.CenterEnd).defaultMinSize(minHeight = 36.dp).background(BrandTheme.ember, CircleShape)
             .clickable { GameAudio.play(GameSound.UI_CLOSE); done() }.padding(horizontal = 16.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center) {

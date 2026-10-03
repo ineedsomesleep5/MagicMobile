@@ -88,6 +88,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.tavernPanelChrome
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -204,7 +205,10 @@ fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
     }
 
     // Rules get their room first; CardInspectorFit shrinks the card, then the text (Swift CardInspectorLayout + ViewThatFits).
-    SubcomposeLayout(modifier.background(InspectorBackdrop, shape).border(1.dp, Color.Cyan.copy(alpha = 0.35f), shape).padding(9.dp)) { constraints ->
+    // The inspector's backing: solid charcoal, or on the tavern board leather in brass trim (InspectorChrome).
+    val chrome = if (io.magicmobile.android.ui.LocalTavernBoard.current) Modifier.tavernPanelChrome(true, 12.dp)
+        else Modifier.background(InspectorBackdrop, shape).border(1.dp, Color.Cyan.copy(alpha = 0.35f), shape)
+    SubcomposeLayout(modifier.then(chrome).padding(9.dp)) { constraints ->
         // Unbounded sides fall back to 320 × 480 (Swift replacingUnspecifiedDimensions).
         val widthPx = if (constraints.hasBoundedWidth) constraints.maxWidth else (320 * density).roundToInt()
         val heightPx = if (constraints.hasBoundedHeight) constraints.maxHeight else (480 * density).roundToInt()
@@ -242,9 +246,15 @@ private val InspectorBackdrop = rgb(0.07, 0.08, 0.10)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InspectorStateChips(items: List<String>, scale: Float = 1f) {
+    val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
     FlowRow(horizontalArrangement = Arrangement.spacedBy((6 * scale).dp), verticalArrangement = Arrangement.spacedBy((6 * scale).dp)) {
         for (item in items) {
-            FitText(item, sf(15f * scale, SfWeight.bold), Modifier.background(MagicPalette.iron.copy(alpha = 0.9f), CircleShape)
+            // On the tavern table: parchment tags in a thin brass rim.
+            if (tavern) FitText(item, sf(15f * scale, SfWeight.semibold, io.magicmobile.android.ui.SfDesign.SERIF),
+                Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.PARCHMENT, CircleShape)
+                    .border(1.4.dp, io.magicmobile.android.ui.TavernPalette.brassLine, CircleShape).padding(horizontal = (11 * scale).dp, vertical = (4 * scale).dp),
+                color = io.magicmobile.android.ui.TavernPalette.ink, minimumScale = 0.7f)
+            else FitText(item, sf(15f * scale, SfWeight.bold), Modifier.background(MagicPalette.iron.copy(alpha = 0.9f), CircleShape)
                 .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.55f), CircleShape).padding(horizontal = (8 * scale).dp, vertical = (3 * scale).dp),
                 color = MagicPalette.parchment, minimumScale = 0.7f)
         }
@@ -255,15 +265,20 @@ private fun InspectorStateChips(items: List<String>, scale: Float = 1f) {
 @Composable
 private fun InspectorAttachmentList(cards: List<ZoneCard>, scale: Float = 1f) {
     Column(verticalArrangement = Arrangement.spacedBy((6 * scale).dp)) {
-        Text(if (cards.size == 1) "ATTACHED" else "ATTACHED · ${cards.size}", color = MagicPalette.antiqueGold, style = sf(12f * scale, SfWeight.black, tracking = 1.2f))
+        val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
+        Text(if (cards.size == 1) "ATTACHED" else "ATTACHED · ${cards.size}",
+            style = if (tavern) sf(12f * scale, SfWeight.black, io.magicmobile.android.ui.SfDesign.SERIF, tracking = 1.2f).copy(brush = io.magicmobile.android.ui.BrandTheme.brassGradient)
+                else sf(12f * scale, SfWeight.black, tracking = 1.2f).copy(color = MagicPalette.antiqueGold))
         for (attachment in cards.take(4)) {
-            Row(Modifier.fillMaxWidth().background(MagicPalette.iron.copy(alpha = 0.85f), RoundedCornerShape(9.dp))
-                .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.35f), RoundedCornerShape(9.dp)).padding(7.dp),
+            Row(Modifier.fillMaxWidth().background(if (tavern) Color.Black.copy(alpha = 0.24f) else MagicPalette.iron.copy(alpha = 0.85f), RoundedCornerShape(9.dp))
+                .border(1.dp, if (tavern) io.magicmobile.android.ui.TavernPalette.brassLine else androidx.compose.ui.graphics.SolidColor(MagicPalette.antiqueGold.copy(alpha = 0.35f)),
+                    RoundedCornerShape(9.dp)).padding(7.dp),
                 horizontalArrangement = Arrangement.spacedBy((10 * scale).dp)) {
                 CardTile(attachment, false, zoneName = "Inspector attachment", width = (40 * scale).dp,
                     height = (40 * scale * BattlefieldLayoutMetrics.magicCardHeightToWidth).dp, ignoreTappedRotation = true)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(attachment.card.name, color = Color.White, style = sf(15f * scale, SfWeight.heavy))
+                    Text(attachment.card.name, color = if (tavern) io.magicmobile.android.ui.TavernPalette.parchment else Color.White,
+                        style = sf(15f * scale, SfWeight.heavy, if (tavern) io.magicmobile.android.ui.SfDesign.SERIF else io.magicmobile.android.ui.SfDesign.DEFAULT))
                     if (attachment.card.typeLine.isNotEmpty()) Text(attachment.card.typeLine, color = MagicPalette.parchment.copy(alpha = 0.7f), style = sf(12f * scale, SfWeight.semibold))
                     attachment.card.oracleText?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
                         GameRulesText(text, cardName = attachment.card.name, isHidden = !NativeCardArtworkPolicy.permitsLookup(attachment),
@@ -425,7 +440,7 @@ fun CompactZoneInspectorOverlay(title: String, cards: List<ZoneCard>, legalActio
                         val single = cardActions.singleOrNull()
                         if (single != null) PanelActionButton({ perform(single) }, Modifier.fillMaxWidth(), isPrimary = true, compact = true, enabled = pendingActionId == null) {
                             Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp), contentAlignment = Alignment.Center) {
-                                Text(LegalActionDisplay.displayLabel(single), color = Color.White, style = sf(12f, SfWeight.semibold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Text(LegalActionDisplay.displayLabel(single), color = androidx.compose.material3.LocalContentColor.current, style = sf(12f, SfWeight.semibold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
                         if (cardActions.size > 1) BoardMenu({ cardActions.map { action -> MenuEntry.Item(LegalActionDisplay.displayLabel(action)) { perform(action) } } },

@@ -55,6 +55,7 @@ import io.magicmobile.android.game.PromptEnvelopeV2
 import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.game.stringArrayValue
 import io.magicmobile.android.ui.MagicPalette
+import io.magicmobile.android.ui.tavernPanelChrome
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
@@ -257,7 +258,8 @@ fun BoardCardChoiceView(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendin
 
     @Composable
     fun closeButton() {
-        PressableBox(close, Modifier.size(44.dp).semantics { contentDescription = "Close card choices" }) { SfImage("xmark", rgb(0.04, 0.52, 1.0), 16.dp) }
+        if (io.magicmobile.android.ui.LocalTavernBoard.current) io.magicmobile.android.ui.TavernSealButton(close, contentDescription = "Close card choices")
+        else PressableBox(close, Modifier.size(44.dp).semantics { contentDescription = "Close card choices" }) { SfImage("xmark", rgb(0.04, 0.52, 1.0), 16.dp) }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)).clickable(enabled = false) {}, contentAlignment = Alignment.Center) {
@@ -313,8 +315,9 @@ fun BoardCardChoiceView(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendin
             }
         }
 
-        Column(Modifier.width(width.dp).height(panelHeight.dp).background(MagicPalette.iron, RoundedCornerShape(18.dp))
-            .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.6f), RoundedCornerShape(18.dp)).padding(if (keyboardCompact) 8.dp else 12.dp)
+        Column(Modifier.width(width.dp).height(panelHeight.dp)
+            .tavernPanelChrome(io.magicmobile.android.ui.LocalTavernBoard.current, 18.dp, MagicPalette.iron, MagicPalette.antiqueGold.copy(alpha = 0.6f))
+            .padding(if (keyboardCompact) 8.dp else 12.dp)
             .semantics { contentDescription = "Card choice dialog" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!keyboardCompact) Row(verticalAlignment = Alignment.Top) {
                 Box(Modifier.weight(1f).heightIn(min = 24.dp, max = headerLimit.dp).verticalScroll(rememberScrollState())) {
@@ -369,13 +372,17 @@ fun BoardCardChoiceView(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendin
                     val enabled = !((!draftActive && selected == null) || pendingActionId != null ||
                         (draftKind == CardChoicePlan.Kind.SELECTION && !draftCountIsValid) ||
                         ((draftKind == CardChoicePlan.Kind.TOP_ORDER || draftKind == CardChoicePlan.Kind.BOTTOM_ORDER) && draftIDs.size != selectableIDs.size))
-                    PanelActionButton(::confirmSelection, Modifier.weight(1f).semantics { contentDescription = "board.choice.confirm" }, isPrimary = true, enabled = enabled) {
+                    // On the tavern board the confirm button is the full-width ember plaque.
+                    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+                        io.magicmobile.android.ui.TavernButton(::confirmSelection, Modifier.weight(1f).semantics { contentDescription = "board.choice.confirm" },
+                            fullWidth = true, enabled = enabled) { io.magicmobile.android.ui.TavernButtonText(confirmTitle) }
+                    } else PanelActionButton(::confirmSelection, Modifier.weight(1f).semantics { contentDescription = "board.choice.confirm" }, isPrimary = true, enabled = enabled) {
                         Text(confirmTitle, color = Color.White, style = SfText.body(SfWeight.semibold))
                     }
                     if (!draftActive) {
                         (snapshot.legalActions ?: emptyList()).filter { it.promptId == prompt.id && it.type == "answer_yes_no" && it.confirmed == false }.forEach { action ->
                             PanelActionButton({ runAction(action) }, Modifier.weight(1f), enabled = pendingActionId == null) {
-                                Text(action.label, color = Color.White, style = SfText.body(SfWeight.semibold))
+                                Text(action.label, color = androidx.compose.material3.LocalContentColor.current, style = SfText.body(SfWeight.semibold))
                             }
                         }
                     }

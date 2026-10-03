@@ -77,18 +77,19 @@ import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
 
 /** DeckStudioDesignTokens.swift: a quiet ivory workspace lets real card artwork supply the colour. */
+/** Walnut & Ember's workbench: aged parchment pages in dark brown ink, so real card artwork still supplies the colour. */
 object DeckStudioPalette {
-    val background = rgb(0.94, 0.935, 0.91)
-    val surface = rgb(0.98, 0.976, 0.96)
-    val surfaceElevated = Color.White
-    val ink = rgb(0.13, 0.15, 0.15)
-    val secondaryInk = rgb(0.34, 0.36, 0.35)
-    // The menu's ember hue, darkened for readable text on ivory.
-    val accent = rgb(0.57, 0.25, 0.15)
-    val success = rgb(0.17, 0.36, 0.26)
-    val warning = rgb(0.48, 0.27, 0.07)
-    val danger = rgb(0.64, 0.15, 0.15)
-    val separator = rgb(0.83, 0.83, 0.81)
+    val background = rgb(0.87, 0.79, 0.64)
+    val surface = rgb(0.95, 0.90, 0.79)
+    val surfaceElevated = rgb(0.98, 0.95, 0.87)
+    val ink = rgb(0.20, 0.11, 0.05)
+    val secondaryInk = rgb(0.40, 0.29, 0.18)
+    // The menu's ember hue, darkened for readable text on parchment.
+    val accent = rgb(0.60, 0.23, 0.10)
+    val success = rgb(0.17, 0.36, 0.20)
+    val warning = rgb(0.50, 0.28, 0.06)
+    val danger = rgb(0.62, 0.13, 0.10)
+    val separator = rgb(0.74, 0.60, 0.38)
     /** The iOS system blue, for plain toolbar and link buttons in the light appearance. */
     val link = ink
 }
@@ -119,27 +120,15 @@ object StudioText {
 
 fun TextStyle.weight(weight: androidx.compose.ui.text.font.FontWeight): TextStyle = copy(fontWeight = weight)
 
-/** DeckStudioButtonStyle: ink capsule (primary) or white with a hairline (secondary). */
+/** DeckStudioButtonStyle in Walnut & Ember: riveted plaques, ember glass for the main action and leather for the rest. */
 @Composable
 fun StudioButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true, enabled: Boolean = true,
                  icon: String? = null, fillWidth: Boolean = false, compactText: Boolean = false) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.985f else 1f, tween(140), label = "studioPress")
-    val shape = RoundedCornerShape(DeckStudioMetrics.controlRadius)
-    val foreground = if (primary) Color.White else DeckStudioPalette.ink
-    Row(modifier.scale(scale).alpha(if (!enabled) 0.45f else if (pressed) 0.8f else 1f)
-        .defaultMinSize(minHeight = DeckStudioMetrics.controlHeight)
-        .background(if (primary) DeckStudioPalette.ink else DeckStudioPalette.surfaceElevated, shape)
-        .border(1.dp, if (primary) Color.Transparent else DeckStudioPalette.separator, shape)
-        .clip(shape)
-        .clickable(interaction, null, enabled = enabled, role = Role.Button) { GameAudio.play(GameSound.UI_TICK); onClick() }
-        .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-        icon?.let { SfImage(it, foreground, 17.dp) }
-        Text(title, color = foreground, style = if (compactText) StudioText.subheadline.weight(SfWeight.semibold) else StudioText.body.weight(SfWeight.semibold),
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (fillWidth) Spacer(Modifier.width(0.dp))
+    io.magicmobile.android.ui.TavernButton({ GameAudio.play(GameSound.UI_TICK); onClick() }, modifier.semantics { contentDescription = title },
+        if (primary) io.magicmobile.android.ui.TavernButtonKind.PRIMARY else io.magicmobile.android.ui.TavernButtonKind.SECONDARY,
+        fontSize = if (compactText) 14f else 15f, fullWidth = fillWidth, enabled = enabled) {
+        icon?.let { SfImage(it, androidx.compose.material3.LocalContentColor.current, 17.dp) }
+        io.magicmobile.android.ui.TavernButtonText(title)
     }
 }
 
@@ -322,9 +311,10 @@ fun DeckStudioArtworkInvitation(modifier: Modifier = Modifier) {
 @Composable
 fun NativeArtworkPreferenceRows() {
     val (remote, setRemote) = rememberArtworkConsent()
-    Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+    Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        StudioToggle("Scryfall live images", remote, setRemote)
+        io.magicmobile.android.ui.TavernToggle("Scryfall live images", remote, setRemote,
+            Modifier.semantics { contentDescription = "nativeArtwork.downloads" }, color = DeckStudioPalette.ink)
         Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         Text("Scryfall receives card names—including your hand—and your IP address.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
     }
@@ -333,7 +323,7 @@ fun NativeArtworkPreferenceRows() {
 /** An iOS switch in the light appearance: green track when on, light grey when off. */
 @Composable
 fun StudioToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-                 style: TextStyle = StudioText.body, tint: Color = rgb(0.2, 0.78, 0.35)) {
+                 style: TextStyle = StudioText.body, tint: Color = rgb(1.0, 0.5, 0.35)) {
     val track by animateColorAsState(if (isOn) tint else rgb(0.91, 0.91, 0.92), label = "studioToggle")
     val knob by animateDpAsState(if (isOn) 22.dp else 2.dp, spring(0.8f, 600f), label = "studioKnob")
     Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.45f)

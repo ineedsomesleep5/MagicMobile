@@ -712,7 +712,7 @@ fun TavernStepper(title: String, value: Int, range: IntRange, onChange: (Int) ->
             .tavernFill(TavernMaterial.LEATHER, CircleShape).border(2.5.dp, BrandTheme.brassGradient, CircleShape)
             .clickable(remember { MutableInteractionSource() }, null, enabled && canStep, role = Role.Button) { GameAudio.play(GameSound.UI_TICK); onChange(value + step) }
             .semantics { contentDescription = (if (step > 0) "Increase " else "Decrease ") + title }, contentAlignment = Alignment.Center) {
-            SfImage(symbol, BrandTheme.brass, 13.dp, Modifier.brushTint(BrandTheme.brassGradient))
+            SfImage(symbol, BrandTheme.brass, 13.dp)
         }
     }
     Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.5f).semantics { stateDescription = "$value" },
@@ -731,10 +731,10 @@ data class TavernPickerSection<T>(val title: String?, val options: List<Pair<Str
 /** TavernPicker: a recessed parchment slot (title in brass, the current choice in ink) that opens the tavern pop-over. */
 @Composable
 fun <T> TavernPicker(title: String, selection: T, sections: List<TavernPickerSection<T>>, onSelect: (T) -> Unit, modifier: Modifier = Modifier,
-                     showsTitle: Boolean = true) {
+                     showsTitle: Boolean = true, enabled: Boolean = true) {
     val current = sections.flatMap { it.options }.firstOrNull { it.second == selection }?.first ?: "Choose"
     val count = sections.sumOf { it.options.size + if (it.title == null) 0 else 1 }
-    TavernMenu(modifier.fillMaxWidth(), edge = TavernMenuEdge.BELOW, scrollHeight = if (count > 7) 420.dp else null,
+    TavernMenu(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f), edge = TavernMenuEdge.BELOW, enabled = enabled, scrollHeight = if (count > 7) 420.dp else null,
         contentDescription = "$title, $current", label = { pressed ->
             Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
                 .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(10.dp),
@@ -757,13 +757,23 @@ fun <T> TavernPicker(title: String, selection: T, sections: List<TavernPickerSec
     }
 }
 
-/** Deck Studio's accent on parchment (DeckStudioPalette.accent), the picker's brass ink. */
-val TavernPickerAccent = rgb(0.55, 0.32, 0.10)
+/** A text field as a recessed parchment slot in serif ink (TavernFieldChrome). */
+@Composable
+fun TavernTextField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, enabled: Boolean = true,
+                    singleLine: Boolean = true) {
+    androidx.compose.foundation.text.BasicTextField(value, onChange, modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.6f).tavernField(),
+        enabled = enabled, singleLine = singleLine, textStyle = tavernFieldTextStyle,
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(TavernPalette.ink),
+        decorationBox = { inner ->
+            Box(Modifier.defaultMinSize(minHeight = 40.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) Text(placeholder, color = TavernPalette.ink.copy(alpha = 0.5f), style = tavernFieldTextStyle)
+                inner()
+            }
+        })
+}
 
-/** Tints drawn content with a brush (an icon in a brass gradient). */
-fun Modifier.brushTint(brush: Brush): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent { drawContent(); drawRect(brush, blendMode = BlendMode.SrcIn) }
+/** Deck Studio's accent on parchment (DeckStudioPalette.accent), the picker's brass ink. */
+val TavernPickerAccent = rgb(0.60, 0.23, 0.10)
 
 /** A spacer that takes the remaining width of a row. */
 @Composable

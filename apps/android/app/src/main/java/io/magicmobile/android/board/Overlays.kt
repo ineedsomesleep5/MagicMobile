@@ -96,6 +96,7 @@ import io.magicmobile.android.ui.rememberAnimationSeconds
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.R
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernPanelChrome
 import io.magicmobile.android.ui.LocalTavernBoard
 import io.magicmobile.android.ui.TavernMaterial
 import io.magicmobile.android.ui.TavernTag
@@ -288,8 +289,9 @@ fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame:
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)))
         GameResultBackdrop(isVictory)
         Column(Modifier.padding(horizontal = 20.dp).widthIn(max = 420.dp).glow(Color.Black.copy(alpha = 0.48f), 18.dp, 16.dp)
-            .background(MagicPalette.iron.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
-            .border(1.5.dp, (if (isVictory) MagicPalette.antiqueGold else rgb(0.6, 0.2, 0.18)).copy(alpha = 0.8f), RoundedCornerShape(16.dp)).padding(24.dp),
+            // Leather in brass trim on the tavern board (TavernPanelChrome); iron with a victory or defeat edge otherwise.
+            .tavernPanelChrome(io.magicmobile.android.ui.LocalTavernBoard.current, 16.dp, MagicPalette.iron.copy(alpha = 0.9f),
+                (if (isVictory) MagicPalette.antiqueGold else rgb(0.6, 0.2, 0.18)).copy(alpha = 0.8f)).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.glow((if (isVictory) MagicPalette.antiqueGold else Color.Red).copy(alpha = 0.6f), 12.dp, 20.dp)) {
                 SfImage(if (isVictory) "trophy.fill" else "flag.checkered", if (isVictory) MagicPalette.antiqueGold else defeatRed, 44.dp)
@@ -479,8 +481,10 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
         BattlefieldSurface(Modifier.matchParentSize())
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Game Menu", Modifier.weight(1f), color = Color.White, style = sf(22f, SfWeight.black, SfDesign.ROUNDED))
-                IosTextButton("Done", dismiss, Modifier.semantics { contentDescription = "board.menu.done" }, color = MagicPalette.antiqueGold, bold = true)
+                io.magicmobile.android.ui.TavernPanelTitle("Game Menu", Modifier.weight(1f, fill = false))
+                Spacer(Modifier.weight(1f))
+                io.magicmobile.android.ui.TavernPlaqueButton("Done", dismiss, Modifier.semantics { contentDescription = "board.menu.done" },
+                    kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY)
             }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp).semantics { contentDescription = "board.menu.scroll" },
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -489,7 +493,7 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 FollowTurnsToggle()
                 BoardEffectsPicker()
                 CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
-                    SfImage("questionmark.circle", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
+                    SfImage("questionmark.circle", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
                 }
                 if (snapshot.isSpectating) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     SfImage("eye.fill", MagicPalette.parchment.copy(alpha = 0.8f), 12.dp)
@@ -498,17 +502,17 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CompactActionButton({ confirmingConcede = true }, Modifier.weight(1f).semantics { contentDescription = "board.menu.concede" }, isDanger = true, enabled = canConcede) {
-                        SfImage("flag.fill", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Concede")
+                        SfImage("flag.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Concede")
                     }
                     CompactActionButton(confirmStartNew, Modifier.weight(1f), isPrimary = true) {
-                        SfImage("arrow.clockwise", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Start New", true)
+                        SfImage("arrow.clockwise", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Start New", true)
                     }
                     CompactActionButton(confirmQuit, Modifier.weight(1f).semantics { contentDescription = "board.menu.quit" }) {
-                        SfImage("rectangle.portrait.and.arrow.right", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Quit")
+                        SfImage("rectangle.portrait.and.arrow.right", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Quit")
                     }
                 }
                 CompactActionButton(openPromptInspector, Modifier.fillMaxWidth()) {
-                    SfImage("ladybug.fill", Color.White, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")
+                    SfImage("ladybug.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")
                 }
             }
         }

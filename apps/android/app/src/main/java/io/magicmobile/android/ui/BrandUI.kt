@@ -303,7 +303,7 @@ fun BrandIconButton(title: String, systemImage: String, action: () -> Unit, modi
                 .tavernFill(TavernMaterial.LEATHER, CircleShape)
                 .border(3.dp, BrandTheme.brassGradient, CircleShape)
                 .padding(3.dp).border(1.dp, Color.Black.copy(alpha = 0.35f), CircleShape), contentAlignment = Alignment.Center) {
-                SfImage(systemImage, BrandTheme.brass, 18.dp, Modifier.brushTint(BrandTheme.brassGradient))
+                SfImage(systemImage, BrandTheme.brass, 18.dp)
             }
             Text(title, color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
         }
