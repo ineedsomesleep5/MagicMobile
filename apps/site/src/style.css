@@ -1,15 +1,54 @@
 @import url("/scrollcraft/scrollcraft.css");
+/* Walnut & Ember: the app's brand (apps/ios/MagicMobile/BrandUI.swift and TavernPalette in
+   Board/BoardChrome.swift). Carved walnut, tooled leather, brass trim, parchment, ember. */
 :root {
-  --sc-canvas: #141518;
-  --sc-surface: #202125;
-  --sc-ink: #f3f1ec;
-  --sc-ink-soft: #b5b5af;
-  --sc-accent: #ff8058;
-  --sc-accent-ink: #191513;
-  --sc-font-display: "Archivo Variable", sans-serif;
-  --sc-font-text: "Manrope Variable", sans-serif;
+  --walnut: #1b120b;
+  --walnut-deep: #110a05;
+  --leather: #29140b;
+  --leather-raised: #3a2416;
+  --enamel: #6b120d;
+  --brass: #dba34d;
+  --brass-light: #ffe08f;
+  --brass-dark: #5c3814;
+  --ember: #ff8058;
+  --ember-light: #ff9d7e;
+  --parchment: #f2e0bd;
+  --parchment-ink: #f3e6c8;
+  --parchment-soft: #cfb994;
+  --ink: #2b1a0d;
+  --ink-soft: #5b3d22;
+  --plaque-ink: #ffe8a8;
+  --hairline: rgba(219, 163, 77, 0.34);
+  --gild: linear-gradient(180deg, #ffe7a6 0%, #f2c46e 36%, #d0943d 70%, #a9692a 100%);
+  --tex-walnut: url("/tavern/walnut.webp");
+  --tex-leather: url("/tavern/leather.webp");
+  --tex-parchment: url("/tavern/parchment.webp");
+  --tex-ember: url("/tavern/ember.webp");
+  /* Brass parts rendered at 3 px per point, sliced like the app's cap insets. */
+  --rim: url("/tavern/capsule.webp") 63 66 / 21px 22px / 0 round stretch;
+  --rim-thin: url("/tavern/capsule-thin.webp") 30 33 / 10px 11px / 0 stretch;
+  --frame: url("/tavern/frame.webp") 72 / 24px / 0 stretch;
+  --frame-small: url("/tavern/frame.webp") 72 / 12px / 0 stretch;
+  --leather-fill: linear-gradient(180deg, rgba(255, 226, 170, 0.1), rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.34)),
+    var(--tex-leather) center / 171px, var(--leather);
+  --ember-fill: linear-gradient(180deg, rgba(255, 214, 160, 0.26), rgba(255, 160, 100, 0) 40%, rgba(70, 8, 0, 0.4)),
+    var(--tex-ember) center / 100% 100%, var(--enamel);
+  --parchment-fill: radial-gradient(120% 90% at 50% 0%, rgba(255, 250, 235, 0.32), transparent 62%),
+    linear-gradient(transparent 55%, rgba(120, 72, 24, 0.16)), var(--tex-parchment) 0 0 / 256px, var(--parchment);
+  --walnut-fill: var(--tex-walnut) 0 0 / 340px, var(--walnut);
+
+  --sc-canvas: var(--walnut);
+  --sc-surface: var(--leather);
+  --sc-ink: var(--parchment-ink);
+  --sc-ink-soft: var(--parchment-soft);
+  --sc-accent: var(--ember);
+  --sc-accent-ink: #221713;
+  --sc-shadow-color: 24 60% 3%;
+  --sc-font-display: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+  --sc-font-text: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
   font-family: var(--sc-font-text);
-  background: var(--sc-canvas);
+  font-optical-sizing: auto;
+  background: var(--walnut);
   color: var(--sc-ink);
   font-synthesis: none;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -23,6 +62,7 @@ html {
 }
 body {
   margin: 0;
+  background: linear-gradient(rgba(17, 10, 5, 0.7), rgba(17, 10, 5, 0.7)), var(--walnut-fill);
 }
 a {
   color: inherit;
@@ -43,8 +83,8 @@ a:active {
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #ff8058;
-  outline-offset: 6px;
+  outline: 3px solid var(--ember);
+  outline-offset: 5px;
 }
 img {
   display: block;
@@ -62,11 +102,27 @@ h1,
 h2,
 h3 {
   font-family: var(--sc-font-display);
-  font-weight: 850;
-  letter-spacing: -0.06em;
-  line-height: 0.94;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  line-height: 0.98;
   text-wrap: balance;
-  word-spacing: 0.09em;
+  color: var(--parchment-ink);
+  text-shadow:
+    0 2px 0 rgba(28, 13, 4, 0.5),
+    0 14px 40px rgba(0, 0, 0, 0.5);
+}
+/* Accent words are gilded, like the app's engraved panel titles. */
+h1 span,
+h2 span {
+  display: inline-block;
+  padding-bottom: 0.08em;
+  margin-bottom: -0.08em;
+  background: var(--gild);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 2px 0 rgba(43, 22, 6, 0.75)) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45));
 }
 p {
   line-height: 1.6;
@@ -76,28 +132,121 @@ svg {
   flex-shrink: 0;
 }
 ::selection {
-  color: #141518;
-  background: #ff8058;
+  color: var(--walnut);
+  background: var(--ember);
+}
+.sparkle {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--brass);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.4;
 }
 .skip {
   position: fixed;
   left: 16px;
   top: -80px;
-  padding: 12px;
-  background: #ff8058;
-  color: #141518;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: linear-gradient(rgba(60, 8, 0, 0.3), rgba(60, 8, 0, 0.3)), var(--ember-fill);
+  color: var(--plaque-ink);
+  font-weight: 700;
   z-index: 100;
 }
 .skip:focus {
   top: 16px;
 }
+
+/* ---- Plaques: riveted brass rim over leather, or ember glass for the call to action ---- */
+.plaque,
+.platform-picker button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 26px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--parchment);
+  font-family: var(--sc-font-display);
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 4px 10px rgba(8, 3, 0, 0.45);
+  transition:
+    filter 0.15s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+.plaque::before,
+.platform-picker button::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  border-radius: 19px;
+  background: var(--leather-fill);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 225, 170, 0.14),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.35);
+}
+.plaque::after,
+.platform-picker button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 21px 22px;
+  border-image: var(--rim);
+  pointer-events: none;
+}
+.plaque-ember {
+  color: var(--plaque-ink);
+  box-shadow:
+    0 2px 22px rgba(255, 128, 88, 0.42),
+    0 5px 12px rgba(8, 3, 0, 0.45);
+}
+.plaque-ember::before {
+  background:
+    linear-gradient(105deg, transparent 42%, rgba(255, 238, 200, 0.32) 50%, transparent 58%) 160% 0 / 250% 100% no-repeat,
+    var(--ember-fill);
+}
+.plaque-thin {
+  min-height: 44px;
+  padding: 8px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  gap: 8px;
+  box-shadow: 0 3px 8px rgba(8, 3, 0, 0.4);
+}
+.plaque-thin::before {
+  inset: 2px;
+  border-radius: 10px;
+}
+.plaque-thin::after {
+  border-width: 10px 11px;
+  border-image: var(--rim-thin);
+}
+
 .masthead {
   position: absolute;
   z-index: 20;
   top: 0;
   left: 0;
   width: 100%;
-  padding: 28px 4vw;
+  padding: 26px 4vw;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -106,48 +255,74 @@ svg {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.045em;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 .brand img {
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px rgba(219, 163, 77, 0.6),
+    0 6px 16px rgba(0, 0, 0, 0.55);
 }
-.header-download {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  font-weight: 700;
+.brand span {
+  background: var(--gild);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(20, 8, 2, 0.8));
 }
 .destination-dock {
   position: fixed;
   z-index: 25;
-  bottom: 20px;
+  bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   gap: 4px;
-  padding: 6px;
-  background: #27282cf5;
-  border: 1px solid #45464a;
-  border-radius: 6px;
-  box-shadow: 0 12px 32px #08090b55;
+  padding: 9px;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.32)),
+    var(--tex-leather) center / 171px,
+    var(--leather);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(5, 2, 0, 0.6);
+}
+.destination-dock::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 12px solid transparent;
+  border-image: var(--frame-small);
+  pointer-events: none;
 }
 .destination-dock a {
-  padding: 12px 20px;
-  font-size: 12px;
+  position: relative;
+  z-index: 1;
+  min-height: 44px;
+  padding: 10px 18px;
+  font-size: 14px;
   font-weight: 650;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   white-space: nowrap;
-  border-radius: 3px;
+  border-radius: 8px;
+  color: var(--parchment);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
 }
-.destination-dock a:last-child {
-  background: var(--sc-accent);
-  color: #191513;
+.destination-dock .dock-download {
+  background: linear-gradient(rgba(60, 8, 0, 0.3), rgba(60, 8, 0, 0.3)), var(--ember-fill);
+  color: var(--plaque-ink);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 214, 140, 0.55),
+    0 0 14px rgba(255, 128, 88, 0.35);
 }
+
+/* ---- The opening hand, by candlelight ---- */
 .opening {
   min-height: 180svh;
 }
@@ -155,30 +330,57 @@ svg {
   height: 100svh;
   min-height: 630px;
   overflow: hidden;
-  background: #141518;
+  background:
+    radial-gradient(120% 60% at 50% 108%, rgba(255, 128, 88, 0.3), rgba(167, 68, 41, 0.12) 45%, transparent 70%),
+    radial-gradient(95% 75% at 50% 45%, transparent 40%, rgba(8, 4, 2, 0.78) 100%),
+    linear-gradient(180deg, rgba(17, 10, 5, 0.6) 0%, rgba(17, 10, 5, 0.22) 38%, rgba(17, 10, 5, 0.7) 100%),
+    url("/tavern/backdrop.webp") center 42% / cover no-repeat,
+    var(--walnut);
+}
+.embers {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.embers i {
+  position: absolute;
+  bottom: -12px;
+  left: var(--x);
+  width: var(--s, 3px);
+  height: var(--s, 3px);
+  border-radius: 50%;
+  background: var(--ember-light);
+  box-shadow: 0 0 8px 2px rgba(255, 128, 88, 0.55);
+  opacity: 0;
 }
 .hero-type {
   position: absolute;
-  top: 15%;
+  top: 13%;
   left: 4vw;
   right: 4vw;
   z-index: 1;
   text-align: center;
 }
 .hero-type h1 {
-  font-size: clamp(84px, 12.8vw, 205px);
-  line-height: 0.86;
-  font-stretch: 88%;
-  letter-spacing: -0.075em;
-}
-.hero-type h1 span {
-  color: #ff8058;
+  font-size: clamp(76px, 11.4vw, 184px);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.035em;
 }
 .hand-stage {
   position: absolute;
   z-index: 2;
   inset: 23% 1% 8%;
   pointer-events: none;
+}
+.hand-stage::before {
+  content: "";
+  position: absolute;
+  inset: 8% 18% 0;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(255, 128, 88, 0.24), rgba(255, 128, 88, 0.08) 55%, transparent);
 }
 .hand-stage button,
 .hand-stage canvas {
@@ -187,33 +389,26 @@ svg {
 .hero-bottom {
   position: absolute;
   z-index: 5;
-  bottom: 92px;
+  bottom: 96px;
   left: 4vw;
   right: 4vw;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  gap: 24px;
 }
 .hero-bottom p {
-  font-size: 14px;
-  color: #c6c5bf;
+  font-size: 16px;
+  color: var(--parchment-soft);
   line-height: 1.45;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 .hero-downloads {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 .hero-downloads a {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 12px 16px;
-  background: #25262b;
-  border: 1px solid #48494d;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 16px;
 }
 .loading-card {
   position: absolute;
@@ -223,38 +418,52 @@ svg {
   transform: translate(-50%, -50%) rotate(-10deg);
   border-radius: 10px;
 }
+
+/* ---- Invitation ---- */
 .invitation {
-  background: #141518;
-  padding: 72px 8vw 112px;
+  position: relative;
+  background: linear-gradient(180deg, rgba(10, 6, 3, 0.9), rgba(17, 10, 5, 0.55) 34%, rgba(17, 10, 5, 0.72)), var(--walnut-fill);
+  padding: 84px 8vw 120px;
+}
+.invitation::before,
+.download::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--brass) 20%, #f3c873 50%, var(--brass) 80%, transparent);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
 .invitation-inner {
   max-width: 1100px;
   margin: auto;
 }
 .invitation p {
-  color: #babbb5;
-  font-size: 14px;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 .invitation h2 {
-  font-size: clamp(42px, 6.6vw, 94px);
+  font-size: clamp(44px, 6.4vw, 96px);
   font-weight: 700;
-  line-height: 1.03;
-  letter-spacing: -0.055em;
+  line-height: 1.04;
+  letter-spacing: -0.03em;
 }
-.invitation h2 span {
-  color: #ff8058;
-}
+
+/* ---- Deal into the app: cards land on the leather table ---- */
 .app-reveal {
   min-height: 280svh;
-  background: #e9e8e2;
-  color: #191a1d;
+  background: var(--walnut-deep);
 }
 .app-reveal-stage {
   height: 100svh;
   min-height: 680px;
   overflow: hidden;
-  background: #e9e8e2;
+  background:
+    radial-gradient(85% 75% at 50% 50%, transparent 42%, rgba(10, 5, 2, 0.72) 100%),
+    linear-gradient(rgba(22, 11, 4, 0.36), rgba(22, 11, 4, 0.36)),
+    url("/tavern/table-landscape.webp") center / cover no-repeat,
+    var(--leather);
 }
 .reveal-title {
   position: absolute;
@@ -263,12 +472,9 @@ svg {
   z-index: 4;
 }
 .reveal-title h2 {
-  font-size: clamp(58px, 5.5vw, 88px);
-  line-height: 0.96;
+  font-size: clamp(54px, 5.4vw, 86px);
+  line-height: 0.98;
   max-width: 20ch;
-}
-.reveal-title h2 span {
-  color: #a74429;
 }
 .deal-table {
   position: absolute;
@@ -279,18 +485,18 @@ svg {
 .dealt-card {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 52%;
   width: clamp(150px, 17vw, 240px);
   height: auto;
   border-radius: 10px;
-  box-shadow: 0 25px 35px #22222035;
+  box-shadow: 0 25px 35px rgba(10, 4, 0, 0.55);
   --g: clamp(0, calc(var(--sc-p, 0) * 2.7), 1);
   opacity: calc(1 - clamp(0, calc((var(--sc-p, 0) - 0.25) * 4), 1));
   transform: translate(
       calc(-50% + var(--x) * (1 - var(--g))),
       calc(-50% + var(--y) * (1 - var(--g)))
     )
-    rotate(calc(var(--r) * (1 - var(--g)))) scale(calc(1 - var(--g) * 0.15));
+    rotate(calc(var(--r) * (1 - var(--g)))) scale(calc(1 - var(--g) * 0.32));
 }
 .dealt-card-0 {
   --x: -360px;
@@ -317,50 +523,83 @@ svg {
   --y: 100px;
   --r: 28deg;
 }
+/* The app reveal shows the landscape main menu, so the phone turns sideways. */
 .reveal-phone-wrap {
   position: absolute;
   z-index: 2;
   left: 50%;
-  top: 50%;
+  top: 52%;
   transform: translate(-50%, -50%)
-    rotate(calc((1 - clamp(0, calc(var(--sc-p, 0) * 1.6), 1)) * 12deg));
-  width: clamp(220px, 24vw, 310px);
+    rotate(calc((1 - clamp(0, calc(var(--sc-p, 0) * 1.6), 1)) * -8deg));
+  width: clamp(300px, 38vw, 560px);
 }
+.gameplay-phone,
+.table-frame {
+  background: #0d0805;
+  box-shadow:
+    0 0 0 1.5px rgba(219, 163, 77, 0.7),
+    0 0 0 5px rgba(13, 8, 5, 0.55),
+    0 32px 65px rgba(5, 2, 0, 0.62),
+    0 0 70px rgba(255, 128, 88, 0.14);
+}
+/* The reveal clips the phone to its own box, which would cut an outer shadow, so the brass
+   line is a border and the shadow sits on the wrapper, fading in with the reveal. */
 .reveal-phone {
-  padding: 8px;
-  background: #191a1d;
-  border-radius: 39px;
-  box-shadow: 0 32px 65px #2a2b2438;
+  padding: 7px;
+  border: 1.5px solid rgba(219, 163, 77, 0.7);
+  border-radius: 32px;
+  background: #0d0805;
+}
+.reveal-phone-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 32px;
+  box-shadow:
+    0 32px 65px rgba(5, 2, 0, 0.62),
+    0 0 70px rgba(255, 128, 88, 0.14);
+  opacity: clamp(0, calc((var(--sc-p, 0) - 0.3) * 3.6), 1);
 }
 .reveal-phone img {
   width: 100%;
   height: auto;
-  border-radius: 31px;
+  border-radius: 25px;
 }
 .reveal-caption {
   position: absolute;
-  left: calc(50% + 220px);
-  top: 36%;
+  left: calc(50% + clamp(150px, 19vw, 280px) + 32px);
+  top: 37%;
   z-index: 4;
-  max-width: 340px;
+  max-width: min(330px, calc(50% - clamp(150px, 19vw, 280px) - 32px - 4vw));
 }
 .reveal-caption h3 {
-  font-size: clamp(40px, 5vw, 72px);
+  font-size: clamp(40px, 4.4vw, 66px);
   line-height: 1;
 }
 .reveal-caption p {
-  margin-top: 24px;
-  font-size: 15px;
-  color: #4b514a;
+  margin-top: 22px;
+  font-size: 17px;
+  color: var(--parchment-soft);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 .reveal-caption span {
   display: block;
-  margin-top: 28px;
-  font-size: 11px;
-  color: #565b55;
+  margin-top: 24px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
+
+/* ---- Gameplay on the walnut table ---- */
 .gameplay {
-  background: #25262a;
+  position: relative;
+  background:
+    radial-gradient(60% 55% at 78% 42%, rgba(255, 128, 88, 0.12), transparent 70%),
+    linear-gradient(rgba(17, 10, 5, 0.5), rgba(17, 10, 5, 0.78)),
+    var(--walnut-fill);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6vw;
@@ -369,41 +608,58 @@ svg {
   overflow: hidden;
 }
 .section-label {
-  font-size: 13px;
-  color: #bfc0b9;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 .gameplay h2 {
-  font-size: clamp(42px, 5.7vw, 86px);
+  font-size: clamp(44px, 5.7vw, 86px);
   line-height: 1;
-}
-.gameplay h2 span {
-  color: #ff8058;
 }
 .gameplay-copy > p:not(.section-label) {
   max-width: 44ch;
-  font-size: 15px;
-  color: #c3c4bd;
+  font-size: 18px;
+  color: var(--parchment-soft);
   margin-top: 30px;
 }
+/* A parchment card in brass trim, like the app's "Choose mode" rows. */
 .capability-ledger {
+  position: relative;
   margin-top: 44px;
-  border-top: 1px solid #515258;
+  padding: 18px 36px;
+  border-radius: 12px;
+  background: var(--parchment-fill);
+  color: var(--ink);
+  box-shadow:
+    0 22px 44px rgba(5, 2, 0, 0.5),
+    inset 0 0 36px rgba(110, 64, 18, 0.3);
+}
+.capability-ledger::after,
+.platform-detail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 24px solid transparent;
+  border-image: var(--frame);
+  pointer-events: none;
 }
 .capability-ledger > div {
   display: grid;
-  grid-template-columns: 80px 1fr;
-  gap: 20px;
-  padding: 24px 0;
-  border-bottom: 1px solid #515258;
+  grid-template-columns: 76px 1fr;
+  gap: 18px;
+  padding: 20px 0;
+}
+.capability-ledger > div + div {
+  border-top: 1px solid rgba(92, 56, 20, 0.35);
 }
 .capability-ledger span {
-  font-size: 18px;
-  font-weight: 750;
+  font-size: 20px;
+  font-weight: 760;
+  color: var(--enamel);
+  line-height: 1.4;
 }
 .capability-ledger p {
-  font-size: 13px;
-  color: #c3c4bd;
+  font-size: 16px;
+  color: var(--ink-soft);
+  line-height: 1.55;
 }
 .gameplay-image {
   position: relative;
@@ -415,97 +671,136 @@ svg {
 .gameplay-ground {
   position: absolute;
   z-index: -1;
-  font: 850 clamp(140px, 20vw, 310px) / 1 var(--sc-font-display);
-  color: #3d3e44;
-  letter-spacing: -0.09em;
+  font: 800 clamp(140px, 19vw, 300px) / 1 var(--sc-font-display);
+  color: rgba(219, 163, 77, 0.05);
+  -webkit-text-stroke: 1.5px rgba(219, 163, 77, 0.26);
+  letter-spacing: -0.04em;
   top: 30%;
   left: -15%;
   rotate: -90deg;
 }
 .gameplay-phone {
   width: clamp(230px, 23vw, 315px);
-  border: 8px solid #111215;
+  padding: 7px;
   border-radius: 42px;
   overflow: hidden;
-  box-shadow: 22px 30px 55px #0b0c0f66;
   rotate: 7deg;
 }
 .gameplay-phone img {
   width: 100%;
   height: auto;
+  border-radius: 35px;
 }
-.gameplay-image figcaption {
-  font-size: 10px;
-  color: #c3c4bd;
+.gameplay figcaption {
+  font-size: 13px;
+  color: var(--parchment-soft);
   margin-top: 26px;
   text-align: center;
   position: relative;
 }
-.download {
-  background: #ff8058;
-  color: #221713;
-  padding: 100px 7vw 110px;
+.table-shot {
+  grid-column: 1 / -1;
+  width: min(100%, 1120px);
+  margin: 40px auto 0;
 }
-.download a:focus-visible,
-.download button:focus-visible,
-.download summary:focus-visible {
-  outline-color: #221713;
+.table-frame {
+  padding: 10px;
+  border-radius: 38px;
+}
+.table-frame img {
+  width: 100%;
+  height: auto;
+  border-radius: 29px;
+}
+
+/* ---- Your turn: the download desk on tooled leather ---- */
+.download {
+  position: relative;
+  background:
+    radial-gradient(90% 45% at 50% 0%, rgba(255, 128, 88, 0.16), transparent 70%),
+    linear-gradient(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.5)),
+    var(--tex-leather) 0 0 / 256px,
+    var(--leather);
+  color: var(--parchment-ink);
+  padding: 110px 7vw 120px;
 }
 .download-heading h2 {
-  font-size: clamp(60px, 12.8vw, 200px);
-  line-height: 0.9;
-  letter-spacing: -0.075em;
+  font-size: clamp(64px, 11vw, 176px);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.035em;
   white-space: nowrap;
+  text-shadow:
+    0 3px 0 rgba(28, 13, 4, 0.55),
+    0 0 70px rgba(255, 128, 88, 0.28);
 }
 .download-heading p {
-  font-size: 16px;
-  margin-top: 28px;
+  font-size: 19px;
+  margin-top: 26px;
+  color: var(--parchment-soft);
 }
 .download-desk {
   display: grid;
   grid-template-columns: 1fr 1.3fr;
-  gap: 9vw;
+  gap: 7vw;
   margin-top: 70px;
   align-items: start;
 }
 .platform-picker {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid #92472e;
+  gap: 16px;
 }
 .platform-picker button {
   display: flex;
   gap: 16px;
-  align-items: center;
-  border: 0;
-  border-bottom: 1px solid #92472e;
-  padding: 22px 12px;
-  background: transparent;
-  color: #532a1d;
-  font-size: clamp(22px, 3vw, 42px);
-  font-weight: 750;
+  min-height: 84px;
+  padding: 16px 32px;
+  color: rgba(242, 224, 189, 0.74);
+  font-size: clamp(24px, 2.7vw, 38px);
   text-align: left;
-  transition:
-    background 0.15s var(--ease),
-    color 0.15s var(--ease);
 }
 .platform-picker button > svg:last-child {
   margin-left: auto;
 }
 .platform-picker button[aria-pressed="true"] {
-  color: #191513;
-  background: #ffffff28;
+  color: var(--brass-light);
+  box-shadow:
+    0 0 26px rgba(255, 128, 88, 0.32),
+    0 4px 10px rgba(8, 3, 0, 0.45);
 }
+.platform-picker button[aria-pressed="true"]::before {
+  background:
+    radial-gradient(130% 160% at 0% 50%, rgba(255, 128, 88, 0.3), transparent 62%),
+    var(--leather-fill);
+}
+.platform-picker button[aria-pressed="true"] > svg:first-child {
+  color: var(--ember);
+  filter: drop-shadow(0 0 6px rgba(255, 128, 88, 0.6));
+}
+/* The chosen platform's details on parchment in brass trim. */
 .platform-detail {
-  border-top: 1px solid #92472e;
-  padding-top: 18px;
+  position: relative;
+  padding: 38px 42px 40px;
+  border-radius: 12px;
+  background: var(--parchment-fill);
+  color: var(--ink);
+  box-shadow:
+    0 26px 54px rgba(5, 2, 0, 0.58),
+    inset 0 0 44px rgba(110, 64, 18, 0.3);
+}
+.platform-detail a:focus-visible {
+  outline-color: var(--enamel);
 }
 .platform-detail-heading {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--enamel);
 }
 .release-version {
   display: flex;
@@ -513,93 +808,97 @@ svg {
   align-items: baseline;
   gap: 6px 16px;
   margin-bottom: 16px;
-  font-size: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(92, 56, 20, 0.32);
+  font-size: 15px;
   line-height: 1.6;
 }
 .release-version a {
-  color: inherit;
+  color: var(--enamel);
+  font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 .platform-detail > p {
-  font-size: clamp(26px, 3vw, 42px);
-  font-weight: 700;
-  letter-spacing: -0.045em;
+  font-size: clamp(28px, 2.9vw, 40px);
+  font-weight: 720;
+  letter-spacing: -0.02em;
   line-height: 1.15;
-  margin: 30px 0;
+  margin: 26px 0 30px;
   max-width: 19ch;
 }
 .download-action {
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  align-items: center;
-  padding: 20px 24px;
-  background: #221713;
-  color: #fff3e9;
-  font-size: 17px;
-  font-weight: 700;
-  border-radius: 4px;
+  min-height: 66px;
+  padding: 14px 32px;
+  font-size: 21px;
 }
 .platform-detail small {
   display: block;
-  margin-top: 15px;
-  font-size: 11px;
+  margin-top: 18px;
+  font-size: 14px;
   line-height: 1.6;
+  color: var(--ink-soft);
 }
 .update-steps {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #92472e;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(92, 56, 20, 0.32);
 }
 .update-steps strong {
   display: block;
-  font-size: 15px;
-  margin-bottom: 10px;
+  font-size: 18px;
+  margin-bottom: 12px;
 }
 .update-steps ol {
   margin: 0;
-  padding-left: 20px;
+  padding-left: 22px;
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 .update-steps li {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.5;
+  color: var(--ink-soft);
+}
+.update-steps li::marker {
+  color: var(--enamel);
+  font-weight: 700;
 }
 .update-steps li a {
-  display: inline-block;
-  margin-bottom: 4px;
-  padding: 10px 14px;
-  background: #221713;
-  color: #fff3e9;
-  font-weight: 700;
-  border-radius: 4px;
+  margin-bottom: 6px;
 }
 .update-steps li span {
   display: block;
   overflow-wrap: anywhere;
 }
 .faq {
-  max-width: 760px;
-  margin: 80px 0 70px;
+  max-width: 780px;
+  margin: 90px 0 70px;
 }
 .faq details {
-  border-top: 1px solid #a34e34;
+  border-top: 1px solid var(--hairline);
 }
 .faq details:last-child {
-  border-bottom: 1px solid #a34e34;
+  border-bottom: 1px solid var(--hairline);
 }
 .faq summary {
   list-style: none;
+  min-height: 44px;
   padding: 22px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  font-size: 14px;
+  font-size: 19px;
   font-weight: 650;
   cursor: pointer;
+}
+.faq summary svg {
+  color: var(--brass);
+  transition: rotate 0.2s var(--ease);
 }
 .faq summary::-webkit-details-marker {
   display: none;
@@ -608,13 +907,14 @@ svg {
   rotate: 45deg;
 }
 .faq details p {
-  font-size: 13px;
+  font-size: 16px;
   max-width: 65ch;
-  padding-bottom: 24px;
+  padding-bottom: 26px;
+  color: var(--parchment-soft);
 }
 .download footer {
-  border-top: 1px solid #a34e34;
-  padding-top: 32px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 34px;
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
@@ -622,69 +922,147 @@ svg {
   align-items: center;
 }
 .footer-brand {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.055em;
+  font-size: 28px;
+  font-weight: 760;
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
+}
+.footer-brand img {
+  border-radius: 11px;
+  box-shadow: 0 0 0 1px rgba(219, 163, 77, 0.6);
 }
 footer > a:not(.footer-brand) {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
+  min-height: 44px;
+  font-size: 15px;
   font-weight: 650;
+}
+footer > a:not(.footer-brand) svg {
+  color: var(--brass);
 }
 footer > p {
   flex-basis: 100%;
   max-width: 95ch;
-  font-size: 10px;
-  color: #582b20;
+  font-size: 13px;
+  color: var(--parchment-soft);
 }
 footer p a {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
+
 @media (hover: hover) and (pointer: fine) {
-  .destination-dock a:hover {
-    background: #45464b;
-  }
-  .destination-dock a:last-child:hover {
-    background: #ff9d7e;
-  }
-  .hero-downloads a:hover {
-    background: #37383d;
-  }
-  .header-download:hover {
-    color: #ff8058;
-  }
+  .plaque:hover,
   .platform-picker button:hover {
-    background: #ffffff38;
+    filter: brightness(1.14);
   }
-  .download-action:hover {
-    background: #3b261f;
+  .destination-dock a:not(.dock-download):hover {
+    background: rgba(255, 225, 170, 0.1);
+  }
+  .destination-dock .dock-download:hover {
+    filter: brightness(1.12);
+  }
+  footer a:hover,
+  .faq summary:hover {
+    color: var(--brass-light);
   }
 }
-@media (max-width: 900px) {
-  .reveal-caption {
-    left: calc(50% + 165px);
-    max-width: 230px;
+@media (prefers-reduced-motion: no-preference) {
+  .plaque-ember::before {
+    animation: shine 5.5s var(--ease) infinite;
   }
+  .embers i {
+    animation: rise var(--d, 9s) linear var(--delay, 0s) infinite;
+  }
+}
+@keyframes shine {
+  0%,
+  70% {
+    background-position: 160% 0, center;
+  }
+  100% {
+    background-position: -60% 0, center;
+  }
+}
+@keyframes rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  12% {
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--drift, 20px), -78svh, 0);
+  }
+}
+.embers i:nth-child(1) { --x: 8%; --d: 10s; --delay: -2s; --drift: 30px; }
+.embers i:nth-child(2) { --x: 17%; --d: 12s; --delay: -7s; --s: 2px; --drift: -18px; }
+.embers i:nth-child(3) { --x: 26%; --d: 9s; --delay: -4s; --drift: 24px; }
+.embers i:nth-child(4) { --x: 38%; --d: 13s; --delay: -10s; --s: 2px; --drift: -26px; }
+.embers i:nth-child(5) { --x: 47%; --d: 11s; --delay: -1s; --drift: 16px; }
+.embers i:nth-child(6) { --x: 58%; --d: 10s; --delay: -6s; --s: 4px; --drift: -22px; }
+.embers i:nth-child(7) { --x: 66%; --d: 12s; --delay: -3s; --s: 2px; --drift: 28px; }
+.embers i:nth-child(8) { --x: 75%; --d: 9s; --delay: -8s; --drift: -14px; }
+.embers i:nth-child(9) { --x: 84%; --d: 14s; --delay: -5s; --s: 2px; --drift: 20px; }
+.embers i:nth-child(10) { --x: 93%; --d: 11s; --delay: -9s; --drift: -30px; }
+
+@media (max-width: 900px) {
   .gameplay {
     gap: 36px;
     padding-inline: 5vw;
   }
   .gameplay h2 {
-    font-size: 52px;
+    font-size: 54px;
   }
   .download-desk {
     gap: 40px;
   }
   .hero-type {
-    top: 20%;
+    top: 18%;
   }
   .opening-stage {
     min-height: 600px;
+  }
+  /* The sideways phone needs the width: the caption moves below it. */
+  .reveal-title h2 {
+    font-size: 56px;
+  }
+  .reveal-phone-wrap,
+  .dealt-card {
+    top: 47%;
+  }
+  .reveal-phone-wrap {
+    width: min(78vw, 520px);
+  }
+  .reveal-caption {
+    top: auto;
+    bottom: 9%;
+    left: 5vw;
+    right: 5vw;
+    max-width: none;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 28px;
+    align-items: center;
+  }
+  .reveal-caption h3 {
+    font-size: 44px;
+  }
+  .reveal-caption p {
+    margin: 0;
+  }
+  .reveal-caption span {
+    grid-column: 1/-1;
+    margin: 6px 0 0;
   }
 }
 @media (max-width: 650px) {
@@ -692,27 +1070,31 @@ footer p a {
     scroll-padding-top: 30px;
   }
   .masthead {
-    padding: 20px;
+    padding: 18px 16px;
   }
   .brand {
-    font-size: 17px;
-    gap: 8px;
+    font-size: 13px;
+    gap: 9px;
+    letter-spacing: 0.16em;
   }
   .brand img {
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
   }
   .header-download {
-    font-size: 11px;
+    font-size: 13px;
+    padding: 8px 14px;
     gap: 6px;
   }
   .destination-dock {
     bottom: 12px;
     max-width: calc(100% - 24px);
+    padding: 8px;
   }
   .destination-dock a {
-    padding: 11px 15px;
-    font-size: 11px;
+    padding: 10px 13px;
+    font-size: 13px;
   }
   .opening {
     min-height: 150svh;
@@ -720,55 +1102,69 @@ footer p a {
   .opening-stage {
     height: 100svh;
     min-height: 610px;
+    background-position: center, center, center, 50% 30%, center;
   }
   .hero-type {
-    top: 17%;
+    top: 15%;
     left: 16px;
     right: 16px;
   }
   .hero-type h1 {
-    font-size: clamp(53px, 14vw, 85px);
-    line-height: 0.91;
-    letter-spacing: -0.07em;
+    font-size: clamp(52px, 14.6vw, 88px);
+    line-height: 0.93;
+    letter-spacing: -0.03em;
   }
   .hand-stage {
-    inset: 27% -18% 18%;
+    inset: 21% -18% 25%;
   }
   .hero-bottom {
-    left: 20px;
-    right: 20px;
-    bottom: 78px;
-    align-items: center;
-    gap: 16px;
+    left: 16px;
+    right: 16px;
+    bottom: 80px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
   }
   .hero-bottom p {
-    font-size: 11px;
-    max-width: 145px;
+    font-size: 13px;
+    line-height: 1.35;
   }
   .hero-downloads {
-    gap: 6px;
+    gap: 8px;
   }
   .hero-downloads a {
-    padding: 10px;
-    gap: 5px;
-    font-size: 10px;
+    flex: 1;
+    justify-content: center;
     min-height: 44px;
+    padding: 8px 13px;
+    gap: 8px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+  .hero-downloads a::before {
+    inset: 2px;
+    border-radius: 10px;
+  }
+  .hero-downloads a::after {
+    border-width: 10px 11px;
+    border-image: var(--rim-thin);
   }
   .hero-downloads a > svg:first-child {
-    width: 17px;
+    width: 18px;
   }
   .hero-downloads a > svg:last-child {
     display: none;
   }
   .invitation {
-    padding: 56px 24px 70px;
+    padding: 60px 20px 76px;
   }
   .invitation p {
-    font-size: 11px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
     margin-bottom: 20px;
   }
   .invitation h2 {
-    font-size: 40px;
+    font-size: 42px;
     line-height: 1.08;
   }
   .app-reveal {
@@ -779,8 +1175,8 @@ footer p a {
   }
   .reveal-title {
     top: 7%;
-    left: 24px;
-    right: 24px;
+    left: 20px;
+    right: 20px;
   }
   .reveal-title h2 {
     font-size: 46px;
@@ -789,7 +1185,7 @@ footer p a {
   }
   .dealt-card {
     width: 150px;
-    top: 58%;
+    top: 50%;
   }
   .dealt-card-0 {
     --x: -130px;
@@ -812,154 +1208,186 @@ footer p a {
     --r: 28deg;
   }
   .reveal-phone-wrap {
-    width: min(50vw, 210px);
-    top: 46%;
+    width: min(90vw, 400px);
+    top: 50%;
   }
-  .reveal-phone {
-    padding: 5px;
-    border-radius: 27px;
-  }
-  .reveal-phone img {
+  .reveal-phone,
+  .reveal-phone-wrap::before {
     border-radius: 22px;
   }
+  .reveal-phone {
+    padding: 4px;
+  }
+  .reveal-phone img {
+    border-radius: 17px;
+  }
   .reveal-caption {
-    top: auto;
-    bottom: 9%;
-    left: 24px;
-    right: 24px;
-    max-width: none;
-    display: grid;
+    bottom: 11%;
+    left: 20px;
+    right: 20px;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
-    align-items: center;
   }
   .reveal-caption h3 {
     font-size: 36px;
   }
   .reveal-caption p {
-    font-size: 11px;
-    margin: 0;
+    font-size: 14px;
   }
   .reveal-caption span {
-    grid-column: 1/-1;
-    margin: 0;
-    font-size: 9px;
+    font-size: 12px;
   }
   .gameplay {
     grid-template-columns: 1fr;
-    padding: 70px 24px 60px;
-    gap: 65px;
+    padding: 72px 20px 64px;
+    gap: 60px;
   }
   .gameplay h2 {
     font-size: 50px;
     line-height: 1;
   }
   .section-label {
-    font-size: 11px;
+    font-size: 12px;
     margin-bottom: 20px;
   }
   .gameplay-copy > p:not(.section-label) {
-    font-size: 14px;
-    max-width: 35ch;
+    font-size: 16px;
+    max-width: 38ch;
     margin-top: 24px;
   }
   .capability-ledger {
-    margin-top: 30px;
+    margin-top: 32px;
+    padding: 12px 28px;
   }
   .capability-ledger > div {
-    grid-template-columns: 62px 1fr;
-    padding: 20px 0;
-    gap: 14px;
+    grid-template-columns: 1fr;
+    padding: 18px 0;
+    gap: 4px;
+  }
+  .capability-ledger span {
+    font-size: 18px;
+  }
+  .capability-ledger p {
+    font-size: 15px;
   }
   .gameplay-phone {
-    width: 215px;
+    width: 220px;
     rotate: 5deg;
     border-radius: 32px;
-    border-width: 6px;
+    padding: 5px;
+  }
+  .gameplay-phone img {
+    border-radius: 27px;
   }
   .gameplay-ground {
-    font-size: 200px;
+    font-size: 190px;
     left: -80px;
     top: 30%;
   }
-  .gameplay-image figcaption {
-    font-size: 9px;
-    max-width: 240px;
-    margin-top: 34px;
+  .gameplay figcaption {
+    font-size: 12px;
+    max-width: 260px;
+    margin: 30px auto 0;
+  }
+  .table-shot {
+    margin-top: 0;
+  }
+  .table-frame {
+    padding: 5px;
+    border-radius: 20px;
+  }
+  .table-frame img {
+    border-radius: 15px;
   }
   .download {
-    padding: 66px 24px 100px;
+    padding: 70px 20px 104px;
   }
   .download-heading h2 {
-    font-size: 13.2vw;
+    font-size: 17vw;
     line-height: 0.95;
   }
   .download-heading p {
-    font-size: 13px;
-    margin-top: 22px;
+    font-size: 16px;
+    margin-top: 18px;
   }
   .download-desk {
     grid-template-columns: 1fr;
-    gap: 26px;
+    gap: 22px;
     margin-top: 40px;
   }
   .platform-picker {
     flex-direction: row;
+    gap: 10px;
   }
   .platform-picker button {
-    font-size: 22px;
     width: 50%;
-    padding: 17px 10px;
+    min-height: 60px;
+    font-size: 21px;
+    padding: 12px 20px;
     gap: 9px;
   }
   .platform-picker button > svg:first-child {
     width: 22px;
   }
   .platform-picker button > svg:last-child {
-    width: 17px;
+    display: none;
   }
   .platform-detail {
-    padding-top: 17px;
+    padding: 30px 28px 32px;
+  }
+  .platform-detail-heading {
+    font-size: 12px;
+    letter-spacing: 0.1em;
   }
   .platform-detail > p {
-    font-size: 32px;
-    margin: 25px 0;
-    max-width: 19ch;
+    font-size: 30px;
+    margin: 22px 0 24px;
   }
   .download-action {
-    font-size: 15px;
-    padding: 18px 20px;
+    min-height: 60px;
+    font-size: 18px;
+    padding: 12px 26px;
   }
   .platform-detail small {
-    font-size: 10px;
+    font-size: 13px;
+  }
+  .update-steps li {
+    font-size: 14px;
   }
   .faq {
-    margin: 46px 0;
+    margin: 56px 0 50px;
   }
   .faq summary {
-    font-size: 12px;
-    padding: 20px 0;
+    font-size: 16px;
+    padding: 18px 0;
   }
   .faq details p {
-    font-size: 12px;
+    font-size: 15px;
   }
   .footer-brand {
-    font-size: 25px;
+    font-size: 24px;
   }
   footer > a:not(.footer-brand) {
-    font-size: 11px;
+    font-size: 14px;
   }
   footer > p {
-    font-size: 9px;
+    font-size: 12px;
   }
 }
 @media (max-width: 650px) and (max-height: 700px) {
-  .hand-stage { inset: 27% -10% 25%; }
-  .hero-bottom p { max-width: 132px; font-size: 10px; }
+  .hand-stage {
+    inset: 22% -10% 29%;
+  }
+  .hero-bottom p {
+    font-size: 12px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  .embers {
+    display: none;
   }
   .opening,
   .app-reveal {
@@ -999,11 +1427,13 @@ footer p a {
     left: auto;
     top: auto;
     transform: none;
-    width: 240px;
-    max-width: 65vw;
+    width: min(560px, 100%);
   }
   .reveal-phone {
     clip-path: none !important;
+  }
+  .reveal-phone-wrap::before {
+    opacity: 1;
   }
   .reveal-caption {
     position: relative;
@@ -1013,7 +1443,12 @@ footer p a {
     bottom: auto;
     opacity: 1 !important;
     transform: none !important;
-    max-width: 430px;
+    max-width: 560px;
+    display: block;
+    align-self: flex-start;
+  }
+  .reveal-caption p {
+    margin-top: 18px;
   }
   .hero-type,
   .gameplay-phone {
@@ -1021,5 +1456,22 @@ footer p a {
   }
   .gameplay-phone {
     rotate: 0deg;
+  }
+}
+@media (forced-colors: active) {
+  h1 span,
+  h2 span,
+  .brand span {
+    color: CanvasText;
+    background: none;
+  }
+  .plaque::after,
+  .platform-picker button::after,
+  .destination-dock::after {
+    border-image: none;
+  }
+  .plaque,
+  .platform-picker button {
+    border: 1px solid ButtonText;
   }
 }

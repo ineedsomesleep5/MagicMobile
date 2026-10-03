@@ -41,7 +41,9 @@ export default function CardScene({ actId = "cards" }: { actId?: string }) {
     scene.add(hand);
     const bodyGeometry = new RoundedBoxGeometry(2.5, 3.5, 0.055, 2, 0.075);
     const faceGeometry = new THREE.PlaneGeometry(2.43, 3.43);
-    const edge = new THREE.MeshBasicMaterial({ color: 0x11100f });
+    // Walnut & Ember: warm card cores, and fronts tinted a touch toward candlelight.
+    const edge = new THREE.MeshBasicMaterial({ color: 0x1c120a });
+    const candle = 0xfff2e2;
     const materials: THREE.Material[] = [edge];
     const textures: THREE.Texture[] = [];
     const cards: THREE.Group[] = [];
@@ -130,8 +132,10 @@ export default function CardScene({ actId = "cards" }: { actId?: string }) {
             renderer.capabilities.getMaxAnisotropy(),
           );
         }
-        const fronts = images.slice(0, 7).map((map) => new THREE.MeshBasicMaterial({ map }));
-        const backMaterial = new THREE.MeshBasicMaterial({ map: images[7] });
+        const fronts = images
+          .slice(0, 7)
+          .map((map) => new THREE.MeshBasicMaterial({ map, color: candle }));
+        const backMaterial = new THREE.MeshBasicMaterial({ map: images[7], color: candle });
         materials.push(...fronts, backMaterial);
         for (let index = 0; index < 7; index++) {
           const card = new THREE.Group();

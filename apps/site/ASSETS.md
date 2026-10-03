@@ -1,10 +1,47 @@
 # Site asset provenance
 
-## App screenshots and icon
+## Icon (Walnut & Ember)
 
-The icon is derived from Caleb's September 23, 2026 artwork (`design/brand/icon-reference-2026-09-23.jpg`). The reference shows a rounded app-tile mockup with a shadow; `design/brand/icon-master-2026-09-23.png` is the opaque, full-bleed square adaptation used to generate the iOS app-icon set and `public/app-icon.png`. The master was edited with the built-in image-generation tool to retain the ivory M, coral card outline and sparkle while removing the mockup treatment. Deck Studio images are actual simulator captures from the build-5000000000 release UI checks, September 17, 2026, in `MagicMobile-runtime-hardening/build_output/deck-studio-5000000000-populated`. The landscape capture is stored rotated; CSS restores its viewing orientation without changing the app UI.
+The site icons come from the Walnut & Ember app-icon art approved October 1–2, 2026 (`~/Movies/motion-assets/magicmobile-brand/a-walnut-icon.png`, 1254 × 1254): the same mark shape as before (cream M in front of a card with a four-point sparkle, cards fanned behind) in carved walnut, brass and ember. Resized with ImageMagick on October 2, 2026:
 
-The battlefield image is `build_output/arena-review/portrait-arena-expanded-hand.png`, September 15, 2026. It is an actual app UI development fixture, not a live-match screenshot. Its fixture banner and the website caption remain visible.
+| File | Size | Use |
+| --- | --- | --- |
+| `public/app-icon.png` | 192 × 192, 8-bit, 27 KB | join and privacy pages |
+| `public/apple-touch-icon.png` | 180 × 180, opaque, 8-bit, 24 KB | iOS home screen |
+| `public/favicon.png` | 64 × 64, rounded with transparent corners, 9 KB | browser tab |
+| `public/tavern/mark-96.webp` | 96 × 96, 2 KB | masthead and footer mark |
+
+The earlier ivory/coral icon is derived from Caleb's September 23, 2026 artwork (`design/brand/icon-master-2026-09-23.png`) and is no longer shown on the site.
+
+## Tavern materials
+
+From the iOS asset catalog (`apps/ios/MagicMobile/Assets.xcassets`), where the brass parts are Blender renders (`scripts/brand/tavern_ui_kit.py`) and the fills come from `scripts/brand/tavern_ui_textures.sh` (leather from Poly Haven `leather_red_02`, CC0; parchment generated from noise; ember glass cut from the pass-button art). Converted to WebP on October 2, 2026.
+
+| File | Source | Size |
+| --- | --- | --- |
+| `tavern/backdrop.webp` | `menu-backdrop-tavern` (tavern wall with candles), 760 px wide | 53 KB |
+| `tavern/table-landscape.webp` | `battlefield-tavern-landscape` (leather table in walnut), 1600 px wide | 19 KB |
+| `tavern/leather.webp` | `tavern-ui-leather`, 512 px seamless tile | 16 KB |
+| `tavern/parchment.webp` | `tavern-ui-parchment`, 384 px seamless tile | 3 KB |
+| `tavern/ember.webp` | `tavern-ui-ember`, 256 px, stretched | 6 KB |
+| `tavern/frame.webp` | `tavern-ui-frame`, riveted brass frame, 288 px (24 pt corners at 3×) | 6 KB |
+| `tavern/capsule.webp` | `tavern-ui-capsule`, riveted brass rim; the casting seam in the left middle slice is covered with the row above it so the stretched slice stays clean | 6 KB |
+| `tavern/capsule-thin.webp` | `tavern-ui-capsule-thin`; the middle rows (seam and two rivets) are replaced the same way, leaving a plain rim that stretches | 3 KB |
+| `tavern/walnut.webp` | Poly Haven `black_walnut_veneer_02` diffuse (CC0, `~/Movies/motion-assets/magicmobile-brand/textures`), whole seamless tile scaled to 512 px, darkened and warmed | 5 KB |
+
+## App screenshots
+
+Actual iOS simulator captures from the Walnut & Ember builds 24–25, October 2, 2026, converted to WebP. The landscape captures carry EXIF orientation 8 over upright landscape pixels, so the tag is stripped and browsers show them as stored.
+
+| File | Source capture | Size | Shown as |
+| --- | --- | --- | --- |
+| `menu-landscape.webp` | `menu-land.png`, landscape main menu, 1300 × 598 | 55 KB | app reveal ("Actual iOS app preview") |
+| `board-portrait.webp` | `b24-crowded-battlefield.png`, portrait board, 660 × 1434 | 131 KB | gameplay phone |
+| `board-landscape.webp` | `l2-crowded-battlefield.png`, landscape board, 1400 × 644 | 128 KB | landscape table |
+
+Both battlefield captures are development fixtures (their "Development fixture · No engine" banner stays visible), not live matches, and the captions say so. The retired captures `studio.webp`, `studio-portrait.webp` (Deck Studio, September 17, 2026), `game.webp` and `game-portrait.webp` (portrait arena fixture, September 15, 2026) remain in `public/` but are no longer shown.
+
+`social.png` (the Open Graph image, JPEG data, 1440 × 900) is a capture of the restyled hero.
 
 Black Lotus artwork is sourced through Scryfall. Card artwork belongs to its respective rights holders; the footer includes attribution and identifies the independent fan project. Black Lotus is a visual collectible reference, not a claim that it is Commander-legal.
 

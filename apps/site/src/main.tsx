@@ -7,8 +7,7 @@ import {
   ArrowRight,
   Plus,
 } from "@phosphor-icons/react";
-import "@fontsource-variable/archivo";
-import "@fontsource-variable/manrope";
+import "@fontsource-variable/source-serif-4/opsz.css";
 import "./style.css";
 import { cards } from "./cards";
 import { obtainium, releases } from "./releases";
@@ -24,6 +23,15 @@ declare global {
 const CardScene = lazy(() => import("./CardScene"));
 const android = releases.android.url;
 const ios = releases.ios.url;
+
+/** The four-point sparkle from the MagicMobile mark, for labels and rules. */
+function Sparkle() {
+  return (
+    <svg className="sparkle" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 0c.9 6.2 4.6 10.4 12 12-7.4 1.6-11.1 5.8-12 12-.9-6.2-4.6-10.4-12-12C7.4 10.4 11.1 6.2 12 0z" />
+    </svg>
+  );
+}
 
 function App() {
   const [platform, setPlatform] = useState<"android" | "ios">("android");
@@ -47,17 +55,17 @@ function App() {
       </a>
       <header className="masthead">
         <a className="brand" href="#cards" aria-label="MagicMobile home">
-          <img src="/app-icon.png" alt="" width="36" height="36" />
+          <img src="/tavern/mark-96.webp" alt="" width="40" height="40" />
           <span>MagicMobile</span>
         </a>
-        <a className="header-download" href="#download">
-          Get the game <ArrowUpRight size={18} />
+        <a className="header-download plaque plaque-thin" href="#download">
+          Get the game <ArrowUpRight size={16} />
         </a>
       </header>
       <nav className="destination-dock" aria-label="Page destinations">
         <a href="#cards">The cards</a>
         <a href="#the-app">The app</a>
-        <a href="#download">
+        <a className="dock-download" href="#download">
           Download <ArrowUpRight size={14} />
         </a>
       </nav>
@@ -69,11 +77,16 @@ function App() {
           data-sc-span="1.8"
         >
           <div data-sc-stage className="opening-stage">
+            <div className="embers" aria-hidden="true">
+              {Array.from({ length: 10 }, (_, i) => (
+                <i key={i} />
+              ))}
+            </div>
             <div className="hero-type" data-sc-parallax="0.6">
               <h1>
-                MAKE YOUR
+                Make your
                 <br />
-                <span>NEXT MOVE.</span>
+                <span>next move.</span>
               </h1>
             </div>
             <div className="hand-stage">
@@ -97,12 +110,12 @@ function App() {
                 <br />A whole game in your pocket.
               </p>
               <div className="hero-downloads">
-                <a href={ios}>
+                <a className="plaque" href={ios}>
                   <AppleLogo weight="fill" size={22} />
                   <span>iPhone</span>
                   <ArrowUpRight size={16} />
                 </a>
-                <a href={android}>
+                <a className="plaque" href={android}>
                   <AndroidLogo size={22} />
                   <span>Android</span>
                   <ArrowUpRight size={16} />
@@ -113,7 +126,10 @@ function App() {
         </section>
         <section className="invitation" data-sc-act="flow">
           <div className="invitation-inner" data-sc-in data-sc-stagger="65">
-            <p>A new deck. A wild idea. One more game.</p>
+            <p className="eyebrow">
+              <Sparkle />
+              A new deck. A wild idea. One more game.
+            </p>
             <h2>
               Good games begin
               <br />
@@ -130,9 +146,9 @@ function App() {
           <div data-sc-stage className="app-reveal-stage">
             <div className="reveal-title" data-sc-cue="0 0.42 0 0.15">
               <h2>
-                FROM YOUR HAND.
+                From your hand.
                 <br />
-                <span>TO YOUR PHONE.</span>
+                <span>To your phone.</span>
               </h2>
             </div>
             <div className="deal-table" aria-hidden="true">
@@ -154,10 +170,10 @@ function App() {
                 data-sc-reveal-at="0.22 0.57"
               >
                 <img
-                  src="/studio-portrait.webp"
-                  alt="Actual iOS Deck Studio: a Commander deck being edited"
-                  width="1206"
-                  height="2622"
+                  src="/menu-landscape.webp"
+                  alt="Actual iOS main menu in landscape: Play Commander, Decks and Friends beside the chosen Commander deck"
+                  width="1300"
+                  height="598"
                 />
               </div>
             </div>
@@ -178,11 +194,14 @@ function App() {
         </section>
         <section className="gameplay" data-sc-act="flow">
           <div className="gameplay-copy" data-sc-in data-sc-stagger="60">
-            <p className="section-label">The next decision is yours.</p>
+            <p className="section-label eyebrow">
+              <Sparkle />
+              The next decision is yours.
+            </p>
             <h2>
-              LESS SETUP.
+              Less setup.
               <br />
-              <span>MORE MAGIC.</span>
+              <span>More magic.</span>
             </h2>
             <p>
               Take your Commander ideas to the table. Play against AI, with the
@@ -209,10 +228,10 @@ function App() {
             </div>
             <div className="gameplay-phone" data-sc-parallax="-1.1">
               <img
-                src="/game.webp"
-                alt="iOS Commander battlefield development preview, not a live match"
-                width="1206"
-                height="2622"
+                src="/board-portrait.webp"
+                alt="iOS Commander battlefield development preview on the walnut table, not a live match"
+                width="660"
+                height="1434"
                 loading="lazy"
               />
             </div>
@@ -220,10 +239,25 @@ function App() {
               iOS development preview. Not a live-match capture.
             </figcaption>
           </figure>
+          <figure className="table-shot">
+            <div className="table-frame">
+              <img
+                src="/board-landscape.webp"
+                alt="iOS landscape battlefield development preview: the leather table, a hand of cards and the brass pass button, not a live match"
+                width="1400"
+                height="644"
+                loading="lazy"
+              />
+            </div>
+            <figcaption>
+              Landscape table. iOS development preview, not a live-match
+              capture.
+            </figcaption>
+          </figure>
         </section>
         <section id="download" className="download" data-sc-act="flow">
           <div className="download-heading" data-sc-in data-sc-stagger="60">
-            <h2>YOUR TURN.</h2>
+            <h2>Your turn.</h2>
             <p>Pick your phone. Take the game with you.</p>
           </div>
           <div className="download-desk">
@@ -271,7 +305,7 @@ function App() {
                   : "Play against AI or meet other players through Game Center."}
               </p>
               <a
-                className="download-action"
+                className="download-action plaque plaque-ember"
                 href={platform === "android" ? android : ios}
               >
                 {platform === "android"
@@ -284,14 +318,18 @@ function App() {
                   <strong>Get every update automatically</strong>
                   <ol>
                     <li>
-                      <a href={obtainium.download}>Download Obtainium ↓</a>
+                      <a className="plaque plaque-thin" href={obtainium.download}>
+                        Download Obtainium ↓
+                      </a>
                       <span>
                         A free, open-source app updater. Open the file and
                         allow the install.
                       </span>
                     </li>
                     <li>
-                      <a href={obtainium.addApp}>Add MagicMobile to Obtainium ↗</a>
+                      <a className="plaque plaque-thin" href={obtainium.addApp}>
+                        Add MagicMobile to Obtainium ↗
+                      </a>
                       <span>
                         Opens Obtainium with MagicMobile filled in. Tap Add,
                         then Install. If nothing opens, choose Add App in
@@ -371,6 +409,7 @@ function App() {
           </div>
           <footer>
             <a className="footer-brand" href="#cards">
+              <img src="/tavern/mark-96.webp" alt="" width="44" height="44" />
               MagicMobile
               <ArrowUpRight size={24} />
             </a>
