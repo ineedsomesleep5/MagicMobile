@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The walnut and brass icon (iOS AppIcon-1024.png, staged by prepareBrandAssets). The square art is
+     inset so the M and its card stay inside the launcher's mask; the walnut behind fills any gap. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/launcher_walnut"/>
+    <foreground>
+        <inset android:drawable="@drawable/magicmobile_icon" android:inset="9%"/>
+    </foreground>
+</adaptive-icon>

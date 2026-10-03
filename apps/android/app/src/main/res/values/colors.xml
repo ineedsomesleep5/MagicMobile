@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The icon's walnut, behind the inset icon art. -->
+    <color name="launcher_walnut">#2B170C</color>
+</resources>
