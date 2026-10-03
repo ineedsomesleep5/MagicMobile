@@ -88,6 +88,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernPanelChrome
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.launch
@@ -348,14 +349,18 @@ fun BoardStackInspector(snapshot: GameSnapshot, selection: BoardSelection, done:
     BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 460.dp).padding(12.dp)) {
         val horizontal = maxWidth > maxHeight && maxHeight != Dp.Infinity
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Stack", color = MagicPalette.parchment, style = SfText.headline())
+            val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (tavern) 8.dp else 0.dp)) {
+                if (tavern) io.magicmobile.android.ui.TavernPanelTitle("Stack") else Text("Stack", color = MagicPalette.parchment, style = SfText.headline())
                 Spacer(Modifier.weight(1f))
                 if (turnControl != null && turnControl.isAutoPassing) {
-                    Text("Stop skipping", Modifier.defaultMinSize(minHeight = 44.dp).clickable(onClick = turnControl.stop).padding(8.dp),
+                    if (tavern) io.magicmobile.android.ui.TavernPlaqueButton("Stop skipping", turnControl.stop, kind = io.magicmobile.android.ui.TavernButtonKind.DANGER)
+                    else Text("Stop skipping", Modifier.defaultMinSize(minHeight = 44.dp).clickable(onClick = turnControl.stop).padding(8.dp),
                         color = rgb(0.04, 0.52, 1.0), style = SfText.body())
                 }
-                Text("Done", Modifier.defaultMinSize(minHeight = 44.dp).clickable { selection.inspectedCard = null; done() }.padding(8.dp)
+                if (tavern) io.magicmobile.android.ui.TavernPlaqueButton("Done", { selection.inspectedCard = null; done() },
+                    Modifier.semantics { contentDescription = "board.stack.done" }, kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY)
+                else Text("Done", Modifier.defaultMinSize(minHeight = 44.dp).clickable { selection.inspectedCard = null; done() }.padding(8.dp)
                     .semantics { contentDescription = "board.stack.done" }, color = rgb(0.04, 0.52, 1.0), style = SfText.body())
             }
             Box {
@@ -386,7 +391,7 @@ fun CompactZoneInspectorOverlay(title: String, cards: List<ZoneCard>, legalActio
     val shape = RoundedCornerShape(12.dp)
     Column(modifier.widthIn(max = 360.dp).height(minOf(availableHeight, if (cards.isEmpty()) 150f else if (cards.size <= 3) 290f else 410f).dp)
         .glow(Color.Black.copy(alpha = 0.45f), 16.dp, 12.dp)
-        .background(MagicPalette.iron.copy(alpha = 0.94f), shape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.38f), shape),
+        .tavernPanelChrome(io.magicmobile.android.ui.LocalTavernBoard.current),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("$title · ${cards.size}", Modifier.weight(1f), color = MagicPalette.antiqueGold, style = sf(11f, SfWeight.black))

@@ -135,10 +135,13 @@ fun PortraitHandRow(
     var handOrigin by remember { mutableStateOf(Offset.Zero) }
     val scroll = rememberBoardScrollState()
     val reduceMotion = BoardMotion.reduceMotion
+    /** On the tavern table the hand rests as a full, curved fan: no tuck, no expand button. */
+    val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
     val fansHand = !handExpanded && BoardFXLevel.of(boardFXLevel) != BoardFXLevel.OFF && !reduceMotion
     val spacing = ArenaHandLayout.spacing(cards.size, rowWidth, cardWidth, handExpanded)
     val contentWidth = cards.size * cardWidth + maxOf(cards.size - 1, 0) * spacing
-    val restingHeight = ArenaHandLayout.restingHeight(cardHeight)
+    // Height of the hand when it is not expanded: tucked classically, whole on the tavern table.
+    val restingHeight = if (tavern) ArenaHandLayout.tavernHeight(cardHeight) else ArenaHandLayout.restingHeight(cardHeight)
     val cardIds = cards.map { it.id }
 
     LaunchedEffect(cardIds) {
@@ -175,7 +178,8 @@ fun PortraitHandRow(
         val cardX = 4 + index * (cardWidth + spacing)
         Box(Modifier
             .zIndex(if (isDragging) 1000f else if (selected) 900f else index.toFloat())
-            .semantics { contentDescription = "${card.card.name} in hand. Tap to expand your hand. Hold to inspect. Drag upward to your battlefield to play." }
+            .semantics { contentDescription = "${card.card.name} in hand. " + (if (tavern) "Tap to inspect." else "Tap to expand your hand. Hold to inspect.") +
+                " Drag upward to your battlefield to play." }
             .onGloballyPositioned { coordinates ->
                 val origin = registry?.boardOrigin ?: Offset.Zero
                 val rect = coordinates.boundsInRoot()
@@ -195,7 +199,7 @@ fun PortraitHandRow(
                         // Reject sideways pans so the hand scroller owns browsing (HandCardPan).
                         return if (delta.getDistance() > slop) (if (delta.y < 0 && abs(delta.y) > abs(delta.x) * 1.35f) 2 else 3) else null
                     }
-                    fun tap() { if (handExpanded) { selection.selectedCard = null; selection.inspectedCard = currentCard } else handExpanded = true }
+                    fun tap() { if (handExpanded || tavern) { selection.selectedCard = null; selection.inspectedCard = currentCard } else handExpanded = true }
                     var first: PointerInputChange? = null
                     var outcome = withTimeoutOrNull(350) {
                         while (true) {
@@ -287,8 +291,8 @@ fun PortraitHandRow(
                 // Arena-style fan: cards tilt and dip away from the visible center of the hand.
                 val spread = if (fansHand) ((cardX + cardWidth / 2 - scroll.offset / density - rowWidth / 2) / maxOf(rowWidth / 2, 1f)).coerceIn(-1f, 1f) else 0f
                 transformOrigin = TransformOrigin(0.5f, 1f)
-                rotationZ = spread * 7f
-                translationY = (spread * spread * 9f + lift) * density
+                rotationZ = spread * (if (tavern) 11f else 7f)
+                translationY = (spread * spread * (if (tavern) 18f else 9f) + lift) * density
                 scaleX = scale; scaleY = scale
                 alpha = if (isDragging) 0f else 1f
             }) {
@@ -301,7 +305,7 @@ fun PortraitHandRow(
     @Composable
     fun handScroller() {
         BoardHorizontalScroller(scroll, Modifier.width(rowWidth.dp).height(if (handExpanded) (cardHeight + 20).dp else restingHeight.dp),
-            clipHorizontal = 12.dp, clipTop = 48.dp, clipBottom = 0.dp, alignTop = true) {
+            clipHorizontal = 12.dp, clipTop = 48.dp, clipBottom = if (tavern) 40.dp else 0.dp, alignTop = true) {
             Row(Modifier.height((cardHeight + 20).dp).padding(top = 18.dp, start = 4.dp, end = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(spacing.dp), verticalAlignment = Alignment.Top) {
                 cards.forEachIndexed { index, card -> key(card.id) { handCard(index, card) } }
@@ -333,7 +337,7 @@ fun PortraitHandRow(
             if (handExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { handScroller(); controls() }
             } else {
-                Box(contentAlignment = Alignment.BottomCenter) { handScroller(); controls() }
+                Box(contentAlignment = Alignment.BottomCenter) { handScroller(); if (!tavern) controls() }
             }
         }
         val dragging = draggingCardId?.let { id -> cards.firstOrNull { it.id == id } }

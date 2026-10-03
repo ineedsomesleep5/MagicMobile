@@ -37,7 +37,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -471,31 +470,35 @@ class TavernPassDisc(enabled: Boolean) {
 /**
  * TavernPassStage + TavernPrimaryButtonStyle: the glass disc turning inside the still brass ring, with the
  * button over it. Passing and waiting need no words; other actions (Confirm, Attack…) name themselves on an
- * engraved brass plate riveted to the ring's top. `onTap` turns the disc and then runs the action.
+ * engraved brass plate riveted to the ring's top. A tap turns the disc and runs the action. The tap target is
+ * rebuilt for each action (`actionKey`), so a finger-down on Pass never becomes a new prompt's action; the
+ * disc stays, so a turn is never cut short. Without priority the dim face shows and taps do nothing.
  */
 @Composable
-fun TavernPassStage(enabled: Boolean, turnsOnTap: Boolean, title: String, showsTitle: Boolean, diameter: Dp, onClick: () -> Unit,
-                    modifier: Modifier = Modifier, contentDescription: String = title) {
+fun TavernPassStage(enabled: Boolean, turnsOnTap: Boolean, title: String, showsTitle: Boolean, diameter: Dp, actionKey: Any,
+                    onClick: () -> Unit, modifier: Modifier = Modifier, contentDescription: String = title) {
     val disc = remember { TavernPassDisc(enabled) }
     val scope = rememberCoroutineScope()
     val reduce = BoardMotion.reduceMotion
     val resources = LocalContext.current.resources
     LaunchedEffect(Unit) { withContext(Dispatchers.Default) { TavernImages.passFlips.forEach { TavernImages.load(resources, it) } } }
     LaunchedEffect(enabled) { disc.wantsFront = enabled; disc.settle(reduce) }
-    val currentClick by rememberUpdatedState(onClick)
     val frame = tavernImage(TavernImages.passFlips[disc.frameIndex])
     val ring = tavernImage(R.drawable.tavern_pass_ring)
-    Box(modifier.requiredSize(diameter)
-        .clickable(remember { MutableInteractionSource() }, null, enabled) {
-            GameAudio.play(GameSound.UI_TAP)
-            if (turnsOnTap) scope.launch { disc.turnOver(reduce) }
-            currentClick()
-        }
-        .semantics { this.contentDescription = contentDescription }, contentAlignment = Alignment.TopCenter) {
+    Box(modifier.requiredSize(diameter), contentAlignment = Alignment.TopCenter) {
         Box(Modifier.align(Alignment.Center).requiredSize(diameter * 0.74f).background(rgb(0.05, 0.03, 0.02), CircleShape))
         Box(Modifier.fillMaxSize().drawBehind { drawStretched(frame) })
         Box(Modifier.fillMaxSize().drawBehind { drawStretched(ring) })
         if (showsTitle) TavernNamePlate(title, Modifier.widthIn(max = diameter * 0.86f).offset(y = 1.dp))
+        androidx.compose.runtime.key(actionKey) {
+            // The whole square takes taps: a slightly bigger target than the round face.
+            Box(Modifier.matchParentSize().clickable(remember { MutableInteractionSource() }, null, enabled,
+                role = androidx.compose.ui.semantics.Role.Button) {
+                GameAudio.play(GameSound.UI_TAP)
+                if (turnsOnTap) scope.launch { disc.turnOver(reduce) }
+                onClick()
+            }.semantics { this.contentDescription = contentDescription })
+        }
     }
 }
 

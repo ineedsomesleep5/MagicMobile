@@ -94,7 +94,15 @@ import io.magicmobile.android.ui.brandPanel
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rememberAnimationSeconds
 import io.magicmobile.android.ui.rgb
+import io.magicmobile.android.R
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.LocalTavernBoard
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernTag
+import io.magicmobile.android.ui.drawStretched
+import io.magicmobile.android.ui.tavernBrassFrame
+import io.magicmobile.android.ui.tavernFill
+import io.magicmobile.android.ui.tavernImage
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -134,8 +142,10 @@ fun BoardTurnBanner(title: String, turn: Int, isViewer: Boolean, modifier: Modif
     val rise by animateFloatAsState(if (shown) 0f else 14f, spring(0.78f, 220f), label = "bannerRise")
     val textAlpha by animateFloatAsState(if (shown) 1f else 0f, spring(0.78f, 220f), label = "bannerAlpha")
     val sweepX by animateFloatAsState(sweep, tween(1100), label = "bannerSweep")
+    val tavern = LocalTavernBoard.current
     Box(modifier.padding(horizontal = 6.dp).semantics { contentDescription = "$title, turn $turn" }, contentAlignment = Alignment.Center) {
-        Box(Modifier.fillMaxWidth().height(104.dp).graphicsLayer { scaleX = band }
+        if (tavern) TavernTurnBand(Modifier.graphicsLayer { scaleX = band })
+        else Box(Modifier.fillMaxWidth().height(104.dp).graphicsLayer { scaleX = band }
             .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.86f), Color.Transparent)))) {
             val edge = Brush.horizontalGradient(listOf(Color.Transparent, accent, accent, Color.Transparent))
             Box(Modifier.fillMaxWidth().height(2.dp).align(Alignment.TopCenter).glow(accent, 6.dp, 1.dp).background(edge))
@@ -154,9 +164,28 @@ fun BoardTurnBanner(title: String, turn: Int, isViewer: Boolean, modifier: Modif
             }.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }) {
                 FitText(title.uppercase(), titleStyle, minimumScale = 0.6f)
             }
-            Text("Turn $turn", color = accent.copy(alpha = 0.85f), style = sf(12f, SfWeight.heavy, tracking = 2f))
+            if (tavern) TavernTag("TURN $turn")
+            else Text("Turn $turn", color = accent.copy(alpha = 0.85f), style = sf(12f, SfWeight.heavy, tracking = 2f))
         }
     }
+}
+
+/** The tavern's turn banner: a leather ribbon in brass trim with large pennant end caps. */
+@Composable
+private fun TavernTurnBand(modifier: Modifier) {
+    val left = tavernImage(R.drawable.tavern_ui_cap_left)
+    val right = tavernImage(R.drawable.tavern_ui_cap_right)
+    Box(modifier.fillMaxWidth().padding(horizontal = 30.dp).height(100.dp)
+        .glow(Color.Black.copy(alpha = 0.55f), 10.dp, 9.dp)
+        .drawWithContent {
+            drawContent()
+            val cap = 54.dp.toPx(); val y = (size.height - cap) / 2
+            drawStretched(left, Offset(-33.dp.toPx(), y), androidx.compose.ui.geometry.Size(cap, cap))
+            drawStretched(right, Offset(size.width - cap + 33.dp.toPx(), y), androidx.compose.ui.geometry.Size(cap, cap))
+        }
+        .tavernFill(TavernMaterial.LEATHER, androidx.compose.foundation.shape.RoundedCornerShape(9.dp),
+            overlayBrush = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.05f), Color.Black.copy(alpha = 0.4f))))
+        .tavernBrassFrame(0.75f))
 }
 
 /**
@@ -364,6 +393,15 @@ fun OpeningHandOverlay(choice: OpeningHandChoice, cards: List<ZoneCard>, pending
 /** Keep glows gold; Mulligan is a gold-edged outline, both easy to hit. */
 @Composable
 private fun OpeningHandButton(title: String, icon: String, primary: Boolean, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+    if (LocalTavernBoard.current) {
+        // Keep is the ember plaque, Mulligan the leather one.
+        io.magicmobile.android.ui.TavernButton(action, modifier, if (primary) io.magicmobile.android.ui.TavernButtonKind.PRIMARY
+            else io.magicmobile.android.ui.TavernButtonKind.SECONDARY, fontSize = 17f, enabled = enabled, pressSound = if (primary) GameSound.UI_CONFIRM else null) {
+            SfImage(icon, androidx.compose.material3.LocalContentColor.current, 17.dp)
+            io.magicmobile.android.ui.TavernButtonText(title, maxLines = 1)
+        }
+        return
+    }
     PressableBox(action, modifier, enabled, pressSound = if (primary) GameSound.UI_CONFIRM else null) { pressed ->
         val ink = if (primary) rgb(0.16, 0.11, 0.05) else MagicPalette.parchment
         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 50.dp).scale(if (pressed) 0.96f else 1f).alpha(if (enabled) 1f else 0.5f)

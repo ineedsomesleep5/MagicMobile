@@ -70,8 +70,9 @@ fun PortraitGameContent(
     openLog: () -> Unit, openSettings: () -> Unit, openPromptDetails: () -> Unit, viewZone: (String, List<ZoneCard>) -> Unit,
     openPromptDetailSheet: () -> Unit,
 ) {
+    val tavernFrame = LocalTavernFrame.current
     val metrics = PortraitBattlefieldLayoutMetrics(size, paymentActive = InlinePaymentPromptState.isActive(snapshot), largeText = BoardMotion.largeText,
-        centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false))
+        centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false), tavernDock = tavernFrame != null)
     val actions = snapshot.legalActions ?: emptyList()
     val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
     val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
@@ -83,10 +84,15 @@ fun PortraitGameContent(
     val passAction = actions.firstOrNull { it.type == "pass_priority" } ?: actions.firstOrNull { it.type == "pass_until_response" }
 
     Box(Modifier.fillMaxSize()) {
-        PortraitOpponentStatusBar(snapshot, snapshot.playerLabel(opponent.playerId), opponent, human.playerId,
-            CombatPlayerIdentity.targetID(opponent.playerId, snapshot, combatHighlights.defenderIds) != null,
-            { CombatPlayerIdentity.targetID(opponent.playerId, snapshot, combatHighlights.defenderIds)?.let(submitAttackers) },
-            openLog, Modifier.place(metrics.topHUDRect).zIndex(3f), viewZone, selectOpponent)
+        val opponentTargetable = CombatPlayerIdentity.targetID(opponent.playerId, snapshot, combatHighlights.defenderIds) != null
+        val attackOpponent = { CombatPlayerIdentity.targetID(opponent.playerId, snapshot, combatHighlights.defenderIds)?.let(submitAttackers); Unit }
+        if (tavernFrame != null) {
+            TavernOpponentBar(tavernFrame, snapshot, snapshot.playerLabel(opponent.playerId), opponent, opponentTargetable, attackOpponent,
+                metrics.topHUDRect, Modifier.zIndex(3f), viewZone, selectOpponent)
+        } else {
+            PortraitOpponentStatusBar(snapshot, snapshot.playerLabel(opponent.playerId), opponent, human.playerId, opponentTargetable, attackOpponent,
+                openLog, Modifier.place(metrics.topHUDRect).zIndex(3f), viewZone, selectOpponent)
+        }
 
         PortraitBattlefieldPermanentGroup("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
             metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.opponentBattlefieldRect.width, metrics.opponentBattlefieldRect.height,
@@ -170,9 +176,12 @@ fun PortraitGameContent(
                     CombatViewportAnchors.laneIndices(human.zones.battlefield, opponent.zones.battlefield)) { selection.inspectedCard = it }
             }
         }
+        // Life changes rise from the tavern medallions when they are on the table.
+        val viewerSeat = bounds[TavernSeatAnchor.bottom]
+        val opponentSeat = bounds[TavernSeatAnchor.top]
         BoardFXOverlay(boardFX.active, boardFX.subjects, bounds, BoardFXAnchors(snapshot.viewerID,
-            viewerPoint = BoardPoint(metrics.bottomHUDRect.minX + 34, metrics.bottomHUDRect.maxY - 78),
-            opponentPoint = BoardPoint(metrics.topHUDRect.minX + 44, metrics.topHUDRect.maxY + 26),
+            viewerPoint = viewerSeat?.let { BoardPoint(it.midX, it.minY - 8) } ?: BoardPoint(metrics.bottomHUDRect.minX + 34, metrics.bottomHUDRect.maxY - 78),
+            opponentPoint = opponentSeat?.let { BoardPoint(it.midX, it.maxY + 10) } ?: BoardPoint(metrics.topHUDRect.minX + 44, metrics.topHUDRect.maxY + 26),
             stackPoint = BoardPoint(metrics.centerStripRect.midX, metrics.centerStripRect.midY),
             viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
             opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),

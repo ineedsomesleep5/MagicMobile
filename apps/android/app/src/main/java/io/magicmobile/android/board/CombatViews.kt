@@ -77,8 +77,9 @@ fun PortraitCombatArrowOverlay(snapshot: GameSnapshot, groups: List<XmageCombatG
         if (!(kind == null || kind.lowercase() == "player")) return null
         val rect = when {
             // The bottom seat: the viewer, or their stand-in while they watch.
-            CombatPlayerIdentity.ids(snapshot.seatID, snapshot).contains(id) -> metrics.bottomControlsRect
-            focusedOpponentID != null && CombatPlayerIdentity.ids(focusedOpponentID, snapshot).contains(id) -> metrics.topHUDRect
+            // On the tavern table the arrow ends at the seat's medallion.
+            CombatPlayerIdentity.ids(snapshot.seatID, snapshot).contains(id) -> renderedBounds[TavernSeatAnchor.bottom] ?: metrics.bottomControlsRect
+            focusedOpponentID != null && CombatPlayerIdentity.ids(focusedOpponentID, snapshot).contains(id) -> renderedBounds[TavernSeatAnchor.top] ?: metrics.topHUDRect
             else -> return null
         }
         return BoardPoint(rect.midX, rect.midY)
