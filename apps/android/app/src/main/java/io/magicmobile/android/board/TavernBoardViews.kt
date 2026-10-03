@@ -1,11 +1,7 @@
 package io.magicmobile.android.board
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -165,13 +161,11 @@ fun TavernMedallion(diameter: Dp, life: Int?, modifier: Modifier = Modifier, act
 @Composable
 fun TavernCommanderReadyGlow(diameter: Dp) {
     val reduce = BoardMotion.reduceMotion
-    val strength = if (reduce) 0.9f else {
-        val transition = rememberInfiniteTransition(label = "commanderReady")
-        transition.animateFloat(0.45f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "commanderReadyStrength").value
-    }
+    val breath = if (reduce) null else rememberBoardBreath(900, 0.45f, 1f)
     Box(Modifier.requiredSize(diameter * 1.42f), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize().graphicsLayer {
-            val s = if (reduce) 1f else 0.96f + 0.06f * strength
+            val strength = breath?.invoke() ?: 0.9f
+            val s = if (breath == null) 1f else 0.96f + 0.06f * strength
             scaleX = s; scaleY = s; alpha = strength
         }) {
             val width = diameter.toPx() * 0.09f
@@ -232,14 +226,14 @@ fun TavernManaGemFace(symbol: String, count: Int, modifier: Modifier = Modifier,
         "R" -> rgb(1.0, 0.38, 0.20); "G" -> rgb(0.32, 0.88, 0.42); else -> rgb(0.86, 0.86, 0.92)
     }
     val breathing = if (lit && !BoardMotion.reduceMotion) {
-        val transition = rememberInfiniteTransition(label = "manaGem")
-        transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1200), RepeatMode.Reverse), label = "manaBreath").value
+        rememberBoardBreath(1200)()
     } else 0f
     val image = tavernImage(TavernImages.manaGem(symbol))
     Box(modifier.requiredSize(diameter), contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxSize()
             .glow(if (lit || payable) glowColor.copy(alpha = 0.7f + 0.25f * breathing) else Color.Black.copy(alpha = 0.6f),
-                if (lit || payable) (6 + 3 * breathing).dp else 1.5.dp, diameter / 2)
+                // A fixed blur keeps the drawn glow cached; only its brightness breathes.
+                if (lit || payable) 7.5.dp else 1.5.dp, diameter / 2)
             .colorAdjust(if (lit) 1.15f else 0.75f, if (lit) 0.04f + 0.08f * breathing else -0.08f)
             .drawBehind { drawStretched(image) })
         if (lit) {

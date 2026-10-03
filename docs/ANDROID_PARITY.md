@@ -175,13 +175,18 @@ screenshots of `normal-battlefield`, `crowded-battlefield`, `attached-permanents
     Deck Studio's parchment palette are also styled.
   - Adapter: the viewer's blocking creatures stay in the blockers SELECT targets, as on iOS. This adds the
     parity case `blockers-take-back` and Wall of Spears to the `blockers` case. The golden entries were written by hand in
-    the iOS format. Confirm them with `MAGICMOBILE_WRITE_PARITY_GOLDENS=1 swift test --package-path apps/ios
-    --filter ParityGoldenTests` (expect no diff) before merging.
+    the iOS format; regenerating them on iOS (`MAGICMOBILE_WRITE_PARITY_GOLDENS=1 swift test --package-path
+    apps/ios --filter ParityGoldenTests`) gave no diff.
   - New JVM tests: `TavernSocketsTest`, `declaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack` and
     `commanderCastIsItsOnlyCeremony`. `:core:test` (173) and `:app:testDebugUnitTest` (72) pass.
-  - Checked with local Robolectric screenshots only, which were not committed. Still to check on an
-    emulator or a phone:
-    - blur and glow rendering, the adaptive icon, pop-up menus and the pass-disc flip
-    - landscape status-bar hiding and the hand drop zone
-    - real display cutouts and insets
+  - Emulator check (MagicMobile_API35, debug build, design previews): the portrait and landscape boards,
+    framed tiles with real art, and the four-player pop-over with its swap row all match iOS.
+  - Breathing glows (playable hand cards, floating mana, the commander-ready ring) step on one shared
+    20-a-second clock (`rememberBoardBreath` in `BoardSupport.kt`) and are read at draw time where possible.
+    The mana gem's blur stays a fixed size. A quiet board used about 105% CPU on the emulator because it
+    redrew every frame; it now uses about 45%. With animations off it uses 0.6%.
+  - Still to check on a phone:
+    - glow feel, the adaptive icon, pop-up menus and the pass-disc flip
+    - launch speed (slow on the 8 GB Mac's emulator) and idle battery use
+    - landscape status-bar hiding, the hand drop zone, and real display cutouts and insets
     - an online game against an iPhone

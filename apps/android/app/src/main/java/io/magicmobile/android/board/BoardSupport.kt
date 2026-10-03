@@ -1,10 +1,37 @@
 package io.magicmobile.android.board
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import io.magicmobile.android.ArtworkTokenIdentity
 import io.magicmobile.android.game.BoardFXLevel
 import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.LaunchEnvironment
+
+/**
+ * The board's breathing glows (playable hand cards, floating mana, a castable commander), rising from `low`
+ * to `high` over `periodMillis` and back. They step on one shared 20-a-second clock instead of every frame
+ * each, so a quiet board redraws a third as often and all of them in the same frame. Read the returned
+ * value inside a draw or graphicsLayer block, so a step redraws the glow without recomposing its card.
+ */
+@Composable
+fun rememberBoardBreath(periodMillis: Int, low: Float = 0f, high: Float = 1f): () -> Float {
+    val now = produceState(System.currentTimeMillis()) {
+        while (true) {
+            kotlinx.coroutines.delay(BOARD_BREATH_STEP_MS - System.currentTimeMillis() % BOARD_BREATH_STEP_MS)
+            value = System.currentTimeMillis() / BOARD_BREATH_STEP_MS * BOARD_BREATH_STEP_MS
+        }
+    }
+    return remember(now, periodMillis, low, high) {
+        {
+            val phase = (now.value % (2L * periodMillis)).toDouble() / periodMillis
+            low + (high - low) * (0.5 - 0.5 * kotlin.math.cos(Math.PI * phase)).toFloat()
+        }
+    }
+}
+
+private const val BOARD_BREATH_STEP_MS = 50L
 
 /** Swift `GameBoardMotion`: reduced motion (the large-text preview forces it) and large-text layouts. */
 object BoardMotion {

@@ -1,10 +1,6 @@
 package io.magicmobile.android.board
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -116,10 +112,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
     }
     val shadowRadius = if (selected || pending) 11.dp else glowRadius
     val pulse = zoneName == "Hand" && (legal || castOffered) && !selected && !pending && !targetable
-    val pulseAlpha = if (pulse && BoardFXSettings.level == BoardFXLevel.FULL && !reduceMotion) {
-        val transition = rememberInfiniteTransition(label = "playable")
-        transition.animateFloat(0.5f, 1f, infiniteRepeatable(tween(1200), RepeatMode.Reverse), label = "pulse").value
-    } else 1f
+    val pulseAlpha = if (pulse && BoardFXSettings.level == BoardFXLevel.FULL && !reduceMotion) rememberBoardBreath(1200, 0.5f, 1f) else null
     Box(modifier
         .requiredSize(width, height)
         .rotate(rotation)
@@ -159,7 +152,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
             }
         }
         // Playable and target outlines drawn just outside the card.
-        Box(Modifier.fillMaxSize().alpha(pulseAlpha).drawWithContent {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = pulseAlpha?.invoke() ?: 1f }.drawWithContent {
             drawContent()
             val outset = 3.dp.toPx()
             val corner = CornerRadius(8.dp.toPx())
