@@ -86,21 +86,34 @@ import io.magicmobile.android.ui.sf
 /** BattlefieldBackdrop (GameBoardTheme.swift). Persisted identifiers are shared with iOS. */
 enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
     ARENA("arena", "Stone Arena"), MIDNIGHT("midnight", "Midnight"), WOOD("wood", "Classic Wood"),
-    MOSS("moss", "Moss Sanctuary"), EMBER("ember", "Obsidian Ember"), TIDE("tide", "Tidal Slate");
+    MOSS("moss", "Moss Sanctuary"), EMBER("ember", "Obsidian Ember"), TIDE("tide", "Tidal Slate"), TAVERN("tavern", "Walnut Tavern");
 
+    /** Square material, center-cropped for either orientation. */
     val drawable: Int? get() = when (this) {
         ARENA -> R.drawable.battlefield_arena; WOOD -> R.drawable.battlefield_wood; MOSS -> R.drawable.battlefield_moss
-        EMBER -> R.drawable.battlefield_ember; TIDE -> R.drawable.battlefield_tide; MIDNIGHT -> null
+        EMBER -> R.drawable.battlefield_ember; TIDE -> R.drawable.battlefield_tide; MIDNIGHT, TAVERN -> null
     }
 
+    /**
+     * A composed table rendered for each orientation (scripts/brand/tavern_table.py): its frame and play mat
+     * are placed for the board layout, so it cannot share one crop.
+     */
+    val composedDrawables: Pair<Int, Int>? get() =
+        if (this == TAVERN) R.drawable.battlefield_tavern_portrait to R.drawable.battlefield_tavern_landscape else null
+
+    /** Composed art carries its own lamp and vignette; the generic shading would muddy it. */
+    val hasBakedLighting: Boolean get() = composedDrawables != null
+
     companion object {
-        fun resolved(value: String): BattlefieldBackdrop = entries.firstOrNull { it.rawValue == value } ?: ARENA
+        /** Walnut Tavern is the default board; unknown values resolve to it. */
+        fun resolved(value: String): BattlefieldBackdrop = entries.firstOrNull { it.rawValue == value } ?: TAVERN
     }
 }
 
 object BoardAppearancePreference {
     const val key = "magicmobile.boardAppearance"
-    const val defaultValue = "arena"
+    /** Walnut Tavern is the default board (iOS build 24); a saved choice is kept. */
+    const val defaultValue = "tavern"
     fun normalized(value: String): String = if (BattlefieldBackdrop.entries.any { it.rawValue == value }) value else defaultValue
 }
 
@@ -113,23 +126,40 @@ object MenuAppearancePreference {
 
 val midnightGradient: Brush get() = Brush.verticalGradient(listOf(rgb(0.055, 0.085, 0.10), rgb(0.10, 0.16, 0.16)))
 
-/** A square material crop keeps both orientations independent of painted slots. */
+/**
+ * A square material crop keeps both orientations independent of painted slots. Composed tables pick the
+ * render made for the orientation and fill the screen exactly: the controls sit on its sockets through
+ * the same both-axes mapping (TavernFrame), so a phone a little taller or wider than the 440 x 956 design
+ * canvas stretches the plate by a few percent instead of cropping its sockets away.
+ */
 @Composable
 fun BattlefieldBackdropArt(theme: BattlefieldBackdrop, modifier: Modifier = Modifier) {
+    val composed = theme.composedDrawables
     val drawable = theme.drawable
-    if (drawable != null) Image(painterResource(drawable), null, modifier, contentScale = ContentScale.Crop)
+    if (composed != null) {
+        BoxWithConstraints(modifier) {
+            val portrait = maxHeight >= maxWidth
+            val resources = androidx.compose.ui.platform.LocalContext.current.resources
+            val id = if (portrait) composed.first else composed.second
+            val plate = remember(id) { io.magicmobile.android.ui.TavernImages.decode(resources, id) }
+            Image(androidx.compose.ui.graphics.painter.BitmapPainter(plate), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+        }
+    } else if (drawable != null) Image(painterResource(drawable), null, modifier, contentScale = ContentScale.Crop)
     else Box(modifier.background(midnightGradient))
 }
 
 @Composable
 fun BattlefieldSurface(modifier: Modifier = Modifier) {
     val appearance by AppPreferences.string(BoardAppearancePreference.key, BoardAppearancePreference.defaultValue)
+    val theme = BattlefieldBackdrop.resolved(appearance)
     BoxWithConstraints(modifier) {
         val w = constraints.maxWidth.toFloat(); val h = constraints.maxHeight.toFloat()
-        BattlefieldBackdropArt(BattlefieldBackdrop.resolved(appearance), Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.34f), Color.Black.copy(alpha = 0.05f),
-            Color.Black.copy(alpha = 0.08f), Color.Black.copy(alpha = 0.38f)))))
-        Box(Modifier.fillMaxSize().background(radialVignette(w, h, 0.20f, 0.62f, listOf(Color.Transparent, Color.Black.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.24f)))))
+        BattlefieldBackdropArt(theme, Modifier.fillMaxSize())
+        if (!theme.hasBakedLighting) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.34f), Color.Black.copy(alpha = 0.05f),
+                Color.Black.copy(alpha = 0.08f), Color.Black.copy(alpha = 0.38f)))))
+            Box(Modifier.fillMaxSize().background(radialVignette(w, h, 0.20f, 0.62f, listOf(Color.Transparent, Color.Black.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.24f)))))
+        }
     }
 }
 

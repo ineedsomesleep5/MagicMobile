@@ -88,13 +88,19 @@ object MagicPalette {
     val boardBackdrop = rgb(0.055, 0.085, 0.10)
 }
 
+/**
+ * MagicMobile's brand, "Walnut & Ember" (chosen 2026-10-01): dark carved walnut, tooled leather, parchment
+ * ink, brass edges and the ember coral of the app icon. Panels and buttons draw with the tavern kit (TavernKit.kt).
+ */
 object BrandTheme {
-    val canvas = Color(0xFF141518)
-    val surface = Color(0xFF25262A)
-    val surfaceRaised = Color(46, 47, 52)
-    val border = Color(0xFF45464A)
-    val ink = Color(0xFFF3F1EC)
-    val inkSecondary = Color(177, 178, 182)
+    val canvas = Color(0xFF1B120B) // walnut
+    val surface = Color(0xFF2B1B11) // leather
+    val surfaceRaised = Color(0xFF3A2416)
+    val border = Color(0xFF8A6A3C) // dim brass
+    val ink = Color(0xFFF3E6C8) // parchment
+    val inkSecondary = Color(194, 171, 134)
+    val brass = rgb(0.88, 0.68, 0.36)
+    val brassGradient: Brush get() = Brush.verticalGradient(listOf(rgb(1.0, 0.88, 0.56), rgb(0.80, 0.56, 0.22)))
     val ember = Color(0xFFFF8058)
     val emberLight = Color(0xFFFF9D7E)
     val rust = Color(0xFFA74429)

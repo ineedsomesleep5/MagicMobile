@@ -94,6 +94,15 @@ fun PressableBox(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Bo
 @Composable
 fun CompactActionButton(onClick: () -> Unit, modifier: Modifier = Modifier, isPrimary: Boolean = false, isDanger: Boolean = false,
                         enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        // On the tavern table: a riveted plaque (TavernButtonStyle, compact).
+        io.magicmobile.android.ui.TavernButton(onClick, modifier, when {
+            isDanger -> io.magicmobile.android.ui.TavernButtonKind.DANGER
+            isPrimary -> io.magicmobile.android.ui.TavernButtonKind.PRIMARY
+            else -> io.magicmobile.android.ui.TavernButtonKind.SECONDARY
+        }, compact = true, enabled = enabled, content = content)
+        return
+    }
     PressableBox(onClick, modifier, enabled) { pressed ->
         val background = when {
             isDanger -> if (pressed) MagicPalette.oxblood.copy(alpha = 0.66f) else MagicPalette.oxblood.copy(alpha = 0.84f)
@@ -114,6 +123,7 @@ fun CompactActionButton(onClick: () -> Unit, modifier: Modifier = Modifier, isPr
 /** Text styled like a compact action label (rounded, black weight). */
 @Composable
 fun CompactActionText(text: String, isPrimary: Boolean = false, color: Color = LocalContentColor.current) {
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) { io.magicmobile.android.ui.TavernButtonText(text, maxLines = 1); return }
     FitText(text, sf(if (isPrimary) 15f else 13f, SfWeight.black, SfDesign.ROUNDED), color = color, minimumScale = 0.7f)
 }
 
@@ -121,6 +131,10 @@ fun CompactActionText(text: String, isPrimary: Boolean = false, color: Color = L
 @Composable
 fun PanelActionButton(onClick: () -> Unit, modifier: Modifier = Modifier, isPrimary: Boolean = false, isDanger: Boolean = false,
                       compact: Boolean = false, enabled: Boolean = true, content: @Composable () -> Unit) {
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        io.magicmobile.android.ui.TavernRowButton(onClick, modifier, isPrimary, isDanger, compact, enabled, content)
+        return
+    }
     PressableBox(onClick, modifier, enabled) { pressed ->
         val shape = RoundedCornerShape(7.dp)
         val background: Brush = when {
@@ -181,7 +195,9 @@ fun GameIconButton(symbol: String, onClick: () -> Unit, modifier: Modifier = Mod
 
 @Composable
 fun PromptMiniLabel(title: String) {
-    Text(title.uppercase(), color = Color.White.copy(alpha = 0.54f), style = sf(7f, SfWeight.black))
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        Text(title.uppercase(), color = io.magicmobile.android.ui.TavernPalette.label.copy(alpha = 0.85f), style = sf(9f, SfWeight.heavy, SfDesign.SERIF, tracking = 0.8f))
+    } else Text(title.uppercase(), color = Color.White.copy(alpha = 0.54f), style = sf(7f, SfWeight.black))
 }
 
 @Composable
@@ -189,20 +205,22 @@ fun PromptButtonLabel(title: String, subtitle: String? = null, systemImage: Stri
                       cardName: String? = null, large: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(vertical = if (large) 6.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(if (large) 10.dp else 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
+        val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
+        val ink = LocalContentColor.current
         if (isPending) {
-            CircularProgressIndicator(Modifier.size(if (large) 16.dp else 12.dp), color = Color.White, strokeWidth = 1.5.dp)
+            CircularProgressIndicator(Modifier.size(if (large) 16.dp else 12.dp), color = if (tavern) ink else Color.White, strokeWidth = 1.5.dp)
         } else if (systemImage != null) {
-            SfImage(systemImage, MagicPalette.parchment, if (large) 17.dp else 13.dp)
+            SfImage(systemImage, if (tavern) ink else MagicPalette.parchment, if (large) 17.dp else 13.dp)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             val text = PromptDisplayText.clean(title)
             val style = sf(if (large) 15f else 12f, if (large) SfWeight.semibold else SfWeight.bold)
             // Mana, tap and other symbols render as icons, never as {T}.
             if (text.contains("{")) GameRulesText(text, cardName = cardName, symbolSize = if (large) 17.dp else 13.dp, style = style,
-                maxLines = if (large) 8 else 3, color = Color.White)
-            else FitText(text, style, color = Color.White, maxLines = if (large) 8 else 3, minimumScale = if (large) 0.9f else 0.7f)
+                maxLines = if (large) 8 else 3, color = ink)
+            else FitText(text, style, color = ink, maxLines = if (large) 8 else 3, minimumScale = if (large) 0.9f else 0.7f)
             if (!subtitle.isNullOrEmpty()) {
-                FitText(PromptDisplayText.clean(subtitle), sf(if (large) 12f else 9f, SfWeight.semibold), Modifier.alpha(0.72f), color = Color.White,
+                FitText(PromptDisplayText.clean(subtitle), sf(if (large) 12f else 9f, SfWeight.semibold), Modifier.alpha(0.72f), color = ink,
                     maxLines = if (large) 3 else 1, minimumScale = 0.7f)
             }
         }

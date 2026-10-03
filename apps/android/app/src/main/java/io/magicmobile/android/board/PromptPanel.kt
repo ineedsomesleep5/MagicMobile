@@ -86,6 +86,23 @@ import kotlinx.serialization.json.JsonPrimitive
 fun PromptPanelSection(title: String, detail: String, isHighlighted: Boolean = false, isEmbedded: Boolean = false,
                        content: @Composable ColumnScope.() -> Unit) {
     if (isEmbedded) { Column(verticalArrangement = Arrangement.spacedBy(7.dp), content = content); return }
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        // A box pressed into the tavern sheet's leather, edged with a brass hairline.
+        val box = RoundedCornerShape(10.dp)
+        Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.24f), box)
+            .border(1.dp, if (isHighlighted) androidx.compose.ui.graphics.SolidColor(MagicPalette.warningAmber.copy(alpha = 0.7f)) else io.magicmobile.android.ui.TavernPalette.brassLine, box)
+            .padding(9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                FitText(title.uppercase(), sf(10f, SfWeight.heavy, io.magicmobile.android.ui.SfDesign.SERIF, tracking = 1f), Modifier.weight(1f, fill = false),
+                    color = if (isHighlighted) MagicPalette.warningAmber else io.magicmobile.android.ui.TavernPalette.label, minimumScale = 0.7f)
+                Spacer(Modifier.weight(1f))
+                FitText(detail.uppercase(), sf(9f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF),
+                    color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.7f), minimumScale = 0.6f)
+            }
+            content()
+        }
+        return
+    }
     val shape = RoundedCornerShape(8.dp)
     Column(Modifier.fillMaxWidth()
         .background(if (isHighlighted) MagicPalette.warningAmber.copy(alpha = 0.10f) else MagicPalette.iron.copy(alpha = 0.42f), shape)
