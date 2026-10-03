@@ -31,35 +31,75 @@
   pointer-events: auto;
 }
 .hand-label {
-  color: #c5bcb2;
-  font-size: 10px;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #dba34d;
+  font-size: 12px;
+  font-weight: 650;
   text-transform: uppercase;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.16em;
   margin-right: 10px;
+  text-shadow: 0 1px 2px #000c;
 }
+.hand-label::before,
+.hand-label::after {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: linear-gradient(90deg, #dba34d00, #dba34dcc);
+}
+.hand-label::after {
+  background: linear-gradient(90deg, #dba34dcc, #dba34d00);
+}
+/* Leather tags in a thin brass rim, like the app's TavernTag. */
 .hand-tools button {
+  position: relative;
+  isolation: isolate;
   min-height: 44px;
   min-width: 44px;
-  border: 1px solid #ffffff2b;
-  border-radius: 100px;
-  background: #171614da;
-  color: #fff8ef;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #f2e0bd;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 13px;
+  padding: 0 15px;
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 650;
+  text-shadow: 0 1px 1px #000c;
+  box-shadow: 0 3px 8px #08030066;
   cursor: pointer;
 }
+.hand-tools button::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, #ffe2aa1a, #0000 42%, #0006),
+    url("/tavern/leather.webp") center / 171px,
+    #29140b;
+}
+.hand-tools button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 10px 11px;
+  border-image: url("/tavern/capsule-thin.webp") 30 33 / 10px 11px / 0 stretch;
+  pointer-events: none;
+}
 .hand-tools button:hover {
-  background: #383029;
-  border-color: #ff975c;
+  filter: brightness(1.15);
 }
 .hand-tools button:focus-visible {
-  outline: 3px solid #ff975c;
+  outline: 3px solid #ff8058;
   outline-offset: 4px;
 }
 .hand-fallback {
@@ -79,7 +119,7 @@
     translateY(calc(var(--hand-index) * var(--hand-index) * 2%))
     rotate(calc(var(--hand-index) * 9deg));
   border-radius: 4%;
-  filter: drop-shadow(0 12px 12px #0008);
+  filter: drop-shadow(0 12px 14px #0a0400aa);
 }
 .hand-fallback img.hand-center {
   transform: translateY(-5%) rotate(-5deg);
@@ -94,7 +134,7 @@
     gap: 6px;
   }
   .hand-tools button {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

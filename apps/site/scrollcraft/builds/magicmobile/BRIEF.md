@@ -1,5 +1,7 @@
 # MagicMobile: The opening hand
 
+> 2026-10-02: the choreography below still applies, but the materials changed to the app's Walnut & Ember brand (walnut, leather, brass, parchment, ember; Source Serif 4). Where this brief says charcoal, silver or compressed sans, read [DESIGN.md](../../../DESIGN.md).
+
 Self-authored implementation decisions under the user's delegated website request. User feedback supersedes the rejected first design. No invented user answers.
 
 ## Evidence and creative authority

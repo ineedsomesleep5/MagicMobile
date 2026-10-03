@@ -3,23 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#141518">
+  <meta name="theme-color" content="#1b120b">
   <title>MagicMobile privacy</title>
   <meta name="description" content="What MagicMobile stores, what it sends, and how to delete your profile.">
-  <link rel="icon" href="/app-icon.png">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
-    :root { --canvas: #141518; --surface: #202125; --ink: #f3f1ec; --soft: #b5b5af; --accent: #ff8058; }
+    /* Walnut & Ember, as on the download site (see ../../DESIGN.md). */
+    :root { --canvas: #1b120b; --leather: #29140b; --brass: #dba34d; --ink: #f3e6c8; --soft: #cfb994; --accent: #ff8058; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--canvas); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { margin: 0; background: linear-gradient(#110a05c7, #110a05c7), url("/tavern/walnut.webp") 0 0 / 340px, var(--canvas);
+      color: var(--ink); font: 17px/1.6 ui-serif, "New York", Georgia, "Times New Roman", serif; }
     main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
-    h1 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; font-weight: 800; }
-    h2 { font-size: 20px; margin: 32px 0 8px; }
+    h1 { font-size: 36px; line-height: 1.2; margin: 0 0 8px; font-weight: 800; }
+    h2 { font-size: 21px; margin: 34px 0 8px; padding-top: 18px; border-top: 1px solid #dba34d57; color: var(--brass); }
     p, li { color: var(--soft); }
     strong { color: var(--ink); }
     a { color: var(--accent); }
+    a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
     ul { padding-left: 20px; }
     .updated { margin: 0 0 24px; }
-    .card { background: var(--surface); border-radius: 14px; padding: 4px 18px; }
+    .card { background: var(--leather); border-radius: 14px; padding: 4px 18px; }
   </style>
 </head>
 <body>
