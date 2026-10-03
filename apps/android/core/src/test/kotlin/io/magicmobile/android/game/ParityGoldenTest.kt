@@ -228,8 +228,8 @@ class ParityGoldenTest {
             assertEquals(expected["id"].string, tutorial.id)
             assertEquals(expected["title"].string, tutorial.title)
             assertEquals(expected["subtitle"].string, tutorial.subtitle)
-            assertEquals(expected["pages"].array!!.map { mapOf("id" to it["id"].string, "title" to it["title"].string, "body" to it["body"].string) },
-                tutorial.pages.map { mapOf("id" to it.id, "title" to it.title, "body" to it.body) }, tutorial.id)
+            assertEquals(tutorial.id, expected["pages"].array!!.map { mapOf("id" to it["id"].string, "title" to it["title"].string, "body" to it["body"].string) },
+                tutorial.pages.map { mapOf("id" to it.id, "title" to it.title, "body" to it.body) })
         }
         assertEquals(HowToPlayText.tutorials[0].pages, HowToPlayText.pages)
 

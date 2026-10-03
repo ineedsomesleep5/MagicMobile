@@ -136,7 +136,7 @@ object TavernPhaseTrack {
  * creature, an animated land) is framed as the creature it is now.
  */
 enum class TavernFrameKind(val rawValue: String) {
-    CREATURE("creature"), TOKEN("token"), ARTIFACT("artifact"), ENCHANTMENT("enchantment"), LAND("land");
+    CREATURE("creature"), TOKEN("token"), ARTIFACT("artifact"), ENCHANTMENT("enchantment"), LAND("land"), SPELL("spell");
 
     /**
      * The arched art window's bounding box in each frame image, as fractions of the tile (printed by
@@ -148,6 +148,7 @@ enum class TavernFrameKind(val rawValue: String) {
         ARTIFACT -> BoardRect(0.093f, 0.164f, 0.829f, 0.728f)
         ENCHANTMENT -> BoardRect(0.084f, 0.17f, 0.829f, 0.733f)
         LAND -> BoardRect(0.09f, 0.15f, 0.82f, 0.756f)
+        SPELL -> BoardRect(0.093f, 0.164f, 0.814f, 0.736f)
     }
 
     /** Basic lands are known by their art; every other permanent names itself on the ribbon. */
@@ -164,6 +165,8 @@ enum class TavernFrameKind(val rawValue: String) {
                 identity.isLand -> LAND
                 identity.isArtifact -> ARTIFACT
                 identity.isEnchantment -> ENCHANTMENT
+                // Only ever held up at the centre while it is cast: a parchment scroll.
+                identity.typeLine.contains("Instant", ignoreCase = true) || identity.typeLine.contains("Sorcery", ignoreCase = true) -> SPELL
                 else -> CREATURE
             }
         }

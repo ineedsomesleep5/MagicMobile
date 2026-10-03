@@ -190,7 +190,8 @@ fun PortraitGameContent(
             stackPoint = BoardPoint(metrics.centerStripRect.midX, if (tavernFrame != null)
                 minOf(metrics.centerStripRect.midY, (metrics.opponentBattlefieldRect.midY + metrics.centerStripRect.midY) / 2) else metrics.centerStripRect.midY),
             viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
-            opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),
+            opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40),
+            playerLabels = snapshot.players.associate { it.playerId to snapshot.playerLabel(it.playerId) }),
             boardFXClock, pruneFX, Modifier.zIndex(8f))
 
         AnimatedVisibility(inspectingZoneTitle != null, Modifier.place(metrics.detailSheetRect).zIndex(70f),
