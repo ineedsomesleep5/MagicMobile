@@ -281,18 +281,24 @@ object BoardFXPainter {
         drawLine(Color.White.copy(alpha = 0.7f * 0.8f), a, b, px(3.0), StrokeCap.Round, blendMode = BlendMode.Plus)
     }
 
-    fun DrawScope.arrivalGlow(r: BoardRect, color: Color, p: Double, motion: Boolean) {
+    fun DrawScope.arrivalGlow(r: BoardRect, color: Color, p: Double, motion: Boolean, tavern: Boolean = false) {
         val grow = if (motion) 14 * easeOut(p) else 0.0
         val frame = Rect(px(r.x - grow), px(r.y - grow), px(r.maxX + grow), px(r.maxY + grow))
+        if (tavern) {
+            // The tavern table lights the card from behind: a soft swell of light, no outline.
+            blurredRoundRect(frame, px(12.0), alpha(color, 0.75 * (1 - p)), px(9 + grow * 0.4), BlendMode.Plus)
+            return
+        }
         drawRoundRect(alpha(color, 1 - p), frame.topLeft, frame.size, CornerRadius(px(8 + grow / 2)), Stroke(px(1 + 3 * (1 - p))), blendMode = BlendMode.Plus)
         val base = rect(r)
         drawRoundRect(alpha(color, 0.35 * (1 - p)), base.topLeft, base.size, CornerRadius(px(6.0)), blendMode = BlendMode.Plus)
     }
 
-    fun DrawScope.departure(r: BoardRect, color: Color, destination: BoardFXZone?, p: Double, motion: Boolean) {
+    fun DrawScope.departure(r: BoardRect, color: Color, destination: BoardFXZone?, p: Double, motion: Boolean, tavern: Boolean = false) {
         val shrink = if (motion) 0.2 * easeOut(p) else 0.0
         val drift = if (motion) (if (destination == BoardFXZone.EXILE) -18.0 else 14.0) * easeOut(p) else 0.0
         val frame = Rect(px(r.x + r.width * shrink / 2), px(r.y + r.height * shrink / 2 + drift), px(r.maxX - r.width * shrink / 2), px(r.maxY - r.height * shrink / 2 + drift))
+        if (tavern) { blurredRoundRect(frame, px(10.0), alpha(color, 0.6 * (1 - p)), px(8.0)); return }
         val o = 0.7 * (1 - p)
         drawRoundRect(Color.Black.copy(alpha = (0.55 * o).toFloat()), frame.topLeft, frame.size, CornerRadius(px(6.0)))
         drawRoundRect(alpha(color, o), frame.topLeft, frame.size, CornerRadius(px(6.0)), Stroke(px(2.0)))
@@ -313,9 +319,15 @@ object BoardFXPainter {
         if (motion) sparks(BoardRect(at.x - 6, at.y - 6, 12f, 12f), color, 18, p, seed, BoardFXPainter.SparkStyle.BURST)
     }
 
-    fun DrawScope.banner(measurer: TextMeasurer, title: String, subtitle: String?, at: BoardPoint, color: Color, p: Double) {
+    fun DrawScope.banner(measurer: TextMeasurer, title: String, subtitle: String?, at: BoardPoint, color: Color, p: Double, art: TavernFXArt? = null) {
         val fade = window(p, 0.08, 0.82)
         if (fade <= 0) return
+        if (art != null) {
+            // On the tavern table names sit on the parchment ribbon, which grows to fit them (up to 360 pt).
+            val natural = measurer.measure(title, sf(19f, SfWeight.heavy, SfDesign.SERIF), maxLines = 1, softWrap = false).size.width / density
+            ribbonBanner(measurer, art, title, subtitle, at, min(max(natural / 0.66 + 12, 220.0), 360.0), p, seal = subtitle == "COMMANDER")
+            return
+        }
         val text = measurer.measure(title, sf(16f, SfWeight.heavy, SfDesign.SERIF).copy(color = Color.White), maxLines = 1,
             constraints = Constraints(maxWidth = px(300.0).roundToInt()))
         val caption = subtitle?.let { measurer.measure(it, sf(10f, SfWeight.black, tracking = 2f).copy(color = color), maxLines = 1) }
@@ -330,6 +342,150 @@ object BoardFXPainter {
             drawText(caption, topLeft = Offset(c.x - caption.size.width / 2f, frame.top + px(11.0) - caption.size.height / 2f), alpha = o)
             drawText(text, topLeft = Offset(c.x - text.size.width / 2f, c.y + captionHeight / 2 - text.size.height / 2f), alpha = o)
         } else drawText(text, topLeft = Offset(c.x - text.size.width / 2f, c.y - text.size.height / 2f), alpha = o)
+    }
+
+    /** A soft, blurred rounded rectangle of light or shadow (SwiftUI's blur filter on a filled path). */
+    fun DrawScope.blurredRoundRect(frame: Rect, corner: Float, color: Color, blur: Float, blend: BlendMode = BlendMode.SrcOver) {
+        if (color.alpha <= 0.005f) return
+        drawIntoCanvas { canvas ->
+            val paint = Paint()
+            paint.blendMode = blend
+            val native = paint.asFrameworkPaint()
+            native.color = color.toArgb()
+            native.maskFilter = BlurMaskFilter(max(0.5f, blur), BlurMaskFilter.Blur.NORMAL)
+            canvas.drawRoundRect(frame.left, frame.top, frame.right, frame.bottom, corner, corner, paint)
+        }
+    }
+
+    // --- The commander's moment on the tavern table (storyboard ui-ref/commander-cast-storyboard.png) ---
+    val ember = rgb(1.0, 0.52, 0.2)
+    val emberLight = rgb(1.0, 0.85, 0.45)
+
+    /** A radial gradient whose colours run from `startRadius` to `endRadius` (SwiftUI RadialGradient). */
+    private fun radial(center: Offset, startRadius: Float, endRadius: Float, colors: List<Color>): Brush {
+        val end = max(endRadius, startRadius + 1f)
+        val stops = colors.mapIndexed { i, c -> (startRadius + (end - startRadius) * i / max(1, colors.size - 1)) / end to c }.toTypedArray()
+        return Brush.radialGradient(*stops, center = center, radius = end)
+    }
+
+    /** The table darkens around the commander so the firelight carries the moment. */
+    fun DrawScope.tableDim(fade: Double) {
+        if (fade <= 0.01) return
+        val center = Offset(size.width / 2, size.height * 0.45f)
+        drawRect(radial(center, px(80.0), max(size.width, size.height) * 0.75f, listOf(Color.Black.copy(alpha = 0.25f), Color.Black)), alpha = (0.6 * fade).toFloat())
+    }
+
+    /** A ring of flame flaring around the commander's medallion as it leaves its seat. */
+    fun DrawScope.fireRing(at: BoardPoint, radius: Double, p: Double, elapsed: Double, seed: Int) {
+        val fade = window(p, 0.12, 0.55)
+        if (fade <= 0.01) return
+        val c = pt(at)
+        drawCircle(radial(c, px(radius * 0.7), px(radius * 1.7), listOf(alpha(ember, 0.75), rgb(1.0, 0.3, 0.08).copy(alpha = 0.3f), Color.Transparent)),
+            px(radius * 1.7), c, alpha = fade.toFloat(), blendMode = BlendMode.Plus)
+        for (i in 0 until 40) {
+            val angle = i / 40.0 * 2 * PI + elapsed * 0.9
+            val flicker = 0.55 + 0.45 * sin(elapsed * 11 + i * 1.7)
+            val inner = radius * 0.98
+            val length = radius * (0.16 + 0.3 * flicker * (0.5 + 0.5 * noise(seed, i, 3)))
+            val start = Offset(px(at.x + cos(angle) * inner), px(at.y + sin(angle) * inner))
+            val end = Offset(px(at.x + cos(angle) * (inner + length)), px(at.y + sin(angle) * (inner + length) - length * 0.35))
+            drawLine(Brush.linearGradient(listOf(emberLight, ember, Color.Transparent), start, end), start, end, px(3.0), StrokeCap.Round,
+                alpha = fade.toFloat(), blendMode = BlendMode.Plus)
+        }
+        sparks(BoardRect((at.x - radius).toFloat(), (at.y - radius).toFloat(), (radius * 2).toFloat(), (radius * 2).toFloat()), ember, 22, p, seed,
+            BoardFXPainter.SparkStyle.RISE)
+    }
+
+    /** Embers streaming behind the rising commander along its arc from `from` to `to`. */
+    fun DrawScope.emberStream(from: BoardPoint, to: BoardPoint, p: Double, seed: Int) {
+        if (p <= 0 || p >= 1.5) return
+        val head = min(1.0, p)
+        val tailFade = if (p < 1) 1.0 else max(0.0, (1.5 - p) / 0.5)
+        for (i in 0 until 46) {
+            val t = i / 46.0 * head
+            val age = head - t
+            val point = BoardFXFlight.arc(from, to, 50.0, t)
+            val jx = (noise(seed, i, 1) - 0.5) * 16; val jy = (noise(seed, i, 2) - 0.5) * 16 - age * 34
+            val s = 1.6 + 3.2 * (1 - age) * noise(seed, i, 4)
+            drawCircle(if (i % 3 == 0) emberLight else ember, px(s / 2), Offset(px(point.x + jx), px(point.y + jy)),
+                alpha = (max(0.0, 1 - age * 1.5) * tailFade).toFloat().coerceIn(0f, 1f), blendMode = BlendMode.Plus)
+        }
+    }
+
+    /** Warm firelight behind a held commander, embers circling it. */
+    fun DrawScope.fireHalo(around: BoardRect, elapsed: Double, fade: Double, seed: Int) {
+        if (fade <= 0.01) return
+        val c = Offset(px(around.midX.toDouble()), px(around.midY.toDouble()))
+        // The light fades out well inside its own disc, so no edge shows.
+        val reach = around.height * 0.95
+        drawCircle(radial(c, px(around.width * 0.3), px(reach), listOf(alpha(ember, 0.85), rgb(1.0, 0.3, 0.1).copy(alpha = 0.35f), Color.Transparent)),
+            px(reach), c, alpha = (0.6 * fade).toFloat(), blendMode = BlendMode.Plus)
+        for (i in 0 until 36) {
+            val speed = 0.5 + 0.5 * noise(seed, i, 7)
+            val angle = i / 36.0 * 2 * PI + elapsed * speed * 1.3
+            val rx = around.width * 0.72 + 12 * noise(seed, i, 8)
+            val ry = around.height * 0.62 + 12 * noise(seed, i, 9)
+            val x = around.midX + cos(angle) * rx; val y = around.midY + sin(angle) * ry + sin(elapsed * 3 + i) * 4
+            val s = 1.6 + 2.8 * noise(seed, i, 10)
+            drawCircle(if (i % 3 == 0) emberLight else ember, px(s / 2), Offset(px(x), px(y)),
+                alpha = (fade * (0.35 + 0.65 * (0.5 + 0.5 * sin(elapsed * 7 + i * 2.1)))).toFloat().coerceIn(0f, 1f), blendMode = BlendMode.Plus)
+        }
+    }
+
+    /**
+     * The parchment ribbon unrolling under a name: COMMANDER over it, with a red wax seal pressed at its centre for a
+     * commander. The name shrinks to the ribbon's face and, at the smallest size, ends in an ellipsis: it never runs off.
+     */
+    fun DrawScope.ribbonBanner(measurer: TextMeasurer, art: TavernFXArt, title: String, subtitle: String?, at: BoardPoint, width: Double, p: Double,
+                               seal: Boolean = true) {
+        val fade = window(p, 0.1, 0.86)
+        if (fade <= 0) return
+        val unroll = easeOut(min(1.0, p / 0.22))
+        val w = width * (0.3 + 0.7 * unroll)
+        val h = width * 0.24
+        val frame = Rect(px(at.x - w / 2), px(at.y - h / 2), px(at.x + w / 2), px(at.y + h / 2))
+        val o = fade.toFloat()
+        blurredRoundRect(frame.translate(0f, px(3.0)), px(6.0), Color.Black.copy(alpha = 0.6f * o), px(5.0))
+        drawImage(art.ribbon, IntOffset.Zero, androidx.compose.ui.unit.IntSize(art.ribbon.width, art.ribbon.height),
+            IntOffset(frame.left.roundToInt(), frame.top.roundToInt()), androidx.compose.ui.unit.IntSize(frame.width.roundToInt().coerceAtLeast(1), frame.height.roundToInt().coerceAtLeast(1)),
+            alpha = o, filterQuality = androidx.compose.ui.graphics.FilterQuality.High)
+        val textAlpha = o * max(0.0, (unroll - 0.55) / 0.45).toFloat()
+        val face = px(w * 0.66)
+        val ink = rgb(0.2, 0.1, 0.04)
+        fun layout(text: String, size: Float) = measurer.measure(text, sf(size, SfWeight.heavy, SfDesign.SERIF).copy(color = ink), maxLines = 1, softWrap = false)
+        var fontSize = 19f
+        var shown = title
+        var name = layout(shown, fontSize)
+        while (name.size.width > face && fontSize > 10f) { fontSize -= 1f; name = layout(shown, fontSize) }
+        while (name.size.width > face && shown.length > 4) { shown = shown.dropLast(2).trim() + "…"; name = layout(shown, fontSize) }
+        val nameY = if (subtitle == null) frame.center.y - px(h * 0.04) else frame.top + px(h * 0.58)
+        if (subtitle != null) {
+            val caption = measurer.measure(subtitle, sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.5f).copy(color = rgb(0.5, 0.16, 0.07)), maxLines = 1, softWrap = false)
+            drawText(caption, topLeft = Offset(frame.center.x - caption.size.width / 2f, frame.top + px(h * 0.3) - caption.size.height / 2f), alpha = textAlpha)
+        }
+        drawText(name, topLeft = Offset(frame.center.x - name.size.width / 2f, nameY - name.size.height / 2f), alpha = textAlpha)
+        // The seal presses in once the ribbon is open.
+        val press = max(0.0, min(1.0, (p - 0.2) / 0.08))
+        if (!seal || press <= 0) return
+        val r = px(h * 0.24 * (1.4 - 0.4 * press))
+        val sealCenter = Offset(frame.center.x, frame.bottom + r * 0.15f)
+        val sealAlpha = (fade * press).toFloat()
+        drawCircle(Color.Black.copy(alpha = 0.55f * sealAlpha), r, sealCenter.copy(y = sealCenter.y + px(2.0)))
+        drawCircle(Brush.radialGradient(listOf(rgb(0.86, 0.18, 0.12), rgb(0.5, 0.05, 0.04)), Offset(sealCenter.x - r * 0.3f, sealCenter.y - r * 0.3f), r * 1.2f),
+            r, sealCenter, alpha = sealAlpha)
+        drawCircle(rgb(0.35, 0.03, 0.02).copy(alpha = 0.7f * sealAlpha), r * 0.7f, sealCenter, style = Stroke(px(1.0)))
+        // A crown pressed into the wax.
+        val s = r * 0.8f / 24f
+        val crown = Path().apply {
+            fun at(x: Float, y: Float) = Offset(sealCenter.x + (x - 12f) * s, sealCenter.y + (y - 12f) * s)
+            at(3f, 7f).let { moveTo(it.x, it.y) }
+            listOf(7.5f to 11f, 12f to 4f, 16.5f to 11f, 21f to 7f, 19.5f to 17f, 4.5f to 17f).forEach { (x, y) -> at(x, y).let { lineTo(it.x, it.y) } }
+            close()
+            at(4.5f, 18.5f).let { moveTo(it.x, it.y) }
+            listOf(19.5f to 18.5f, 19.5f to 20.5f, 4.5f to 20.5f).forEach { (x, y) -> at(x, y).let { lineTo(it.x, it.y) } }
+            close()
+        }
+        drawPath(crown, rgb(0.38, 0.03, 0.02), alpha = sealAlpha)
     }
 
     fun DrawScope.number(measurer: TextMeasurer, value: String, at: BoardPoint, color: Color, size: Double, p: Double, motion: Boolean) {
@@ -349,7 +505,9 @@ object BoardFXPainter {
 }
 
 /** One card face moving across the board for an effect. */
-class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kind) {
+class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kind,
+                    /** Walnut Tavern: a commander's showcase is its framed battlefield tile, not the printed card. */
+                    val tavern: Boolean = false) {
     sealed class Kind {
         data class Arrive(val from: BoardPoint, val to: BoardRect) : Kind()
         /** Rise to the center, hold long enough to read, then settle into the slot. */
@@ -378,16 +536,17 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
         else -> Shading.None
     }
 
-    private fun showcase(from: BoardPoint, center: BoardPoint, size: BoardSize, p: Double, duration: Double, holdEnd: Double): Placement {
+    private fun showcase(from: BoardPoint, center: BoardPoint, size: BoardSize, p: Double, duration: Double, holdEnd: Double,
+                         fullCard: Boolean = true): Placement {
         val rise = min(0.3, 0.42 / duration)
         if (p < rise) {
             val t = BoardFXPainter.easeOut(p / rise)
-            return Placement(arc(from, center, 50.0, t), size, 0.45 + 0.6 * t, -8 * (1 - t), min(1.0, p / rise * 3), true, t)
+            return Placement(arc(from, center, 50.0, t), size, 0.45 + 0.6 * t, -8 * (1 - t), min(1.0, p / rise * 3), fullCard, t)
         }
         // Hold still (a slow breath) so the card can be read.
         val hold = (p - rise) / max(0.001, holdEnd - rise)
         val bob = sin(min(hold, 1.0) * PI * 2) * 3
-        return Placement(BoardPoint(center.x, (center.y + bob).toFloat()), size, 1.05 - 0.05 * min(hold, 1.0), 0.0, 1.0, true, 1.0)
+        return Placement(BoardPoint(center.x, (center.y + bob).toFloat()), size, 1.05 - 0.05 * min(hold, 1.0), 0.0, 1.0, fullCard, 1.0)
     }
 
     fun placement(p: Double): Placement? {
@@ -404,13 +563,14 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
             is Kind.ShowcaseArrive -> {
                 val landing = BoardFXScheduler.landingFraction(if (kind.commander) BoardFXEntrance.COMMANDER else BoardFXEntrance.SHOWCASE)
                 if (p >= landing) return null
-                val size = castSize(if (kind.commander) BoardFXSpellWeight.COMMANDER else BoardFXSpellWeight.SPELL)
+                val size = showcaseSize(if (kind.commander) BoardFXSpellWeight.COMMANDER else BoardFXSpellWeight.SPELL, tavern)
+                val framed = tavern && kind.commander
                 val settle = landing - min(0.2, 0.48 / duration)
-                if (p < settle) return showcase(kind.from, kind.center, size, p, duration, settle)
+                if (p < settle) return showcase(kind.from, kind.center, size, p, duration, settle, fullCard = !framed)
                 // Settle into the slot, shrinking to the tile's width.
                 val t = BoardFXPainter.easeIn((p - settle) / (landing - settle))
                 val finalScale = kind.to.width / size.width
-                Placement(arc(kind.center, BoardPoint(kind.to.midX, kind.to.midY), 20.0, t), size, 1 - (1 - finalScale) * t, 0.0, 1.0, true, 1 - t)
+                Placement(arc(kind.center, BoardPoint(kind.to.midX, kind.to.midY), 20.0, t), size, 1 - (1 - finalScale) * t, 0.0, 1.0, !framed, 1 - t)
             }
             is Kind.Depart -> if (dissolves(kind.destination)) {
                 // Burn away in place with a slight lift; the shader does the rest.
@@ -422,13 +582,14 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
                     1 - 0.6 * t, 14 * t, 1 - t, lift = 0.4)
             }
             is Kind.Cast -> {
-                val size = castSize(kind.weight)
+                val size = showcaseSize(kind.weight, tavern)
+                val framed = tavern && kind.weight == BoardFXSpellWeight.COMMANDER
                 // Exit: shrink toward the stack and fade over the last third of a second.
                 val exit = 1 - min(0.3, 0.35 / duration)
-                if (p < exit) showcase(kind.from, kind.to, size, p, duration, exit)
+                if (p < exit) showcase(kind.from, kind.to, size, p, duration, exit, fullCard = !framed)
                 else {
                     val t = BoardFXPainter.easeIn((p - exit) / (1 - exit))
-                    Placement(kind.to, size, 1 - 0.45 * t, 0.0, 1 - t, true, 1 - t)
+                    Placement(kind.to, size, 1 - 0.45 * t, 0.0, 1 - t, !framed, 1 - t)
                 }
             }
             is Kind.Strike -> {
@@ -461,6 +622,10 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
     }
 
     companion object {
+        /** The held size: a tavern commander shows its framed tile (1 : 1.08), others the card. */
+        fun showcaseSize(weight: BoardFXSpellWeight, tavern: Boolean): BoardSize =
+            if (tavern && weight == BoardFXSpellWeight.COMMANDER) BoardSize(180f, 194f) else castSize(weight)
+
         /** Showcase size: large enough to read the card at the center of the board. */
         fun castSize(weight: BoardFXSpellWeight): BoardSize = when (weight) {
             BoardFXSpellWeight.ABILITY -> BoardSize(76f, 106f)
@@ -493,12 +658,16 @@ object BoardFXPreviewFreeze {
 /** The board's effect layer: particle Canvas plus flying card faces. */
 @Composable
 fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>, cardBounds: Map<String, BoardRect>, anchors: BoardFXAnchors,
-                   clock: BoardFXClock, prune: () -> Unit, modifier: Modifier = Modifier) {
+                   clock: BoardFXClock, prune: () -> Unit, modifier: Modifier = Modifier,
+                   /** Walnut Tavern: names on parchment ribbons and the tavern commander moment. */
+                   tavern: Boolean = io.magicmobile.android.ui.LocalTavernBoard.current) {
     val lastKnownBounds = remember { HashMap<String, BoardRect>() }
     lastKnownBounds.putAll(cardBounds)
     if (lastKnownBounds.size > 400) { lastKnownBounds.clear(); lastKnownBounds.putAll(cardBounds) }
     if (effects.isEmpty()) return
     val measurer = rememberTextMeasurer()
+    val ribbon = io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_card_ribbon)
+    val art = if (tavern) remember(ribbon) { TavernFXArt(ribbon) } else null
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(effects) { while (true) withFrameMillis { now = System.currentTimeMillis() } }
     LaunchedEffect(effects.lastOrNull()?.id) {
@@ -539,14 +708,19 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
                 val origin = if (event.from == BoardFXZone.STACK) anchors.stackPoint else anchors.handPoint(event.playerID)
                 val kind = if (event.entrance == BoardFXEntrance.PLAIN) BoardFXFlight.Kind.Arrive(origin, target)
                     else BoardFXFlight.Kind.ShowcaseArrive(origin, anchors.stackPoint, target, event.entrance == BoardFXEntrance.COMMANDER)
-                BoardFXFlight(effect, card, kind)
+                BoardFXFlight(effect, card, kind, tavern)
             }
             is BoardFXEvent.LeftBattlefield -> {
                 val origin = rect(event.cardID) ?: return@mapNotNull null
                 val target = if (event.to == BoardFXZone.HAND) anchors.handPoint(event.playerID) else anchors.playerPoint(event.playerID)
                 BoardFXFlight(effect, card, BoardFXFlight.Kind.Depart(origin, target, event.to))
             }
-            is BoardFXEvent.SpellCast -> BoardFXFlight(effect, card, BoardFXFlight.Kind.Cast(anchors.handPoint(event.controllerID), anchors.stackPoint, event.weight))
+            is BoardFXEvent.SpellCast -> {
+                // On the tavern table a commander rises out of its owner's medallion.
+                val origin = if (tavern && event.weight == BoardFXSpellWeight.COMMANDER) anchors.playerPoint(event.controllerID ?: anchors.viewerID)
+                    else anchors.handPoint(event.controllerID)
+                BoardFXFlight(effect, card, BoardFXFlight.Kind.Cast(origin, anchors.stackPoint, event.weight), tavern)
+            }
             is BoardFXEvent.CombatStrike -> {
                 val origin = rect(event.attackerID) ?: return@mapNotNull null
                 val hit = point(event.target) ?: return@mapNotNull null
@@ -560,7 +734,7 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
         Canvas(Modifier.fillMaxSize()) {
             for (effect in effects) {
                 val p = progress(effect) ?: continue
-                drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point)
+                drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point, art)
             }
         }
         val placed = flights.mapNotNull { flight -> progress(flight.effect)?.let { p -> flight.placement(p)?.let { Triple(flight, p, it) } } }
@@ -599,10 +773,28 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
 }
 
 private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Double, measurer: TextMeasurer, anchors: BoardFXAnchors,
-                                 subjects: Map<String, ZoneCard>, rect: (String) -> BoardRect?, point: (BoardFXStrikeTarget) -> BoardPoint?) { with(BoardFXPainter) {
+                                 subjects: Map<String, ZoneCard>, rect: (String) -> BoardRect?, point: (BoardFXStrikeTarget) -> BoardPoint?,
+                                 art: TavernFXArt? = null) { with(BoardFXPainter) {
     val motion = fx.usesMotion
+    val tavern = art != null
     when (val event = fx.event) {
-        is BoardFXEvent.SpellCast -> {
+        is BoardFXEvent.SpellCast -> if (art != null && event.weight == BoardFXSpellWeight.COMMANDER) {
+            // The tavern commander (storyboard): the table dims, the medallion flares, embers follow the commander up
+            // to the middle, firelight holds it and a ribbon names it.
+            val center = anchors.stackPoint
+            val showcase = BoardFXFlight.showcaseSize(BoardFXSpellWeight.COMMANDER, true)
+            val origin = anchors.playerPoint(event.controllerID ?: anchors.viewerID)
+            tableDim(window(p, 0.1, 0.85))
+            fireRing(origin, 34.0, min(1.0, elapsed / 1.2), elapsed, fx.id)
+            if (motion) {
+                emberStream(origin, center, elapsed / 0.5, fx.id)
+                val hold = BoardRect(center.x - showcase.width / 2, center.y - showcase.height / 2, showcase.width, showcase.height)
+                fireHalo(hold, elapsed, window(p, 0.15, 0.85), fx.id)
+            }
+            val title = BoardFXBannerPlan.title(event.name, false, subjects[event.stackID]?.card?.name)
+            ribbonBanner(measurer, art, title, "COMMANDER", BoardPoint(center.x, center.y + showcase.height / 2 + 48),
+                max(showcase.width * 1.45, 230.0), p)
+        } else {
             val center = anchors.stackPoint
             val showcase = BoardFXFlight.castSize(event.weight)
             val heroColor = if (event.weight == BoardFXSpellWeight.COMMANDER) gold else event.tint.color
@@ -618,7 +810,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             // Below the showcased card for abilities too (the card covered it at +54).
             val bannerY = center.y + BoardFXBannerPlan.offset(showcase.height, motion)
             val title = BoardFXBannerPlan.title(event.name, event.weight == BoardFXSpellWeight.ABILITY, subjects[event.stackID]?.card?.name)
-            banner(measurer, title, if (event.weight == BoardFXSpellWeight.COMMANDER) "COMMANDER" else null, BoardPoint(center.x, bannerY), heroColor, p)
+            banner(measurer, title, if (event.weight == BoardFXSpellWeight.COMMANDER) "COMMANDER" else null, BoardPoint(center.x, bannerY), heroColor, p, art)
         }
         is BoardFXEvent.EnteredBattlefield -> {
             val r = rect(event.cardID) ?: return
@@ -630,6 +822,17 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                 val showcase = BoardFXFlight.castSize(if (event.entrance == BoardFXEntrance.COMMANDER) BoardFXSpellWeight.COMMANDER else BoardFXSpellWeight.SPELL)
                 val hold = BoardRect(center.x - showcase.width / 2, center.y - showcase.height / 2, showcase.width, showcase.height)
                 val fade = window(p / landing, 0.15, 0.75)
+                if (event.entrance == BoardFXEntrance.COMMANDER && art != null) {
+                    val framed = BoardFXFlight.showcaseSize(BoardFXSpellWeight.COMMANDER, true)
+                    val held = BoardRect(center.x - framed.width / 2, center.y - framed.height / 2, framed.width, framed.height)
+                    tableDim(fade)
+                    fireHalo(held, elapsed, fade, fx.id)
+                    subjects[event.cardID]?.card?.name?.let { name ->
+                        ribbonBanner(measurer, art, name, "COMMANDER", BoardPoint(center.x, held.maxY + 48), max(framed.width * 1.45, 230.0),
+                            min(1.0, p / (landing * 0.85)))
+                    }
+                    return
+                }
                 if (event.entrance == BoardFXEntrance.COMMANDER) {
                     screenFlash(gold, elapsed / 0.7)
                     rays(center, gold, showcase.height * 1.35, p / landing, elapsed)
@@ -638,13 +841,18 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                 subjects[event.cardID]?.card?.name?.let { name ->
                     banner(measurer, name, if (event.entrance == BoardFXEntrance.COMMANDER) "COMMANDER" else null,
                         BoardPoint(center.x, center.y + showcase.height / 2 + 22), if (event.entrance == BoardFXEntrance.COMMANDER) gold else event.tint.color,
-                        min(1.0, p / (landing * 0.8)))
+                        min(1.0, p / (landing * 0.8)), art)
                 }
             }
             if (flying && p < landing) return
             val glow = if (flying) (p - landing) / (1 - landing) else p
-            val color = if (event.entrance == BoardFXEntrance.COMMANDER) gold else event.tint.color
-            arrivalGlow(r, color, glow, motion)
+            // A tavern commander lands in a burst of ember dust on the leather.
+            val color = if (event.entrance == BoardFXEntrance.COMMANDER) (if (tavern) ember else gold) else event.tint.color
+            arrivalGlow(r, color, glow, motion, tavern)
+            if (motion && tavern && event.entrance == BoardFXEntrance.COMMANDER) {
+                sparks(r, emberLight, 26, glow, fx.id + 7, BoardFXPainter.SparkStyle.BURST)
+                shockwave(BoardPoint(r.midX, r.maxY - 6), ember.copy(alpha = 0.6f), 110.0, min(1.0, glow * 1.3))
+            }
             if (motion) {
                 sparks(r, color, if (event.entrance == BoardFXEntrance.COMMANDER) 34 else 16, glow, fx.id, BoardFXPainter.SparkStyle.RISE)
                 if (event.entrance == BoardFXEntrance.COMMANDER) shockwave(BoardPoint(r.midX, r.midY), color, 150.0, glow)
@@ -652,7 +860,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
         }
         is BoardFXEvent.LeftBattlefield -> {
             val r = rect(event.cardID) ?: return
-            if (!(motion && subjects[event.cardID] != null)) departure(r, event.tint.color, event.to, p, motion)
+            if (!(motion && subjects[event.cardID] != null)) departure(r, event.tint.color, event.to, p, motion, tavern)
             if (motion) {
                 val exile = event.to == BoardFXZone.EXILE
                 sparks(r, if (exile) rgb(0.72, 0.9, 1.0) else rgb(1.0, 0.45, 0.16), 22, p, fx.id, if (exile) BoardFXPainter.SparkStyle.RISE else BoardFXPainter.SparkStyle.FALL)
@@ -671,12 +879,12 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
         }
         is BoardFXEvent.AttackDeclared -> {
             val r = rect(event.cardID) ?: return
-            arrivalGlow(r, attackRed, p, motion)
+            arrivalGlow(r, attackRed, p, motion, tavern)
             if (motion) { sparks(r, event.tint.color, 10, p, fx.id, BoardFXPainter.SparkStyle.BURST); slash(r, attackRed, p) }
         }
         is BoardFXEvent.BlockDeclared -> {
             val blocker = rect(event.cardID) ?: return
-            arrivalGlow(blocker, blockSteel, p, motion)
+            arrivalGlow(blocker, blockSteel, p, motion, tavern)
             rect(event.attackerID)?.let { link(blocker, it, blockSteel, p) }
         }
         // XMage's first-strike damage step: named while its strikes, damage and deaths play.
@@ -749,3 +957,6 @@ object BoardFXSound {
         return cues
     }
 }
+
+/** The tavern art the effect layer draws with (the parchment ribbon). */
+class TavernFXArt(val ribbon: androidx.compose.ui.graphics.ImageBitmap)

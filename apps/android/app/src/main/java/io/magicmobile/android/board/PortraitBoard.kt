@@ -186,7 +186,9 @@ fun PortraitGameContent(
         BoardFXOverlay(boardFX.active, boardFX.subjects, bounds, BoardFXAnchors(snapshot.viewerID,
             viewerPoint = viewerSeat?.let { BoardPoint(it.midX, it.minY - 8) } ?: BoardPoint(metrics.bottomHUDRect.minX + 34, metrics.bottomHUDRect.maxY - 78),
             opponentPoint = opponentSeat?.let { BoardPoint(it.midX, it.maxY + 10) } ?: BoardPoint(metrics.topHUDRect.minX + 44, metrics.topHUDRect.maxY + 26),
-            stackPoint = BoardPoint(metrics.centerStripRect.midX, metrics.centerStripRect.midY),
+            // On the tavern table the showcase sits higher, clear of the cost and target ribbons.
+            stackPoint = BoardPoint(metrics.centerStripRect.midX, if (tavernFrame != null)
+                minOf(metrics.centerStripRect.midY, (metrics.opponentBattlefieldRect.midY + metrics.centerStripRect.midY) / 2) else metrics.centerStripRect.midY),
             viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
             opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),
             boardFXClock, pruneFX, Modifier.zIndex(8f))
