@@ -220,6 +220,13 @@ function App() {
                   code, and Apple-only groups can also play through Game Center.
                 </p>
               </div>
+              <div>
+                <span>Climb</span>
+                <p>
+                  Ranked 1v1 from Bronze to Mythic in monthly seasons, Quick
+                  Match at your deck’s bracket, and a profile with your stats.
+                </p>
+              </div>
             </div>
           </div>
           <figure className="gameplay-image">
@@ -374,12 +381,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 14 brings the Walnut Tavern: a new table, menus
-                and painted card frames, and every spell cast with its own
-                moment at the centre of the table. Tap a player’s medallion for
-                their counters, poison and commander damage. Two new How to Play
-                tutorials teach the app and the basics of Commander. Android is
-                an early alpha; physical-phone acceptance is still pending.
+                Android build 15 adds Ranked: climb from Bronze to Mythic in
+                monthly seasons against players near your rank or an AI at your
+                tier. Quick Match puts one AI at your deck’s bracket, every deck
+                shows its Commander bracket, and your profile keeps your stats,
+                achievements and match history. It keeps the Walnut Tavern table,
+                spell moments and How to Play tutorials. Android is an early
+                alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -388,12 +396,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 27 runs on iPad too, in landscape on its own larger table.
-                It brings the Walnut Tavern everywhere: the table, menus and
-                painted card frames, every spell cast with its own moment, a new
-                carved walnut app icon, and two animated How to Play tutorials,
-                one on the app and one on the basics of Commander. Apple has
-                approved this build for Internal and External TestFlight.
+                Build 28 adds Ranked: climb from Bronze to Mythic in monthly
+                seasons, against players near your rank or an AI at your tier,
+                with 3D rank badges that spin in when you rank up. Quick Match
+                puts one AI at your deck’s bracket (or the bracket, deck and
+                skill you choose), every deck shows its Commander bracket, and
+                your profile keeps your stats, achievements and match history.
+                It runs on iPhone and iPad. Apple has approved this build for
+                Internal and External TestFlight.
               </p>
             </details>
             <details>
