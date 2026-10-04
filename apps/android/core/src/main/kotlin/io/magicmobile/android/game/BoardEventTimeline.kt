@@ -461,8 +461,14 @@ class BoardFXDirector {
     private var previousBattlefield: Map<String, ZoneCard> = emptyMap()
     private var nextID = 0
 
-    /** Returns only the newly scheduled effects, for haptics and sound. */
-    fun ingest(snapshot: GameSnapshot, level: BoardFXLevel, now: Long): List<ScheduledBoardFX> {
+    /** Until when a showcase holds the centre of the board, so the turn banner waits its turn. */
+    val centreBusyUntil: Long? get() = active.filter { it.scheduled.isSequential }.maxOfOrNull { it.endDate }
+
+    /**
+     * Returns only the newly scheduled effects, for haptics and sound. `holdUntil`: the centre of the board
+     * is taken (the turn banner) until then, so showcases wait.
+     */
+    fun ingest(snapshot: GameSnapshot, level: BoardFXLevel, now: Long, holdUntil: Long? = null): List<ScheduledBoardFX> {
         val state = BoardFXState.of(snapshot)
         val battlefield = LinkedHashMap<String, ZoneCard>()
         snapshot.players.flatMap { it.zones.battlefield }.forEach { battlefield.putIfAbsent(it.instanceId, it) }
@@ -480,7 +486,7 @@ class BoardFXDirector {
             val events = BoardEventDiffer.events(previous, state, commanderNames)
             // Let a showcase or first-strike beat from an earlier snapshot finish before this batch plays.
             val showcaseEnd = active.mapNotNull { effect -> effect.scheduled.holdsLaterBatchesUntil?.let { effect.start + (it * 1000).toLong() } }.maxOrNull()
-            val hold = showcaseEnd?.let { (it - now) / 1000.0 } ?: 0.0
+            val hold = maxOf(showcaseEnd?.let { (it - now) / 1000.0 } ?: 0.0, holdUntil?.let { (it - now) / 1000.0 } ?: 0.0)
             val scheduled = BoardFXScheduler.schedule(events, level, nextID, hold)
             nextID += scheduled.size
             active = active + scheduled.map { ActiveBoardFX(it, now) }

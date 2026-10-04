@@ -260,6 +260,11 @@ object BattlefieldAttachments {
 enum class BattlefieldRowArrangement {
     AUTOMATIC, LANDSCAPE_RESOURCES, PORTRAIT_PERMANENTS;
 
+    companion object {
+        /** Columns a row shows before it scrolls (ArenaPermanentLayout). */
+        const val VISIBLE_COLUMNS = 5
+    }
+
     fun rows(groups: List<BattlefieldCardGroup>, flipped: Boolean, twoRows: Boolean): List<List<BattlefieldCardGroup>> {
         if (!twoRows) return listOf(groups)
         fun halves(values: List<BattlefieldCardGroup>): List<List<BattlefieldCardGroup>> {
@@ -276,7 +281,10 @@ enum class BattlefieldRowArrangement {
             PORTRAIT_PERMANENTS -> {
                 val foreground = groups.filter { !BattlefieldAttachments.isSupport(it.representative) }
                 val background = groups.filter { BattlefieldAttachments.isSupport(it.representative) }
-                if (foreground.isEmpty() || background.isEmpty()) halves(groups)
+                // A front row longer than the screen shows while the back row has room shares the two rows
+                // instead, creatures first, so nothing runs off the edge (iOS BattlefieldRowArrangement).
+                val frontOverflows = foreground.size > VISIBLE_COLUMNS && background.size < foreground.size - 1
+                if (foreground.isEmpty() || background.isEmpty() || frontOverflows) halves(foreground + background)
                 else if (flipped) listOf(background, foreground) else listOf(foreground, background)
             }
         }

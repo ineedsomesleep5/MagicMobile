@@ -243,7 +243,7 @@ struct BattlefieldLayoutMetrics {
         let verticalScale = safeFrame.height < 360 ? 0.24 : 0.30
         let verticalFit = max((safeFrame.height * verticalScale) / Self.magicCardHeightToWidth, 58)
         let minimumWidth: CGFloat = boardColumnRect.width < 540 ? 60 : 68
-        return min(max(horizontalFit, minimumWidth), min(verticalFit, 90))
+        return min(max(horizontalFit, minimumWidth), min(verticalFit, 90 * padTileScale))
     }
 
     var handCardHeight: CGFloat {
@@ -258,13 +258,16 @@ struct BattlefieldLayoutMetrics {
         handRect.minY - 24
     }
 
+    /// Tiles grow with the table: the phone's caps, and a third more on an iPad's wide mat.
+    private var padTileScale: CGFloat { size.isTavernPad ? 1.35 : 1 }
+
     var permanentCardWidth: CGFloat {
-        min(88, max(44, (opponentBattlefieldRect.height - 12) / 1.08))
+        min(88 * padTileScale, max(44, (opponentBattlefieldRect.height - 12) / 1.08))
     }
 
     var permanentCardHeight: CGFloat { permanentCardWidth * 1.08 }
 
-    var landCardWidth: CGFloat { min(48, permanentCardWidth) }
+    var landCardWidth: CGFloat { min(48 * padTileScale, permanentCardWidth) }
 
     var landCardHeight: CGFloat { landCardWidth * 1.08 }
 

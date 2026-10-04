@@ -307,8 +307,16 @@ final class ParityGoldenTests: XCTestCase {
         XCTAssertEqual(HowToPlayText.progress(page: page, of: count), progress["text"] as? String)
         XCTAssertEqual(format.replacingOccurrences(of: "{page}", with: "\(page)").replacingOccurrences(of: "{count}", with: "\(count)"),
                        progress["text"] as? String)
-        let pages = try XCTUnwrap(root["pages"] as? [[String: String]])
-        XCTAssertEqual(pages, HowToPlayText.pages.map { ["id": $0.id, "title": $0.title, "body": $0.body] })
+        XCTAssertEqual(root["begin"] as? String, HowToPlayText.begin)
+        let tutorials = try XCTUnwrap(root["tutorials"] as? [[String: Any]])
+        XCTAssertEqual(tutorials.count, HowToPlayText.tutorials.count)
+        for (expected, tutorial) in zip(tutorials, HowToPlayText.tutorials) {
+            XCTAssertEqual(expected["id"] as? String, tutorial.id)
+            XCTAssertEqual(expected["title"] as? String, tutorial.title)
+            XCTAssertEqual(expected["subtitle"] as? String, tutorial.subtitle)
+            XCTAssertEqual(expected["pages"] as? [[String: String]], tutorial.pages.map { ["id": $0.id, "title": $0.title, "body": $0.body] }, tutorial.id)
+        }
+        XCTAssertEqual(HowToPlayText.pages, HowToPlayText.tutorials[0].pages)
 
         let launch = try XCTUnwrap(root["launch"] as? [String: Any])
         XCTAssertEqual(launch["seenVersionKey"] as? String, HowToPlayLaunch.seenVersionKey)

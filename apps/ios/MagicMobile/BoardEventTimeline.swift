@@ -630,7 +630,8 @@ struct BoardFXDirector: Equatable {
 
     /// Returns only the newly scheduled effects, for haptics and accessibility.
     @discardableResult
-    mutating func ingest(_ snapshot: GameSnapshot, level: BoardFXLevel, now: Date) -> [ScheduledBoardFX] {
+    /// `holdUntil`: the centre of the board is taken (the turn banner) until then, so showcases wait.
+    mutating func ingest(_ snapshot: GameSnapshot, level: BoardFXLevel, now: Date, holdUntil: Date? = nil) -> [ScheduledBoardFX] {
         let state = BoardFXState(snapshot: snapshot)
         let battlefield = Dictionary(snapshot.players.flatMap(\.zones.battlefield).map { ($0.instanceId, $0) },
                                      uniquingKeysWith: { first, _ in first })
@@ -652,7 +653,7 @@ struct BoardFXDirector: Equatable {
         let showcaseEnd = active.compactMap { effect in
             effect.scheduled.holdsLaterBatchesUntil.map { effect.start.addingTimeInterval($0) }
         }.max()
-        let hold = showcaseEnd.map { $0.timeIntervalSince(now) } ?? 0
+        let hold = max(showcaseEnd.map { $0.timeIntervalSince(now) } ?? 0, holdUntil?.timeIntervalSince(now) ?? 0)
         let scheduled = BoardFXScheduler.schedule(events, level: level, firstID: nextID, hold: hold)
         nextID += scheduled.count
         active += scheduled.map { ActiveBoardFX(scheduled: $0, start: now) }
@@ -670,6 +671,11 @@ struct BoardFXDirector: Equatable {
     }
 
     static let renderGrace: TimeInterval = 2
+
+    /// Until when a showcase holds the centre of the board, so the turn banner waits its turn.
+    var centreBusyUntil: Date? {
+        active.filter { $0.scheduled.isSequential }.map(\.endDate).max()
+    }
 
     mutating func prune(now: Date) {
         active.removeAll { $0.endDate <= now }

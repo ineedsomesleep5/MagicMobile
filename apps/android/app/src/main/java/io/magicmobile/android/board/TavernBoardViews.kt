@@ -193,9 +193,10 @@ fun TavernCardBackFan(count: Int, modifier: Modifier = Modifier) {
             Box(Modifier.offset(x = (spread * width).dp, y = (abs(spread) * 8).dp)
                 .graphicsLayer { rotationZ = spread * arc; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f) }
                 .requiredSize(24.dp, 34.dp).glow(Color.Black.copy(alpha = 0.45f), 2.dp, 3.dp)
-                .background(Brush.verticalGradient(listOf(rgb(0.12, 0.15, 0.24), rgb(0.06, 0.07, 0.12))), RoundedCornerShape(3.dp))
+                // Leather card backs with a brass edge and an ember spark: the tavern's deck, not a blue one.
+                .background(Brush.verticalGradient(listOf(rgb(0.30, 0.18, 0.08), rgb(0.14, 0.08, 0.04))), RoundedCornerShape(3.dp))
                 .border(1.2.dp, TavernPalette.brass, RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) {
-                SfImage("sparkle", TavernPalette.brass, 9.dp)
+                SfImage("sparkle", BrandTheme.ember, 9.dp)
             }
         }
     }

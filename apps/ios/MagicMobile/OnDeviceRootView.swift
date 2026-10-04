@@ -39,6 +39,7 @@ struct OnDeviceRootView: View {
     @State private var showUpdates = false
     @State private var showDownloads = false
     @State private var showHowToPlay = false
+    @State private var howToPlayOpensTable = false
     @State private var showImport = false
     @State private var studioFocus: DeckStudioPlaySelection.FixRequest?
     @State private var confirmLeave = false
@@ -255,8 +256,9 @@ struct OnDeviceRootView: View {
         .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay))
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
-        .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current) }) {
-            HowToPlayView()
+        .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current); howToPlayOpensTable = false }) {
+            // The first visit opens straight into the table's tutorial; the menu offers both.
+            HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil)
         }
         .sheet(isPresented: $showFriends) {
             FriendsView(account: account) { code in
@@ -353,6 +355,7 @@ struct OnDeviceRootView: View {
         do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
         guard menuIsFree else { return }
         if HowToPlayLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
+            howToPlayOpensTable = true
             showHowToPlay = true
         } else if OfflineArtLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
             showOfflineArtPrompt = true

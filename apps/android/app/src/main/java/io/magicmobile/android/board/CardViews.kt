@@ -672,4 +672,5 @@ fun tavernFrameDrawable(kind: io.magicmobile.android.game.TavernFrameKind): Int 
     io.magicmobile.android.game.TavernFrameKind.ARTIFACT -> R.drawable.tavern_frame_artifact
     io.magicmobile.android.game.TavernFrameKind.ENCHANTMENT -> R.drawable.tavern_frame_enchantment
     io.magicmobile.android.game.TavernFrameKind.LAND -> R.drawable.tavern_frame_land
+    io.magicmobile.android.game.TavernFrameKind.SPELL -> R.drawable.tavern_frame_spell
 }

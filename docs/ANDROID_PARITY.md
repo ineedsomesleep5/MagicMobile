@@ -118,6 +118,38 @@ Parity checks for this work: the existing goldens (adapter change above needs a 
 screenshots of `normal-battlefield`, `crowded-battlefield`, `attached-permanents`, `four-player-focus`,
 `combat-arrows`, `card-target-prompt` and `board-fx` in both orientations.
 
+## Build 27: the whole table in one style (iOS `codex/walnut-build-27`)
+
+Caleb's brainstorm of 2026-10-03 (docs/BOARD_FX_ROADMAP.md, phase 13). Ported on the same branch on
+2026-10-03 (items 1–5 below; item 6, iPad, has no Android tablet counterpart yet). Checked on the
+emulator: the spell moment (`board-fx` steps 1–5), the tavern menu sheets, the chooser and both
+tutorials, the Updates sheet. `:core:test` 173 and `:app:testDebugUnitTest` 72 pass. The pieces, each
+in the same-named Kotlin file:
+
+1. **Spell moment:** `BoardFXOverlay.swift` — on the tavern every `spellCast` (and a showcased
+   `enteredBattlefield`) is the framed tile (`BoardFXFlight.showcaseSize` framed for every weight:
+   ability 80×86, spell 150×162, big 166×180, commander 180×194), `tableDim(strength:)` at 0.55 (0.75 big,
+   none for abilities), `spellHalo` in the tint's colour, and the ribbon banner with the caster's name
+   (`BoardFXAnchors.playerLabels`, `casterCaption`) on an opponent's spell. `TavernFrameKind.spell`
+   (instants and sorceries, `tavern-frame-spell`, window 0.093/0.164/0.814/0.736). The turn banner waits for
+   `BoardFXDirector.centreBusyUntil` and `ingest(holdUntil:)` holds showcases while the banner shows; the
+   tavern shows no phase pill (`hudPulse` flashes the plate instead).
+2. **Sheets:** `tavernList()` (`TavernListChrome`, `TavernListRow`, `TavernToggleStyle`) on Updates,
+   Friends, Downloads and chat; the What's new text for builds 23–27 (`NativeUpdateNewsView.swift`).
+3. **Launch screen:** the M in a brass ring on walnut `#1b120b` (LaunchMark 100 pt, `windowSplashScreen*`).
+4. **Board polish:** the stack tray's `topCard` thumbnail with the count on a 16 pt coin; the opponent's hand
+   backs in leather with an ember spark (`TavernCardBackFan`); no status bar on the tavern board.
+5. **How to play:** two tutorials (`HowToPlayText.tutorials`, core `HowToPlay.kt` already carries the words and
+   `CONTENT_VERSION` 2; `tutorial-cases.json` has the structure). `HowToPlayView.swift`: the chooser (two
+   parchment books, `howToPlay.tutorial.<id>`, `howToPlay.close`), the book (engraved title bar, Skip,
+   `howToPlay.chooser` back, brass progress coins, Back/Next/Done plaques) and the scenes
+   (`HowToPlayScene` keyed `<tutorial>/<page>`, built from `HowToPlayTile` frames, medallions, the hourglass,
+   gems, ribbons, tags and plaques on a shared 30 fps clock; stills with reduced motion). The first visit opens
+   the table's tutorial; the menu opens the chooser.
+6. **iPad:** `TavernSockets.pad` (1180×860, `tavern_layout.json` "pad", plate `battlefield-tavern-pad` stretched
+   to the screen), `CGSize.isTavernPad` (short side ≥ 700). Android tablets: the same map once a tablet is
+   in hand.
+
 ## Log
 
 - 2026-09-24 (Claude): Started. Engine client, model, adapters, message log, yield policy and

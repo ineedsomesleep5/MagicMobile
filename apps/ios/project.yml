@@ -30,7 +30,7 @@ targets:
         PRODUCT_NAME: MagicMobile
         INFOPLIST_FILE: MagicMobile/Info.plist
         CODE_SIGN_ENTITLEMENTS: MagicMobile/MagicMobile.entitlements
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
   MagicMobileTests:
     type: bundle.unit-test

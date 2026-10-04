@@ -43,14 +43,19 @@ class HowToPlayTest {
     }
 
     @Test fun pagesAreShortAndDistinct() {
-        val pages = HowToPlayText.pages
-        assertEquals(10, pages.size)
-        assertEquals(pages.size, pages.map { it.id }.toSet().size)
-        for (page in pages) {
-            assertTrue(page.id, page.title.isNotEmpty())
-            val sentences = Regex("[.!?](\\s|$)").findAll(page.body).count()
-            assertTrue("${page.id} has $sentences sentences", sentences in 1..3)
+        assertEquals(listOf("table", "commander"), HowToPlayText.tutorials.map { it.id })
+        assertEquals("The first visit opens the table's tutorial", HowToPlayText.tutorials[0].pages, HowToPlayText.pages)
+        for (tutorial in HowToPlayText.tutorials) {
+            val pages = tutorial.pages
+            assertEquals(tutorial.id, if (tutorial.id == "table") 12 else 9, pages.size)
+            assertEquals(tutorial.id, pages.size, pages.map { it.id }.toSet().size)
+            assertTrue(tutorial.id, tutorial.subtitle.isNotEmpty())
+            for (page in pages) {
+                assertTrue(page.id, page.title.isNotEmpty())
+                val sentences = Regex("[.!?](\\s|$)").findAll(page.body).count()
+                assertTrue("${tutorial.id}/${page.id} has $sentences sentences", sentences in 1..3)
+            }
         }
-        assertEquals("Page 1 of 10", HowToPlayText.progress(1, pages.size))
+        assertEquals("Page 1 of 12", HowToPlayText.progress(1, 12))
     }
 }

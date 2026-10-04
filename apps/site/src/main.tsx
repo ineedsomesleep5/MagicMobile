@@ -215,9 +215,9 @@ function App() {
               <div>
                 <span>Play</span>
                 <p>
-                  Commander against AI, or 2–4 people at one table. iPhone and
-                  Android players host or join the same table with a code, and
-                  iPhone-only groups can also play through Game Center.
+                  Commander against AI, or 2–4 people at one table. iPhone,
+                  iPad and Android players host or join the same table with a
+                  code, and Apple-only groups can also play through Game Center.
                 </p>
               </div>
             </div>
@@ -293,7 +293,7 @@ function App() {
               </div>
               <div className="platform-detail-heading">
                 <span>
-                  {platform === "android" ? "Android alpha" : "iPhone beta"}
+                  {platform === "android" ? "Android alpha" : "iPhone & iPad beta"}
                 </span>
                 <span>
                   {platform === "android" ? "Android APK" : "Apple TestFlight"}
@@ -348,7 +348,7 @@ function App() {
               <small>
                 {platform === "android"
                   ? "Android 8+ · ARM64. Hosted on GitHub. No account needed."
-                  : `iOS 17+. ${releases.ios.status} Install TestFlight, then accept the invitation.`}
+                  : `iPhone and iPad, iOS 17+. ${releases.ios.status} Install TestFlight, then accept the invitation.`}
               </small>
             </div>
           </div>
@@ -374,26 +374,26 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 13 adds friends, table chat and invite links.
-                Pick a player name once and use it at every table, see which
-                friends are online and join their table in one tap, or share a
-                link that opens straight into your table. Online games now roll
-                the D20 once and the winner goes first. Android is an early
-                alpha; physical-phone acceptance is still pending.
+                Android build 14 brings the Walnut Tavern: a new table, menus
+                and painted card frames, and every spell cast with its own
+                moment at the centre of the table. Tap a player’s medallion for
+                their counters, poison and commander damage. Two new How to Play
+                tutorials teach the app and the basics of Commander. Android is
+                an early alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
               <summary>
-                What’s new on iPhone?
+                What’s new on iPhone and iPad?
                 <Plus size={20} />
               </summary>
               <p>
-                Build 22 adds friends, table chat and invite links. Pick a
-                player name once and use it at every table, see which friends
-                are online and join their table in one tap, or share a link that
-                opens straight into your table. Online games now roll the D20
-                once and the winner goes first. Apple has approved this build
-                for Internal and External TestFlight.
+                Build 27 runs on iPad too, in landscape on its own larger table.
+                It brings the Walnut Tavern everywhere: the table, menus and
+                painted card frames, every spell cast with its own moment, a new
+                carved walnut app icon, and two animated How to Play tutorials,
+                one on the app and one on the basics of Commander. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>

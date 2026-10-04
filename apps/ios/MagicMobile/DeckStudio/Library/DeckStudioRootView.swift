@@ -247,7 +247,8 @@ struct DeckStudioRootView: View {
                         .overlay(alignment: .topLeading) {
                             VStack(alignment: .leading, spacing: 6) {
                                 if id == selectedDeckID { DeckStudioPlayingBadge() }
-                                if resolver != nil { DeckStudioPlayStatusChip(status: status(id)) }
+                                // Only a deck that needs fixes says so on its tile (Caleb, 2026-10-03).
+                                if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
                             }.padding(10)
                         }
                     DeckStudioTileDetails(name: record.name,

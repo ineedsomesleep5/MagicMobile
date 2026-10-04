@@ -1071,8 +1071,13 @@ extension EnvironmentValues {
 }
 
 extension CGSize {
-    /// The design canvas this screen maps from: portrait 440 x 956 or landscape 956 x 440.
-    var tavernDesignCanvas: CGSize { width > height ? TavernSockets.landscape.canvas : TavernDesign.canvas }
+    /// The design canvas this screen maps from: portrait 440 x 956, landscape 956 x 440, or the
+    /// iPad's 1180 x 860 once the short side is tablet-sized.
+    var tavernDesignCanvas: CGSize { TavernSockets.current(self).canvas }
+    /// An iPad held sideways: the short side is far past any phone's.
+    var isTavernPad: Bool { width > height && min(width, height) >= 700 }
+    /// The table's fixed-size controls (plates, rings, gems, trays) grow by this much on an iPad.
+    var tavernControlScale: CGFloat { isTavernPad ? 1.3 : 1 }
     /// A design-canvas point on this screen, in global coordinates.
     func tavernPoint(_ point: CGPoint) -> CGPoint {
         CGPoint(x: point.x * width / tavernDesignCanvas.width, y: point.y * height / tavernDesignCanvas.height)
@@ -1146,9 +1151,26 @@ struct TavernSockets {
             mat: CGRect(x: 172, y: 8, width: 610, height: 392), handBottom: 404)
     }()
 
+    /// The iPad plate (tavern_layout.json "pad", 1180 x 860): the landscape table scaled up,
+    /// with wider walnut columns, larger medallions and pass button, and the mat as big as the
+    /// screen allows (Caleb, 2026-10-03: iPad, landscape first).
+    static let pad: TavernSockets = {
+        let pass = CGPoint(x: 1060, y: 690)
+        return TavernSockets(
+            canvas: CGSize(width: 1180, height: 860), opponentMedallion: CGPoint(x: 136, y: 150), opponentHoleRadius: 44,
+            opponentNameplate: CGPoint(x: 136, y: 266), opponentHand: CGPoint(x: 136, y: 84),
+            phasePlate: CGPoint(x: 1050, y: 60), opponentGlance: CGPoint(x: 136, y: 330),
+            lifeMedallion: CGPoint(x: 136, y: 690), lifeHoleRadius: 50,
+            chat: CGPoint(x: 194, y: 772),
+            passButton: pass, skip: CGPoint(x: pass.x - 56, y: pass.y - 88), menu: CGPoint(x: pass.x + 30, y: pass.y - 102),
+            stackTray: CGPoint(x: 1050, y: 250),
+            manaSocketXs: [505, 543, 581, 619, 657, 695], manaSocketY: 806,
+            mat: CGRect(x: 206, y: 14, width: 794, height: 762), handBottom: 782)
+    }()
+
     static func current(_ canvas: CGSize?) -> TavernSockets {
         guard let canvas, canvas.width > canvas.height else { return .portrait }
-        return .landscape
+        return canvas.isTavernPad ? .pad : .landscape
     }
 }
 
@@ -1193,11 +1215,12 @@ struct TavernCardBackFan: View {
         ZStack(alignment: .bottom) {
             ForEach(0..<shown, id: \.self) { index in
                 let spread = shown > 1 ? (Double(index) / Double(shown - 1) - 0.5) : 0
+                // Leather card backs with a brass edge and an ember spark: the tavern's deck, not a blue one.
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(LinearGradient(colors: [Color(red: 0.12, green: 0.15, blue: 0.24), Color(red: 0.06, green: 0.07, blue: 0.12)],
+                    .fill(LinearGradient(colors: [Color(red: 0.30, green: 0.18, blue: 0.08), Color(red: 0.14, green: 0.08, blue: 0.04)],
                                          startPoint: .top, endPoint: .bottom))
                     .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(TavernPalette.brass, lineWidth: 1.2))
-                    .overlay(Image(systemName: "sparkle").font(.system(size: 9, weight: .bold)).foregroundStyle(TavernPalette.brass))
+                    .overlay(Image(systemName: "sparkle").font(.system(size: 9, weight: .bold)).foregroundStyle(BrandTheme.ember))
                     .frame(width: 24, height: 34)
                     .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
                     .rotationEffect(.degrees(spread * arc), anchor: .bottom)
@@ -1531,7 +1554,15 @@ struct TavernSealLabel: View {
     var body: some View {
         Group {
             if let image = UIImage(named: "tavern-ui-seal") {
+                // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
                 Image(uiImage: image).resizable().scaledToFit()
+                    .overlay {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.86, green: 0.64, blue: 0.30)],
+                                                            startPoint: .top, endPoint: .bottom))
+                            .shadow(color: .black.opacity(0.8), radius: 1, y: 1)
+                    }
             } else {
                 ZStack {
                     Circle().fill(RadialGradient(colors: [Color(red: 0.85, green: 0.16, blue: 0.12), Color(red: 0.45, green: 0.04, blue: 0.03)],
@@ -1584,6 +1615,43 @@ extension View {
             self
         }
     }
+}
+
+/// A stock List or Form sheet in the tavern (Caleb, 2026-10-03): the leather sheet backing, rows
+/// as darker leather cards with brass separators, parchment serif text and brass controls. Without
+/// the kit the sheet is untouched.
+struct TavernListChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        if TavernUIKit.available {
+            content
+                .scrollContentBackground(.hidden)
+                .background(TavernSheetBackground())
+                .listRowBackground(TavernListRow())
+                .listRowSeparatorTint(TavernPalette.brass.opacity(0.35))
+                .foregroundStyle(TavernPalette.parchment)
+                .fontDesign(.serif)
+                .tint(TavernPalette.brass)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .environment(\.tavernBoard, true)
+                .preferredColorScheme(.dark)
+        } else {
+            content
+        }
+    }
+}
+
+/// One row's backing in a tavern list: leather darkened a shade.
+struct TavernListRow: View {
+    var body: some View {
+        TavernFill(material: .leather)
+            .overlay(Color.black.opacity(0.28))
+    }
+}
+
+extension View {
+    /// A List or Form sheet dressed for the tavern (TavernListChrome).
+    func tavernList() -> some View { modifier(TavernListChrome()) }
 }
 
 /// A floating panel's backing: the classic fill and edge, or on the tavern board tooled leather
@@ -1695,17 +1763,29 @@ struct TavernStackTray: View {
     let open: () -> Void
     /// Narrower in the landscape table's right column.
     var width: CGFloat = 124
+    /// The top of the stack, shown as a small framed picture with the count on a coin.
+    var topCard: ZoneCard? = nil
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 8) {
-                ZStack {
-                    TavernCoin(value: count, size: 26)
+                ZStack(alignment: .bottomTrailing) {
+                    if let topCard {
+                        TavernArtCrop(card: topCard, zoneName: "Stack")
+                            .frame(width: 30, height: 32)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(BrandTheme.brassGradient, lineWidth: 1))
+                            .allowsHitTesting(false)
+                        TavernCoin(value: count, size: 16).offset(x: 5, y: 4)
+                    } else {
+                        TavernCoin(value: count, size: 26)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     Text("STACK")
                         .font(.system(size: 9, weight: .heavy, design: .serif))
                         .tracking(1)
+                        .lineLimit(1).fixedSize()
                         .foregroundStyle(Color(red: 0.96, green: 0.80, blue: 0.48))
                     Text(topName ?? "")
                         .font(.system(size: 13, weight: .semibold, design: .serif))
@@ -1720,7 +1800,8 @@ struct TavernStackTray: View {
             }
             .padding(.leading, 6)
             .padding(.trailing, 10)
-            .frame(width: width, height: 42)
+            // The picture needs its own room beside the name.
+            .frame(width: width + (topCard == nil ? 0 : 22), height: 42)
             .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
             .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
             .contentShape(Rectangle())
@@ -1782,10 +1863,20 @@ struct TavernMenu<Label: View, Items: View>: View {
     @ViewBuilder let label: Label
     @State private var open = false
     @State private var pending: (() -> Void)?
+    /// The button sits in the lower half of the screen: the pop-over opens upward, where there is room.
+    @State private var opensUpward = false
 
     var body: some View {
         Button { open = true } label: { label }
-            .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: arrowEdge) {
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { opensUpward = Self.isLow(geometry.frame(in: .global)) }
+                        .onChange(of: geometry.frame(in: .global)) { _, frame in opensUpward = Self.isLow(frame) }
+                }
+            }
+            // A pop-over below a low button runs off the screen (Caleb, 2026-10-03: controls off screen).
+            .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: arrowEdge == .top && opensUpward ? .bottom : arrowEdge) {
                 Group {
                     if let scrollHeight {
                         ScrollViewReader { proxy in
@@ -1814,6 +1905,11 @@ struct TavernMenu<Label: View, Items: View>: View {
                     action()
                 }
             }
+    }
+
+    private static func isLow(_ frame: CGRect) -> Bool {
+        let height = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 0
+        return height > 0 && frame.midY > height * 0.55
     }
 }
 

@@ -90,7 +90,10 @@ val BoardFXTint.color: Color get() = when (this) {
 
 /** Board positions in the overlay's coordinate space (dp). */
 data class BoardFXAnchors(val viewerID: String, val viewerPoint: BoardPoint, val opponentPoint: BoardPoint, val stackPoint: BoardPoint,
-                          val viewerHandPoint: BoardPoint, val opponentHandPoint: BoardPoint) {
+                          val viewerHandPoint: BoardPoint, val opponentHandPoint: BoardPoint,
+                          /** Player names, for the ribbon under an opponent's spell. */
+                          val playerLabels: Map<String, String> = emptyMap()) {
+    fun label(playerID: String?): String? = playerID?.let { playerLabels[it] }
     fun playerPoint(playerID: String): BoardPoint = if (playerID == viewerID) viewerPoint else opponentPoint
     fun handPoint(playerID: String?): BoardPoint = if (playerID == viewerID) viewerHandPoint else opponentHandPoint
 }
@@ -369,10 +372,34 @@ object BoardFXPainter {
     }
 
     /** The table darkens around the commander so the firelight carries the moment. */
-    fun DrawScope.tableDim(fade: Double) {
+    fun DrawScope.tableDim(fade: Double, strength: Double = 1.0) {
         if (fade <= 0.01) return
         val center = Offset(size.width / 2, size.height * 0.45f)
-        drawRect(radial(center, px(80.0), max(size.width, size.height) * 0.75f, listOf(Color.Black.copy(alpha = 0.25f), Color.Black)), alpha = (0.6 * fade).toFloat())
+        drawRect(radial(center, px(80.0), max(size.width, size.height) * 0.75f, listOf(Color.Black.copy(alpha = 0.25f), Color.Black)),
+            alpha = (0.6 * fade * strength).toFloat().coerceIn(0f, 1f))
+    }
+
+    /**
+     * Light in a spell's own colour behind its held card, motes drifting round it like dust in lamplight: the
+     * commander's firelight for everyone else, calmer and tinted.
+     */
+    fun DrawScope.spellHalo(color: Color, around: BoardRect, elapsed: Double, fade: Double, seed: Int, strength: Double) {
+        if (fade <= 0.01) return
+        val c = Offset(px(around.midX.toDouble()), px(around.midY.toDouble()))
+        val reach = around.height * 0.9
+        drawCircle(radial(c, px(around.width * 0.3), px(reach), listOf(alpha(color, 0.8), alpha(color, 0.3), Color.Transparent)),
+            px(reach), c, alpha = (0.5 * fade * strength).toFloat().coerceIn(0f, 1f), blendMode = BlendMode.Plus)
+        val count = (22 * strength).toInt()
+        for (i in 0 until count) {
+            val speed = 0.3 + 0.4 * noise(seed, i, 7)
+            val angle = i.toDouble() / count * 2 * PI + elapsed * speed
+            val rx = around.width * 0.7 + 14 * noise(seed, i, 8)
+            val ry = around.height * 0.6 + 14 * noise(seed, i, 9)
+            val x = around.midX + cos(angle) * rx; val y = around.midY + sin(angle) * ry - elapsed * 6 + sin(elapsed * 2 + i) * 3
+            val s = 1.4 + 2.4 * noise(seed, i, 10)
+            drawCircle(if (i % 4 == 0) Color.White else color, px(s / 2), Offset(px(x), px(y)),
+                alpha = (fade * (0.3 + 0.7 * (0.5 + 0.5 * sin(elapsed * 5 + i * 2.1)))).toFloat().coerceIn(0f, 1f), blendMode = BlendMode.Plus)
+        }
     }
 
     /** A ring of flame flaring around the commander's medallion as it leaves its seat. */
@@ -564,7 +591,7 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
                 val landing = BoardFXScheduler.landingFraction(if (kind.commander) BoardFXEntrance.COMMANDER else BoardFXEntrance.SHOWCASE)
                 if (p >= landing) return null
                 val size = showcaseSize(if (kind.commander) BoardFXSpellWeight.COMMANDER else BoardFXSpellWeight.SPELL, tavern)
-                val framed = tavern && kind.commander
+                val framed = tavern
                 val settle = landing - min(0.2, 0.48 / duration)
                 if (p < settle) return showcase(kind.from, kind.center, size, p, duration, settle, fullCard = !framed)
                 // Settle into the slot, shrinking to the tile's width.
@@ -583,7 +610,7 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
             }
             is Kind.Cast -> {
                 val size = showcaseSize(kind.weight, tavern)
-                val framed = tavern && kind.weight == BoardFXSpellWeight.COMMANDER
+                val framed = tavern
                 // Exit: shrink toward the stack and fade over the last third of a second.
                 val exit = 1 - min(0.3, 0.35 / duration)
                 if (p < exit) showcase(kind.from, kind.to, size, p, duration, exit, fullCard = !framed)
@@ -622,9 +649,13 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
     }
 
     companion object {
-        /** The held size: a tavern commander shows its framed tile (1 : 1.08), others the card. */
-        fun showcaseSize(weight: BoardFXSpellWeight, tavern: Boolean): BoardSize =
-            if (tavern && weight == BoardFXSpellWeight.COMMANDER) BoardSize(180f, 194f) else castSize(weight)
+        /** The held size: on the tavern table the framed tile (1 : 1.08), elsewhere the printed card. */
+        fun showcaseSize(weight: BoardFXSpellWeight, tavern: Boolean): BoardSize = if (!tavern) castSize(weight) else when (weight) {
+            BoardFXSpellWeight.ABILITY -> BoardSize(80f, 86f)
+            BoardFXSpellWeight.SPELL -> BoardSize(150f, 162f)
+            BoardFXSpellWeight.BIG -> BoardSize(166f, 180f)
+            BoardFXSpellWeight.COMMANDER -> BoardSize(180f, 194f)
+        }
 
         /** Showcase size: large enough to read the card at the center of the board. */
         fun castSize(weight: BoardFXSpellWeight): BoardSize = when (weight) {
@@ -777,6 +808,8 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                                  art: TavernFXArt? = null) { with(BoardFXPainter) {
     val motion = fx.usesMotion
     val tavern = art != null
+    // An opponent's name over the ribbon, so a glance says whose spell it is; nothing for yours.
+    fun casterCaption(playerID: String?): String? = if (playerID == null || playerID == anchors.viewerID) null else anchors.label(playerID)?.uppercase()
     when (val event = fx.event) {
         is BoardFXEvent.SpellCast -> if (art != null && event.weight == BoardFXSpellWeight.COMMANDER) {
             // The tavern commander (storyboard): the table dims, the medallion flares, embers follow the commander up
@@ -794,6 +827,20 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             val title = BoardFXBannerPlan.title(event.name, false, subjects[event.stackID]?.card?.name)
             ribbonBanner(measurer, art, title, "COMMANDER", BoardPoint(center.x, center.y + showcase.height / 2 + 48),
                 max(showcase.width * 1.45, 230.0), p)
+        } else if (art != null) {
+            // Every other spell on the tavern table (Caleb, 2026-10-03): a lighter sibling of the commander's moment.
+            // The table dims a little, the framed card hangs in light of its own colour, and a ribbon names it,
+            // with the caster on an opponent's ribbon.
+            val center = anchors.stackPoint
+            val showcase = BoardFXFlight.showcaseSize(event.weight, true)
+            val hold = BoardRect(center.x - showcase.width / 2, center.y - showcase.height / 2, showcase.width, showcase.height)
+            val fade = window(p, 0.12, 0.85)
+            val ability = event.weight == BoardFXSpellWeight.ABILITY
+            if (!ability) tableDim(fade, if (event.weight == BoardFXSpellWeight.BIG) 0.75 else 0.55)
+            if (motion) spellHalo(event.tint.color, hold, elapsed, fade, fx.id, if (event.weight == BoardFXSpellWeight.BIG) 1.25 else if (ability) 0.55 else 1.0)
+            val title = BoardFXBannerPlan.title(event.name, ability, subjects[event.stackID]?.card?.name)
+            val bannerY = if (motion) showcase.height / 2 + (if (ability) 30 else 44) else BoardFXBannerPlan.REDUCED_OFFSET
+            banner(measurer, title, casterCaption(event.controllerID), BoardPoint(center.x, center.y + bannerY), event.tint.color, p, art)
         } else {
             val center = anchors.stackPoint
             val showcase = BoardFXFlight.castSize(event.weight)
@@ -830,6 +877,18 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                     subjects[event.cardID]?.card?.name?.let { name ->
                         ribbonBanner(measurer, art, name, "COMMANDER", BoardPoint(center.x, held.maxY + 48), max(framed.width * 1.45, 230.0),
                             min(1.0, p / (landing * 0.85)))
+                    }
+                    return
+                }
+                if (art != null) {
+                    // A spell nobody saw on the stack gets the tavern spell moment as it lands.
+                    val framed = BoardFXFlight.showcaseSize(BoardFXSpellWeight.SPELL, true)
+                    val held = BoardRect(center.x - framed.width / 2, center.y - framed.height / 2, framed.width, framed.height)
+                    tableDim(fade, 0.55)
+                    spellHalo(event.tint.color, held, elapsed, fade, fx.id, 1.0)
+                    subjects[event.cardID]?.card?.name?.let { name ->
+                        banner(measurer, name, casterCaption(event.playerID), BoardPoint(center.x, held.maxY + 44), event.tint.color,
+                            min(1.0, p / (landing * 0.8)), art)
                     }
                     return
                 }

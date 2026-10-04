@@ -73,6 +73,8 @@ fun PortraitGameContent(
     combatBack: (() -> Unit)? = null,
 ) {
     val tavernFrame = LocalTavernFrame.current
+    // The tavern's candle sits under the clock: the status bar leaves during a game.
+    if (tavernFrame != null) HideStatusBarWhileShown()
     val metrics = PortraitBattlefieldLayoutMetrics(size, paymentActive = InlinePaymentPromptState.isActive(snapshot), largeText = BoardMotion.largeText,
         centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false), tavernDock = tavernFrame != null,
         // The iPhone's top bar ends 124 pt down and its dock starts at 830 pt on the 440 x 956 plate.
@@ -190,7 +192,8 @@ fun PortraitGameContent(
             stackPoint = BoardPoint(metrics.centerStripRect.midX, if (tavernFrame != null)
                 minOf(metrics.centerStripRect.midY, (metrics.opponentBattlefieldRect.midY + metrics.centerStripRect.midY) / 2) else metrics.centerStripRect.midY),
             viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
-            opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),
+            opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40),
+            playerLabels = snapshot.players.associate { it.playerId to snapshot.playerLabel(it.playerId) }),
             boardFXClock, pruneFX, Modifier.zIndex(8f))
 
         AnimatedVisibility(inspectingZoneTitle != null, Modifier.place(metrics.detailSheetRect).zIndex(70f),

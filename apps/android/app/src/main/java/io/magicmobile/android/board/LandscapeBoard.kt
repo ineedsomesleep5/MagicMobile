@@ -369,7 +369,8 @@ private fun LandscapeCenterColumn(
                 stackPoint = BoardPoint(metrics.centerStripRect.midX, if (tavern)
                     minOf(metrics.centerStripRect.midY, (metrics.opponentBattlefieldRect.midY + metrics.centerStripRect.midY) / 2) else metrics.centerStripRect.midY),
                 viewerHandPoint = BoardPoint(metrics.handRect.midX, metrics.handRect.midY),
-                opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40)),
+                opponentHandPoint = BoardPoint(metrics.opponentBattlefieldRect.midX, metrics.opponentBattlefieldRect.minY - 40),
+                playerLabels = snapshot.players.associate { it.playerId to snapshot.playerLabel(it.playerId) }),
                 boardFXClock, pruneFX, Modifier.zIndex(8f))
 
             BoardOverlayTransition(inspectingZoneTitle != null, Modifier.place(metrics.safeFrame).zIndex(70f)) {
@@ -525,7 +526,7 @@ private fun XmageStackPeek(objects: List<XmageStackObject>, legalActions: List<L
 
 /** iPhone hides the status bar in landscape; the board gets that height here too. A swipe still shows it. */
 @Composable
-private fun HideStatusBarWhileShown() {
+internal fun HideStatusBarWhileShown() {
     val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.runtime.DisposableEffect(view) {
         val window = (view.context as? android.app.Activity)?.window

@@ -71,6 +71,19 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.buttons["menu.play"].exists)
     }
 
+    /// Every sheet the menu opens wears the tavern (Caleb, 2026-10-03): Updates, Friends, Downloads and
+    /// Settings each open over the leather backing and close from their Done button; each is captured.
+    func testMenuSheetsOpenAndCloseFromTheirDoneButton() {
+        for control in ["menu.updates", "menu.friends", "menu.downloads", "menu.settings"] {
+            app.buttons[control].tap()
+            let done = app.buttons["Done"].firstMatch
+            XCTAssertTrue(done.waitForExistence(timeout: 8), "\(control) must open a sheet")
+            capture("tavern sheet \(control)")
+            done.tap()
+            XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5), "\(control)'s sheet must close")
+        }
+    }
+
     func testEmptyNameDisablesStartAndEnteringNameEnablesIt() {
         openSetup()
         let start = app.buttons["Start game"]

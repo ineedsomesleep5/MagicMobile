@@ -331,7 +331,10 @@ fun TavernSealButton(onClick: () -> Unit, modifier: Modifier = Modifier, content
     Box(modifier.size(44.dp).clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
         .semantics { this.contentDescription = contentDescription; role = Role.Button }, contentAlignment = Alignment.Center) {
         val seal = tavernImage(R.drawable.tavern_ui_seal)
-        Box(Modifier.size(32.dp).glow(Color.Black.copy(alpha = 0.5f), 3.dp, 16.dp).drawBehind { drawStretched(seal) })
+        // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
+        Box(Modifier.size(32.dp).glow(Color.Black.copy(alpha = 0.5f), 3.dp, 16.dp).drawBehind { drawStretched(seal) }, contentAlignment = Alignment.Center) {
+            SfImage("xmark", rgb(1.0, 0.86, 0.52), 13.dp, Modifier.glow(Color.Black.copy(alpha = 0.8f), 1.dp, 2.dp))
+        }
     }
 }
 
@@ -493,7 +496,9 @@ fun TavernNamePlate(text: String, modifier: Modifier = Modifier) {
 
 /** TavernStackTray: the stack on the tavern table, a leather tray with the top spell and how many wait; a tap opens it. */
 @Composable
-fun TavernStackTray(count: Int, topName: String?, open: () -> Unit, modifier: Modifier = Modifier, width: Dp = 124.dp) {
+fun TavernStackTray(count: Int, topName: String?, open: () -> Unit, modifier: Modifier = Modifier, width: Dp = 124.dp,
+                    /** The top of the stack, shown as a small framed picture with the count on a coin. */
+                    thumbnail: (@Composable () -> Unit)? = null) {
     Row(modifier.width(width).height(42.dp).glow(Color.Black.copy(alpha = 0.45f), 4.dp, 7.dp).tavernPanel(7.dp)
         .clickable(remember { MutableInteractionSource() }, null, onClick = open)
         .semantics {
@@ -501,7 +506,14 @@ fun TavernStackTray(count: Int, topName: String?, open: () -> Unit, modifier: Mo
             role = Role.Button
         }
         .padding(start = 6.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        TavernCoin(count, 26.dp)
+        if (thumbnail != null) {
+            Box(Modifier.size(30.dp, 32.dp)) {
+                Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).border(1.dp, BrandTheme.brassGradient, RoundedCornerShape(4.dp))) { thumbnail() }
+                TavernCoin(count, 16.dp, Modifier.align(Alignment.BottomEnd).offset(x = 5.dp, y = 4.dp))
+            }
+        } else {
+            TavernCoin(count, 26.dp)
+        }
         Column(Modifier.weight(1f)) {
             Text("STACK", color = TavernPalette.label, style = sf(9f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f), maxLines = 1)
             FitText(topName ?: "", sf(13f, SfWeight.semibold, SfDesign.SERIF), color = TavernPalette.parchment, minimumScale = 0.7f)

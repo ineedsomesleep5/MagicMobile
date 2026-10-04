@@ -85,8 +85,12 @@ fun IosSlider(value: Float, onChange: (Float) -> Unit, modifier: Modifier = Modi
 @Composable
 fun IosTextButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = rgb(0.04, 0.52, 1.0), bold: Boolean = false,
                   enabled: Boolean = true) {
+    // In the tavern every text button is brass serif (iOS tavernList's tint), whatever colour it asked for.
+    val tavern = LocalTavernBoard.current
+    val shown = if (tavern) TavernPalette.brass else color
     Box(modifier.defaultMinSize(44.dp, 44.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-        Text(title, color = if (enabled) color else color.copy(alpha = 0.4f), style = sf(17f, if (bold) SfWeight.semibold else SfWeight.regular))
+        Text(title, color = if (enabled) shown else shown.copy(alpha = 0.4f),
+            style = if (tavern) sf(16f, if (bold) SfWeight.heavy else SfWeight.semibold, SfDesign.SERIF) else sf(17f, if (bold) SfWeight.semibold else SfWeight.regular))
     }
 }
 
@@ -148,6 +152,16 @@ fun IosTextField(value: String, onChange: (String) -> Unit, placeholder: String,
 /** A sheet's navigation bar: centred title and a prominent Done capsule (iOS 26 confirmation action). */
 @Composable
 fun IosSheetHeader(title: String, done: () -> Unit, modifier: Modifier = Modifier, doneTitle: String = "Done", leading: (@Composable () -> Unit)? = null) {
+    if (LocalTavernBoard.current) {
+        // The tavern's sheet bar: the title engraved in gold on leather, Done as a leather plaque (iOS tavernList).
+        Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).tavernTitleBar().padding(start = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            leading?.let { it() }
+            TavernPanelTitle(title, Modifier.weight(1f))
+            TavernPlaqueButton(doneTitle, { GameAudio.play(GameSound.UI_CLOSE); done() }, kind = TavernButtonKind.SECONDARY, compact = true)
+        }
+        return
+    }
     Box(modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp)) {
         leading?.let { Box(Modifier.align(Alignment.CenterStart)) { it() } }
         Text(title, Modifier.align(Alignment.Center), color = Color.White, style = sf(17f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
@@ -162,10 +176,20 @@ fun IosSheetHeader(title: String, done: () -> Unit, modifier: Modifier = Modifie
 /** An inset-grouped list section: small caps header, rounded rows, optional footer. */
 @Composable
 fun IosListSection(header: String? = null, footer: String? = null, modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val tavern = LocalTavernBoard.current
     androidx.compose.foundation.layout.Column(modifier.fillMaxWidth()) {
-        header?.let { Text(it.uppercase(), Modifier.padding(start = 16.dp, bottom = 6.dp), color = Color.White.copy(alpha = 0.55f), style = sf(13f)) }
-        androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().background(rgb(0.11, 0.11, 0.12), RoundedCornerShape(10.dp)), content = content)
-        footer?.let { Text(it, Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp), color = Color.White.copy(alpha = 0.55f), style = sf(13f)) }
+        // In the tavern: a brass serif heading, rows on leather darkened a shade, a faded parchment footer (iOS tavernList).
+        header?.let {
+            if (tavern) Text(it, Modifier.padding(start = 16.dp, bottom = 6.dp), color = TavernPalette.parchment, style = sf(15f, SfWeight.bold, SfDesign.SERIF))
+            else Text(it.uppercase(), Modifier.padding(start = 16.dp, bottom = 6.dp), color = Color.White.copy(alpha = 0.55f), style = sf(13f))
+        }
+        val rows = if (tavern) Modifier.tavernFill(TavernMaterial.LEATHER, RoundedCornerShape(10.dp), overlay = Color.Black.copy(alpha = 0.28f))
+            else Modifier.background(rgb(0.11, 0.11, 0.12), RoundedCornerShape(10.dp))
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().then(rows), content = content)
+        footer?.let {
+            Text(it, Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp), color = if (tavern) TavernPalette.parchment.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.55f),
+                style = if (tavern) sf(12f, design = SfDesign.SERIF) else sf(13f))
+        }
     }
 }
 
@@ -173,11 +197,14 @@ fun IosListSection(header: String? = null, footer: String? = null, modifier: Mod
 @Composable
 fun IosListRow(title: String, modifier: Modifier = Modifier, systemImage: String? = null, value: String? = null, tint: Color = Color.White,
                monospacedValue: Boolean = false, onClick: (() -> Unit)? = null) {
+    val tavern = LocalTavernBoard.current
+    val accent = if (tavern) TavernPalette.brass else BrandTheme.ember
+    val body = if (tavern) TavernPalette.parchment else tint
     Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
         .padding(horizontal = 16.dp, vertical = 11.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        systemImage?.let { SfImage(it, if (onClick != null) BrandTheme.ember else BrandTheme.ember, 17.dp) }
-        Text(title, Modifier.weight(1f), color = if (onClick != null) BrandTheme.ember else tint, style = sf(17f))
-        value?.let { Text(it, color = Color.White.copy(alpha = 0.55f), style = if (monospacedValue) sf(12f, design = SfDesign.MONOSPACED) else sf(17f), maxLines = 1) }
+        systemImage?.let { SfImage(it, accent, 17.dp) }
+        Text(title, Modifier.weight(1f), color = if (onClick != null) accent else body, style = if (tavern) sf(16f, design = SfDesign.SERIF) else sf(17f))
+        value?.let { Text(it, color = body.copy(alpha = 0.6f), style = if (monospacedValue) sf(12f, design = SfDesign.MONOSPACED) else if (tavern) sf(16f, design = SfDesign.SERIF) else sf(17f), maxLines = 1) }
     }
 }
 

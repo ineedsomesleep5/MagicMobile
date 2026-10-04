@@ -352,7 +352,8 @@ fun DeckStudioSetupDeckStatus(setup: OnDeviceSetupModel, deckID: String, deck: D
             // A colorless commander shows the colorless symbol, as on iOS.
             identity?.let { colors -> (colors.ifEmpty { listOf("C") }).forEach { ManaSymbolView(it, 14.dp) } }
         }
-        status?.let { value ->
+        // Ready and not-checked decks show no line (Caleb, 2026-10-03): Start checks the deck anyway.
+        status?.takeIf { it == DeckStudioPlayStatus.NEEDS_FIXES }?.let { value ->
             val (icon, _) = value.icon()
             val tint = when (value) { DeckStudioPlayStatus.READY -> BrandTheme.inkSecondary; DeckStudioPlayStatus.NEEDS_FIXES -> BrandTheme.ember; else -> BrandTheme.inkSecondary }
             Row(Modifier.defaultMinSize(minHeight = if (value == DeckStudioPlayStatus.NEEDS_FIXES) 44.dp else 0.dp)

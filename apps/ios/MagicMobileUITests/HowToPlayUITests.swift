@@ -40,21 +40,27 @@ final class HowToPlayUITests: XCTestCase {
         for _ in 0..<4 where !(entry.exists && entry.isHittable) { app.swipeUp() }
         XCTAssertTrue(entry.isHittable)
         entry.tap()
+        // The menu opens the chooser; the table's tutorial is the first book.
+        let table = app.buttons["howToPlay.tutorial.table"]
+        XCTAssertTrue(table.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["howToPlay.tutorial.commander"].exists)
+        capture("How to play · chooser")
+        table.tap()
         XCTAssertTrue(progress.waitForExistence(timeout: 5))
-        waitFor(progress, "label == 'Page 1 of 10'")
+        waitFor(progress, "label == 'Page 1 of 12'")
         XCTAssertFalse(app.buttons["howToPlay.back"].isEnabled)
         XCTAssertTrue(app.buttons["howToPlay.skip"].isHittable)
         capture("How to play · first page")
 
         // A swipe turns the page like Next does.
         app.swipeLeft()
-        waitFor(progress, "label == 'Page 2 of 10'")
+        waitFor(progress, "label == 'Page 2 of 12'")
         app.buttons["howToPlay.back"].tap()
-        waitFor(progress, "label == 'Page 1 of 10'")
+        waitFor(progress, "label == 'Page 1 of 12'")
 
-        for page in 2...10 {
+        for page in 2...12 {
             app.buttons["howToPlay.next"].tap()
-            waitFor(progress, "label == 'Page \(page) of 10'")
+            waitFor(progress, "label == 'Page \(page) of 12'")
             capture("How to play · page \(page)")
         }
         XCTAssertFalse(app.buttons["howToPlay.next"].exists)
@@ -62,6 +68,31 @@ final class HowToPlayUITests: XCTestCase {
         XCTAssertFalse(skip.exists && skip.isHittable, "The last page offers Done, not Skip")
         app.buttons["howToPlay.done"].tap()
         waitFor(progress, "exists == false")
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
+    }
+
+    /// The second book, Commander basics, pages through from the chooser to Done.
+    func testCommanderTutorialPagesThroughToDone() {
+        app.launch()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 15))
+        UITestHarness.settleFirstTouch(app)
+        let entry = app.buttons["menu.howToPlay"]
+        for _ in 0..<4 where !(entry.exists && entry.isHittable) { app.swipeUp() }
+        entry.tap()
+        let commander = app.buttons["howToPlay.tutorial.commander"]
+        XCTAssertTrue(commander.waitForExistence(timeout: 5))
+        commander.tap()
+        waitFor(progress, "label == 'Page 1 of 9'")
+        capture("Commander basics · page 1")
+        for page in 2...9 {
+            app.buttons["howToPlay.next"].tap()
+            waitFor(progress, "label == 'Page \(page) of 9'")
+            capture("Commander basics · page \(page)")
+        }
+        // Back to the chooser from the book's header, then close it.
+        app.buttons["howToPlay.chooser"].tap()
+        XCTAssertTrue(app.buttons["howToPlay.tutorial.table"].waitForExistence(timeout: 5))
+        app.buttons["howToPlay.close"].tap()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 
@@ -75,9 +106,12 @@ final class HowToPlayUITests: XCTestCase {
         for _ in 0..<8 where !(entry.exists && entry.isHittable) { app.swipeUp() }
         XCTAssertTrue(entry.isHittable)
         entry.tap()
-        waitFor(progress, "label == 'Page 1 of 10'")
+        let table = app.buttons["howToPlay.tutorial.table"]
+        XCTAssertTrue(table.waitForExistence(timeout: 5))
+        table.tap()
+        waitFor(progress, "label == 'Page 1 of 12'")
         app.buttons["howToPlay.next"].tap()
-        waitFor(progress, "label == 'Page 2 of 10'")
+        waitFor(progress, "label == 'Page 2 of 12'")
         capture("How to play · largest text, top of page")
         let page = app.descendants(matching: .any)["howToPlay.page.decks"]
         let body = page.staticTexts.containing(NSPredicate(format: "label ENDSWITH %@", "shows the Playing badge.")).firstMatch
@@ -94,9 +128,9 @@ final class HowToPlayUITests: XCTestCase {
         app.launchArguments.append("--how-to-play-first-launch")
         app.launch()
         XCTAssertTrue(progress.waitForExistence(timeout: 15))
-        waitFor(progress, "label == 'Page 1 of 10'")
+        waitFor(progress, "label == 'Page 1 of 12'")
         // Spend the first touch on static text (UITestHarness.settleFirstTouch explains why).
-        let title = app.staticTexts["Welcome to MagicMobile"]
+        let title = app.staticTexts["Welcome to the tavern"]
         if title.isHittable { title.tap() }
         capture("How to play · first launch")
         app.buttons["howToPlay.skip"].tap()

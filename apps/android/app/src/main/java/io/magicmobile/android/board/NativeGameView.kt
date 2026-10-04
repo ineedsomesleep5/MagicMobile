@@ -200,6 +200,8 @@ fun NativeGameView(
     var lastTurnBannerKey by remember { mutableStateOf<String?>(null) }
     var lastTurnSoundKey by remember { mutableStateOf<String?>(null) }
     var showsTurnBanner by remember { mutableStateOf(false) }
+    /** While the turn banner holds the centre of the board, showcases wait (BoardFXDirector.ingest). */
+    var turnBannerEndsAt by remember { mutableStateOf(0L) }
     var phaseCueMerging by remember { mutableStateOf(false) }
     var hudPulse by remember { mutableIntStateOf(0) }
     var aiWaitBeganAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -438,7 +440,7 @@ fun NativeGameView(
 
     fun ingestBoardFX(snap: GameSnapshot) {
         val level = BoardFXLevel.resolved(boardFXLevel, BoardMotion.reduceMotion)
-        val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis())
+        val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis(), turnBannerEndsAt)
         fxVersion += 1
         if (scheduled.isEmpty()) return
         playBoardFXHaptics(scope, view, scheduled, snap.viewerID)
@@ -609,8 +611,11 @@ fun NativeGameView(
             val firstBanner = lastTurnBannerKey == null
             lastTurnBannerKey = turnKey
             if (!firstBanner || board.turn > 1) {
+                // A showcase at the centre finishes first, so the banner and a cast never stack.
+                boardFX.centreBusyUntil?.let { busy -> val wait = busy - System.currentTimeMillis(); if (wait > 0) delay(minOf(wait, 3000L)) }
                 if (board.isViewer(board.activePlayerId)) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                showsTurnBanner = true; showsTurnCue = true
+                turnBannerEndsAt = System.currentTimeMillis() + 1950
+                showsTurnBanner = true; showsTurnCue = !isTavernBoard
                 // A phase change during the banner restarts this effect; hide the banner even then,
                 // or the restarted effect (same turn key) leaves it on screen for the whole turn.
                 try { delay(1600) } finally { showsTurnBanner = false }
@@ -619,6 +624,8 @@ fun NativeGameView(
             }
         }
         phaseCueMerging = false
+        // The tavern's phase plate already names the phase; it flashes instead of a pill.
+        if (isTavernBoard) { hudPulse += 1; return@LaunchedEffect }
         showsTurnCue = true
         delay(1100)
         mergePhaseCueIntoBar()

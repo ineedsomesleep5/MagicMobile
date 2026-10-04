@@ -77,6 +77,9 @@ enum BattlefieldAttachments {
 enum BattlefieldRowArrangement: Equatable {
     case automatic, landscapeResources, portraitPermanents
 
+    /// Columns a row shows before it scrolls (ArenaPermanentLayout).
+    static let visibleColumns = 5
+
     func rows(_ groups: [BattlefieldCardGroup], flipped: Bool, twoRows: Bool) -> [[BattlefieldCardGroup]] {
         guard twoRows else { return [groups] }
         switch self {
@@ -92,9 +95,13 @@ enum BattlefieldRowArrangement: Equatable {
         case .portraitPermanents:
             let foreground = groups.filter { !BattlefieldAttachments.isSupport($0.representative) }
             let background = groups.filter { BattlefieldAttachments.isSupport($0.representative) }
-            if foreground.isEmpty || background.isEmpty {
-                let midpoint = (groups.count + 1) / 2
-                return [Array(groups.prefix(midpoint)), Array(groups.dropFirst(midpoint))]
+            // A front row longer than the screen shows while the back row has room shares the two
+            // rows instead, creatures first, so nothing runs off the edge (Caleb, 2026-10-03).
+            let frontOverflows = foreground.count > Self.visibleColumns && background.count < foreground.count - 1
+            if foreground.isEmpty || background.isEmpty || frontOverflows {
+                let ordered = foreground + background
+                let midpoint = (ordered.count + 1) / 2
+                return [Array(ordered.prefix(midpoint)), Array(ordered.dropFirst(midpoint))]
             }
             return flipped ? [background, foreground] : [foreground, background]
         }
@@ -993,7 +1000,7 @@ struct CombatEdgeCluster: Identifiable {
 /// walnut, artifacts silver, enchantments rose-gold, lands stone. A creature of any other type
 /// (an artifact creature, an animated land) is framed as the creature it is now.
 enum TavernFrameKind: String, CaseIterable {
-    case creature, token, artifact, enchantment, land
+    case creature, token, artifact, enchantment, land, spell
 
     init(_ card: ZoneCard) {
         let identity = card.card
@@ -1005,6 +1012,9 @@ enum TavernFrameKind: String, CaseIterable {
             self = .artifact
         } else if identity.isEnchantment {
             self = .enchantment
+        } else if identity.typeLine.localizedCaseInsensitiveContains("Instant") || identity.typeLine.localizedCaseInsensitiveContains("Sorcery") {
+            // Only ever held up at the centre while it is cast: a parchment scroll.
+            self = .spell
         } else {
             self = .creature
         }
@@ -1028,6 +1038,7 @@ enum TavernFrameKind: String, CaseIterable {
         case .artifact: CGRect(x: 0.093, y: 0.164, width: 0.829, height: 0.728)
         case .enchantment: CGRect(x: 0.084, y: 0.17, width: 0.829, height: 0.733)
         case .land: CGRect(x: 0.09, y: 0.15, width: 0.82, height: 0.756)
+        case .spell: CGRect(x: 0.093, y: 0.164, width: 0.814, height: 0.736)
         }
     }
 

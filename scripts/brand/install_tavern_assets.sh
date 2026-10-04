@@ -26,6 +26,12 @@ if [[ -f $SRC/tavern-landscape.png ]]; then
     --out "$(imageset battlefield-tavern-landscape battlefield-tavern-landscape.jpg)" >/dev/null
   print "plate: battlefield-tavern-landscape"
 fi
+# The iPad plate (tavern_layout.json "pad"), stretched to the screen like its sockets.
+if [[ -f $SRC/tavern-pad.png ]]; then
+  sips -s format jpeg -s formatOptions 85 $SRC/tavern-pad.png \
+    --out "$(imageset battlefield-tavern-pad battlefield-tavern-pad.jpg)" >/dev/null
+  print "plate: battlefield-tavern-pad"
+fi
 # The pass button is painted art (Codex, from the approved porthole reference), not a
 # render: trim it to its solid disc, square it and cut a clean feathered circle.
 ART=${PASS_ART:-$HOME/Movies/motion-assets/magicmobile-brand/pass-button-art.png}
