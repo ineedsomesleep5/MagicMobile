@@ -29,12 +29,11 @@ final class RankedUITests: XCTestCase {
         add(shot)
     }
 
-    /// Screens slide in: tap once the control has stopped moving.
+    /// Screens slide in: tap once the control exists and has had time to stop moving.
     private func tapSteady(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element)
-        XCTAssertEqual(XCTWaiter.wait(for: [hittable], timeout: 10), .completed, "\(element)", file: file, line: line)
-        Thread.sleep(forTimeInterval: 0.45)
-        element.tap()
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "\(element)", file: file, line: line)
+        Thread.sleep(forTimeInterval: 0.6)
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     private func reveal(_ element: XCUIElement) {
