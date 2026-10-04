@@ -229,7 +229,12 @@ final class BoardPolishUITests: XCTestCase {
                     XCTAssertGreaterThanOrEqual(firstRow.frame.width, 44)
                     visible(application.scrollViews["board.battlefield.Your lands"], in: application)
                     visible(card(in: application, identifierPrefix: "card-your-lands-plains"), in: application)
-                    visible(application.buttons["board.hand.expand"], in: application)
+                    // The tavern's hand rests on the table with no expand button (its design since build 23).
+                    if theme == "tavern" {
+                        visible(application.scrollViews["board.hand.scroll"], in: application)
+                    } else {
+                        visible(application.buttons["board.hand.expand"], in: application)
+                    }
                     visible(application.buttons["board.action.primary"], in: application)
                     XCTAssertFalse(application.staticTexts["YOUR DECISION"].exists)
                     capture(application, name: currentCapture)
@@ -242,7 +247,9 @@ final class BoardPolishUITests: XCTestCase {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        // A launch-argument appearance pins the argument domain, so a tap could never change it.
+        application.launchEnvironment["MAGICMOBILE_UI_TEST_BOARD_APPEARANCE"] = "arena"
+        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         XCTAssertTrue(application.buttons["menu.settings"].waitForExistence(timeout: 20))
@@ -566,7 +573,9 @@ final class BoardPolishUITests: XCTestCase {
             captureImage(name: currentCapture + "-gain")
             XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "43 life")).firstMatch.waitForExistence(timeout: 5))
         case "ability-choice":
-            let cards = app.buttons.matching(NSPredicate(format: "label == %@", "Choose Sol Ring ability"))
+            // Two sources, Sol Ring then Pitiless Plunderer, each a card-backed choice (fixture since build 26).
+            let cards = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@ AND label != %@",
+                                                         "Choose ", " ability", "Choose ability"))
             visible(cards.firstMatch, in: app)
             XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "CHOOSE ABILITY")).count, 1,
                            "Ability details should have only the outer heading")
@@ -627,12 +636,15 @@ final class BoardPolishUITests: XCTestCase {
             scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
             visible(last, in: app)
             XCTAssertEqual(scrubber.value as? String, "100 percent")
-            XCTAssertGreaterThanOrEqual(last.frame.minX, hand.frame.minX - 1)
-            XCTAssertLessThanOrEqual(last.frame.maxX, hand.frame.maxX + 1)
+            // The fan tilts the end cards, so their bounding box reaches past the row; the hand's mask
+            // shows 12 pt either side for exactly that (PortraitHand's .mask padding).
+            let fanTilt: CGFloat = 12
+            XCTAssertGreaterThanOrEqual(last.frame.minX, hand.frame.minX - fanTilt)
+            XCTAssertLessThanOrEqual(last.frame.maxX, hand.frame.maxX + fanTilt)
             app.buttons["board.hand.expand"].tap()
             scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
             visible(last, in: app)
-            XCTAssertTrue(hand.frame.insetBy(dx: -1, dy: -1).contains(last.frame))
+            XCTAssertTrue(hand.frame.insetBy(dx: -fanTilt, dy: -1).contains(last.frame))
             scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             XCTAssertEqual(scrubber.value as? String, "50 percent")
             scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -810,8 +822,10 @@ final class BoardPolishUITests: XCTestCase {
                 XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
                 XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("Spend floating {W}"))
             }
-            visible(card(in: app, identifierPrefix: "card-your-board-sol-ring"), in: app)
-            card(in: app, identifierPrefix: "card-your-board-sol-ring").tap()
+            // A mana rock sits with the lands in landscape (BattlefieldRowArrangement.landscapeResources).
+            let solRing = card(in: app, identifierPrefix: portrait ? "card-your-board-sol-ring" : "card-your-lands-sol-ring")
+            visible(solRing, in: app)
+            solRing.tap()
             XCTAssertTrue(app.staticTexts["preview.captured-command"].waitForExistence(timeout: 5))
             XCTAssertTrue(app.staticTexts["preview.captured-command"].label.contains("Tap Sol Ring"))
         case "stack-response-prompt":
