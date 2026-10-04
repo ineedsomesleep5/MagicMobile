@@ -252,7 +252,19 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var matchPhase by remember { mutableStateOf<io.magicmobile.android.game.RankedMatchmaker.Phase>(io.magicmobile.android.game.RankedMatchmaker.Phase.Idle) }
     val matchmaker = remember { io.magicmobile.android.game.RankedMatchmaker(null).also { m -> m.onPhase = { matchPhase = it } } }
     var rankedConnectJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    LaunchedEffect(Unit) { record.publish = { rank, title, commander -> scope.launch { vm.account.publishRank(rank, title, commander) } } }
+    LaunchedEffect(Unit) {
+        record.publish = { rank, title, commander -> scope.launch { vm.account.publishRank(rank, title, commander) } }
+        // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
+        val P = io.magicmobile.android.game.RankPosition
+        val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
+        when (LaunchEnvironment["MAGICMOBILE_UI_TEST_CEREMONY"]) {
+            "tierUp" -> io.magicmobile.android.game.RankChange(win, P.make(io.magicmobile.android.game.RankTier.SILVER, 1, 3), P.make(io.magicmobile.android.game.RankTier.GOLD, 4, 0), emptyList())
+            "tierDown" -> io.magicmobile.android.game.RankChange(loss, P.make(io.magicmobile.android.game.RankTier.GOLD, 4, 0), P.make(io.magicmobile.android.game.RankTier.SILVER, 1, 3), emptyList())
+            "divisionUp" -> io.magicmobile.android.game.RankChange(win, P.make(io.magicmobile.android.game.RankTier.DIAMOND, 3, 3), P.make(io.magicmobile.android.game.RankTier.DIAMOND, 2, 0), emptyList())
+            "divisionDown" -> io.magicmobile.android.game.RankChange(loss, P.make(io.magicmobile.android.game.RankTier.PLATINUM, 2, 0), P.make(io.magicmobile.android.game.RankTier.PLATINUM, 3, 3), emptyList())
+            else -> null
+        }?.let { ceremony = it }
+    }
 
     val activeGame = session.matchID != null
     val precons = setup.precons

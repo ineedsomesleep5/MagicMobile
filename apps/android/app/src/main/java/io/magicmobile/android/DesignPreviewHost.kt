@@ -46,7 +46,9 @@ import kotlinx.coroutines.launch
 object DesignPreview {
     val keys = listOf("MAGICMOBILE_DESIGN_PREVIEW", "MAGICMOBILE_FORCE_CARD_PLACEHOLDERS", "MAGICMOBILE_UI_TEST_PREFERENCES",
         "MAGICMOBILE_PREVIEW_INSPECT", "MAGICMOBILE_BOARD_FX_AUTOPLAY", "MAGICMOBILE_BOARD_EFFECTS", "MAGICMOBILE_FONT_CHECK", "MAGICMOBILE_RELAY_URL",
-        "MAGICMOBILE_BOARD_FX_FREEZE", "MAGICMOBILE_PREVIEW_OPEN_LOG", "MAGICMOBILE_PREVIEW_TOKENS", "MAGICMOBILE_PREVIEW_AMOUNT", io.magicmobile.android.game.HowToPlayLaunch.FIRST_LAUNCH_EXTRA)
+        "MAGICMOBILE_BOARD_FX_FREEZE", "MAGICMOBILE_PREVIEW_OPEN_LOG", "MAGICMOBILE_PREVIEW_TOKENS", "MAGICMOBILE_PREVIEW_AMOUNT", io.magicmobile.android.game.HowToPlayLaunch.FIRST_LAUNCH_EXTRA,
+        // Ranked (as on iOS): a seeded standing, sample history, and a rank moment.
+        "MAGICMOBILE_UI_TEST_RANK", "MAGICMOBILE_UI_TEST_MATCHES", "MAGICMOBILE_UI_TEST_CEREMONY")
 
     fun extras(intent: Intent?): Map<String, String> {
         if (!BuildConfig.DEBUG || intent == null) return emptyMap()
