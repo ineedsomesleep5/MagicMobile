@@ -1,0 +1,907 @@
+{
+ "comment": "Ranked ladder, seasons, Commander brackets and AI deck pools. RankedParityTests.swift and RankedParityTest.kt check both apps against this file.",
+ "pipsPerDivision": 4,
+ "ladder": [
+  {
+   "name": "first win fills a pip",
+   "before": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 0
+   },
+   "streak": 0,
+   "outcome": "win",
+   "deckBracket": 2,
+   "after": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 1
+   },
+   "streakAfter": 1,
+   "delta": 1,
+   "bonuses": [],
+   "kind": "pipUp"
+  },
+  {
+   "name": "third straight win below Gold earns a streak pip",
+   "before": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 2
+   },
+   "streak": 2,
+   "outcome": "win",
+   "deckBracket": 2,
+   "after": {
+    "tier": "bronze",
+    "division": 3,
+    "pips": 0
+   },
+   "streakAfter": 3,
+   "delta": 2,
+   "bonuses": [
+    "streak"
+   ],
+   "kind": "divisionUp"
+  },
+  {
+   "name": "fourth pip wins the division",
+   "before": {
+    "tier": "silver",
+    "division": 2,
+    "pips": 3
+   },
+   "streak": 0,
+   "outcome": "win",
+   "deckBracket": 2,
+   "after": {
+    "tier": "silver",
+    "division": 1,
+    "pips": 0
+   },
+   "streakAfter": 1,
+   "delta": 1,
+   "bonuses": [],
+   "kind": "divisionUp"
+  },
+  {
+   "name": "division I's fourth pip wins the tier",
+   "before": {
+    "tier": "silver",
+    "division": 1,
+    "pips": 3
+   },
+   "streak": 0,
+   "outcome": "win",
+   "deckBracket": 2,
+   "after": {
+    "tier": "gold",
+    "division": 4,
+    "pips": 0
+   },
+   "streakAfter": 1,
+   "delta": 1,
+   "bonuses": [],
+   "kind": "tierUp"
+  },
+  {
+   "name": "a loss empties a pip",
+   "before": {
+    "tier": "gold",
+    "division": 3,
+    "pips": 2
+   },
+   "streak": 4,
+   "outcome": "loss",
+   "deckBracket": 3,
+   "after": {
+    "tier": "gold",
+    "division": 3,
+    "pips": 1
+   },
+   "streakAfter": 0,
+   "delta": -1,
+   "bonuses": [],
+   "kind": "pipDown"
+  },
+  {
+   "name": "a loss with no pips drops a division",
+   "before": {
+    "tier": "gold",
+    "division": 3,
+    "pips": 0
+   },
+   "streak": 0,
+   "outcome": "loss",
+   "deckBracket": 3,
+   "after": {
+    "tier": "gold",
+    "division": 4,
+    "pips": 3
+   },
+   "streakAfter": 0,
+   "delta": -1,
+   "bonuses": [],
+   "kind": "divisionDown"
+  },
+  {
+   "name": "a loss at the bottom of a tier drops the tier",
+   "before": {
+    "tier": "gold",
+    "division": 4,
+    "pips": 0
+   },
+   "streak": 0,
+   "outcome": "loss",
+   "deckBracket": 2,
+   "after": {
+    "tier": "silver",
+    "division": 1,
+    "pips": 3
+   },
+   "streakAfter": 0,
+   "delta": -1,
+   "bonuses": [],
+   "kind": "tierDown"
+  },
+  {
+   "name": "Bronze IV with no pips can't fall",
+   "before": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 0
+   },
+   "streak": 1,
+   "outcome": "loss",
+   "deckBracket": 2,
+   "after": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 0
+   },
+   "streakAfter": 0,
+   "delta": 0,
+   "bonuses": [],
+   "kind": "none"
+  },
+  {
+   "name": "an underdog deck earns an extra pip",
+   "before": {
+    "tier": "platinum",
+    "division": 4,
+    "pips": 1
+   },
+   "streak": 5,
+   "outcome": "win",
+   "deckBracket": 2,
+   "after": {
+    "tier": "platinum",
+    "division": 4,
+    "pips": 3
+   },
+   "streakAfter": 6,
+   "delta": 2,
+   "bonuses": [
+    "underdog"
+   ],
+   "kind": "pipUp"
+  },
+  {
+   "name": "Diamond I's fourth pip reaches Mythic",
+   "before": {
+    "tier": "diamond",
+    "division": 1,
+    "pips": 3
+   },
+   "streak": 0,
+   "outcome": "win",
+   "deckBracket": 4,
+   "after": {
+    "tier": "mythic",
+    "division": 0,
+    "pips": 0
+   },
+   "streakAfter": 1,
+   "delta": 1,
+   "bonuses": [],
+   "kind": "tierUp"
+  },
+  {
+   "name": "Mythic counts up",
+   "before": {
+    "tier": "mythic",
+    "division": 0,
+    "pips": 5
+   },
+   "streak": 0,
+   "outcome": "win",
+   "deckBracket": 3,
+   "after": {
+    "tier": "mythic",
+    "division": 0,
+    "pips": 7
+   },
+   "streakAfter": 1,
+   "delta": 2,
+   "bonuses": [
+    "underdog"
+   ],
+   "kind": "pipUp"
+  },
+  {
+   "name": "a loss at Mythic 0 falls to Diamond I",
+   "before": {
+    "tier": "mythic",
+    "division": 0,
+    "pips": 0
+   },
+   "streak": 0,
+   "outcome": "loss",
+   "deckBracket": 4,
+   "after": {
+    "tier": "diamond",
+    "division": 1,
+    "pips": 3
+   },
+   "streakAfter": 0,
+   "delta": -1,
+   "bonuses": [],
+   "kind": "tierDown"
+  },
+  {
+   "name": "a draw changes nothing and ends the streak",
+   "before": {
+    "tier": "silver",
+    "division": 3,
+    "pips": 1
+   },
+   "streak": 2,
+   "outcome": "draw",
+   "deckBracket": 2,
+   "after": {
+    "tier": "silver",
+    "division": 3,
+    "pips": 1
+   },
+   "streakAfter": 0,
+   "delta": 0,
+   "bonuses": [],
+   "kind": "none"
+  },
+  {
+   "name": "streak and underdog together",
+   "before": {
+    "tier": "silver",
+    "division": 4,
+    "pips": 0
+   },
+   "streak": 2,
+   "outcome": "win",
+   "deckBracket": 1,
+   "after": {
+    "tier": "silver",
+    "division": 4,
+    "pips": 3
+   },
+   "streakAfter": 3,
+   "delta": 3,
+   "bonuses": [
+    "streak",
+    "underdog"
+   ],
+   "kind": "pipUp"
+  }
+ ],
+ "positions": [
+  {
+   "points": 0,
+   "step": 0,
+   "title": "Bronze IV",
+   "pips": 0,
+   "opponentBracket": 1
+  },
+  {
+   "points": 3,
+   "step": 0,
+   "title": "Bronze IV",
+   "pips": 3,
+   "opponentBracket": 1
+  },
+  {
+   "points": 4,
+   "step": 1,
+   "title": "Bronze III",
+   "pips": 0,
+   "opponentBracket": 1
+  },
+  {
+   "points": 11,
+   "step": 2,
+   "title": "Bronze II",
+   "pips": 3,
+   "opponentBracket": 2
+  },
+  {
+   "points": 15,
+   "step": 3,
+   "title": "Bronze I",
+   "pips": 3,
+   "opponentBracket": 2
+  },
+  {
+   "points": 16,
+   "step": 4,
+   "title": "Silver IV",
+   "pips": 0,
+   "opponentBracket": 2
+  },
+  {
+   "points": 32,
+   "step": 8,
+   "title": "Gold IV",
+   "pips": 0,
+   "opponentBracket": 2
+  },
+  {
+   "points": 47,
+   "step": 11,
+   "title": "Gold I",
+   "pips": 3,
+   "opponentBracket": 3
+  },
+  {
+   "points": 53,
+   "step": 13,
+   "title": "Platinum III",
+   "pips": 1,
+   "opponentBracket": 3
+  },
+  {
+   "points": 64,
+   "step": 16,
+   "title": "Diamond IV",
+   "pips": 0,
+   "opponentBracket": 3
+  },
+  {
+   "points": 74,
+   "step": 18,
+   "title": "Diamond II",
+   "pips": 2,
+   "opponentBracket": 4
+  },
+  {
+   "points": 79,
+   "step": 19,
+   "title": "Diamond I",
+   "pips": 3,
+   "opponentBracket": 4
+  },
+  {
+   "points": 80,
+   "step": 20,
+   "title": "Mythic",
+   "pips": 0,
+   "opponentBracket": 4
+  },
+  {
+   "points": 95,
+   "step": 20,
+   "title": "Mythic",
+   "pips": 15,
+   "opponentBracket": 4
+  }
+ ],
+ "tiers": [
+  {
+   "tier": "bronze",
+   "opponentBrackets": [
+    1,
+    2
+   ],
+   "maxDeckBracket": 2,
+   "aiSkill": 2
+  },
+  {
+   "tier": "silver",
+   "opponentBrackets": [
+    2,
+    2
+   ],
+   "maxDeckBracket": 2,
+   "aiSkill": 3
+  },
+  {
+   "tier": "gold",
+   "opponentBrackets": [
+    2,
+    3
+   ],
+   "maxDeckBracket": 3,
+   "aiSkill": 4
+  },
+  {
+   "tier": "platinum",
+   "opponentBrackets": [
+    3,
+    3
+   ],
+   "maxDeckBracket": 3,
+   "aiSkill": 5
+  },
+  {
+   "tier": "diamond",
+   "opponentBrackets": [
+    3,
+    4
+   ],
+   "maxDeckBracket": 4,
+   "aiSkill": 6
+  },
+  {
+   "tier": "mythic",
+   "opponentBrackets": [
+    4,
+    4
+   ],
+   "maxDeckBracket": 4,
+   "aiSkill": 7
+  }
+ ],
+ "rollover": [
+  {
+   "name": "a played season is kept and you drop one tier",
+   "season": "2026-10",
+   "to": "2026-11",
+   "position": {
+    "tier": "gold",
+    "division": 2,
+    "pips": 2
+   },
+   "peak": {
+    "tier": "gold",
+    "division": 1,
+    "pips": 1
+   },
+   "wins": 3,
+   "losses": 1,
+   "after": {
+    "tier": "silver",
+    "division": 2,
+    "pips": 0
+   },
+   "history": [
+    {
+     "season": "2026-10",
+     "final": {
+      "tier": "gold",
+      "division": 2,
+      "pips": 2
+     },
+     "peak": {
+      "tier": "gold",
+      "division": 1,
+      "pips": 1
+     },
+     "wins": 3,
+     "losses": 1
+    }
+   ]
+  },
+  {
+   "name": "Mythic restarts at Diamond IV",
+   "season": "2026-10",
+   "to": "2026-11",
+   "position": {
+    "tier": "mythic",
+    "division": 0,
+    "pips": 12
+   },
+   "peak": {
+    "tier": "mythic",
+    "division": 0,
+    "pips": 12
+   },
+   "wins": 40,
+   "losses": 20,
+   "after": {
+    "tier": "diamond",
+    "division": 4,
+    "pips": 0
+   },
+   "history": [
+    {
+     "season": "2026-10",
+     "final": {
+      "tier": "mythic",
+      "division": 0,
+      "pips": 12
+     },
+     "peak": {
+      "tier": "mythic",
+      "division": 0,
+      "pips": 12
+     },
+     "wins": 40,
+     "losses": 20
+    }
+   ]
+  },
+  {
+   "name": "never below Bronze IV",
+   "season": "2026-10",
+   "to": "2026-11",
+   "position": {
+    "tier": "bronze",
+    "division": 3,
+    "pips": 1
+   },
+   "peak": {
+    "tier": "bronze",
+    "division": 3,
+    "pips": 1
+   },
+   "wins": 1,
+   "losses": 0,
+   "after": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 0
+   },
+   "history": [
+    {
+     "season": "2026-10",
+     "final": {
+      "tier": "bronze",
+      "division": 3,
+      "pips": 1
+     },
+     "peak": {
+      "tier": "bronze",
+      "division": 3,
+      "pips": 1
+     },
+     "wins": 1,
+     "losses": 0
+    }
+   ]
+  },
+  {
+   "name": "an unplayed season leaves no history",
+   "season": "2026-10",
+   "to": "2026-12",
+   "position": {
+    "tier": "silver",
+    "division": 4,
+    "pips": 0
+   },
+   "peak": {
+    "tier": "silver",
+    "division": 4,
+    "pips": 0
+   },
+   "wins": 0,
+   "losses": 0,
+   "after": {
+    "tier": "bronze",
+    "division": 4,
+    "pips": 0
+   },
+   "history": []
+  },
+  {
+   "name": "the same season is unchanged",
+   "season": "2026-10",
+   "to": "2026-10",
+   "position": {
+    "tier": "gold",
+    "division": 2,
+    "pips": 2
+   },
+   "peak": {
+    "tier": "gold",
+    "division": 1,
+    "pips": 1
+   },
+   "wins": 3,
+   "losses": 1,
+   "after": {
+    "tier": "gold",
+    "division": 2,
+    "pips": 2
+   },
+   "history": []
+  }
+ ],
+ "seasons": [
+  {
+   "millis": 1793491199000,
+   "season": "2026-10"
+  },
+  {
+   "millis": 1793491200000,
+   "season": "2026-11"
+  },
+  {
+   "millis": 1800014400000,
+   "season": "2027-01"
+  }
+ ],
+ "seasonEnds": [
+  {
+   "season": "2026-10",
+   "millis": 1793491200000
+  },
+  {
+   "season": "2026-12",
+   "millis": 1798761600000
+  }
+ ],
+ "brackets": [
+  {
+   "name": "a plain list is Core",
+   "cards": [
+    "Sol Ring",
+    "Llanowar Elves",
+    "Forest"
+   ],
+   "minimum": 2,
+   "gameChangers": [],
+   "massLandDenial": [],
+   "extraTurns": [],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "one Game Changer is Upgraded",
+   "cards": [
+    "Rhystic Study",
+    "Sol Ring"
+   ],
+   "minimum": 3,
+   "gameChangers": [
+    "Rhystic Study"
+   ],
+   "massLandDenial": [],
+   "extraTurns": [],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "four Game Changers are Optimized",
+   "cards": [
+    "Rhystic Study",
+    "Demonic Tutor",
+    "Mana Vault",
+    "Cyclonic Rift"
+   ],
+   "minimum": 4,
+   "gameChangers": [
+    "Cyclonic Rift",
+    "Demonic Tutor",
+    "Mana Vault",
+    "Rhystic Study"
+   ],
+   "massLandDenial": [],
+   "extraTurns": [],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "mass land denial is Optimized",
+   "cards": [
+    "Armageddon",
+    "Forest"
+   ],
+   "minimum": 4,
+   "gameChangers": [],
+   "massLandDenial": [
+    "Armageddon"
+   ],
+   "extraTurns": [],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "a split card counts",
+   "cards": [
+    "Boom // Bust"
+   ],
+   "minimum": 4,
+   "gameChangers": [],
+   "massLandDenial": [
+    "Boom // Bust"
+   ],
+   "extraTurns": [],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "two extra-turn cards stay Core",
+   "cards": [
+    "Time Warp",
+    "Temporal Manipulation"
+   ],
+   "minimum": 2,
+   "gameChangers": [],
+   "massLandDenial": [],
+   "extraTurns": [
+    "Temporal Manipulation",
+    "Time Warp"
+   ],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "three extra-turn cards chain",
+   "cards": [
+    "Time Warp",
+    "Temporal Manipulation",
+    "Time Walk"
+   ],
+   "minimum": 4,
+   "gameChangers": [],
+   "massLandDenial": [],
+   "extraTurns": [
+    "Temporal Manipulation",
+    "Time Walk",
+    "Time Warp"
+   ],
+   "combos": 0,
+   "earlyCombos": 0
+  },
+  {
+   "name": "a late two-card combo is Upgraded",
+   "cards": [
+    "Exquisite Blood",
+    "Sanguine Bond",
+    "Swamp"
+   ],
+   "minimum": 3,
+   "gameChangers": [],
+   "massLandDenial": [],
+   "extraTurns": [],
+   "combos": 1,
+   "earlyCombos": 0
+  },
+  {
+   "name": "an early two-card combo is Optimized",
+   "cards": [
+    "Thassa's Oracle",
+    "Demonic Consultation"
+   ],
+   "minimum": 4,
+   "gameChangers": [
+    "Thassa's Oracle"
+   ],
+   "massLandDenial": [],
+   "extraTurns": [],
+   "combos": 0,
+   "earlyCombos": 1
+  }
+ ],
+ "effective": [
+  {
+   "minimum": 2,
+   "declared": null,
+   "effective": 2
+  },
+  {
+   "minimum": 2,
+   "declared": 1,
+   "effective": 1
+  },
+  {
+   "minimum": 3,
+   "declared": 1,
+   "effective": 3
+  },
+  {
+   "minimum": 2,
+   "declared": 4,
+   "effective": 4
+  },
+  {
+   "minimum": 4,
+   "declared": 3,
+   "effective": 4
+  },
+  {
+   "minimum": 3,
+   "declared": 5,
+   "effective": 5
+  }
+ ],
+ "choices": [
+  {
+   "minimum": 2,
+   "choices": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "minimum": 3,
+   "choices": [
+    3,
+    4,
+    5
+   ]
+  },
+  {
+   "minimum": 4,
+   "choices": [
+    4,
+    5
+   ]
+  }
+ ],
+ "pools": [
+  {
+   "bracket": 1,
+   "poolBracket": 1,
+   "count": 3
+  },
+  {
+   "bracket": 2,
+   "poolBracket": 2,
+   "count": 11
+  },
+  {
+   "bracket": 3,
+   "poolBracket": 3,
+   "count": 6
+  },
+  {
+   "bracket": 4,
+   "poolBracket": 4,
+   "count": 6
+  },
+  {
+   "bracket": 5,
+   "poolBracket": 4,
+   "count": 6
+  },
+  {
+   "bracket": 0,
+   "poolBracket": 1,
+   "count": 3
+  }
+ ],
+ "colors": [
+  {
+   "manaCost": "{2}{R}{R}",
+   "colors": [
+    "R"
+   ]
+  },
+  {
+   "manaCost": "{W}{U}{B}{R}{G}",
+   "colors": [
+    "W",
+    "U",
+    "B",
+    "R",
+    "G"
+   ]
+  },
+  {
+   "manaCost": "{1}{G/W}",
+   "colors": [
+    "W",
+    "G"
+   ]
+  },
+  {
+   "manaCost": null,
+   "colors": []
+  },
+  {
+   "manaCost": "{X}{C}",
+   "colors": []
+  }
+ ]
+}

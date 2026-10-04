@@ -14,6 +14,7 @@ final class DeckStudioReleaseUITests: XCTestCase {
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 20))
         capture("Commander menu portrait")
         app.buttons["menu.play"].tap()
+        UITestHarness.chooseCustomTable(app)
         XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 10))
         capture("Commander table setup portrait")
         XCUIDevice.shared.orientation = .landscapeLeft

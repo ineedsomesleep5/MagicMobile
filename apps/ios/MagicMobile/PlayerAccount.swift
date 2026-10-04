@@ -73,6 +73,25 @@ struct PlayerFriend: Identifiable, Equatable, Decodable {
     }
 }
 
+/// Another player's public ranked card (mm_profile_card).
+struct PlayerProfileCard: Equatable, Decodable {
+    let username: String
+    let season: String?
+    let rankStep: Int?
+    let pips: Int?
+    let peakStep: Int?
+    let wins: Int?
+    let losses: Int?
+    let title: String?
+    let favoriteCommander: String?
+
+    /// This season's place, or nil when unranked or from an earlier season.
+    var position: RankPosition? {
+        guard let rankStep, season == RankLadder.season(for: Date()) else { return nil }
+        return .published(step: rankStep, pips: pips ?? 0)
+    }
+}
+
 /// The player's instant profile: an anonymous Supabase account made on first use, a unique
 /// username used at every table, friends with presence, and the table the player hosts.
 /// Games never depend on it: offline, the app keeps the typed name and plays as before.
@@ -86,6 +105,8 @@ final class PlayerAccount: ObservableObject {
     @Published private(set) var username: String?
     @Published private(set) var friends: [PlayerFriend] = []
     @Published private(set) var blocked: [String] = []
+    /// Friends' ranked standings by username (mm_friend_ranks), for their badges.
+    @Published private(set) var friendRanks: [String: RankPosition] = [:]
     @Published var notice: String?
 
     /// The code of the table this player hosts while it still has open seats (shared with friends).
@@ -147,6 +168,34 @@ final class PlayerAccount: ObservableObject {
         } catch {
             notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error))
         }
+        // Ranks are extra: a server without them leaves the badges off.
+        if let data = try? await api.rpc("mm_friend_ranks"),
+           let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let season = RankLadder.season(for: Date())
+            friendRanks = Dictionary(rows.compactMap { row -> (String, RankPosition)? in
+                guard let name = row["username"] as? String, let step = row["rank_step"] as? Int, let pips = row["pips"] as? Int,
+                      row["season"] as? String == season else { return nil }
+                return (name, RankPosition.published(step: step, pips: pips))
+            }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
+    /// The ranked queue, once the player has a profile name.
+    var rankedQueue: RankedQueueService? { phase == .ready && username != nil ? SupabaseRankedQueue(api: api) : nil }
+
+    /// Shares this season's standing with friends. Quiet on failure: ranks still count on the phone.
+    func publishRank(_ rank: RankState, stats: PlayerStats, title: Achievement?, commander: String?) async {
+        guard phase == .ready, username != nil else { return }
+        _ = try? await api.rpc("mm_ranked_publish", [
+            "p_season": rank.season, "p_rank_step": rank.position.step, "p_pips": rank.position.pips,
+            "p_peak_step": rank.peak.step, "p_wins": rank.wins, "p_losses": rank.losses,
+            "p_title": title?.title ?? NSNull(), "p_favorite_commander": commander ?? NSNull()])
+    }
+
+    /// Another player's ranked card, or nil when they have none (or can't be seen).
+    func profileCard(_ username: String) async -> PlayerProfileCard? {
+        guard phase == .ready, let data = try? await api.rpc("mm_profile_card", ["p_username": username]) else { return nil }
+        return try? JSONDecoder().decode(PlayerProfileCard.self, from: data)
     }
 
     func addFriend(_ name: String) async {

@@ -124,6 +124,7 @@ final class OnDeviceSetupUITests: XCTestCase {
             XCTAssertTrue(play.waitForExistence(timeout: 10))
             reveal(play)
             play.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
+            UITestHarness.chooseCustomTable(app)
             XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 5))
             app.buttons["Main menu"].tap()
         }
@@ -721,6 +722,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         reveal(play)
         UITestHarness.settleFirstTouch(app)
         tapDiagnosed(play)
+        UITestHarness.chooseCustomTable(app)
         waitFor(app.textFields["ondevice.playerName"], predicate: "exists == true AND hittable == true")
         XCTAssertTrue(app.staticTexts["Your next game."].exists)
     }

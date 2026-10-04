@@ -16,6 +16,11 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage: "shield.lefthalf.filled")
+                    Label("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage: "bolt.fill")
+                    Label("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage: "checkmark.seal")
+                    Label("Your profile: rank, season history, stats, achievements, titles and match history.", systemImage: "person.crop.circle")
+                    Label("21 new included decks from Bracket 1 to 4, for you and for the AI.", systemImage: "rectangle.stack.fill")
                     Label("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage: "table.furniture")
                     Label("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage: "sparkles")
                     Label("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage: "person.crop.circle")

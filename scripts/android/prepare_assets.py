@@ -68,5 +68,10 @@ with (out/'printings.tsv').open('w') as f:
         f.write('\t'.join(['=',alias,target])+'\n')
 
 (out/'precons.json').write_text(json.dumps({'decks':decks},ensure_ascii=False))
+# Ranked: the bracket card lists and the AI decks per bracket ship unchanged from the iOS resources.
+for name in ('commander-brackets.json', 'ai-decks.json'):
+    data_bytes = (repo/'apps/ios/MagicMobile/Resources'/name).read_bytes()
+    json.loads(data_bytes)
+    (out/name).write_bytes(data_bytes)
 (out/'asset-provenance.json').write_text(json.dumps({'catalogueSourceSHA256':hashlib.sha256(raw).hexdigest(),'preconSourceSHA256':hashlib.sha256(precon_source.read_bytes()).hexdigest(),'cards':len(data['cards']),'cardsWithMetadata':joined,'precons':len(decks),'catalogueHash':data['catalogueHash']},indent=2))
 print('Prepared',len(data['cards']),'compiled catalogue cards (',joined,'with metadata ) and',len(decks),'unchanged precons')

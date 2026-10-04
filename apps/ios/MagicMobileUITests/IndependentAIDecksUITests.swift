@@ -90,6 +90,7 @@ final class IndependentAIDecksUITests: XCTestCase {
         XCTAssertTrue(play.waitForExistence(timeout: 15))
         reveal(play)
         play.press(forDuration: 0.15)
+        UITestHarness.chooseCustomTable(app)
         XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 10))
         reveal(countControl)
     }

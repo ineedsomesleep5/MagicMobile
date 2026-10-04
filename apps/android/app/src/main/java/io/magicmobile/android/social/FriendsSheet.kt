@@ -57,6 +57,10 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Uni
     var confirmDelete by remember { mutableStateOf(false) }
     var actionsFor by remember { mutableStateOf<PlayerFriend?>(null) }
     var confirmBlock by remember { mutableStateOf<PlayerFriend?>(null) }
+    // A friend's ranked card: whose, and the card once it loads.
+    var cardFor by remember { mutableStateOf<String?>(null) }
+    var card by remember { mutableStateOf<PlayerProfileCard?>(null) }
+    var cardLoading by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (account.phase == PlayerAccount.Phase.READY) account.refresh() else account.start() }
     val secondary = Color.White.copy(alpha = 0.55f)
 
@@ -125,6 +129,18 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Uni
                                     Text(friend.username, color = Color.White, style = sf(17f, SfWeight.semibold))
                                     Text(friendStatus(friend), color = secondary, style = sf(12f))
                                 }
+                                // Their ranked badge this season; tapping it opens their card.
+                                val rank = account.friendRanks[friend.username]
+                                Row(Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp).clickable {
+                                    cardFor = friend.username; card = null; cardLoading = true
+                                    scope.launch { card = account.profileCard(friend.username); cardLoading = false }
+                                }.semantics { contentDescription = rank?.let { "${friend.username}'s card, ${it.title}" } ?: "${friend.username}'s card" },
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (rank != null) {
+                                        io.magicmobile.android.ranked.RankEmblem(rank.tier, 30.dp)
+                                        Text(rank.title, color = Color.White, style = sf(12f, SfWeight.heavy))
+                                    } else io.magicmobile.android.ui.SfImage("shield.lefthalf.filled", secondary, 18.dp)
+                                }
                                 friend.joinableCode?.let { code ->
                                     Box(Modifier.defaultMinSize(minHeight = 36.dp).background(BrandTheme.ember, RoundedCornerShape(18.dp))
                                         .clickable { join(code); done() }.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -164,6 +180,11 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Uni
         }
     }
 
+    cardFor?.let { name ->
+        io.magicmobile.android.board.BoardSheet({ cardFor = null }, background = io.magicmobile.android.ui.TavernPalette.leather) {
+            io.magicmobile.android.ranked.PlayerCardSheet(name, card, cardLoading) { cardFor = null }
+        }
+    }
     actionsFor?.let { friend ->
         ConfirmationDialog(friend.username, null, listOf(
             ConfirmationAction("Remove friend", destructive = true) { scope.launch { account.remove(friend) } },

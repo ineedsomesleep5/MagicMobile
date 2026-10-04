@@ -7,6 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4B62A197FDC753F2E00D2D4F /* RankedUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C70CA9E3D80C5F5C4DC8863C /* RankedUITests.swift */; };
+		C0B947D885277EB75D3355FF /* RankedParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09CEF4291F542532319B4657 /* RankedParityTests.swift */; };
+		B734DA2F776A0ECBB49E295B /* ai-decks.json in Resources */ = {isa = PBXBuildFile; fileRef = 59CA3C0264E8A9A4F33F86A0 /* ai-decks.json */; };
+		2BA0019E908A1B83E91C5CF4 /* commander-brackets.json in Resources */ = {isa = PBXBuildFile; fileRef = A41B771EE979B01528F256DC /* commander-brackets.json */; };
+		39309A2E8088952A4A1C5017 /* RankedQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A84B44913F2BDD5841A63213 /* RankedQueue.swift */; };
+		AA4B6584B2533DF06513E76A /* RankLadder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1E7F3955950733AA6F7E69F /* RankLadder.swift */; };
+		14EFC0361E2D3C045827C5D4 /* RankCeremonyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613D650AA10EF3EF0BB75668 /* RankCeremonyView.swift */; };
+		742851F25E98F73EDA3B9285 /* RankBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D3BC0D81CF1E0DCDF41C79 /* RankBadgeView.swift */; };
+		144085BD51F0835FD1002EDD /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F98C8ED95E5114B8783D46 /* ProfileView.swift */; };
+		AC086504C01BD2D4660CB8E9 /* PlayerRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = B193BC23FDE9AAA1AE7D2B85 /* PlayerRecord.swift */; };
+		D9A15C6D97866F65C62B48CA /* PlayModeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15C3FC49D7309AF41EDCD0FC /* PlayModeViews.swift */; };
+		AE0212CB4F316ECE2A08594D /* CommanderBrackets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202CBAA7DE9E812A1E9DF813 /* CommanderBrackets.swift */; };
+		E592AC494C305C5F01D8D7A8 /* AIDeckPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900B652C7105CDD288DF8483 /* AIDeckPool.swift */; };
 		001AB64DF90EFF56F60B5E95 /* dice-roll.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6CA8A5960041348B8C01CB67 /* dice-roll.m4a */; };
 		00D040BACBE56F8EE6F1A08A /* CompactPromptPopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD247A43254B7430E9FF79C /* CompactPromptPopup.swift */; };
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
@@ -288,6 +301,19 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C70CA9E3D80C5F5C4DC8863C /* RankedUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankedUITests.swift; sourceTree = "<group>"; };
+		09CEF4291F542532319B4657 /* RankedParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankedParityTests.swift; sourceTree = "<group>"; };
+		59CA3C0264E8A9A4F33F86A0 /* ai-decks.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ai-decks.json"; sourceTree = "<group>"; };
+		A41B771EE979B01528F256DC /* commander-brackets.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "commander-brackets.json"; sourceTree = "<group>"; };
+		A84B44913F2BDD5841A63213 /* RankedQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankedQueue.swift; sourceTree = "<group>"; };
+		B1E7F3955950733AA6F7E69F /* RankLadder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankLadder.swift; sourceTree = "<group>"; };
+		613D650AA10EF3EF0BB75668 /* RankCeremonyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankCeremonyView.swift; sourceTree = "<group>"; };
+		55D3BC0D81CF1E0DCDF41C79 /* RankBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankBadgeView.swift; sourceTree = "<group>"; };
+		D2F98C8ED95E5114B8783D46 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		B193BC23FDE9AAA1AE7D2B85 /* PlayerRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerRecord.swift; sourceTree = "<group>"; };
+		15C3FC49D7309AF41EDCD0FC /* PlayModeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayModeViews.swift; sourceTree = "<group>"; };
+		202CBAA7DE9E812A1E9DF813 /* CommanderBrackets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommanderBrackets.swift; sourceTree = "<group>"; };
+		900B652C7105CDD288DF8483 /* AIDeckPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDeckPool.swift; sourceTree = "<group>"; };
 		01185AEE490D6677672B1123 /* TableChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableChatTests.swift; sourceTree = "<group>"; };
 		016E2D71DFF094B2DF0979FA /* DeckStudioValidationPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioValidationPanel.swift; sourceTree = "<group>"; };
 		027FECE1805BD7CA79FAA7D0 /* spell-big.m4a */ = {isa = PBXFileReference; path = "spell-big.m4a"; sourceTree = "<group>"; };
@@ -569,6 +595,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		80516E4203B971506C2C70A8 /* Ranked */ = {
+			isa = PBXGroup;
+			children = (
+				900B652C7105CDD288DF8483 /* AIDeckPool.swift */,
+				202CBAA7DE9E812A1E9DF813 /* CommanderBrackets.swift */,
+				15C3FC49D7309AF41EDCD0FC /* PlayModeViews.swift */,
+				B193BC23FDE9AAA1AE7D2B85 /* PlayerRecord.swift */,
+				D2F98C8ED95E5114B8783D46 /* ProfileView.swift */,
+				55D3BC0D81CF1E0DCDF41C79 /* RankBadgeView.swift */,
+				613D650AA10EF3EF0BB75668 /* RankCeremonyView.swift */,
+				B1E7F3955950733AA6F7E69F /* RankLadder.swift */,
+				A84B44913F2BDD5841A63213 /* RankedQueue.swift */,
+			);
+			path = Ranked;
+			sourceTree = "<group>";
+		};
 		09EF22A111DC9C0AFA20E754 /* Import */ = {
 			isa = PBXGroup;
 			children = (
@@ -747,6 +789,7 @@
 				0A9A667D38A7AF46FA16AC90 /* RelayTransport.swift */,
 				03776AA5903A753166553C23 /* SoundLabView.swift */,
 				8940D190CB14B5A6E9122705 /* TableChat.swift */,
+				80516E4203B971506C2C70A8 /* Ranked */,
 				1C820EF7CD9990452A3D550B /* Board */,
 				15FA9C2961B1C0D119A8DCCF /* DeckStudio */,
 				925E09D8BD9E18CC5EA8A35D /* Resources */,
@@ -821,6 +864,7 @@
 				6EA5ECC621D4E6094CABD432 /* ParityGoldenTests.swift */,
 				D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */,
 				860E2CBE7896CA937E309ED2 /* PortraitPolishTests.swift */,
+				09CEF4291F542532319B4657 /* RankedParityTests.swift */,
 				01185AEE490D6677672B1123 /* TableChatTests.swift */,
 			);
 			path = MagicMobileTests;
@@ -855,6 +899,7 @@
 				9E8D65C0C83C0BDFBAC6E988 /* NativeDownloadsUITests.swift */,
 				C12E7391A9F7D253D9DC0B6C /* NativePresentationRefinementUITests.swift */,
 				6110FD6C7D0281A6D0C9E48A /* OnDeviceSetupUITests.swift */,
+				C70CA9E3D80C5F5C4DC8863C /* RankedUITests.swift */,
 				378E2D2A40FFB80E110404D6 /* UITestHarness.swift */,
 			);
 			path = MagicMobileUITests;
@@ -871,6 +916,8 @@
 		925E09D8BD9E18CC5EA8A35D /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				A41B771EE979B01528F256DC /* commander-brackets.json */,
+				59CA3C0264E8A9A4F33F86A0 /* ai-decks.json */,
 				6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */,
 				D5489907D7F10C930B3E85E6 /* Audio */,
 			);
@@ -1084,6 +1131,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B734DA2F776A0ECBB49E295B /* ai-decks.json in Resources */,
+				2BA0019E908A1B83E91C5CF4 /* commander-brackets.json in Resources */,
 				C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */,
 				5A4CE129DBDCBF0BCF867A1F /* CREDITS.txt in Resources */,
 				073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */,
@@ -1184,6 +1233,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				39309A2E8088952A4A1C5017 /* RankedQueue.swift in Sources */,
+				AA4B6584B2533DF06513E76A /* RankLadder.swift in Sources */,
+				14EFC0361E2D3C045827C5D4 /* RankCeremonyView.swift in Sources */,
+				742851F25E98F73EDA3B9285 /* RankBadgeView.swift in Sources */,
+				144085BD51F0835FD1002EDD /* ProfileView.swift in Sources */,
+				AC086504C01BD2D4660CB8E9 /* PlayerRecord.swift in Sources */,
+				D9A15C6D97866F65C62B48CA /* PlayModeViews.swift in Sources */,
+				AE0212CB4F316ECE2A08594D /* CommanderBrackets.swift in Sources */,
+				E592AC494C305C5F01D8D7A8 /* AIDeckPool.swift in Sources */,
 				2B326E8D717AFDB4121B357A /* ArenaBoardPresentation.swift in Sources */,
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				287E5F55CA27719D6983FF70 /* BattlefieldRow.swift in Sources */,
@@ -1375,6 +1433,7 @@
 				844B57B284E797BBF126E0EE /* ParityGoldenTests.swift in Sources */,
 				1A1C13307BD020E5919ABD1A /* PortraitInteractionPolicyTests.swift in Sources */,
 				A31A4E6160F42888F3DD8A0E /* PortraitPolishTests.swift in Sources */,
+				C0B947D885277EB75D3355FF /* RankedParityTests.swift in Sources */,
 				64774CA4AF3BEF13421C84F9 /* TableChatTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1396,6 +1455,7 @@
 				30BB54FC4DC7016938218675 /* NativeDownloadsUITests.swift in Sources */,
 				150DED07D491019D3269DA2F /* NativePresentationRefinementUITests.swift in Sources */,
 				553AB2472E9D51782D1584E7 /* OnDeviceSetupUITests.swift in Sources */,
+				4B62A197FDC753F2E00D2D4F /* RankedUITests.swift in Sources */,
 				44F0DA21C211F9E20AF15F0C /* UITestHarness.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

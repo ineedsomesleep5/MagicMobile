@@ -1,0 +1,577 @@
+{
+ "schemaVersion": 1,
+ "rulesDate": "2026-02-09",
+ "catalogueHash": "f9b5676c5f84fb684d15176f740d13edccc4835b43a27ccbe4e8356a6fb407bf",
+ "brackets": [
+  {
+   "level": 1,
+   "name": "Exhibition",
+   "maxGameChangers": 0
+  },
+  {
+   "level": 2,
+   "name": "Core",
+   "maxGameChangers": 0
+  },
+  {
+   "level": 3,
+   "name": "Upgraded",
+   "maxGameChangers": 3
+  },
+  {
+   "level": 4,
+   "name": "Optimized",
+   "maxGameChangers": null
+  },
+  {
+   "level": 5,
+   "name": "cEDH",
+   "maxGameChangers": null
+  }
+ ],
+ "chainedExtraTurns": 3,
+ "gameChangers": [
+  "Ad Nauseam",
+  "Ancient Tomb",
+  "Aura Shards",
+  "Biorhythm",
+  "Bolas's Citadel",
+  "Braids, Cabal Minion",
+  "Chrome Mox",
+  "Coalition Victory",
+  "Consecrated Sphinx",
+  "Crop Rotation",
+  "Cyclonic Rift",
+  "Demonic Tutor",
+  "Drannith Magistrate",
+  "Enlightened Tutor",
+  "Farewell",
+  "Field of the Dead",
+  "Fierce Guardianship",
+  "Force of Will",
+  "Gaea's Cradle",
+  "Gamble",
+  "Gifts Ungiven",
+  "Glacial Chasm",
+  "Grand Arbiter Augustin IV",
+  "Grim Monolith",
+  "Humility",
+  "Imperial Seal",
+  "Intuition",
+  "Jeska's Will",
+  "Lion's Eye Diamond",
+  "Mana Vault",
+  "Mishra's Workshop",
+  "Mox Diamond",
+  "Mystical Tutor",
+  "Narset, Parter of Veils",
+  "Natural Order",
+  "Necropotence",
+  "Notion Thief",
+  "Opposition Agent",
+  "Orcish Bowmasters",
+  "Panoptic Mirror",
+  "Rhystic Study",
+  "Seedborn Muse",
+  "Serra's Sanctum",
+  "Smothering Tithe",
+  "Survival of the Fittest",
+  "Teferi's Protection",
+  "Tergrid, God of Fright",
+  "Thassa's Oracle",
+  "The One Ring",
+  "The Tabernacle at Pendrell Vale",
+  "Underworld Breach",
+  "Vampiric Tutor",
+  "Worldly Tutor"
+ ],
+ "massLandDenial": [
+  "Apocalypse",
+  "Armageddon",
+  "Back to Basics",
+  "Blood Moon",
+  "Boom // Bust",
+  "Burning of Xinye",
+  "Cataclysm",
+  "Catastrophe",
+  "Contamination",
+  "Death Cloud",
+  "Decree of Annihilation",
+  "Desolation Angel",
+  "Destructive Force",
+  "Devastation",
+  "Epicenter",
+  "Global Ruin",
+  "Hokori, Dust Drinker",
+  "Impending Disaster",
+  "Jokulhaups",
+  "Keldon Firebombers",
+  "Magus of the Moon",
+  "Mana Vortex",
+  "Myojin of Infinite Rage",
+  "Obliterate",
+  "Ravages of War",
+  "Rising Waters",
+  "Ruination",
+  "Stasis",
+  "Static Orb",
+  "Sunder",
+  "Tectonic Break",
+  "Thoughts of Ruin",
+  "Upheaval",
+  "Wake of Destruction",
+  "Wildfire",
+  "Winter Orb",
+  "Worldfire"
+ ],
+ "extraTurns": [
+  "Alchemist's Gambit",
+  "Alrund's Epiphany",
+  "Beacon of Tomorrows",
+  "Capture of Jingzhou",
+  "Chance for Glory",
+  "Emrakul, the Aeons Torn",
+  "Emrakul, the Promised End",
+  "Eon Frolicker",
+  "Expropriate",
+  "Final Fortune",
+  "Gonti's Aether Heart",
+  "Ichormoon Gauntlet",
+  "Kang the Conqueror",
+  "Karn's Temporal Sundering",
+  "Last Chance",
+  "Lighthouse Chronologist",
+  "Lost Isle Calling",
+  "Magistrate's Scepter",
+  "Magosi, the Waterveil",
+  "Medomai the Ageless",
+  "Mu Yanling",
+  "Nexus of Fate",
+  "Notorious Throng",
+  "Part the Waterveil",
+  "Perch Protection",
+  "Plea for Power",
+  "Ral Zarek",
+  "Regenerations Restored",
+  "Rise of the Eldrazi",
+  "Sage of Hours",
+  "Savor the Moment",
+  "Search the City",
+  "Second Chance",
+  "Seedtime",
+  "Stitch in Time",
+  "Teferi, Master of Time",
+  "Teferi, Timebender",
+  "Temporal Extortion",
+  "Temporal Manipulation",
+  "Temporal Mastery",
+  "Temporal Trespass",
+  "Time Sieve",
+  "Time Stretch",
+  "Time Vault",
+  "Time Walk",
+  "Time Warp",
+  "Timesifter",
+  "Timestream Navigator",
+  "Twice Upon a Time",
+  "Ugin's Nexus",
+  "Walk the Aeons",
+  "Wanderwine Prophets",
+  "Warrior's Oath",
+  "Wormfang Manta"
+ ],
+ "combos": [
+  {
+   "cards": [
+    "Animate Dead",
+    "Worldgorger Dragon"
+   ],
+   "manaValue": 8,
+   "early": false
+  },
+  {
+   "cards": [
+    "Animation Module",
+    "Leonin Relic-Warder"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Auriok Salvagers",
+    "Lion's Eye Diamond"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Basalt Monolith",
+    "Kinnan, Bonder Prodigy"
+   ],
+   "manaValue": 5,
+   "early": true
+  },
+  {
+   "cards": [
+    "Basalt Monolith",
+    "Power Artifact"
+   ],
+   "manaValue": 5,
+   "early": true
+  },
+  {
+   "cards": [
+    "Basalt Monolith",
+    "Rings of Brighthearth"
+   ],
+   "manaValue": 6,
+   "early": true
+  },
+  {
+   "cards": [
+    "Bloodchief Ascension",
+    "Mindcrank"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Brain Freeze",
+    "Underworld Breach"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Cephalid Illusionist",
+    "Nomads en-Kor"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Cephalid Illusionist",
+    "Shuko"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Curiosity",
+    "Niv-Mizzet, Parun"
+   ],
+   "manaValue": 7,
+   "early": false
+  },
+  {
+   "cards": [
+    "Curiosity",
+    "Niv-Mizzet, the Firemind"
+   ],
+   "manaValue": 7,
+   "early": false
+  },
+  {
+   "cards": [
+    "Dance of the Dead",
+    "Worldgorger Dragon"
+   ],
+   "manaValue": 8,
+   "early": false
+  },
+  {
+   "cards": [
+    "Deadeye Navigator",
+    "Palinchron"
+   ],
+   "manaValue": 13,
+   "early": false
+  },
+  {
+   "cards": [
+    "Deadeye Navigator",
+    "Peregrine Drake"
+   ],
+   "manaValue": 11,
+   "early": false
+  },
+  {
+   "cards": [
+    "Deceiver Exarch",
+    "Kiki-Jiki, Mirror Breaker"
+   ],
+   "manaValue": 8,
+   "early": false
+  },
+  {
+   "cards": [
+    "Deceiver Exarch",
+    "Splinter Twin"
+   ],
+   "manaValue": 7,
+   "early": false
+  },
+  {
+   "cards": [
+    "Demonic Consultation",
+    "Jace, Wielder of Mysteries"
+   ],
+   "manaValue": 5,
+   "early": true
+  },
+  {
+   "cards": [
+    "Demonic Consultation",
+    "Laboratory Maniac"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Demonic Consultation",
+    "Thassa's Oracle"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Devoted Druid",
+    "Vizier of Remedies"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Doomsday",
+    "Thassa's Oracle"
+   ],
+   "manaValue": 5,
+   "early": true
+  },
+  {
+   "cards": [
+    "Dramatic Reversal",
+    "Isochron Scepter"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Dualcaster Mage",
+    "Heat Shimmer"
+   ],
+   "manaValue": 6,
+   "early": true
+  },
+  {
+   "cards": [
+    "Dualcaster Mage",
+    "Twinflame"
+   ],
+   "manaValue": 5,
+   "early": true
+  },
+  {
+   "cards": [
+    "Eternal Scourge",
+    "Food Chain"
+   ],
+   "manaValue": 6,
+   "early": true
+  },
+  {
+   "cards": [
+    "Exquisite Blood",
+    "Sanguine Bond"
+   ],
+   "manaValue": 10,
+   "early": false
+  },
+  {
+   "cards": [
+    "Exquisite Blood",
+    "Vito, Thorn of the Dusk Rose"
+   ],
+   "manaValue": 8,
+   "early": false
+  },
+  {
+   "cards": [
+    "Ezuri, Claw of Progress",
+    "Sage of Hours"
+   ],
+   "manaValue": 6,
+   "early": true
+  },
+  {
+   "cards": [
+    "Felidar Guardian",
+    "Kiki-Jiki, Mirror Breaker"
+   ],
+   "manaValue": 9,
+   "early": false
+  },
+  {
+   "cards": [
+    "Felidar Guardian",
+    "Saheeli Rai"
+   ],
+   "manaValue": 7,
+   "early": false
+  },
+  {
+   "cards": [
+    "Food Chain",
+    "Misthollow Griffin"
+   ],
+   "manaValue": 7,
+   "early": false
+  },
+  {
+   "cards": [
+    "Food Chain",
+    "Squee, the Immortal"
+   ],
+   "manaValue": 6,
+   "early": true
+  },
+  {
+   "cards": [
+    "Godo, Bandit Warlord",
+    "Helm of the Host"
+   ],
+   "manaValue": 10,
+   "early": false
+  },
+  {
+   "cards": [
+    "Grand Architect",
+    "Pili-Pala"
+   ],
+   "manaValue": 5,
+   "early": true
+  },
+  {
+   "cards": [
+    "Grim Monolith",
+    "Power Artifact"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Grindstone",
+    "Painter's Servant"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Heliod, Sun-Crowned",
+    "Walking Ballista"
+   ],
+   "manaValue": 3,
+   "early": true
+  },
+  {
+   "cards": [
+    "Hermit Druid",
+    "Thassa's Oracle"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Kiki-Jiki, Mirror Breaker",
+    "Pestermite"
+   ],
+   "manaValue": 8,
+   "early": false
+  },
+  {
+   "cards": [
+    "Kiki-Jiki, Mirror Breaker",
+    "Restoration Angel"
+   ],
+   "manaValue": 9,
+   "early": false
+  },
+  {
+   "cards": [
+    "Kiki-Jiki, Mirror Breaker",
+    "Zealous Conscripts"
+   ],
+   "manaValue": 10,
+   "early": false
+  },
+  {
+   "cards": [
+    "Mikaeus, the Unhallowed",
+    "Triskelion"
+   ],
+   "manaValue": 12,
+   "early": false
+  },
+  {
+   "cards": [
+    "Mikaeus, the Unhallowed",
+    "Walking Ballista"
+   ],
+   "manaValue": 6,
+   "early": true
+  },
+  {
+   "cards": [
+    "Necromancy",
+    "Worldgorger Dragon"
+   ],
+   "manaValue": 9,
+   "early": false
+  },
+  {
+   "cards": [
+    "Palinchron",
+    "Temur Sabertooth"
+   ],
+   "manaValue": 11,
+   "early": false
+  },
+  {
+   "cards": [
+    "Pestermite",
+    "Splinter Twin"
+   ],
+   "manaValue": 7,
+   "early": false
+  },
+  {
+   "cards": [
+    "Sword of the Meek",
+    "Thopter Foundry"
+   ],
+   "manaValue": 4,
+   "early": true
+  },
+  {
+   "cards": [
+    "Tainted Pact",
+    "Thassa's Oracle"
+   ],
+   "manaValue": 4,
+   "early": true
+  }
+ ]
+}

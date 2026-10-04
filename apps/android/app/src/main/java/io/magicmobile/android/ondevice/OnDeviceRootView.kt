@@ -238,12 +238,55 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var aiRollSeatNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var versusIntro by remember { mutableStateOf<Pair<VersusSeat, List<VersusSeat>>?>(null) }
     val selection = remember { BoardSelection() }
+    // Quick Match, Ranked and the profile (ranked/).
+    val record = remember { io.magicmobile.android.ranked.PlayerRecordStore.shared(context) }
+    var lobby by rememberSaveable { mutableStateOf<String?>(null) }
+    var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
+    var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
+    var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
+    var activeMatch by remember { mutableStateOf<ActiveMatch?>(null) }
+    var rankChange by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
+    var ceremony by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
+    var showBracketSheet by remember { mutableStateOf(false) }
+    var bracketRevision by remember { mutableIntStateOf(0) }
+    var matchPhase by remember { mutableStateOf<io.magicmobile.android.game.RankedMatchmaker.Phase>(io.magicmobile.android.game.RankedMatchmaker.Phase.Idle) }
+    val matchmaker = remember { io.magicmobile.android.game.RankedMatchmaker(null).also { m -> m.onPhase = { matchPhase = it } } }
+    var rankedConnectJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    LaunchedEffect(Unit) { record.publish = { rank, title, commander -> scope.launch { vm.account.publishRank(rank, title, commander) } } }
 
     val activeGame = session.matchID != null
     val precons = setup.precons
     val aiIDs = listOf(aiPreconID, aiPrecon2ID, aiPrecon3ID)
-    val aiPrecons = aiIDs.take(opponentCount.coerceIn(1, 3)).mapNotNull { id -> precons.firstOrNull { it.id == id } }
+    val aiPool = setup.aiPool
+    val aiPrecons = aiIDs.take(opponentCount.coerceIn(1, 3)).mapNotNull { id -> aiPool.firstOrNull { it.id == id } }
+    val bracketPrefs = AppPreferences.string(io.magicmobile.android.game.DeckBracketPreference.KEY, "{}")
+    fun declaredBracket(deckID: String): io.magicmobile.android.game.CommanderBracket? = runCatching {
+        kotlinx.serialization.json.Json.parseToJsonElement(bracketPrefs.value).let { it as kotlinx.serialization.json.JsonObject }[deckID]
+            ?.let { (it as kotlinx.serialization.json.JsonPrimitive).content.toIntOrNull() }?.let(io.magicmobile.android.game.CommanderBracket::of)
+    }.getOrNull()
+    fun setDeclaredBracket(deckID: String, bracket: io.magicmobile.android.game.CommanderBracket?) {
+        val current = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(bracketPrefs.value) as kotlinx.serialization.json.JsonObject }.getOrNull() ?: kotlinx.serialization.json.JsonObject(emptyMap())
+        val next = current.toMutableMap().apply { if (bracket == null) remove(deckID) else put(deckID, kotlinx.serialization.json.JsonPrimitive(bracket.level)) }
+        bracketPrefs.value = kotlinx.serialization.json.JsonObject(next).toString(); bracketRevision++
+    }
     val selectedDeck: Deck? = setup.deck(selectedDeckID)
+    val selectedBracketReport = remember(selectedDeck, setup.bracketRules) { selectedDeck?.let { setup.bracketRules.evaluate(it) } }
+    val selectedDeckBracket: io.magicmobile.android.game.CommanderBracket? = run {
+        bracketRevision
+        setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.bracket
+            ?: if (selectedDeckID.startsWith("precon:")) io.magicmobile.android.game.CommanderBracket.CORE
+            else selectedBracketReport?.let { io.magicmobile.android.game.DeckBracketPreference.effective(it.minimum, declaredBracket(selectedDeckID)) }
+    }
+    val selectedDeckColors: List<String> = setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.colors?.map { it.toString() } ?: emptyList()
+    val deckPickerSections = listOfNotNull(TavernPickerSection("Included precons", precons.map { it.name to "precon:${it.id}" })) +
+        io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
+            setup.bracketDecks.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks ->
+                TavernPickerSection("Included · ${bracket.title}", decks.map { "${it.name} · ${it.commander}" to it.playerDeckID })
+            }
+        } + listOfNotNull(setup.localDecks.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection("Saved on this device", decks.map { it.deck.name to "local:${it.id}" }) })
+    val aiDeckPickerSections = io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
+        aiPool.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection(bracket.title, decks.map { it.name to it.id }) }
+    }
     val validName = runCatching { OnDeviceSetupModel.playerName(playerDisplayName) }.isSuccess
     val mayStart = validName && selectedDeck != null && (playWithFriends || aiPrecons.size == opponentCount) &&
         setup.identity != null && !setup.isBusy && !setup.needsLeave
@@ -252,7 +295,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val deckIDs = setup.deckIDs
         if (deckIDs.isEmpty()) return
         selectedDeckID = OnDeviceSetupPreferences.normalizedDeckID(selectedDeckID, deckIDs)
-        val available = precons.map { it.id }
+        val available = setup.aiPool.map { it.id }
         val ids = OnDeviceSetupPreferences.normalizedAIDeckIDs(listOf(aiPreconID, aiPrecon2ID, aiPrecon3ID), available)
         aiPreconID = ids[0]; aiPrecon2ID = ids[1]; aiPrecon3ID = ids[2]
         opponentCount = opponentCount.coerceIn(1, 3); playerCount = playerCount.coerceIn(2, 4); aiSkill = aiSkill.coerceIn(1, 10)
@@ -274,20 +317,140 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             }
             if (others.isNotEmpty()) return you to others
         }
+        activeMatch?.takeIf { it.opponents.isNotEmpty() }?.let { match ->
+            return you to match.opponents.mapIndexed { index, foe -> VersusSeat("foe-$index", foe.name, foe.commander) }
+        }
         if (playWithFriends) return you to listOf(VersusSeat("friends", "Challengers", null))
         return you to aiPrecons.take(maxOf(1, opponentCount)).mapIndexed { index, deck -> VersusSeat("ai-$index", deck.name, deck.commander) }
     }
 
+    // MARK: Quick Match and Ranked (OnDeviceRootView.swift)
+    val mayStartSolo = validName && selectedDeck != null && selectedDeckBracket != null && setup.identity != null &&
+        !setup.isBusy && !setup.needsLeave && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle
+
+    fun startSolo(mode: io.magicmobile.android.game.PlayMode, deck: Deck, deckBracket: io.magicmobile.android.game.CommanderBracket,
+                  opponent: io.magicmobile.android.game.AIDeck, skill: Int) {
+        try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) }
+        catch (error: EngineError) { setup.errorMessage = error.message; return }
+        activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
+            listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
+        rankChange = null
+        val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, aiStartingPlayerMode, mode.raw, deckBracket.level)
+        scope.launch {
+            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID)
+            if (session.matchID == null) activeMatch = null
+        }
+    }
+
+    fun startQuickMatch() {
+        val deck = selectedDeck ?: return
+        val bracket = selectedDeckBracket ?: return
+        val opponentBracket = if (quickBracket == 0) minOf(4, bracket.level) else quickBracket
+        val opponent = quickDeckID.takeIf { it.isNotEmpty() }?.let { id -> aiPool.firstOrNull { it.id == id } }
+            ?: io.magicmobile.android.game.AIDeckPool.pick(opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool) ?: return
+        startSolo(io.magicmobile.android.game.PlayMode.QUICK, deck, bracket, opponent, quickSkill.coerceIn(1, 10))
+    }
+
+    fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
+        val position = record.file.rank.position
+        val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool) ?: return
+        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
+    }
+
+    /** The host opens a two-seat relay table and shares its code; the guest joins. A table that never fills hands the seat to an AI. */
+    suspend fun startRankedHuman(ticket: io.magicmobile.android.game.RankedTicket, deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
+        val matchID = ticket.matchId ?: return startRankedAI(deck, bracket)
+        activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.RANKED, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
+            listOf(io.magicmobile.android.game.MatchOpponent(ticket.opponent ?: "Challenger", null, false)), null, null, null, matchID)
+        rankChange = null
+        if (ticket.isHost) {
+            setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
+            (setup.multiplayer as? RelayTable)?.tableCode?.let { matchmaker.shareTable(matchID, it) }
+        } else ticket.tableCode?.let { setup.joinOnline(it, playerDisplayName, deck) }
+        rankedConnectJob?.cancel()
+        rankedConnectJob = scope.launch {
+            delay(75_000)
+            if (session.matchID != null || activeMatch?.rankedMatchID != matchID) return@launch
+            // Nobody arrived: close the empty table and play the AI instead; nothing was ranked.
+            setup.close(); matchmaker.finish(); activeMatch = null
+            bannerError = "Your opponent didn't connect. An AI took the seat."
+            startRankedAI(deck, bracket)
+        }
+    }
+
+    fun findRankedMatch() {
+        val deck = selectedDeck ?: return
+        val bracket = selectedDeckBracket ?: return
+        if (bracket.level > record.file.rank.position.tier.maxDeckBracket || !mayStartSolo) return
+        try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) } catch (error: EngineError) { setup.errorMessage = error.message; return }
+        record.refreshSeason()
+        matchmaker.service = vm.account.rankedQueue
+        val identity = setup.identity?.let { "${it.upstreamCommit}/${it.catalogueHash}/$RELAY_ADAPTER_VERSION" } ?: "offline"
+        scope.launch {
+            when (val outcome = matchmaker.search(identity.take(200), record.file.rank.position.step, bracket.level)) {
+                io.magicmobile.android.game.RankedSearch.Cancelled -> {}
+                io.magicmobile.android.game.RankedSearch.AI -> startRankedAI(deck, bracket)
+                is io.magicmobile.android.game.RankedSearch.Human -> startRankedHuman(outcome.ticket, deck, bracket)
+            }
+        }
+    }
+
+    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+        val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
+        val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID)
+        rankChange = change
+        match.rankedMatchID?.let { id -> scope.launch { matchmaker.report(id, outcome) } }
+        if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
+    }
+
+    /** Records a finished game once: every game goes into the profile, ranked games move the ladder. */
+    fun recordFinishedGameIfNeeded() {
+        val snapshot = session.snapshot ?: return
+        if (!snapshot.isCompleted && !snapshot.isSpectating) return
+        val current = activeMatch ?: selectedDeck?.let { deck ->
+            ActiveMatch(io.magicmobile.android.game.PlayMode.CASUAL, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors,
+                selectedDeckBracket?.level ?: 2, snapshot.players.filter { !snapshot.isViewer(it.playerId) }.map {
+                    io.magicmobile.android.game.MatchOpponent(it.displayName ?: "Opponent", it.zones.command.firstOrNull()?.card?.name, !setup.usingMultiplayer)
+                }, null, if (setup.usingMultiplayer) null else aiSkill, null)
+        } ?: return
+        if (current.recorded) return
+        val winners = snapshot.winnerPlayerIds.orEmpty()
+        val outcome = when {
+            snapshot.viewerID in winners -> io.magicmobile.android.game.RankOutcome.WIN
+            snapshot.isCompleted && winners.isEmpty() -> io.magicmobile.android.game.RankOutcome.DRAW
+            else -> io.magicmobile.android.game.RankOutcome.LOSS
+        }
+        saveResult(current, outcome, snapshot.turn, snapshot)
+        activeMatch = current.copy(recorded = true)
+    }
+
+    /** Leaving a ranked game before it ends counts as a loss. */
+    fun recordAbandonedRankedGame() {
+        val match = activeMatch ?: return
+        if (match.mode != io.magicmobile.android.game.PlayMode.RANKED || match.recorded || session.matchID == null) return
+        saveResult(match, io.magicmobile.android.game.RankOutcome.LOSS, session.snapshot?.turn ?: 0, session.snapshot)
+        activeMatch = match.copy(recorded = true)
+    }
+
     /** The player leaves: the board closes and its saved checkpoint is deleted. */
     fun closeGame() {
-        scope.launch { if (setup.leave()) { selection.selectedCard = null; selection.inspectedCard = null } }
+        recordAbandonedRankedGame()
+        scope.launch {
+            if (setup.leave()) {
+                selection.selectedCard = null; selection.inspectedCard = null
+                activeMatch = null; rankChange = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
+            }
+        }
     }
 
     fun requestLeave() { if (!setup.isBusy && !session.isWorking) confirmLeave = true }
 
+
     fun startAI() {
         val deck = selectedDeck ?: return
         if (aiPrecons.size != opponentCount) return
+        activeMatch = null; rankChange = null
         val opponentDecks = aiPrecons.map { it.deck }
         val settings = GameResumeSettings(selectedDeckID, aiIDs.take(opponentCount.coerceIn(1, 3)), aiSkill, aiStartingPlayerMode)
         scope.launch {
@@ -301,8 +464,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun resumeSavedGame() {
         setup.resume.offer?.sidecar?.settings?.let { saved ->
             if (saved.deckID in setup.deckIDs) selectedDeckID = saved.deckID
-            val ids = saved.aiDeckIDs.filter { id -> precons.any { it.id == id } }
-            if (ids.size == saved.aiDeckIDs.size && ids.size in 1..3) {
+            val ids = saved.aiDeckIDs.filter { id -> aiPool.any { it.id == id } }
+            val mode = saved.mode?.let { raw -> io.magicmobile.android.game.PlayMode.entries.firstOrNull { it.raw == raw } }
+            activeMatch = mode?.let { m ->
+                val foes = ids.mapNotNull { id -> aiPool.firstOrNull { it.id == id } }
+                ActiveMatch(m, saved.deckID, setup.deck(saved.deckID)?.name ?: "Deck", setup.deck(saved.deckID)?.commanderName, emptyList(),
+                    saved.deckBracket ?: 2, foes.map { io.magicmobile.android.game.MatchOpponent(it.name, it.commander, true) },
+                    foes.firstOrNull()?.bracket?.level, saved.aiSkill, foes.firstOrNull()?.id)
+            }
+            rankChange = null
+            if (mode == null && ids.size == saved.aiDeckIDs.size && ids.size in 1..3) {
                 opponentCount = ids.size
                 ids.getOrNull(0)?.let { aiPreconID = it }; ids.getOrNull(1)?.let { aiPrecon2ID = it }; ids.getOrNull(2)?.let { aiPrecon3ID = it }
             }
@@ -316,10 +487,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun rematchOrLeave() {
         if (session.snapshot?.isCompleted != true || setup.usingMultiplayer) return requestLeave()
+        val mode = activeMatch?.mode
         scope.launch {
             if (!setup.close()) return@launch
             selection.selectedCard = null; selection.inspectedCard = null
-            startAI()
+            activeMatch = null; rankChange = null
+            // Quick Match deals a new opponent; Ranked looks for the next match.
+            when (mode) {
+                io.magicmobile.android.game.PlayMode.QUICK -> startQuickMatch()
+                io.magicmobile.android.game.PlayMode.RANKED -> { lobby = "ranked"; findRankedMatch() }
+                else -> startAI()
+            }
         }
     }
 
@@ -430,7 +608,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
+    LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }
     LaunchedEffect(activeGame) {
+        if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
         // A resumed game is not a new matchup: no versus intro.
         if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
@@ -462,7 +642,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val table = setup.multiplayer as? RelayTable
     LaunchedEffect(table?.startingRoll) { didDismissStartingRoll = false; attemptedStartingPromptID = null; startingChoiceFailedPromptID = null }
     LaunchedEffect(table?.rollShown) { submitStartingChoiceIfNeeded() }
-    LaunchedEffect(table?.openHostedTable) { vm.account.hosting = table?.openHostedTable }
+    // A ranked table is for the matched player only, never shown to friends.
+    LaunchedEffect(table?.openHostedTable) { vm.account.hosting = if (activeMatch?.rankedMatchID == null) table?.openHostedTable else null }
+    // A ranked table readies both players by itself once the room forms.
+    LaunchedEffect(table?.room != null) {
+        val room = table?.room ?: return@LaunchedEffect
+        if (activeMatch?.rankedMatchID != null && !room.localReady) selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) }
+    }
     LaunchedEffect(table?.endpoint?.matchID) { if (table?.endpoint != null) setup.attachTable(table, selectedDeckID, selectedDeck) }
     LaunchedEffect(table?.isConnected, table?.isSuspended) { setup.updateSessionForeground() }
     // Relay tables carry quick chat between phones; solo games only answer from the AI.
@@ -539,7 +725,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 if (activeGame) {
                     CompositionLocalProvider(
                         LocalInspectorBattlefield provides (session.snapshot?.players?.flatMap { it.zones.battlefield } ?: emptyList()),
-                        LocalGameRematchTitle provides if (setup.usingMultiplayer) null else "Rematch",
+                        LocalGameRematchTitle provides when {
+                            setup.usingMultiplayer -> null
+                            activeMatch?.mode == io.magicmobile.android.game.PlayMode.QUICK -> "Play Again"
+                            activeMatch?.mode == io.magicmobile.android.game.PlayMode.RANKED -> "Next Match"
+                            else -> "Rematch"
+                        },
+                        io.magicmobile.android.board.LocalGameRankChange provides rankChange,
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalEmoteCenter provides vm.emotes,
                         LocalStartingRollVisible provides boardQuiet) {
@@ -566,8 +758,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 portraitModeEnabled = portraitModeEnabled, setPortraitModeEnabled = { portraitModeEnabled = it })
                         }
                     }
-                } else if (showSetup || setup.needsLeave) {
-                    SetupScreen(setup, selectedDeck, aiPrecons, playerDisplayName, { playerDisplayName = it.take(24) }, portraitModeEnabled,
+                } else if (showSetup || (setup.needsLeave && activeMatch?.rankedMatchID == null)) {
+                    SetupScreen(setup, selectedDeck, aiPrecons, deckPickerSections, aiDeckPickerSections, playerDisplayName, { playerDisplayName = it.take(24) }, portraitModeEnabled,
                         { portraitModeEnabled = it }, selectedDeckID, { selectedDeckID = it }, aiIDs, { index, id ->
                             when (index) { 0 -> aiPreconID = id; 1 -> aiPrecon2ID = id; else -> aiPrecon3ID = id }
                         }, opponentCount, { opponentCount = it }, aiSkill, { aiSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it },
@@ -577,7 +769,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             val deck = selectedDeck
                             if (deck != null) scope.launch {
                                 val aiCount = onlineAICount(playerCount)
-                                setup.hostOnline(playerDisplayName, deck, playerCount, aiIDs.take(aiCount).mapNotNull { id -> precons.firstOrNull { it.id == id }?.deck }, aiSkill)
+                                setup.hostOnline(playerDisplayName, deck, playerCount, aiIDs.take(aiCount).mapNotNull { id -> aiPool.firstOrNull { it.id == id }?.deck }, aiSkill)
                             }
                         },
                         joinOnline = { code -> selectedDeck?.let { setup.joinOnline(code, playerDisplayName, it) } },
@@ -586,11 +778,29 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         openSettings = { GameAudio.play(GameSound.UI_OPEN); showAppearance = true },
                         openDecks = { showDecks = true }, start = ::startAI, leave = { confirmLeave = true },
                         openStudio = { studioOpen = it; showDecks = true })
+                } else if (lobby != null) {
+                    val deckSlot: @Composable () -> Unit = {
+                        io.magicmobile.android.ranked.PlayDeckSection(selectedDeck?.name, selectedDeck?.commanderName, selectedDeckBracket,
+                            selectedDeckID.startsWith("local:"), selectedDeckID, deckPickerSections, { selectedDeckID = it }, { showDecks = true },
+                            { showBracketSheet = true }, enabled = !setup.isBusy && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle)
+                    }
+                    BackHandler { GameAudio.play(GameSound.UI_BACK); lobby = if (lobby == "chooser" || lobby == "profile") null else "chooser" }
+                    when (lobby) {
+                        "quick" -> io.magicmobile.android.ranked.QuickMatchScreen(selectedDeckBracket, quickBracket, { quickBracket = it }, quickDeckID,
+                            { quickDeckID = it }, quickSkill, { quickSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it }, aiPool, mayStartSolo,
+                            if (setup.identity == null) setup.status else null, ::startQuickMatch, { lobby = "chooser" }, deckSlot)
+                        "ranked" -> io.magicmobile.android.ranked.RankedLobbyScreen(record.file.rank, selectedDeckBracket, vm.account.rankedQueue != null,
+                            mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "chooser" }, deckSlot)
+                        "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account.username ?: playerDisplayName) { lobby = null }
+                        else -> io.magicmobile.android.ranked.PlayModeChooser(record.file.rank.position, io.magicmobile.android.game.RankLadder.seasonName(record.file.rank.season),
+                            quick = { lobby = "quick" }, ranked = { lobby = "ranked" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
+                    }
                 } else {
-                    TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { showSetup = true },
+                    TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { lobby = "chooser" },
                         decks = { showDecks = true }, settings = { showAppearance = true }, news = { showUpdates = true },
                         commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true },
-                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount)
+                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount,
+                        profile = { lobby = "profile" }, rank = record.file.rank.position)
                 }
 
                 // The starting roll, on an opaque cover: a relay table's shared roll (the host's recorded dice,
@@ -666,6 +876,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     }
                 }
 
+                if (!activeGame && matchPhase != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle) {
+                    io.magicmobile.android.ranked.RankedSearchOverlay(matchPhase, record.file.rank.position, { matchmaker.skipToAI() }, { matchmaker.cancel() })
+                }
+                ceremony?.let { change -> io.magicmobile.android.ranked.RankCeremonyOverlay(change) { ceremony = null } }
+
                 // The versus intro plays first, over the opaque starting roll that follows it.
                 if (activeGame) versusIntro?.let { (you, opponents) ->
                     VersusIntroOverlay(you, opponents) { versusIntro = null }
@@ -710,6 +925,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     report = if (profileReady) { line -> scope.launch { vm.account.report(line.name, line.text, "chat") } } else null,
                     block = if (profileReady) { name -> vm.emotes.mute(name); scope.launch { vm.account.block(name) } } else null) { vm.emotes.openChat(false) }
             }
+            if (showBracketSheet) {
+                val deck = selectedDeck; val report = selectedBracketReport
+                if (deck != null && report != null) BoardSheet({ showBracketSheet = false }, skipPartiallyExpanded = true) {
+                    val fixed = setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.bracket
+                        ?: if (selectedDeckID.startsWith("precon:")) io.magicmobile.android.game.CommanderBracket.CORE else null
+                    io.magicmobile.android.ranked.DeckBracketSheet(deck.name, report, run { bracketRevision; declaredBracket(selectedDeckID) }, fixed,
+                        if (fixed == null) { b -> setDeclaredBracket(selectedDeckID, b) } else null) { showBracketSheet = false }
+                }
+            }
             if (showFriends) BoardSheet({ showFriends = false }, skipPartiallyExpanded = true) {
                 FriendsSheet(vm.account, join = { code -> scope.launch { delay(450); openJoinLink(code) } }) { showFriends = false }
             }
@@ -740,7 +964,8 @@ private fun BannerButton(title: String, enabled: Boolean, action: () -> Unit) {
 @Composable
 fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks: () -> Unit, settings: () -> Unit, news: (() -> Unit)? = null,
                    commanderName: String? = null, downloads: (() -> Unit)? = null, howToPlay: (() -> Unit)? = null,
-                   friends: (() -> Unit)? = null, friendsBadge: Int = 0) {
+                   friends: (() -> Unit)? = null, friendsBadge: Int = 0, profile: (() -> Unit)? = null,
+                   rank: io.magicmobile.android.game.RankPosition? = null) {
     val reduceMotion = LaunchEnvironment.reduceMotion
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
@@ -789,6 +1014,20 @@ fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks
                                 style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
                             if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
                                 color = Color.White, style = sf(13f, SfWeight.black))
+                            SfImage("chevron.right", LocalContentColor.current, 14.dp)
+                        }
+                    }
+                    profile?.let { openProfile ->
+                        BrandButton({ GameAudio.play(GameSound.UI_OPEN); openProfile() }, Modifier.testTag("menu.profile").semantics {
+                            contentDescription = rank?.let { "Profile, ${it.title}" } ?: "Profile"
+                        }, kind = BrandButtonKind.SECONDARY) {
+                            SfImage("person.crop.circle.fill", LocalContentColor.current, 17.dp)
+                            Text("Profile", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
+                                style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                            rank?.let {
+                                io.magicmobile.android.ranked.RankEmblem(it.tier, 28.dp)
+                                Text(it.title, Modifier.padding(horizontal = 4.dp), color = LocalContentColor.current, style = sf(13f, SfWeight.heavy, SfDesign.SERIF))
+                            }
                             SfImage("chevron.right", LocalContentColor.current, 14.dp)
                         }
                     }
@@ -878,7 +1117,9 @@ private fun MenuIdentity(compact: Boolean, playerName: String, density: Int) {
 
 /** The setup screen (OnDeviceRootView.setupContent). */
 @Composable
-private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecons: List<PreconDeck>, playerName: String, setPlayerName: (String) -> Unit,
+private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecons: List<io.magicmobile.android.game.AIDeck>,
+                        deckSections: List<TavernPickerSection<String>>, aiSections: List<TavernPickerSection<String>>,
+                        playerName: String, setPlayerName: (String) -> Unit,
                         portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, selectedDeckID: String, selectDeck: (String) -> Unit,
                         aiIDs: List<String>, selectAIDeck: (Int, String) -> Unit, opponentCount: Int, setOpponentCount: (Int) -> Unit,
                         aiSkill: Int, setAISkill: (Int) -> Unit, startingMode: String, setStartingMode: (String) -> Unit,
@@ -944,10 +1185,7 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                     Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters.",
                         color = setupSecondary, style = SfText.caption())
                     TavernToggle("Auto-Rotate", portraitModeEnabled, setPortraitModeEnabled)
-                    TavernPicker("Your deck", selectedDeckID, listOfNotNull(
-                        TavernPickerSection("Included precons", setup.precons.map { it.name to "precon:${it.id}" }),
-                        setup.localDecks.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection("Saved on this device", decks.map { it.deck.name to "local:${it.id}" }) }),
-                        selectDeck, enabled = !seatLocked)
+                    TavernPicker("Your deck", selectedDeckID, deckSections, selectDeck, enabled = !seatLocked)
                     BrandButton(openDecks, kind = BrandButtonKind.SECONDARY, enabled = !seatLocked) {
                         SfImage("rectangle.stack.badge.plus", BrandTheme.ink, 17.dp)
                         BrandButtonText("Browse, import or edit decks", BrandButtonKind.SECONDARY)
@@ -968,7 +1206,7 @@ private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecon
                         for (index in 0 until opponentCount.coerceIn(1, 3)) {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("AI ${index + 1} deck", color = setupSecondary, style = SfText.caption())
-                                TavernPicker("AI ${index + 1} deck", aiIDs[index], listOf(TavernPickerSection(null, setup.precons.map { it.name to it.id })),
+                                TavernPicker("AI ${index + 1} deck", aiIDs[index], aiSections,
                                     { selectAIDeck(index, it) }, enabled = !locked, showsTitle = false)
                             }
                         }
@@ -1033,6 +1271,11 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage = "shield.lefthalf.filled")
+                IosListRow("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage = "bolt.fill")
+                IosListRow("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage = "checkmark.seal")
+                IosListRow("Your profile: rank, season history, stats, achievements, titles and match history.", systemImage = "person.crop.circle")
+                IosListRow("21 new included decks from Bracket 1 to 4, for you and for the AI.", systemImage = "rectangle.stack.fill")
                 IosListRow("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage = "table.furniture")
                 IosListRow("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage = "sparkles")
                 IosListRow("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage = "person.crop.circle")
@@ -1071,7 +1314,8 @@ private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, pla
             TavernPicker("Human players", players, listOf(TavernPickerSection(null, (2..4).map { "$it players" to it })), setPlayers, enabled = !locked)
             TavernStepper("AI opponents: $aiCount", aiCount, 0..maxOf(0, 4 - players), { storedAICount = it }, enabled = !locked)
             for (index in 0 until aiCount) {
-                TavernPicker("AI ${index + 1} deck", aiIDs[index], listOf(TavernPickerSection(null, setup.precons.map { it.name to it.id })),
+                TavernPicker("AI ${index + 1} deck", aiIDs[index], io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
+                    setup.aiPool.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection(bracket.title, decks.map { it.name to it.id }) } },
                     { selectAIDeck(index, it) }, enabled = !locked)
             }
             if (aiCount > 0) {
@@ -1186,3 +1430,10 @@ private fun MatchRoomView(room: RelayTable.MatchRoom, deckName: String?, localCo
         }
     }
 }
+
+/** The game being played from Quick Match or Ranked (or a custom table, for the profile), for its result. */
+private data class ActiveMatch(
+    val mode: io.magicmobile.android.game.PlayMode, val deckID: String, val deckName: String, val commander: String?, val colors: List<String>,
+    val deckBracket: Int, val opponents: List<io.magicmobile.android.game.MatchOpponent>, val opponentBracket: Int?, val aiSkill: Int?,
+    val aiDeckID: String?, val rankedMatchID: String? = null, val recorded: Boolean = false,
+)

@@ -4,6 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.PersonAdd
@@ -75,6 +81,13 @@ object SfSymbols {
         "square.and.arrow.up" -> Icons.Filled.IosShare
         "list.bullet.rectangle" -> Icons.AutoMirrored.Filled.ListAlt
         "chevron.right" -> Icons.Filled.ChevronRight
+        // Ranked, Quick Match and the profile.
+        "checkmark.seal" -> Icons.Outlined.Verified
+        "hare.fill" -> Icons.Filled.Speed
+        "antenna.radiowaves.left.and.right" -> Icons.Filled.WifiTethering
+        "cpu" -> Icons.Filled.Memory
+        "person.3.fill" -> Icons.Filled.Groups
+        "person.crop.circle.fill" -> Icons.Filled.AccountCircle
         "chevron.left" -> Icons.Filled.ChevronLeft
         "chevron.down" -> Icons.Filled.ExpandMore
         "chevron.up" -> Icons.Filled.ExpandLess

@@ -55,6 +55,10 @@ struct GameResumeSetup: Codable, Equatable {
     var aiDeckIDs: [String]
     var aiSkill: Int
     var startingPlayerMode: String
+    /// Quick Match or Ranked (PlayMode); nil for a custom table and saves from earlier builds.
+    var mode: String? = nil
+    /// The player's deck bracket when the game began, for the ranked result.
+    var deckBracket: Int? = nil
 }
 
 /// `resume.json`. Times are Unix epoch milliseconds, like the engine's `savedAtMillis`.

@@ -244,6 +244,14 @@ struct DeckStudioRootView: View {
                         DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
                                           colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
                     }
+                        .overlay(alignment: .topTrailing) {
+                            // The deck's Commander bracket (Ranked/CommanderBrackets.swift).
+                            BracketTag(bracket: included ? .core : DeckBracketPreference.effective(
+                                minimum: BracketRules.bundled.evaluate(record.deckList).minimum,
+                                declared: DeckBracketPreference.declared(id, in: MagicMobilePreferences.current)), short: true)
+                                .padding(10)
+                                .accessibilityIdentifier("deckStudio.bracket.\(id)")
+                        }
                         .overlay(alignment: .topLeading) {
                             VStack(alignment: .leading, spacing: 6) {
                                 if id == selectedDeckID { DeckStudioPlayingBadge() }
