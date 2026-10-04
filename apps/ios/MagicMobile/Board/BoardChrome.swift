@@ -1631,7 +1631,6 @@ struct TavernListChrome: ViewModifier {
                 .foregroundStyle(TavernPalette.parchment)
                 .fontDesign(.serif)
                 .tint(TavernPalette.brass)
-                .toggleStyle(TavernToggleStyle())
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
                 .environment(\.tavernBoard, true)
@@ -1864,10 +1863,20 @@ struct TavernMenu<Label: View, Items: View>: View {
     @ViewBuilder let label: Label
     @State private var open = false
     @State private var pending: (() -> Void)?
+    /// The button sits in the lower half of the screen: the pop-over opens upward, where there is room.
+    @State private var opensUpward = false
 
     var body: some View {
         Button { open = true } label: { label }
-            .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: arrowEdge) {
+            .background {
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { opensUpward = Self.isLow(geometry.frame(in: .global)) }
+                        .onChange(of: geometry.frame(in: .global)) { _, frame in opensUpward = Self.isLow(frame) }
+                }
+            }
+            // A pop-over below a low button runs off the screen (Caleb, 2026-10-03: controls off screen).
+            .popover(isPresented: $open, attachmentAnchor: .rect(.bounds), arrowEdge: arrowEdge == .top && opensUpward ? .bottom : arrowEdge) {
                 Group {
                     if let scrollHeight {
                         ScrollViewReader { proxy in
@@ -1896,6 +1905,11 @@ struct TavernMenu<Label: View, Items: View>: View {
                     action()
                 }
             }
+    }
+
+    private static func isLow(_ frame: CGRect) -> Bool {
+        let height = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 0
+        return height > 0 && frame.midY > height * 0.55
     }
 }
 

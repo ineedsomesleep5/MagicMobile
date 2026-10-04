@@ -427,11 +427,8 @@ struct OnDeviceSetupDeckDetails: View {
                     }
                     .foregroundStyle(CommanderPresentation.accent)
                     .accessibilityIdentifier("ondevice.deckStatus.fix")
-                } else {
-                    Label(status.setupLine, systemImage: status == .ready ? "checkmark.seal.fill" : "questionmark.circle")
-                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                        .accessibilityIdentifier("ondevice.deckStatus")
                 }
+                // Ready and not-checked decks show no line (Caleb, 2026-10-03): Start checks the deck anyway.
             }
         }
         .fixedSize(horizontal: false, vertical: true)

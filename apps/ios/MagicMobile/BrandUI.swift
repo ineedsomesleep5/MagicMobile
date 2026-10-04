@@ -764,26 +764,6 @@ struct TavernSlider: View {
     }
 }
 
-/// A stock Toggle in a tavern list or form: its label in parchment serif and the brass switch
-/// face, with the real toggle underneath for touch, VoiceOver and UI tests.
-struct TavernToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
-            configuration.label
-            Spacer(minLength: 8)
-            TavernSwitchFace(isOn: configuration.isOn)
-                .frame(width: 51, height: 31)
-                .overlay {
-                    Toggle(isOn: configuration.$isOn) { configuration.label }
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .opacity(0.02)
-                }
-        }
-        .frame(minHeight: 44)
-    }
-}
-
 struct TavernSwitchFace: View {
     let isOn: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

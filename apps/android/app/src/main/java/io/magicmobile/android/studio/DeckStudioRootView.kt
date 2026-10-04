@@ -397,7 +397,8 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
             Box(Modifier.fillMaxWidth().height(if (grid) 164.dp else 130.dp).clip(RoundedCornerShape(0.dp))) {
                 DeckStudioArtwork(record.commander?.cardName ?: "", Modifier.fillMaxSize(), hero = true, colors = colors)
                 if (selected) DeckStudioPlayingBadge(Modifier.padding(10.dp))
-                status?.let { DeckStudioPlayStatusChip(it, Modifier.align(Alignment.BottomStart).padding(10.dp)) }
+                // Only a deck that needs fixes says so on its tile (Caleb, 2026-10-03).
+                status?.takeIf { it == io.magicmobile.android.studio.DeckStudioPlayStatus.NEEDS_FIXES }?.let { DeckStudioPlayStatusChip(it, Modifier.align(Alignment.BottomStart).padding(10.dp)) }
                 DeckTileContextMenu(contextMenu, { contextMenu = false }, actions)
             }
             DeckStudioTileDetails(record.name, DeckStudioDraftPresentation.commanders(draft).joinToString(" • "), colors, tags, showTags,

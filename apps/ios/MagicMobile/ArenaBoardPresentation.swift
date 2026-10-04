@@ -77,6 +77,9 @@ enum BattlefieldAttachments {
 enum BattlefieldRowArrangement: Equatable {
     case automatic, landscapeResources, portraitPermanents
 
+    /// Columns a row shows before it scrolls (ArenaPermanentLayout).
+    static let visibleColumns = 5
+
     func rows(_ groups: [BattlefieldCardGroup], flipped: Bool, twoRows: Bool) -> [[BattlefieldCardGroup]] {
         guard twoRows else { return [groups] }
         switch self {
@@ -92,9 +95,13 @@ enum BattlefieldRowArrangement: Equatable {
         case .portraitPermanents:
             let foreground = groups.filter { !BattlefieldAttachments.isSupport($0.representative) }
             let background = groups.filter { BattlefieldAttachments.isSupport($0.representative) }
-            if foreground.isEmpty || background.isEmpty {
-                let midpoint = (groups.count + 1) / 2
-                return [Array(groups.prefix(midpoint)), Array(groups.dropFirst(midpoint))]
+            // A front row longer than the screen shows while the back row has room shares the two
+            // rows instead, creatures first, so nothing runs off the edge (Caleb, 2026-10-03).
+            let frontOverflows = foreground.count > Self.visibleColumns && background.count < foreground.count - 1
+            if foreground.isEmpty || background.isEmpty || frontOverflows {
+                let ordered = foreground + background
+                let midpoint = (ordered.count + 1) / 2
+                return [Array(ordered.prefix(midpoint)), Array(ordered.dropFirst(midpoint))]
             }
             return flipped ? [background, foreground] : [foreground, background]
         }

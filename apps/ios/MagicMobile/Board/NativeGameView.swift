@@ -536,6 +536,8 @@ struct NativeGameView: View {
                 }
             }
             .coordinateSpace(name: "portrait-board")
+            // Drawn layers only (arrows and effects): one hidden layer, so it never covers the cards for
+            // VoiceOver or touch tests. The offscreen-combat markers are real buttons in their own overlay.
             .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
                 GeometryReader { geometry in
                     let bounds = anchors.mapValues { geometry[$0] }
@@ -545,15 +547,24 @@ struct NativeGameView: View {
                             humanBattlefield: human.zones.battlefield,
                             opponentBattlefield: opponent.zones.battlefield, renderedBounds: bounds)
                             .allowsHitTesting(false)
+                    }
+                    boardFXOverlay(bounds: bounds, snapshot: snapshot, opponentRect: metrics.opponentBattlefieldRect,
+                        playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect)
+                }
+                .allowsHitTesting(false)
+                // Hidden alone does not take inside a preference overlay: an empty representation does.
+                .accessibilityRepresentation { EmptyView() }
+            }
+            .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
+                if inspectingZoneTitle == nil && inspectedCard == nil {
+                    GeometryReader { geometry in
                         CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
                             combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
-                            bounds: bounds,
+                            bounds: anchors.mapValues { geometry[$0] },
                             viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
                             laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
                             inspect: { inspectedCard = $0 })
                     }
-                    boardFXOverlay(bounds: bounds, snapshot: snapshot, opponentRect: metrics.opponentBattlefieldRect,
-                        playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect)
                 }
             }
             .onAppear {
@@ -1001,8 +1012,9 @@ struct NativeGameView: View {
                 )
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
-                // The tavern's candle sits under the clock: the status bar leaves during a game.
-                .statusBarHidden(isTavernBoard)
+                // The tavern's candle sits under the clock: the status bar leaves during a game. On a
+                // hidden background, so the board itself never becomes one big accessibility element.
+                .background { Color.clear.statusBarHidden(isTavernBoard).accessibilityHidden(true).allowsHitTesting(false) }
                 .environment(\.inspectorBattlefield, snapshot.visibleBattlefield)
                 .overlay {
                     if let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {
@@ -1702,6 +1714,8 @@ struct NativeGameView: View {
             #endif
             .preferredColorScheme(.dark)
             .coordinateSpace(name: "portrait-board")
+            // Drawn layers only (arrows and effects): one hidden layer, so it never covers the cards for
+            // VoiceOver or touch tests. The offscreen-combat markers are real buttons in their own overlay.
             .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
                 GeometryReader { geometry in
                     let bounds = anchors.mapValues { geometry[$0] }
@@ -1711,13 +1725,6 @@ struct NativeGameView: View {
                             humanBattlefield: human.zones.battlefield,
                             opponentBattlefield: opponent.zones.battlefield, renderedBounds: bounds,
                             focusedOpponentID: opponent.playerId)
-                            .allowsHitTesting(false)
-                        CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
-                            combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
-                            bounds: bounds,
-                            viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
-                            laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
-                            inspect: { inspectedCard = $0 })
                     }
                     boardFXOverlay(bounds: bounds, snapshot: snapshot, opponentRect: metrics.opponentBattlefieldRect,
                         playerRect: metrics.playerBattlefieldRect, stackRect: metrics.centerStripRect, handRect: metrics.handRect,
@@ -1725,6 +1732,21 @@ struct NativeGameView: View {
                             ?? CGPoint(x: metrics.bottomHUDRect.minX + 34, y: metrics.bottomHUDRect.maxY - 78),
                         opponentLife: bounds[TavernSeatAnchor.top].map { CGPoint(x: $0.midX, y: $0.maxY + 10) }
                             ?? CGPoint(x: metrics.topHUDRect.minX + 44, y: metrics.topHUDRect.maxY + 26))
+                }
+                .allowsHitTesting(false)
+                // Hidden alone does not take inside a preference overlay: an empty representation does.
+                .accessibilityRepresentation { EmptyView() }
+            }
+            .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
+                if inspectingZoneTitle == nil && inspectedCard == nil {
+                    GeometryReader { geometry in
+                        CombatEdgeIndicators(cards: human.zones.battlefield + opponent.zones.battlefield,
+                            combatIDs: Set(CombatArrowModel.arrows(from: snapshot.xmage?.combat ?? [], previewArrows: combatPreviewArrows).flatMap { [$0.fromId, $0.toId] }),
+                            bounds: anchors.mapValues { geometry[$0] },
+                            viewports: [metrics.opponentBattlefieldRect, metrics.opponentLandsRect, metrics.playerBattlefieldRect, metrics.playerLandsRect],
+                            laneIndices: CombatViewportAnchors.laneIndices(human: human.zones.battlefield, opponent: opponent.zones.battlefield),
+                            inspect: { inspectedCard = $0 })
+                    }
                 }
             }
             .onAppear {

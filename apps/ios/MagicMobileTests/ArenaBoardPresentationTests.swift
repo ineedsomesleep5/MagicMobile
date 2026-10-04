@@ -112,6 +112,18 @@ final class ArenaBoardPresentationTests: XCTestCase {
         XCTAssertEqual(portraitAnchor["rock"]?.isClipped, false)
     }
 
+    /// Six creatures and one artifact: the front row would run past the five columns on screen, so
+    /// the rows share the cards, creatures first, instead of one long creature row (Caleb, 2026-10-03).
+    func testOverflowingCreatureRowSharesBothRows() throws {
+        let creatures = try (1...6).map { try attachmentCard("creature-\($0)", type: "Creature", name: "Creature \($0)") }
+        let rock = try attachmentCard("rock", type: "Artifact", rules: "{T}: Add {C}.", name: "Sol Ring")
+        let groups = BattlefieldAttachments.groups(creatures + [rock])
+        let rows = BattlefieldRowArrangement.portraitPermanents.rows(groups, flipped: false, twoRows: true)
+        XCTAssertEqual(rows.map(\.count), [4, 3])
+        XCTAssertEqual(rows[1].last?.representative.instanceId, "rock")
+        XCTAssertTrue(rows.allSatisfy { $0.count <= BattlefieldRowArrangement.visibleColumns })
+    }
+
     func testPortraitSparseMixAndTwoRowSupportDepth() throws {
         let creature = try attachmentCard("creature", type: "Creature")
         let equipment = try attachmentCard("equipment", type: "Artifact — Equipment", parent: "creature")

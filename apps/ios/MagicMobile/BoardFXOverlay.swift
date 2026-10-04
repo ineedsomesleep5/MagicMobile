@@ -48,7 +48,7 @@ struct BoardFXOverlay: View {
     var body: some View {
         Group {
             if effects.isEmpty {
-                Color.clear
+                Color.clear.accessibilityHidden(true)
             } else {
                 TimelineView(.animation) { timeline in
                     let now = timeline.date

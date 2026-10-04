@@ -111,7 +111,7 @@ struct NativeDownloadsView: View {
                     }
                     .disabled(downloads.isRunning)
                     .accessibilityIdentifier("downloads.quality")
-                    if scope != "tokens" { Toggle("Include tokens", isOn: $includeTokens)
+                    if scope != "tokens" { TavernToggle(title: "Include tokens", isOn: $includeTokens)
                         .disabled(downloads.isRunning)
                     }
                 } header: { Text("Artwork") } footer: {
