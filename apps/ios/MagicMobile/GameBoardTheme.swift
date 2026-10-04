@@ -23,7 +23,7 @@ enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
         default: return "battlefield-\(rawValue)"
         }
     }
-    /// A composed table rendered for each orientation (scripts/brand/walnut_table.py): its
+    /// A composed table rendered for each orientation (scripts/brand/tavern_table.py): its
     /// frame and play mat are placed for the board layout, so it cannot share one crop.
     var composedAssetNames: (portrait: String, landscape: String)? {
         self == .tavern ? ("battlefield-tavern-portrait", "battlefield-tavern-landscape") : nil
