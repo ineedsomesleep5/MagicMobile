@@ -331,7 +331,10 @@ fun TavernSealButton(onClick: () -> Unit, modifier: Modifier = Modifier, content
     Box(modifier.size(44.dp).clickable(remember { MutableInteractionSource() }, null, onClick = onClick)
         .semantics { this.contentDescription = contentDescription; role = Role.Button }, contentAlignment = Alignment.Center) {
         val seal = tavernImage(R.drawable.tavern_ui_seal)
-        Box(Modifier.size(32.dp).glow(Color.Black.copy(alpha = 0.5f), 3.dp, 16.dp).drawBehind { drawStretched(seal) })
+        // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
+        Box(Modifier.size(32.dp).glow(Color.Black.copy(alpha = 0.5f), 3.dp, 16.dp).drawBehind { drawStretched(seal) }, contentAlignment = Alignment.Center) {
+            SfImage("xmark", rgb(1.0, 0.86, 0.52), 13.dp, Modifier.glow(Color.Black.copy(alpha = 0.8f), 1.dp, 2.dp))
+        }
     }
 }
 

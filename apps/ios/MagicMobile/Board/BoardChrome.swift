@@ -1554,7 +1554,15 @@ struct TavernSealLabel: View {
     var body: some View {
         Group {
             if let image = UIImage(named: "tavern-ui-seal") {
+                // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
                 Image(uiImage: image).resizable().scaledToFit()
+                    .overlay {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.86, green: 0.64, blue: 0.30)],
+                                                            startPoint: .top, endPoint: .bottom))
+                            .shadow(color: .black.opacity(0.8), radius: 1, y: 1)
+                    }
             } else {
                 ZStack {
                     Circle().fill(RadialGradient(colors: [Color(red: 0.85, green: 0.16, blue: 0.12), Color(red: 0.45, green: 0.04, blue: 0.03)],
