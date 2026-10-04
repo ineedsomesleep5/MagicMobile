@@ -112,9 +112,11 @@ up by themselves. `supabase/tests/verify-ranked.mjs` runs the social and ranked 
 checks pairing, blocks, the table hand-off, late cancels, cards and account deletion
 (`npm run test:ranked --prefix supabase/tests`).
 
-**Status (2026-10-04): not applied to the live project.** Until it is, the apps treat the queue as
-unavailable and every ranked game is against the AI (ranks still count), and friends' badges stay hidden.
-A live two-phone ranked match has not been played.
+**Status: applied to the live project on 2026-10-04** (migration `ranked_ladder`, file SHA-256
+`884e10c8…93ee`). Checked afterwards: the nine functions exist, signed-in players may call the eight public
+ones and anonymous callers none (a signed-out REST call gets `permission denied`), the three tables have RLS
+on with no grants, and the security advisor shows only the same RPC-only notices as the social tables. No
+test accounts were made on the live project. A live two-phone ranked match has not been played.
 
 ## Tests
 
