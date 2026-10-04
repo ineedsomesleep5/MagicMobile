@@ -120,8 +120,11 @@ screenshots of `normal-battlefield`, `crowded-battlefield`, `attached-permanents
 
 ## Build 27: the whole table in one style (iOS `codex/walnut-build-27`)
 
-Caleb's brainstorm of 2026-10-03 (docs/BOARD_FX_ROADMAP.md, phase 13). To port, in this order, each
-to the same-named Kotlin file:
+Caleb's brainstorm of 2026-10-03 (docs/BOARD_FX_ROADMAP.md, phase 13). Ported on the same branch on
+2026-10-03 (items 1–5 below; item 6, iPad, has no Android tablet counterpart yet). Checked on the
+emulator: the spell moment (`board-fx` steps 1–5), the tavern menu sheets, the chooser and both
+tutorials, the Updates sheet. `:core:test` 173 and `:app:testDebugUnitTest` 72 pass. The pieces, each
+in the same-named Kotlin file:
 
 1. **Spell moment:** `BoardFXOverlay.swift` — on the tavern every `spellCast` (and a showcased
    `enteredBattlefield`) is the framed tile (`BoardFXFlight.showcaseSize` framed for every weight:
