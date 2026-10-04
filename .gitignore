@@ -25,3 +25,8 @@ apps/xmage-gateway/smoke-report-*.json
 
 # Python tooling caches.
 __pycache__/
+
+# Local agent tooling: per-machine settings, agent worktrees and a pointer to AGENTS.md.
+.claude/settings.local.json
+.claude/worktrees/
+.agents/
