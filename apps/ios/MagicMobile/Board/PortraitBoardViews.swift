@@ -148,16 +148,20 @@ struct PortraitOpponentStatusBar: View {
                     .frame(width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118), alignment: .leading)
                     .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
                     .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+                    .scaleEffect(canvas.tavernControlScale)
                     .tavernPosition(sockets.opponentNameplate, canvas: canvas, origin: origin)
                     TavernCardBackFan(count: opponent.zones.visibleHandCount)
+                        .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.opponentHand, canvas: canvas, origin: origin)
                     // The step of the turn mirrors the nameplate; the log is in the controls menu.
                     TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn,
                                      width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118))
+                        .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.phasePlate, canvas: canvas, origin: origin)
                     // Counters, commander damage and attached cards are in the medallion's
                     // pop-over; poison and the worst commander damage show here too.
                     TavernStatusGlance(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot))
+                        .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.opponentGlance, canvas: canvas, origin: origin)
                     opponentMedallion(diameter: canvas.tavernLength(sockets.opponentHoleRadius * 2))
                         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.top: $0] }

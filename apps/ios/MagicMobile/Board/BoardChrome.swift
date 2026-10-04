@@ -1076,6 +1076,8 @@ extension CGSize {
     var tavernDesignCanvas: CGSize { TavernSockets.current(self).canvas }
     /// An iPad held sideways: the short side is far past any phone's.
     var isTavernPad: Bool { width > height && min(width, height) >= 700 }
+    /// The table's fixed-size controls (plates, rings, gems, trays) grow by this much on an iPad.
+    var tavernControlScale: CGFloat { isTavernPad ? 1.3 : 1 }
     /// A design-canvas point on this screen, in global coordinates.
     func tavernPoint(_ point: CGPoint) -> CGPoint {
         CGPoint(x: point.x * width / tavernDesignCanvas.width, y: point.y * height / tavernDesignCanvas.height)
@@ -1156,8 +1158,8 @@ struct TavernSockets {
         let pass = CGPoint(x: 1060, y: 690)
         return TavernSockets(
             canvas: CGSize(width: 1180, height: 860), opponentMedallion: CGPoint(x: 136, y: 150), opponentHoleRadius: 44,
-            opponentNameplate: CGPoint(x: 136, y: 240), opponentHand: CGPoint(x: 136, y: 88),
-            phasePlate: CGPoint(x: 1050, y: 60), opponentGlance: CGPoint(x: 136, y: 296),
+            opponentNameplate: CGPoint(x: 136, y: 266), opponentHand: CGPoint(x: 136, y: 84),
+            phasePlate: CGPoint(x: 1050, y: 60), opponentGlance: CGPoint(x: 136, y: 330),
             lifeMedallion: CGPoint(x: 136, y: 690), lifeHoleRadius: 50,
             chat: CGPoint(x: 194, y: 772),
             passButton: pass, skip: CGPoint(x: pass.x - 56, y: pass.y - 88), menu: CGPoint(x: pass.x + 30, y: pass.y - 102),
@@ -1776,6 +1778,7 @@ struct TavernStackTray: View {
                     Text("STACK")
                         .font(.system(size: 9, weight: .heavy, design: .serif))
                         .tracking(1)
+                        .lineLimit(1).fixedSize()
                         .foregroundStyle(Color(red: 0.96, green: 0.80, blue: 0.48))
                     Text(topName ?? "")
                         .font(.system(size: 13, weight: .semibold, design: .serif))
@@ -1790,7 +1793,8 @@ struct TavernStackTray: View {
             }
             .padding(.leading, 6)
             .padding(.trailing, 10)
-            .frame(width: width, height: 42)
+            // The picture needs its own room beside the name.
+            .frame(width: width + (topCard == nil ? 0 : 22), height: 42)
             .modifier(TavernPanelChrome(tavern: true, cornerRadius: 7))
             .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
             .contentShape(Rectangle())

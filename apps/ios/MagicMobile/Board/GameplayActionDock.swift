@@ -438,14 +438,17 @@ struct PortraitBottomCommandBar: View {
                     // Skip and the controls ring orbit the hourglass's lower-left on one arc
                     // (72 pt out): Skip at its left, controls further round below it.
                     dock(.skip)
+                        .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.skip, canvas: canvas, origin: origin)
                     dock(.menu)
+                        .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.menu, canvas: canvas, origin: origin)
                     let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
                     if stackCount > 0, let openStack {
                         TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack,
                                         width: sockets.canvas.width > sockets.canvas.height ? 106 : 124,
                                         topCard: snapshot.stackTopFirst.first?.displaySourceCard)
+                            .scaleEffect(canvas.tavernControlScale)
                             .tavernPosition(sockets.stackTray, canvas: canvas, origin: origin)
                     }
                     // Counters and attached cards live in the medallion's pop-over; poison and
@@ -454,6 +457,7 @@ struct PortraitBottomCommandBar: View {
                         TavernStatusGlance(summary: PlayerStatusSummary(player: human, snapshot: snapshot))
                         if let emoteCenter { TableChatButton(center: emoteCenter) }
                     }
+                    .scaleEffect(canvas.tavernControlScale)
                     .tavernPosition(sockets.chat,
                                     canvas: canvas, origin: origin)
                 }
@@ -471,7 +475,7 @@ struct PortraitBottomCommandBar: View {
     @ViewBuilder
     private func tavernManaGem(symbol: String, count: Int, canvas: CGSize) -> some View {
         let payable = GameplayAffordances.floatingManaSymbols(in: snapshot, pendingActionID: pendingActionId).contains(symbol)
-        let gem = TavernManaGemFace(symbol: symbol, count: count, payable: payable, diameter: canvas.tavernLength(26))
+        let gem = TavernManaGemFace(symbol: symbol, count: count, payable: payable, diameter: canvas.tavernLength(26) * canvas.tavernControlScale)
         if payable {
             Button {
                 if pendingActionId == nil, let command = GameplayAffordances.floatingManaCommand(symbol: symbol, in: snapshot) {
