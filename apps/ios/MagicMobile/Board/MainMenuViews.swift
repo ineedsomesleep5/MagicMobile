@@ -17,6 +17,9 @@ struct TavernMainMenu: View {
     var friends: (() -> Void)? = nil
     /// Friends online plus requests waiting, shown on the Friends button.
     var friendsBadge = 0
+    var profile: (() -> Void)? = nil
+    /// The ranked standing shown on the Profile button.
+    var rank: RankPosition? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -118,6 +121,30 @@ struct TavernMainMenu: View {
                         .buttonStyle(BrandButtonStyle(kind: .secondary))
                         .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
                         .accessibilityIdentifier("menu.friends")
+                    }
+                    if let profile {
+                        Button {
+                            GameAudio.shared.play(.uiOpen)
+                            profile()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.crop.circle.fill")
+                                Text("Profile")
+                                Spacer(minLength: 0)
+                                if let rank {
+                                    RankEmblem(tier: rank.tier, size: 28)
+                                    Text(rank.title)
+                                        .font(.system(size: 13, weight: .heavy, design: .serif))
+                                        .lineLimit(1).minimumScaleFactor(0.7)
+                                }
+                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(BrandButtonStyle(kind: .secondary))
+                        .accessibilityValue(rank?.title ?? "")
+                        .accessibilityIdentifier("menu.profile")
                     }
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 20) { utilityActions }

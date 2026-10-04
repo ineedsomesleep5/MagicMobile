@@ -222,3 +222,12 @@ in the same-named Kotlin file:
     - launch speed (slow on the 8 GB Mac's emulator) and idle battery use
     - landscape status-bar hiding, the hand drop zone, and real display cutouts and insets
     - an online game against an iPhone
+
+## Brackets, Quick Match, Ranked and profiles (2026-10-04, unshipped)
+
+- Same feature as iOS (docs/RANKED.md). Logic in `core/.../game/Ranked.kt` (brackets, ladder, seasons, AI pool,
+  stats, achievements, the profile file, the ranked matchmaker); screens in `app/.../ranked/` (`RankedViews.kt`,
+  `PlayerRecordStore.kt`). `commander-brackets.json` and `ai-decks.json` reach the assets through
+  `scripts/android/prepare_assets.py`; the rank badges and spin frames arrive as `tavern_rank_*` drawables.
+- `RankedParityTest` checks `parity/ranked-cases.json` (shared with iOS `RankedParityTests.swift`), the AI decks,
+  the record file round trip and the matchmaker. Play now opens the mode chooser; Custom Table is the old setup.

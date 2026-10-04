@@ -117,6 +117,8 @@ class GameConcedeHandler(val concede: () -> Unit)
 val LocalGameConcede = compositionLocalOf<GameConcedeHandler?> { null }
 /** When set (solo games), the result screen's first button restarts the same match. */
 val LocalGameRematchTitle = compositionLocalOf<String?> { null }
+/** A ranked game's effect on the ladder, shown on the result screen. */
+val LocalGameRankChange = compositionLocalOf<io.magicmobile.android.game.RankChange?> { null }
 
 enum class GameMenuConfirmation(val title: String, val message: String) {
     START_NEW("Start a new game?", "MagicMobile will ask XMage to clean up the current game, then open setup."),
@@ -303,6 +305,9 @@ fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame:
             Text(winnerText, color = MagicPalette.parchment, style = SfText.callout(SfWeight.bold), textAlign = TextAlign.Center)
             reasonText?.let { Text(it, color = Color.White.copy(alpha = 0.68f), style = SfText.caption(SfWeight.semibold), textAlign = TextAlign.Center) }
             if (stats != null && stats.turns > 0) GameSummaryPanel(stats, isVictory, Modifier.graphicsLayer { alpha = summaryAlpha; translationY = (1 - summaryAlpha) * 12 * density })
+            LocalGameRankChange.current?.let { change ->
+                Box(Modifier.graphicsLayer { alpha = summaryAlpha }) { io.magicmobile.android.ranked.RankProgressPanel(change) }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CompactActionButton(newGame, Modifier.semantics { contentDescription = "board.result.rematch" }, isPrimary = true) { CompactActionText(rematchTitle ?: "New Game", true) }
                 CompactActionButton(quitGame) { CompactActionText("Main Menu") }

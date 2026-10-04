@@ -61,6 +61,41 @@ struct OnDeviceRootView: View {
     @State private var versusIntro: VersusIntro?
     /// A resumed game skips the versus intro: it is already under way.
     @State private var skipNextVersusIntro = false
+    // Quick Match, Ranked and the profile (Ranked/).
+    @ObservedObject private var profileRecord = PlayerRecordStore.shared
+    @StateObject private var matchmaker = RankedMatchmaker(service: nil)
+    @State private var lobby: LobbyScreen?
+    @AppStorage("magicmobile.quick.opponentBracket") private var quickBracket = 0
+    @AppStorage("magicmobile.quick.opponentDeck") private var quickDeckID = ""
+    @AppStorage("magicmobile.quick.aiSkill") private var quickSkill = 3
+    /// The game being played from Quick Match or Ranked, for its result.
+    @State private var activeMatch: ActiveMatch?
+    /// How the last ranked result moved the ladder (the result screen's rank strip).
+    @State private var rankChange: RankChange?
+    /// A division or tier change waiting for its full-screen moment.
+    @State private var ceremony: RankChange?
+    @State private var showBracketSheet = false
+    /// Bumped when a deck's declared bracket changes, so the screens re-read it.
+    @State private var bracketRevision = 0
+    @State private var rankedConnectTask: Task<Void, Never>?
+
+    private enum LobbyScreen: Equatable { case chooser, quick, ranked, profile }
+
+    private struct ActiveMatch: Equatable {
+        let mode: PlayMode
+        let deckID: String
+        let deckName: String
+        let commander: String?
+        let colors: [String]
+        let deckBracket: Int
+        let opponents: [MatchRecord.Opponent]
+        let opponentBracket: Int?
+        let aiSkill: Int?
+        let aiDeckID: String?
+        /// A ranked game against a person: the server's match, for both sides' reports.
+        var rankedMatchID: UUID?
+        var recorded = false
+    }
 
     private struct VersusIntro {
         let you: VersusIntroOverlay.Seat
@@ -90,6 +125,11 @@ struct OnDeviceRootView: View {
                                         commander: $0.zones.command.first?.card.name)
             }
             if !others.isEmpty { return VersusIntro(you: you, opponents: Array(others)) }
+        }
+        if let match = activeMatch, !match.opponents.isEmpty {
+            return VersusIntro(you: you, opponents: match.opponents.enumerated().map { index, foe in
+                VersusIntroOverlay.Seat(id: "foe-\(index)", name: foe.name, commander: foe.commander)
+            })
         }
         if playWithFriends {
             return VersusIntro(you: you, opponents: [VersusIntroOverlay.Seat(id: "friends", name: "Challengers", commander: nil)])
@@ -145,6 +185,8 @@ struct OnDeviceRootView: View {
     private func resumeSavedGame() {
         guard let record = resume.acceptOffer() else { return }
         applyResumeSetup(record.setup)
+        activeMatch = resumedMatch(record.setup, deckName: record.playerDeckName)
+        rankChange = nil
         showSetup = false
         skipNextVersusIntro = true
         Task {
@@ -154,11 +196,11 @@ struct OnDeviceRootView: View {
 
     /// The saved game's own choices, so Rematch replays the same table.
     private func applyResumeSetup(_ saved: GameResumeSetup) {
-        let precons = Set(PreconCatalog.all.map(\.id))
-        let decks = Set(PreconCatalog.all.map { "precon:\($0.id)" } + library.decks.map { "local:\($0.id)" })
+        let precons = Set(AIDeckPool.all.map(\.id))
+        let decks = allDeckIDs
         if decks.contains(saved.deckID) { selectedDeckID = saved.deckID }
         let aiIDs = saved.aiDeckIDs.filter(precons.contains)
-        if (1...3).contains(aiIDs.count), aiIDs.count == saved.aiDeckIDs.count {
+        if saved.mode == nil, (1...3).contains(aiIDs.count), aiIDs.count == saved.aiDeckIDs.count {
             aiPreconID = aiIDs[0]
             if aiIDs.count > 1 { aiPrecon2ID = aiIDs[1] }
             if aiIDs.count > 2 { aiPrecon3ID = aiIDs[2] }
@@ -170,10 +212,10 @@ struct OnDeviceRootView: View {
     }
 
     private var activeGame: Bool { session.matchID != nil }
-    private var aiPrecon: PreconDeck? { PreconCatalog.all.first { $0.id == aiPreconID } }
-    private var aiPrecons: [PreconDeck] {
+    private var aiPrecon: AIDeck? { AIDeckPool.deck(id: aiPreconID) }
+    private var aiPrecons: [AIDeck] {
         [aiPreconID, aiPrecon2ID, aiPrecon3ID].prefix(min(3, max(1, opponentCount)))
-            .compactMap { id in PreconCatalog.all.first { $0.id == id } }
+            .compactMap { id in AIDeckPool.deck(id: id) }
     }
     private func aiDeckSelection(_ index: Int) -> Binding<String> {
         Binding(get: { [aiPreconID, aiPrecon2ID, aiPrecon3ID][index] }, set: { id in
@@ -191,7 +233,51 @@ struct OnDeviceRootView: View {
         if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) {
             return precon.deckList
         }
+        if let included = AIDeckPool.playerDeck(id: selectedDeckID) { return included.deckList }
         return library.decks.first(where: { "local:\($0.id)" == selectedDeckID })?.deckList
+    }
+
+    /// Every deck a player can pick: precons, the included bracket decks and saved decks.
+    private var allDeckIDs: Set<String> {
+        Set(PreconCatalog.all.map { "precon:\($0.id)" } + AIDeckPool.bracketDecks.map(\.playerDeckID) + library.decks.map { "local:\($0.id)" })
+    }
+
+    /// The deck pickers' sections: precons, then the included decks by bracket, then saved decks.
+    private var deckPickerSections: [TavernPicker<String>.Section] {
+        [.init(title: String(localized: "Included precons"), options: PreconCatalog.all.map { ($0.name, "precon:\($0.id)") })]
+        + CommanderBracket.allCases.compactMap { bracket in
+            let decks = AIDeckPool.bracketDecks.filter { $0.bracket == bracket }
+            return decks.isEmpty ? nil : .init(title: String(localized: "Included · \(bracket.title)"),
+                                               options: decks.map { ("\($0.name) · \($0.commander)", $0.playerDeckID) })
+        }
+        + [.init(title: String(localized: "Saved on this device"), options: library.decks.map { ($0.name, "local:\($0.id)") })]
+    }
+
+    /// The AI deck pickers of the custom table: every AI deck, by bracket.
+    private var aiDeckPickerSections: [TavernPicker<String>.Section] {
+        CommanderBracket.allCases.compactMap { bracket in
+            let decks = AIDeckPool.all.filter { $0.bracket == bracket }
+            return decks.isEmpty ? nil : .init(title: bracket.title, options: decks.map { ($0.name, $0.id) })
+        }
+    }
+
+    /// The selected deck's bracket: fixed for included decks, else the list check with the player's own call.
+    private var selectedBracketReport: BracketReport? {
+        _ = bracketRevision
+        return selectedDeck.map { BracketRules.bundled.evaluate($0) }
+    }
+    private var selectedDeckBracket: CommanderBracket? {
+        _ = bracketRevision
+        if let included = AIDeckPool.playerDeck(id: selectedDeckID) { return included.bracket }
+        if selectedDeckID.hasPrefix("precon:") { return .core }
+        guard let report = selectedBracketReport else { return nil }
+        return DeckBracketPreference.effective(minimum: report.minimum,
+                                               declared: DeckBracketPreference.declared(selectedDeckID, in: MagicMobilePreferences.current))
+    }
+    private var selectedDeckColors: [String] {
+        if let included = AIDeckPool.playerDeck(id: selectedDeckID) { return included.colors.map(String.init) }
+        if let precon = PreconCatalog.all.first(where: { "precon:\($0.id)" == selectedDeckID }) { return precon.colors.map(String.init) }
+        return DeckStudioDeckColors.colors(for: selectedDeck?.commander.map { [$0.cardName] } ?? []) ?? []
     }
     /// In the match room, deck and name stay editable until the player is ready.
     private var editableInRoom: Bool { setup.multiplayer?.room.map { !$0.localReady } ?? false }
@@ -203,7 +289,7 @@ struct OnDeviceRootView: View {
     }
     private var gameCenterAIDecks: [DeckList] {
         [aiPreconID, aiPrecon2ID, aiPrecon3ID].prefix(gameCenterAICount)
-            .compactMap { id in PreconCatalog.all.first { $0.id == id }?.deckList }
+            .compactMap { id in AIDeckPool.deck(id: id)?.deckList }
     }
     private var mayStart: Bool {
         validName && selectedDeck != nil && (playWithFriends || aiPrecons.count == opponentCount)
@@ -233,17 +319,21 @@ struct OnDeviceRootView: View {
                 game
             } else {
                 BrandTheme.canvas.ignoresSafeArea()
-                if showSetup || setup.needsLeave {
+                if showSetup || (setup.needsLeave && activeMatch?.rankedMatchID == nil) {
                     setupContent
+                } else if let lobby {
+                    lobbyContent(lobby)
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
-                                   play: { showSetup = true }, decks: { showImport = true },
+                                   play: { lobby = .chooser }, decks: { showImport = true },
                                    settings: { showAppearance = true }, news: { showUpdates = true },
                                    commanderName: selectedDeck?.commander?.cardName,
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
                                    downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true },
                                    friends: { showFriends = true },
-                                   friendsBadge: account.onlineFriendCount + account.incomingCount)
+                                   friendsBadge: account.onlineFriendCount + account.incomingCount,
+                                   profile: { lobby = .profile }, rank: profileRecord.rank.position)
                 }
             }
         }
@@ -251,6 +341,7 @@ struct OnDeviceRootView: View {
         .startingRollCovered(startingRollVisible || startingChoicePending)
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: lobby)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
         .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay))
@@ -276,6 +367,22 @@ struct OnDeviceRootView: View {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
                                 engineReady: setup.identity != nil)
         }
+        .overlay {
+            if !activeGame, matchmaker.isSearching {
+                RankedSearchOverlay(phase: matchmaker.phase, rank: profileRecord.rank.position,
+                                    playAI: { matchmaker.skipToAI() }, cancel: { matchmaker.cancel() })
+                    .transition(.opacity)
+            }
+        }
+        .overlay {
+            if let ceremony {
+                RankCeremonyOverlay(change: ceremony) { self.ceremony = nil }
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: matchmaker.isSearching)
+        .animation(.easeOut(duration: 0.3), value: ceremony)
+        .sheet(isPresented: $showBracketSheet) { bracketSheet }
         .overlay(alignment: .bottom) { if !startingRollVisible { recoveryBanner } }
         .overlay { startingRollOverlay }
         // The versus intro plays first, over the opaque starting roll that follows it.
@@ -374,6 +481,18 @@ struct OnDeviceRootView: View {
             try? diagnostics.save(engineReport: "UI TEST FIXTURE: Sample engine incident", status: "Presentation test")
             setup.errorMessage = "UI test fixture: engine incident."
         }
+        // UI tests: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment.
+        if OnDeviceAppConfiguration.entryPoint == .setupPreview,
+           let kind = ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_CEREMONY"] {
+            let samples: [String: (RankPosition, RankPosition, RankOutcome)] = [
+                "tierUp": (RankPosition(tier: .silver, division: 1, pips: 3), RankPosition(tier: .gold, division: 4, pips: 0), .win),
+                "tierDown": (RankPosition(tier: .gold, division: 4, pips: 0), RankPosition(tier: .silver, division: 1, pips: 3), .loss),
+                "divisionUp": (RankPosition(tier: .diamond, division: 3, pips: 3), RankPosition(tier: .diamond, division: 2, pips: 0), .win),
+                "divisionDown": (RankPosition(tier: .platinum, division: 2, pips: 0), RankPosition(tier: .platinum, division: 3, pips: 3), .loss)]
+            if let (before, after, outcome) = samples[kind] {
+                ceremony = RankChange(outcome: outcome, before: before, after: after, bonuses: [])
+            }
+        }
         #endif
     }
 
@@ -398,7 +517,8 @@ struct OnDeviceRootView: View {
         .onChange(of: account.username) { _, name in if let name { playerDisplayName = name } }
         // Friends see the table this phone hosts while it has open seats.
         .onChange(of: setup.multiplayer?.openHostedTable.map { "\($0.code):\($0.openSeats)" }) { _, _ in
-            account.hosting = setup.multiplayer?.openHostedTable
+            // A ranked table is for the matched player only, never shown to friends.
+            account.hosting = activeMatch?.rankedMatchID == nil ? setup.multiplayer?.openHostedTable : nil
         }
         .onChange(of: setup.identity) { _, _ in
             evaluateResumeLaunch()
@@ -409,6 +529,7 @@ struct OnDeviceRootView: View {
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
+            if playing { matchmaker.finish(); rankedConnectTask?.cancel() }
             guard playing else { versusIntro = nil; return }
             if skipNextVersusIntro { skipNextVersusIntro = false; return }
             if reduceMotion {
@@ -449,6 +570,19 @@ struct OnDeviceRootView: View {
         }
         .onChange(of: session.isWorking) { _, working in
             if !working { submitStartingChoiceIfNeeded() }
+        }
+        .onChange(of: session.snapshot?.isCompleted) { _, _ in recordFinishedGameIfNeeded() }
+        .onChange(of: session.isOverForSeat) { _, _ in recordFinishedGameIfNeeded() }
+        // A ranked table readies both players by itself once the room forms.
+        .onChange(of: setup.multiplayer?.room != nil) { _, hasRoom in
+            guard hasRoom, activeMatch?.rankedMatchID != nil, setup.multiplayer?.room?.localReady == false,
+                  let deck = selectedDeck else { return }
+            setup.readyForMatch(name: playerDisplayName, deck: deck)
+        }
+        .onAppear {
+            profileRecord.publish = { [account] rank, stats, title, commander in
+                Task { await account.publishRank(rank, stats: stats, title: title, commander: commander) }
+            }
         }
         .onChange(of: setup.isBusy) { _, busy in
             if !busy { submitStartingChoiceIfNeeded() }
@@ -698,7 +832,10 @@ struct OnDeviceRootView: View {
         .overlay { zoneOverlay }
         .environment(\.inspectorBattlefield, session.snapshot?.visibleBattlefield ?? [])
         .disabled(setup.isBusy)
-        .environment(\.gameRematchTitle, setup.usingMultiplayer ? nil : "Rematch")
+        .environment(\.gameRematchTitle, setup.usingMultiplayer ? nil
+                     : activeMatch?.mode == .quick ? String(localized: "Play Again")
+                     : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch")
+        .environment(\.gameRankChange, rankChange)
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
         .sheet(isPresented: $emotes.isChatOpen) {
@@ -748,10 +885,17 @@ struct OnDeviceRootView: View {
     /// settings, no confirmation. During a game (or with other players) this still asks.
     private func rematchOrLeave() {
         guard session.snapshot?.isCompleted == true, !setup.usingMultiplayer else { return requestLeave() }
+        let mode = activeMatch?.mode
         Task {
             guard await setup.close() else { return }
             selectedCard = nil; inspectedCard = nil; zone = nil
-            startAI()
+            activeMatch = nil; rankChange = nil
+            // Quick Match deals a new opponent; Ranked looks for the next match.
+            switch mode {
+            case .quick: startQuickMatch()
+            case .ranked: lobby = .ranked; findRankedMatch()
+            default: startAI()
+            }
         }
     }
 
@@ -793,8 +937,197 @@ struct OnDeviceRootView: View {
         }
     }
 
+    // MARK: - Quick Match, Ranked, profile
+
+    @ViewBuilder
+    private func lobbyContent(_ screen: LobbyScreen) -> some View {
+        switch screen {
+        case .chooser:
+            PlayModeChooser(rank: profileRecord.rank.position, seasonName: RankLadder.seasonName(profileRecord.rank.season),
+                            quick: { lobby = .quick }, ranked: { lobby = .ranked },
+                            custom: { lobby = nil; showSetup = true }, back: { lobby = nil })
+        case .quick:
+            QuickMatchView(deckBracket: selectedDeckBracket, opponentBracket: $quickBracket, opponentDeckID: $quickDeckID,
+                           aiSkill: $quickSkill, startingPlayerMode: $aiStartingPlayerMode, mayStart: mayStartSolo,
+                           status: setup.identity == nil ? setup.status : nil, start: startQuickMatch,
+                           back: { lobby = .chooser }) { playDeckSlot }
+        case .ranked:
+            RankedLobbyView(rank: profileRecord.rank, deckBracket: selectedDeckBracket, canSearchPeople: account.rankedQueue != nil,
+                            mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
+                            profile: { lobby = .profile }, back: { lobby = .chooser }) { playDeckSlot }
+        case .profile:
+            PlayerProfileView(record: profileRecord, playerName: account.username ?? playerDisplayName, back: { lobby = nil })
+        }
+    }
+
+    private var playDeckSlot: some View {
+        PlayDeckSection(deckName: selectedDeck?.name, commander: selectedDeck?.commander?.cardName, bracket: selectedDeckBracket,
+                        canDeclare: selectedDeckID.hasPrefix("local:"), deckID: $selectedDeckID, sections: deckPickerSections,
+                        editDecks: { showImport = true }, explainBracket: { showBracketSheet = true })
+            .disabled(setup.isBusy || matchmaker.isSearching)
+    }
+
+    @ViewBuilder
+    private var bracketSheet: some View {
+        if let deck = selectedDeck, let report = selectedBracketReport {
+            let fixed: CommanderBracket? = AIDeckPool.playerDeck(id: selectedDeckID)?.bracket
+                ?? (selectedDeckID.hasPrefix("precon:") ? .core : nil)
+            DeckBracketSheet(deckName: deck.name, report: report,
+                             declared: fixed == nil ? Binding(
+                                get: { _ = bracketRevision; return DeckBracketPreference.declared(selectedDeckID, in: MagicMobilePreferences.current) },
+                                set: { DeckBracketPreference.setDeclared($0, for: selectedDeckID, in: MagicMobilePreferences.current); bracketRevision += 1 })
+                                : nil,
+                             fixedBracket: fixed)
+        }
+    }
+
+    /// A one-AI game can start: a valid name and deck, the engine ready, nothing else running.
+    private var mayStartSolo: Bool {
+        validName && selectedDeck != nil && selectedDeckBracket != nil && setup.identity != nil
+            && !setup.isBusy && !setup.needsLeave && !matchmaker.isSearching
+    }
+
+    private func startQuickMatch() {
+        guard let deck = selectedDeck, let bracket = selectedDeckBracket else { return }
+        let opponentBracket = quickBracket == 0 ? min(4, bracket.rawValue) : quickBracket
+        let chosen = quickDeckID.isEmpty ? nil : AIDeckPool.deck(id: quickDeckID)
+        guard let opponent = chosen ?? AIDeckPool.pick(bracket: opponentBracket, avoidingCommander: deck.commander?.cardName,
+                                                       recent: profileRecord.recentAIDecks) else { return }
+        startSolo(mode: .quick, deck: deck, deckBracket: bracket, opponent: opponent, skill: min(10, max(1, quickSkill)))
+    }
+
+    /// Ranked: a person from the queue when one is searching near your rank, else an AI at your tier.
+    private func findRankedMatch() {
+        guard let deck = selectedDeck, let bracket = selectedDeckBracket,
+              bracket.rawValue <= profileRecord.rank.position.tier.maxDeckBracket, mayStartSolo else { return }
+        do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
+        catch { setup.errorMessage = error.localizedDescription; return }
+        profileRecord.refreshSeason()
+        matchmaker.service = account.rankedQueue
+        let identity = setup.relayIdentity.map { "\($0.upstreamCommit)/\($0.catalogueHash)/\($0.adapterVersion)" } ?? "offline"
+        Task {
+            let outcome = await matchmaker.search(protocol: String(identity.prefix(200)), rankStep: profileRecord.rank.position.step,
+                                                  deckBracket: bracket.rawValue)
+            switch outcome {
+            case .cancelled: break
+            case .ai: startRankedAI(deck: deck, bracket: bracket)
+            case .human(let ticket): await startRankedHuman(ticket, deck: deck, bracket: bracket)
+            }
+        }
+    }
+
+    private func startRankedAI(deck: DeckList, bracket: CommanderBracket) {
+        let position = profileRecord.rank.position
+        guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
+                                             recent: profileRecord.recentAIDecks) else { return }
+        startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
+    }
+
+    /// The host opens a two-seat relay table and shares its code; the guest joins it. Both ready up
+    /// on their own. A table that never fills hands the seat to an AI.
+    private func startRankedHuman(_ ticket: RankedTicket, deck: DeckList, bracket: CommanderBracket) async {
+        guard let matchID = ticket.matchId else { return startRankedAI(deck: deck, bracket: bracket) }
+        activeMatch = ActiveMatch(mode: .ranked, deckID: selectedDeckID, deckName: deck.name, commander: deck.commander?.cardName,
+                                  colors: selectedDeckColors, deckBracket: bracket.rawValue,
+                                  opponents: [.init(name: ticket.opponent ?? String(localized: "Challenger"), commander: nil, isAI: false)],
+                                  opponentBracket: nil, aiSkill: nil, aiDeckID: nil, rankedMatchID: matchID)
+        rankChange = nil
+        diagnostics.beginAttempt()
+        if ticket.isHost {
+            await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: 2, aiDecks: [], aiSkill: 2)
+            if let code = setup.multiplayer?.tableCode { await matchmaker.shareTable(match: matchID, code: code) }
+        } else if let code = ticket.tableCode {
+            setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
+        }
+        rankedConnectTask?.cancel()
+        rankedConnectTask = Task {
+            try? await Task.sleep(for: .seconds(75))
+            guard !Task.isCancelled, session.matchID == nil, activeMatch?.rankedMatchID == matchID else { return }
+            // Nobody arrived: close the empty table and play the AI instead; nothing was ranked.
+            _ = await setup.close()
+            matchmaker.finish()
+            activeMatch = nil
+            bannerError = String(localized: "Your opponent didn't connect. An AI took the seat.")
+            startRankedAI(deck: deck, bracket: bracket)
+        }
+    }
+
+    private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int) {
+        diagnostics.beginAttempt()
+        do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
+        catch { setup.errorMessage = error.localizedDescription; return }
+        activeMatch = ActiveMatch(mode: mode, deckID: selectedDeckID, deckName: deck.name, commander: deck.commander?.cardName,
+                                  colors: selectedDeckColors, deckBracket: deckBracket.rawValue,
+                                  opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
+                                  opponentBracket: opponent.bracket.rawValue, aiSkill: skill, aiDeckID: opponent.id)
+        rankChange = nil
+        Task {
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
+                                deckID: selectedDeckID, aiDeckIDs: [opponent.id], startingPlayerMode: aiStartingPlayerMode,
+                                mode: mode, deckBracket: deckBracket.rawValue)
+            if session.matchID == nil { activeMatch = nil }
+        }
+    }
+
+    /// A saved Quick Match or Ranked game picks up its context again.
+    private func resumedMatch(_ saved: GameResumeSetup, deckName: String) -> ActiveMatch? {
+        guard let raw = saved.mode, let mode = PlayMode(rawValue: raw) else { return nil }
+        let foes = saved.aiDeckIDs.compactMap(AIDeckPool.deck(id:))
+        return ActiveMatch(mode: mode, deckID: saved.deckID, deckName: deckName, commander: selectedDeck?.commander?.cardName,
+                           colors: selectedDeckColors, deckBracket: saved.deckBracket ?? selectedDeckBracket?.rawValue ?? 2,
+                           opponents: foes.map { .init(name: $0.name, commander: $0.commander, isAI: true) },
+                           opponentBracket: foes.first?.bracket.rawValue, aiSkill: saved.aiSkill, aiDeckID: foes.first?.id)
+    }
+
+    /// Records a finished game once: every game goes into the profile, ranked games move the ladder.
+    private func recordFinishedGameIfNeeded() {
+        guard let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
+        var match = activeMatch ?? casualMatch(snapshot)
+        guard let current = match, !current.recorded else { return }
+        let winners = snapshot.winnerPlayerIds ?? []
+        let outcome: RankOutcome = winners.contains(snapshot.viewerID) ? .win
+            : (snapshot.isCompleted && winners.isEmpty ? .draw : .loss)
+        saveResult(current, outcome: outcome, turns: snapshot.turn, snapshot: snapshot)
+        match?.recorded = true
+        activeMatch = match
+    }
+
+    /// Leaving a ranked game before it ends counts as a loss.
+    private func recordAbandonedRankedGame() {
+        guard var match = activeMatch, match.mode == .ranked, !match.recorded, session.matchID != nil else { return }
+        saveResult(match, outcome: .loss, turns: session.snapshot?.turn ?? 0, snapshot: session.snapshot)
+        match.recorded = true
+        activeMatch = match
+    }
+
+    private func saveResult(_ match: ActiveMatch, outcome: RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+        let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
+        let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
+                                   aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
+                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID)
+        rankChange = change
+        if let id = match.rankedMatchID { Task { await matchmaker.report(match: id, outcome: outcome) } }
+        if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
+            // After the result screen's own reveal.
+            Task { try? await Task.sleep(for: .milliseconds(1500)); if rankChange == change { ceremony = change } }
+        }
+    }
+
+    /// A custom-table game, recorded for the profile only.
+    private func casualMatch(_ snapshot: GameSnapshot) -> ActiveMatch? {
+        guard let deck = selectedDeck else { return nil }
+        let foes = snapshot.players.filter { !snapshot.isViewer($0.playerId) }.map { player in
+            MatchRecord.Opponent(name: player.displayName ?? String(localized: "Opponent"), commander: player.zones.command.first?.card.name,
+                                 isAI: !setup.usingMultiplayer)
+        }
+        return ActiveMatch(mode: .casual, deckID: selectedDeckID, deckName: deck.name, commander: deck.commander?.cardName,
+                           colors: selectedDeckColors, deckBracket: selectedDeckBracket?.rawValue ?? 2, opponents: foes,
+                           opponentBracket: nil, aiSkill: setup.usingMultiplayer ? nil : aiSkill, aiDeckID: nil)
+    }
+
     private var downloadDecks: [NativeDownloadDeck] {
         PreconCatalog.all.map { NativeDownloadDeck(id: "precon:\($0.id)", deck: $0.deckList) }
+        + AIDeckPool.bracketDecks.map { NativeDownloadDeck(id: $0.playerDeckID, deck: $0.deckList) }
         + library.decks.map { NativeDownloadDeck(id: "local:\($0.id)", deck: $0.deckList) }
     }
 
@@ -833,10 +1166,7 @@ struct OnDeviceRootView: View {
                         Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
                     }
                     TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
-                    TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: [
-                        .init(title: "Included precons", options: PreconCatalog.all.map { ($0.name, "precon:\($0.id)") }),
-                        .init(title: "Saved on this device", options: library.decks.map { ($0.name, "local:\($0.id)") })
-                    ])
+                    TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: deckPickerSections)
                     Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(CommanderActionStyle(primary: false))
                     NativeArtworkPreferenceView()
@@ -881,7 +1211,7 @@ struct OnDeviceRootView: View {
                                 .disabled(setup.isBusy || setup.needsLeave)
                             ForEach(0..<gameCenterAICount, id: \.self) { index in
                                 TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
-                                             sections: [.init(options: PreconCatalog.all.map { ($0.name, $0.id) })],
+                                             sections: aiDeckPickerSections,
                                              identifier: "ondevice.gameCenterAI.deck.\(index + 1)")
                                     .disabled(setup.isBusy || setup.needsLeave)
                             }
@@ -918,7 +1248,7 @@ struct OnDeviceRootView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("AI \(index + 1) deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
                                 TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
-                                             sections: [.init(options: PreconCatalog.all.map { ($0.name, $0.id) })],
+                                             sections: aiDeckPickerSections,
                                              identifier: "ondevice.aiDeck.\(index + 1)", showsTitle: false)
                                     .disabled(setup.isBusy || setup.needsLeave)
                             }
@@ -1059,6 +1389,7 @@ struct OnDeviceRootView: View {
     private func startAI() {
         diagnostics.beginAttempt()
         guard let deck = selectedDeck, aiPrecons.count == opponentCount else { return }
+        activeMatch = nil; rankChange = nil
         let opponentDecks = aiPrecons.map(\.deckList)
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
@@ -1120,11 +1451,11 @@ struct OnDeviceRootView: View {
         let selected = OnDeviceSetupPreferences.normalize(
             .init(deckID: selectedDeckID, aiDeckID: aiPreconID, aiOpponents: opponentCount,
                   humanPlayers: playerCount, friends: playWithFriends, aiSkill: OnDeviceSetupPreferences.readAISkill(from: MagicMobilePreferences.current)),
-            deckIDs: Set(PreconCatalog.all.map { "precon:\($0.id)" } + library.decks.map { "local:\($0.id)" }),
-            aiDeckIDs: PreconCatalog.all.map(\.id)
+            deckIDs: allDeckIDs,
+            aiDeckIDs: AIDeckPool.all.map(\.id)
         )
         selectedDeckID = selected.deckID; aiPreconID = selected.aiDeckID
-        let aiIDs = OnDeviceSetupPreferences.normalizedAIDeckIDs([aiPreconID, aiPrecon2ID, aiPrecon3ID], available: PreconCatalog.all.map(\.id))
+        let aiIDs = OnDeviceSetupPreferences.normalizedAIDeckIDs([aiPreconID, aiPrecon2ID, aiPrecon3ID], available: AIDeckPool.all.map(\.id))
         aiPrecon2ID = aiIDs[1]; aiPrecon3ID = aiIDs[2]
         opponentCount = selected.aiOpponents; playerCount = selected.humanPlayers
         aiSkill = selected.aiSkill
@@ -1136,9 +1467,12 @@ struct OnDeviceRootView: View {
     }
 
     private func closeGame() {
+        recordAbandonedRankedGame()
         Task {
             if await setup.close() {
                 selectedCard = nil; inspectedCard = nil; zone = nil
+                activeMatch = nil; rankChange = nil; ceremony = nil
+                matchmaker.finish(); rankedConnectTask?.cancel()
             }
         }
     }
@@ -1239,7 +1573,8 @@ private final class OnDeviceSetupModel: ObservableObject {
     }
 
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
-                 deckID: String, aiDeckIDs: [String], startingPlayerMode: String) async {
+                 deckID: String, aiDeckIDs: [String], startingPlayerMode: String,
+                 mode: PlayMode? = nil, deckBracket: Int? = nil) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
@@ -1260,7 +1595,8 @@ private final class OnDeviceSetupModel: ObservableObject {
             aiMatchID = matchID
             resume.soloGameStarted(plan, setup: GameResumeSetup(
                 configuration: plan.baseConfiguration, seatID: Self.soloSeatID, playerName: name, deckID: deckID,
-                aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode), playerDeckName: deck.name)
+                aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode,
+                mode: mode?.rawValue, deckBracket: deckBracket), playerDeckName: deck.name)
             updateSessionForeground()
             try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
             status = "Game started"

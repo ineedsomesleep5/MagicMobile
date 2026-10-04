@@ -112,6 +112,10 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     var identity by mutableStateOf<BuildIdentity?>(null); private set
     var catalogue by mutableStateOf<Catalogue?>(null); private set
     var precons by mutableStateOf<List<PreconDeck>>(emptyList()); private set
+    /** The included bracket decks (ai-decks.json): AI opponents, and decks players may pick. */
+    var bracketDecks by mutableStateOf<List<io.magicmobile.android.game.AIDeck>>(emptyList()); private set
+    /** The Commander bracket card lists (commander-brackets.json). */
+    var bracketRules by mutableStateOf(io.magicmobile.android.game.BracketRules.EMPTY); private set
     var localDecks by mutableStateOf<List<SavedDeck>>(emptyList()); private set
     var isBusy by mutableStateOf(false); private set
     var usingMultiplayer by mutableStateOf(false); private set
@@ -147,8 +151,11 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         return feedback ?: session.status
     }
 
-    fun deck(id: String): Deck? = precons.firstOrNull { "precon:${it.id}" == id }?.deck ?: localDecks.firstOrNull { "local:${it.id}" == id }?.deck
-    val deckIDs: Set<String> get() = (precons.map { "precon:${it.id}" } + localDecks.map { "local:${it.id}" }).toSet()
+    fun deck(id: String): Deck? = precons.firstOrNull { "precon:${it.id}" == id }?.deck
+        ?: bracketDecks.firstOrNull { it.playerDeckID == id }?.deck ?: localDecks.firstOrNull { "local:${it.id}" == id }?.deck
+    val deckIDs: Set<String> get() = (precons.map { "precon:${it.id}" } + bracketDecks.map { it.playerDeckID } + localDecks.map { "local:${it.id}" }).toSet()
+    /** Every AI deck: the precons (Core) and the bracket decks. */
+    val aiPool: List<io.magicmobile.android.game.AIDeck> get() = io.magicmobile.android.ranked.aiPool(precons, bracketDecks)
 
     fun prepare() {
         if (identity != null || preparing) return
@@ -164,6 +171,10 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                     included to runCatching { store.all() }
                 }
                 precons = decks.first
+                withContext(Dispatchers.IO) {
+                    runCatching { io.magicmobile.android.game.AIDeckPool.parse(context.assets.open("ai-decks.json").use { it.readBytes().decodeToString() }) } to
+                        runCatching { io.magicmobile.android.game.BracketRules.parse(context.assets.open("commander-brackets.json").use { it.readBytes().decodeToString() }) }
+                }.let { (aiDecks, rules) -> aiDecks.onSuccess { bracketDecks = it }; rules.onSuccess { bracketRules = it } }
                 decks.second.onSuccess { localDecks = it }.onFailure { errorMessage = "Saved decks could not be read: ${it.message}" }
                 // The compact printing index names the build and resolves decks; the full catalogue
                 // (rules text and metadata for 30,000 cards) loads only for screens that need it.

@@ -2,6 +2,11 @@
   "name": "magicmobile-matchmaking-sql-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node verify-migration.mjs" },
-  "devDependencies": { "@electric-sql/pglite": "0.5.8" }
+  "scripts": {
+    "test": "node verify-migration.mjs",
+    "test:ranked": "node verify-ranked.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
 }

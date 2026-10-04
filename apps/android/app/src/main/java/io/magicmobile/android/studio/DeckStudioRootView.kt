@@ -121,6 +121,17 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
 
     data class Entry(val record: DeckLibraryRecord, val included: Boolean) { val id get() = if (included) record.id else "local:${record.id}" }
     val records = library.decks.map { Entry(it, false) } + setup.precons.map { Entry(DeckLibraryRecord.included(it), true) }
+    // A saved deck's bracket: the list check, raised by the player's own label (DeckBracketPreference).
+    val bracketPrefs by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.DeckBracketPreference.KEY, "{}")
+    fun deckBracket(id: String, record: DeckLibraryRecord): io.magicmobile.android.game.CommanderBracket {
+        val played = record.entries.filter { it.section in setOf("deck", "main", "commander", "commanders") }.map { it.cardName }
+        val minimum = setup.bracketRules.evaluate(listOfNotNull(record.commander?.cardName) + played).minimum
+        val declared = runCatching {
+            (kotlinx.serialization.json.Json.parseToJsonElement(bracketPrefs) as kotlinx.serialization.json.JsonObject)[id]
+                ?.let { (it as kotlinx.serialization.json.JsonPrimitive).content.toIntOrNull() }?.let(io.magicmobile.android.game.CommanderBracket::of)
+        }.getOrNull()
+        return io.magicmobile.android.game.DeckBracketPreference.effective(minimum, declared)
+    }
     fun reloadTags() { scope.launch { tags = withContext(Dispatchers.IO) { DeckStudioServices.organization.tagIndex(records.map { it.record.id }) } } }
     val visible = run {
         val items = records.map { value ->
@@ -256,6 +267,7 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                 }
                 items(visible, key = { it.id }) { value ->
                     DeckTile(value.record, value.included, value.id == selectedDeckID, statuses[value.id], grid, metadata, tags[value.record.id] ?: emptyList(),
+                        bracket = if (value.included) io.magicmobile.android.game.CommanderBracket.CORE else deckBracket(value.id, value.record),
                         showTags = tags.values.any { it.isNotEmpty() }, favorite = value.id in favorites,
                         open = { route = StudioRoute.Deck(value.record, value.included) }, toggleFavorite = { toggleFavorite(value.id) },
                         actions = {
@@ -380,7 +392,7 @@ private fun deckActions(context: Context, record: DeckLibraryRecord, included: B
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boolean, status: DeckStudioPlayStatus?, grid: Boolean, metadata: NativeDeckMetadataCatalogue?,
-                     tags: List<String>, showTags: Boolean, favorite: Boolean, open: () -> Unit, toggleFavorite: () -> Unit, actions: () -> List<MenuEntry>) {
+                     tags: List<String>, bracket: io.magicmobile.android.game.CommanderBracket?, showTags: Boolean, favorite: Boolean, open: () -> Unit, toggleFavorite: () -> Unit, actions: () -> List<MenuEntry>) {
     val draft = remember(record) { NativeDeckDraft.of(record.deckList) }
     val colors = DeckStudioDraftPresentation.colors(draft, metadata)
     val interaction = remember { MutableInteractionSource() }
@@ -397,6 +409,8 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
             Box(Modifier.fillMaxWidth().height(if (grid) 164.dp else 130.dp).clip(RoundedCornerShape(0.dp))) {
                 DeckStudioArtwork(record.commander?.cardName ?: "", Modifier.fillMaxSize(), hero = true, colors = colors)
                 if (selected) DeckStudioPlayingBadge(Modifier.padding(10.dp))
+                // The deck's Commander bracket (game/Ranked.kt).
+                bracket?.let { Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) { io.magicmobile.android.ranked.BracketTag(it, short = true) } }
                 // Only a deck that needs fixes says so on its tile (Caleb, 2026-10-03).
                 status?.takeIf { it == io.magicmobile.android.studio.DeckStudioPlayStatus.NEEDS_FIXES }?.let { DeckStudioPlayStatusChip(it, Modifier.align(Alignment.BottomStart).padding(10.dp)) }
                 DeckTileContextMenu(contextMenu, { contextMenu = false }, actions)

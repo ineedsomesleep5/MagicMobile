@@ -163,6 +163,7 @@ final class BoardPolishUITests: XCTestCase {
         application.launch()
         XCTAssertTrue(application.buttons["menu.play"].waitForExistence(timeout: 20))
         application.buttons["menu.play"].press(forDuration: 0.15)
+        UITestHarness.chooseCustomTable(application)
         let ai = application.segmentedControls.buttons["AI"]
         for _ in 0..<5 {
             if ai.isHittable { break }

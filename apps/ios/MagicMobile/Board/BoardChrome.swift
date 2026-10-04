@@ -176,6 +176,7 @@ struct AIWaitFallbackControls: View {
 }
 
 struct GameRematchTitleKey: EnvironmentKey { static let defaultValue: String? = nil }
+struct GameRankChangeKey: EnvironmentKey { static let defaultValue: RankChange? = nil }
 
 /// On-device games concede through the engine. Hosted games keep XMage's own "concede" action.
 struct GameConcedeHandler {
@@ -188,6 +189,14 @@ extension EnvironmentValues {
     var gameConcede: GameConcedeHandler? {
         get { self[GameConcedeKey.self] }
         set { self[GameConcedeKey.self] = newValue }
+    }
+}
+
+extension EnvironmentValues {
+    /// A ranked game's effect on the ladder, shown on the result screen.
+    var gameRankChange: RankChange? {
+        get { self[GameRankChangeKey.self] }
+        set { self[GameRankChangeKey.self] = newValue }
     }
 }
 
@@ -205,6 +214,7 @@ struct GameCompletionOverlay: View {
     let newGame: () -> Void
     let quitGame: () -> Void
     @Environment(\.gameRematchTitle) private var rematchTitle
+    @Environment(\.gameRankChange) private var rankChange
 
     private var title: String {
         guard let winners = snapshot.winnerPlayerIds, !winners.isEmpty else { return "Game Over" }
@@ -272,6 +282,13 @@ struct GameCompletionOverlay: View {
                         .opacity(revealed || reduceMotion ? 1 : 0)
                         .offset(y: revealed || reduceMotion ? 0 : 12)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.45).delay(0.35), value: revealed)
+                }
+
+                if let rankChange {
+                    RankProgressPanel(change: rankChange)
+                        .environment(\.tavernBoard, true)
+                        .opacity(revealed || reduceMotion ? 1 : 0)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.45).delay(0.5), value: revealed)
                 }
 
                 HStack(spacing: 10) {

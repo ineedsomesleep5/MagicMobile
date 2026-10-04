@@ -11,6 +11,10 @@ struct FriendsView: View {
     @State private var friendDraft = ""
     @State private var confirmDelete = false
     @State private var confirmBlock: PlayerFriend?
+    /// The friend whose ranked card is open, and the card once it loads.
+    @State private var cardFor: String?
+    @State private var card: PlayerProfileCard?
+    @State private var cardLoading = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -103,6 +107,9 @@ struct FriendsView: View {
             } message: {
                 Text("They're removed from your friends and can't send you requests. You can unblock them here later.")
             }
+            .sheet(isPresented: Binding(get: { cardFor != nil }, set: { if !$0 { cardFor = nil } })) {
+                if let cardFor { PlayerCardView(username: cardFor, card: card, loading: cardLoading).presentationDetents([.medium, .large]) }
+            }
         }
     }
 
@@ -182,13 +189,29 @@ struct FriendsView: View {
                 Text(status(friend)).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            // Their ranked badge this season; tapping it opens their card.
+            Button { openCard(friend.username) } label: {
+                if let rank = account.friendRanks[friend.username] {
+                    HStack(spacing: 4) {
+                        RankEmblem(tier: rank.tier, size: 30)
+                        Text(rank.title).font(.caption.weight(.heavy)).lineLimit(1)
+                    }
+                } else {
+                    Image(systemName: "shield.lefthalf.filled").foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.borderless)
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel(account.friendRanks[friend.username].map { String(localized: "\(friend.username)'s card, \($0.title)") }
+                                ?? String(localized: "\(friend.username)'s card"))
+            .accessibilityIdentifier("friends.card.\(friend.username)")
             if let code = friend.joinableCode {
                 Button("Join") { join(code); dismiss() }
                     .buttonStyle(.borderedProminent).tint(BrandTheme.ember)
                     .accessibilityIdentifier("friends.join.\(friend.username)")
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .swipeActions {
             Button("Remove", role: .destructive) { Task { await account.remove(friend) } }
             Button("Block") { confirmBlock = friend }.tint(.orange)
@@ -196,6 +219,15 @@ struct FriendsView: View {
         .contextMenu {
             Button("Remove friend", systemImage: "person.fill.xmark", role: .destructive) { Task { await account.remove(friend) } }
             Button("Block", systemImage: "hand.raised") { confirmBlock = friend }
+        }
+    }
+
+    private func openCard(_ username: String) {
+        GameAudio.shared.play(.uiOpen)
+        card = nil; cardLoading = true; cardFor = username
+        Task {
+            card = await account.profileCard(username)
+            cardLoading = false
         }
     }
 

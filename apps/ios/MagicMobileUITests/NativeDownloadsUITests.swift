@@ -90,6 +90,7 @@ final class NativeDownloadsUITests: XCTestCase {
         app.buttons["Done"].tap()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 10))
         app.buttons["menu.play"].press(forDuration: 0.15)
+        UITestHarness.chooseCustomTable(app)
         XCTAssertTrue(consent.waitForExistence(timeout: 10))
         for _ in 0..<3 where !consent.isHittable { app.swipeUp() }
         XCTAssertTrue(consent.isHittable)

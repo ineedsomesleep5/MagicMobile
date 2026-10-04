@@ -22,6 +22,7 @@ final class NativePresentationRefinementUITests: XCTestCase {
         menu.lifetime = .keepAlways
         add(menu)
         app.buttons["menu.play"].tap()
+        UITestHarness.chooseCustomTable(app)
         XCTAssertTrue(app.buttons["Main menu"].waitForExistence(timeout: 5))
         app.swipeUp()
         XCTAssertFalse(app.buttons["ondevice.diagnostics"].exists)
@@ -38,6 +39,7 @@ final class NativePresentationRefinementUITests: XCTestCase {
         let expired = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dismiss)
         XCTAssertEqual(XCTWaiter.wait(for: [expired], timeout: 10), .completed)
         app.buttons["menu.play"].tap()
+        UITestHarness.chooseCustomTable(app)
         XCTAssertTrue(app.buttons["Main menu"].waitForExistence(timeout: 5))
         let report = app.buttons["ondevice.diagnostics"]
         for _ in 0..<4 where !report.isHittable { app.swipeUp() }

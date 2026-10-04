@@ -144,9 +144,12 @@ data class EngineRestored(val matchID: String, val turn: Long, val savedAtMillis
 }
 
 /** The local choices behind a game, so the menu can rebuild it (and its Rematch) after a restore. */
-data class GameResumeSettings(val deckID: String, val aiDeckIDs: List<String>, val aiSkill: Int, val startingPlayerMode: String) {
-    fun json(): JsonObject = jsonObject("deckId" to JsonPrimitive(deckID), "aiDeckIds" to JsonArray(aiDeckIDs.map(::JsonPrimitive)),
-        "aiSkill" to JsonPrimitive(aiSkill), "startingPlayerMode" to JsonPrimitive(startingPlayerMode))
+/** `mode` and `deckBracket` are a Quick Match or Ranked game's (PlayMode); absent for a custom table and older saves. */
+data class GameResumeSettings(val deckID: String, val aiDeckIDs: List<String>, val aiSkill: Int, val startingPlayerMode: String,
+                              val mode: String? = null, val deckBracket: Int? = null) {
+    fun json(): JsonObject = jsonObject(*listOfNotNull("deckId" to JsonPrimitive(deckID), "aiDeckIds" to JsonArray(aiDeckIDs.map(::JsonPrimitive)),
+        "aiSkill" to JsonPrimitive(aiSkill), "startingPlayerMode" to JsonPrimitive(startingPlayerMode),
+        mode?.let { "mode" to JsonPrimitive(it) }, deckBracket?.let { "deckBracket" to JsonPrimitive(it) }).toTypedArray())
 
     companion object {
         fun decode(value: J?): GameResumeSettings? {
@@ -154,7 +157,7 @@ data class GameResumeSettings(val deckID: String, val aiDeckIDs: List<String>, v
             val ai = value["aiDeckIds"].array?.map { it.string ?: return null } ?: return null
             val skill = value["aiSkill"].integer?.toInt() ?: return null
             val mode = value["startingPlayerMode"].string ?: return null
-            return GameResumeSettings(deck, ai, skill, mode)
+            return GameResumeSettings(deck, ai, skill, mode, value["mode"].string, value["deckBracket"].integer?.toInt())
         }
     }
 }

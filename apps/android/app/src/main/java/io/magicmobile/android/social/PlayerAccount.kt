@@ -9,6 +9,13 @@ import io.magicmobile.android.game.HowToPlayLaunch
 import io.magicmobile.android.game.PlayerAccountRules
 import io.magicmobile.android.ui.LaunchEnvironment
 import io.magicmobile.android.game.PlayerFriend
+import io.magicmobile.android.game.Achievement
+import io.magicmobile.android.game.RankLadder
+import io.magicmobile.android.game.RankOutcome
+import io.magicmobile.android.game.RankPosition
+import io.magicmobile.android.game.RankState
+import io.magicmobile.android.game.RankedQueueService
+import io.magicmobile.android.game.RankedTicket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,6 +53,8 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     var username by mutableStateOf<String?>(null); private set
     var friends by mutableStateOf<List<PlayerFriend>>(emptyList()); private set
     var blocked by mutableStateOf<List<String>>(emptyList()); private set
+    /** Friends' ranked standings by username (mm_friend_ranks), for their badges. */
+    var friendRanks by mutableStateOf<Map<String, RankPosition>>(emptyMap()); private set
     var notice by mutableStateOf<String?>(null)
 
     /** The code of the table this player hosts while it still has open seats (shared with friends). */
@@ -93,7 +102,37 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
             blocked = (Json.parseToJsonElement(api.rpc("mm_blocked")) as? JsonArray).orEmpty()
                 .mapNotNull { ((it as? JsonObject)?.get("username") as? JsonPrimitive)?.contentOrNull }
         } catch (error: Exception) { notice = PlayerAccountRules.message(SupabaseLite.code(error)) }
+        // Ranks are extra: a server without them leaves the badges off.
+        runCatching {
+            val season = RankLadder.season(System.currentTimeMillis())
+            friendRanks = (Json.parseToJsonElement(api.rpc("mm_friend_ranks")) as? JsonArray).orEmpty().mapNotNull { row ->
+                val o = row as? JsonObject ?: return@mapNotNull null
+                val name = (o["username"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+                if ((o["season"] as? JsonPrimitive)?.contentOrNull != season) return@mapNotNull null
+                val step = (o["rank_step"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: return@mapNotNull null
+                name to RankPosition.published(step, (o["pips"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: 0)
+            }.toMap()
+        }
     }
+
+    /** The ranked queue, once the player has a profile name. */
+    val rankedQueue: RankedQueueService? get() = if (phase == Phase.READY && username != null) SupabaseRankedQueue(api) else null
+
+    /** Shares this season's standing with friends. Quiet on failure: ranks still count on the phone. */
+    suspend fun publishRank(rank: RankState, title: Achievement?, commander: String?) {
+        if (phase != Phase.READY || username == null) return
+        runCatching {
+            api.rpc("mm_ranked_publish", mapOf("p_season" to JsonPrimitive(rank.season), "p_rank_step" to JsonPrimitive(rank.position.step),
+                "p_pips" to JsonPrimitive(rank.position.pips), "p_peak_step" to JsonPrimitive(rank.peak.step), "p_wins" to JsonPrimitive(rank.wins),
+                "p_losses" to JsonPrimitive(rank.losses), "p_title" to (title?.title?.let(::JsonPrimitive) ?: JsonNull),
+                "p_favorite_commander" to (commander?.let(::JsonPrimitive) ?: JsonNull)))
+        }
+    }
+
+    /** Another player's public ranked card, or null when they have none or can't be seen. */
+    suspend fun profileCard(name: String): PlayerProfileCard? = if (phase != Phase.READY) null else runCatching {
+        PlayerProfileCard.parse(Json.parseToJsonElement(api.rpc("mm_profile_card", mapOf("p_username" to JsonPrimitive(name)))) as JsonObject)
+    }.getOrNull()
 
     suspend fun addFriend(name: String) {
         val trimmed = name.trim()
@@ -236,5 +275,36 @@ internal class SupabaseLite(context: Context) {
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             status to (stream?.bufferedReader()?.use { it.readText() } ?: "")
         } finally { connection.disconnect() }
+    }
+}
+
+/** Another player's public ranked card (mm_profile_card). */
+data class PlayerProfileCard(val username: String, val season: String?, val rankStep: Int?, val pips: Int?, val peakStep: Int?,
+                             val wins: Int?, val losses: Int?, val title: String?, val favoriteCommander: String?) {
+    /** This season's place, or null when unranked or from an earlier season. */
+    val position: RankPosition? get() =
+        if (rankStep == null || season != RankLadder.season(System.currentTimeMillis())) null else RankPosition.published(rankStep, pips ?: 0)
+
+    companion object {
+        fun parse(o: JsonObject): PlayerProfileCard {
+            fun s(key: String) = (o[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
+            return PlayerProfileCard(s("username") ?: "", s("season"), s("rankStep")?.toIntOrNull(), s("pips")?.toIntOrNull(),
+                s("peakStep")?.toIntOrNull(), s("wins")?.toIntOrNull(), s("losses")?.toIntOrNull(), s("title"), s("favoriteCommander"))
+        }
+    }
+}
+
+/** The ranked queue on the profile server (supabase/migrations/20261004120000_ranked_ladder.sql). */
+internal class SupabaseRankedQueue(private val api: SupabaseLite) : RankedQueueService {
+    private fun decode(text: String) = RankedTicket.parse(Json.parseToJsonElement(text) as JsonObject)
+    override suspend fun enqueue(protocol: String, rankStep: Int, deckBracket: Int) = decode(api.rpc("mm_ranked_enqueue",
+        mapOf("p_protocol" to JsonPrimitive(protocol), "p_rank_step" to JsonPrimitive(rankStep), "p_deck_bracket" to JsonPrimitive(deckBracket))))
+    override suspend fun poll(ticket: String) = decode(api.rpc("mm_ranked_poll", mapOf("p_ticket" to JsonPrimitive(ticket))))
+    override suspend fun cancel(ticket: String) = decode(api.rpc("mm_ranked_cancel", mapOf("p_ticket" to JsonPrimitive(ticket))))
+    override suspend fun setTable(match: String, code: String) {
+        api.rpc("mm_ranked_set_table", mapOf("p_match" to JsonPrimitive(match), "p_code" to JsonPrimitive(code)))
+    }
+    override suspend fun report(match: String, outcome: RankOutcome) {
+        api.rpc("mm_ranked_report", mapOf("p_match" to JsonPrimitive(match), "p_result" to JsonPrimitive(outcome.raw)))
     }
 }

@@ -17,6 +17,14 @@ enum UITestHarness {
             + extraArguments
     }
 
+    /// Play opens the mode chooser (Quick Match, Ranked, Custom Table); the custom table is the
+    /// setup screen the older tests drive.
+    static func chooseCustomTable(_ app: XCUIApplication) {
+        let custom = app.buttons["play.custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 10), "Play opens the mode chooser")
+        custom.tap()
+    }
+
     /// The first touch after launch moves keyboard focus to the app. On the iOS 26.5
     /// simulator a system-gesture change follows about 0.12 s later and cancels any touch
     /// still down (UIKit EventDispatch logs "systemGestureStateChange: 1"): a 0.15 s press,
