@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Android 12+ splash masks its icon to a circle two thirds of the slot, so the brass ring (the full
+     launch mark) sits inside that circle. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/launch_mark"
+    android:insetLeft="18%" android:insetTop="18%" android:insetRight="18%" android:insetBottom="18%" />

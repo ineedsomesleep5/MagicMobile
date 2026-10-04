@@ -219,6 +219,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var showUpdates by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showHowToPlay by rememberSaveable { mutableStateOf(false) }
+    var howToPlayOpensTable by rememberSaveable { mutableStateOf(false) }
     var howToPlaySeenVersion by AppPreferences.int(HowToPlayLaunch.SEEN_VERSION_KEY, 0)
     var offlineArtPromptSeen by AppPreferences.boolean(OfflineArtLaunch.SEEN_KEY, false)
     var showOfflineArtPrompt by remember { mutableStateOf(false) }
@@ -523,11 +524,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(menuIsFree) {
         if (!menuIsFree) return@LaunchedEffect
         delay(700)
-        if (HowToPlayLaunch.shouldShowAutomatically(howToPlaySeenVersion, LaunchEnvironment.values)) showHowToPlay = true
+        if (HowToPlayLaunch.shouldShowAutomatically(howToPlaySeenVersion, LaunchEnvironment.values)) { howToPlayOpensTable = true; showHowToPlay = true }
         else if (OfflineArtLaunch.shouldShowAutomatically(howToPlaySeenVersion, offlineArtPromptSeen, LaunchEnvironment.values)) showOfflineArtPrompt = true
     }
     fun closeHowToPlay() {
-        showHowToPlay = false
+        showHowToPlay = false; howToPlayOpensTable = false
         howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
     }
 
@@ -686,7 +687,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             }
             if (showUpdates) BoardSheet({ showUpdates = false }) { UpdatesSheet(setup.identity?.upstreamCommit) { showUpdates = false } }
             if (showHowToPlay) BoardSheet(::closeHowToPlay, background = BrandTheme.canvas, skipPartiallyExpanded = true) {
-                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f))
+                // The first visit opens straight into the table's tutorial; the menu offers both.
+                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null)
             }
             // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
             io.magicmobile.android.studio.StudioCover(showDecks) {

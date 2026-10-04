@@ -11,7 +11,7 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:colorAccent">#24352E</item>
         <item name="android:windowSplashScreenBackground">#1B120B</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_mark</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#1B120B</item>
     </style>
 </resources>
