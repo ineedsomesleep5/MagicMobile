@@ -27,20 +27,13 @@ struct TavernMainMenu: View {
     var body: some View {
         GeometryReader { proxy in
             let horizontal = proxy.size.width > proxy.size.height && !dynamicTypeSize.isAccessibilitySize
-            let cardWidth = horizontal ? min(150, proxy.size.height * 0.36) : min(168, proxy.size.width * 0.41, proxy.size.height * 0.2)
-            Group {
-                if horizontal {
-                    // Landscape (Caleb, 2026-10-02): no scrolling, so the menu stays in place. Short
-                    // screens tighten the brand block; anything still too tall scales to fit.
-                    let density = proxy.size.height < 400 ? 2 : proxy.size.height < 470 ? 1 : 0
-                    FitsHeight(available: proxy.size.height) {
-                        menuLayout(horizontal: true, cardWidth: cardWidth, density: density, height: proxy.size.height)
-                    }
-                } else {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        menuLayout(horizontal: false, cardWidth: cardWidth, density: 0, height: proxy.size.height)
-                    }
-                }
+            let cardWidth = horizontal ? min(150, proxy.size.height * 0.36) : min(160, proxy.size.width * 0.38, proxy.size.height * 0.19)
+            // No scrolling in either orientation (Caleb, 2026-10-02 landscape, 2026-10-04 portrait): short
+            // screens tighten the brand block; anything still too tall scales to fit.
+            let density = horizontal ? (proxy.size.height < 400 ? 2 : proxy.size.height < 470 ? 1 : 0)
+                                     : (proxy.size.height < 700 ? 1 : 0)
+            FitsHeight(available: proxy.size.height) {
+                menuLayout(horizontal: horizontal, cardWidth: cardWidth, density: density, height: proxy.size.height)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .opacity(appeared ? 1 : 0)
@@ -56,10 +49,11 @@ struct TavernMainMenu: View {
     /// The deck and commander beside (landscape) or above (portrait) the actions. `density`
     /// 0 is the full layout; 1 and 2 tighten the brand block and spacing to fit a short screen.
     private func menuLayout(horizontal: Bool, cardWidth: CGFloat, density: Int, height: CGFloat) -> some View {
-        let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 44)) : AnyLayout(VStackLayout(spacing: 14))
+        let layout = horizontal ? AnyLayout(HStackLayout(alignment: .center, spacing: 44))
+                                : AnyLayout(VStackLayout(spacing: density == 0 ? 14 : 10))
         return layout {
                 VStack(spacing: 6) {
-                    if !horizontal { identity(compact: false, density: 0) }
+                    if !horizontal { identity(compact: false, density: density) }
                     HeroCommanderCard(name: commanderName, namespace: commanderNamespace, width: cardWidth)
                     deckTile
                 }
@@ -97,54 +91,12 @@ struct TavernMainMenu: View {
                     }
                     .buttonStyle(BrandButtonStyle(kind: .secondary))
                     .accessibilityIdentifier("menu.decks")
-                    if let friends {
-                        Button {
-                            GameAudio.shared.play(.uiOpen)
-                            friends()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.2.fill")
-                                Text("Friends")
-                                Spacer(minLength: 0)
-                                if friendsBadge > 0 {
-                                    Text("\(friendsBadge)")
-                                        .font(.system(size: 13, weight: .black)).monospacedDigit()
-                                        .padding(.horizontal, 8).padding(.vertical, 2)
-                                        .background(BrandTheme.ember, in: Capsule())
-                                        .foregroundStyle(.white)
-                                }
-                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
+                    if friends != nil || profile != nil {
+                        // Friends and Profile share a row (Caleb, 2026-10-04) so the menu fits without scrolling.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) { socialActions }
+                            VStack(spacing: density == 0 ? 14 : 10) { socialActions }
                         }
-                        .buttonStyle(BrandButtonStyle(kind: .secondary))
-                        .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
-                        .accessibilityIdentifier("menu.friends")
-                    }
-                    if let profile {
-                        Button {
-                            GameAudio.shared.play(.uiOpen)
-                            profile()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.crop.circle.fill")
-                                Text("Profile")
-                                Spacer(minLength: 0)
-                                if let rank {
-                                    RankEmblem(tier: rank.tier, size: 28)
-                                    Text(rank.title)
-                                        .font(.system(size: 13, weight: .heavy, design: .serif))
-                                        .lineLimit(1).minimumScaleFactor(0.7)
-                                }
-                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(BrandButtonStyle(kind: .secondary))
-                        .accessibilityValue(rank?.title ?? "")
-                        .accessibilityIdentifier("menu.profile")
                     }
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 20) { utilityActions }
@@ -158,22 +110,24 @@ struct TavernMainMenu: View {
                 .frame(maxWidth: 400)
         }
         .padding(.horizontal, horizontal ? 36 : 26)
-        .padding(.vertical, horizontal ? (density == 0 ? 16 : 8) : 12)
-        .frame(maxWidth: 960, minHeight: horizontal ? nil : height)
+        .padding(.vertical, density == 0 ? 16 : 8)
+        .frame(maxWidth: 960)
         .frame(maxWidth: .infinity)
     }
 
     private func identity(compact: Bool, density: Int) -> some View {
         VStack(alignment: compact ? .leading : .center, spacing: density == 0 ? 8 : 5) {
-            BrandMark(size: compact ? (density == 0 ? 52 : density == 1 ? 42 : 34) : 64)
+            // Portrait leaves the mark out so the deck and actions sit higher (the app icon carries it).
+            if compact { BrandMark(size: density == 0 ? 52 : density == 1 ? 42 : 34) }
             if density < 2 {
                 Text("MAGICMOBILE")
                     .font(.caption.weight(.heavy)).tracking(3)
                     .foregroundStyle(BrandTheme.inkSecondary)
             }
-            // Tighter landscape layouts set the title on one line.
-            Text(density == 0 ? "Your next\ngreat game." : "Your next great game.")
-                .brandTitle(compact ? (density == 0 ? 32 : density == 1 ? 27 : 24) : 36)
+            // Portrait and tighter landscape layouts set the title on one line.
+            Text(density == 0 && compact ? "Your next\ngreat game." : "Your next great game.")
+                .brandTitle(compact ? (density == 0 ? 32 : density == 1 ? 27 : 24) : (density == 0 ? 30 : 26))
+                .lineLimit(compact ? nil : 1).minimumScaleFactor(0.75)
                 .multilineTextAlignment(compact ? .leading : .center)
                 .fixedSize(horizontal: false, vertical: true)
             if density < 2, !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -235,6 +189,54 @@ struct TavernMainMenu: View {
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(commanderName.map { "Your deck: \(deckName), commander \($0)" } ?? "Your deck: \(deckName)")
+    }
+
+    @ViewBuilder private var socialActions: some View {
+        if let friends {
+            Button {
+                GameAudio.shared.play(.uiOpen)
+                friends()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.2.fill")
+                    Text("Friends").lineLimit(1).minimumScaleFactor(0.75)
+                    Spacer(minLength: 0)
+                    if friendsBadge > 0 {
+                        Text("\(friendsBadge)")
+                            .font(.system(size: 13, weight: .black)).monospacedDigit()
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(BrandTheme.ember, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(BrandButtonStyle(kind: .secondary))
+            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
+            .accessibilityIdentifier("menu.friends")
+        }
+        if let profile {
+            Button {
+                GameAudio.shared.play(.uiOpen)
+                profile()
+            } label: {
+                HStack(spacing: 8) {
+                    if let rank {
+                        RankEmblem(tier: rank.tier, size: 26)
+                    } else {
+                        Image(systemName: "person.crop.circle.fill")
+                    }
+                    Text("Profile").lineLimit(1).minimumScaleFactor(0.75)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(BrandButtonStyle(kind: .secondary))
+            .accessibilityValue(rank?.title ?? "")
+            .accessibilityIdentifier("menu.profile")
+        }
     }
 
     @ViewBuilder private var utilityActions: some View {

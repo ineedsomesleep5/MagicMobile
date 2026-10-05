@@ -16,6 +16,11 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage: "figure.fencing")
+                    Label("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage: "flame.fill")
+                    Label("Your profile picture is your favorite commander's art.", systemImage: "person.crop.circle")
+                    Label("The menu fits on one screen, and Downloads matches the tavern.", systemImage: "rectangle.stack.fill")
+                    Label("Smoother rank badge turns and lighter menu animations.", systemImage: "sparkles")
                     Label("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage: "shield.lefthalf.filled")
                     Label("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage: "bolt.fill")
                     Label("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage: "checkmark.seal")

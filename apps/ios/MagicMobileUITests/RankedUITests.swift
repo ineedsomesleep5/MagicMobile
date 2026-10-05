@@ -29,11 +29,17 @@ final class RankedUITests: XCTestCase {
         add(shot)
     }
 
-    /// Screens slide in: tap once the control exists and has had time to stop moving.
-    private func tapSteady(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    /// Screens slide in: tap once the control exists and has had time to stop moving. With `until`,
+    /// tap again (up to three times) while that next element hasn't appeared: the simulator can swallow a
+    /// synthesized tap under load (see UITestHarness.settleFirstTouch). The caller still asserts the result.
+    private func tapSteady(_ element: XCUIElement, until next: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 10), "\(element)", file: file, line: line)
         Thread.sleep(forTimeInterval: 0.6)
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        for _ in 0..<3 {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            guard let next, element.exists else { return }
+            if next.waitForExistence(timeout: 4) { return }
+        }
     }
 
     private func reveal(_ element: XCUIElement) {
@@ -42,41 +48,41 @@ final class RankedUITests: XCTestCase {
 
     func testPlayOffersQuickRankedAndCustom() {
         launch()
-        tapSteady(app.buttons["menu.play"])
+        tapSteady(app.buttons["menu.play"], until: app.buttons["play.quick"])
         for id in ["play.quick", "play.ranked", "play.custom"] {
             XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 10), id)
         }
         capture("Play mode chooser")
-        tapSteady(app.buttons["play.quick"])
+        tapSteady(app.buttons["play.quick"], until: app.buttons["quick.bracket"])
         XCTAssertTrue(app.buttons["quick.bracket"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["play.deck"].exists)
         capture("Quick Match")
         reveal(app.buttons["quick.start"])
         XCTAssertTrue(app.buttons["quick.start"].exists, "Quick Match starts from its own screen")
         capture("Quick Match bottom")
-        tapSteady(app.buttons["lobby.back"])
+        tapSteady(app.buttons["lobby.back"], until: app.buttons["play.ranked"])
         XCTAssertTrue(app.buttons["play.ranked"].waitForExistence(timeout: 5))
-        tapSteady(app.buttons["play.ranked"])
+        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.find"])
         XCTAssertTrue(app.buttons["ranked.find"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.otherElements["ranked.standing"].exists || app.descendants(matching: .any)["ranked.standing"].exists)
         capture("Ranked lobby")
         reveal(app.buttons["ranked.find"])
         capture("Ranked lobby bottom")
-        tapSteady(app.buttons["lobby.back"])
-        tapSteady(app.buttons["lobby.back"])
+        tapSteady(app.buttons["lobby.back"], until: app.buttons["play.quick"])
+        tapSteady(app.buttons["lobby.back"], until: app.buttons["menu.play"])
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5), "Back returns to the main menu")
     }
 
     func testQuickMatchBracketSheetExplainsTheDeck() {
         launch()
-        tapSteady(app.buttons["menu.play"])
-        tapSteady(app.buttons["play.quick"])
+        tapSteady(app.buttons["menu.play"], until: app.buttons["play.quick"])
+        tapSteady(app.buttons["play.quick"], until: app.buttons["play.deck.bracket"])
         let bracket = app.buttons["play.deck.bracket"]
         XCTAssertTrue(bracket.waitForExistence(timeout: 10))
-        tapSteady(bracket)
+        tapSteady(bracket, until: app.buttons["bracket.close"])
         XCTAssertTrue(app.buttons["bracket.close"].waitForExistence(timeout: 5))
         capture("Bracket sheet")
-        tapSteady(app.buttons["bracket.close"])
+        tapSteady(app.buttons["bracket.close"], until: app.buttons["quick.bracket"])
         XCTAssertTrue(app.buttons["quick.bracket"].waitForExistence(timeout: 5))
     }
 
@@ -86,7 +92,7 @@ final class RankedUITests: XCTestCase {
         reveal(profile)
         XCTAssertTrue(profile.waitForExistence(timeout: 10))
         XCTAssertEqual(profile.value as? String, "Gold II")
-        tapSteady(profile)
+        tapSteady(profile, until: app.descendants(matching: .any)["profile.season"])
         XCTAssertTrue(app.descendants(matching: .any)["profile.season"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Gold II"].exists)
         capture("Profile top")
@@ -94,7 +100,7 @@ final class RankedUITests: XCTestCase {
         capture("Profile achievements")
         reveal(app.descendants(matching: .any)["profile.history"])
         capture("Profile history")
-        tapSteady(app.buttons["lobby.back"])
+        tapSteady(app.buttons["lobby.back"], until: app.buttons["menu.play"])
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 
@@ -108,6 +114,12 @@ final class RankedUITests: XCTestCase {
             XCTAssertTrue(done.waitForExistence(timeout: 8), kind)
             capture("\(kind) settled")
             tapSteady(done)
+            // A swallowed synthesized tap (see tapSteady) leaves Continue up: tap it again, at most twice.
+            for _ in 0..<2 where ceremony.exists && done.exists {
+                if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: ceremony)],
+                                  timeout: 3) == .completed { break }
+                done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
             let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: ceremony)
             XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed, "\(kind) closes on Continue")
             app.terminate()

@@ -117,6 +117,9 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
 
     /** The ranked queue, once the player has a profile name. */
     val rankedQueue: RankedQueueService? get() = if (phase == Phase.READY && username != null) SupabaseRankedQueue(api) else null
+    /** Friend challenges, once the player has a profile name. */
+    val challenges: io.magicmobile.android.game.FriendChallengeService? get() =
+        if (phase == Phase.READY && username != null) SupabaseFriendChallenges(api) else null
 
     /** Shares this season's standing with friends. Quiet on failure: ranks still count on the phone. */
     suspend fun publishRank(rank: RankState, title: Achievement?, commander: String?) {
@@ -307,4 +310,20 @@ internal class SupabaseRankedQueue(private val api: SupabaseLite) : RankedQueueS
     override suspend fun report(match: String, outcome: RankOutcome) {
         api.rpc("mm_ranked_report", mapOf("p_match" to JsonPrimitive(match), "p_result" to JsonPrimitive(outcome.raw)))
     }
+}
+
+/** Friend challenges on the profile server (supabase/migrations/20261004180000_friend_challenges.sql). */
+internal class SupabaseFriendChallenges(private val api: SupabaseLite) : io.magicmobile.android.game.FriendChallengeService {
+    private fun decode(text: String, id: String? = null) = io.magicmobile.android.game.FriendChallenge.parse(
+        Json.parseToJsonElement(text) as? JsonObject ?: JsonObject(emptyMap()), id)
+    override suspend fun send(username: String, mode: io.magicmobile.android.game.PlayMode, protocol: String, rankStep: Int, tableCode: String) =
+        decode(api.rpc("mm_challenge_send", mapOf("p_username" to JsonPrimitive(username), "p_mode" to JsonPrimitive(mode.raw),
+            "p_protocol" to JsonPrimitive(protocol), "p_rank_step" to JsonPrimitive(rankStep), "p_table_code" to JsonPrimitive(tableCode))))
+    override suspend fun incoming() = (Json.parseToJsonElement(api.rpc("mm_challenge_incoming")) as? JsonArray).orEmpty()
+        .mapNotNull { row -> (row as? JsonObject)?.let { runCatching { io.magicmobile.android.game.FriendChallenge.parse(it) }.getOrNull() } }
+    override suspend fun status(id: String) = decode(api.rpc("mm_challenge_status", mapOf("p_challenge" to JsonPrimitive(id))), id)
+    override suspend fun accept(id: String, protocol: String, rankStep: Int) = decode(api.rpc("mm_challenge_accept",
+        mapOf("p_challenge" to JsonPrimitive(id), "p_protocol" to JsonPrimitive(protocol), "p_rank_step" to JsonPrimitive(rankStep))))
+    override suspend fun decline(id: String) { api.rpc("mm_challenge_decline", mapOf("p_challenge" to JsonPrimitive(id))) }
+    override suspend fun cancel(id: String) = decode(api.rpc("mm_challenge_cancel", mapOf("p_challenge" to JsonPrimitive(id))), id)
 }

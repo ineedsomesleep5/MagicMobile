@@ -547,3 +547,8 @@ single MIT file with its license header when that is enough.
 
   The portrait and landscape boards were checked on the emulator; phone feel is pending. Details are in
   docs/ANDROID_PARITY.md (log, 2026-10-03).
+- 2026-10-04 (Claude): Performance pass. iOS `BoardFXOverlay` timeline capped at 60 fps (ProMotion ran
+  card flights at 120 and rebuilt every flying `CardTile` twice as often for no visible gain). Android's
+  game-over `GameResultBackdrop` now reads its clock inside the Canvas (`rememberAnimationClock`), so each
+  frame redraws instead of recomposing. Effects, timings and the Android board-breath steps are unchanged.
+  Not yet felt on a phone.

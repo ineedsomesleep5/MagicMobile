@@ -6,6 +6,10 @@ struct FriendsView: View {
     @ObservedObject var account: PlayerAccount
     /// Joins a friend's open table by its code (the same path as an invite link).
     let join: (String) -> Void
+    /// Your ranked step this season: Ranked challenges need a friend in the same tier.
+    var myRankStep: Int? = nil
+    /// Challenges a friend to a Quick Match or a Ranked game (nil hides the button).
+    var challenge: ((PlayerFriend, PlayMode) -> Void)? = nil
     @State private var nameDraft = ""
     @State private var editingName = false
     @State private var friendDraft = ""
@@ -209,6 +213,8 @@ struct FriendsView: View {
                 Button("Join") { join(code); dismiss() }
                     .buttonStyle(.borderedProminent).tint(BrandTheme.ember)
                     .accessibilityIdentifier("friends.join.\(friend.username)")
+            } else if let challenge, friend.online {
+                challengeMenu(friend, challenge)
             }
         }
         .accessibilityElement(children: .contain)
@@ -220,6 +226,25 @@ struct FriendsView: View {
             Button("Remove friend", systemImage: "person.fill.xmark", role: .destructive) { Task { await account.remove(friend) } }
             Button("Block", systemImage: "hand.raised") { confirmBlock = friend }
         }
+    }
+
+    /// Quick Match for any online friend; Ranked only in the same tier (Gold with Gold).
+    private func challengeMenu(_ friend: PlayerFriend, _ challenge: @escaping (PlayerFriend, PlayMode) -> Void) -> some View {
+        let mayRank = myRankStep.map { FriendChallengeRules.mayRank(myStep: $0, friendStep: account.friendRanks[friend.username]?.step) } ?? false
+        return Menu {
+            Button { challenge(friend, .quick); dismiss() } label: { Label("Quick Match", systemImage: "bolt.fill") }
+            Button { challenge(friend, .ranked); dismiss() } label: {
+                Label(mayRank ? String(localized: "Ranked") : String(localized: "Ranked · same tier only"), systemImage: "shield.lefthalf.filled")
+            }
+            .disabled(!mayRank)
+        } label: {
+            Image(systemName: "figure.fencing")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(BrandTheme.ember)
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .accessibilityLabel(String(localized: "Challenge \(friend.username)"))
+        .accessibilityIdentifier("friends.challenge.\(friend.username)")
     }
 
     private func openCard(_ username: String) {

@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -155,10 +156,29 @@ private val bad = rgb(1.0, 0.55, 0.45)
 /** The rendered badge art (tavern_rank_*, from the iOS asset catalogue), resolved once per name. */
 object RankArt {
     private val ids = HashMap<String, Int>()
-    const val SPIN_FRAMES = 16
+    private val spins = HashMap<RankTier, List<androidx.compose.ui.graphics.ImageBitmap>>()
+    const val SPIN_FRAMES = 32
 
     fun id(context: android.content.Context, name: String): Int = synchronized(ids) {
         ids.getOrPut(name) { context.resources.getIdentifier(name, "drawable", context.packageName) }
+    }
+
+    /**
+     * A tier's spin frames, decoded off the main thread once and kept (painterResource decoded a new bitmap every
+     * frame, which made the turn stutter). Empty when the art is missing.
+     */
+    suspend fun spinFrames(context: android.content.Context, tier: RankTier): List<androidx.compose.ui.graphics.ImageBitmap> {
+        synchronized(spins) { spins[tier] }?.let { return it }
+        val frames = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            (0 until SPIN_FRAMES).mapNotNull { index ->
+                val id = id(context, "${tier.drawableName}_spin_${"%02d".format(index)}")
+                if (id == 0) null else runCatching {
+                    android.graphics.BitmapFactory.decodeResource(context.resources, id)?.also { it.prepareToDraw() }?.asImageBitmap()
+                }.getOrNull()
+            }
+        }.takeIf { it.size == SPIN_FRAMES } ?: emptyList()
+        synchronized(spins) { spins[tier] = frames }
+        return frames
     }
 }
 
@@ -186,6 +206,8 @@ fun RankSpinEmblem(tier: RankTier, size: Dp = 96.dp, startKey: Any = Unit, turns
                    forever: Boolean = false, reverse: Boolean = false) {
     val context = LocalContext.current
     if (LaunchEnvironment.reduceMotion) { RankEmblem(tier, size); return }
+    var frames by remember(tier) { mutableStateOf<List<androidx.compose.ui.graphics.ImageBitmap>?>(null) }
+    LaunchedEffect(tier) { frames = RankArt.spinFrames(context, tier) }
     var elapsed by remember(startKey) { mutableLongStateOf(0L) }
     LaunchedEffect(startKey, forever) {
         val start = withFrameMillis { it }
@@ -198,11 +220,25 @@ fun RankSpinEmblem(tier: RankTier, size: Dp = 96.dp, startKey: Any = Unit, turns
     val progress = if (forever) elapsed.toFloat() / durationMillis else (elapsed.toFloat() / durationMillis).coerceAtMost(1f)
     if (!forever && progress >= 1f) { RankEmblem(tier, size); return }
     val turned = if (forever) progress else turns * (1f - (1f - progress).pow(3))
-    val raw = (turned * RankArt.SPIN_FRAMES).toInt() % RankArt.SPIN_FRAMES
-    val index = if (reverse) (RankArt.SPIN_FRAMES - raw) % RankArt.SPIN_FRAMES else raw
-    val id = RankArt.id(context, "${tier.drawableName}_spin_${"%02d".format(index)}")
-    if (id != 0) Image(painterResource(id), null, Modifier.size(size))
-    else Box(Modifier.size(size).graphicsLayer { rotationY = (if (reverse) -1 else 1) * turned * 360f }) { RankEmblem(tier, size) }
+    val loaded = frames
+    when {
+        loaded == null -> RankEmblem(tier, size)  // decoding, first appearance only: hold the still front
+        loaded.isNotEmpty() -> {
+            // Neighbouring frames crossfade, so the slow end of the turn glides instead of stepping.
+            val position = turned * RankArt.SPIN_FRAMES
+            val raw = kotlin.math.floor(position).toInt()
+            val blend = position - raw
+            fun frame(step: Int): Int {
+                val wrapped = ((step % RankArt.SPIN_FRAMES) + RankArt.SPIN_FRAMES) % RankArt.SPIN_FRAMES
+                return if (reverse) (RankArt.SPIN_FRAMES - wrapped) % RankArt.SPIN_FRAMES else wrapped
+            }
+            Box(Modifier.size(size)) {
+                Image(loaded[frame(raw)], null, Modifier.matchParentSize())
+                Image(loaded[frame(raw + 1)], null, Modifier.matchParentSize(), alpha = blend)
+            }
+        }
+        else -> Box(Modifier.size(size).graphicsLayer { rotationY = (if (reverse) -1 else 1) * turned * 360f }) { RankEmblem(tier, size) }
+    }
 }
 
 private val DiamondShape = GenericShape { size, _ ->
@@ -683,9 +719,35 @@ private fun Cracks(modifier: Modifier) {
 
 // MARK: - Profile
 
+/** The profile picture choices: most played (the default), commanders played, then the player's decks. */
+private fun commanderSections(stats: PlayerStats, deckCommanders: List<String>, current: String?): List<TavernPickerSection<String?>> {
+    val played = stats.commanders.take(12).map { it.label }
+    val seen = played.toMutableSet()
+    val decks = deckCommanders.filter { it.isNotBlank() && seen.add(it) }
+    return buildList {
+        add(TavernPickerSection(null, listOf<Pair<String, String?>>("Most played" to null) + played.map { it to it }))
+        if (decks.isNotEmpty()) add(TavernPickerSection("Your decks", decks.map { it to it }))
+        // A choice from a deck since deleted stays selectable.
+        if (current != null && current !in seen) add(TavernPickerSection(null, listOf<Pair<String, String?>>(current to current)))
+    }
+}
+
+/** A profile picture: the commander's illustration alone (no card frame) in the table's brass ring. */
+@Composable
+fun CommanderArtMedallion(name: String?, diameter: Dp, modifier: Modifier = Modifier) {
+    val placeholder: @Composable () -> Unit = {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { SfImage("person.fill", TavernPalette.parchment.copy(alpha = 0.55f), diameter * 0.42f) }
+    }
+    io.magicmobile.android.board.TavernMedallion(diameter, null, modifier.semantics { contentDescription = name?.let { "Profile picture: $it" } ?: "Profile picture" }) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(io.magicmobile.android.ui.MagicPalette.iron, io.magicmobile.android.ui.MagicPalette.leather)))) {
+            if (!name.isNullOrBlank()) io.magicmobile.android.CardArtwork(name, Modifier.fillMaxSize(), artOnly = true, placeholder = placeholder) else placeholder()
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PlayerProfileScreen(store: PlayerRecordStore, playerName: String, back: () -> Unit) {
+fun PlayerProfileScreen(store: PlayerRecordStore, playerName: String, deckCommanders: List<String> = emptyList(), back: () -> Unit) {
     val file = store.file
     val stats = remember(file.matches) { PlayerStats(file.matches) }
     val unlocked = remember(file.matches, file.rank) { Achievement.unlocked(file.matches, file.rank) }
@@ -693,15 +755,13 @@ fun PlayerProfileScreen(store: PlayerRecordStore, playerName: String, back: () -
     LaunchedEffect(Unit) { store.refreshSeason() }
     TavernLobbyPage("Profile", back) {
         Row(Modifier.leatherCard(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(84.dp).clip(CircleShape).border(3.dp, TavernPalette.brassLine, CircleShape)) {
-                CommanderDeckPortrait(store.shownCommander, Modifier.size(84.dp, 117.dp))
-            }
+            CommanderArtMedallion(store.shownCommander, 78.dp, Modifier.testTag("profile.picture"))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 FitText(playerName.ifBlank { "Player" }, sf(24f, SfWeight.black, SfDesign.SERIF), Modifier.testTag("profile.name"), color = TavernPalette.parchment, minimumScale = 0.7f)
                 TavernPicker("Title", file.title, listOf(TavernPickerSection(null, listOf<Pair<String, Achievement?>>("No title" to null) +
                     Achievement.entries.filter { it in unlocked }.map { it.title to it })), { store.setTitle(it) }, Modifier.testTag("profile.title"))
-                TavernPicker("Favorite commander", file.favoriteCommander, listOf(TavernPickerSection(null, listOf<Pair<String, String?>>("Most played" to null) +
-                    stats.commanders.take(12).map { it.label to it.label })), { store.setFavoriteCommander(it) }, Modifier.testTag("profile.commander"))
+                TavernPicker("Profile picture", file.favoriteCommander, commanderSections(stats, deckCommanders, file.favoriteCommander),
+                    { store.setFavoriteCommander(it) }, Modifier.testTag("profile.commander"))
             }
         }
         Row(Modifier.leatherCard().testTag("profile.season"), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -836,7 +896,7 @@ fun PlayerCardSheet(username: String, card: PlayerProfileCard?, loading: Boolean
                 Text("Ranked ${card.wins ?: 0}–${card.losses ?: 0} this season", color = TavernPalette.parchment, style = sf(15f, SfWeight.regular, SfDesign.SERIF))
                 card.peakStep?.let { Text("Peak ${RankPosition.atStep(it).title}", color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF)) }
                 card.favoriteCommander?.let {
-                    CommanderDeckPortrait(it, Modifier.size(90.dp, 125.dp))
+                    CommanderArtMedallion(it, 72.dp)
                     Text(it, color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF))
                 }
             }

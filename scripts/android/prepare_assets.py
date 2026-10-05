@@ -68,9 +68,12 @@ with (out/'printings.tsv').open('w') as f:
         f.write('\t'.join(['=',alias,target])+'\n')
 
 (out/'precons.json').write_text(json.dumps({'decks':decks},ensure_ascii=False))
-# Ranked: the bracket card lists and the AI decks per bracket ship unchanged from the iOS resources.
-for name in ('commander-brackets.json', 'ai-decks.json'):
-    data_bytes = (repo/'apps/ios/MagicMobile/Resources'/name).read_bytes()
+# Ranked: the bracket card lists and the AI decks per bracket ship unchanged from the iOS resources,
+# as does the tavern room's layout (scripts/brand/install_tavern_room.sh).
+for name in ('commander-brackets.json', 'ai-decks.json', 'tavern-room.json'):
+    source = repo/'apps/ios/MagicMobile/Resources'/name
+    if name == 'tavern-room.json' and not source.exists(): continue  # the room is optional art
+    data_bytes = source.read_bytes()
     json.loads(data_bytes)
     (out/name).write_bytes(data_bytes)
 (out/'asset-provenance.json').write_text(json.dumps({'catalogueSourceSHA256':hashlib.sha256(raw).hexdigest(),'preconSourceSHA256':hashlib.sha256(precon_source.read_bytes()).hexdigest(),'cards':len(data['cards']),'cardsWithMetadata':joined,'precons':len(decks),'catalogueHash':data['catalogueHash']},indent=2))

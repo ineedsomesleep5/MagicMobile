@@ -5,7 +5,7 @@ textured 3D models with Meshy's image-to-3D (meshy-cli, 2026-10-04). This lays e
 to an orthographic camera and renders, with a transparent background:
 
   tavern-rank-<tier>.png             the still, front on (the app's badge everywhere)
-  tavern-rank-<tier>-spin-NN.png     FRAMES steps of a full turn about the vertical axis, frame 0
+  tavern-rank-<tier>-spin-NN.png     FRAMES (32) steps of a full turn about the vertical axis, frame 0
                                      front on (the rank-up and rank-down moments)
 
   blender -b -P scripts/brand/rank_badges.py -- --out-dir build_output/tavern/rank [--tiers bronze,gold]
@@ -25,7 +25,7 @@ from mathutils import Vector
 
 HOME = os.path.expanduser("~/Movies/motion-assets/magicmobile-brand/rank-badges/meshy")
 TIERS = ["bronze", "silver", "gold", "platinum", "diamond", "mythic"]
-FRAMES = 16
+FRAMES = 32
 
 
 def parse_args():
@@ -37,6 +37,7 @@ def parse_args():
     p.add_argument("--samples", type=int, default=48)
     p.add_argument("--tiers", default=",".join(TIERS))
     p.add_argument("--no-spin", action="store_true")
+    p.add_argument("--spin-only", action="store_true", help="skip the stills")
     p.add_argument("--test", action="store_true", help="one still per axis guess, to check orientation")
     return p.parse_args(argv)
 
@@ -141,7 +142,8 @@ def main():
             render(scene, os.path.join(ARGS.out_dir, f"test-{tier}.png"), 360)
             continue
         holder.rotation_euler = (0, 0, 0)
-        render(scene, os.path.join(ARGS.out_dir, f"tavern-rank-{tier}.png"), ARGS.px)
+        if not ARGS.spin_only:
+            render(scene, os.path.join(ARGS.out_dir, f"tavern-rank-{tier}.png"), ARGS.px)
         if ARGS.no_spin:
             continue
         for i in range(FRAMES):

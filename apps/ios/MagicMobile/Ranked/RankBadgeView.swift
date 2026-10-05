@@ -184,8 +184,10 @@ struct BracketTag: View {
 /// A badge turning in 3D: frames of the Meshy model's full turn (scripts/brand/rank_badges.py).
 /// `turns` whole turns over `duration` seconds from `start`, slowing to a stop front on; with
 /// `forever` it keeps turning at one turn per `duration`. Without the frames it turns flat.
+/// Frames are decoded once (RankSpinFrames) and neighbours crossfade, so the slow end of the
+/// turn glides instead of stepping.
 struct RankSpinEmblem: View {
-    static let frameCount = 16
+    static let frameCount = 32
     let tier: RankTier
     var size: CGFloat = 96
     var start = Date()
@@ -194,6 +196,7 @@ struct RankSpinEmblem: View {
     var forever = false
     var reverse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frames: [UIImage] = []
 
     static func hasFrames(_ tier: RankTier) -> Bool { UIImage(named: "\(tier.assetName)-spin-00") != nil }
 
@@ -201,19 +204,26 @@ struct RankSpinEmblem: View {
         if reduceMotion {
             RankEmblem(tier: tier, size: size)
         } else {
-            TimelineView(.animation) { context in
+            // A one-off turn runs at the display's full rate; an endless one (the search screens) at 60 fps.
+            TimelineView(.animation(minimumInterval: forever ? 1 / 60 : nil)) { context in
                 let elapsed = max(0, context.date.timeIntervalSince(start))
                 let progress: Double = forever ? elapsed / duration : min(1, elapsed / duration)
                 // Ease out: fast at first, settling on the front.
                 let turned = forever ? progress : turns * (1 - pow(1 - progress, 3))
                 if !forever, progress >= 1 {
                     RankEmblem(tier: tier, size: size)
-                } else if Self.hasFrames(tier) {
-                    let raw = Int((turned * Double(Self.frameCount)).rounded(.down)) % Self.frameCount
-                    let index = reverse ? (Self.frameCount - raw) % Self.frameCount : raw
-                    if let image = UIImage(named: String(format: "%@-spin-%02d", tier.assetName, index)) {
-                        Image(uiImage: image).resizable().scaledToFit().frame(width: size, height: size)
+                } else if frames.count == Self.frameCount {
+                    let position = turned * Double(Self.frameCount)
+                    let raw = Int(position.rounded(.down))
+                    let blend = position - Double(raw)
+                    ZStack {
+                        Image(uiImage: frames[frameIndex(raw)]).resizable().scaledToFit()
+                        Image(uiImage: frames[frameIndex(raw + 1)]).resizable().scaledToFit().opacity(blend)
                     }
+                    .frame(width: size, height: size)
+                } else if Self.hasFrames(tier) {
+                    // Decoding (first appearance only): hold the still front.
+                    RankEmblem(tier: tier, size: size)
                 } else {
                     RankEmblem(tier: tier, size: size)
                         .rotation3DEffect(.degrees((reverse ? -1 : 1) * turned * 360), axis: (0, 1, 0))
@@ -221,6 +231,31 @@ struct RankSpinEmblem: View {
             }
             .frame(width: size, height: size)
             .accessibilityHidden(true)
+            .task(id: tier) { frames = await RankSpinFrames.frames(tier) }
         }
+    }
+
+    private func frameIndex(_ raw: Int) -> Int {
+        let wrapped = ((raw % Self.frameCount) + Self.frameCount) % Self.frameCount
+        return reverse ? (Self.frameCount - wrapped) % Self.frameCount : wrapped
+    }
+}
+
+/// Each tier's spin frames, decoded off the main thread once and kept: decoding a frame the first
+/// time it was drawn is what made the turn stutter.
+actor RankSpinFrames {
+    static let shared = RankSpinFrames()
+    private var cache: [RankTier: [UIImage]] = [:]
+
+    static func frames(_ tier: RankTier) async -> [UIImage] { await shared.frames(tier) }
+
+    private func frames(_ tier: RankTier) -> [UIImage] {
+        if let cached = cache[tier] { return cached }
+        let decoded = (0..<RankSpinEmblem.frameCount).compactMap {
+            UIImage(named: String(format: "%@-spin-%02d", tier.assetName, $0))?.preparingForDisplay()
+        }
+        let complete = decoded.count == RankSpinEmblem.frameCount ? decoded : []
+        cache[tier] = complete
+        return complete
     }
 }
