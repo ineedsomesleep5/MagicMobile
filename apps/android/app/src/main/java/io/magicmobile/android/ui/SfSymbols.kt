@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Groups
@@ -219,6 +220,7 @@ object SfSymbols {
         "externaldrive" -> Icons.Filled.Storage
         "dice" -> Icons.Filled.Casino
         "circle" -> Icons.Outlined.RadioButtonUnchecked
+        "battery.100" -> Icons.Filled.BatteryFull
         "books.vertical" -> Icons.AutoMirrored.Outlined.LibraryBooks
         "books.vertical.fill" -> Icons.AutoMirrored.Filled.LibraryBooks
         "bell" -> Icons.Outlined.Notifications
