@@ -69,3 +69,31 @@ Future optimization path:
 3. Later smaller delta/event updates if measured snapshot size or WebSocket latency becomes a real bottleneck.
 
 Do not implement a complicated delta system until measurement shows it is needed.
+
+## On-device battery, memory and size (October 2026)
+
+The phone apps run the engine on the device, so these rules replace the gateway ones above for iOS and Android.
+They were measured on the iPhone 17 Pro Max simulator and the API 35 emulator, not on a phone.
+
+- **Engine polls.** A local game polls every 0.3 s while the engine works, 0.6 s after three unchanged
+  answers, and every 2 s once the engine has waited on the player for eight (`OnDeviceLocalPollSchedule` on
+  both platforms). A tap returns to 0.3 s at once. Online tables keep their own schedule.
+- **No idle redraws.** A poll whose answer is unchanged publishes nothing: the iOS session sends
+  `objectWillChange` only when the snapshot, status or error changed.
+- **Ambient motion.** Slow glows step on the wall clock instead of at the display's rate (iOS `BoardBreath`,
+  30 a second; Android `rememberBoardBreath`, 20 a second), and brief glints draw only while they show
+  (`BurstTimelineSchedule`). A custom
+  `TimelineSchedule` must return a fixed grid of dates: the latest one at or before the date asked for, then
+  strictly later ones. Returning "now" first makes the view update forever.
+- **Shared data.** The card catalogue and deck resolver decode once, off the main thread, and are shared
+  (`BundledResourceCache`); both are dropped when the app goes to the background. Decoded card art is kept in a
+  64 MB `NSCache` and decoded off the main thread.
+- **Quiet network.** Friend-challenge polling stops with no friends and slows to 20 s when none is online.
+- **Size.** iOS ships the catalogue LZFSE-compressed (12.9 MB to 2.2 MB, written by a build phase). Android
+  release code goes through R8 without renaming (dex 49.2 MB to 12.9 MB; the APK 156.9 MB to 147.3 MB).
+  `proguard-rules.pro` keeps the app's own packages whole and the libraries the instrumentation runner shares
+  with the app; a new library the tests call needs the same keep. Debug builds are not shrunk.
+- **Engine.** Left as it is. It already uses the targeted reflection profile and went from 795 MB to 381 MB in
+  September; what remains is the compiled rules for 31,881 cards (201 MB) and the image heap (167 MB). Any
+  further cut is a compiler experiment that needs an ARM64 build per platform and a phone to judge AI speed,
+  and ships as its own release (see the release sequencing rule).

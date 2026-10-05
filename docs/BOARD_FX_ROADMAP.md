@@ -552,3 +552,8 @@ single MIT file with its license header when that is enough.
   game-over `GameResultBackdrop` now reads its clock inside the Canvas (`rememberAnimationClock`), so each
   frame redraws instead of recomposing. Effects, timings and the Android board-breath steps are unchanged.
   Not yet felt on a phone.
+- 2026-10-05 (Claude): Battery pass. iOS board glows (playable cards, the commander-ready ring, lit mana
+  gems) now breathe through `BoardBreath` (AmbientMotion.swift): 30 steps a second on the wall clock
+  instead of a repeating animation at the display's rate. The menu mark's glint and `ShineSweep` draw only
+  while they show (`BurstTimelineSchedule`). Looks and timings are unchanged; rules are in
+  docs/PERFORMANCE_TARGETS.md. Not yet felt on a phone.

@@ -1404,6 +1404,7 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")
                 IosListRow("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage = "figure.fencing")
                 IosListRow("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage = "flame.fill")
                 IosListRow("Your profile picture is your favorite commander's art.", systemImage = "person.crop.circle")
