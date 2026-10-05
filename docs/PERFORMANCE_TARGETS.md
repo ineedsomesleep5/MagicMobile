@@ -85,8 +85,10 @@ They were measured on the iPhone 17 Pro Max simulator and the API 35 emulator, n
   (`BurstTimelineSchedule`). A custom
   `TimelineSchedule` must return a fixed grid of dates: the latest one at or before the date asked for, then
   strictly later ones. Returning "now" first makes the view update forever.
-- **Shared data.** The card catalogue and deck resolver decode once, off the main thread, and are shared
-  (`BundledResourceCache`); both are dropped when the app goes to the background. Decoded card art is kept in a
+- **Shared data.** The card catalogue and deck resolver decode once and are shared (`BundledResourceCache`);
+  the catalogue is dropped when the app goes to the background. The resolver is still read before the first
+  screen is usable (about 0.2 s): reading it in the background left the menu tappable before the build
+  identity existed and made two Downloads UI tests fail on timing, so that was put back. Decoded card art is kept in a
   64 MB `NSCache` and decoded off the main thread.
 - **Quiet network.** Friend-challenge polling stops with no friends and slows to 20 s when none is online.
 - **Size.** iOS ships the catalogue LZFSE-compressed (12.9 MB to 2.2 MB, written by a build phase). Android

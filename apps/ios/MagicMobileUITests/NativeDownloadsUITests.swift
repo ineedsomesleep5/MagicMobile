@@ -12,6 +12,8 @@ final class NativeDownloadsUITests: XCTestCase {
         defer { app.terminate() }
         let menu = app.buttons["menu.downloads"]
         XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        // The first touch after launch only moves focus on this simulator (UITestHarness).
+        UITestHarness.settleFirstTouch(app)
         menu.press(forDuration: 0.15)
         let scope = app.buttons["downloads.scope"]
         XCTAssertTrue(scope.waitForExistence(timeout: 10))
@@ -47,6 +49,8 @@ final class NativeDownloadsUITests: XCTestCase {
         defer { app.terminate() }
         let menu = app.buttons["menu.downloads"]
         XCTAssertTrue(menu.waitForExistence(timeout: 20))
+        // The first touch after launch only moves focus on this simulator (UITestHarness).
+        UITestHarness.settleFirstTouch(app)
         menu.press(forDuration: 0.15)
         let scope = app.buttons["downloads.scope"], quality = app.buttons["downloads.quality"]
         XCTAssertTrue(scope.waitForExistence(timeout: 10))
@@ -81,6 +85,8 @@ final class NativeDownloadsUITests: XCTestCase {
         app.launch()
         defer { app.terminate() }
         XCTAssertTrue(app.buttons["menu.settings"].waitForExistence(timeout: 20))
+        // The first touch after launch only moves focus on this simulator (UITestHarness).
+        UITestHarness.settleFirstTouch(app)
         app.buttons["menu.settings"].press(forDuration: 0.15)
         let consent = app.switches["nativeArtwork.downloads"]
         XCTAssertTrue(consent.waitForExistence(timeout: 10))
@@ -116,6 +122,8 @@ final class NativeDownloadsUITests: XCTestCase {
         let menu = app.buttons["menu.downloads"]
         XCTAssertTrue(menu.waitForExistence(timeout: 20))
         if !menu.isHittable { app.swipeUp() }
+        // The first touch after launch only moves focus on this simulator (UITestHarness).
+        UITestHarness.settleFirstTouch(app)
         menu.press(forDuration: 0.15)
         XCTAssertTrue(app.descendants(matching: .any)["downloads.title"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["Card catalogue included"].isHittable, "Technical details start collapsed")

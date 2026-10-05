@@ -360,6 +360,9 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     @State private var completedRequest: Request?
     @State private var failedRequest: Request?
     @State private var downloadRevision = 0
+    /// The same card's previous picture, shown while a refreshed one loads (a finished download, a
+    /// changed artwork setting), so the card never blinks to its placeholder in between.
+    @State private var stale: (subject: NSString, image: UIImage)?
 
     private struct Request: Hashable {
         let name: String
@@ -382,6 +385,13 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         }
         /// Inspection images are large and seen one at a time: decoded when needed, never kept.
         var remembers: Bool { variant != .inspection }
+        /// Which card and crop this is, whatever the download state: two requests with one subject
+        /// show the same card.
+        var subject: NSString {
+            [name, variant.rawValue, artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
+             tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? ""]
+                .joined(separator: "\u{1F}") as NSString
+        }
     }
 
     var body: some View {
@@ -395,6 +405,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         let shown: UIImage? = !permitted ? nil
             : (completedRequest == request ? artwork : nil)
                 ?? (request.remembers ? NativeArtworkMemory.shared.image(request.memoryKey) : nil)
+                ?? (completedRequest != request && stale?.subject == request.subject ? stale?.image : nil)
         Group {
             if let shown {
                 Image(uiImage: shown).resizable().aspectRatio(contentMode: contentMode)
@@ -421,6 +432,13 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                     artwork = remembered; completedRequest = request; failedRequest = nil
                     return
                 }
+                // The picture already showing for this card stays up until the refreshed one is decided.
+                if let artwork, let completedRequest, completedRequest.subject == request.subject {
+                    stale = (request.subject, artwork)
+                } else if stale?.subject != request.subject {
+                    stale = nil
+                }
+                defer { if !Task.isCancelled { stale = nil } }
                 artwork = nil; completedRequest = nil; failedRequest = nil
                 // Copy-token art is always the illustration alone, even without `artOnly`:
                 // TokenCopyCardFace draws the token's own name, type line and live stats around it,
