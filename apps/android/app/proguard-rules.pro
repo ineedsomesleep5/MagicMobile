@@ -10,8 +10,14 @@
 
 # The packaged-engine device tests (src/androidTest) run against this same release build and share its
 # classes, so the library entry points they call directly must stay even where the app itself does not
-# call them: Kotlin's standard library and coroutines, Play Services Tasks and ML Kit text recognition.
+# call them: Kotlin's standard library and coroutines, Play Services Tasks and ML Kit text recognition,
+# and the small AndroidX libraries the test runner itself shares with the app (tracing, annotations,
+# futures).
 -keep class kotlin.** { *; }
+-keep class androidx.tracing.** { *; }
+-keep class androidx.annotation.** { *; }
+-keep class androidx.concurrent.futures.** { *; }
+-keep class com.google.common.util.concurrent.ListenableFuture { *; }
 -keep class kotlinx.coroutines.** { *; }
 -keep class com.google.android.gms.tasks.** { public *; }
 -keep class com.google.mlkit.vision.common.InputImage { public *; }
