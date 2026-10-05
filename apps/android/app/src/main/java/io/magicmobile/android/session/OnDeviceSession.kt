@@ -126,6 +126,29 @@ class OnDeviceHostRetryPolicy(private val delaysMillis: List<Long> = DEFAULT_DEL
 }
 
 /**
+ * How often a local game asks its engine for the match (OnDeviceLocalPollSchedule in OnDeviceSession.swift). Every
+ * poll returns the whole snapshot, so polling fast is only worth it while something can change.
+ */
+object OnDeviceLocalPollSchedule {
+    /** The board just changed, or an answer is on its way. */
+    const val ACTIVE_MILLIS = 300L
+    /** Nothing changed for a few polls (the AI is thinking). */
+    const val IDLE_MILLIS = 600L
+    /**
+     * The engine is waiting on this player: nothing can change until they answer, and an answer wakes the loop at
+     * once. This is only a safety net (a failure notice, a late save notice).
+     */
+    const val AWAITING_PLAYER_MILLIS = 2_000L
+    /** Unchanged polls before the idle spacing, and before the awaiting-player spacing. */
+    const val IDLE_AFTER = 3
+    const val AWAITING_AFTER = 8
+
+    fun intervalMillis(idlePolls: Int, awaitingPlayer: Boolean): Long =
+        if (awaitingPlayer && idlePolls >= AWAITING_AFTER) AWAITING_PLAYER_MILLIS
+        else if (idlePolls >= IDLE_AFTER) IDLE_MILLIS else ACTIVE_MILLIS
+}
+
+/**
  * Port of apps/ios/MagicMobile/OnDeviceSession.swift. One authenticated seat. UI state changes
  * only from a current engine poll. All state is read and written on the main thread; engine
  * calls suspend (the transport moves native work off the main thread).
@@ -626,8 +649,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             var retryNow = false
             while (isActive) {
                 try {
-                    val interval = if (reconnectsAutomatically) 1000L else if (idlePolls >= 3) 600L else 300L
-                    if (firstPoll) delay(interval) else if (!retryNow) waitForNextPoll(lastPoll, interval)
+                    val interval = if (reconnectsAutomatically) 1000L
+                        else OnDeviceLocalPollSchedule.intervalMillis(idlePolls, awaitsLocalAnswer)
+                    if (firstPoll) delay(if (reconnectsAutomatically) interval else minOf(interval, OnDeviceLocalPollSchedule.IDLE_MILLIS))
+                    else if (!retryNow) waitForNextPoll(lastPoll, interval)
                     firstPoll = false; retryNow = false
                     if (isAutoPassing) { lastPoll = nowMillis(); continue }
                     refresh()
@@ -669,7 +694,19 @@ class OnDeviceSession(private val scope: CoroutineScope) {
      */
     private suspend fun waitForNextPoll(lastPoll: Long, intervalMillis: Long) {
         val table = table
-        if (table == null || table.role != OnDeviceTableLink.Role.GUEST) { delay(intervalMillis); return }
+        if (table == null || table.role != OnDeviceTableLink.Role.GUEST) {
+            // The long wait (the engine is waiting on this player) ends as soon as an answer goes out or the board
+            // changes, so the next poll is prompt again.
+            val action = lastActionAt
+            var remaining = intervalMillis
+            while (remaining > 0) {
+                val step = minOf(remaining, OnDeviceLocalPollSchedule.ACTIVE_MILLIS)
+                delay(step)
+                remaining -= step
+                if (lastActionAt != action || idlePolls < OnDeviceLocalPollSchedule.IDLE_AFTER) return
+            }
+            return
+        }
         while (true) {
             val now = nowMillis()
             val step = OnDeviceGuestPollSchedule.next(table.hostAnnounces, table.noticedRevision, poll?.revision,
@@ -680,6 +717,17 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             }
         }
     }
+
+    /**
+     * A local game (no table) whose engine is waiting on this player: nothing can change until they answer. A hosted
+     * table never qualifies, because other people act at any time.
+     */
+    private val awaitsLocalAnswer: Boolean
+        get() {
+            val prompt = poll?.prompt ?: return false
+            return table == null && pending == null && abilityAutoAnswer?.isActive != true && !isAutoPassing && !responding &&
+                !reconnectsAutomatically && !prompt.submitted && poll?.phase != "starting"
+        }
 
     /** An answer or concede is on its way: a waiting guest polls promptly until it lands. */
     private fun noteAction() {

@@ -189,6 +189,19 @@ class OnDeviceTablePollingTest {
         session.close()
     }
 
+    @Test fun localPollScheduleSlowsOnlyWhileTheEngineWaitsOnThePlayer() {
+        val schedule = OnDeviceLocalPollSchedule
+        // A fresh change, or an answer on its way: the short timer.
+        assertEquals(schedule.ACTIVE_MILLIS, schedule.intervalMillis(0, awaitingPlayer = false))
+        assertEquals(schedule.ACTIVE_MILLIS, schedule.intervalMillis(2, awaitingPlayer = true))
+        // Unchanged for a few polls (the AI is thinking): the idle timer, however long it takes.
+        assertEquals(schedule.IDLE_MILLIS, schedule.intervalMillis(schedule.IDLE_AFTER, awaitingPlayer = false))
+        assertEquals(schedule.IDLE_MILLIS, schedule.intervalMillis(500, awaitingPlayer = false))
+        // Waiting on the player: still prompt at first, then only a safety-net poll.
+        assertEquals(schedule.IDLE_MILLIS, schedule.intervalMillis(schedule.AWAITING_AFTER - 1, awaitingPlayer = true))
+        assertEquals(schedule.AWAITING_PLAYER_MILLIS, schedule.intervalMillis(schedule.AWAITING_AFTER, awaitingPlayer = true))
+    }
+
     @Test fun localSessionDoesNotRetryHostErrors() = table { scope ->
         val host = FakeHost()
         val session = OnDeviceSession(scope)

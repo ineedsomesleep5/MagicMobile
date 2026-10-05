@@ -1,5 +1,25 @@
 import Foundation
 
+/// A decoded bundle resource kept for reuse. Decoding the card catalogue takes a few tenths of a second
+/// and tens of megabytes, and it used to happen again on every Deck Studio visit, Downloads visit and
+/// game-log lookup. One decode runs at a time; `purge` drops the value and the next caller decodes again.
+final class BundledResourceCache<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value?
+
+    func value(orLoad load: () throws -> Value) rethrows -> Value {
+        lock.lock(); defer { lock.unlock() }
+        if let value { return value }
+        let loaded = try load()
+        value = loaded
+        return loaded
+    }
+
+    func purge() {
+        lock.lock(); value = nil; lock.unlock()
+    }
+}
+
 /// Resolves only reverse faces attested by the bundled, selected-printing aliases.
 enum NativeDeckCanonicalNames {
 
@@ -87,7 +107,18 @@ struct NativeDeckMetadataCatalogue {
     private let aliases: [String: String]
     private let reverseFaces: [String: String]
 
+    private static let shared = BundledResourceCache<NativeDeckMetadataCatalogue>()
+
+    /// The app's own catalogue, decoded once and shared (an explicit bundle always decodes afresh).
     static func bundled(bundle explicitBundle: Bundle? = nil) throws -> Self {
+        guard let explicitBundle else { return try shared.value { try decoded(from: nil) } }
+        return try decoded(from: explicitBundle)
+    }
+
+    /// Drops the shared copy (in the background, where memory decides whether iOS keeps the app).
+    static func purgeShared() { shared.purge() }
+
+    private static func decoded(from explicitBundle: Bundle?) throws -> Self {
         #if SWIFT_PACKAGE
         let bundle = explicitBundle ?? .module
         #else
@@ -97,7 +128,7 @@ struct NativeDeckMetadataCatalogue {
             ?? bundle.url(forResource: "ondevice-catalogue", withExtension: "json", subdirectory: "Resources") else {
             throw CatalogueError("Missing bundled card metadata.")
         }
-        return try Self(catalogueData: Data(contentsOf: url))
+        return try Self(catalogueData: Data(contentsOf: url, options: .mappedIfSafe))
     }
 
     init(catalogueData: Data) throws {

@@ -1260,7 +1260,6 @@ struct TavernManaGemFace: View {
     var payable = false
     var diameter: CGFloat = 26
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathing = false
 
     private var glowColor: Color {
         switch symbol {
@@ -1275,6 +1274,17 @@ struct TavernManaGemFace: View {
 
     var body: some View {
         let lit = count > 0
+        // Floating mana breathes (thirty steps a second on the shared clock); an empty gem is still.
+        if lit && !reduceMotion {
+            BoardBreath(period: 1.2) { gem(lit: lit, breath: $0) }
+                .frame(width: diameter, height: diameter)
+        } else {
+            gem(lit: lit, breath: 0)
+        }
+    }
+
+    /// `breath` runs 0...1: how far the glow has swelled.
+    private func gem(lit: Bool, breath: Double) -> some View {
         Group {
             if let image = UIImage(named: "tavern-mana-\(symbol)") {
                 Image(uiImage: image).resizable().scaledToFit()
@@ -1284,9 +1294,9 @@ struct TavernManaGemFace: View {
         }
         .frame(width: diameter, height: diameter)
         .saturation(lit ? 1.15 : 0.75)
-        .brightness(lit ? (breathing ? 0.12 : 0.04) : -0.08)
-        .shadow(color: lit || payable ? glowColor.opacity(breathing ? 0.95 : 0.7) : .black.opacity(0.6),
-                radius: lit || payable ? (breathing ? 9 : 6) : 1.5)
+        .brightness(lit ? 0.04 + 0.08 * breath : -0.08)
+        .shadow(color: lit || payable ? glowColor.opacity(0.7 + 0.25 * breath) : .black.opacity(0.6),
+                radius: lit || payable ? 6 + 3 * breath : 1.5)
         .overlay(alignment: .bottomTrailing) {
             if lit {
                 Text("\(count)")
@@ -1298,16 +1308,6 @@ struct TavernManaGemFace: View {
                     .offset(x: diameter * 0.12, y: diameter * 0.12)
             }
         }
-        .onAppear { updateBreathing(lit) }
-        .onChange(of: lit) { _, now in updateBreathing(now) }
-    }
-
-    private func updateBreathing(_ lit: Bool) {
-        guard lit, !reduceMotion else {
-            breathing = false
-            return
-        }
-        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { breathing = true }
     }
 }
 
@@ -2433,9 +2433,9 @@ struct TavernCommanderReadyGlow: View {
             if reduceMotion {
                 ring.opacity(0.9)
             } else {
-                ring.phaseAnimator([0.45, 1.0]) { view, strength in
-                    view.opacity(strength).scaleEffect(0.96 + 0.06 * strength)
-                } animation: { _ in .easeInOut(duration: 0.9) }
+                BoardBreath(period: 0.9, low: 0.45, high: 1) { strength in
+                    ring.opacity(strength).scaleEffect(0.96 + 0.06 * strength)
+                }
             }
             crown
         }

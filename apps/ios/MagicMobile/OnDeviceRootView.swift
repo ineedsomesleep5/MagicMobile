@@ -174,7 +174,8 @@ struct OnDeviceRootView: View {
                                                   applicationSupport: support)
         let resume = GameResumeCoordinator(store: GameResumeStore(directory: directory, protectsFiles: true))
         // Lower the chance that iOS ends the app in the background; everything reloads lazily.
-        resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() }]
+        resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() },
+                                   { NativeArtworkMemory.shared.purge() }, { NativeDeckMetadataCatalogue.purgeShared() }]
         resume.runBackgroundTask = { name, body in ResumeBackgroundTask.run(name, body) }
         resume.backgroundTimeRemaining = { UIApplication.shared.backgroundTimeRemaining }
         return resume
@@ -555,7 +556,7 @@ struct OnDeviceRootView: View {
         .task(id: watchesChallenges) {
             guard watchesChallenges else { return }
             challenges.service = account.challenges
-            await challenges.watch()
+            await challenges.watch(friendOnline: { [account] in account.onlineFriendCount > 0 })
         }
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
@@ -1089,9 +1090,11 @@ struct OnDeviceRootView: View {
         String((setup.relayIdentity.map { "\($0.upstreamCommit)/\($0.catalogueHash)/\($0.adapterVersion)" } ?? "offline").prefix(200))
     }
 
-    /// Challenges check for incoming challenges while the app is open on the menu or a lobby.
+    /// Challenges check for incoming challenges while the app is open on the menu or a lobby, and
+    /// only for a player with friends: nobody else can send one.
     private var watchesChallenges: Bool {
         scenePhase == .active && account.phase == .ready && account.username != nil && !activeGame && !setup.needsLeave
+            && account.friends.contains(where: \.isFriend)
     }
 
     /// The deck for a game against a person, or why there is none. Ranked also needs a deck your tier allows.
@@ -1639,6 +1642,8 @@ private final class OnDeviceSetupModel: ObservableObject {
     private let resume: GameResumeCoordinator
     private let runtime = OnDeviceRuntimeManager()
     private var resolver: OnDeviceDeckResolver?
+    private var isPreparing = false
+    private var prepareFailed = false
     private var multiplayerObservation: AnyCancellable?
     private var resumeObservations: [AnyCancellable] = []
     private var aiClient: EngineClient?
@@ -1690,10 +1695,23 @@ private final class OnDeviceSetupModel: ObservableObject {
         return name
     }
 
+    /// Reads the bundled catalogue and sets up the local identity. The decode (a few tenths of a second)
+    /// runs off the main thread, so the menu appears and animates while it loads; `identity` follows.
     func prepare() {
+        guard identity == nil, !isPreparing else { return }
+        isPreparing = true
+        Task {
+            defer { isPreparing = false }
+            do {
+                let resolver = try await Task.detached(priority: .userInitiated) { try OnDeviceDeckResolver.bundled() }.value
+                try finishPreparing(resolver)
+            } catch { prepareFailed = true; errorMessage = error.localizedDescription; status = "Local setup unavailable" }
+        }
+    }
+
+    private func finishPreparing(_ resolver: OnDeviceDeckResolver) throws {
         guard identity == nil else { return }
         do {
-            let resolver = try OnDeviceDeckResolver.bundled()
             guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                   let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
                   !version.isEmpty, !build.isEmpty else {
@@ -1708,8 +1726,10 @@ private final class OnDeviceSetupModel: ObservableObject {
             // Quiet sign-in with the phone's Game Center account; no sheet unless the player asks.
             multiplayer.authenticate(userInitiated: false)
             self.resolver = resolver; self.identity = identity; self.multiplayer = multiplayer
-            errorMessage = nil; status = "Choose your deck and players."
-        } catch { errorMessage = error.localizedDescription; status = "Local setup unavailable" }
+            // Only a failed earlier attempt's message is cleared: anything else shown meanwhile stays.
+            if prepareFailed { errorMessage = nil; prepareFailed = false }
+            status = "Choose your deck and players."
+        }
     }
 
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,

@@ -228,6 +228,7 @@
 		C8CEF09268A8C2A2A7968A9D /* OnDeviceBackendRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5D01538DEB4023EFFA69C5 /* OnDeviceBackendRegistrationTests.swift */; };
 		CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */; };
 		CB579F1D301D4239AF1B54B2 /* OnDeviceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */; };
+		CC05AAC1B8E791F3E0B1094B /* AmbientMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48D6D674E565E8970C38766 /* AmbientMotion.swift */; };
 		CCA94CD345D5729F3DE896A3 /* music-game-2.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 062EC23FFFBBEA16B6775A9C /* music-game-2.m4a */; };
 		CD1FC2298F4569D9276391CD /* DeckStudioOrganizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8228132EF1ECF344A0504C /* DeckStudioOrganizationView.swift */; };
 		CD4A30EAF319EE316111E072 /* RankedUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A6830D69E6016C5187744A /* RankedUITests.swift */; };
@@ -474,6 +475,7 @@
 		A1A358A76C17F7578931A6E6 /* versus.m4a */ = {isa = PBXFileReference; path = versus.m4a; sourceTree = "<group>"; };
 		A1F9883F502768C836E38344 /* commander-cast.m4a */ = {isa = PBXFileReference; path = "commander-cast.m4a"; sourceTree = "<group>"; };
 		A375B93EAF5ACD850AD2D2B5 /* OnDeviceMessageSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMessageSessionTests.swift; sourceTree = "<group>"; };
+		A48D6D674E565E8970C38766 /* AmbientMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbientMotion.swift; sourceTree = "<group>"; };
 		A4D2F7DAE858AB8A4CF15791 /* NativeAssetDownloadsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAssetDownloadsTests.swift; sourceTree = "<group>"; };
 		A58F68D10D8378ECA84A2BA1 /* RankedParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankedParityTests.swift; sourceTree = "<group>"; };
 		A670B2A64B77087FF0D2D662 /* DeckStudioPlayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlayViews.swift; sourceTree = "<group>"; };
@@ -706,6 +708,7 @@
 		545B5AB13CF2F1913730E238 /* MagicMobile */ = {
 			isa = PBXGroup;
 			children = (
+				A48D6D674E565E8970C38766 /* AmbientMotion.swift */,
 				786781880D40A88BA056AE67 /* ArenaBoardPresentation.swift */,
 				268E12F4889571947D93BF23 /* Assets.xcassets */,
 				039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */,
@@ -1247,6 +1250,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CDF4E6B6232FF4F1C78C3E59 /* AIDeckPool.swift in Sources */,
+				CC05AAC1B8E791F3E0B1094B /* AmbientMotion.swift in Sources */,
 				2B326E8D717AFDB4121B357A /* ArenaBoardPresentation.swift in Sources */,
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
 				287E5F55CA27719D6983FF70 /* BattlefieldRow.swift in Sources */,

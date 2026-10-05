@@ -816,13 +816,14 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     val menuIsFree = !activeGame && !showSetup && !setup.needsLeave && setup.resume.offer == null && !startingRollVisible &&
         !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay)
-    // Friends' challenges arrive while the menu or a lobby is open (never during a game).
+    // Friends' challenges arrive while the menu or a lobby is open (never during a game), and only for a player with
+    // friends: nobody else can send one.
     val watchesChallenges = appForeground && vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY &&
-        vm.account.username != null && !activeGame && !setup.needsLeave
+        vm.account.username != null && !activeGame && !setup.needsLeave && vm.account.friends.any { it.isFriend }
     LaunchedEffect(watchesChallenges) {
         if (!watchesChallenges) return@LaunchedEffect
         challenges.service = vm.account.challenges
-        challenges.watch()
+        challenges.watch { vm.account.onlineFriendCount > 0 }
     }
     // First visit to the menu after this update: the walkthrough opens once by itself.
     LaunchedEffect(menuIsFree) {

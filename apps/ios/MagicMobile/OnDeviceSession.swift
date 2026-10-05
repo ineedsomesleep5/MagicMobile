@@ -96,6 +96,25 @@ enum OnDeviceGuestPollSchedule {
     }
 }
 
+/// How often a local game asks its engine for the match. Every poll returns the whole snapshot, so
+/// polling fast is only worth it while something can change.
+enum OnDeviceLocalPollSchedule {
+    /// The board just changed, or an answer is on its way.
+    static let active: TimeInterval = 0.3
+    /// Nothing changed for a few polls (the AI is thinking).
+    static let idle: TimeInterval = 0.6
+    /// The engine is waiting on this player: nothing can change until they answer, and an answer
+    /// wakes the loop at once. This is only a safety net (a failure notice, a late save notice).
+    static let awaitingPlayer: TimeInterval = 2
+    /// Unchanged polls before the idle spacing, and before the awaiting-player spacing.
+    static let idleAfter = 3, awaitingAfter = 8
+
+    static func interval(idlePolls: Int, awaitingPlayer waiting: Bool) -> TimeInterval {
+        if waiting, idlePolls >= awaitingAfter { return awaitingPlayer }
+        return idlePolls >= idleAfter ? idle : active
+    }
+}
+
 /// A guest retries a poll a few times when its host stops answering, then gives up with the
 /// usual message. Only polls and hello are retried: an answer keeps its exact request ID for
 /// the player's explicit retry, and a host that left ends the table through the roster.
@@ -133,7 +152,8 @@ final class OnDeviceSession: ObservableObject {
     @Published private(set) var checkpoint: EngineCheckpoint?
     /// The game is over for this seat: it ended, or the player lost or left and now spectates.
     @Published private(set) var isOverForSeat = false
-    @Published private var activeRefreshes = 0
+    /// Not published: it changes twice on every poll, and nothing on screen reads it.
+    private var activeRefreshes = 0
     private var allowsSeatScopedAutoYield = false
     private var responding = false
     private var waitingForPolls = false
@@ -235,6 +255,9 @@ final class OnDeviceSession: ObservableObject {
         // it every 300 ms only competes with the engine's search for the CPU.
         let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil
         idlePolls = unchanged ? idlePolls + 1 : 0
+        // A real change redraws whatever reads this session, including values derived from private
+        // state. An unchanged poll publishes nothing (it used to redraw the whole game screen).
+        if !unchanged { objectWillChange.send() }
         var nextLog = messageLog
         if !unchanged { try nextLog.ingest(next) }
         let autoAbility = chosenAbilityAnswer(for: next.prompt)
@@ -269,14 +292,18 @@ final class OnDeviceSession: ObservableObject {
         if let autoAbility, let prompt = next.prompt, abilityAutoAnswer == nil {
             abilityAutoAnswer = Task { [weak self] in await self?.answerChosenAbility(autoAbility, promptID: prompt.id) }
         }
+        let nextStatus: String
         switch next.phase {
-        case "ended": status = "Game complete"
-        case "failed": status = "Game stopped"
-        case "closed": status = "Game closed"
-        case "starting": status = "Starting game"
-        default: status = "Live"
+        case "ended": nextStatus = "Game complete"
+        case "failed": nextStatus = "Game stopped"
+        case "closed": nextStatus = "Game closed"
+        case "starting": nextStatus = "Starting game"
+        default: nextStatus = "Live"
         }
-        errorMessage = next.raw["failure"]?["message"]?.string
+        // Assigned only on a change: a published property announces every assignment, even an equal one.
+        if status != nextStatus { status = nextStatus }
+        let nextError = next.raw["failure"]?["message"]?.string
+        if errorMessage != nextError { errorMessage = nextError }
         if errorMessage != nil { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message) }
         if isAutoPassing {
             if let context = yieldContext {
@@ -625,9 +652,9 @@ final class OnDeviceSession: ObservableObject {
             var firstPoll = true, retryNow = false
             while !Task.isCancelled {
                 do {
-                    let idle = (self?.idlePolls ?? 0) >= 3
-                    let interval: TimeInterval = idle ? 0.6 : 0.3
-                    if firstPoll { try await Task.sleep(for: .seconds(interval)) }
+                    let interval = OnDeviceLocalPollSchedule.interval(idlePolls: self?.idlePolls ?? 0,
+                                                                      awaitingPlayer: self?.awaitsLocalAnswer ?? false)
+                    if firstPoll { try await Task.sleep(for: .seconds(min(interval, OnDeviceLocalPollSchedule.idle))) }
                     else if !retryNow { try await self?.waitForNextPoll(since: lastPoll, interval: interval) }
                     firstPoll = false; retryNow = false
                     guard let self, !Task.isCancelled else { return }
@@ -663,7 +690,16 @@ final class OnDeviceSession: ObservableObject {
     /// polls only on the heartbeat.
     private func waitForNextPoll(since lastPoll: TimeInterval, interval: TimeInterval) async throws {
         guard let table, table.role == .guest else {
-            try await Task.sleep(for: .seconds(interval))
+            // The long wait (the engine is waiting on this player) ends as soon as an answer goes out
+            // or the board changes, so the next poll is prompt again.
+            let action = lastActionAt
+            var remaining = interval
+            while remaining > 0 {
+                let step = min(remaining, OnDeviceLocalPollSchedule.active)
+                try await Task.sleep(for: .seconds(step))
+                remaining -= step
+                if lastActionAt != action || idlePolls < OnDeviceLocalPollSchedule.idleAfter { return }
+            }
             return
         }
         while true {
@@ -682,6 +718,14 @@ final class OnDeviceSession: ObservableObject {
                 try Task.checkCancellation()
             }
         }
+    }
+
+    /// A local game (no table) whose engine is waiting on this player: nothing can change until they
+    /// answer. A hosted table never qualifies, because other people act at any time.
+    private var awaitsLocalAnswer: Bool {
+        guard table == nil, pending == nil, abilityAutoAnswer == nil, !isAutoPassing, !responding,
+              let prompt = poll?.prompt, !prompt.submitted, poll?.phase != "starting" else { return false }
+        return true
     }
 
     /// An answer or concede is on its way: a waiting guest polls promptly until it lands.
