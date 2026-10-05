@@ -114,6 +114,12 @@ final class RankedUITests: XCTestCase {
             XCTAssertTrue(done.waitForExistence(timeout: 8), kind)
             capture("\(kind) settled")
             tapSteady(done)
+            // A swallowed synthesized tap (see tapSteady) leaves Continue up: tap it again, at most twice.
+            for _ in 0..<2 where ceremony.exists && done.exists {
+                if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: ceremony)],
+                                  timeout: 3) == .completed { break }
+                done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
             let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: ceremony)
             XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed, "\(kind) closes on Continue")
             app.terminate()

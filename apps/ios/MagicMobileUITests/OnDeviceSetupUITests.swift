@@ -59,8 +59,10 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Updates"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Installed build"].exists)
         XCTAssertTrue(app.staticTexts["What's new"].exists)
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "not installed automatically")).firstMatch.exists)
+        // What's new grows with each release: scroll until the upstream note shows.
+        let upstreamNote = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "not installed automatically")).firstMatch
+        reveal(upstreamNote)
+        XCTAssertTrue(upstreamNote.exists)
         let notice = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Independent fan project. Not affiliated with Wizards of the Coast.")).firstMatch
         reveal(notice)
         XCTAssertTrue(notice.label.hasSuffix("Magic: The Gathering and card artwork belong to their respective owners."))
