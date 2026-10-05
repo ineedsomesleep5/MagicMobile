@@ -21,6 +21,19 @@ targets:
     platform: iOS
     sources:
       - path: MagicMobile
+        # Shipped compressed by the build step below (BundledCatalogueData reads either form).
+        excludes:
+          - Resources/ondevice-catalogue.json
+    postCompileScripts:
+      - name: Compress the card catalogue into the app
+        inputFiles:
+          - $(SRCROOT)/MagicMobile/Resources/ondevice-catalogue.json
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ondevice-catalogue.json.lzfse
+        script: |
+          set -eu
+          mkdir -p "$(dirname "${SCRIPT_OUTPUT_FILE_0}")"
+          /usr/bin/compression_tool -encode -a lzfse -i "${SCRIPT_INPUT_FILE_0}" -o "${SCRIPT_OUTPUT_FILE_0}"
     dependencies:
       - package: OnDeviceCore
         product: MagicMobileOnDevice

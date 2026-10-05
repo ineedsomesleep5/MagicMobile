@@ -73,11 +73,10 @@ struct OnDeviceDeckResolver {
         #else
         let bundle = explicitBundle ?? .main
         #endif
-        guard let url = bundle.url(forResource: "ondevice-catalogue", withExtension: "json")
-                ?? bundle.url(forResource: "ondevice-catalogue", withExtension: "json", subdirectory: "Resources") else {
+        guard let data = try BundledCatalogueData.load(from: bundle) else {
             throw ResolutionError("Missing ondevice-catalogue.json. Include the generated catalogue in the app's resources and rebuild.")
         }
-        return try OnDeviceDeckResolver(catalogueData: Data(contentsOf: url, options: .mappedIfSafe))
+        return try OnDeviceDeckResolver(catalogueData: data)
     }
 
     init(catalogueData: Data) throws {

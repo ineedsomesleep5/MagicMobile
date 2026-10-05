@@ -38,7 +38,11 @@ android {
         keyPassword = providers.environmentVariable("MM_ANDROID_KEY_PASSWORD").get()
     }
     buildTypes { debug { applicationIdSuffix = providers.gradleProperty("androidDebugSuffix").orNull ?: ".debug" }; release {
-        isMinifyEnabled = false
+        // R8 removes unused library code; the app's own code is kept whole and nothing is renamed
+        // (proguard-rules.pro). Resources are not shrunk: art is looked up by name (tavern_rank_*, tavern_room_*).
+        isMinifyEnabled = true
+        isShrinkResources = false
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         if(releaseStore != null) signingConfig = signingConfigs.getByName("distribution")
     } }
 }

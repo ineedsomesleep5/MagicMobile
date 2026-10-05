@@ -27,7 +27,6 @@
 		12BB366945F510DE3EFB6F71 /* DeckStudioTileLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D79412BAEE1AAFF99487D7 /* DeckStudioTileLayoutTests.swift */; };
 		12E98F92911BC8644751C1B9 /* NativeArtworkCatalogueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A810408B7BAD86EF851937 /* NativeArtworkCatalogueTests.swift */; };
 		13FD766578F52B9FF9A9C717 /* NativeArtworkBackgroundQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C2FD47E72B397DD3AE5C2F /* NativeArtworkBackgroundQueue.swift */; };
-		14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */ = {isa = PBXBuildFile; fileRef = 6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */; };
 		14452F264A2B210B0A7F8B5F /* NativeDeckEDHRECTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A327243294AE676E55AD08 /* NativeDeckEDHRECTests.swift */; };
 		150DED07D491019D3269DA2F /* NativePresentationRefinementUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12E7391A9F7D253D9DC0B6C /* NativePresentationRefinementUITests.swift */; };
 		1698C02BBE1D6C7066A48520 /* counter.caf in Resources */ = {isa = PBXBuildFile; fileRef = 97833FE1555BEBD1F63EA0F1 /* counter.caf */; };
@@ -419,7 +418,6 @@
 		69C8F0A6F568D2C9EBD0A6B4 /* OpeningHandOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpeningHandOverlay.swift; sourceTree = "<group>"; };
 		69D0504549592F49CFC2D7E0 /* DeckStudioTextExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioTextExport.swift; sourceTree = "<group>"; };
 		69D0CC72F335BF135375487C /* RankCeremonyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankCeremonyView.swift; sourceTree = "<group>"; };
-		6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "ondevice-catalogue.json"; sourceTree = "<group>"; };
 		6B654A0CD4BD1CE20C3577DB /* exile.m4a */ = {isa = PBXFileReference; path = exile.m4a; sourceTree = "<group>"; };
 		6B6F72661D390397DCB49F7B /* DeckStudioRoleInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRoleInsightsView.swift; sourceTree = "<group>"; };
 		6C50775E7A416A8AE03DF5DE /* card-draw-3.m4a */ = {isa = PBXFileReference; path = "card-draw-3.m4a"; sourceTree = "<group>"; };
@@ -914,7 +912,6 @@
 			children = (
 				F9C1C8BA1FBA059403F52107 /* ai-decks.json */,
 				0011D51DDEED2576ED425898 /* commander-brackets.json */,
-				6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */,
 				1A7B83AA1C40365E550FA5E3 /* tavern-room.json */,
 				D5489907D7F10C930B3E85E6 /* Audio */,
 			);
@@ -1041,6 +1038,7 @@
 			buildPhases = (
 				E1F4489298BF71CEE58BEACC /* Verify staged native input hashes (device only) */,
 				08275B628476837D8B65D70B /* Sources */,
+				3CA38CCFE04DA6072CCD0720 /* Compress the card catalogue into the app */,
 				69B18D5EF2E089E9AB3F0995 /* Resources */,
 				6F2AB672F876E1D2004AA5B7 /* Frameworks */,
 			);
@@ -1189,7 +1187,6 @@
 				3C59DA47815A5366726D5543 /* music-menu-2.m4a in Resources */,
 				1ABBBA8A8A5236070371E60F /* music-menu-3.m4a in Resources */,
 				D5F1B8E47E4EC2C59757F2E5 /* music-menu-4.m4a in Resources */,
-				14011F2FA8FBAA4DDD745BC8 /* ondevice-catalogue.json in Resources */,
 				40529D097E18E4E7CBC89843 /* page-flip.m4a in Resources */,
 				BBE8185693461F485D667B3A /* player-hit.m4a in Resources */,
 				A4DEB1C6AAAAB7B01D842625 /* response-alert.m4a in Resources */,
@@ -1223,6 +1220,26 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		3CA38CCFE04DA6072CCD0720 /* Compress the card catalogue into the app */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/MagicMobile/Resources/ondevice-catalogue.json",
+			);
+			name = "Compress the card catalogue into the app";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ondevice-catalogue.json.lzfse",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nmkdir -p \"$(dirname \"${SCRIPT_OUTPUT_FILE_0}\")\"\n/usr/bin/compression_tool -encode -a lzfse -i \"${SCRIPT_INPUT_FILE_0}\" -o \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
 		E1F4489298BF71CEE58BEACC /* Verify staged native input hashes (device only) */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

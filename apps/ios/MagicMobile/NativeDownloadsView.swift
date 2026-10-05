@@ -84,7 +84,7 @@ struct NativeDownloadsView: View {
                            quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
     }
     private var catalogueIncluded: Bool {
-        Bundle.main.url(forResource: "ondevice-catalogue", withExtension: "json") != nil
+        BundledCatalogueData.url(in: .main) != nil
     }
 
     var body: some View {

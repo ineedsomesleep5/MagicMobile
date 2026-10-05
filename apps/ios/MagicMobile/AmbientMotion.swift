@@ -32,6 +32,10 @@ struct BoardBreath<Content: View>: View {
 /// Frames only while a brief effect is on screen: thirty a second for `active` seconds at the start
 /// of every `cycle`, then nothing until the next cycle. A glint that shows for under a second every
 /// few seconds no longer redraws thirty times a second in between.
+///
+/// The frame times are a fixed grid counted from `start`. A timeline asks for its entries again and
+/// again from "now"; the answer must begin with the latest grid time at or before that date and go
+/// on with strictly later ones, or the view is told to update immediately, forever.
 struct BurstTimelineSchedule: TimelineSchedule {
     /// The cycles count from here (the same date the view measures its time from).
     let start: Date
@@ -41,28 +45,44 @@ struct BurstTimelineSchedule: TimelineSchedule {
     var paused = false
     var frameInterval: TimeInterval = 1.0 / 30
 
+    /// Frames 0...burstFrames in each cycle; the last one falls after `active` and draws the effect gone.
+    var burstFrames: Int { Int((active / frameInterval).rounded(.up)) }
+
     func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries {
-        Entries(schedule: self, upcoming: startDate, lowFrequency: mode == .lowFrequency)
+        guard !paused, cycle > 0, frameInterval > 0, cycle > active + frameInterval else {
+            return Entries(schedule: self, cycleIndex: 0, frameIndex: 0, lowFrequency: false, finished: false, single: true)
+        }
+        let elapsed = Swift.max(0, startDate.timeIntervalSince(start))
+        let cycleIndex = Int(elapsed / cycle)
+        let offset = elapsed - Double(cycleIndex) * cycle
+        let lowFrequency = mode == .lowFrequency
+        // Always-on displays get one frame a cycle: the effect gone.
+        let frameIndex = lowFrequency ? burstFrames : Swift.min(burstFrames, Int(offset / frameInterval))
+        return Entries(schedule: self, cycleIndex: cycleIndex, frameIndex: frameIndex, lowFrequency: lowFrequency,
+                       finished: false, single: false)
     }
 
     struct Entries: Sequence, IteratorProtocol {
         let schedule: BurstTimelineSchedule
-        var upcoming: Date?
+        var cycleIndex: Int
+        var frameIndex: Int
         let lowFrequency: Bool
+        var finished: Bool
+        /// Paused: the one entry is `start`, so the view draws once and never again.
+        let single: Bool
 
         mutating func next() -> Date? {
-            guard let current = upcoming else { return nil }
-            guard !schedule.paused, schedule.cycle > 0 else { upcoming = nil; return current }
-            let elapsed = Swift.max(0, current.timeIntervalSince(schedule.start))
-            let offset = elapsed.truncatingRemainder(dividingBy: schedule.cycle)
-            // One frame past the active part draws the effect gone; then wait for the next cycle.
-            if !lowFrequency, offset < schedule.active {
-                upcoming = current.addingTimeInterval(schedule.frameInterval)
+            guard !finished else { return nil }
+            if single { finished = true; return schedule.start }
+            let date = schedule.start.addingTimeInterval(Double(cycleIndex) * schedule.cycle
+                                                         + Double(frameIndex) * schedule.frameInterval)
+            if lowFrequency || frameIndex >= schedule.burstFrames {
+                cycleIndex += 1
+                frameIndex = lowFrequency ? schedule.burstFrames : 0
             } else {
-                // Never a zero step: rounding at a cycle's very end must still move forward.
-                upcoming = current.addingTimeInterval(Swift.max(schedule.cycle - offset, schedule.frameInterval))
+                frameIndex += 1
             }
-            return current
+            return date
         }
     }
 }
