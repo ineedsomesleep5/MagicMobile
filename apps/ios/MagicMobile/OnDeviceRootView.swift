@@ -64,6 +64,9 @@ struct OnDeviceRootView: View {
     // Quick Match, Ranked and the profile (Ranked/).
     @ObservedObject private var profileRecord = PlayerRecordStore.shared
     @StateObject private var matchmaker = RankedMatchmaker(service: nil)
+    @StateObject private var challenges = FriendChallengeCoordinator(service: nil)
+    /// The friend a challenge is waiting on, and its mode.
+    @State private var challengeTarget: (name: String, mode: PlayMode)?
     @State private var lobby: LobbyScreen?
     @AppStorage("magicmobile.quick.opponentBracket") private var quickBracket = 0
     @AppStorage("magicmobile.quick.opponentDeck") private var quickDeckID = ""
@@ -94,7 +97,11 @@ struct OnDeviceRootView: View {
         let aiDeckID: String?
         /// A ranked game against a person: the server's match, for both sides' reports.
         var rankedMatchID: UUID?
+        /// A table for one particular person (a friend challenge): readied automatically, never shown to friends.
+        var privateTable = false
         var recorded = false
+
+        var isPersonTable: Bool { rankedMatchID != nil || privateTable }
     }
 
     private struct VersusIntro {
@@ -319,7 +326,7 @@ struct OnDeviceRootView: View {
                 game
             } else {
                 BrandTheme.canvas.ignoresSafeArea()
-                if showSetup || (setup.needsLeave && activeMatch?.rankedMatchID == nil) {
+                if showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true) {
                     setupContent
                 } else if let lobby {
                     lobbyContent(lobby)
@@ -352,10 +359,10 @@ struct OnDeviceRootView: View {
             HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil)
         }
         .sheet(isPresented: $showFriends) {
-            FriendsView(account: account) { code in
+            FriendsView(account: account, join: { code in
                 // After the sheet closes, so the table setup can open.
                 Task { try? await Task.sleep(for: .milliseconds(450)); openJoinLink(code) }
-            }
+            }, myRankStep: profileRecord.rank.position.step, challenge: { friend, mode in challengeFriend(friend.username, mode: mode) })
         }
         .alert("Play offline with card art?", isPresented: $showOfflineArtPrompt) {
             Button("Choose downloads") { OfflineArtLaunch.markSeen(in: MagicMobilePreferences.current); showDownloads = true }
@@ -374,6 +381,24 @@ struct OnDeviceRootView: View {
                     .transition(.opacity)
             }
         }
+        .overlay {
+            if !activeGame, challenges.isWaiting, let target = challengeTarget {
+                ChallengeWaitingOverlay(friend: target.name, mode: target.mode, rank: profileRecord.rank.position,
+                                        cancel: { challenges.cancelOutgoing() })
+                    .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .top) {
+            if menuIsFree, lobby == nil || lobby == .chooser, !challenges.isWaiting, activeMatch == nil,
+               let invite = challenges.incoming.first {
+                ChallengeInviteBanner(challenge: invite, accept: { acceptChallenge(invite) },
+                                      decline: { Task { await challenges.decline(invite) } })
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: challenges.incoming.first?.id)
+        .animation(.easeOut(duration: 0.25), value: challenges.isWaiting)
         .overlay {
             if let ceremony {
                 RankCeremonyOverlay(change: ceremony) { self.ceremony = nil }
@@ -517,8 +542,8 @@ struct OnDeviceRootView: View {
         .onChange(of: account.username) { _, name in if let name { playerDisplayName = name } }
         // Friends see the table this phone hosts while it has open seats.
         .onChange(of: setup.multiplayer?.openHostedTable.map { "\($0.code):\($0.openSeats)" }) { _, _ in
-            // A ranked table is for the matched player only, never shown to friends.
-            account.hosting = activeMatch?.rankedMatchID == nil ? setup.multiplayer?.openHostedTable : nil
+            // A ranked or challenge table is for that one player only, never shown to friends.
+            account.hosting = activeMatch?.isPersonTable != true ? setup.multiplayer?.openHostedTable : nil
         }
         .onChange(of: setup.identity) { _, _ in
             evaluateResumeLaunch()
@@ -526,6 +551,12 @@ struct OnDeviceRootView: View {
         }
         .onOpenURL { url in if let code = TableJoinLink.code(from: url) { openJoinLink(code) } }
         .task(id: menuIsFree) { if menuIsFree { await showHowToPlayIfFirstLaunch() } }
+        // Friends' challenges arrive while the menu or lobby is open (never during a game).
+        .task(id: watchesChallenges) {
+            guard watchesChallenges else { return }
+            challenges.service = account.challenges
+            await challenges.watch()
+        }
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
@@ -573,9 +604,9 @@ struct OnDeviceRootView: View {
         }
         .onChange(of: session.snapshot?.isCompleted) { _, _ in recordFinishedGameIfNeeded() }
         .onChange(of: session.isOverForSeat) { _, _ in recordFinishedGameIfNeeded() }
-        // A ranked table readies both players by itself once the room forms.
+        // A ranked or challenge table readies both players by itself once the room forms.
         .onChange(of: setup.multiplayer?.room != nil) { _, hasRoom in
-            guard hasRoom, activeMatch?.rankedMatchID != nil, setup.multiplayer?.room?.localReady == false,
+            guard hasRoom, activeMatch?.isPersonTable == true, setup.multiplayer?.room?.localReady == false,
                   let deck = selectedDeck else { return }
             setup.readyForMatch(name: playerDisplayName, deck: deck)
         }
@@ -956,7 +987,9 @@ struct OnDeviceRootView: View {
                             mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
                             profile: { lobby = .profile }, back: { lobby = .chooser }) { playDeckSlot }
         case .profile:
-            PlayerProfileView(record: profileRecord, playerName: account.username ?? playerDisplayName, back: { lobby = nil })
+            PlayerProfileView(record: profileRecord, playerName: account.username ?? playerDisplayName,
+                              deckCommanders: library.decks.compactMap { $0.deckList.commander?.cardName } + AIDeckPool.all.map(\.commander),
+                              back: { lobby = nil })
         }
     }
 
@@ -1004,9 +1037,8 @@ struct OnDeviceRootView: View {
         catch { setup.errorMessage = error.localizedDescription; return }
         profileRecord.refreshSeason()
         matchmaker.service = account.rankedQueue
-        let identity = setup.relayIdentity.map { "\($0.upstreamCommit)/\($0.catalogueHash)/\($0.adapterVersion)" } ?? "offline"
         Task {
-            let outcome = await matchmaker.search(protocol: String(identity.prefix(200)), rankStep: profileRecord.rank.position.step,
+            let outcome = await matchmaker.search(protocol: relayProtocol, rankStep: profileRecord.rank.position.step,
                                                   deckBracket: bracket.rawValue)
             switch outcome {
             case .cancelled: break
@@ -1050,6 +1082,114 @@ struct OnDeviceRootView: View {
             bannerError = String(localized: "Your opponent didn't connect. An AI took the seat.")
             startRankedAI(deck: deck, bracket: bracket)
         }
+    }
+
+    /// Phones share a table only with the same engine build (the ranked queue and challenges check it).
+    private var relayProtocol: String {
+        String((setup.relayIdentity.map { "\($0.upstreamCommit)/\($0.catalogueHash)/\($0.adapterVersion)" } ?? "offline").prefix(200))
+    }
+
+    /// Challenges check for incoming challenges while the app is open on the menu or a lobby.
+    private var watchesChallenges: Bool {
+        scenePhase == .active && account.phase == .ready && account.username != nil && !activeGame && !setup.needsLeave
+    }
+
+    /// The deck for a game against a person, or why there is none. Ranked also needs a deck your tier allows.
+    private func personGameDeck(ranked: Bool) -> (deck: DeckList, bracket: CommanderBracket)? {
+        guard let deck = selectedDeck, let bracket = selectedDeckBracket, mayStartSolo else {
+            bannerError = String(localized: "Choose a deck and let the engine finish loading, then try again.")
+            return nil
+        }
+        if ranked, bracket.rawValue > profileRecord.rank.position.tier.maxDeckBracket {
+            bannerError = String(localized: "Your deck's bracket is above what your rank allows in Ranked.")
+            return nil
+        }
+        do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
+        catch { setup.errorMessage = error.localizedDescription; return nil }
+        return (deck, bracket)
+    }
+
+    /// Challenges a friend from the friends list: opens a two-seat table, sends its code and waits for
+    /// the answer. A ranked challenge counts like any ranked game (same tier only).
+    private func challengeFriend(_ friend: String, mode: PlayMode) {
+        profileRecord.refreshSeason()
+        guard let picked = personGameDeck(ranked: mode == .ranked) else { return }
+        let (deck, bracket) = picked
+        challenges.service = account.challenges
+        matchmaker.service = account.rankedQueue
+        Task {
+            // After the friends sheet closes.
+            try? await Task.sleep(for: .milliseconds(450))
+            activeMatch = ActiveMatch(mode: mode, deckID: selectedDeckID, deckName: deck.name, commander: deck.commander?.cardName,
+                                      colors: selectedDeckColors, deckBracket: bracket.rawValue,
+                                      opponents: [.init(name: friend, commander: nil, isAI: false)],
+                                      opponentBracket: nil, aiSkill: nil, aiDeckID: nil, privateTable: true)
+            rankChange = nil
+            challengeTarget = (friend, mode)
+            diagnostics.beginAttempt()
+            await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: 2, aiDecks: [], aiSkill: 2)
+            guard let code = setup.multiplayer?.tableCode else { activeMatch = nil; challengeTarget = nil; return }
+            let answer = await challenges.challenge(friend, mode: mode, protocol: relayProtocol,
+                                                    rankStep: profileRecord.rank.position.step, tableCode: code)
+            challengeTarget = nil
+            switch answer {
+            case .accepted(let accepted):
+                activeMatch?.rankedMatchID = accepted.matchId
+                watchPersonTable(friend)
+            case .declined: await closeChallengeTable(String(localized: "\(friend) declined your challenge."))
+            case .expired: await closeChallengeTable(String(localized: "\(friend) didn't answer your challenge."))
+            case .cancelled: await closeChallengeTable(nil)
+            case .failed(let code): await closeChallengeTable(FriendChallengeRules.message(for: code))
+            }
+        }
+    }
+
+    /// Accepts a friend's challenge and joins their table.
+    private func acceptChallenge(_ challenge: FriendChallenge) {
+        profileRecord.refreshSeason()
+        let step = profileRecord.rank.position.step
+        if challenge.isRanked, !FriendChallengeRules.mayRank(myStep: step, friendStep: challenge.challengerStep) {
+            bannerError = FriendChallengeRules.message(for: "rank_mismatch")
+            Task { await challenges.decline(challenge) }
+            return
+        }
+        guard let picked = personGameDeck(ranked: challenge.isRanked) else { return }
+        let (deck, bracket) = picked
+        matchmaker.service = account.rankedQueue
+        let friend = challenge.challenger ?? String(localized: "Friend")
+        Task {
+            do {
+                let accepted = try await challenges.accept(challenge, protocol: relayProtocol, rankStep: step)
+                guard let code = accepted.tableCode else { throw SupabaseLite.Failure(code: "challenge_closed") }
+                activeMatch = ActiveMatch(mode: challenge.playMode, deckID: selectedDeckID, deckName: deck.name,
+                                          commander: deck.commander?.cardName, colors: selectedDeckColors, deckBracket: bracket.rawValue,
+                                          opponents: [.init(name: friend, commander: nil, isAI: false)],
+                                          opponentBracket: nil, aiSkill: nil, aiDeckID: nil, rankedMatchID: accepted.matchId,
+                                          privateTable: true)
+                rankChange = nil
+                diagnostics.beginAttempt()
+                setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
+                watchPersonTable(friend)
+            } catch {
+                bannerError = FriendChallengeRules.message(for: SupabaseLite.code(of: error))
+            }
+        }
+    }
+
+    /// A challenge table that never starts closes after a while; nothing is recorded.
+    private func watchPersonTable(_ friend: String) {
+        rankedConnectTask?.cancel()
+        rankedConnectTask = Task {
+            try? await Task.sleep(for: .seconds(75))
+            guard !Task.isCancelled, session.matchID == nil, activeMatch?.privateTable == true else { return }
+            await closeChallengeTable(String(localized: "\(friend) didn't connect. Try the challenge again."))
+        }
+    }
+
+    private func closeChallengeTable(_ message: String?) async {
+        _ = await setup.close()
+        activeMatch = nil
+        if let message { bannerError = message }
     }
 
     private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int) {

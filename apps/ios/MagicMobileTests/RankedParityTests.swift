@@ -300,3 +300,91 @@ final class RankedMatchmakerTests: XCTestCase {
         XCTAssertEqual(outcome, .human(matched("guest", code: "ABCDEF")))
     }
 }
+
+@MainActor
+final class FriendChallengeTests: XCTestCase {
+    private final class FakeChallenges: FriendChallengeService {
+        var statuses: [FriendChallenge] = []
+        var sent: FriendChallenge
+        var cancelResult: FriendChallenge
+        var incomingList: [FriendChallenge] = []
+        var declined: [UUID] = []
+        var fail: String?
+        init(sent: FriendChallenge) { self.sent = sent; cancelResult = .closed(sent.id) }
+        func send(to username: String, mode: PlayMode, protocol: String, rankStep: Int, tableCode: String) async throws -> FriendChallenge {
+            if let fail { throw SupabaseLite.Failure(code: fail) }
+            return sent
+        }
+        func incoming() async throws -> [FriendChallenge] { incomingList }
+        func status(_ id: UUID) async throws -> FriendChallenge { statuses.isEmpty ? sent : statuses.removeFirst() }
+        func accept(_ id: UUID, protocol: String, rankStep: Int) async throws -> FriendChallenge { FriendChallengeTests.challenge("accepted", code: "ABCDEF") }
+        func decline(_ id: UUID) async throws { declined.append(id) }
+        func cancel(_ id: UUID) async throws -> FriendChallenge { cancelResult }
+    }
+
+    private nonisolated static let id = UUID()
+    private nonisolated static func challenge(_ status: String, mode: String = "ranked", code: String? = nil, match: UUID? = nil) -> FriendChallenge {
+        FriendChallenge(id: id, mode: mode, status: status, role: "challenger", challenger: "DuelOne", challenged: "DuelTwo",
+                        challengerStep: 9, protocol: "p", tableCode: code, matchId: match)
+    }
+    private func challenge(_ status: String, code: String? = nil, match: UUID? = nil) -> FriendChallenge {
+        Self.challenge(status, code: code, match: match)
+    }
+
+    func testRankedNeedsTheSameTier() {
+        XCTAssertTrue(FriendChallengeRules.mayRank(myStep: 8, friendStep: 11))     // Gold IV with Gold I
+        XCTAssertFalse(FriendChallengeRules.mayRank(myStep: 11, friendStep: 12))   // Gold I with Platinum IV
+        XCTAssertTrue(FriendChallengeRules.mayRank(myStep: 2, friendStep: nil))    // no standing reads as Bronze
+        XCTAssertFalse(FriendChallengeRules.mayRank(myStep: 4, friendStep: nil))
+        XCTAssertTrue(FriendChallengeRules.mayRank(myStep: 20, friendStep: 20))    // Mythic with Mythic
+        XCTAssertFalse(FriendChallengeRules.mayRank(myStep: 19, friendStep: 20))
+    }
+
+    func testAcceptedChallengeHandsBackTheMatch() async {
+        let match = UUID()
+        let fake = FakeChallenges(sent: challenge("pending"))
+        fake.statuses = [challenge("pending"), challenge("accepted", code: "ABCDEF", match: match)]
+        let coordinator = FriendChallengeCoordinator(service: fake, sleep: { _ in })
+        let answer = await coordinator.challenge("DuelTwo", mode: .ranked, protocol: "p", rankStep: 9, tableCode: "ABCDEF")
+        XCTAssertEqual(answer, .accepted(challenge("accepted", code: "ABCDEF", match: match)))
+        XCTAssertFalse(coordinator.isWaiting)
+    }
+
+    func testDeclinedAndFailedChallenges() async {
+        let fake = FakeChallenges(sent: challenge("pending"))
+        fake.statuses = [challenge("declined")]
+        let coordinator = FriendChallengeCoordinator(service: fake, sleep: { _ in })
+        let declined = await coordinator.challenge("DuelTwo", mode: .quick, protocol: "p", rankStep: 9, tableCode: "ABCDEF")
+        XCTAssertEqual(declined, .declined)
+        fake.fail = "rank_mismatch"
+        let failed = await coordinator.challenge("DuelTwo", mode: .ranked, protocol: "p", rankStep: 4, tableCode: "ABCDEF")
+        XCTAssertEqual(failed, .failed("rank_mismatch"))
+        XCTAssertEqual(FriendChallengeRules.message(for: "rank_mismatch"), "Ranked challenges need the same tier.")
+    }
+
+    func testWithdrawingKeepsAnAcceptThatArrivedFirst() async {
+        final class Box { weak var coordinator: FriendChallengeCoordinator? }
+        let fake = FakeChallenges(sent: challenge("pending"))
+        let box = Box()
+        // The first wait withdraws the challenge.
+        let coordinator = FriendChallengeCoordinator(service: fake, sleep: { _ in await MainActor.run { box.coordinator?.cancelOutgoing() } })
+        box.coordinator = coordinator
+        let cancelled = await coordinator.challenge("DuelTwo", mode: .quick, protocol: "p", rankStep: 9, tableCode: "ABCDEF")
+        XCTAssertEqual(cancelled, .cancelled)
+        fake.cancelResult = challenge("accepted", code: "ABCDEF")
+        let accepted = await coordinator.challenge("DuelTwo", mode: .quick, protocol: "p", rankStep: 9, tableCode: "ABCDEF")
+        XCTAssertEqual(accepted, .accepted(challenge("accepted", code: "ABCDEF")))
+    }
+
+    func testIncomingSkipsAnsweredChallenges() async {
+        let fake = FakeChallenges(sent: challenge("pending"))
+        fake.incomingList = [Self.challenge("pending", mode: "quick")]
+        let coordinator = FriendChallengeCoordinator(service: fake, sleep: { _ in })
+        await coordinator.refreshIncoming()
+        XCTAssertEqual(coordinator.incoming.count, 1)
+        await coordinator.decline(coordinator.incoming[0])
+        XCTAssertEqual(fake.declined, [Self.id])
+        await coordinator.refreshIncoming()
+        XCTAssertTrue(coordinator.incoming.isEmpty, "A declined challenge never comes back while the server catches up")
+    }
+}

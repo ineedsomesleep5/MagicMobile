@@ -88,168 +88,285 @@ struct NativeDownloadsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Picker("Download", selection: $scope) {
-                        Text("Full catalogue · recommended").tag("catalogue")
-                        Text("All supported tokens").tag("tokens")
-                        Text("All saved & included decks").tag("decks")
-                        Text("One deck").tag("deck")
-                    }
-                    .disabled(downloads.isRunning)
-                    .accessibilityIdentifier("downloads.scope")
-                    if scope == "deck" {
-                        Picker("Deck", selection: $selectedDeckID) {
-                            ForEach(decks) { Text($0.name).tag($0.id) }
-                        }
-                        .disabled(downloads.isRunning)
-                        .accessibilityIdentifier("downloads.deck")
-                    }
-                    Picker("Image quality", selection: $quality) {
-                        ForEach(NativeArtworkQuality.allCases) { Text($0.label).tag($0) }
-                    }
-                    .disabled(downloads.isRunning)
-                    .accessibilityIdentifier("downloads.quality")
-                    if scope != "tokens" { TavernToggle(title: "Include tokens", isOn: $includeTokens)
-                        .disabled(downloads.isRunning)
-                    }
-                } header: { Text("Artwork") } footer: {
-                    Text(scope == "tokens" ? "Token-only downloads contain no ordinary card images." : "Full catalogue includes opponents’ cards too.")
-                }
-
-                Section("On this device") {
-                    if loadingCatalogue && scope == "catalogue" { ProgressView("Reading the installed catalogue…") }
-                    if let catalogueError, scope == "catalogue" { Text(catalogueError).foregroundStyle(.red) }
-                    if scope != "tokens" {
-                        LabeledContent("Cards", value: scanPending || (scope == "catalogue" && loadingCatalogue)
-                                       ? "Checking needed" : "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
-                            .accessibilityIdentifier("downloads.cards")
-                    }
-                    LabeledContent("Tokens", value: scanPending || downloads.tokenDiscoveryRemaining > 0
-                                   ? "Checking needed" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
-                    if downloads.isScanning { ProgressView("Checking local files…") }
-                    LabeledContent("Stored", value: ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
-                    LabeledContent("Missing artwork", value: missingSummary)
-                    LabeledContent("Estimated additional download", value: estimatedAdditionalSize)
-                    Text("Approximate at \(quality.label.lowercased()) quality. Actual download and device storage vary with image sizes, metadata and images already stored.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Check for missing artwork") {
-                        Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
-                    }
-                    .disabled(downloads.isRunning || downloads.isScanning)
-                    .accessibilityIdentifier("downloads.check")
-                }
-
-                Section {
-                    TavernToggle(title: "Download card artwork", isOn: $remoteArtwork, identifier: "nativeArtwork.downloads")
-                    Text("Uses Scryfall. Online requests share your IP and card names, including your hand.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if downloads.isRunning {
-                        if preparingDownload {
-                            ProgressView("Preparing image list…")
-                        } else {
-                            ProgressView(value: Double(downloads.completed), total: Double(max(1, downloads.total)))
-                        }
-                        Text(downloads.status).font(.callout)
-                            .accessibilityIdentifier("downloads.status")
-                        Button("Cancel download", role: .cancel) { downloads.cancel() }
-                            .accessibilityIdentifier("downloads.cancel")
-                    } else {
-                        if downloads.total > 0 && !downloads.status.isEmpty {
-                            Text(downloads.status).font(.callout)
-                                .accessibilityIdentifier("downloads.status")
-                        }
-                        Button("Download missing artwork") {
-                            if scope == "catalogue" || scope == "tokens" { confirmFullDownload = true }
-                            else { startDownload() }
-                        }
-                        .disabled(!remoteArtwork || (names.isEmpty && scope != "tokens") || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
-                        .accessibilityIdentifier("downloads.start")
-                    }
-                } header: { Text("Download") } footer: {
-                    Text("You can play or leave the app while images download. Wi-Fi is recommended.")
-                }
-
-                Section {
-                    DisclosureGroup("More info") {
-                        Label(engineReady ? "Local engine ready" : "Local engine not ready", systemImage: engineReady ? "checkmark.circle" : "exclamationmark.circle")
-                        Label(catalogueIncluded ? "Card catalogue included" : "Card catalogue unavailable", systemImage: catalogueIncluded ? "checkmark.circle" : "exclamationmark.circle")
-                        Label("Mana symbols included", systemImage: "checkmark.circle")
-                        Text("These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.")
-                        Text("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
-                        Text("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates use currently discovered missing images; more faces or tokens may be found while preparing. Actual download and storage vary. Check for missing artwork after app updates.")
-                        Text("Full and token-only downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
-                        Text("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
-                        Text("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")
-                    }
-                    .font(.callout)
-                    .accessibilityIdentifier("downloads.info")
-                }
-
-                if !downloads.failures.isEmpty {
-                    Section("Needs attention") {
-                        ForEach(Array(downloads.failures.prefix(20).enumerated()), id: \.offset) { _, failure in
-                            Text(failure).font(.callout)
-                        }
-                        if downloads.failures.count > 20 {
-                            Text("And \(downloads.failures.count - 20) more issues. Check missing artwork below.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Text("Use Download missing artwork to retry. Already stored artwork is preserved.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if !downloads.missingTokenNames.isEmpty {
-                    Section {
-                        DisclosureGroup("Missing tokens · \(downloads.missingTokenNames.count.formatted())") {
-                            ForEach(Array(downloads.missingTokenNames.prefix(20).enumerated()), id: \.offset) { _, name in Text(name) }
-                        }
-                    }
-                }
-                if !downloads.missingNames.isEmpty {
-                    Section {
-                        DisclosureGroup("Missing cards · \(downloads.missingNames.count.formatted())") {
-                            ForEach(downloads.missingNames.prefix(20), id: \.self) { Text($0) }
-                            if downloads.missingNames.count > 20 {
-                                Text("And \(downloads.missingNames.count - 20) more")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
+        // The tavern's own page (Caleb, 2026-10-04): leather title bar with the wax-seal close,
+        // leather cards in brass, parchment pickers and plaque buttons; no system form chrome.
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                TavernPanelTitle(text: String(localized: "Downloads"))
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("downloads.title")
+                Spacer(minLength: 8)
+                Button { dismiss() } label: { TavernSealLabel() }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Done"))
+                    .accessibilityIdentifier("downloads.close")
             }
-            .scrollContentBackground(.hidden)
-            .background(CommanderPresentation.canvas)
-            .tavernList()
-            .navigationTitle("Downloads")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .task {
-                do {
-                    catalogueNames = try await Task.detached(priority: .utility) {
-                        try NativeDeckMetadataCatalogue.bundled().artworkCardNames
-                    }.value
-                } catch { catalogueError = "The installed card catalogue could not be read. Deck downloads are still available." }
-                loadingCatalogue = false
+            .modifier(TavernTitleBar())
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    artworkCard
+                    deviceCard
+                    downloadCard
+                    if !downloads.failures.isEmpty { failuresCard }
+                    if !downloads.missingTokenNames.isEmpty || !downloads.missingNames.isEmpty { missingCard }
+                    infoCard
+                }
+                .padding(16)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
             }
-            .task(id: scanSelection) {
-                // Checking reads one directory listing, so it also runs during a download.
-                let selection = scanSelection
-                await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
-                if selection == scanSelection && !downloads.isScanning && downloads.scanSucceeded { scannedSelection = selection }
-            }
-            .alert("Download missing artwork?", isPresented: $confirmFullDownload) {
-                Button("Download missing images · \(quality.label)") { startDownload() }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("\(missingSummary) \(discoveryIncomplete ? "The additional download estimate needs checking." : "Estimated additional download: \(estimatedAdditionalSize).") This is approximate; actual download and device storage vary. Images continue downloading while you play or leave the app. Wi-Fi is recommended.")
-            }
-            .onChange(of: remoteArtwork) { _, enabled in if !enabled { downloads.cancel() } }
-            .onChange(of: selectedDeckID) { _, deck in
-                MagicMobilePreferences.current.set(deck, forKey: "magicmobile.artworkDownloadDeck")
-            }
+            .scrollIndicators(.hidden)
+        }
+        .background(TavernSheetBackground().ignoresSafeArea())
+        .environment(\.tavernBoard, true)
+        .tavernConfirmation(active: true, title: String(localized: "Download missing artwork?"),
+                            message: "\(missingSummary) \(discoveryIncomplete ? "The additional download estimate needs checking." : "Estimated additional download: \(estimatedAdditionalSize).") This is approximate; actual download and device storage vary. Images continue downloading while you play or leave the app. Wi-Fi is recommended.",
+                            isPresented: $confirmFullDownload,
+                            actions: [TavernDialogAction(title: "Download missing images · \(quality.label)") { startDownload() }])
+        .task {
+            do {
+                catalogueNames = try await Task.detached(priority: .utility) {
+                    try NativeDeckMetadataCatalogue.bundled().artworkCardNames
+                }.value
+            } catch { catalogueError = "The installed card catalogue could not be read. Deck downloads are still available." }
+            loadingCatalogue = false
+        }
+        .task(id: scanSelection) {
+            // Checking reads one directory listing, so it also runs during a download.
+            let selection = scanSelection
+            await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
+            if selection == scanSelection && !downloads.isScanning && downloads.scanSucceeded { scannedSelection = selection }
+        }
+        .onChange(of: remoteArtwork) { _, enabled in if !enabled { downloads.cancel() } }
+        .onChange(of: selectedDeckID) { _, deck in
+            MagicMobilePreferences.current.set(deck, forKey: "magicmobile.artworkDownloadDeck")
         }
         .preferredColorScheme(.dark)
+    }
+
+    // MARK: Cards
+
+    private var artworkCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Artwork")
+            TavernPicker(title: "Download", selection: $scope, sections: [.init(options: [
+                ("Full catalogue · recommended", "catalogue"), ("All supported tokens", "tokens"),
+                ("All saved & included decks", "decks"), ("One deck", "deck")])], identifier: "downloads.scope")
+                .disabled(downloads.isRunning)
+            if scope == "deck" {
+                TavernPicker(title: "Deck", selection: $selectedDeckID, sections: [.init(options: decks.map { ($0.name, $0.id) })],
+                             identifier: "downloads.deck")
+                    .disabled(downloads.isRunning)
+            }
+            TavernPicker(title: "Image quality", selection: $quality,
+                         sections: [.init(options: NativeArtworkQuality.allCases.map { ($0.label, $0) })], identifier: "downloads.quality")
+                .disabled(downloads.isRunning)
+            if scope != "tokens" {
+                TavernToggle(title: "Include tokens", isOn: $includeTokens).disabled(downloads.isRunning)
+            }
+            note(scope == "tokens" ? "Token-only downloads contain no ordinary card images." : "Full catalogue includes opponents’ cards too.")
+        }
+        .modifier(TavernLeatherCard())
+    }
+
+    private var deviceCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("On this device")
+            if loadingCatalogue && scope == "catalogue" { working("Reading the installed catalogue…") }
+            if let catalogueError, scope == "catalogue" {
+                Text(catalogueError).font(.system(size: 14, design: .serif)).foregroundStyle(Color(red: 1, green: 0.55, blue: 0.45))
+            }
+            if scope != "tokens" {
+                row("Cards", scanPending || (scope == "catalogue" && loadingCatalogue)
+                    ? "Checking needed" : "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
+                    .accessibilityIdentifier("downloads.cards")
+            }
+            row("Tokens", scanPending || downloads.tokenDiscoveryRemaining > 0
+                ? "Checking needed" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
+            if downloads.isScanning { working("Checking local files…") }
+            row("Stored", ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
+            row("Missing artwork", missingSummary)
+            row("Estimated additional download", estimatedAdditionalSize)
+            note("Approximate at \(quality.label.lowercased()) quality. Actual download and device storage vary with image sizes, metadata and images already stored.")
+            Button("Check for missing artwork") {
+                Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
+            }
+            .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
+            .disabled(downloads.isRunning || downloads.isScanning)
+            .accessibilityIdentifier("downloads.check")
+        }
+        .modifier(TavernLeatherCard())
+    }
+
+    private var downloadCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Download")
+            TavernToggle(title: "Download card artwork", isOn: $remoteArtwork, identifier: "nativeArtwork.downloads",
+                         subtitle: "Uses Scryfall. Online requests share your IP and card names, including your hand.")
+            if downloads.isRunning {
+                if preparingDownload {
+                    working("Preparing image list…")
+                } else {
+                    BrassProgressBar(fraction: Double(downloads.completed) / Double(max(1, downloads.total)))
+                }
+                Text(downloads.status).font(.system(size: 14, design: .serif))
+                    .accessibilityIdentifier("downloads.status")
+                Button("Cancel download") { downloads.cancel() }
+                    .buttonStyle(TavernButtonStyle(kind: .danger, fullWidth: true))
+                    .accessibilityIdentifier("downloads.cancel")
+            } else {
+                if downloads.total > 0 && !downloads.status.isEmpty {
+                    Text(downloads.status).font(.system(size: 14, design: .serif))
+                        .accessibilityIdentifier("downloads.status")
+                }
+                Button("Download missing artwork") {
+                    if scope == "catalogue" || scope == "tokens" { confirmFullDownload = true }
+                    else { startDownload() }
+                }
+                .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
+                .disabled(!remoteArtwork || (names.isEmpty && scope != "tokens") || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
+                .accessibilityIdentifier("downloads.start")
+            }
+            note("You can play or leave the app while images download. Wi-Fi is recommended.")
+        }
+        .modifier(TavernLeatherCard())
+    }
+
+    private var failuresCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("Needs attention")
+            ForEach(Array(downloads.failures.prefix(20).enumerated()), id: \.offset) { _, failure in
+                Text(failure).font(.system(size: 14, design: .serif))
+            }
+            if downloads.failures.count > 20 { note("And \(downloads.failures.count - 20) more issues. Check missing artwork below.") }
+            note("Use Download missing artwork to retry. Already stored artwork is preserved.")
+        }
+        .modifier(TavernParchmentCard())
+    }
+
+    private var missingCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !downloads.missingTokenNames.isEmpty {
+                TavernDisclosure(title: "Missing tokens · \(downloads.missingTokenNames.count.formatted())") {
+                    ForEach(Array(downloads.missingTokenNames.prefix(20).enumerated()), id: \.offset) { _, name in
+                        Text(name).font(.system(size: 13, design: .serif))
+                    }
+                }
+            }
+            if !downloads.missingNames.isEmpty {
+                TavernDisclosure(title: "Missing cards · \(downloads.missingNames.count.formatted())") {
+                    ForEach(downloads.missingNames.prefix(20), id: \.self) { Text($0).font(.system(size: 13, design: .serif)) }
+                    if downloads.missingNames.count > 20 { note("And \(downloads.missingNames.count - 20) more") }
+                }
+            }
+        }
+        .modifier(TavernLeatherCard())
+    }
+
+    private var infoCard: some View {
+        TavernDisclosure(title: "More info") {
+            status(engineReady ? "Local engine ready" : "Local engine not ready", ok: engineReady)
+            status(catalogueIncluded ? "Card catalogue included" : "Card catalogue unavailable", ok: catalogueIncluded)
+            status("Mana symbols included", ok: true)
+            note("These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.")
+            note("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
+            note("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates use currently discovered missing images; more faces or tokens may be found while preparing. Actual download and storage vary. Check for missing artwork after app updates.")
+            note("Full and token-only downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
+            note("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
+            note("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")
+        }
+        .modifier(TavernLeatherCard())
+        .accessibilityIdentifier("downloads.info")
+    }
+
+    // MARK: Pieces
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text.uppercased()).font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.4)
+            .foregroundStyle(BrandTheme.brassGradient)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func row(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title).font(.system(size: 15, weight: .semibold, design: .serif))
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 14, design: .serif)).monospacedDigit().multilineTextAlignment(.trailing).opacity(0.85)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text).font(.system(size: 12, design: .serif)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func working(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            ProgressView().tint(TavernPalette.brass)
+            Text(text).font(.system(size: 14, design: .serif))
+        }
+    }
+
+    private func status(_ text: String, ok: Bool) -> some View {
+        Label {
+            Text(text).font(.system(size: 14, design: .serif))
+        } icon: {
+            Image(systemName: ok ? "checkmark.seal.fill" : "exclamationmark.circle")
+                .foregroundStyle(ok ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(Color(red: 1, green: 0.55, blue: 0.45)))
+        }
+    }
+}
+
+/// A brass-rimmed groove filling with ember: a download's progress in the tavern.
+struct BrassProgressBar: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.black.opacity(0.5))
+                Capsule()
+                    .fill(LinearGradient(colors: [Color(red: 1, green: 0.62, blue: 0.32), TavernPalette.ember], startPoint: .top, endPoint: .bottom))
+                    .frame(width: max(10, proxy.size.width * min(1, max(0, fraction))))
+                    .animation(.easeOut(duration: 0.3), value: fraction)
+            }
+            .overlay(Capsule().strokeBorder(BrandTheme.brassGradient, lineWidth: 1.5))
+        }
+        .frame(height: 12)
+        .accessibilityElement()
+        .accessibilityLabel(String(localized: "Download progress"))
+        .accessibilityValue("\(Int((min(1, max(0, fraction)) * 100).rounded()))%")
+    }
+}
+
+/// A section that opens and closes under a brass chevron, in place of the system disclosure group.
+struct TavernDisclosure<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack {
+                    Text(title).font(.system(size: 15, weight: .heavy, design: .serif))
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(BrandTheme.brassGradient)
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(expanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
+            if expanded {
+                VStack(alignment: .leading, spacing: 8) { content }
+                    .transition(.opacity)
+            }
+        }
     }
 }

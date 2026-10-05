@@ -5,6 +5,8 @@ import SwiftUI
 struct PlayerProfileView: View {
     @ObservedObject var record: PlayerRecordStore
     let playerName: String
+    /// Commanders of the player's own decks (saved, then included), offered as the profile picture.
+    var deckCommanders: [String] = []
     let back: () -> Void
     @State private var showAllMatches = false
 
@@ -28,11 +30,9 @@ struct PlayerProfileView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
-            TavernMedallion(diameter: 78, life: nil) {
-                CommanderDeckPortrait(name: record.shownCommander, namespace: nil)
-                    .scaledToFill()
-            }
-            .frame(width: 106, height: 106)
+            CommanderArtMedallion(name: record.shownCommander, diameter: 78)
+                .frame(width: 106, height: 106)
+                .accessibilityIdentifier("profile.picture")
             VStack(alignment: .leading, spacing: 6) {
                 Text(playerName.isEmpty ? String(localized: "Player") : playerName)
                     .font(.system(size: 24, weight: .black, design: .serif))
@@ -42,14 +42,28 @@ struct PlayerProfileView: View {
                     .init(options: [(String(localized: "No title"), nil)]
                           + Achievement.allCases.filter(unlocked.contains).map { ($0.title, Optional($0)) })
                 ], identifier: "profile.title")
-                TavernPicker(title: String(localized: "Favorite commander"), selection: $record.favoriteCommander, sections: [
-                    .init(options: [(String(localized: "Most played"), nil)]
-                          + stats.commanders.prefix(12).map { ($0.label, Optional($0.label)) })
-                ], identifier: "profile.commander")
+                TavernPicker(title: String(localized: "Profile picture"), selection: $record.favoriteCommander,
+                             sections: commanderSections, identifier: "profile.commander")
             }
             Spacer(minLength: 0)
         }
         .modifier(TavernLeatherCard())
+    }
+
+    /// The profile picture choices: most played (the default), commanders played, then the player's decks.
+    private var commanderSections: [TavernPicker<String?>.Section] {
+        let played = stats.commanders.prefix(12).map(\.label)
+        var seen = Set(played)
+        let decks = deckCommanders.filter { !$0.isEmpty && seen.insert($0).inserted }
+        var sections: [TavernPicker<String?>.Section] = [
+            .init(options: [(String(localized: "Most played"), nil)] + played.map { ($0, Optional($0)) })
+        ]
+        if !decks.isEmpty { sections.append(.init(title: String(localized: "Your decks"), options: decks.map { ($0, Optional($0)) })) }
+        // A choice from a deck since deleted stays selectable.
+        if let current = record.favoriteCommander, !seen.contains(current) {
+            sections.append(.init(options: [(current, Optional(current))]))
+        }
+        return sections
     }
 
     // MARK: Season
@@ -301,7 +315,7 @@ struct PlayerCardView: View {
                         .font(.system(size: 15, design: .serif))
                     if let peak = card.peakStep { Text(String(localized: "Peak \(RankPosition.atStep(peak).title)")).font(.system(size: 13, design: .serif)).opacity(0.8) }
                     if let commander = card.favoriteCommander {
-                        CommanderDeckPortrait(name: commander, namespace: nil).frame(width: 90, height: 125)
+                        CommanderArtMedallion(name: commander, diameter: 72).frame(width: 98, height: 98)
                         Text(commander).font(.system(size: 13, design: .serif)).italic().opacity(0.8)
                     }
                 } else {
@@ -318,5 +332,32 @@ struct PlayerCardView: View {
         .background(TavernSheetBackground())
         .environment(\.tavernBoard, true)
         .preferredColorScheme(.dark)
+    }
+}
+
+/// A profile picture: the commander's illustration alone (no card frame) in the table's brass ring.
+struct CommanderArtMedallion: View {
+    let name: String?
+    var diameter: CGFloat = 78
+
+    var body: some View {
+        TavernMedallion(diameter: diameter, life: nil) {
+            ZStack {
+                LinearGradient(colors: [MagicPalette.iron, MagicPalette.leather], startPoint: .top, endPoint: .bottom)
+                if let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    NativeCardArtworkView(name: name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in placeholder }
+                } else {
+                    placeholder
+                }
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(name.map { String(localized: "Profile picture: \($0)") } ?? String(localized: "Profile picture"))
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: diameter * 0.42, weight: .bold))
+            .foregroundStyle(TavernPalette.parchment.opacity(0.55))
     }
 }

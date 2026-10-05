@@ -49,7 +49,8 @@ import java.time.Instant
 
 /** FriendsView.swift: your profile name, friends with who's online, requests, and joining a friend's table in one tap. */
 @Composable
-fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Unit) {
+fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int? = null,
+                 challenge: ((PlayerFriend, io.magicmobile.android.game.PlayMode) -> Unit)? = null, done: () -> Unit) {
     val scope = rememberCoroutineScope()
     var nameDraft by remember { mutableStateOf("") }
     var editingName by remember { mutableStateOf(false) }
@@ -57,6 +58,7 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Uni
     var confirmDelete by remember { mutableStateOf(false) }
     var actionsFor by remember { mutableStateOf<PlayerFriend?>(null) }
     var confirmBlock by remember { mutableStateOf<PlayerFriend?>(null) }
+    var challengeFor by remember { mutableStateOf<PlayerFriend?>(null) }
     // A friend's ranked card: whose, and the card once it loads.
     var cardFor by remember { mutableStateOf<String?>(null) }
     var card by remember { mutableStateOf<PlayerProfileCard?>(null) }
@@ -147,6 +149,11 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Uni
                                         .semantics { contentDescription = "Join ${friend.username}" }, contentAlignment = Alignment.Center) {
                                         Text("Join", color = Color.White, style = sf(15f, SfWeight.semibold))
                                     }
+                                } ?: run {
+                                    if (challenge != null && friend.online) Box(Modifier.size(44.dp).clickable { challengeFor = friend }
+                                        .semantics { contentDescription = "Challenge ${friend.username}" }, contentAlignment = Alignment.Center) {
+                                        SfImage("figure.fencing", BrandTheme.ember, 20.dp)
+                                    }
                                 }
                             }
                         }
@@ -183,6 +190,15 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, done: () -> Uni
     cardFor?.let { name ->
         io.magicmobile.android.board.BoardSheet({ cardFor = null }, background = io.magicmobile.android.ui.TavernPalette.leather) {
             io.magicmobile.android.ranked.PlayerCardSheet(name, card, cardLoading) { cardFor = null }
+        }
+    }
+    // Quick Match for any online friend; Ranked only in the same tier (Gold with Gold).
+    challengeFor?.let { friend ->
+        val mayRank = myRankStep?.let { io.magicmobile.android.game.FriendChallengeRules.mayRank(it, account.friendRanks[friend.username]?.step) } ?: false
+        ConfirmationDialog("Challenge ${friend.username}", if (mayRank) "Ranked counts for both of you." else "Ranked challenges need the same tier.",
+            listOfNotNull(ConfirmationAction("Quick Match") { challenge?.invoke(friend, io.magicmobile.android.game.PlayMode.QUICK); done() },
+                if (mayRank) ConfirmationAction("Ranked") { challenge?.invoke(friend, io.magicmobile.android.game.PlayMode.RANKED); done() } else null)) {
+            challengeFor = null
         }
     }
     actionsFor?.let { friend ->

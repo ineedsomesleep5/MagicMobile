@@ -183,6 +183,9 @@ final class PlayerAccount: ObservableObject {
     /// The ranked queue, once the player has a profile name.
     var rankedQueue: RankedQueueService? { phase == .ready && username != nil ? SupabaseRankedQueue(api: api) : nil }
 
+    /// Friend challenges, once the player has a profile name.
+    var challenges: FriendChallengeService? { phase == .ready && username != nil ? SupabaseFriendChallenges(api: api) : nil }
+
     /// Shares this season's standing with friends. Quiet on failure: ranks still count on the phone.
     func publishRank(_ rank: RankState, stats: PlayerStats, title: Achievement?, commander: String?) async {
         guard phase == .ready, username != nil else { return }
