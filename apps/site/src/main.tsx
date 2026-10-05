@@ -224,7 +224,8 @@ function App() {
                 <span>Climb</span>
                 <p>
                   Ranked 1v1 from Bronze to Mythic in monthly seasons, Quick
-                  Match at your deck’s bracket, and a profile with your stats.
+                  Match at your deck’s bracket, challenges with friends, and a
+                  profile with your stats.
                 </p>
               </div>
             </div>
@@ -381,13 +382,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 15 adds Ranked: climb from Bronze to Mythic in
-                monthly seasons against players near your rank or an AI at your
-                tier. Quick Match puts one AI at your deck’s bracket, every deck
-                shows its Commander bracket, and your profile keeps your stats,
-                achievements and match history. It keeps the Walnut Tavern table,
-                spell moments and How to Play tutorials. Android is an early
-                alpha; physical-phone acceptance is still pending.
+                Android build 16 lets you challenge a friend to a Quick Match, or
+                to Ranked when you’re in the same tier, and friend ranked games
+                count. The menu sits in a 3D tavern room that shifts as you tilt
+                your phone, your profile picture is your favorite commander’s
+                art, and the menu and Downloads match the tavern. It keeps
+                Ranked, Quick Match and the Walnut Tavern table. Android is an
+                early alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -396,14 +397,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 28 adds Ranked: climb from Bronze to Mythic in monthly
-                seasons, against players near your rank or an AI at your tier,
-                with 3D rank badges that spin in when you rank up. Quick Match
-                puts one AI at your deck’s bracket (or the bracket, deck and
-                skill you choose), every deck shows its Commander bracket, and
-                your profile keeps your stats, achievements and match history.
-                It runs on iPhone and iPad. Apple has approved this build for
-                Internal and External TestFlight.
+                Build 29 lets you challenge a friend from your friends list to a
+                Quick Match, or to Ranked when you’re in the same tier, and
+                friend ranked games count. The main menu sits in a real 3D
+                tavern room that shifts as you tilt your phone, with flickering
+                candles; your profile picture is your favorite commander’s art;
+                rank badges turn more smoothly; and the menu and Downloads fit
+                the tavern. It runs on iPhone and iPad. Apple has approved this
+                build for Internal and External TestFlight.
               </p>
             </details>
             <details>
