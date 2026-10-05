@@ -50,7 +50,8 @@ struct BoardFXOverlay: View {
             if effects.isEmpty {
                 Color.clear.accessibilityHidden(true)
             } else {
-                TimelineView(.animation) { timeline in
+                // 60 fps is smooth for card flights; ProMotion's 120 doubled the work of every flying card for no visible gain.
+                TimelineView(.animation(minimumInterval: 1 / 60)) { timeline in
                     let now = timeline.date
                     let _ = clock.observe(effects, at: now)
                     ZStack {

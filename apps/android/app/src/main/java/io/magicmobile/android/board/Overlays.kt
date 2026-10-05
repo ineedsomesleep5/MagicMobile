@@ -197,8 +197,9 @@ private fun TavernTurnBand(modifier: Modifier) {
  */
 @Composable
 fun GameResultBackdrop(victory: Boolean) {
-    val t = rememberAnimationSeconds(BoardMotion.reduceMotion).toDouble()
+    val clock = io.magicmobile.android.ui.rememberAnimationClock(BoardMotion.reduceMotion)
     Canvas(Modifier.fillMaxSize()) {
+        val t = clock.value.toDouble()  // read in drawing: each frame redraws without recomposing
         val reach = max(1f, hypot(size.width, size.height) * 0.6f)
         val center = Offset(size.width / 2, size.height * 0.42f)
         drawRect(Brush.radialGradient(if (victory) listOf(rgb(0.62, 0.46, 0.12).copy(alpha = 0.62f), rgb(0.40, 0.28, 0.07).copy(alpha = 0.46f))

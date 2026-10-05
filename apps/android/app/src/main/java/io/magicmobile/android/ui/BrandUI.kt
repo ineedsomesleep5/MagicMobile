@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -86,12 +87,19 @@ val LocalBrandAmbientMotion = compositionLocalOf { true }
 
 /** Seconds since this composable appeared, advancing every frame unless `paused`. */
 @Composable
-fun rememberAnimationSeconds(paused: Boolean = false): Float {
-    var seconds by remember { mutableFloatStateOf(0f) }
+fun rememberAnimationSeconds(paused: Boolean = false): Float = rememberAnimationClock(paused).value
+
+/**
+ * The same clock as a State: read `.value` inside a draw lambda so each frame only redraws, instead of recomposing the
+ * whole caller (the menu backdrop did, sixty times a second).
+ */
+@Composable
+fun rememberAnimationClock(paused: Boolean = false): State<Float> {
+    val seconds = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(paused) {
         if (paused) return@LaunchedEffect
-        val start = withFrameMillis { it } - (seconds * 1000).toLong()
-        while (true) withFrameMillis { seconds = (it - start) / 1000f }
+        val start = withFrameMillis { it } - (seconds.floatValue * 1000).toLong()
+        while (true) withFrameMillis { seconds.floatValue = (it - start) / 1000f }
     }
     return seconds
 }
@@ -102,10 +110,10 @@ private fun frac(x: Double) = x - floor(x)
 @Composable
 fun BrandMark(size: Dp = 72.dp, glint: Boolean = true, tile: Boolean = false, modifier: Modifier = Modifier) {
     val still = BoardMotionFlags.reduceMotion || !glint || !LocalBrandAmbientMotion.current
-    val t = rememberAnimationSeconds(still)
+    val clock = rememberAnimationClock(still)
     Canvas(modifier.requiredSize(size).semantics { }) {
         // A glint every 4.5 s: a quick swell, then settle.
-        val phase = if (still) 0.0 else t.toDouble() % 4.5
+        val phase = if (still) 0.0 else clock.value.toDouble() % 4.5
         val flash = if (!still && phase < 0.6) sin(PI * phase / 0.6) else 0.0
         val full = Rect(Offset.Zero, this.size)
         if (tile) drawRoundRect(BrandTheme.markTile, cornerRadius = CornerRadius(this.size.width * 0.22f))
@@ -144,15 +152,23 @@ fun BrandSparkle(size: Dp = 10.dp, color: Color = BrandTheme.ember) {
 @Composable
 fun BrandBackdrop(modifier: Modifier = Modifier, @Suppress("UNUSED_PARAMETER") cards: Boolean = true) {
     val still = BoardMotionFlags.reduceMotion || !LocalBrandAmbientMotion.current
-    val t = rememberAnimationSeconds(still).toDouble()
+    val clock = rememberAnimationClock(still)
     val resources = androidx.compose.ui.platform.LocalContext.current.resources
-    // Walnut & Ember: a dim tavern wall with candles at the edges replaces the card fan; the sparks stay.
-    val wall = remember { TavernImages.decode(resources, io.magicmobile.android.R.drawable.menu_backdrop_tavern) }
+    // Walnut & Ember: the rendered 3D tavern room (2026-10-04), else the flat tavern wall; the sparks stay.
+    val portrait = androidx.compose.ui.platform.LocalConfiguration.current.let { it.screenHeightDp >= it.screenWidthDp }
+    val room by rememberTavernRoom(portrait)
+    val tilt = rememberDeviceTilt(!still && room != null)
+    val wall = remember(room == null) { if (room == null) TavernImages.decode(resources, io.magicmobile.android.R.drawable.menu_backdrop_tavern) else null }
     Canvas(modifier.fillMaxSize()) {
+        val t = clock.value.toDouble()
         drawRect(BrandTheme.canvas)
-        val scale = max(size.width / wall.width, size.height / wall.height)
-        val drawn = Size(wall.width * scale, wall.height * scale)
-        drawStretched(wall, Offset((size.width - drawn.width) / 2, (size.height - drawn.height) / 2), drawn)
+        val shot = room
+        if (shot != null) drawTavernRoom(shot, tilt.value, t)
+        else if (wall != null) {
+            val scale = max(size.width / wall.width, size.height / wall.height)
+            val drawn = Size(wall.width * scale, wall.height * scale)
+            drawStretched(wall, Offset((size.width - drawn.width) / 2, (size.height - drawn.height) / 2), drawn)
+        }
         drawRect(Brush.radialGradient(listOf(BrandTheme.ember.copy(alpha = 0.22f), BrandTheme.rust.copy(alpha = 0.08f), Color.Transparent),
             Offset(size.width * 0.5f, size.height * 1.08f), max(1f, size.height * 0.62f)))
         drawRect(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.06f), Color.Transparent), Offset(size.width * 0.5f, size.height * -0.05f), max(1f, size.height * 0.5f)))
@@ -281,10 +297,11 @@ fun BrandButtonText(text: String, kind: BrandButtonKind = BrandButtonKind.PRIMAR
 
 /** A glint that crosses the button every few seconds, drawn inside it. */
 fun Modifier.shineSweep(): Modifier = this.then(Modifier.composed {
-    val t = rememberAnimationSeconds()
+    val clock = rememberAnimationClock()
     Modifier.drawWithContent {
         drawContent()
-        val p = ((t % 3.6f) / 0.9f) * 1.4f - 0.2f
+        // Read in drawing: each frame redraws the glint without recomposing the button.
+        val p = ((clock.value % 3.6f) / 0.9f) * 1.4f - 0.2f
         val band = 0.14f
         if (p > -band && p < 1 + band) {
             val stops = arrayOf((p - band).coerceIn(0f, 1f) to Color.Transparent, p.coerceIn(0f, 1f) to Color.White.copy(alpha = 0.5f),
@@ -343,15 +360,18 @@ fun CommanderDeckPortrait(name: String?, modifier: Modifier = Modifier) {
 fun HeroCommanderCard(name: String?, width: Dp, modifier: Modifier = Modifier) {
     val height = width / 0.716f
     val still = BoardMotionFlags.reduceMotion || !LocalBrandAmbientMotion.current
-    val t = rememberAnimationSeconds(still).toDouble()
+    // The clock is read only in layer and draw blocks: the card (and its artwork) never recomposes per frame.
+    val clock = rememberAnimationClock(still)
     Box(modifier.requiredSize(width * 1.3f, height * 1.12f), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.requiredSize(width * 1.9f, height * 1.2f).alpha((0.55 + 0.15 * sin(t * 1.1)).toFloat())) {
+        Canvas(Modifier.requiredSize(width * 1.9f, height * 1.2f).graphicsLayer { alpha = 0.55f + 0.15f * sin(clock.value * 1.1f) }) {
             drawOval(Brush.radialGradient(listOf(BrandTheme.ember.copy(alpha = 0.42f), Color.Transparent), center, max(1f, width.toPx() * 0.9f)))
         }
-        Box(Modifier.offset(y = height * 0.56f).requiredSize(width * (0.8f - 0.05f * sin(t * 0.9).toFloat()), 16.dp)
+        Box(Modifier.offset(y = height * 0.56f).requiredSize(width * 0.8f, 16.dp)
+            .graphicsLayer { scaleX = 1f - 0.0625f * sin(clock.value * 0.9f) }
             .glow(Color.Black.copy(alpha = 0.6f), 8.dp, 8.dp))
         Box(Modifier.requiredSize(width, height)
             .graphicsLayer {
+                val t = clock.value.toDouble()
                 rotationY = (6 * sin(t * 0.55)).toFloat(); rotationX = (3 * sin(t * 0.4 + 1)).toFloat()
                 rotationZ = (-3 + 1.2 * sin(t * 0.6)).toFloat(); translationY = (-5 * sin(t * 0.9)).toFloat() * density
                 cameraDistance = 10f * density
@@ -360,7 +380,7 @@ fun HeroCommanderCard(name: String?, width: Dp, modifier: Modifier = Modifier) {
             .drawWithContent {
                 drawContent()
                 // Light sliding across the card face as it turns.
-                val f = frac(t / 5).toFloat()
+                val f = frac(clock.value.toDouble() / 5).toFloat()
                 drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.2f), Color.Transparent),
                     start = Offset(size.width * (-0.2f + 1.4f * f), 0f), end = Offset(size.width * (0.3f + 1.4f * f), size.height)), blendMode = BlendMode.Plus)
             }) {

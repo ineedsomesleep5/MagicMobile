@@ -125,6 +125,8 @@ struct BrandSparkle: View {
 /// sparkle (the logo's own motif) and ember sparks rising through the room. Static under
 /// Reduce Motion.
 struct BrandBackdrop: View {
+    /// Looked up once, not on every frame of the sparks.
+    private static let wall = UIImage(named: "menu-backdrop-tavern")
     var cards = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
@@ -134,8 +136,10 @@ struct BrandBackdrop: View {
         GeometryReader { proxy in
             ZStack {
                 BrandTheme.canvas
-                // Walnut & Ember: a dim tavern wall with candles at the edges.
-                if let wall = UIImage(named: "menu-backdrop-tavern") {
+                // Walnut & Ember: the rendered 3D tavern room (2026-10-04), else the flat tavern wall.
+                if TavernRoomBackdrop.available {
+                    TavernRoomBackdrop()
+                } else if let wall = Self.wall {
                     Image(uiImage: wall)
                         .resizable()
                         .scaledToFill()
@@ -165,7 +169,7 @@ struct BrandBackdrop: View {
 
     private func draw(_ context: inout GraphicsContext, _ size: CGSize, t: Double) {
         // The tavern wall replaces the card fan; the sparks stay.
-        if cards && UIImage(named: "menu-backdrop-tavern") == nil { drawFan(&context, size, t: t) }
+        if cards && Self.wall == nil && !TavernRoomBackdrop.available { drawFan(&context, size, t: t) }
         // Ember sparks rising from the hearth.
         for i in 0..<42 {
             let seed = Double(i) * 12.9898

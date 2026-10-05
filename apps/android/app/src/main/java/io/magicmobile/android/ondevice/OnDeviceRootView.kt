@@ -1403,6 +1403,11 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage = "figure.fencing")
+                IosListRow("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage = "flame.fill")
+                IosListRow("Your profile picture is your favorite commander's art.", systemImage = "person.crop.circle")
+                IosListRow("The menu fits on one screen, and Downloads matches the tavern.", systemImage = "rectangle.stack.fill")
+                IosListRow("Smoother rank badge turns and lighter menu animations.", systemImage = "sparkles")
                 IosListRow("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage = "shield.lefthalf.filled")
                 IosListRow("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage = "bolt.fill")
                 IosListRow("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage = "checkmark.seal")

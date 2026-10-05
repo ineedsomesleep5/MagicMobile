@@ -49,6 +49,7 @@ val prepareAssets by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("../ios/MagicMobile/PreconCatalog.swift"))
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/commander-brackets.json"))
     inputs.file(rootProject.file("../ios/MagicMobile/Resources/ai-decks.json"))
+    inputs.files(rootProject.file("../ios/MagicMobile/Resources/tavern-room.json")).optional()
     outputs.dir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     commandLine("python3",script.absolutePath, rootProject.file("../..").absolutePath,layout.buildDirectory.dir("generated/magicmobile-assets").get().asFile.absolutePath)
 }
@@ -66,7 +67,7 @@ val prepareBrandAssets by tasks.registering(Sync::class) {
     from(File(catalogue, "AppIcon.appiconset/AppIcon-1024.png")) { into("drawable-nodpi"); rename { "magicmobile_icon.png" } }
     from(catalogue) {
         include("battlefield-tavern-portrait.imageset/*.jpg", "battlefield-tavern-landscape.imageset/*.jpg",
-            "menu-backdrop-tavern.imageset/*.jpg", "tavern-*.imageset/*.png")
+            "menu-backdrop-tavern.imageset/*.jpg", "tavern-room-*.imageset/*.jpg", "tavern-*.imageset/*.png")
         // Android resource names are lowercase with underscores: tavern-mana-B -> tavern_mana_b.
         eachFile { path = "drawable-nodpi/" + name.replace('-', '_').lowercase() }
         includeEmptyDirs = false

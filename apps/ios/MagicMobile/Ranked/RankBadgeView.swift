@@ -204,7 +204,8 @@ struct RankSpinEmblem: View {
         if reduceMotion {
             RankEmblem(tier: tier, size: size)
         } else {
-            TimelineView(.animation) { context in
+            // A one-off turn runs at the display's full rate; an endless one (the search screens) at 60 fps.
+            TimelineView(.animation(minimumInterval: forever ? 1 / 60 : nil)) { context in
                 let elapsed = max(0, context.date.timeIntervalSince(start))
                 let progress: Double = forever ? elapsed / duration : min(1, elapsed / duration)
                 // Ease out: fast at first, settling on the front.

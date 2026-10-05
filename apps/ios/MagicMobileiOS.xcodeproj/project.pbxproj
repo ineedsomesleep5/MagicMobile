@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		001AB64DF90EFF56F60B5E95 /* dice-roll.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6CA8A5960041348B8C01CB67 /* dice-roll.m4a */; };
+		008C07BFF86B3AEE7F3679A2 /* tavern-room.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A7B83AA1C40365E550FA5E3 /* tavern-room.json */; };
 		00D040BACBE56F8EE6F1A08A /* CompactPromptPopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD247A43254B7430E9FF79C /* CompactPromptPopup.swift */; };
 		0177F7BB151A10AEDA526F73 /* PreconCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7F366BBFC899D5DD7671C /* PreconCatalog.swift */; };
 		037F8C88A7F2DD19D445DEE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6872434C0866DDE9DEF3FB8C /* Models.swift */; };
@@ -38,6 +39,7 @@
 		198A2BDE0A1DC0C325237D45 /* CardInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57CCC8D8CFFD96DEFA45872E /* CardInspector.swift */; };
 		1A1C13307BD020E5919ABD1A /* PortraitInteractionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */; };
 		1ABBBA8A8A5236070371E60F /* music-menu-3.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 13C7A762B2C003A761017B6A /* music-menu-3.m4a */; };
+		1B2E68475D00EDF0867572B1 /* TavernRoomBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33FF7C120A9D38C4D2603702 /* TavernRoomBackdrop.swift */; };
 		1CC47A197455A972FEDAED12 /* OnDeviceAppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608026E3694B102F64D58954 /* OnDeviceAppConfiguration.swift */; };
 		202CD75310AC9A1AC383C44C /* RankBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44CBE8A50D05944BA9E2ED5 /* RankBadgeView.swift */; };
 		21269569794F06AAB3815571 /* DeckStudioPlaytestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49FED4AF9E62808A6FB79605 /* DeckStudioPlaytestStore.swift */; };
@@ -333,6 +335,7 @@
 		1722A4752D3856C3BE4097AE /* NativeDeckArtworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckArtworkTests.swift; sourceTree = "<group>"; };
 		1747ED595E46B6112F92E2D2 /* GameBoardInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardInteractionState.swift; sourceTree = "<group>"; };
 		1767B12B3ED4F770199B3F44 /* OnDeviceStartingPlayerChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceStartingPlayerChoice.swift; sourceTree = "<group>"; };
+		1A7B83AA1C40365E550FA5E3 /* tavern-room.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "tavern-room.json"; sourceTree = "<group>"; };
 		1B415F9E1EBF8AD5A9B474EC /* DeckStudioPublicTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPublicTimeline.swift; sourceTree = "<group>"; };
 		1B9707DE97C9F3E6C78529CF /* HowToPlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowToPlay.swift; sourceTree = "<group>"; };
 		1CB96C4C95B38B6E59222035 /* OnDeviceSnapshotAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapter.swift; sourceTree = "<group>"; };
@@ -354,6 +357,7 @@
 		325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReleaseUITests.swift; sourceTree = "<group>"; };
 		327B6E116B54238C1BF459E0 /* DeckStudioScryfall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioScryfall.swift; sourceTree = "<group>"; };
 		33648EB49F768404115E0CF9 /* CombatViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombatViews.swift; sourceTree = "<group>"; };
+		33FF7C120A9D38C4D2603702 /* TavernRoomBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TavernRoomBackdrop.swift; sourceTree = "<group>"; };
 		34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
 		3572CF391B01366995DFCEF2 /* AIDeckPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDeckPool.swift; sourceTree = "<group>"; };
 		36D89291D3A05F7D50E814D8 /* BoardResourceLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardResourceLayoutUITests.swift; sourceTree = "<group>"; };
@@ -777,6 +781,7 @@
 				0A9A667D38A7AF46FA16AC90 /* RelayTransport.swift */,
 				03776AA5903A753166553C23 /* SoundLabView.swift */,
 				8940D190CB14B5A6E9122705 /* TableChat.swift */,
+				33FF7C120A9D38C4D2603702 /* TavernRoomBackdrop.swift */,
 				1C820EF7CD9990452A3D550B /* Board */,
 				15FA9C2961B1C0D119A8DCCF /* DeckStudio */,
 				D44B01402798506A0D4500F7 /* Ranked */,
@@ -907,6 +912,7 @@
 				F9C1C8BA1FBA059403F52107 /* ai-decks.json */,
 				0011D51DDEED2576ED425898 /* commander-brackets.json */,
 				6B0D8FE0F5FC4C7001C4233F /* ondevice-catalogue.json */,
+				1A7B83AA1C40365E550FA5E3 /* tavern-room.json */,
 				D5489907D7F10C930B3E85E6 /* Audio */,
 			);
 			path = Resources;
@@ -1187,6 +1193,7 @@
 				54A69CDC4089687732987FF0 /* shuffle.m4a in Resources */,
 				F05949F818870A2788F12448 /* spell-big.m4a in Resources */,
 				D022F212C1951454CA86BD37 /* strike.caf in Resources */,
+				008C07BFF86B3AEE7F3679A2 /* tavern-room.json in Resources */,
 				C0C60EA33C8FDB6D936286A5 /* token-create.m4a in Resources */,
 				3572FD7B141D4D878F1F52F9 /* turn-you.m4a in Resources */,
 				D2D1083B4DE92C3604479959 /* ui-back.caf in Resources */,
@@ -1378,6 +1385,7 @@
 				93AE8EDBC74EC80CEDDF60D4 /* RelayTransport.swift in Sources */,
 				7C7C644A528CE96DD4E92856 /* SoundLabView.swift in Sources */,
 				E5FBC593B7250CCE6D030B61 /* TableChat.swift in Sources */,
+				1B2E68475D00EDF0867572B1 /* TavernRoomBackdrop.swift in Sources */,
 				854D2E623A6B06AA1CDB0F09 /* graal_far_calls.S in Sources */,
 				CD5B6023C3D5D9771AEF754F /* mm_graal_backend_far.c in Sources */,
 			);

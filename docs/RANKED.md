@@ -88,14 +88,33 @@ and season history, the last 300 games, title, favorite commander. Stats (games,
 average turns, colors, decks), 13 achievements that unlock titles, and match history. Friends see each
 other's badge in the friends list and can open a ranked card.
 
+The profile picture is the favorite commander's illustration alone (`CommanderArtMedallion`, art-only
+crop in the table's brass ring), chosen from commanders played or any of the player's decks (saved and
+included); "Most played" is the default. Friends' cards show the same picture.
+
+## Friend challenges
+
+From the friends list an online friend can be challenged to a **Quick Match** (friendly, profile history
+only) or a **Ranked** game (only in the same tier, Gold with Gold; it counts for both, like any ranked
+game). The challenger opens a two-seat relay table and sends its code (`mm_challenge_send`); the friend's
+menu checks every 5 s while open (`mm_challenge_incoming`) and shows a banner to Accept or Decline. Accepting
+(`mm_challenge_accept`) rechecks both tiers with the friend's current step, makes the `ranked_matches` row
+for a ranked game and hands over the code; the friend joins and both ready by themselves. A challenge lasts
+two minutes; the challenger may withdraw it; a table that never starts closes after 75 s with nothing
+recorded. A friend without a standing this season counts as Bronze IV; a standing from an earlier season has
+rolled over one tier, as on the phones. Code: `FriendChallenges.swift` / `FriendChallenges.kt` (rules and
+coordinator), `FriendChallengeViews.swift` / `.kt` (waiting overlay, invite banner).
+
 ## Badges and animations
 
 The six badges were painted as one Codex sheet, cut apart, turned into textured 3D models with Meshy
 image-to-3D (meshy-cli, 30 credits each, task IDs in
 `~/Movies/motion-assets/magicmobile-brand/rank-badges/meshy/`), and rendered in Blender:
-`scripts/brand/rank_badges.py` (a still and a 16-frame turn per tier) then
+`scripts/brand/rank_badges.py` (a still and a 32-frame turn per tier, 2026-10-04; it was 16) then
 `scripts/brand/install_rank_badges.sh` (pngquant into `Assets.xcassets/tavern-rank-*`; Android gets them as
-`tavern_rank_*` drawables). About 4.9 MB for all 102 images.
+`tavern_rank_*` drawables). The spin decodes each tier's frames once off the main thread
+(`RankSpinFrames`, `RankArt.spinFrames`) and crossfades neighbouring frames, so the slow end of a turn
+glides instead of stepping.
 
 - Result screen: the rank strip fills or empties each pip in turn and names any bonus.
 - Division or tier change: a full-screen moment. Up: the old badge charges and spins, bursts into embers, and
@@ -112,6 +131,14 @@ up by themselves. `supabase/tests/verify-ranked.mjs` runs the social and ranked 
 checks pairing, blocks, the table hand-off, late cancels, cards and account deletion
 (`npm run test:ranked --prefix supabase/tests`).
 
+`supabase/migrations/20261004180000_friend_challenges.sql`: `friend_challenges` (RLS on, no grants) and
+`mm_challenge_send/incoming/status/accept/decline/cancel`, with internal `mm_rank_tier`,
+`mm_current_rank_step` and `mm_challenge_view`. Tested in the same PGlite run (`friend_challenges.sql`). **Applied to the live
+project on 2026-10-04** (migration `friend_challenges`, file SHA-256 `620338a3…4373`): the six public
+functions are callable by signed-in players and none by anonymous callers, the two internal helpers by
+neither, the table has RLS on with no grants, and the advisor shows only the usual RPC-only notices. No test
+accounts were made; a live two-phone challenge has not been played.
+
 **Status: applied to the live project on 2026-10-04** (migration `ranked_ladder`, file SHA-256
 `884e10c8…93ee`). Checked afterwards: the nine functions exist, signed-in players may call the eight public
 ones and anonymous callers none (a signed-out REST call gets `permission denied`), the three tables have RLS
@@ -125,4 +152,6 @@ test accounts were made on the live project. A live two-phone ranked match has n
 - iOS: `AIDeckPoolTests`, `PlayerRecordStoreTests`, `RankedMatchmakerTests`; UI `RankedUITests` (mode
   chooser, Quick Match, Ranked lobby, bracket sheet, profile, the four rank moments via
   `MAGICMOBILE_UI_TEST_CEREMONY`; `MAGICMOBILE_UI_TEST_RANK` / `_MATCHES` seed a profile).
-- Android: `RankedParityTest` (also the record store and matchmaker).
+- Android: `RankedParityTest` (also the record store and matchmaker), `FriendChallengesTest`.
+- iOS `FriendChallengeTests` (in `RankedParityTests.swift`): same-tier rule, accept, decline, failure,
+  withdraw-after-accept, answered challenges not shown again.
