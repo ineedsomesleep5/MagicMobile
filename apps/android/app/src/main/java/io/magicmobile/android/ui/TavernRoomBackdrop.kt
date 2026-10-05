@@ -111,7 +111,9 @@ fun rememberDeviceTilt(active: Boolean): State<Offset> {
                 reference = Offset(ref.x * 0.995f + g.x * 0.005f, ref.y * 0.995f + g.y * 0.005f)  // drifts back to centre
                 val dx = ((g.x - ref.x) * 3).coerceIn(-1f, 1f); val dy = ((g.y - ref.y) * 3).coerceIn(-1f, 1f)
                 val target = Offset(-dx, dy)
-                state.value = Offset(state.value.x * 0.8f + target.x * 0.2f, state.value.y * 0.8f + target.y * 0.2f)
+                val next = Offset(state.value.x * 0.8f + target.x * 0.2f, state.value.y * 0.8f + target.y * 0.2f)
+                // Only a visible move (about a quarter dp at full reach): a still phone doesn't redraw the menu.
+                if (kotlin.math.abs(next.x - state.value.x) >= 0.015f || kotlin.math.abs(next.y - state.value.y) >= 0.015f) state.value = next
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }

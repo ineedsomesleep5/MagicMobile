@@ -8,6 +8,7 @@ struct TavernRoomBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
     @StateObject private var tilt = DeviceTilt()
+    @ObservedObject private var images = TavernRoomImages.shared
     @State private var start = Date()
 
     /// The room's art is installed (tavern-room-* images and tavern-room.json).
@@ -18,11 +19,17 @@ struct TavernRoomBackdrop: View {
             let orientation = proxy.size.height >= proxy.size.width ? TavernRoomScene.portrait : TavernRoomScene.landscape
             if let scene = TavernRoomScene.shared, let shot = scene.views[orientation] {
                 let moving = !reduceMotion && ambient
+                let layers = images.orientation == orientation ? images.layers : [:]
                 ZStack {
                     ForEach(TavernRoomScene.Layer.allCases, id: \.self) { layer in
-                        TavernRoomLayer(shot: shot, layer: layer, size: proxy.size, offset: tilt.offset * layer.depth)
+                        if let image = layers[layer] {
+                            TavernRoomLayer(shot: shot, image: image, size: proxy.size, offset: tilt.offset * layer.depth)
+                        }
                     }
-                    if moving {
+                    if layers.isEmpty {
+                        // Decoding (first appearance or a turn of the phone): the room fades in when ready.
+                        EmptyView()
+                    } else if moving {
                         TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
                             glows(shot, size: proxy.size, t: timeline.date.timeIntervalSince(start))
                         }
@@ -32,11 +39,14 @@ struct TavernRoomBackdrop: View {
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
-                .onAppear { if moving { tilt.start() } }
-                .onDisappear { tilt.stop() }
-                .onChange(of: moving) { _, now in if now { tilt.start() } else { tilt.stop() } }
+                .animation(.easeOut(duration: 0.35), value: layers.isEmpty)
+                .task(id: orientation) { images.load(orientation) }
             }
         }
+        // Tilt only while the room is on screen and moving; anything covering the menu stops it.
+        .onAppear { if !reduceMotion && ambient { tilt.start() } }
+        .onDisappear { tilt.stop() }
+        .onChange(of: !reduceMotion && ambient) { _, now in if now { tilt.start() } else { tilt.stop() } }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -66,20 +76,19 @@ struct TavernRoomBackdrop: View {
 /// One depth layer: the image aspect-filled with a little overscan, shifted by the tilt.
 private struct TavernRoomLayer: View {
     let shot: TavernRoomScene.Shot
-    let layer: TavernRoomScene.Layer
+    let image: UIImage
     let size: CGSize
     let offset: CGSize
 
     var body: some View {
-        if let image = shot.image(layer) {
-            Image(uiImage: image)
-                .resizable()
-                .interpolation(.medium)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size.width * TavernRoomScene.overscan, height: size.height * TavernRoomScene.overscan)
-                .offset(offset)
-                .frame(width: size.width, height: size.height)
-        }
+        Image(uiImage: image)
+            .resizable()
+            .interpolation(.medium)
+            .aspectRatio(contentMode: .fill)
+            .frame(width: size.width * TavernRoomScene.overscan, height: size.height * TavernRoomScene.overscan)
+            .offset(offset)
+            .frame(width: size.width, height: size.height)
+            .accessibilityHidden(true)
     }
 }
 
@@ -111,19 +120,11 @@ final class TavernRoomScene {
         let width: Double
         let height: Double
         let lights: [Light]
-        private let images: [Layer: UIImage]
 
-        init(orientation: String, width: Double, height: Double, lights: [Light]) {
-            self.orientation = orientation; self.width = width; self.height = height; self.lights = lights
-            var images: [Layer: UIImage] = [:]
-            for layer in Layer.allCases {
-                if let image = UIImage(named: "tavern-room-\(orientation)-\(layer.rawValue)") { images[layer] = image }
-            }
-            self.images = images
-        }
+        /// Every layer is in the asset catalogue (looked up, not decoded or kept).
+        var complete: Bool { Layer.allCases.allSatisfy { UIImage(named: Self.imageName(orientation, $0)) != nil } }
 
-        var complete: Bool { images.count == Layer.allCases.count }
-        func image(_ layer: Layer) -> UIImage? { images[layer] }
+        static func imageName(_ orientation: String, _ layer: Layer) -> String { "tavern-room-\(orientation)-\(layer.rawValue)" }
 
         /// The aspect-fill scale of the rendered frame (with overscan) into `size`.
         func scale(in size: CGSize) -> Double {
@@ -187,14 +188,47 @@ final class DeviceTilt: ObservableObject {
             self.reference = (reference.x * 0.995 + gravity.x * 0.005, reference.y * 0.995 + gravity.y * 0.005)  // drifts back to centre
             let dx = max(-1, min(1, (gravity.x - reference.x) * 3)), dy = max(-1, min(1, (gravity.y - reference.y) * 3))
             let target = CGSize(width: -dx * Self.reach, height: dy * Self.reach)
-            self.offset = CGSize(width: self.offset.width * 0.8 + target.width * 0.2, height: self.offset.height * 0.8 + target.height * 0.2)
+            let next = CGSize(width: self.offset.width * 0.8 + target.width * 0.2, height: self.offset.height * 0.8 + target.height * 0.2)
+            // Publish only a visible move: a still phone must not redraw the menu thirty times a second
+            // (that churn also made the simulator drop taps in screens covering the menu).
+            if abs(next.width - self.offset.width) >= 0.25 || abs(next.height - self.offset.height) >= 0.25 { self.offset = next }
         }
     }
 
     func stop() {
         motion.stopDeviceMotionUpdates()
-        offset = .zero
+        if offset != .zero { offset = .zero }
     }
 }
 
 private func * (size: CGSize, factor: CGFloat) -> CGSize { CGSize(width: size.width * factor, height: size.height * factor) }
+
+/// The room's layers for one orientation at a time, decoded off the main thread: three screen-sized
+/// images decoded on first draw stalled launch and every return to the menu.
+@MainActor
+final class TavernRoomImages: ObservableObject {
+    static let shared = TavernRoomImages()
+    @Published private(set) var orientation: String?
+    @Published private(set) var layers: [TavernRoomScene.Layer: UIImage] = [:]
+    private var loading: String?
+
+    func load(_ orientation: String) {
+        guard orientation != self.orientation, orientation != loading else { return }
+        loading = orientation
+        Task.detached(priority: .userInitiated) {
+            var decoded: [TavernRoomScene.Layer: UIImage] = [:]
+            for layer in TavernRoomScene.Layer.allCases {
+                if let image = UIImage(named: TavernRoomScene.Shot.imageName(orientation, layer))?.preparingForDisplay() {
+                    decoded[layer] = image
+                }
+            }
+            await MainActor.run {
+                guard self.loading == orientation else { return }
+                // Only this orientation stays in memory.
+                self.layers = decoded
+                self.orientation = orientation
+                self.loading = nil
+            }
+        }
+    }
+}
