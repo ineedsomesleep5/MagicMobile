@@ -165,7 +165,7 @@ final class OnDeviceSetupUITests: XCTestCase {
             reveal(decks)
             decks.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
             XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 10))
-            tapDiagnosed(app.navigationBars["Deck Studio"].buttons["Done"])
+            tapDiagnosed(app.buttons["deckStudio.library.close"])
             XCTAssertTrue(app.buttons["deckStudio.create"].waitForNonExistence(timeout: 5))
         }
     }
@@ -192,7 +192,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertEqual(editor.value as? String, draft)
         XCTAssertEqual(deckName.value as? String, originalName)
         capture("Invalid import retains draft")
-        tapDiagnosed(app.navigationBars["Import deck"].buttons["Cancel"])
+        tapDiagnosed(app.buttons["deckStudio.import.cancel"])
         waitForImportDismissal(editor)
     }
 
@@ -341,13 +341,17 @@ final class OnDeviceSetupUITests: XCTestCase {
         // rest of the result from the same screen, so the checks do not outlast it.
         let undo = app.buttons["deckStudio.quickAdd.undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 3))
-        XCTAssertTrue(deckRow("Sol Ring", quantity: 2).exists)
+        // With the keyboard up the new row lies further down the page than there is room for; the toast
+        // says what was added, and the count and the quick check confirm it.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Added 2", "Sol Ring")).firstMatch.exists)
+        XCTAssertTrue(deckCount(3).exists)
         XCTAssertTrue(app.staticTexts["Ignored [Ramp] · sets and tags aren't saved"].exists)
         // Two Sol Rings break singleton; the live check says so without blocking anything.
         XCTAssertTrue(app.buttons["Duplicates, 1 card"].exists)
         XCTAssertTrue(undo.isHittable)
         undo.tap() // Exactly one tap, without the diagnostic capture that would outlast the toast.
-        waitFor(deckRow("Sol Ring", quantity: 2), predicate: "exists == false")
+        waitFor(deckCount(1), predicate: "exists == true")
+        XCTAssertFalse(app.buttons["Duplicates, 1 card"].exists)
         tapDiagnosed(app.buttons["deckStudio.close"])
         let discard = app.buttons["Discard unsaved changes and close"]
         XCTAssertTrue(discard.waitForExistence(timeout: 5))
@@ -414,8 +418,10 @@ final class OnDeviceSetupUITests: XCTestCase {
         renameDeck(draftName)
         openDeckActions()
         tapDiagnosed(menuItem("Basic lands"))
-        XCTAssertTrue(app.navigationBars["Basic lands"].waitForExistence(timeout: 5))
-        let forest = app.steppers.matching(NSPredicate(format: "label BEGINSWITH %@", "Forest:")).firstMatch
+        let apply = app.buttons["deckStudio.basics.apply"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 5))
+        // The binder's brass steppers: one element named for the count, holding Decrease and Increase.
+        let forest = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH %@", "Forest:")).firstMatch
         reveal(forest)
         waitFor(forest, predicate: "label == 'Forest: 0'")
         let addForest = stepperButton(forest, increment: true)
@@ -424,7 +430,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         tapDiagnosed(stepperButton(forest, increment: false))
         waitFor(forest, predicate: "label == 'Forest: 1'")
         capture("Deck builder basic-land controls")
-        tapDiagnosed(app.navigationBars["Basic lands"].buttons["Apply"])
+        tapDiagnosed(apply)
         waitFor(forest, predicate: "exists == false")
         assertDeckQuantity(1, card: "Forest")
         saveAndCloseDeck()
@@ -452,21 +458,34 @@ final class OnDeviceSetupUITests: XCTestCase {
         renameDeck(draftName)
         rotate(to: .landscapeLeft)
         defer { XCUIDevice.shared.orientation = .portrait }
-        let search = app.textFields["Card name or rules text"]
-        XCTAssertTrue(search.waitForExistence(timeout: 10), "Landscape shows the collection beside the deck")
+        // Sideways the binder's left page holds the rail, the right page the cards: the All cards shelf
+        // puts every card to add where the deck's own cards are.
+        // The simulator cancels the first touch after the rotation's system gesture change (see
+        // UITestHarness.settleFirstTouch): spend it on the binder's bare leather at the screen's left edge.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
+        let allCards = app.buttons["All cards"]
+        XCTAssertTrue(allCards.waitForExistence(timeout: 10), "Landscape shows the rail beside the deck")
         let deck = app.scrollViews["deckStudio.cards.list"]
         XCTAssertTrue(deck.waitForExistence(timeout: 5))
-        XCTAssertTrue(deck.isHittable, "Deck list remains visible beside collection.")
-        XCTAssertLessThan(search.frame.midX, deck.frame.minX)
+        XCTAssertTrue(deck.isHittable, "The deck's page remains visible beside the rail.")
+        XCTAssertLessThan(allCards.frame.midX, deck.frame.minX)
+        tapDiagnosed(allCards)
+        let search = app.textFields["deckStudio.catalogue.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
         replaceText(search, with: "Sol Ring\n")
         let add = app.buttons["Add Sol Ring to deck"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(add.frame.minX, search.frame.maxX, "Cards to add are on the right page")
         capture("Landscape collection before adding card")
         tapDiagnosed(add)
+        XCTAssertTrue(app.buttons["Remove one Sol Ring from deck"].waitForExistence(timeout: 5))
+        // The rail's search changes with the shelf; measure the left page before turning back to My deck.
+        let leftPageMid = search.frame.midX
+        tapDiagnosed(app.buttons["My deck"])
         let row = deckRow("Sol Ring", quantity: 1)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.isHittable, "The first card is visible without scrolling.")
-        XCTAssertGreaterThan(row.frame.minX, search.frame.midX)
+        XCTAssertGreaterThan(row.frame.minX, leftPageMid)
         let increase = app.buttons["Add one Sol Ring"]
         for _ in 0..<4 {
             if increase.isHittable { break }
@@ -614,8 +633,8 @@ final class OnDeviceSetupUITests: XCTestCase {
     }
 
     private func openDeckActions() {
-        // The workspace's ellipsis menu; SF Symbols name it "More".
-        let actions = app.navigationBars.buttons["More"].firstMatch
+        // The workspace's ellipsis menu, a brass plaque on the binder's head.
+        let actions = app.buttons["deckStudio.more"]
         tapDiagnosed(actions)
     }
 
@@ -625,7 +644,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         let field = app.textFields["Deck name"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         replaceText(field, with: name)
-        tapDiagnosed(app.navigationBars["Rename deck"].buttons["Done"])
+        tapDiagnosed(app.buttons["deckStudio.rename.done"])
         waitFor(field, predicate: "exists == false")
     }
 
@@ -703,8 +722,10 @@ final class OnDeviceSetupUITests: XCTestCase {
                                      file: StaticString = #filePath, line: UInt = #line) {
         for _ in 0..<6 {
             if element.exists && element.isHittable { return }
-            let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.2))
-            let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+            // Just inside the binder's page, left of the decklist editor (the screen's very edge is the
+            // binder's leather, outside the page's scroll).
+            let high = app.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.2))
+            let low = app.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5))
             if scrollingUp { low.press(forDuration: 0.05, thenDragTo: high) }
             else { high.press(forDuration: 0.05, thenDragTo: low) }
         }
@@ -826,7 +847,7 @@ final class OnDeviceSetupUITests: XCTestCase {
     private func waitForImportDismissal(_ editor: XCUIElement,
                                         file: StaticString = #filePath, line: UInt = #line) {
         waitFor(editor, predicate: "exists == false", file: file, line: line)
-        waitFor(app.navigationBars["Import deck"], predicate: "exists == false", file: file, line: line)
+        waitFor(app.buttons["deckStudio.import.cancel"], predicate: "exists == false", file: file, line: line)
         waitFor(app.textFields["deckStudio.library.search"], predicate: "exists == true", file: file, line: line)
     }
 

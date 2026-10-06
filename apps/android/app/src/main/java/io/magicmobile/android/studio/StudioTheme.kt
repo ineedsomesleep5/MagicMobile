@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -70,6 +71,7 @@ import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.board.BoardMenu
 import io.magicmobile.android.board.ManaSymbolView
 import io.magicmobile.android.board.MenuEntry
+import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.SfDesign
@@ -175,15 +177,10 @@ fun StudioPanel(modifier: Modifier = Modifier, spacing: Dp = 12.dp, content: @Co
     Column(modifier.studioPanel(), verticalArrangement = Arrangement.spacedBy(spacing), content = content)
 }
 
+/** Something to tell the player, written on the page in the binder's hand (BinderNote). */
 @Composable
 fun DeckStudioNotice(title: String, message: String, icon: String = "info.circle", modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        SfImage(icon, DeckStudioPalette.ink, 18.dp, Modifier.padding(top = 1.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.semibold))
-            Text(message, color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-        }
-    }
+    BinderNote(title, message, modifier, icon)
 }
 
 @Composable
@@ -273,15 +270,15 @@ fun rememberArtworkConsent(): Pair<Boolean, (Boolean) -> Unit> {
     return enabled to { value: Boolean -> io.magicmobile.android.Artwork.setEnabled(context, value) }
 }
 
-/** An iOS DisclosureGroup: title row with a chevron that turns, content below. */
+/** A disclosure in the book's hand (BinderDisclosureStyle on iOS): the title in ink and a brass chevron that turns. */
 @Composable
 fun StudioDisclosure(title: String, modifier: Modifier = Modifier, initiallyExpanded: Boolean = false, titleStyle: TextStyle = StudioText.body,
                      color: Color = DeckStudioPalette.ink, icon: String? = null, label: (@Composable RowScope.() -> Unit)? = null,
                      content: @Composable ColumnScope.() -> Unit) {
     var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
-    val rotation by animateFloatAsState(if (expanded) 90f else 0f, tween(180), label = "disclosure")
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, tween(180), label = "disclosure")
     Column(modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 32.dp).clickable(role = Role.Button) { expanded = !expanded }
+        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(role = Role.Button) { expanded = !expanded }
             .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (label != null) Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), content = label)
@@ -289,7 +286,9 @@ fun StudioDisclosure(title: String, modifier: Modifier = Modifier, initiallyExpa
                 icon?.let { SfImage(it, color, (titleStyle.fontSize.value + 1f).dp) }
                 Text(title, Modifier.weight(1f), color = color, style = titleStyle)
             }
-            SfImage("chevron.right", DeckStudioPalette.ink, 14.dp, Modifier.rotate(rotation))
+            Box(Modifier.size(22.dp).background(Binder.brass, CircleShape).border(0.8.dp, Binder.brassDeep, CircleShape), contentAlignment = Alignment.Center) {
+                SfImage("chevron.down", Binder.engraved, 10.dp, Modifier.rotate(rotation))
+            }
         }
         if (expanded) Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
@@ -303,16 +302,14 @@ fun StudioDisclosure(title: String, modifier: Modifier = Modifier, initiallyExpa
 fun DeckStudioArtworkInvitation(modifier: Modifier = Modifier) {
     val (remote, setRemote) = rememberArtworkConsent()
     if (remote) return
-    Column(modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(12.dp))
-        .border(1.dp, DeckStudioPalette.separator, RoundedCornerShape(12.dp)).padding(12.dp)) {
+    Column(modifier.fillMaxWidth().binderPlate().padding(horizontal = 12.dp, vertical = 4.dp)) {
         StudioDisclosure("Online card images are off", label = {
-            SfImage("photo.on.rectangle.angled", DeckStudioPalette.ink, 15.dp)
-            Text("Online card images are off", color = DeckStudioPalette.ink, style = StudioText.caption.weight(SfWeight.semibold))
+            BinderStamp("photo.on.rectangle.angled")
+            Text("Online card images are off", color = DeckStudioPalette.ink, style = sf(15f, SfWeight.bold))
         }) {
             Text("Turn on artwork across the app to send displayed card names and your IP address to Scryfall. Saved images remain available offline. Change this anytime in Artwork & privacy.",
-                color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
-            StudioPlainButton("Turn on", { setRemote(true) }, style = StudioText.caption.weight(SfWeight.semibold),
-                modifier = Modifier.semantics { contentDescription = "deckStudio.artwork.enable" })
+                color = DeckStudioPalette.secondaryInk, style = sf(13f))
+            BinderPlaque(Modifier.testTag("deckStudio.artwork.enable"), title = "Turn on") { setRemote(true) }
         }
     }
 }
@@ -330,58 +327,47 @@ fun NativeArtworkPreferenceRows() {
     }
 }
 
-/** An iOS switch in the light appearance: green track when on, light grey when off. */
+/** A switch in the tavern's brass (TavernToggle) beside its title in ink, in place of the system's switch. */
 @Composable
 fun StudioToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-                 style: TextStyle = StudioText.body, tint: Color = rgb(1.0, 0.5, 0.35)) {
-    val track by animateColorAsState(if (isOn) tint else rgb(0.91, 0.91, 0.92), label = "studioToggle")
-    val knob by animateDpAsState(if (isOn) 22.dp else 2.dp, spring(0.8f, 600f), label = "studioKnob")
-    Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.45f)
-        .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = null) { onChange(!isOn) }
-        .semantics { role = Role.Switch; stateDescription = if (isOn) "On" else "Off"; contentDescription = title },
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(title, Modifier.weight(1f), color = DeckStudioPalette.ink, style = style)
-        Box(Modifier.size(51.dp, 31.dp).background(track, CircleShape)) {
-            Box(Modifier.offset(x = knob, y = 2.dp).size(27.dp).shadow(3.dp, CircleShape).background(Color.White, CircleShape))
-        }
-    }
+                 style: TextStyle = StudioText.body, @Suppress("UNUSED_PARAMETER") tint: Color = rgb(1.0, 0.5, 0.35)) {
+    io.magicmobile.android.ui.TavernToggle(title, isOn, onChange, modifier, enabled = enabled, color = DeckStudioPalette.ink)
 }
 
-/** A Stepper in the light appearance: the label, then a −|+ capsule. */
+/** A count with brass minus and plus coins (BinderStepper on iOS). */
 @Composable
 fun StudioStepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
                   style: TextStyle = StudioText.body) {
     Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.45f), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), color = DeckStudioPalette.ink, style = style)
-        Row(Modifier.size(94.dp, 32.dp).background(rgb(0.46, 0.46, 0.5).copy(alpha = 0.12f), RoundedCornerShape(8.dp)), verticalAlignment = Alignment.CenterVertically) {
-            val canDecrease = enabled && value > range.first; val canIncrease = enabled && value < range.last
-            Box(Modifier.weight(1f).height(32.dp).clickable(enabled = canDecrease) { onChange(value - 1) }
-                .semantics { contentDescription = "Decrement $label" }, contentAlignment = Alignment.Center) {
-                SfImage("minus", DeckStudioPalette.ink.copy(alpha = if (canDecrease) 1f else 0.3f), 14.dp)
-            }
-            Box(Modifier.width(1.dp).height(18.dp).background(DeckStudioPalette.ink.copy(alpha = 0.15f)))
-            Box(Modifier.weight(1f).height(32.dp).clickable(enabled = canIncrease) { onChange(value + 1) }
-                .semantics { contentDescription = "Increment $label" }, contentAlignment = Alignment.Center) {
-                SfImage("plus", DeckStudioPalette.ink.copy(alpha = if (canIncrease) 1f else 0.3f), 14.dp)
+        val canDecrease = enabled && value > range.first; val canIncrease = enabled && value < range.last
+        for ((symbol, active, step, name) in listOf(Quad("minus", canDecrease, -1, "Decrement $label"), Quad("plus", canIncrease, 1, "Increment $label"))) {
+            Box(Modifier.size(47.dp, 44.dp).clickable(enabled = active, role = Role.Button) { onChange(value + step) }
+                .semantics { contentDescription = name }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(30.dp).alpha(if (active) 1f else 0.45f).shadow(1.5.dp, CircleShape).background(Binder.brass, CircleShape)
+                    .border(0.8.dp, Binder.brassDeep, CircleShape), contentAlignment = Alignment.Center) { SfImage(symbol, Binder.engraved, 12.dp) }
             }
         }
     }
 }
 
-/** A choice written on the page as inked chips, the chosen one filled (GrimoireChoice on iOS), where iOS had a segmented control. */
+private data class Quad(val symbol: String, val active: Boolean, val step: Int, val name: String)
+
+/** A choice as the binder's switch (GrimoireChoice on iOS): a dark inset in a brass edge, the chosen option ember glass. */
 @Composable
 fun <T> StudioSegmented(options: List<T>, selected: T, onSelect: (T) -> Unit, title: (T) -> String, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    val outer = RoundedCornerShape(9.dp); val inner = RoundedCornerShape(7.dp)
+    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).background(rgb(0.12, 0.06, 0.035).copy(alpha = 0.88f), outer)
+        .border(1.5.dp, Binder.brass, outer).padding(3.dp)) {
         for (option in options) {
             val isSelected = option == selected
-            Box(Modifier.weight(1f).defaultMinSize(minHeight = 40.dp)
-                .background(if (isSelected) DeckStudioPalette.ink else DeckStudioPalette.surface, CircleShape)
-                .border(0.8.dp, DeckStudioPalette.ink.copy(alpha = if (isSelected) 0f else 0.18f), CircleShape)
-                .clip(CircleShape).clickable(enabled = enabled, role = Role.Button) { onSelect(option) }
-                .semantics { this.selected = isSelected }.padding(horizontal = 12.dp),
+            Box(Modifier.weight(1f).height(36.dp)
+                .then(if (isSelected) Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.EMBER, inner).border(1.dp, Binder.brassLight.copy(alpha = 0.6f), inner) else Modifier)
+                .clickable(enabled = enabled, role = Role.Button) { onSelect(option) }
+                .semantics { this.selected = isSelected }.padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center) {
-                Text(title(option), color = if (isSelected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.ink,
-                    style = StudioText.subheadline.weight(SfWeight.medium), maxLines = 1)
+                Text(title(option), color = if (isSelected) Binder.emberText else io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.72f),
+                    style = sf(14f, SfWeight.bold).copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f)), maxLines = 1)
             }
         }
     }
@@ -405,16 +391,12 @@ fun GrimoireSubheading(title: String, count: Int? = null, modifier: Modifier = M
 fun StudioMenu(entries: () -> List<MenuEntry>, modifier: Modifier = Modifier, enabled: Boolean = true, label: @Composable () -> Unit) =
     BoardMenu(entries, modifier, enabled, light = true, label = label)
 
-/** A menu-style Picker label: the selected title and ⌃⌄. */
+/** A menu-style Picker as a brass plaque naming the current choice (BinderMenuPicker on iOS). */
 @Composable
 fun StudioMenuPicker(selectedTitle: String, entries: () -> List<MenuEntry>, modifier: Modifier = Modifier, enabled: Boolean = true,
-                     style: TextStyle = StudioText.body) {
+                     @Suppress("UNUSED_PARAMETER") style: TextStyle = StudioText.body) {
     StudioMenu(entries, modifier, enabled) {
-        Row(Modifier.defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.45f), horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(selectedTitle, color = DeckStudioPalette.ink, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            SfImage("chevron.up.chevron.down", DeckStudioPalette.ink, 12.dp)
-        }
+        BinderPlaque(title = selectedTitle, icon = "chevron.up.chevron.down", enabled = enabled)
     }
 }
 
@@ -462,69 +444,10 @@ fun StudioRoundedField(value: String, onChange: (String) -> Unit, placeholder: S
     }
 }
 
-/** The iOS 26 navigation bar in the light appearance: glass capsule buttons around a centred title. */
-@Composable
-fun StudioNavBar(title: String, modifier: Modifier = Modifier, background: Color = DeckStudioPalette.background,
-                 leading: (@Composable RowScope.() -> Unit)? = null, trailing: (@Composable RowScope.() -> Unit)? = null,
-                 principal: (@Composable () -> Unit)? = null) {
-    // The centred title shows only when it clears both toolbar groups, as UIKit's inline title does.
-    androidx.compose.ui.layout.Layout({
-        Box { leading?.let { Row(verticalAlignment = Alignment.CenterVertically, content = it) } }
-        Box { if (principal != null) principal() else Text(title, color = DeckStudioPalette.ink, style = sf(17f, SfWeight.semibold), maxLines = 1) }
-        Box { trailing?.let { Row(verticalAlignment = Alignment.CenterVertically, content = it) } }
-    }, modifier.fillMaxWidth()
-        // The bar is the head of the page: the same paper, unless a caller asks for another colour.
-        .then(if (background == DeckStudioPalette.background) Modifier.grimoirePaper() else Modifier.background(background))
-        .statusBarsPadding().height(56.dp).padding(horizontal = 16.dp)) { measurables, constraints ->
-        val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val start = measurables[0].measure(loose); val end = measurables[2].measure(loose)
-        val middle = measurables[1].measure(loose)
-        val width = constraints.maxWidth; val height = constraints.maxHeight
-        val gap = 8.dp.roundToPx()
-        val titleX = (width - middle.width) / 2
-        val fits = titleX >= start.width + (if (start.width > 0) gap else 0) && titleX + middle.width <= width - end.width - (if (end.width > 0) gap else 0)
-        layout(width, height) {
-            start.place(0, (height - start.height) / 2)
-            if (fits) middle.place(titleX, (height - middle.height) / 2)
-            end.place(width - end.width, (height - end.height) / 2)
-        }
-    }
-}
-
-/** A glass capsule holding one or more toolbar items (iOS 26 groups adjacent bar buttons). */
-@Composable
-fun StudioGlassGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(modifier.height(44.dp).shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.1f))
-        .background(DeckStudioPalette.surface.copy(alpha = 0.96f), CircleShape).clip(CircleShape).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically, content = content)
-}
-
-/** A text item inside a glass group. */
-@Composable
-fun StudioGlassText(title: String, onClick: () -> Unit, enabled: Boolean = true, bold: Boolean = false, label: String? = null) {
-    Box(Modifier.height(44.dp).defaultMinSize(minWidth = 44.dp).alpha(if (enabled) 1f else 0.35f)
-        .clickable(enabled = enabled, role = Role.Button) { onClick() }.padding(horizontal = 12.dp)
-        .semantics { label?.let { contentDescription = it } }, contentAlignment = Alignment.Center) {
-        Text(title, color = DeckStudioPalette.ink, style = sf(17f, if (bold) SfWeight.semibold else SfWeight.regular), maxLines = 1)
-    }
-}
-
-/** An icon item inside a glass group. */
-@Composable
-fun StudioGlassIcon(icon: String, label: String, onClick: () -> Unit, enabled: Boolean = true) {
-    Box(Modifier.size(44.dp).alpha(if (enabled) 1f else 0.35f).clickable(enabled = enabled, role = Role.Button) { onClick() }
-        .semantics { contentDescription = label }, contentAlignment = Alignment.Center) { SfImage(icon, DeckStudioPalette.ink, 20.dp) }
-}
-
-/** ContentUnavailableView: a large grey symbol, a bold title and a description. */
+/** ContentUnavailableView as an empty page in the book's hand (BinderEmptyLeaf): a brass-stamped symbol, a title and a line. */
 @Composable
 fun StudioContentUnavailable(title: String, systemImage: String, description: String, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(vertical = 24.dp, horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SfImage(systemImage, DeckStudioPalette.secondaryInk, 44.dp)
-        Text(title, color = DeckStudioPalette.ink, style = sf(22f, SfWeight.bold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Text(description, color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-    }
+    BinderEmptyLeaf(title, systemImage, description, modifier)
 }
 
 /** A ProgressView with a label, in the light appearance. */

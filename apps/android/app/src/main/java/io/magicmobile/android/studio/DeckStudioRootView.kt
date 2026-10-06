@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -74,6 +75,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.statusBarsPadding
+import io.magicmobile.android.ui.tavernFill
 
 /** Shares text through the system share sheet (SwiftUI ShareLink). */
 fun shareText(context: Context, text: String) {
@@ -224,14 +233,16 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     }
     fun playRecord(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver, entry.record.name)
     GrimoirePages(stage) {
-      StudioScreen {
-        Column(Modifier.fillMaxSize()) {
-            // On a spread the middle of the bar is the fold: no title is drawn there.
-            StudioNavBar(if (spread) "" else "Deck Studio", leading = {
-                StudioGlassGroup { StudioGlassText("Done", dismiss) }
-            }, trailing = {
-                StudioGlassGroup { StudioGlassIcon("slider.horizontal.3", "Deck artwork and privacy", { showPreferences = true }) }
-            })
+      // The library is the binder's first page (concept B, 2026-10-06): its head on the leather, the page below.
+      // This screen's pages, for page turns that move only the paper (GrimoireStage).
+      val binderScreen = remember { Any() }
+      Box(Modifier.fillMaxSize().binderCover()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = 4.dp, end = 4.dp, bottom = 2.dp)) {
+            val head: @Composable () -> Unit = {
+                BinderHead("Done", dismiss, title = "Deck Studio", strapTag = "deckStudio.library.close") {
+                    BinderPlaque(icon = "slider.horizontal.3", square = true, label = "Deck artwork and privacy") { showPreferences = true }
+                }
+            }
             // The parts of the library, shared by the single page (upright) and the two pages of a spread.
             val nowPlaying: @Composable (Modifier) -> Unit = { modifier ->
                 records.firstOrNull { it.id == selectedDeckID }?.let { playing ->
@@ -258,13 +269,8 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                             DeckStudioLibraryQuery.Sort.entries.map { sort ->
                                 MenuEntry.Item(sort.title, checked = sort == query.sort) { query = query.copy(sort = sort) }
                             }
-                        }) {
-                            Row(Modifier.defaultMinSize(minHeight = 44.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                SfImage("arrow.up.arrow.down", DeckStudioPalette.ink, 16.dp)
-                                Text(query.sort.title, color = DeckStudioPalette.ink, style = StudioText.subheadline)
-                            }
-                        }
-                        StudioIconButton(if (grid) "list.bullet" else "square.grid.2x2", if (grid) "Show deck list" else "Show deck grid", { grid = !grid })
+                        }) { BinderPlaque(title = query.sort.title, icon = "arrow.up.arrow.down") }
+                        BinderPlaque(icon = if (grid) "list.bullet" else "square.grid.2x2", square = true, label = if (grid) "Show deck list" else "Show deck grid") { grid = !grid }
                     }
                     if (visible.isEmpty()) StudioContentUnavailable(if (query.text.isEmpty()) "Your next deck starts here" else "No matching decks",
                         "rectangle.stack", "Create a deck, import a list, or change your filters.")
@@ -293,24 +299,37 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                 }
             }
             if (spread) {
-                // Sideways the book lies open as a spread: the library's heading and filters are the left page,
+                // Sideways the binder lies open as a spread: the library's heading and filters are the left page,
                 // the decks the right, and each scrolls by itself. Nothing runs across the fold.
-                Row(Modifier.fillMaxSize()) {
-                    Column(Modifier.weight(1f).padding(end = Grimoire.foldInset)) {
-                        nowPlaying(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp))
-                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 40.dp)) { intro() }
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        head()
+                        BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = false, screen = binderScreen) {
+                            Column(Modifier.fillMaxSize()) {
+                                nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp))
+                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp)) { intro() }
+                            }
+                        }
                     }
-                    LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.weight(1f).padding(start = Grimoire.foldInset),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 40.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = shelf)
+                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
+                        LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = shelf)
+                    }
                 }
             } else {
-                nowPlaying(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
-                LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 40.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { intro() }
-                    shelf()
+                head()
+                Spacer(Modifier.height(4.dp))
+                BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
+                    Column(Modifier.fillMaxSize()) {
+                        nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp).widthIn(max = 960.dp))
+                        LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            item(span = { GridItemSpan(maxLineSpan) }) { intro() }
+                            shelf()
+                        }
+                    }
                 }
             }
         }
@@ -352,16 +371,16 @@ val rgbLight: Color = DeckStudioPalette.surface
 @Composable
 fun StudioSheetBar(title: String, done: (() -> Unit)? = null, doneTitle: String = "Done", doneEnabled: Boolean = true,
                    cancel: (() -> Unit)? = null, cancelTitle: String = "Cancel") {
-    Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp)) {
-        cancel?.let { Box(Modifier.align(Alignment.CenterStart)) { StudioGlassGroup { StudioGlassText(cancelTitle, it) } } }
-        Text(title, Modifier.align(Alignment.Center).widthIn(max = 220.dp), color = DeckStudioPalette.ink, style = sf(17f, SfWeight.semibold),
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        done?.let {
-            Box(Modifier.align(Alignment.CenterEnd).height(44.dp).alpha(if (doneEnabled) 1f else 0.4f).background(DeckStudioPalette.ink, CircleShape)
-                .clickable(enabled = doneEnabled) { it() }.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
-                Text(doneTitle, color = Color.White, style = sf(17f, SfWeight.semibold))
-            }
+    // A loose leaf's head in the book's own hand (BinderLeafHead on iOS): the title on the parchment over an inked
+    // rule, with brass plaques for its actions, never the system's bar (Caleb, 2026-10-06).
+    Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.widthIn(min = 90.dp), contentAlignment = Alignment.CenterStart) { cancel?.let { BinderPlaque(title = cancelTitle, onClick = it) } }
+            Text(title, Modifier.weight(1f).semantics { heading() }, color = DeckStudioPalette.ink, style = sf(19f, SfWeight.bold),
+                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Box(Modifier.widthIn(min = 90.dp), contentAlignment = Alignment.CenterEnd) { done?.let { BinderPlaque(title = doneTitle, enabled = doneEnabled, onClick = it) } }
         }
+        GrimoireRule(Modifier.fillMaxWidth())
     }
 }
 
@@ -384,23 +403,29 @@ private fun LibraryHeader(onCreate: () -> Unit, onImport: () -> Unit, importEnab
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         GrimoireHeading("Your collection", "My Decks", "Find your next move.")
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StudioButton("Create deck", onCreate, Modifier.weight(1f).semantics { contentDescription = "deckStudio.create" }, icon = "plus")
-            StudioButton("Import", onImport, Modifier.weight(1f).semantics { contentDescription = "deckStudio.import" }, primary = false,
-                icon = "square.and.arrow.down", enabled = importEnabled)
+            DeckStudioEmberButton("Create deck", onCreate, Modifier.weight(1f).testTag("deckStudio.create"), icon = "plus")
+            BinderPlaque(Modifier.weight(1f).testTag("deckStudio.import"), title = "Import", icon = "square.and.arrow.down", enabled = importEnabled) { onImport() }
         }
     }
 }
 
 @Composable
 private fun LibraryFilters(query: DeckStudioLibraryQuery, change: (DeckStudioLibraryQuery) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        StudioSearchField(query.text, { change(query.copy(text = it)) }, "Search decks, commanders or tags")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // The binder's brass rail, as on a deck's Cards page: the search, and the shelves as chips.
+    BinderRail {
+        BinderSearchField(query.text, { change(query.copy(text = it)) }, "Search decks, commanders or tags", tag = "deckStudio.library.search")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (filter in DeckStudioLibraryQuery.Filter.entries) {
                 val selected = query.filter == filter
-                Box(Modifier.defaultMinSize(minHeight = 44.dp).background(if (selected) DeckStudioPalette.ink else DeckStudioPalette.surface, CircleShape)
-                    .clip(CircleShape).clickable { change(query.copy(filter = filter)) }.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                    Text(filter.title, color = if (selected) Color.White else DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
+                Box(Modifier.defaultMinSize(minHeight = 44.dp).clickable(role = Role.Tab) { change(query.copy(filter = filter)) }
+                    .semantics { this.selected = selected }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.height(36.dp)
+                        .then(if (selected) Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.EMBER, CircleShape) else Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape))
+                        .border(1.dp, if (selected) Binder.brassLight.copy(alpha = 0.7f) else io.magicmobile.android.ui.TavernPalette.brass.copy(alpha = 0.5f), CircleShape)
+                        .padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                        Text(filter.title, color = if (selected) Binder.emberText else io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.75f),
+                            style = sf(14f, SfWeight.bold))
+                    }
                 }
             }
         }
@@ -431,9 +456,8 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     var contextMenu by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(20.dp)
-    Column(Modifier.fillMaxWidth().shadow(12.dp, shape, ambientColor = DeckStudioPalette.ink.copy(alpha = 0.04f), spotColor = DeckStudioPalette.ink.copy(alpha = 0.06f))
-        .background(DeckStudioPalette.surface, shape).clip(shape)) {
+    // Each deck is a little book on the page: a plate in a brass edge with book-corner protectors.
+    Column(Modifier.fillMaxWidth().binderPlate(BinderCornerStyle.BOOK)) {
         // Long-press opens the same deck actions as the ⋯ button, like the iOS tile's context menu.
         Column(Modifier.fillMaxWidth().scale(if (pressed) 0.985f else 1f).alpha(if (pressed) 0.86f else 1f)
             .combinedClickable(interaction, null, onLongClickLabel = "Deck actions", onLongClick = { contextMenu = true }) { open() }
@@ -454,13 +478,11 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (included) "Make it your own" else DateFormat.getDateInstance(DateFormat.LONG).format(Date(record.updatedAt)),
-                Modifier.weight(1f), color = DeckStudioPalette.secondaryInk, style = StudioText.caption2, minLines = 2, maxLines = 2)
-            StudioIconButton(if (favorite) "star.fill" else "star", if (favorite) "Unfavorite ${record.name}" else "Favorite ${record.name}", toggleFavorite)
-            StudioMenu(actions) {
-                Box(Modifier.size(44.dp).semantics { contentDescription = "Options for ${record.name}" }, contentAlignment = Alignment.Center) {
-                    SfImage("ellipsis.circle", DeckStudioPalette.ink, 20.dp)
-                }
-            }
+                Modifier.weight(1f), color = DeckStudioPalette.secondaryInk, style = sf(11f), minLines = 2, maxLines = 2)
+            // Brass coins: the favourite star (lit with ember once chosen) and the deck's options.
+            BinderCoin(if (favorite) "star.fill" else "star", if (favorite) "Unfavorite ${record.name}" else "Favorite ${record.name}", lit = favorite,
+                onClick = toggleFavorite)
+            StudioMenu(actions) { BinderCoin("ellipsis", "Options for ${record.name}") }
         }
     }
 }

@@ -134,8 +134,8 @@ struct DeckStudioAnalysisContent: View {
                     DeckStudioPanel {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Opening hands & land draws").font(.headline)
-                            Stepper("At least \(requiredLands) lands", value: $requiredLands, in: 1...7)
-                            Stepper("Cards seen: \(cardsSeen)", value: $cardsSeen, in: 7...30)
+                            BinderStepper("At least \(requiredLands) lands", value: $requiredLands, in: 1...7)
+                            BinderStepper("Cards seen: \(cardsSeen)", value: $cardsSeen, in: 7...30)
                             if statistics.cardCount >= cardsSeen, statistics.unknownTypeCount == 0,
                                let value = try? DeckStudioProbability.atLeast(requiredLands, successes: statistics.landCount, population: statistics.cardCount, draws: cardsSeen) {
                                 Text(value, format: .percent.precision(.fractionLength(1))).font(.system(.largeTitle, design: .rounded).weight(.semibold))

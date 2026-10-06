@@ -73,8 +73,6 @@ object Grimoire {
     /** Sideways the book lies open as a spread of two pages, each with its own content. */
     fun isSpread(width: Int, height: Int): Boolean = width > height
 
-    val ribbonColors = mapOf("Cards" to rgb(0.55, 0.10, 0.08), "Ideas" to rgb(0.66, 0.46, 0.10),
-        "Analysis" to rgb(0.14, 0.36, 0.22), "Playtest" to rgb(0.13, 0.25, 0.48))
 }
 
 /** GrimoirePaper: a parchment tone with the tavern's paper grain multiplied into it. */
@@ -134,46 +132,6 @@ private fun DrawScope.leafEdges(trailing: Boolean) {
 /** A place to write on the page (a search or text field): paler paper inside a hairline of ink. */
 fun Modifier.grimoireField(shape: Shape): Modifier =
     background(DeckStudioPalette.surfaceElevated, shape).border(0.8.dp, DeckStudioPalette.ink.copy(alpha = 0.2f), shape)
-
-/** A ribbon with a swallowtail end. */
-private fun ribbonShape(notch: Float) = GenericShape { size, _ ->
-    moveTo(0f, 0f); lineTo(size.width, 0f); lineTo(size.width, size.height)
-    lineTo(size.width / 2, size.height - notch); lineTo(0f, size.height); close()
-}
-
-/**
- * The chapters of a deck as ribbon markers hanging from the head of the page. The chosen ribbon hangs longer
- * and brighter; the others wait, darker, tucked up.
- */
-@Composable
-fun GrimoireRibbons(chapters: List<String>, selected: String, modifier: Modifier = Modifier, choose: (String) -> Unit) {
-    val notch = with(LocalDensity.current) { 8.dp.toPx() }
-    val ribbon = remember(notch) { ribbonShape(notch) }
-    Row(modifier.fillMaxWidth().height(62.dp).semantics { contentDescription = "Deck workspace" },
-        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-        for (chapter in chapters) {
-            val chosen = chapter == selected
-            val color = Grimoire.ribbonColors[chapter] ?: DeckStudioPalette.accent
-            Box(Modifier.weight(1f).height(if (chosen) 61.dp else 55.dp)
-                .drawBehind {
-                    val outline = ribbon.createOutline(size, layoutDirection, this)
-                    // The ribbon's own shadow on the page.
-                    drawOutline(outline, DeckStudioPalette.ink.copy(alpha = if (chosen) 0.22f else 0.12f), style = Stroke((if (chosen) 3 else 2).dp.toPx()))
-                    drawOutline(outline, Brush.verticalGradient(listOf(color.copy(alpha = if (chosen) 1f else 0.78f), color.copy(alpha = if (chosen) 0.86f else 0.6f))))
-                    drawOutline(outline, Color.Black.copy(alpha = 0.18f), style = Stroke(0.6.dp.toPx()))
-                }
-                .clip(ribbon)
-                // It passes under the head of the page.
-                .drawBehind { drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Transparent), endY = 7.dp.toPx()), size = Size(size.width, 7.dp.toPx())) }
-                .clickable(role = Role.Tab) { choose(chapter) }
-                .semantics { this.selected = chosen }, contentAlignment = Alignment.TopCenter) {
-                Text(chapter, Modifier.padding(top = 11.dp, start = 4.dp, end = 4.dp),
-                    color = rgb(1.0, 0.95, 0.84).copy(alpha = if (chosen) 1f else 0.82f),
-                    style = sf(14f, SfWeight.bold, SfDesign.SERIF).copy(shadow = Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 1f), 1f)), maxLines = 1)
-            }
-        }
-    }
-}
 
 /** A chapter heading in the book's hand: small capitals over a title, closed by an inked rule with the brand's sparkle. */
 @Composable

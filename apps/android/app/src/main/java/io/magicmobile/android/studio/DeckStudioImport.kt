@@ -51,6 +51,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import java.util.UUID
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 
 /** The reviewed deck and its annotations, archived beside the library (DeckStudioImportReceipt). */
 private object DeckStudioImportReceipt {
@@ -233,30 +237,46 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
         }
     }
     val spread = androidx.compose.ui.platform.LocalConfiguration.current.let { Grimoire.isSpread(it.screenWidthDp, it.screenHeightDp) }
-    StudioScreen {
-        Column(Modifier.fillMaxSize().imePadding()) {
-            // On a spread the middle of the bar is the fold: no title is drawn there.
-            StudioNavBar(if (spread) "" else "Import deck", leading = { StudioGlassGroup { StudioGlassText("Cancel", ::cancel, enabled = !saving) } })
+    // A page of the binder (concept B, 2026-10-06): Cancel is the strap on the leather above it.
+    // This screen's pages, for page turns that move only the paper (GrimoireStage).
+    val binderScreen = remember { Any() }
+    Box(Modifier.fillMaxSize().binderCover()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(start = 4.dp, end = 4.dp, bottom = 2.dp)) {
+            val head: @Composable () -> Unit = {
+                BinderHead("Cancel", ::cancel, title = "Import deck", strapTag = "deckStudio.import.cancel", strapEnabled = !saving)
+            }
             if (spread) {
                 // The list goes in on the left page and is reviewed on the right; nothing runs across the fold.
-                Row(Modifier.weight(1f)) {
-                    Column(Modifier.weight(1f).padding(end = Grimoire.foldInset).verticalScroll(rememberScrollState()).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
-                    Column(Modifier.weight(1f).padding(start = Grimoire.foldInset)) {
-                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                            if (preview == null) Text("Your decklist appears here for review, card by card, before anything is saved.",
-                                color = DeckStudioPalette.secondaryInk, style = StudioText.callout.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        head()
+                        BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = false, screen = binderScreen) {
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
+                        }
+                    }
+                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
+                        Column(Modifier.fillMaxSize()) {
+                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                                if (preview == null) Text("Your decklist appears here for review, card by card, before anything is saved.",
+                                    color = DeckStudioPalette.secondaryInk, style = StudioText.callout.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                                reviewed()
+                            }
+                            confirm()
+                        }
+                    }
+                }
+            } else {
+                head()
+                Spacer(Modifier.height(4.dp))
+                BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
+                    Column(Modifier.fillMaxSize()) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                            entry()
                             reviewed()
                         }
                         confirm()
                     }
                 }
-            } else {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    entry()
-                    reviewed()
-                }
-                confirm()
             }
         }
     }

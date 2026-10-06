@@ -49,10 +49,6 @@ import io.magicmobile.android.core.CardInfo
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 
-/** The Cards grid's columns: adaptive 100-point tiles with 10-point spacing, as on iOS. */
-@Composable
-fun deckStudioGridColumns(): Int = maxOf(1, (LocalConfiguration.current.screenWidthDp - 40 + 10) / 95)   // four across on a big phone
-
 /**
  * DeckStudioCardImageTile: a card-shaped image that respects the artwork and privacy preference.
  * With no downloaded art it becomes a text tile (name, cost and type), never a blank box.
@@ -82,85 +78,6 @@ fun DeckStudioIssueBadges(issues: List<DeckStudioPreflight.Issue>, modifier: Mod
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         for (issue in issues) Text(issue.badge, Modifier.background(DeckStudioPalette.warning.copy(alpha = 0.12f), CircleShape).padding(horizontal = 6.dp, vertical = 2.dp),
             color = DeckStudioPalette.warning, style = StudioText.caption2.weight(SfWeight.semibold), maxLines = 1)
-    }
-}
-
-/**
- * One card in the Cards grid: its full art, with how many copies the deck holds. While the deck is being
- * edited (`change` non-null) the corners show what a tap does: the left half takes a copy away, the right half
- * adds one (Caleb, 2026-10-05). In select mode (`selected` non-null) a tap toggles the selection; a read-only
- * deck's card opens on a tap. A long press shows the large preview with the card actions, Android's
- * counterpart of the iOS context menu.
- */
-@Composable
-fun DeckStudioCardGridTile(row: NativeDeckRow, card: CardInfo?, issues: List<DeckStudioPreflight.Issue>, selected: Boolean?,
-                           tap: () -> Unit, preview: () -> Unit, modifier: Modifier = Modifier, change: ((Int) -> Unit)? = null) {
-    DeckStudioArtTile(row.cardName, row.quantity, card, issues.map { it.badge }, selected, tap, preview, modifier, change,
-        addLabel = "Add one ${row.cardName}", removeLabel = "Remove one ${row.cardName}")
-}
-
-/**
- * A card as its full art with the copies the deck holds: a deck's own card, or a search result (which may
- * hold none yet: then the whole card adds the first copy). Just the card (Caleb, 2026-10-05): its own text is
- * on it, so nothing is written beneath, and what there is to know (`notes`) sits on it as a small disc.
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun DeckStudioArtTile(name: String, quantity: Int, card: CardInfo?, notes: List<String>, selected: Boolean?,
-                      tap: () -> Unit, preview: () -> Unit, modifier: Modifier = Modifier, change: ((Int) -> Unit)? = null,
-                      addLabel: String = "Add one $name", removeLabel: String = "Remove one $name") {
-    val editable = change != null && selected == null
-    Column(modifier.then(if (editable) Modifier else Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = preview, onClick = tap)
-        .semantics {
-            contentDescription = (if (selected != null) "" else "Inspect ") + "$name, quantity $quantity"
-            if (selected != null) this.selected = selected
-        }), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box {
-            DeckStudioCardImage(name, card, Modifier.fillMaxWidth())
-            if (quantity > 1 || (editable && quantity > 0)) Text("×$quantity", Modifier.align(Alignment.TopEnd).padding(4.dp).background(DeckStudioPalette.ink.copy(alpha = 0.85f), CircleShape)
-                .padding(horizontal = 6.dp, vertical = 2.dp).semantics { contentDescription = "$name, quantity $quantity" },
-                color = DeckStudioPalette.surfaceElevated, style = StudioText.caption.weight(SfWeight.bold))
-            if (selected != null) Box(Modifier.align(Alignment.TopStart).padding(4.dp)
-                .background(if (selected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.ink.copy(alpha = 0.35f), CircleShape)) {
-                SfImage(if (selected) "checkmark.circle.fill" else "circle", if (selected) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, 20.dp)
-            }
-            if (selected == true) Box(Modifier.matchParentSize().border(3.dp, DeckStudioPalette.accent, RoundedCornerShape(DeckStudioMetrics.cardRadius)))
-            if (selected == null && notes.isNotEmpty()) Box(Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp)
-                .background(DeckStudioPalette.warning.copy(alpha = 0.92f), CircleShape)
-                .semantics { contentDescription = "Quick check: " + notes.joinToString(", ") }, contentAlignment = Alignment.Center) {
-                SfImage("exclamationmark.triangle.fill", DeckStudioPalette.surfaceElevated, 11.dp)
-            }
-            if (editable) {
-                // What tapping each side of the card does (nothing to take away from a card the deck does not hold).
-                if (quantity > 0) CornerHint("minus", Modifier.align(Alignment.BottomStart))
-                CornerHint("plus", Modifier.align(Alignment.BottomEnd))
-                // The two halves of the card: the left takes a copy away, the right adds one.
-                Row(Modifier.matchParentSize()) {
-                    if (quantity > 0) Box(Modifier.weight(1f).fillMaxHeight().combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = preview) { change?.invoke(-1) }
-                        .semantics { contentDescription = removeLabel; role = Role.Button })
-                    Box(Modifier.weight(1f).fillMaxHeight().combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = preview) { change?.invoke(1) }
-                        .semantics { contentDescription = addLabel; role = Role.Button })
-                }
-            }
-        }
-    }
-}
-
-/** A small inked disc in a bottom corner of a card: what tapping that side does. */
-@Composable
-private fun CornerHint(symbol: String, modifier: Modifier) {
-    Box(modifier.padding(5.dp).size(22.dp).background(DeckStudioPalette.ink.copy(alpha = 0.78f), CircleShape)
-        .border(0.8.dp, DeckStudioPalette.surfaceElevated.copy(alpha = 0.35f), CircleShape), contentAlignment = Alignment.Center) {
-        SfImage(symbol, DeckStudioPalette.surfaceElevated, 10.dp)
-    }
-}
-
-/** A row of grid tiles; a short last row keeps the tile width. */
-@Composable
-fun DeckStudioCardGridRow(rows: List<NativeDeckRow>, columns: Int, tile: @Composable (NativeDeckRow, Modifier) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-        for (row in rows) tile(row, Modifier.weight(1f))
-        repeat(columns - rows.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 

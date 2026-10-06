@@ -171,11 +171,8 @@ private struct DeckStudioRoleReviewSheet: View {
                     }
                 } header: { Text(name) } footer: { Text("These are your functional tags, not XMage legality or EDHREC statistics. An empty selection explicitly clears automatic hints for this card.") }
                 Button("Use automatic hints again") { if save(nil) { dismiss() } }
-            }.grimoireTitle("Review roles").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Save") { if save(selected) { dismiss() } } }
-                }
+            }.binderLeaf("Review roles", leading: BinderLeafAction(title: "Cancel") { dismiss() },
+                         trailing: BinderLeafAction(title: "Save") { if save(selected) { dismiss() } })
         }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
@@ -197,22 +194,19 @@ private struct DeckStudioRoleTargetsSheet: View {
                             targets[role, default: .init()].enabled = $0
                         }))
                         if targets[role]?.enabled == true {
-                            Stepper("Minimum: \(targets[role]?.lower ?? 0)", value: Binding(get: { targets[role]?.lower ?? 0 }, set: {
+                            BinderStepper("Minimum: \(targets[role]?.lower ?? 0)", value: Binding(get: { targets[role]?.lower ?? 0 }, set: {
                                 targets[role, default: .init()].lower = $0
                                 targets[role, default: .init()].upper = max($0, targets[role]?.upper ?? 0)
                             }), in: 0...2000)
-                            Stepper("Maximum: \(targets[role]?.upper ?? 0)", value: Binding(get: { targets[role]?.upper ?? 0 }, set: {
+                            BinderStepper("Maximum: \(targets[role]?.upper ?? 0)", value: Binding(get: { targets[role]?.upper ?? 0 }, set: {
                                 targets[role, default: .init()].upper = $0
                                 targets[role, default: .init()].lower = min($0, targets[role]?.lower ?? 0)
                             }), in: 0...2000)
                         }
                     }
                 }
-            }.grimoireTitle("My target ranges").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Save") { if save(targets) { dismiss() } } }
-                }
+            }.binderLeaf("My target ranges", leading: BinderLeafAction(title: "Cancel") { dismiss() },
+                         trailing: BinderLeafAction(title: "Save") { if save(targets) { dismiss() } })
         }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }

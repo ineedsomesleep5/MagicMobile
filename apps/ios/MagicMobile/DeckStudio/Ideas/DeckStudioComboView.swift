@@ -261,8 +261,8 @@ private struct DeckStudioComboDetail: View {
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     if let url = variant.websiteURL { Link("Read on Commander Spellbook", destination: url).frame(minHeight: 44) }
                 }.padding(24).textSelection(.enabled)
-            }.background(GrimoirePaper()).grimoireTitle("Combo details").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            }.background(GrimoirePaper())
+                .binderLeaf("Combo details", trailing: BinderLeafAction(title: "Done") { dismiss() })
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     @ViewBuilder private func section(_ title: String, _ value: String) -> some View {

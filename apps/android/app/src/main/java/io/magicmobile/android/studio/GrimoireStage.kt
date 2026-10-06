@@ -1,5 +1,9 @@
 package io.magicmobile.android.studio
 
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import android.graphics.SurfaceTexture
 import android.media.MediaPlayer
 import android.view.Surface
@@ -61,13 +65,28 @@ class GrimoireStage internal constructor(private val scope: CoroutineScope, inte
      * The pictures on the stage while a page turns: `base` lies still under `page`, which swings. Each shows
      * the whole screen (half 0) or only its left (-1) or right (+1) half; a half swings about the middle.
      */
-    internal class Turn(val base: ImageBitmap?, val baseHalf: Int, val page: ImageBitmap?, val pageHalf: Int)
+    internal class Turn(val base: ImageBitmap?, val baseClip: Rect?, val page: ImageBitmap?, val pageClip: Rect?, val pivot: Float)
 
     internal var turn by mutableStateOf<Turn?>(null)
     internal val angle = Animatable(0f)
     internal var spread = false
     /** One turn at a time; anything asked for meanwhile just makes its change. */
     private var busy = false
+
+    /**
+     * The binder's pages on screen (GrimoireBinder.kt), by screen in the order the screens appeared, in the stage's
+     * coordinates. A turn moves only the paper of the newest screen's pages; the binder around them (its leather,
+     * head and index tabs) stays still. With none registered the whole screen turns.
+     */
+    private val binderScreens = LinkedHashMap<Any, LinkedHashMap<Any, Rect>>()
+    internal var origin = Offset.Zero
+    fun setBinderPage(bounds: Rect, page: Any, screen: Any) { binderScreens.getOrPut(screen) { LinkedHashMap() }[page] = bounds.translate(-origin) }
+    fun removeBinderPage(page: Any, screen: Any) {
+        val pages = binderScreens[screen] ?: return
+        pages.remove(page)
+        if (pages.isEmpty()) binderScreens.remove(screen)
+    }
+    private val binderPages: List<Rect> get() = binderScreens.values.lastOrNull()?.values?.sortedBy { it.left } ?: emptyList()
 
     /**
      * Turns the page. `change` swaps what is on screen while a picture of the old page swings over the spine:
@@ -83,13 +102,19 @@ class GrimoireStage internal constructor(private val scope: CoroutineScope, inte
             try {
                 val old = layer.toImageBitmap()
                 val sideways = spread
-                // Upright, forward: the old page itself lifts. Otherwise the old page (or the half of it that
+                val bounds = Rect(0f, 0f, old.width.toFloat(), old.height.toFloat())
+                // In the binder only its pages turn: each picture is cut to the pages it shows.
+                val pages = binderPages.filter { it.overlaps(bounds) }
+                val single = pages.singleOrNull()
+                val (left, right) = if (pages.size == 2) pages[0] to pages[1]
+                    else Rect(0f, 0f, bounds.width / 2, bounds.height) to Rect(bounds.width / 2, 0f, bounds.width, bounds.height)
+                // Upright, forward: the old page itself lifts. Otherwise the old page (or the page of it that
                 // stays) lies still while a page moves over it.
                 val far = if (forward) 1 else -1
                 turn = when {
-                    sideways -> Turn(old, -far, old, far)
-                    forward -> Turn(null, 0, old, 0)
-                    else -> Turn(old, 0, null, 0)
+                    sideways -> Turn(old, if (forward) left else right, old, if (forward) right else left, if (forward) right.left else left.right)
+                    forward -> Turn(null, null, old, single, single?.left ?: 0f)
+                    else -> Turn(old, single, null, null, 0f)
                 }
                 angle.snapTo(0f)
                 change(); changed = true
@@ -103,11 +128,12 @@ class GrimoireStage internal constructor(private val scope: CoroutineScope, inte
                 val new = layer.toImageBitmap()
                 if (sideways) {
                     angle.animateTo(-far * UPRIGHT, tween(240, easing = FastOutLinearInEasing))
-                    turn = Turn(old, -far, new, -far)
+                    turn = Turn(old, if (forward) left else right, new, if (forward) left else right, if (forward) left.right else right.left)
                     angle.snapTo(far * UPRIGHT)
                     angle.animateTo(0f, tween(260, easing = LinearOutSlowInEasing))
                 } else {
-                    turn = Turn(old, 0, new, 0)
+                    val landing = binderPages.filter { it.overlaps(bounds) }.singleOrNull()
+                    turn = Turn(old, single, new, landing, landing?.left ?: 0f)
                     angle.snapTo(-UPRIGHT)
                     angle.animateTo(0f, tween(420, easing = LinearOutSlowInEasing))
                 }
@@ -143,7 +169,7 @@ fun GrimoirePages(stage: GrimoireStage, modifier: Modifier = Modifier, content: 
     val configuration = LocalConfiguration.current
     stage.spread = Grimoire.isSpread(configuration.screenWidthDp, configuration.screenHeightDp)
     CompositionLocalProvider(LocalGrimoireStage provides stage) {
-        Box(modifier.fillMaxSize()) {
+        Box(modifier.fillMaxSize().onGloballyPositioned { stage.origin = it.positionInRoot() }) {
             Box(Modifier.fillMaxSize().drawWithContent {
                 stage.layer.record { this@drawWithContent.drawContent() }
                 drawLayer(stage.layer)
@@ -155,25 +181,24 @@ fun GrimoirePages(stage: GrimoireStage, modifier: Modifier = Modifier, content: 
 
 @Composable
 private fun TurningPage(turn: GrimoireStage.Turn, angle: Float) {
-    /** Draws only the left or right half of what follows (0: all of it), under an optional shade. */
-    fun Modifier.half(side: Int, shade: Float = 0f) = drawWithContent {
-        val left = if (side > 0) size.width / 2 else 0f
-        val width = if (side == 0) size.width else size.width / 2
-        clipRect(left, 0f, left + width, size.height) {
+    /** Draws only what lies in `clip` of what follows (null: all of it), under an optional shade. */
+    fun Modifier.clipTo(clip: Rect?, shade: Float = 0f) = drawWithContent {
+        val area = clip ?: Rect(0f, 0f, size.width, size.height)
+        clipRect(area.left, area.top, area.right, area.bottom) {
             this@drawWithContent.drawContent()
-            if (shade > 0f) drawRect(Color.Black.copy(alpha = shade))
+            if (shade > 0f) drawRect(Color.Black.copy(alpha = shade), area.topLeft, area.size)
         }
     }
     // Nothing underneath is tapped mid-turn.
     Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } }) {
-        turn.base?.let { Image(it, null, Modifier.fillMaxSize().half(turn.baseHalf), contentScale = ContentScale.FillBounds) }
+        turn.base?.let { Image(it, null, Modifier.fillMaxSize().clipTo(turn.baseClip), contentScale = ContentScale.FillBounds) }
         val page = turn.page ?: return@Box
-        // A whole page swings about the left edge (the spine, upright); a half swings about the middle.
+        // A page swings about its edge at the spine.
         Image(page, null, Modifier.fillMaxSize().graphicsLayer {
-            transformOrigin = TransformOrigin(if (turn.pageHalf == 0) 0f else 0.5f, 0.5f)
+            transformOrigin = TransformOrigin(if (size.width > 0f) (turn.pivot / size.width).coerceIn(0f, 1f) else 0f, 0.5f)
             rotationY = angle
             cameraDistance = 16f * density
-        }.half(turn.pageHalf, shade = 0.42f * abs(angle) / 90f), contentScale = ContentScale.FillBounds)
+        }.clipTo(turn.pageClip, shade = 0.42f * abs(angle) / 90f), contentScale = ContentScale.FillBounds)
     }
 }
 

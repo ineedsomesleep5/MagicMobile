@@ -31,8 +31,8 @@ struct DeckStudioCardSearch: View {
             if embedded { searchContent }
             else {
                 NavigationStack {
-                    searchContent.grimoireTitle("Add cards").navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("deckStudio.search.close") } }
+                    searchContent
+                        .binderLeaf("Add cards", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.search.close") { dismiss() })
                 }
             }
         }
@@ -43,14 +43,14 @@ struct DeckStudioCardSearch: View {
         VStack(spacing: 8) {
             if embedded && source != "Local" {
                 HStack {
-                    sourcePicker.pickerStyle(.menu)
+                    sourceMenu
                     Spacer(minLength: 8)
                     destinationPicker
                 }.padding(.horizontal, 12)
             } else if !embedded {
                 Group {
                     if dynamicType.isAccessibilitySize {
-                        sourcePicker.pickerStyle(.menu)
+                        sourceMenu
                     } else {
                         GrimoireChoice(title: "Search source", options: [("Local", "Local catalogue"), ("Online", "Scryfall — online")], selection: $source)
                     }
@@ -65,11 +65,13 @@ struct DeckStudioCardSearch: View {
     private var sourcePicker: some View {
         Picker("Search source", selection: $source) { Text("Local catalogue").tag("Local"); Text("Scryfall — online").tag("Online") }
     }
+    /// The source as a brass plaque naming it (the book's own menu button).
+    private var sourceMenu: some View {
+        BinderMenuPicker(title: "Search source", selection: $source, options: [("Local", "Local catalogue"), ("Online", "Scryfall — online")])
+    }
     private var destinationPicker: some View {
-        Picker("Add to", selection: $section) {
-            Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders")
-            Text("Maybeboard").tag("maybeboard"); Text("Sideboard").tag("sideboard"); Text("Companion").tag("companions")
-        }.pickerStyle(.menu)
+        BinderMenuPicker(title: "Add to", selection: $section, options: [("deck", "Main deck"), ("commanders", "Commander(s)"),
+            ("maybeboard", "Maybeboard"), ("sideboard", "Sideboard"), ("companions", "Companion")])
     }
     /// The deck's cards and the search results share one layout choice (the Cards toolbar's toggle).
     @AppStorage("deckStudio.cards.layout.v1") private var cardLayout = "Grid"
@@ -87,23 +89,17 @@ struct DeckStudioCardSearch: View {
         else { feedback = nil; addError = "Could not remove this card; check the draft." }
     }
 
-    /// A search result as its full art. A tap adds it; once the deck holds it, the right half of the
-    /// card adds another copy and the left half takes one away. A long press shows the card.
+    /// A search result in its sleeve, like the deck's own cards: the plus (or the card's right half) adds a
+    /// copy, and once the deck holds it the minus (or the left half) takes one away. A long press shows
+    /// the card.
     private func resultTile(_ card: NativeDeckMetadataCatalogue.Card) -> some View {
         let here = model.cardCount(card.name, section: section)
-        let warning = model.needsSingletonReview(card.name, metadata: card, destination: section) ? "Already in playing deck, check the copy limit" : nil
-        return DeckStudioCardGridTile(name: card.name, quantity: here, card: card, editable: true, warning: warning)
-                .overlay {
-                    HStack(spacing: 0) {
-                        if here > 0 {
-                            Button { removeOne(card) } label: { Color.clear.contentShape(Rectangle()) }
-                                .accessibilityLabel("Remove one \(card.name) from \(section)")
-                        }
-                        Button { addOne(card) } label: { Color.clear.contentShape(Rectangle()) }
-                            .accessibilityLabel("Add \(card.name) to \(section)")
-                    }.buttonStyle(.plain)
-                }
-                .sensoryFeedback(.selection, trigger: here)
+        let warning = model.needsSingletonReview(card.name, metadata: card, destination: section)
+        return BinderSleeve(name: card.name, quantity: here, card: card,
+                            notes: warning ? ["Already in playing deck, check the copy limit"] : [],
+                            addLabel: "Add \(card.name) to \(section)", removeLabel: "Remove one \(card.name) from \(section)",
+                            tapLabel: "Inspect \(card.name)",
+                            add: { addOne(card) }, remove: { removeOne(card) }, tap: { inspection = card })
                 .contextMenu {
                     Button(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspection = card }
                 } preview: { DeckStudioCardPreview(name: card.name, card: card) }
@@ -122,7 +118,10 @@ struct DeckStudioCardSearch: View {
                     if embedded {
                         Menu {
                             sourcePicker
-                            destinationPicker
+                            Picker("Add to", selection: $section) {
+                                Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders")
+                                Text("Maybeboard").tag("maybeboard"); Text("Sideboard").tag("sideboard"); Text("Companion").tag("companions")
+                            }
                             Button(showEmbeddedFilters ? "Hide filters" : "Show filters", systemImage: "line.3.horizontal.decrease") { showEmbeddedFilters.toggle() }
                         } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
                             .accessibilityLabel("Collection source, destination and filters")
@@ -151,13 +150,13 @@ struct DeckStudioCardSearch: View {
             if metadata == nil {
                 DeckStudioNotice(title: "Local catalogue unavailable", message: "Close this editor and retry the catalogue from your library, or use online search for reference.")
             } else if !loading && results.isEmpty {
-                ContentUnavailableView("No matching cards", systemImage: "magnifyingglass", description: Text("Try another name or reset the filters."))
+                BinderEmptyLeaf(title: "No matching cards", icon: "magnifyingglass", message: "Try another name or reset the filters.")
             }
             if cardLayout == "Grid" && !dynamicType.isAccessibilitySize {
                 // The same full-art grid as the deck's own cards (Caleb, 2026-10-05). Each list row is one
                 // row of cards: a lazy grid inside a single self-sizing list row sends the list into a
                 // layout loop.
-                let columns = max(2, Int((listWidth - 32 + 10) / 95))
+                let columns = max(2, Int((listWidth - 32 + 10) / 110))
                 ForEach(Array(stride(from: 0, to: results.count, by: columns)), id: \.self) { start in
                     HStack(alignment: .top, spacing: 10) {
                         ForEach(results[start..<min(start + columns, results.count)]) { resultTile($0).frame(maxWidth: .infinity) }
@@ -207,7 +206,12 @@ struct DeckStudioCardSearch: View {
     }
     private var filterFields: some View {
         VStack(spacing: 12) {
-            Picker("Type", selection: $type) { Text("All types").tag(""); ForEach(["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"], id: \.self) { Text($0).tag($0) } }
+            HStack {
+                Text("Type")
+                Spacer(minLength: 8)
+                BinderMenuPicker(title: "Type", selection: $type, options: [("", "All types")]
+                    + ["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"].map { ($0, $0) })
+            }
             HStack { TextField("Min MV", text: $minMV).keyboardType(.decimalPad); TextField("Max MV", text: $maxMV).keyboardType(.decimalPad); TextField("Set code", text: $setCode).autocorrectionDisabled().textInputAutocapitalization(.characters) }.textFieldStyle(GrimoireFieldStyle())
             Button("Reset filters") { type = ""; minMV = ""; maxMV = ""; setCode = ""; constrainIdentity = true }
         }.padding(.vertical, 10)
@@ -252,8 +256,8 @@ struct DeckStudioCardInspector: View {
                     Text("Bundled selected-printing metadata. Rules and legality follow the installed XMage version.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     DeckStudioScryfallReference(name: name)
                 }.padding(24)
-            }.navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("deckStudio.inspector.close") } }
+            }
+                .binderLeaf("Card details", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.inspector.close") { dismiss() })
         }.foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }

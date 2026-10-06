@@ -28,6 +28,7 @@ struct DeckStudioRootView: View {
     @State private var route: Route?
     @State private var pendingDelete: DeckLibraryRecord?
     @State private var showPreferences = false
+    @FocusState private var searchFocused: Bool
     @StateObject private var play = DeckStudioPlaySelection()
     /// Each deck's check key; nil when the resolver cannot read the deck.
     @State private var checkKeys: [String: DeckStudioCheckKey?] = [:]
@@ -86,8 +87,9 @@ struct DeckStudioRootView: View {
             Text("\(visible.count) decks").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
             Spacer()
             Menu { Picker("Sort decks", selection: $query.sort) { ForEach(DeckStudioLibraryQuery.Sort.allCases) { Text($0.rawValue).tag($0) } } }
-                label: { Label(query.sort.rawValue, systemImage: "arrow.up.arrow.down").font(.subheadline).frame(minHeight: 44) }
-            Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2").frame(width: 44, height: 44) }
+                label: { BinderPlaque { Label(query.sort.rawValue, systemImage: "arrow.up.arrow.down").font(.system(size: 14, weight: .heavy, design: .serif)) } }
+            Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2") }
+                .buttonStyle(BinderPlaqueButtonStyle(square: true))
                 .accessibilityLabel(grid ? "Show deck list" : "Show deck grid")
         }
     }
@@ -95,8 +97,8 @@ struct DeckStudioRootView: View {
     /// The decks themselves. In a spread they are the right page.
     @ViewBuilder private var libraryShelf: some View {
         if visible.isEmpty {
-            ContentUnavailableView(query.text.isEmpty ? "Your next deck starts here" : "No matching decks",
-                systemImage: "rectangle.stack", description: Text("Create a deck, import a list, or change your filters."))
+            BinderEmptyLeaf(title: query.text.isEmpty ? "Your next deck starts here" : "No matching decks",
+                            icon: "rectangle.stack", message: "Create a deck, import a list, or change your filters.")
         }
         LazyVGrid(columns: grid && !dynamicType.isAccessibilitySize
                   ? [GridItem(.adaptive(minimum: 160, maximum: 320), spacing: 16)] : [GridItem(.flexible())], spacing: 16) {
@@ -110,43 +112,55 @@ struct DeckStudioRootView: View {
         }
     }
 
+    /// The binder's head: Done closes the book; the plaque opens artwork and privacy.
+    private var libraryHead: some View {
+        BinderHead(strap: "Done", strapIdentifier: "deckStudio.library.close", title: "Deck Studio", action: { if let close { close() } else { dismiss() } }) {
+            Button { showPreferences = true } label: { Image(systemName: "slider.horizontal.3") }
+                .buttonStyle(BinderPlaqueButtonStyle(square: true))
+                .accessibilityLabel("Deck artwork and privacy")
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
                 if spread {
                     // Each page scrolls by itself, and nothing runs across the fold (Caleb, 2026-10-05).
-                    GrimoireSpread {
-                        VStack(spacing: 0) {
-                            nowPlaying
-                            ScrollView { VStack(alignment: .leading, spacing: 24) { libraryIntro }.padding(20) }
+                    HStack(alignment: .top, spacing: 6) {
+                        VStack(spacing: 4) {
+                            libraryHead
+                            BinderPage(gutter: .trailing) {
+                                VStack(spacing: 0) {
+                                    nowPlaying
+                                    ScrollView { VStack(alignment: .leading, spacing: 20) { libraryIntro }.padding(16) }
+                                }
+                            }
                         }
-                    } right: {
-                        ScrollView { VStack(alignment: .leading, spacing: 24) { libraryShelf }.padding(20) }
+                        BinderPage(gutter: .leading) {
+                            ScrollView { VStack(alignment: .leading, spacing: 20) { libraryShelf }.padding(16) }
+                        }
                     }
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
-                            libraryIntro
-                            libraryShelf
-                        }.padding(20).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+                    VStack(spacing: 4) {
+                        libraryHead
+                        BinderPage(gutter: .leading) {
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 20) {
+                                    libraryIntro
+                                    libraryShelf
+                                }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+                            }
+                            .safeAreaInset(edge: .top, spacing: 0) { nowPlaying }
+                        }
                     }
-                    .safeAreaInset(edge: .top, spacing: 0) { nowPlaying }
                 }
             }
-            .background(GrimoirePaper().ignoresSafeArea())
-            .grimoireTitle("Deck Studio", onFold: spread).navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(GrimoirePaper.barStyle, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Done") { if let close { close() } else { dismiss() } } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showPreferences = true } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
-                        .accessibilityLabel("Deck artwork and privacy")
-                }
-            }
+            .padding(.horizontal, 4).padding(.bottom, 2)
+            .binderScreen()
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showPreferences) {
-                NavigationStack { GrimoireForm { NativeArtworkPreferenceView() }.grimoireTitle("Artwork & privacy")
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showPreferences = false } } } }
+                NavigationStack { GrimoireForm { NativeArtworkPreferenceView() }
+                    .binderLeaf("Artwork & privacy", trailing: BinderLeafAction(title: "Done") { showPreferences = false }) }
                     .preferredColorScheme(.light).grimoirePage(.loose)
             }
             .fullScreenCover(item: $route, onDismiss: {
@@ -182,7 +196,6 @@ struct DeckStudioRootView: View {
         }
         .tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
-        .grimoirePage()
         .task { connectPlay(); loadFavorites(); await loadCatalogue(); refreshCheckKeys(); openFocus(); await reloadTags() }
         .onChange(of: library.decks.map(\.id)) { _, _ in Task { await reloadTags() } }
         .onChange(of: library.decks) { _, _ in refreshCheckKeys() }
@@ -247,33 +260,42 @@ struct DeckStudioRootView: View {
     }
     private var createButton: some View {
         Button { turn(to: .deck(nil, false)) } label: { Label("Create deck", systemImage: "plus").frame(maxWidth: .infinity) }
-            .buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.create")
+            .buttonStyle(DeckStudioPlayButtonStyle()).accessibilityIdentifier("deckStudio.create")
     }
     private var importButton: some View {
         Button { turn(to: .importer) } label: { Label("Import", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }
-            .buttonStyle(DeckStudioButtonStyle(primary: false)).accessibilityIdentifier("deckStudio.import")
+            .buttonStyle(BinderPlaqueButtonStyle()).accessibilityIdentifier("deckStudio.import")
             .disabled(resolver == nil)
     }
     private var libraryFilters: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                TextField("Search decks, commanders or tags", text: $query.text).autocorrectionDisabled()
-                    .accessibilityIdentifier("deckStudio.library.search")
-                if !query.text.isEmpty { Button { query.text = "" } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear search") }
-            }.padding(14).grimoireField(cornerRadius: 14)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(DeckStudioLibraryQuery.Filter.allCases) { filter in
-                        Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { query.filter = filter } } label: {
-                            Text(filter.rawValue).font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
-                                .foregroundStyle(query.filter == filter ? .white : DeckStudioPalette.ink)
-                                .background(query.filter == filter ? DeckStudioPalette.ink : DeckStudioPalette.surface, in: Capsule())
-                        }.accessibilityAddTraits(query.filter == filter ? [.isSelected] : [])
+        // The binder's brass rail, as on a deck's Cards page: the search, and the shelves as chips.
+        BinderRail {
+            VStack(spacing: 8) {
+                BinderSearchField(placeholder: "Search decks, commanders or tags", text: $query.text,
+                                  identifier: "deckStudio.library.search", focus: $searchFocused)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(DeckStudioLibraryQuery.Filter.allCases) { filterChip($0) }
                     }
                 }
             }
         }
+    }
+    /// One shelf of the library as a chip on the rail: ember glass when chosen.
+    private func filterChip(_ filter: DeckStudioLibraryQuery.Filter) -> some View {
+        let chosen = query.filter == filter
+        return Button { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { query.filter = filter } } label: {
+            Text(filter.rawValue).font(.system(size: 14, weight: .bold, design: .serif))
+                .foregroundStyle(chosen ? Color(red: 1, green: 0.92, blue: 0.7) : TavernPalette.parchment.opacity(0.75))
+                .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
+                .padding(.horizontal, 14).frame(minHeight: 36)
+                .background {
+                    if chosen { TavernFill(material: .ember).clipShape(Capsule()) }
+                    else { Capsule().fill(.black.opacity(0.4)) }
+                }
+                .overlay(Capsule().strokeBorder(chosen ? Binder.brassLight.opacity(0.7) : TavernPalette.brass.opacity(0.5), lineWidth: 1))
+                .frame(minHeight: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityAddTraits(chosen ? [.isSelected] : [])
     }
     private func tile(_ record: DeckLibraryRecord, included: Bool) -> some View {
         let id = selectionID(record, included: included)
@@ -312,17 +334,19 @@ struct DeckStudioRootView: View {
                 Group {
                     if !included { Text(record.updatedAt, style: .date) }
                     else { Text("Make it your own") }
-                }.font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                }.font(.system(size: 12, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
                     .lineLimit(2, reservesSpace: true).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star").frame(width: 44, height: 44) }
-                    .foregroundStyle(DeckStudioPalette.ink).accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
-                Menu { deckActions(record, included: included) } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }.accessibilityLabel("Options for \(record.name)")
+                // Brass coins: the favourite star (lit with ember once chosen) and the deck's options.
+                Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star") }
+                    .buttonStyle(BinderCoinButtonStyle(lit: favorites.contains(id)))
+                    .accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
+                Menu { deckActions(record, included: included) } label: { BinderCoin { Image(systemName: "ellipsis") } }
+                    .accessibilityLabel("Options for \(record.name)")
             }.padding(.horizontal, 14)
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 20))
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: DeckStudioPalette.ink.opacity(0.04), radius: 12, y: 4)
+        // Each deck is a little book on the page: a plate in a brass edge with book-corner protectors.
+        .binderPlate(corners: .book)
         .contextMenu { deckActions(record, included: included) }
     }
     @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
@@ -518,24 +542,26 @@ struct DeckStudioArtworkInvitation: View {
     var body: some View {
         if !remoteArtwork {
             DisclosureGroup(isExpanded: $expanded) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Turn on artwork across the app to send displayed card names and your IP address to Scryfall. Saved images remain available offline. Change this anytime in Artwork & privacy.")
-                        .font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
-                Button("Turn on") { remoteArtwork = true }
-                    .font(.caption.weight(.semibold))
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(minHeight: 44)
-                    .accessibilityIdentifier("deckStudio.artwork.enable")
+                    Button("Turn on") { remoteArtwork = true }
+                        .buttonStyle(BinderPlaqueButtonStyle())
+                        .fixedSize(horizontal: true, vertical: false)
+                        .accessibilityIdentifier("deckStudio.artwork.enable")
                 }
             } label: {
-                Label("Online card images are off", systemImage: "photo.on.rectangle.angled")
-                    .font(.caption.weight(.semibold)).frame(minHeight: 32)
+                HStack(spacing: 10) {
+                    BinderStamp(icon: "photo.on.rectangle.angled", size: 28)
+                    Text("Online card images are off").font(.system(size: 15, weight: .bold, design: .serif))
+                }
+                .frame(minHeight: 32)
             }
+            .disclosureGroupStyle(BinderDisclosureStyle())
             .foregroundStyle(DeckStudioPalette.ink)
-            .padding(12)
-            .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(DeckStudioPalette.separator))
+            .padding(.horizontal, 12).padding(.vertical, 4)
+            .binderPlate()
         }
     }
 }

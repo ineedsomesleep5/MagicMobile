@@ -81,14 +81,10 @@ struct DeckStudioPlaytestInsightsView: View {
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 }
                 HStack {
-                    Picker("Deck history", selection: $allDecks) {
-                        Text("This exact deck").tag(false)
-                        Text("All decks").tag(true)
-                    }.disabled(signature == nil)
-                    Picker("Game result", selection: $result) {
-                        ForEach(results, id: \.self) { Text($0).tag($0) }
-                    }
-                }.pickerStyle(.menu)
+                    BinderMenuPicker(title: "Deck history", selection: $allDecks, options: [(false, "This exact deck"), (true, "All decks")])
+                        .disabled(signature == nil)
+                    BinderMenuPicker(title: "Game result", selection: $result, options: results.map { ($0, $0) })
+                }
                 if games.isEmpty {
                     Text(enabled ? "No saved matches yet." : "No saved matches. Enable summaries in History settings for future AI games.")
                         .font(.subheadline)
@@ -351,16 +347,7 @@ struct MatchHistoryDashboard: View {
             }
             .accessibilityIdentifier("deckHistory.dashboard.scroll")
             .background(GrimoirePaper())
-            .grimoireTitle("Match history")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Label("Back to history", systemImage: "chevron.left")
-                    }
-                    .accessibilityIdentifier("deckHistory.dashboard.close")
-                }
-            }
+            .binderLeaf("Match history", leading: BinderLeafAction(title: "Back", identifier: "deckHistory.dashboard.close") { dismiss() })
         }
         .onAppear {
             guard !didSelectLatestSample else { return }

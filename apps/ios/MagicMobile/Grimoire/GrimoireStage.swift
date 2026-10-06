@@ -15,6 +15,22 @@ final class GrimoireStage {
 
     /// One turn or film at a time; anything asked for meanwhile just makes its change.
     private var busy = false
+
+    /// The binder's pages on screen, by screen in the order the screens appeared, each page's frame in
+    /// the window. A turn moves only the paper of the newest screen's pages; the binder around them (its
+    /// leather, head and index tabs) stays still. With none registered the whole screen turns.
+    private var binderScreens: [(screen: UUID, pages: [UUID: CGRect])] = []
+    func setBinderPage(_ frame: CGRect, page: UUID, screen: UUID) {
+        if let index = binderScreens.firstIndex(where: { $0.screen == screen }) { binderScreens[index].pages[page] = frame }
+        else { binderScreens.append((screen, [page: frame])) }
+    }
+    func removeBinderPage(_ page: UUID, screen: UUID) {
+        guard let index = binderScreens.firstIndex(where: { $0.screen == screen }) else { return }
+        binderScreens[index].pages[page] = nil
+        if binderScreens[index].pages.isEmpty { binderScreens.remove(at: index) }
+    }
+    /// The newest binder screen's pages, left to right.
+    private var binderPages: [CGRect] { (binderScreens.last?.pages.values).map { $0.sorted { $0.minX < $1.minX } } ?? [] }
     private var window: UIWindow?
     private var endObserver: NSObjectProtocol?
     private var readyObservation: NSKeyValueObservation?
@@ -123,8 +139,11 @@ final class GrimoireStage {
         busy = true
         let stage = makeWindow(scene)
         let bounds = stage.bounds
+        // In the binder only its pages turn: each picture is cut to the pages it shows.
+        let oldPages = binderPages.filter { bounds.intersects($0) }
         old.frame = bounds
-        stage.addSubview(old)
+        let oldPage = oldPages.count == 1 ? piece(old, oldPages[0], in: bounds) : old
+        stage.addSubview(oldPage)
         Self.withoutAnimation(change)
         GameAudio.shared.play(.pageFlip)
         // The new page needs a moment to be drawn underneath before it can be pictured or revealed.
@@ -132,38 +151,33 @@ final class GrimoireStage {
             guard let self else { return }
             if Grimoire.isSpread(bounds.size, accessibilitySize: UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory) {
                 guard let new = source.snapshotView(afterScreenUpdates: true) else { self.tearDown(); return }
-                self.turnSpread(forward: forward, old: old, new: new, in: stage)
+                let halves = oldPages.count == 2 ? (oldPages[0], oldPages[1])
+                    : (CGRect(x: 0, y: 0, width: bounds.width / 2, height: bounds.height),
+                       CGRect(x: bounds.width / 2, y: 0, width: bounds.width / 2, height: bounds.height))
+                self.turnSpread(forward: forward, old: old, new: new, in: stage, left: halves.0, right: halves.1)
             } else if forward {
-                self.swing(old, anchorLeft: true, from: 0, to: -.pi / 2 * 0.98, duration: 0.42, easeIn: true) { self.tearDown() }
+                self.swing(oldPage, anchorLeft: true, from: 0, to: -.pi / 2 * 0.98, duration: 0.42, easeIn: true) { self.tearDown() }
             } else {
                 guard let new = source.snapshotView(afterScreenUpdates: true) else { self.tearDown(); return }
                 new.frame = bounds
-                stage.addSubview(new)
-                self.swing(new, anchorLeft: true, from: -.pi / 2 * 0.98, to: 0, duration: 0.42, easeIn: false) { self.tearDown() }
+                let newPages = self.binderPages.filter { bounds.intersects($0) }
+                let newPage = newPages.count == 1 ? self.piece(new, newPages[0], in: bounds) : new
+                stage.addSubview(newPage)
+                self.swing(newPage, anchorLeft: true, from: -.pi / 2 * 0.98, to: 0, duration: 0.42, easeIn: false) { self.tearDown() }
             }
         }
     }
 
     /// A spread's turn: the far half of the old spread lifts to upright, then the near half of the new
     /// one comes down on the other side, while the halves that do not move stay where they are.
-    private func turnSpread(forward: Bool, old: UIView, new: UIView, in stage: UIWindow) {
+    private func turnSpread(forward: Bool, old: UIView, new: UIView, in stage: UIWindow, left leftRect: CGRect, right rightRect: CGRect) {
         let bounds = stage.bounds
-        let half = bounds.width / 2
-        let leftRect = CGRect(x: 0, y: 0, width: half, height: bounds.height)
-        let rightRect = CGRect(x: half, y: 0, width: half, height: bounds.height)
-        func piece(_ view: UIView, _ rect: CGRect) -> UIView {
-            let container = UIView(frame: rect)
-            container.clipsToBounds = true
-            view.frame = CGRect(x: -rect.minX, y: 0, width: bounds.width, height: bounds.height)
-            container.addSubview(view)
-            return container
-        }
-        // The old spread is pictured twice (one picture per half), the new one once for its moving half.
+        // The old spread is pictured twice (one picture per page), the new one once for its moving page.
         guard let oldCopy = old.snapshotView(afterScreenUpdates: false) else { tearDown(); return }
         old.removeFromSuperview()
-        let staying = piece(old, forward ? leftRect : rightRect)
-        let lifting = piece(oldCopy, forward ? rightRect : leftRect)
-        let landing = piece(new, forward ? leftRect : rightRect)
+        let staying = piece(old, forward ? leftRect : rightRect, in: bounds)
+        let lifting = piece(oldCopy, forward ? rightRect : leftRect, in: bounds)
+        let landing = piece(new, forward ? leftRect : rightRect, in: bounds)
         stage.addSubview(staying)
         stage.addSubview(lifting)
         stage.addSubview(landing)
@@ -177,6 +191,15 @@ final class GrimoireStage {
                 self.tearDown()
             }
         }
+    }
+
+    /// A picture of the whole window cut down to one page's frame.
+    private func piece(_ view: UIView, _ rect: CGRect, in bounds: CGRect) -> UIView {
+        let container = UIView(frame: rect)
+        container.clipsToBounds = true
+        view.frame = CGRect(x: -rect.minX, y: -rect.minY, width: bounds.width, height: bounds.height)
+        container.addSubview(view)
+        return container
     }
 
     /// Swings a page about its left or right edge (the spine), with perspective and a shade that

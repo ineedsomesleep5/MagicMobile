@@ -5,17 +5,37 @@ import SwiftUI
 struct DeckStudioPlayButtonStyle: ButtonStyle {
     var settled = false
     var compact = false
+    /// Play's ember jewel (the Meshy-made tavern-binder-jewel) beside the title.
+    var jewel = false
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let jewelArt = UIImage(named: "tavern-binder-jewel")
+    /// The binder's Play (concept B, 2026-10-06): ember glass set in brass, the kit's tavern ember, with
+    /// an ember jewel. The deck already chosen for play is a plain brass plaque.
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius)
-        return configuration.label.font((compact ? Font.subheadline : .body).weight(.semibold))
-            .padding(.horizontal, compact ? 12 : 16).padding(.vertical, compact ? 8 : 12)
+        let shape = RoundedRectangle(cornerRadius: compact ? 9 : 10, style: .continuous)
+        return HStack(spacing: 8) {
+            if jewel, !settled, let art = Self.jewelArt {
+                Image(uiImage: art).resizable().interpolation(.high).frame(width: 30, height: 30)
+                    .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1).accessibilityHidden(true)
+                configuration.label.labelStyle(.titleOnly)
+            } else {
+                configuration.label
+            }
+        }
+        .font(.system(size: compact ? 15 : 17, weight: .heavy, design: .serif))
+            .padding(.horizontal, compact ? 12 : 16).padding(.vertical, compact ? 8 : 10)
             .frame(minHeight: compact ? DeckStudioMetrics.touchTarget : DeckStudioMetrics.controlHeight)
-            .foregroundStyle(settled ? DeckStudioPalette.success : BrandTheme.emberInk)
-            .background { if settled { shape.fill(DeckStudioPalette.surfaceElevated) } else { shape.fill(BrandTheme.emberGradient) } }
-            .overlay(shape.stroke(settled ? DeckStudioPalette.success.opacity(0.5) : .clear))
-            .opacity(settled || enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .foregroundStyle(settled ? Binder.engraved : Color(red: 1, green: 0.94, blue: 0.80))
+            .shadow(color: settled ? Binder.brassLight.opacity(0.7) : .black.opacity(0.65), radius: 0, y: 1)
+            .background {
+                if settled { shape.fill(Binder.brass) }
+                else { TavernFill(material: .ember).clipShape(shape) }
+            }
+            .overlay(shape.strokeBorder(Binder.brass, lineWidth: 2.5))
+            .overlay(shape.inset(by: 2.5).stroke(.black.opacity(0.35), lineWidth: 0.8))
+            .shadow(color: .black.opacity(configuration.isPressed ? 0.15 : 0.35), radius: configuration.isPressed ? 1 : 3, y: configuration.isPressed ? 0 : 2)
+            .opacity(settled || enabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
@@ -66,7 +86,7 @@ struct DeckStudioPlayDeckButton: View {
         Button { DeckStudioPlayAction.perform(selection, model: model) } label: {
             Label(action.title, systemImage: action.icon).frame(maxWidth: .infinity)
         }
-        .buttonStyle(DeckStudioPlayButtonStyle(settled: action.kind == .playing))
+        .buttonStyle(DeckStudioPlayButtonStyle(settled: action.kind == .playing, jewel: true))
         .disabled(!action.enabled)
         .accessibilityLabel(action.kind == .playing ? DeckStudioPlayText.playingAccessibility : action.title)
         .accessibilityIdentifier("deckStudio.play")
@@ -85,65 +105,80 @@ struct DeckStudioPlayMenuItem: View {
     }
 }
 
-/// Marks the deck the game setup screen will use.
+/// Marks the deck the game setup screen will use: an ember-glass tag in a thin brass rim with Play's jewel.
 struct DeckStudioPlayingBadge: View {
     var body: some View {
-        Label(DeckStudioPlayText.playing, systemImage: "play.circle.fill")
-            .font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .foregroundStyle(BrandTheme.emberInk).background(BrandTheme.ember, in: Capsule())
+        BinderTag(text: DeckStudioPlayText.playing, material: .ember, jewel: true)
             .accessibilityElement(children: .ignore).accessibilityLabel(DeckStudioPlayText.playingAccessibility)
     }
 }
 
-/// Ready, Needs fixes or Not checked, from the stored XMage check for these cards.
+/// Ready, Needs fixes or Not checked, from the stored XMage check for these cards: a leather tag whose
+/// jewel keeps the status's colour.
 struct DeckStudioPlayStatusChip: View {
     let status: DeckStudioPlayStatus
     var body: some View {
-        Label(status.label, systemImage: icon)
-            .font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .foregroundStyle(color).background(DeckStudioPalette.surfaceElevated.opacity(0.94), in: Capsule())
+        BinderTag(text: status.label, material: .leather, accent: jewel)
             .accessibilityElement(children: .ignore).accessibilityLabel("Deck check: \(status.label)")
     }
-    private var icon: String {
+    private var jewel: Color {
         switch status {
-        case .ready: return "checkmark.seal.fill"
-        case .needsFixes: return "exclamationmark.triangle.fill"
-        case .notChecked: return "questionmark.circle"
-        }
-    }
-    private var color: Color {
-        switch status {
-        case .ready: return DeckStudioPalette.success
-        case .needsFixes: return DeckStudioPalette.warning
-        case .notChecked: return DeckStudioPalette.secondaryInk
+        case .ready: return Color(red: 0.42, green: 0.85, blue: 0.40)
+        case .needsFixes: return Color(red: 1.0, green: 0.62, blue: 0.18)
+        case .notChecked: return Color(red: 0.78, green: 0.72, blue: 0.62)
         }
     }
 }
 
-/// Pinned above the library: which deck the next game uses and whether it is ready.
+/// Pinned above the library: which deck the next game uses and whether it is ready, on a band of the
+/// binder's leather with Play's jewel and a brass coin to open it.
 struct DeckStudioNowPlayingStrip: View {
     let name: String
     let status: DeckStudioPlayStatus
     let open: () -> Void
+    private static let jewel = UIImage(named: "tavern-binder-jewel")
     var body: some View {
         Button(action: open) {
             HStack(spacing: 10) {
-                Image(systemName: "play.circle.fill").foregroundStyle(BrandTheme.ember).font(.title3)
-                Text(DeckStudioPlayText.nowPlayingStrip(name, status)).font(.subheadline.weight(.semibold))
+                Group {
+                    if let art = Self.jewel { Image(uiImage: art).resizable().interpolation(.high) }
+                    else { Image(systemName: "flame.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(TavernPalette.ember) }
+                }
+                .frame(width: 28, height: 28).shadow(color: .black.opacity(0.55), radius: 1.5, y: 1)
+                Text(DeckStudioPlayText.nowPlayingStrip(name, status))
+                    .font(.system(size: 15, weight: .bold, design: .serif))
+                    .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
+                    .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
                     .lineLimit(2).multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                BinderStamp(icon: "chevron.right", size: 26)
             }
-            .padding(.horizontal, 20).frame(minHeight: DeckStudioMetrics.touchTarget + 8)
+            .padding(.horizontal, 16).frame(minHeight: DeckStudioMetrics.touchTarget + 8)
             .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
-        .buttonStyle(.plain).foregroundStyle(DeckStudioPalette.ink)
-        .background(DeckStudioPalette.surface)
-        .overlay(alignment: .bottom) { DeckStudioPalette.separator.frame(height: 1) }
+        .buttonStyle(DeckStudioArtworkButtonStyle())
+        .background {
+            ZStack {
+                TavernFill(material: .leather)
+                Binder.dye(Binder.oxblood, 0.45)
+            }
+            .overlay(alignment: .top) { stitch.padding(.top, 4) }
+            .overlay(alignment: .bottom) { stitch.padding(.bottom, 6) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Binder.brass).frame(height: 2) }
+        }
+        .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
         .accessibilityHint("Opens your playing deck")
         .accessibilityIdentifier("deckStudio.nowPlaying")
+    }
+    /// The band's stitching.
+    private var stitch: some View {
+        StitchLine().stroke(Binder.thread, style: StrokeStyle(lineWidth: 1, dash: [5, 4])).frame(height: 1).padding(.horizontal, 6)
+    }
+}
+
+private struct StitchLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in path.move(to: .init(x: rect.minX, y: rect.midY)); path.addLine(to: .init(x: rect.maxX, y: rect.midY)) }
     }
 }
 
@@ -211,28 +246,46 @@ private struct DeckStudioNowPlayingBanner: View {
     let excludedCards: Int
     let setUp: () -> Void
     let close: () -> Void
+    private static let jewel = UIImage(named: "tavern-binder-jewel")
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "play.circle.fill").font(.title2).foregroundStyle(BrandTheme.ember).accessibilityHidden(true)
+            Group {
+                if let art = Self.jewel { Image(uiImage: art).resizable().interpolation(.high) }
+                else { Image(systemName: "flame.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(TavernPalette.ember) }
+            }
+            .frame(width: 32, height: 32).shadow(color: .black.opacity(0.55), radius: 1.5, y: 1).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(DeckStudioPlayText.nowPlaying(name)).font(.subheadline.weight(.semibold)).lineLimit(2)
+                Text(DeckStudioPlayText.nowPlaying(name)).font(.system(size: 15, weight: .bold, design: .serif)).lineLimit(2)
+                    .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
                 if excludedCards > 0 {
-                    Text(DeckStudioPlayText.excluded(excludedCards)).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    Text(DeckStudioPlayText.excluded(excludedCards)).font(.system(size: 13, design: .serif))
+                        .foregroundStyle(TavernPalette.parchment.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
             Button(DeckStudioPlayText.setUpGame, action: setUp)
                 .buttonStyle(DeckStudioPlayButtonStyle(compact: true)).fixedSize()
                 .accessibilityIdentifier("deckStudio.setUpGame")
-            Button(action: close) { Image(systemName: "xmark").frame(width: 44, height: 44) }
+            Button(action: close) { Image(systemName: "xmark") }
+                .buttonStyle(BinderCoinButtonStyle())
                 .accessibilityLabel("Dismiss")
         }
-        .padding(.leading, 16).padding(.trailing, 4).padding(.vertical, 8)
-        .background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
-        .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(DeckStudioPalette.separator))
-        .shadow(color: DeckStudioPalette.ink.opacity(0.12), radius: 12, y: 4)
+        .padding(.leading, 14).padding(.trailing, 4).padding(.vertical, 8)
+        // A leather slip in a brass edge, laid over the page.
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+            ZStack {
+                TavernFill(material: .leather)
+                Binder.dye(Binder.oxblood, 0.45)
+            }
+            .clipShape(shape)
+            .overlay(shape.inset(by: 4).stroke(Binder.thread, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .overlay(shape.strokeBorder(Binder.brass, lineWidth: 2))
+        }
+        .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
         .padding(.horizontal, 16).padding(.bottom, 8)
-        .foregroundStyle(DeckStudioPalette.ink)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("deckStudio.nowPlayingBanner")
     }

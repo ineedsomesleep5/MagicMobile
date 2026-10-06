@@ -143,8 +143,7 @@ struct DeckStudioOnlineSearch: View {
         .sheet(item: $selected) { card in
             NavigationStack {
                 ScrollView { DeckStudioScryfallReference(name: card.name, initialCard: card).padding(20) }
-                    .grimoireTitle("Card reference").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selected = nil } } }
+                    .binderLeaf("Card reference", trailing: BinderLeafAction(title: "Done") { selected = nil })
                     .background(GrimoirePaper())
             }.preferredColorScheme(.light).grimoirePage(.loose)
         }

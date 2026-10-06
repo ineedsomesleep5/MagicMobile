@@ -75,6 +75,7 @@ import io.magicmobile.android.core.CardInfo
 import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
+import io.magicmobile.android.ui.rgb
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -130,7 +131,8 @@ private fun LocalCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List
     var loading by remember { mutableStateOf(false) }
     // The deck's cards and the search results share one layout choice (the Cards toolbar's toggle).
     val cardLayout by io.magicmobile.android.ui.AppPreferences.string("deckStudio.cards.layout.v1", "Grid")
-    val gridColumns = deckStudioGridColumns()
+    // Sleeves at least 100 points wide.
+    val gridColumns = maxOf(2, (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 40 + 10) / 110)
     val identity = if (constrainIdentity) colors else null
     LaunchedEffect(query, type, identity, setCode, minMV, maxMV, metadata) {
         val catalogue = metadata ?: return@LaunchedEffect
@@ -194,16 +196,16 @@ private fun LocalCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List
             if (model.cardCount(card.name, section) < before) { setFeedback("Removed one ${card.name} from $section"); setError(null) }
             else { setFeedback(null); setError("Could not remove this card; check the draft.") }
         }
-        // The same full-art grid as the deck's own cards (Caleb, 2026-10-05): a tap adds the card; once the deck
-        // holds it, the right half adds another copy and the left half takes one away. A long press shows the card.
+        // The results in sleeves, like the deck's own cards (Caleb, 2026-10-05 and 2026-10-06): the plus (or the
+        // card's right half) adds a copy; once the deck holds it the minus (or the left half) takes one away.
         if (cardLayout == "Grid") items(results.chunked(gridColumns), key = { "grid/${it.first().name}" }) { chunk ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                for (card in chunk) DeckStudioArtTile(card.name, model.cardCount(card.name, section), card,
-                    if (model.needsSingletonReview(card.name, card, section)) listOf("Already in playing deck, check the copy limit") else emptyList(),
-                    null, tap = {}, preview = { inspect(card) }, modifier = Modifier.weight(1f),
-                    change = { delta -> if (delta > 0) addOne(card) else removeOne(card) },
-                    addLabel = "Add ${card.name} to $section", removeLabel = "Remove one ${card.name} from $section")
-                repeat(gridColumns - chunk.size) { Spacer(Modifier.weight(1f)) }
+            BinderSleeveRow(chunk, gridColumns, Modifier.padding(horizontal = 8.dp)) { card, modifier ->
+                BinderSleeve(card.name, model.cardCount(card.name, section), card, modifier,
+                    notes = if (model.needsSingletonReview(card.name, card, section)) listOf("Already in playing deck, check the copy limit") else emptyList(),
+                    addLabel = "Add ${card.name} to $section", removeLabel = "Remove one ${card.name} from $section", tapLabel = "Inspect ${card.name}",
+                    add = { io.magicmobile.android.ui.GameAudio.play(io.magicmobile.android.ui.GameSound.UI_TICK); addOne(card) },
+                    remove = { io.magicmobile.android.ui.GameAudio.play(io.magicmobile.android.ui.GameSound.UI_TICK); removeOne(card) },
+                    tap = { inspect(card) }, preview = { inspect(card) })
             }
         } else items(results, key = { it.name }) { card ->
             Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface)) {
@@ -559,22 +561,21 @@ class DeckStudioBuilderState {
     fun liveSelection(draft: NativeDeckDraft): Set<UUID> = selection.intersect(draft.rows.map { it.id }.toSet())
 }
 
-/** Live quick check in the workspace header. Tapping a row issue filters the Cards list. */
+/** Live quick check on the title plate: the brass gauge and leather chips. Tapping a row issue filters the Cards list. */
 @Composable
 fun DeckStudioPreflightBar(preflight: DeckStudioPreflight, filter: DeckStudioPreflight.Issue?, setFilter: (DeckStudioPreflight.Issue?) -> Unit,
                            chooseCommander: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(14.dp)).padding(12.dp).testTag("deckStudio.quickCheck"),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().testTag("deckStudio.quickCheck"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Ruled off from the plate above it rather than boxed.
+        GrimoireRule()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${preflight.count}/${DeckStudioPreflight.targetCount}",
                 Modifier.semantics { contentDescription = "${CardCountText.label(preflight.count)} of ${DeckStudioPreflight.targetCount}" },
-                color = DeckStudioPalette.ink, style = StudioText.headline)
-            Text(preflight.summary, color = if (preflight.issueCount == 0) DeckStudioPalette.success else DeckStudioPalette.warning, style = StudioText.caption)
+                color = DeckStudioPalette.ink, style = sf(17f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+            Text(preflight.summary, color = if (preflight.issueCount == 0) DeckStudioPalette.success else DeckStudioPalette.warning,
+                style = sf(13f, SfWeight.semibold))
         }
-        Box(Modifier.fillMaxWidth().height(4.dp).background(DeckStudioPalette.separator, CircleShape).clearAndSetSemantics {}) {
-            Box(Modifier.fillMaxWidth(minOf(preflight.count, DeckStudioPreflight.targetCount).toFloat() / DeckStudioPreflight.targetCount).height(4.dp)
-                .background(if (preflight.count == DeckStudioPreflight.targetCount) DeckStudioPalette.success else DeckStudioPalette.accent, CircleShape))
-        }
+        BinderGauge(preflight.count, Modifier.clearAndSetSemantics {}, target = DeckStudioPreflight.targetCount, showsCount = false)
         if (preflight.activeIssues.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (issue in preflight.activeIssues) {
                 val selected = filter == issue
@@ -585,17 +586,12 @@ fun DeckStudioPreflightBar(preflight: DeckStudioPreflight, filter: DeckStudioPre
                     stateDescription = if (issue == DeckStudioPreflight.Issue.MISSING_COMMANDER) "Choose a commander" else if (selected) "Shows every card again" else "Shows only these cards"
                     this.selected = selected
                 }, contentAlignment = Alignment.Center) {
-                    Row(Modifier.defaultMinSize(minHeight = 32.dp).background(if (selected) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, CircleShape)
-                        .border(1.dp, if (selected) Color.Transparent else DeckStudioPalette.separator, CircleShape).padding(horizontal = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val tint = if (selected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.warning
-                        SfImage(if (issue == DeckStudioPreflight.Issue.MISSING_COMMANDER) "crown" else "exclamationmark.triangle", tint, 12.dp)
-                        Text(preflight.chipTitle(issue), color = tint, style = StudioText.caption.weight(SfWeight.semibold), maxLines = 1)
-                    }
+                    BinderChip(preflight.chipTitle(issue), icon = if (issue == DeckStudioPreflight.Issue.MISSING_COMMANDER) "crown" else "exclamationmark.triangle",
+                        chosen = selected)
                 }
             }
         }
-        Text(DeckStudioPreflight.caption, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
+        Text(DeckStudioPreflight.caption, color = DeckStudioPalette.secondaryInk, style = sf(12f))
     }
 }
 
@@ -616,7 +612,10 @@ private data class QuickAddToast(val message: String, val generation: UUID)
  * and keep typing. Each add can be undone from its toast.
  */
 @Composable
-fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStudioEditorModel, openSearch: () -> Unit, modifier: Modifier = Modifier) {
+fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStudioEditorModel, openSearch: () -> Unit, modifier: Modifier = Modifier,
+                          binder: Boolean = false) {
+    // At the foot of a binder page, on leather: parchment lettering, a dark well to write in and brass plaques.
+    val hintInk = if (binder) io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.85f) else DeckStudioPalette.secondaryInk
     var text by remember { mutableStateOf("") }
     var maybeboard by rememberSaveable { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<CardInfo>>(emptyList()) }
@@ -660,10 +659,9 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
             }
         }
         when {
-            error != null -> Text(error ?: "", color = DeckStudioPalette.danger, style = StudioText.caption)
-            note != null -> Text(note ?: "", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-            focused && text.isEmpty() -> Text(DeckStudioPlayText.quickAddHint,
-                color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+            error != null -> Text(error ?: "", color = if (binder) rgb(1.0, 0.62, 0.5) else DeckStudioPalette.danger, style = StudioText.caption)
+            note != null -> Text(note ?: "", color = hintInk, style = StudioText.caption)
+            focused && text.isEmpty() -> Text(DeckStudioPlayText.quickAddHint, color = hintInk, style = StudioText.caption)
         }
         toast?.let { shown ->
             Row(Modifier.fillMaxWidth().background(DeckStudioPalette.ink, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp)
@@ -678,24 +676,32 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).defaultMinSize(minHeight = DeckStudioMetrics.controlHeight).background(DeckStudioPalette.surfaceElevated, shape)
-                .border(1.dp, DeckStudioPalette.separator, shape).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            val fieldInk = if (binder) io.magicmobile.android.ui.TavernPalette.parchment else DeckStudioPalette.ink
+            Row(Modifier.weight(1f).defaultMinSize(minHeight = DeckStudioMetrics.controlHeight)
+                .background(if (binder) Color.Black.copy(alpha = 0.5f) else DeckStudioPalette.surfaceElevated, shape)
+                .border(1.dp, if (binder) Binder.brassLight.copy(alpha = 0.3f) else DeckStudioPalette.separator, shape).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                SfImage("magnifyingglass", DeckStudioPalette.secondaryInk, 15.dp)
+                SfImage("magnifyingglass", if (binder) Binder.brassLight else DeckStudioPalette.secondaryInk, 15.dp)
                 BasicTextField(text, { text = it; if (it.isNotEmpty()) { error = null; note = null } },
                     Modifier.weight(1f).onFocusChanged { focused = it.isFocused }.testTag("deckStudio.quickAdd").semantics { contentDescription = "Quick add" },
-                    singleLine = true, textStyle = StudioText.body.copy(color = DeckStudioPalette.ink), cursorBrush = SolidColor(DeckStudioPalette.ink),
+                    singleLine = true, textStyle = StudioText.body.copy(color = fieldInk), cursorBrush = SolidColor(if (binder) Binder.brassLight else DeckStudioPalette.ink),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     // Handling Done here, without clearing focus, keeps the keyboard up for the next card.
                     keyboardActions = KeyboardActions(onDone = { commit(null) }),
                     decorationBox = { inner ->
                         Box {
-                            if (text.isEmpty()) Text(DeckStudioPlayText.quickAdd, color = DeckStudioPalette.secondaryInk.copy(alpha = 0.6f), style = StudioText.body, maxLines = 1)
+                            if (text.isEmpty()) Text(DeckStudioPlayText.quickAdd, color = if (binder) fieldInk.copy(alpha = 0.5f) else DeckStudioPalette.secondaryInk.copy(alpha = 0.6f),
+                                style = StudioText.body, maxLines = 1)
                             inner()
                         }
                     })
-                if (text.isNotEmpty()) StudioIconButton("xmark.circle.fill", "Clear quick add", { text = "" }, tint = DeckStudioPalette.secondaryInk, size = 16.dp)
+                if (text.isNotEmpty()) StudioIconButton("xmark.circle.fill", "Clear quick add", { text = "" }, tint = if (binder) fieldInk.copy(alpha = 0.7f) else DeckStudioPalette.secondaryInk, size = 16.dp)
             }
+            if (binder) {
+                BinderPlaque(Modifier.testTag("deckStudio.quickAdd.maybeboard"), title = if (maybeboard) DeckStudioPlayText.quickAddMaybe else DeckStudioPlayText.quickAddMain,
+                    on = maybeboard, label = DeckStudioPlayText.quickAddMaybeboard + if (maybeboard) ", on" else ", off") { maybeboard = !maybeboard }
+                BinderPlaque(Modifier.testTag("deckStudio.addCards"), title = DeckStudioPlayText.addCards, icon = "plus") { openSearch() }
+            } else {
             Box(Modifier.defaultMinSize(minWidth = 52.dp, minHeight = DeckStudioMetrics.controlHeight)
                 .background(if (maybeboard) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, shape)
                 .border(1.dp, if (maybeboard) Color.Transparent else DeckStudioPalette.separator, shape).clip(shape)
@@ -710,6 +716,7 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 SfImage("plus", DeckStudioPalette.surfaceElevated, 14.dp)
                 Text(DeckStudioPlayText.addCards, color = DeckStudioPalette.surfaceElevated, style = StudioText.subheadline.weight(SfWeight.semibold), maxLines = 1)
+            }
             }
         }
     }

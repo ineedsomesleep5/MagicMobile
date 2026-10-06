@@ -251,7 +251,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         let glance = app.staticTexts["Your deck at a glance"]
         assertLandsAtTop(glance, header: header, "Analysis")
         let pinnedTabY = app.buttons["Analysis"].frame.midY
-        XCTAssertLessThan(pinnedTabY, restingTabY - 100, "The tabs should move up to their pinned place")
+        XCTAssertLessThan(abs(pinnedTabY - restingTabY), 8, "The index tabs stay at the binder's edge")
         capture("Portrait Analysis lands on the pinned tabs")
         analysis.swipeUp()
         analysis.swipeUp()
