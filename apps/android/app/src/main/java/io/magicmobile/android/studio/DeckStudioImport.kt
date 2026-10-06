@@ -41,7 +41,6 @@ import io.magicmobile.android.game.EngineJson
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
-import io.magicmobile.android.ui.sf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -181,55 +180,83 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
         }
     }
 
-    StudioScreen {
-        Column(Modifier.fillMaxSize().imePadding()) {
-            StudioNavBar("Import deck", leading = { StudioGlassGroup { StudioGlassText("Cancel", ::cancel, enabled = !saving) } })
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Text("Bring your deck.", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
-                Text("Paste, link, or scan a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
-                StudioSegmented(listOf("Paste", "Link", "Scan"), method, { method = it }, { if (it == "Scan") "Scan image" else it }, enabled = !busy && saved == null)
-                StudioPanel(spacing = 14.dp) {
-                    val locked = busy || saved != null
-                    when (method) {
-                        "Paste" -> {
-                            StudioRoundedField(name, { name = it }, "Deck name", Modifier.fillMaxWidth(), enabled = !locked)
-                            Box(Modifier.fillMaxWidth().heightIn(min = 220.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(10.dp)) {
-                                StudioTextInput(text, { text = it }, "", Modifier.fillMaxWidth().heightIn(min = 200.dp).semantics { contentDescription = "Decklist text" },
-                                    style = sf(17f, design = SfDesign.MONOSPACED), singleLine = false, enabled = !locked)
-                            }
-                            Text("Commander\n1 Your Commander\n\nDeck\n1 Sol Ring", color = DeckStudioPalette.secondaryInk, style = sf(12f, design = SfDesign.MONOSPACED))
-                            StudioPlainButton("Open text or native JSON file", { filePicker.launch(arrayOf("text/plain", "application/json")) }, icon = "doc", enabled = !locked)
-                        }
-                        "Link" -> {
-                            StudioRoundedField(link, { link = it }, "Public Archidekt or Moxfield deck URL", Modifier.fillMaxWidth(), keyboardType = KeyboardType.Uri, enabled = !locked)
-                            StudioToggle("Exclude sideboard / maybeboard", excludeSideboards, { excludeSideboards = it }, enabled = !locked)
-                            Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.",
-                                color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-                            StudioPlainButton("Switch to pasted export", { method = "Paste" }, enabled = !locked)
-                        }
-                        else -> {
-                            StudioPlainButton("Choose decklist photo or screenshot", { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                                Modifier.defaultMinSize(minHeight = 60.dp), icon = "text.viewfinder", enabled = !locked)
-                            Text("Text recognition runs on this device. Images are not uploaded. Review and correct the recognized text before parsing; this is not a physical-card scanner.",
-                                color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-                        }
+    // The parts of the importer, shared by the single page (upright) and the two pages of a spread.
+    val entry: @Composable () -> Unit = {
+        Text("Bring your deck.", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
+        Text("Paste, link, or scan a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
+        StudioSegmented(listOf("Paste", "Link", "Scan"), method, { method = it }, { if (it == "Scan") "Scan image" else it }, enabled = !busy && saved == null)
+        StudioPanel(spacing = 14.dp) {
+            val locked = busy || saved != null
+            when (method) {
+                "Paste" -> {
+                    StudioRoundedField(name, { name = it }, "Deck name", Modifier.fillMaxWidth(), enabled = !locked)
+                    Box(Modifier.fillMaxWidth().heightIn(min = 220.dp).grimoireField(RoundedCornerShape(12.dp)).padding(10.dp)) {
+                        StudioTextInput(text, { text = it }, "", Modifier.fillMaxWidth().heightIn(min = 200.dp).semantics { contentDescription = "Decklist text" },
+                            style = sf(17f, design = SfDesign.MONOSPACED), singleLine = false, enabled = !locked)
                     }
+                    Text("Commander\n1 Your Commander\n\nDeck\n1 Sol Ring", color = DeckStudioPalette.secondaryInk, style = sf(12f, design = SfDesign.MONOSPACED))
+                    StudioPlainButton("Open text or native JSON file", { filePicker.launch(arrayOf("text/plain", "application/json")) }, icon = "doc", enabled = !locked)
                 }
-                scanNotice?.let { DeckStudioNotice("Check recognized text", it) }
-                error?.let { DeckStudioNotice("Import needs attention", it, "exclamationmark.triangle") }
-                if (busy) StudioProgress(if (saving) "Saving deck and import details…" else if (method == "Scan") "Reading image on this device…" else "Preparing review…")
-                if (method != "Scan") StudioButton("Review decklist", ::beginPreview, Modifier.semantics { contentDescription = "deckStudio.import.review" },
-                    enabled = !busy && resolver != null && saved == null && (if (method == "Link") link else text).isNotBlank())
-                preview?.let { value ->
-                    ImportReview(value)
-                    DeckStudioValidationPanel(validation, value.deck, resolver)
+                "Link" -> {
+                    StudioRoundedField(link, { link = it }, "Public Archidekt or Moxfield deck URL", Modifier.fillMaxWidth(), keyboardType = KeyboardType.Uri, enabled = !locked)
+                    StudioToggle("Exclude sideboard / maybeboard", excludeSideboards, { excludeSideboards = it }, enabled = !locked)
+                    Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.",
+                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                    StudioPlainButton("Switch to pasted export", { method = "Paste" }, enabled = !locked)
+                }
+                else -> {
+                    StudioPlainButton("Choose decklist photo or screenshot", { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        Modifier.defaultMinSize(minHeight = 60.dp), icon = "text.viewfinder", enabled = !locked)
+                    Text("Text recognition runs on this device. Images are not uploaded. Review and correct the recognized text before parsing; this is not a physical-card scanner.",
+                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                 }
             }
-            preview?.let { value ->
-                Box(Modifier.fillMaxWidth().background(DeckStudioPalette.background).navigationBarsPadding().padding(16.dp)) {
-                    StudioButton(if (saved == null) "Save reviewed draft" else "Finish import", { save(value) },
-                        Modifier.fillMaxWidth().semantics { contentDescription = "deckStudio.import.confirm" }, enabled = !busy)
+        }
+        scanNotice?.let { DeckStudioNotice("Check recognized text", it) }
+        error?.let { DeckStudioNotice("Import needs attention", it, "exclamationmark.triangle") }
+        if (busy) StudioProgress(if (saving) "Saving deck and import details…" else if (method == "Scan") "Reading image on this device…" else "Preparing review…")
+        if (method != "Scan") StudioButton("Review decklist", ::beginPreview, Modifier.semantics { contentDescription = "deckStudio.import.review" },
+            enabled = !busy && resolver != null && saved == null && (if (method == "Link") link else text).isNotBlank())
+    }
+    val reviewed: @Composable () -> Unit = {
+        preview?.let { value ->
+            ImportReview(value)
+            DeckStudioValidationPanel(validation, value.deck, resolver)
+        }
+    }
+    val confirm: @Composable () -> Unit = {
+        preview?.let { value ->
+            Box(Modifier.fillMaxWidth().grimoirePaper().navigationBarsPadding().padding(16.dp)) {
+                StudioButton(if (saved == null) "Save reviewed draft" else "Finish import", { save(value) },
+                    Modifier.fillMaxWidth().semantics { contentDescription = "deckStudio.import.confirm" }, enabled = !busy)
+            }
+        }
+    }
+    val spread = androidx.compose.ui.platform.LocalConfiguration.current.let { Grimoire.isSpread(it.screenWidthDp, it.screenHeightDp) }
+    StudioScreen {
+        Column(Modifier.fillMaxSize().imePadding()) {
+            // On a spread the middle of the bar is the fold: no title is drawn there.
+            StudioNavBar(if (spread) "" else "Import deck", leading = { StudioGlassGroup { StudioGlassText("Cancel", ::cancel, enabled = !saving) } })
+            if (spread) {
+                // The list goes in on the left page and is reviewed on the right; nothing runs across the fold.
+                Row(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).padding(end = Grimoire.foldInset).verticalScroll(rememberScrollState()).padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
+                    Column(Modifier.weight(1f).padding(start = Grimoire.foldInset)) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                            if (preview == null) Text("Your decklist appears here for review, card by card, before anything is saved.",
+                                color = DeckStudioPalette.secondaryInk, style = StudioText.callout.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                            reviewed()
+                        }
+                        confirm()
+                    }
                 }
+            } else {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    entry()
+                    reviewed()
+                }
+                confirm()
             }
         }
     }

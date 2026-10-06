@@ -48,6 +48,7 @@
 		2701CDA012A4C78D33FFAC4B /* cast-green.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D67BC8DA46E85F63EA486B70 /* cast-green.m4a */; };
 		279961B648C10EF650644D7A /* OnDeviceSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F134EEE83531B994E0FDA7CB /* OnDeviceSessionTests.swift */; };
 		287E5F55CA27719D6983FF70 /* BattlefieldRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3744BFB3A7C96C1932C6CB /* BattlefieldRow.swift */; };
+		2AEDBC12CC577430DF008411 /* grimoire-close-landscape.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = CB9AC7B0CEE9879DCB39B489 /* grimoire-close-landscape.mp4 */; };
 		2B326E8D717AFDB4121B357A /* ArenaBoardPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786781880D40A88BA056AE67 /* ArenaBoardPresentation.swift */; };
 		2D886E3D009FAEF0C18B9AED /* GameAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C517B494AE8A569903D65937 /* GameAudio.swift */; };
 		2F622A19C3A92B6FF0F3D4CC /* GameMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEC04103C4F695450114353D /* GameMenus.swift */; };
@@ -85,6 +86,7 @@
 		450F5BB873D1CC8E320A16B9 /* FriendChallenges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8AB3E92C8E6BBBE67EFE6A /* FriendChallenges.swift */; };
 		465AC4E203BDFDD5542D5CAB /* DeckStudioPinnedTabsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB38F40A6C6EA976434A4305 /* DeckStudioPinnedTabsUITests.swift */; };
 		46C654118FE25509AF4A6E15 /* OnDeviceYieldPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC719A2D4CD649677617480 /* OnDeviceYieldPolicy.swift */; };
+		48EC33D6FF02D804D7F02A3D /* GrimoireChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E7B0118A6BED61D52A7524 /* GrimoireChrome.swift */; };
 		4ADA44346770FB8EB262E358 /* BoardFXShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 42BED0731F12A5926DA34D5C /* BoardFXShaders.metal */; };
 		4AF282A470DCF43196B5CFCE /* death.m4a in Resources */ = {isa = PBXBuildFile; fileRef = A7C33F153F569BE3FE22AE92 /* death.m4a */; };
 		4B8DFA7151989EE4F97D4BE8 /* GameBoardPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */; };
@@ -128,6 +130,7 @@
 		670FBC31C74AD8F10C241696 /* NativeDeckComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51E32ED65987159F48457A3 /* NativeDeckComponents.swift */; };
 		673A44BDF44CC945988E960C /* commander-cast.m4a in Resources */ = {isa = PBXBuildFile; fileRef = A1F9883F502768C836E38344 /* commander-cast.m4a */; };
 		68A71CB9B415C3564DC0EE00 /* CardChoicePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE88055F0F7F4FCBCB3562B5 /* CardChoicePlan.swift */; };
+		6994735C8C22766A24F748B9 /* GrimoireUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8182505C8F6CF95CDFC256C3 /* GrimoireUITests.swift */; };
 		6AF3BEE2F3620A42DFA8661D /* GameplayActionDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5F7CD02B1D33DA830FD069 /* GameplayActionDock.swift */; };
 		6E84A7D990DBB9DABFDC44DB /* BoardChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB711F169F86E1A0D722009 /* BoardChrome.swift */; };
 		6F13B3F588B63422BA35C264 /* DeckStudioDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D050F76646C26B69A4656F /* DeckStudioDesignTokens.swift */; };
@@ -142,13 +145,16 @@
 		752C5EFA30A506F19E13681B /* MagicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B2CFE17C03F7A7CC6CFEC3 /* MagicMobileApp.swift */; };
 		75F14C7BFC84AEF7B9497400 /* cast-colorless.m4a in Resources */ = {isa = PBXBuildFile; fileRef = A13606E6180BF4C23D18DF94 /* cast-colorless.m4a */; };
 		760A9FB9120D62A42DF5D4BF /* dice-land.caf in Resources */ = {isa = PBXBuildFile; fileRef = 8BC13E054B7D03947A85C88B /* dice-land.caf */; };
+		76BF8C0B6C031B4143B13EE2 /* grimoire-close-portrait.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 369879E8AAF8F8EC8B2597E5 /* grimoire-close-portrait.mp4 */; };
 		77198AC6D92BD046F1CC9D3C /* OnDevicePromptAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECEAC8960FAD7EA6D906C998 /* OnDevicePromptAdapter.swift */; };
 		7809578545F0C6535C327D5C /* commander-brackets.json in Resources */ = {isa = PBXBuildFile; fileRef = 0011D51DDEED2576ED425898 /* commander-brackets.json */; };
 		7A783E437023DFC7F7699487 /* OnDeviceStartingPlayerChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1767B12B3ED4F770199B3F44 /* OnDeviceStartingPlayerChoice.swift */; };
 		7B5832D9238D0C17B22BAED4 /* BattlefieldAdaptiveSizingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F675833239E93937C36ABD7C /* BattlefieldAdaptiveSizingTests.swift */; };
 		7B72E6890B552DA93EDE4711 /* HowToPlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9707DE97C9F3E6C78529CF /* HowToPlay.swift */; };
 		7C7C644A528CE96DD4E92856 /* SoundLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03776AA5903A753166553C23 /* SoundLabView.swift */; };
+		7D8661A1841EC361AA9B7B89 /* grimoire-open-landscape.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = E416A9C6613DE629F3956DA8 /* grimoire-open-landscape.mp4 */; };
 		7E0AEB6046A86BB6EC554A67 /* ui-tick.caf in Resources */ = {isa = PBXBuildFile; fileRef = A787BE79E1734C22AC68B36A /* ui-tick.caf */; };
+		7FA0A8BEBB5BD68B417FFB4B /* GrimoireStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CF9197593085EEE0D392D17 /* GrimoireStage.swift */; };
 		80DA852EFC43322C3AFEFECB /* DeckStudioWorkspaceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4368F9EC7E12BB7A89BB3673 /* DeckStudioWorkspaceScreen.swift */; };
 		81BAD7099B005235220C354A /* BoardScrollRotationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E71A5066F22CE114CFB0807C /* BoardScrollRotationUITests.swift */; };
 		8243CBF59D10FFF29450B881 /* DeckStudioScryfallViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414BA1EAB2335B7591A6228A /* DeckStudioScryfallViews.swift */; };
@@ -225,6 +231,7 @@
 		C77898481F428777681334A0 /* OnDeviceDeckLinkImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6E81D58ACA7C6A40D0C88C /* OnDeviceDeckLinkImporter.swift */; };
 		C8A91D889B58BEB06185D67F /* life-gain.m4a in Resources */ = {isa = PBXBuildFile; fileRef = BF18D0F3A709D83F0ACC69D4 /* life-gain.m4a */; };
 		C8CEF09268A8C2A2A7968A9D /* OnDeviceBackendRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5D01538DEB4023EFFA69C5 /* OnDeviceBackendRegistrationTests.swift */; };
+		C9C7397036B3DF4A77B6CD06 /* grimoire-open-portrait.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 077066AA5631F71FD1CEF8EA /* grimoire-open-portrait.mp4 */; };
 		CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */; };
 		CB579F1D301D4239AF1B54B2 /* OnDeviceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6362475A26B1690B16AA7CE /* OnDeviceSession.swift */; };
 		CC05AAC1B8E791F3E0B1094B /* AmbientMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48D6D674E565E8970C38766 /* AmbientMotion.swift */; };
@@ -314,6 +321,7 @@
 		050CFDDBEFC8A3ED48848333 /* land-drop.m4a */ = {isa = PBXFileReference; path = "land-drop.m4a"; sourceTree = "<group>"; };
 		054A5EFAB42630A1B2F600A8 /* DeckStudioCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCore.swift; sourceTree = "<group>"; };
 		062EC23FFFBBEA16B6775A9C /* music-game-2.m4a */ = {isa = PBXFileReference; path = "music-game-2.m4a"; sourceTree = "<group>"; };
+		077066AA5631F71FD1CEF8EA /* grimoire-open-portrait.mp4 */ = {isa = PBXFileReference; path = "grimoire-open-portrait.mp4"; sourceTree = "<group>"; };
 		07D2F9E6D492AE9BD7D6EA16 /* OnDeviceBackendRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceBackendRegistration.swift; sourceTree = "<group>"; };
 		07DEA973C10068B2D3F0B619 /* swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = swift; path = "../../packages/ondevice-engine/swift"; sourceTree = SOURCE_ROOT; };
 		07E4D5A9D311CB78CA8825E4 /* HowToPlayUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowToPlayUITests.swift; sourceTree = "<group>"; };
@@ -360,6 +368,7 @@
 		33FF7C120A9D38C4D2603702 /* TavernRoomBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TavernRoomBackdrop.swift; sourceTree = "<group>"; };
 		34AB998C3D5AA8E4DFD8EAF1 /* GameBoardDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardDesignTokens.swift; sourceTree = "<group>"; };
 		3572CF391B01366995DFCEF2 /* AIDeckPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIDeckPool.swift; sourceTree = "<group>"; };
+		369879E8AAF8F8EC8B2597E5 /* grimoire-close-portrait.mp4 */ = {isa = PBXFileReference; path = "grimoire-close-portrait.mp4"; sourceTree = "<group>"; };
 		36D89291D3A05F7D50E814D8 /* BoardResourceLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardResourceLayoutUITests.swift; sourceTree = "<group>"; };
 		378E2D2A40FFB80E110404D6 /* UITestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestHarness.swift; sourceTree = "<group>"; };
 		37B38E682FB38C9A11F80A64 /* music-menu-2.m4a */ = {isa = PBXFileReference; path = "music-menu-2.m4a"; sourceTree = "<group>"; };
@@ -430,6 +439,7 @@
 		7192BE431A0A5F389E034747 /* GameBoardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardScreen.swift; sourceTree = "<group>"; };
 		71FA1327EADF12DC5FCC75CE /* DeckStudioCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCoreTests.swift; sourceTree = "<group>"; };
 		7310F972E936D7992D841C36 /* MagicMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		74E7B0118A6BED61D52A7524 /* GrimoireChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoireChrome.swift; sourceTree = "<group>"; };
 		74EB99E9AF40C4282D158D78 /* music-game-4.m4a */ = {isa = PBXFileReference; path = "music-game-4.m4a"; sourceTree = "<group>"; };
 		750D36F231104F825F37D72F /* HandCardPan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandCardPan.swift; sourceTree = "<group>"; };
 		758915BF73C93166FBC294F1 /* Build19FeatureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Build19FeatureUITests.swift; sourceTree = "<group>"; };
@@ -444,6 +454,7 @@
 		7C9CE37525D6289CCBF098B8 /* GameBoardPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardPreviewFixtures.swift; sourceTree = "<group>"; };
 		7F2C38F6B91E9F6F6296D94D /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		7FF561DB43FE4DF98719736F /* victory.m4a */ = {isa = PBXFileReference; path = victory.m4a; sourceTree = "<group>"; };
+		8182505C8F6CF95CDFC256C3 /* GrimoireUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoireUITests.swift; sourceTree = "<group>"; };
 		81C3500BADA0CAAC23387CDB /* OnDeviceMultiplayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayerTests.swift; sourceTree = "<group>"; };
 		82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapterTests.swift; sourceTree = "<group>"; };
 		85BC3BF684A952E9F5E80725 /* CardImageURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardImageURL.swift; sourceTree = "<group>"; };
@@ -464,6 +475,7 @@
 		9BC0EAEA663F3051BA202B5A /* DeckStudioEditorTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioEditorTools.swift; sourceTree = "<group>"; };
 		9C3713BAC2F8354AD17630E1 /* OnDeviceSessionLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSessionLifecycleTests.swift; sourceTree = "<group>"; };
 		9C37D72C4561936225893B0E /* OnDeviceDeckEditingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckEditingTests.swift; sourceTree = "<group>"; };
+		9CF9197593085EEE0D392D17 /* GrimoireStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoireStage.swift; sourceTree = "<group>"; };
 		9E2DD509CAF97A2E8633B388 /* GameplayAffordancesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameplayAffordancesTests.swift; sourceTree = "<group>"; };
 		9E8D65C0C83C0BDFBAC6E988 /* NativeDownloadsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDownloadsUITests.swift; sourceTree = "<group>"; };
 		9F694053142C046421A7F480 /* IndependentAIDecksUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndependentAIDecksUITests.swift; sourceTree = "<group>"; };
@@ -539,6 +551,7 @@
 		C7BA23D5B9BCF29F6619B8FB /* PromptCommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptCommandBuilder.swift; sourceTree = "<group>"; };
 		CAD5F9930BDDD6214920D5F9 /* ui-confirm.m4a */ = {isa = PBXFileReference; path = "ui-confirm.m4a"; sourceTree = "<group>"; };
 		CB4830B9AA903B4D8729CD7B /* music-game-3.m4a */ = {isa = PBXFileReference; path = "music-game-3.m4a"; sourceTree = "<group>"; };
+		CB9AC7B0CEE9879DCB39B489 /* grimoire-close-landscape.mp4 */ = {isa = PBXFileReference; path = "grimoire-close-landscape.mp4"; sourceTree = "<group>"; };
 		CC1B682469EF7A9B45FC1468 /* life-loss.m4a */ = {isa = PBXFileReference; path = "life-loss.m4a"; sourceTree = "<group>"; };
 		CEC04103C4F695450114353D /* GameMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameMenus.swift; sourceTree = "<group>"; };
 		D1246E1EFE7ADC14F6CC9B0C /* NativeEngine-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NativeEngine-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -561,6 +574,7 @@
 		E170200DA8F0A65EBA233D74 /* CommanderPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommanderPresentation.swift; sourceTree = "<group>"; };
 		E25161EF0DCBD6D130249073 /* OnDevice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OnDevice; path = MagicMobileTests/Fixtures/OnDevice; sourceTree = SOURCE_ROOT; };
 		E323E614FEAF91B792C023CE /* NativeDeckPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckPresentationTests.swift; sourceTree = "<group>"; };
+		E416A9C6613DE629F3956DA8 /* grimoire-open-landscape.mp4 */ = {isa = PBXFileReference; path = "grimoire-open-landscape.mp4"; sourceTree = "<group>"; };
 		E557CD5B9182F00AB74366F4 /* NativeDeckMetadataCatalogue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeckMetadataCatalogue.swift; sourceTree = "<group>"; };
 		E71A5066F22CE114CFB0807C /* BoardScrollRotationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardScrollRotationUITests.swift; sourceTree = "<group>"; };
 		E7F5B2A1DC98E0070A9EE52D /* OnDeviceDeckEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckEditing.swift; sourceTree = "<group>"; };
@@ -687,6 +701,15 @@
 			path = Library;
 			sourceTree = "<group>";
 		};
+		39CDE4B45C8AE94E52DA0398 /* Grimoire */ = {
+			isa = PBXGroup;
+			children = (
+				74E7B0118A6BED61D52A7524 /* GrimoireChrome.swift */,
+				9CF9197593085EEE0D392D17 /* GrimoireStage.swift */,
+			);
+			path = Grimoire;
+			sourceTree = "<group>";
+		};
 		3B3E07DF8FB800888420E3B4 /* Ideas */ = {
 			isa = PBXGroup;
 			children = (
@@ -785,6 +808,7 @@
 				33FF7C120A9D38C4D2603702 /* TavernRoomBackdrop.swift */,
 				1C820EF7CD9990452A3D550B /* Board */,
 				15FA9C2961B1C0D119A8DCCF /* DeckStudio */,
+				39CDE4B45C8AE94E52DA0398 /* Grimoire */,
 				D44B01402798506A0D4500F7 /* Ranked */,
 				925E09D8BD9E18CC5EA8A35D /* Resources */,
 			);
@@ -888,6 +912,7 @@
 				EB38F40A6C6EA976434A4305 /* DeckStudioPinnedTabsUITests.swift */,
 				4CD073C390A414C9A10BA045 /* DeckStudioReadabilityUITests.swift */,
 				325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */,
+				8182505C8F6CF95CDFC256C3 /* GrimoireUITests.swift */,
 				07E4D5A9D311CB78CA8825E4 /* HowToPlayUITests.swift */,
 				9F694053142C046421A7F480 /* IndependentAIDecksUITests.swift */,
 				9E8D65C0C83C0BDFBAC6E988 /* NativeDownloadsUITests.swift */,
@@ -914,6 +939,7 @@
 				0011D51DDEED2576ED425898 /* commander-brackets.json */,
 				1A7B83AA1C40365E550FA5E3 /* tavern-room.json */,
 				D5489907D7F10C930B3E85E6 /* Audio */,
+				F89BC1DD96EE61F6BE70DB87 /* Grimoire */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -1014,6 +1040,17 @@
 				7FF561DB43FE4DF98719736F /* victory.m4a */,
 			);
 			path = Audio;
+			sourceTree = "<group>";
+		};
+		F89BC1DD96EE61F6BE70DB87 /* Grimoire */ = {
+			isa = PBXGroup;
+			children = (
+				CB9AC7B0CEE9879DCB39B489 /* grimoire-close-landscape.mp4 */,
+				369879E8AAF8F8EC8B2597E5 /* grimoire-close-portrait.mp4 */,
+				E416A9C6613DE629F3956DA8 /* grimoire-open-landscape.mp4 */,
+				077066AA5631F71FD1CEF8EA /* grimoire-open-portrait.mp4 */,
+			);
+			path = Grimoire;
 			sourceTree = "<group>";
 		};
 		FA9C7D60C20176C0EF298F17 = {
@@ -1175,6 +1212,10 @@
 				001AB64DF90EFF56F60B5E95 /* dice-roll.m4a in Resources */,
 				30494056BC6987694F272C07 /* emote.caf in Resources */,
 				A7E8BDDEC540CD342D60E499 /* exile.m4a in Resources */,
+				2AEDBC12CC577430DF008411 /* grimoire-close-landscape.mp4 in Resources */,
+				76BF8C0B6C031B4143B13EE2 /* grimoire-close-portrait.mp4 in Resources */,
+				7D8661A1841EC361AA9B7B89 /* grimoire-open-landscape.mp4 in Resources */,
+				C9C7397036B3DF4A77B6CD06 /* grimoire-open-portrait.mp4 in Resources */,
 				414E17B20E18B109212AE00D /* land-drop.m4a in Resources */,
 				C8A91D889B58BEB06185D67F /* life-gain.m4a in Resources */,
 				F42133CC6729C70047FB4CFB /* life-loss.m4a in Resources */,
@@ -1352,6 +1393,8 @@
 				5CD7F4D2E4F23735031F8F63 /* GameResumeViews.swift in Sources */,
 				98436947AF246BB592B0932B /* GameStats.swift in Sources */,
 				6AF3BEE2F3620A42DFA8661D /* GameplayActionDock.swift in Sources */,
+				48EC33D6FF02D804D7F02A3D /* GrimoireChrome.swift in Sources */,
+				7FA0A8BEBB5BD68B417FFB4B /* GrimoireStage.swift in Sources */,
 				C226A496EE0E388518322E62 /* HandCardPan.swift in Sources */,
 				E818FEA4B24A1A603A22CB8B /* HoldCardInspection.swift in Sources */,
 				7B72E6890B552DA93EDE4711 /* HowToPlay.swift in Sources */,
@@ -1487,6 +1530,7 @@
 				465AC4E203BDFDD5542D5CAB /* DeckStudioPinnedTabsUITests.swift in Sources */,
 				0C2AC1730E6E0D231D0EA166 /* DeckStudioReadabilityUITests.swift in Sources */,
 				1197E403C9CDCBA1F5C6F9E5 /* DeckStudioReleaseUITests.swift in Sources */,
+				6994735C8C22766A24F748B9 /* GrimoireUITests.swift in Sources */,
 				6F967DE914F95FC401FBC978 /* HowToPlayUITests.swift in Sources */,
 				368AD89A9518B786A6B28B02 /* IndependentAIDecksUITests.swift in Sources */,
 				30BB54FC4DC7016938218675 /* NativeDownloadsUITests.swift in Sources */,

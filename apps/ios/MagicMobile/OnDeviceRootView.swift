@@ -334,7 +334,7 @@ struct OnDeviceRootView: View {
                         .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
-                                   play: { lobby = .chooser }, decks: { showImport = true },
+                                   play: { lobby = .chooser }, decks: openDecks,
                                    settings: { showAppearance = true }, news: { showUpdates = true },
                                    commanderName: selectedDeck?.commander?.cardName,
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
@@ -444,7 +444,7 @@ struct OnDeviceRootView: View {
             DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID,
                                isGameLive: { [setup = self.setup] in setup.needsLeave || setup.isBusy }, focus: studioFocus, preparePlay: {
                 showImport = false; showSetup = true
-            })
+            }, close: closeDecks)
         }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
@@ -459,6 +459,18 @@ struct OnDeviceRootView: View {
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
+    }
+
+    /// Decks is a spell book (Caleb, 2026-10-05): the book opens on the tavern table, then Deck Studio is
+    /// its first page; Done closes it again (GrimoireStage).
+    private func openDecks() {
+        guard !showImport else { return }
+        GameAudio.shared.play(.uiOpen)
+        GrimoireStage.shared.open { showImport = true }
+    }
+
+    private func closeDecks() {
+        GrimoireStage.shared.close { showImport = false }
     }
 
     /// A join link: open the online table setup with its code and join right away with the
@@ -997,7 +1009,7 @@ struct OnDeviceRootView: View {
     private var playDeckSlot: some View {
         PlayDeckSection(deckName: selectedDeck?.name, commander: selectedDeck?.commander?.cardName, bracket: selectedDeckBracket,
                         canDeclare: selectedDeckID.hasPrefix("local:"), deckID: $selectedDeckID, sections: deckPickerSections,
-                        editDecks: { showImport = true }, explainBracket: { showBracketSheet = true })
+                        editDecks: openDecks, explainBracket: { showBracketSheet = true })
             .disabled(setup.isBusy || matchmaker.isSearching)
     }
 
@@ -1310,7 +1322,7 @@ struct OnDeviceRootView: View {
                     }
                     TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
                     TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: deckPickerSections)
-                    Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
+                    Button(action: openDecks) { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(CommanderActionStyle(primary: false))
                     NativeArtworkPreferenceView()
                 }
@@ -1451,7 +1463,7 @@ struct OnDeviceRootView: View {
                 Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
                 OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
                                          startIssues: setup.startIssues) { cards in
-                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); showImport = true
+                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); openDecks()
                 }.disabled(setup.isBusy)
             }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
             VStack(alignment: .center, spacing: 10) {

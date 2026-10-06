@@ -64,7 +64,6 @@ import io.magicmobile.android.board.GameRulesText
 import io.magicmobile.android.board.MenuEntry
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
-import io.magicmobile.android.ui.sf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -159,7 +158,7 @@ fun DeckStudioComboPanel(model: DeckStudioComboModel, panel: DeckStudioComboPane
             }), light = true) { panel.approval = null }
     }
     panel.selected?.let { variant ->
-        BoardSheet({ panel.selected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        BoardSheet({ panel.selected = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             DeckStudioComboDetail(variant, { resolver?.canonicalCardName(it) ?: it }) { panel.selected = null }
         }
     }

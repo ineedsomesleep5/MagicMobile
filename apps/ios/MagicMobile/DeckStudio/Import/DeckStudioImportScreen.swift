@@ -11,6 +11,9 @@ struct DeckStudioImportScreen: View {
     let didImport: (DeckLibraryRecord) -> Void
     @StateObject private var validation = DeckStudioValidationState()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.grimoireClose) private var grimoireClose
+    /// Inside the book, leaving turns the page back.
+    private func leave() { if let grimoireClose { grimoireClose() } else { dismiss() } }
     @State private var method = "Paste"
     @State private var name = "Imported Commander Deck"
     @State private var text = ""
@@ -31,40 +34,40 @@ struct DeckStudioImportScreen: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Bring your deck.").font(.largeTitle.weight(.bold)).tracking(-1)
-                    Text("Paste, link, or scan a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
-                    Picker("Import method", selection: $method) {
-                        Text("Paste").tag("Paste"); Text("Link").tag("Link"); Text("Scan image").tag("Scan")
-                    }.pickerStyle(.segmented).disabled(busy || saved != nil)
-                    inputPanel
-                    if let scanNotice { DeckStudioNotice(title: "Check recognized text", message: scanNotice) }
-                    if let error { DeckStudioNotice(title: "Import needs attention", message: error, icon: "exclamationmark.triangle") }
-                    if busy { ProgressView(saving ? "Saving deck and import details…" : (method == "Scan" ? "Reading image on this device…" : "Preparing review…")) }
-                    if method != "Scan" {
-                        Button("Review decklist", action: beginPreview).buttonStyle(DeckStudioButtonStyle())
-                            .disabled(busy || resolver == nil || saved != nil || (method == "Link" ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .accessibilityIdentifier("deckStudio.import.review")
+            Group {
+                if spread {
+                    // The list goes in on the left page and is reviewed on the right; nothing runs across the fold.
+                    GrimoireSpread {
+                        ScrollView { VStack(alignment: .leading, spacing: 20) { entry }.padding(20) }
+                    } right: {
+                        VStack(spacing: 0) {
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 20) {
+                                    if preview == nil {
+                                        Text("Your decklist appears here for review, card by card, before anything is saved.")
+                                            .font(.callout).italic().foregroundStyle(DeckStudioPalette.secondaryInk)
+                                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                                    }
+                                    reviewed
+                                }.padding(20)
+                            }
+                            confirmButton
+                        }
                     }
-                    if let preview {
-                        review(preview)
-                        DeckStudioValidationPanel(state: validation, deck: preview.deck, resolver: resolver)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            entry
+                            reviewed
+                        }.padding(20).frame(maxWidth: 720).frame(maxWidth: .infinity)
                     }
-                }.padding(20).frame(maxWidth: 720).frame(maxWidth: .infinity)
-            }
-            .background(DeckStudioPalette.background).scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Import deck").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); validation.cancelPending(); dismiss() }.disabled(saving) } }
-            .interactiveDismissDisabled(saving)
-            .safeAreaInset(edge: .bottom) {
-                if let preview {
-                    Button(saved == nil ? "Save reviewed draft" : "Finish import") { save(preview) }
-                        .buttonStyle(DeckStudioButtonStyle()).padding(16).frame(maxWidth: .infinity)
-                        .background(DeckStudioPalette.background).disabled(busy)
-                        .accessibilityIdentifier("deckStudio.import.confirm")
+                    .safeAreaInset(edge: .bottom) { confirmButton }
                 }
             }
+            .background(GrimoirePaper()).scrollDismissesKeyboard(.interactively)
+            .grimoireTitle("Import deck", onFold: spread).navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); validation.cancelPending(); leave() }.disabled(saving) } }
+            .interactiveDismissDisabled(saving)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.plainText, .json]) { result in
                 do {
                     let url = try result.get(), scoped = url.startAccessingSecurityScopedResource()
@@ -85,20 +88,60 @@ struct DeckStudioImportScreen: View {
             .onChange(of: photo) { _, item in if let item { beginScan(item) } }
             .onDisappear { task?.cancel(); validation.cancelPending() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
+        .grimoirePage()
+    }
+    /// Sideways the book lies open as a spread: two pages, each with its own content.
+    @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
+    @Environment(\.dynamicTypeSize) private var dynamicType
+    private var spread: Bool { wide && !dynamicType.isAccessibilitySize }   // Grimoire.isSpread
+
+    /// Where the list goes in: the heading, the method, the input, and Review. In a spread, the left page.
+    @ViewBuilder private var entry: some View {
+        Text("Bring your deck.").font(.largeTitle.weight(.bold)).tracking(-1)
+        Text("Paste, link, or scan a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
+        GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Scan", "Scan image")], selection: $method)
+            .disabled(busy || saved != nil)
+        inputPanel
+        if let scanNotice { DeckStudioNotice(title: "Check recognized text", message: scanNotice) }
+        if let error { DeckStudioNotice(title: "Import needs attention", message: error, icon: "exclamationmark.triangle") }
+        if busy { ProgressView(saving ? "Saving deck and import details…" : (method == "Scan" ? "Reading image on this device…" : "Preparing review…")) }
+        if method != "Scan" {
+            Button("Review decklist", action: beginPreview).buttonStyle(DeckStudioButtonStyle())
+                .disabled(busy || resolver == nil || saved != nil || (method == "Link" ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("deckStudio.import.review")
+        }
+    }
+
+    /// The reviewed list and its rules check. In a spread, the right page.
+    @ViewBuilder private var reviewed: some View {
+        if let preview {
+            review(preview)
+            DeckStudioValidationPanel(state: validation, deck: preview.deck, resolver: resolver)
+        }
+    }
+
+    @ViewBuilder private var confirmButton: some View {
+        if let preview {
+            Button(saved == nil ? "Save reviewed draft" : "Finish import") { save(preview) }
+                .buttonStyle(DeckStudioButtonStyle()).padding(16).frame(maxWidth: .infinity)
+                .background(GrimoirePaper()).disabled(busy)
+                .accessibilityIdentifier("deckStudio.import.confirm")
+        }
     }
     private var inputPanel: some View {
         DeckStudioPanel {
             VStack(alignment: .leading, spacing: 14) {
                 if method == "Paste" {
-                    TextField("Deck name", text: $name).textFieldStyle(.roundedBorder)
+                    TextField("Deck name", text: $name).textFieldStyle(GrimoireFieldStyle())
                     TextEditor(text: $text).font(.body.monospaced()).frame(minHeight: 220)
-                        .scrollContentBackground(.hidden).padding(10).background(.white, in: RoundedRectangle(cornerRadius: 12))
+                        .scrollContentBackground(.hidden).padding(10).grimoireField(cornerRadius: 12)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityLabel("Decklist text")
                     Text("Commander\n1 Your Commander\n\nDeck\n1 Sol Ring").font(.caption.monospaced()).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Open text or native JSON file", systemImage: "doc") { filePicker = true }.frame(minHeight: 44)
                 } else if method == "Link" {
                     TextField("Public Archidekt or Moxfield deck URL", text: $link)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(GrimoireFieldStyle())
                     Toggle("Exclude sideboard / maybeboard", isOn: $excludeSideboards)
                     Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
@@ -192,7 +235,7 @@ struct DeckStudioImportScreen: View {
                 if let receipt = validation.receipt {
                     DeckStudioReceiptStore.shared.record(DeckStudioStoredCheck(deckID: "local:\(saved.id)", receipt: receipt))
                 }
-                didImport(saved); dismiss()
+                didImport(saved); leave()
             } catch {
                 self.error = saved == nil ? error.localizedDescription :
                     "The deck is saved and its full receipt is archived, but linking the details failed. Tap Finish import to retry without making another deck. " + error.localizedDescription

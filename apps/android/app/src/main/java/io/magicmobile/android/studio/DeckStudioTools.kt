@@ -75,7 +75,6 @@ import io.magicmobile.android.core.CardInfo
 import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
-import io.magicmobile.android.ui.sf
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -111,7 +110,7 @@ fun DeckStudioCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List<St
         else LocalCardSearch(metadata, colors, section, add, model, feedback, addError, { feedback = it }, { addError = it }) { inspection = it }
     }
     inspection?.let { card ->
-        io.magicmobile.android.board.BoardSheet({ inspection = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        io.magicmobile.android.board.BoardSheet({ inspection = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             DeckStudioCardInspector(card.name, card) { inspection = null }
         }
     }
@@ -129,6 +128,9 @@ private fun LocalCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List
     var constrainIdentity by remember { mutableStateOf(true) }
     var results by remember { mutableStateOf<List<CardInfo>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    // The deck's cards and the search results share one layout choice (the Cards toolbar's toggle).
+    val cardLayout by io.magicmobile.android.ui.AppPreferences.string("deckStudio.cards.layout.v1", "Grid")
+    val gridColumns = deckStudioGridColumns()
     val identity = if (constrainIdentity) colors else null
     LaunchedEffect(query, type, identity, setCode, minMV, maxMV, metadata) {
         val catalogue = metadata ?: return@LaunchedEffect
@@ -182,7 +184,28 @@ private fun LocalCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List
             DeckStudioNotice("Local catalogue unavailable", "Close this editor and retry the catalogue from your library, or use online search for reference.",
                 modifier = Modifier.padding(20.dp))
         } else if (!loading && results.isEmpty()) item { StudioContentUnavailable("No matching cards", "magnifyingglass", "Try another name or reset the filters.") }
-        items(results, key = { it.name }) { card ->
+        fun addOne(card: CardInfo) {
+            if (add(card.name, section)) { setFeedback("Added ${card.name} to $section"); setError(null) }
+            else { setFeedback(null); setError("Could not add this card. Check the draft quantity or section limits.") }
+        }
+        fun removeOne(card: CardInfo) {
+            val before = model.cardCount(card.name, section)
+            model.removeOne(card.name, section)
+            if (model.cardCount(card.name, section) < before) { setFeedback("Removed one ${card.name} from $section"); setError(null) }
+            else { setFeedback(null); setError("Could not remove this card; check the draft.") }
+        }
+        // The same full-art grid as the deck's own cards (Caleb, 2026-10-05): a tap adds the card; once the deck
+        // holds it, the right half adds another copy and the left half takes one away. A long press shows the card.
+        if (cardLayout == "Grid") items(results.chunked(gridColumns), key = { "grid/${it.first().name}" }) { chunk ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                for (card in chunk) DeckStudioArtTile(card.name, model.cardCount(card.name, section), card,
+                    if (model.needsSingletonReview(card.name, card, section)) listOf("Already in playing deck, check the copy limit") else emptyList(),
+                    null, tap = {}, preview = { inspect(card) }, modifier = Modifier.weight(1f),
+                    change = { delta -> if (delta > 0) addOne(card) else removeOne(card) },
+                    addLabel = "Add ${card.name} to $section", removeLabel = "Remove one ${card.name} from $section")
+                repeat(gridColumns - chunk.size) { Spacer(Modifier.weight(1f)) }
+            }
+        } else items(results, key = { it.name }) { card ->
             Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -305,7 +328,7 @@ private fun DeckStudioOnlineSearch(resolver: OnDeviceDeckResolver?, destination:
         }
     }
     selected?.let { card ->
-        io.magicmobile.android.board.BoardSheet({ selected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        io.magicmobile.android.board.BoardSheet({ selected = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             Column(Modifier.fillMaxWidth()) {
                 StudioSheetBar("Card reference", done = { selected = null })
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) { DeckStudioScryfallReference(card.name, card) }
@@ -396,7 +419,7 @@ fun DeckStudioBasicLandsSheet(draft: NativeDeckDraft, apply: (Map<String, Int>, 
             StudioSheetBar("Basic lands", done = { if (apply(values, draft)) dismiss() else error = "The draft changed or these counts exceed its limits. Nothing was partially applied." },
                 doneTitle = "Apply", cancel = dismiss)
         }
-        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text("Set main-deck basic-land counts. Other sections, snow basics and nonbasic lands stay unchanged. This is your edit, not an automatic mana-base recommendation.",
                 Modifier.padding(vertical = 8.dp), color = DeckStudioPalette.ink, style = StudioText.caption)
             for (name in NativeDeckDraft.basicLandNames) {
@@ -504,7 +527,7 @@ fun DeckStudioOrganizationSheet(recordID: String, title: String, dismiss: () -> 
 fun FormSection(header: String? = null, footer: String? = null, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         header?.let { Text(it.uppercase(), Modifier.padding(start = 16.dp, bottom = 6.dp), color = DeckStudioPalette.secondaryInk, style = sf(13f)) }
-        Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+        Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
         footer?.let { Text(it, Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp), color = DeckStudioPalette.secondaryInk, style = sf(13f)) }
     }
@@ -728,7 +751,7 @@ private fun BulkAction(title: String, icon: String, tint: Color, modifier: Modif
 fun DeckStudioQuantityDialog(apply: (String) -> Unit, dismiss: () -> Unit) {
     var value by remember { mutableStateOf("") }
     Dialog(dismiss) {
-        Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(14.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(14.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(DeckStudioPlayText.setQuantity, color = DeckStudioPalette.ink, style = StudioText.headline)
             Text(DeckStudioPlayText.quantityMessage, color = DeckStudioPalette.secondaryInk, style = StudioText.footnote)
             StudioRoundedField(value, { value = it.filter(Char::isDigit).take(4) }, "Quantity", Modifier.fillMaxWidth(), keyboardType = KeyboardType.Number)

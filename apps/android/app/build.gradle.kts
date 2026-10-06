@@ -77,6 +77,13 @@ val prepareBrandAssets by tasks.registering(Sync::class) {
         eachFile { path = "drawable-nodpi/" + name.replace('-', '_').lowercase() }
         includeEmptyDirs = false
     }
+    // The spell book's opening and closing films (scripts/brand/install_grimoire.sh): grimoire-open-portrait.mp4
+    // becomes R.raw.grimoire_open_portrait.
+    from(rootProject.file("../ios/MagicMobile/Resources/Grimoire")) {
+        include("*.mp4")
+        eachFile { path = "raw/" + name.replace('-', '_').lowercase() }
+        includeEmptyDirs = false
+    }
 }
 val prepareAudio by tasks.registering(Exec::class) {
     val script = rootProject.file("../../scripts/android/prepare_audio.py")

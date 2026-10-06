@@ -319,7 +319,7 @@ private fun DeckStudioIssuesSheet(title: String, deckName: String, message: Stri
 
 @Composable
 private fun PlaySheet(dismiss: () -> Unit, content: @Composable () -> Unit) {
-    BoardSheet(dismiss, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+    BoardSheet(dismiss, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
         Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
     }

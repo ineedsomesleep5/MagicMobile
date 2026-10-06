@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -68,7 +69,6 @@ import io.magicmobile.android.ondevice.OnDeviceSetupPreferences
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
-import io.magicmobile.android.ui.sf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,6 +108,10 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     var catalogue by remember { mutableStateOf<StudioCatalogue?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var route by remember { mutableStateOf<StudioRoute?>(null) }
+    // Moving between the library and a deck or the importer turns the page of the book.
+    val stage = rememberGrimoireStage()
+    val spread = androidx.compose.ui.platform.LocalConfiguration.current.let { Grimoire.isSpread(it.screenWidthDp, it.screenHeightDp) }
+    fun turn(next: StudioRoute?) = stage.turnPage(forward = next != null) { route = next }
     var pendingDelete by remember { mutableStateOf<DeckLibraryRecord?>(null) }
     var showPreferences by remember { mutableStateOf(false) }
     var pendingFix by remember { mutableStateOf<DeckStudioOpen?>(null) }
@@ -209,7 +213,7 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     fun openDeck(target: DeckStudioOpen) {
         val entry = records.firstOrNull { it.id == target.deckID } ?: return
         pendingFix = target.takeIf { it.cards.isNotEmpty() }
-        route = StudioRoute.Deck(entry.record, entry.included)
+        turn(StudioRoute.Deck(entry.record, entry.included))
     }
     /** Fix deck: the open workspace filters its own cards; from the library it opens the deck first. */
     fun fix(target: DeckStudioOpen) { if (route is StudioRoute.Deck) pendingFix = target else openDeck(target) }
@@ -219,60 +223,62 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
         openDeck(open)
     }
     fun playRecord(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver, entry.record.name)
-    StudioScreen {
+    GrimoirePages(stage) {
+      StudioScreen {
         Column(Modifier.fillMaxSize()) {
-            StudioNavBar("Deck Studio", leading = {
+            // On a spread the middle of the bar is the fold: no title is drawn there.
+            StudioNavBar(if (spread) "" else "Deck Studio", leading = {
                 StudioGlassGroup { StudioGlassText("Done", dismiss) }
             }, trailing = {
                 StudioGlassGroup { StudioGlassIcon("slider.horizontal.3", "Deck artwork and privacy", { showPreferences = true }) }
             })
-            records.firstOrNull { it.id == selectedDeckID }?.let { playing ->
-                DeckStudioNowPlayingStrip(playing.record.name, statuses[playing.id], { route = StudioRoute.Deck(playing.record, playing.included) },
-                    Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
-            }
-            LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 40.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                        LibraryHeader(onCreate = { route = StudioRoute.Deck(null, false) }, onImport = { route = StudioRoute.Importer },
-                            importEnabled = catalogue?.resolver != null)
-                        DeckStudioArtworkInvitation()
-                        (error ?: library.notice)?.let { DeckStudioNotice("Your library is preserved", it, "exclamationmark.triangle") }
-                        catalogue?.error?.let { message ->
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                DeckStudioNotice("Card catalogue unavailable", message)
-                                StudioPlainButton("Retry local catalogue", { catalogue = null; loadCatalogue() })
-                            }
-                        }
-                        LibraryFilters(query) { query = it }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${visible.size} decks", color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
-                            Spacer(Modifier.weight(1f))
-                            StudioMenu({
-                                DeckStudioLibraryQuery.Sort.entries.map { sort ->
-                                    MenuEntry.Item(sort.title, checked = sort == query.sort) { query = query.copy(sort = sort) }
-                                }
-                            }) {
-                                Row(Modifier.defaultMinSize(minHeight = 44.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    SfImage("arrow.up.arrow.down", DeckStudioPalette.ink, 16.dp)
-                                    Text(query.sort.title, color = DeckStudioPalette.ink, style = StudioText.subheadline)
-                                }
-                            }
-                            StudioIconButton(if (grid) "list.bullet" else "square.grid.2x2", if (grid) "Show deck list" else "Show deck grid", { grid = !grid })
-                        }
-                        if (visible.isEmpty()) StudioContentUnavailable(if (query.text.isEmpty()) "Your next deck starts here" else "No matching decks",
-                            "rectangle.stack", "Create a deck, import a list, or change your filters.")
-                    }
+            // The parts of the library, shared by the single page (upright) and the two pages of a spread.
+            val nowPlaying: @Composable (Modifier) -> Unit = { modifier ->
+                records.firstOrNull { it.id == selectedDeckID }?.let { playing ->
+                    DeckStudioNowPlayingStrip(playing.record.name, statuses[playing.id], { turn(StudioRoute.Deck(playing.record, playing.included)) }, modifier)
                 }
+            }
+            val intro: @Composable () -> Unit = {
+                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    LibraryHeader(onCreate = { turn(StudioRoute.Deck(null, false)) }, onImport = { turn(StudioRoute.Importer) },
+                        importEnabled = catalogue?.resolver != null)
+                    DeckStudioArtworkInvitation()
+                    (error ?: library.notice)?.let { DeckStudioNotice("Your library is preserved", it, "exclamationmark.triangle") }
+                    catalogue?.error?.let { message ->
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DeckStudioNotice("Card catalogue unavailable", message)
+                            StudioPlainButton("Retry local catalogue", { catalogue = null; loadCatalogue() })
+                        }
+                    }
+                    LibraryFilters(query) { query = it }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${visible.size} decks", color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
+                        Spacer(Modifier.weight(1f))
+                        StudioMenu({
+                            DeckStudioLibraryQuery.Sort.entries.map { sort ->
+                                MenuEntry.Item(sort.title, checked = sort == query.sort) { query = query.copy(sort = sort) }
+                            }
+                        }) {
+                            Row(Modifier.defaultMinSize(minHeight = 44.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                SfImage("arrow.up.arrow.down", DeckStudioPalette.ink, 16.dp)
+                                Text(query.sort.title, color = DeckStudioPalette.ink, style = StudioText.subheadline)
+                            }
+                        }
+                        StudioIconButton(if (grid) "list.bullet" else "square.grid.2x2", if (grid) "Show deck list" else "Show deck grid", { grid = !grid })
+                    }
+                    if (visible.isEmpty()) StudioContentUnavailable(if (query.text.isEmpty()) "Your next deck starts here" else "No matching decks",
+                        "rectangle.stack", "Create a deck, import a list, or change your filters.")
+                }
+            }
+            val shelf: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
                 items(visible, key = { it.id }) { value ->
                     DeckTile(value.record, value.included, value.id == selectedDeckID, statuses[value.id], grid, metadata, tags[value.record.id] ?: emptyList(),
                         bracket = if (value.included) io.magicmobile.android.game.CommanderBracket.CORE else deckBracket(value.id, value.record),
                         showTags = tags.values.any { it.isNotEmpty() }, favorite = value.id in favorites,
-                        open = { route = StudioRoute.Deck(value.record, value.included) }, toggleFavorite = { toggleFavorite(value.id) },
+                        open = { turn(StudioRoute.Deck(value.record, value.included)) }, toggleFavorite = { toggleFavorite(value.id) },
                         actions = {
                             deckActions(context, value.record, value.included, playEnabled = resolver != null && !play.checking, play = { playRecord(value) },
-                                open = { route = StudioRoute.Deck(value.record, value.included) },
+                                open = { turn(StudioRoute.Deck(value.record, value.included)) },
                                 duplicate = {
                                     try {
                                         val copy = library.duplicateLocalDurably(value.record, value.record.name + " — Copy")
@@ -280,27 +286,50 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                                             runCatching { DeckStudioServices.organization.duplicate(value.record.id, copy.id) }
                                                 .onFailure { error = "Cards were copied, but their optional details could not be copied: ${it.message}" }
                                         }
-                                        reloadTags(); route = StudioRoute.Deck(copy, false)
+                                        reloadTags(); turn(StudioRoute.Deck(copy, false))
                                     } catch (failure: Exception) { error = failure.message }
                                 }, delete = { pendingDelete = value.record })
                         })
                 }
             }
+            if (spread) {
+                // Sideways the book lies open as a spread: the library's heading and filters are the left page,
+                // the decks the right, and each scrolls by itself. Nothing runs across the fold.
+                Row(Modifier.fillMaxSize()) {
+                    Column(Modifier.weight(1f).padding(end = Grimoire.foldInset)) {
+                        nowPlaying(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp))
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 40.dp)) { intro() }
+                    }
+                    LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.weight(1f).padding(start = Grimoire.foldInset),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 40.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = shelf)
+                }
+            } else {
+                nowPlaying(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
+                LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 40.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { intro() }
+                    shelf()
+                }
+            }
         }
-        StudioCover(route != null) {
+        // Each of these is the next page of the book: leaving turns back to this one.
+        StudioCover(route != null, animated = false) {
             when (val current = route) {
                 is StudioRoute.Deck -> DeckStudioWorkspaceScreen(library, current.record, current.included, metadata, catalogue?.resolver,
-                    play = play, close = { route = null; reloadTags() }, fix = pendingFix, consumeFix = { pendingFix = null })
+                    play = play, close = { turn(null); reloadTags() }, fix = pendingFix, consumeFix = { pendingFix = null })
                 // A new import opens in its workspace, where Play is one tap away; the playing deck is unchanged.
-                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, didImport = { saved -> reloadTags(); route = StudioRoute.Deck(saved, false) },
-                    close = { route = null; reloadTags() })
+                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, didImport = { saved -> reloadTags(); turn(StudioRoute.Deck(saved, false)) },
+                    close = { turn(null); reloadTags() })
                 null -> {}
             }
         }
         DeckStudioPlayBanner(play, setUpGame = { route = null; dismiss(); preparePlay() }, Modifier.align(Alignment.BottomCenter))
+      }
     }
     DeckStudioPlaySheets(play, fix = ::fix)
-    if (showPreferences) BoardSheet({ showPreferences = false }, background = rgbLight, skipPartiallyExpanded = false) {
+    if (showPreferences) BoardSheet({ showPreferences = false }, background = rgbLight, paper = true, skipPartiallyExpanded = false) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             StudioSheetBar("Artwork & privacy", done = { showPreferences = false })
             Column(Modifier.padding(horizontal = 16.dp)) { NativeArtworkPreferenceRows() }
@@ -316,7 +345,8 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
 }
 
 /** The grouped-form background of a light sheet (systemGroupedBackground). */
-val rgbLight: Color = io.magicmobile.android.ui.rgb(0.95, 0.95, 0.97)
+/** A sheet over the studio: a loose leaf of the book's paper (it was the system's grouped grey). */
+val rgbLight: Color = DeckStudioPalette.surface
 
 /** A light sheet's bar: centred title and a trailing Done (or custom) action. */
 @Composable
@@ -335,21 +365,24 @@ fun StudioSheetBar(title: String, done: (() -> Unit)? = null, doneTitle: String 
     }
 }
 
-/** A full-screen cover sliding up over the studio (SwiftUI fullScreenCover). */
+/**
+ * A full-screen cover over the studio (SwiftUI fullScreenCover). It slides up, unless it is a page of the
+ * spell book: then it is simply there, and GrimoireStage turns a page over the change.
+ */
 @Composable
-fun StudioCover(visible: Boolean, content: @Composable () -> Unit) {
+fun StudioCover(visible: Boolean, animated: Boolean = true, content: @Composable () -> Unit) {
+    val page = Modifier.fillMaxSize().grimoirePaper().clickable(remember { MutableInteractionSource() }, null) {}
+    if (!animated) { if (visible) Box(page) { content() }; return }
     AnimatedVisibility(visible, enter = slideInVertically(androidx.compose.animation.core.tween(320)) { it } + fadeIn(),
         exit = slideOutVertically(androidx.compose.animation.core.tween(260)) { it } + fadeOut()) {
-        Box(Modifier.fillMaxSize().background(DeckStudioPalette.background).clickable(remember { MutableInteractionSource() }, null) {}) { content() }
+        Box(page) { content() }
     }
 }
 
 @Composable
 private fun LibraryHeader(onCreate: () -> Unit, onImport: () -> Unit, importEnabled: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("YOUR COLLECTION", color = DeckStudioPalette.secondaryInk, style = sf(12f, SfWeight.semibold, tracking = 1.8f))
-        Text("My Decks", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
-        Text("Find your next move.", color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
+        GrimoireHeading("Your collection", "My Decks", "Find your next move.")
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StudioButton("Create deck", onCreate, Modifier.weight(1f).semantics { contentDescription = "deckStudio.create" }, icon = "plus")
             StudioButton("Import", onImport, Modifier.weight(1f).semantics { contentDescription = "deckStudio.import" }, primary = false,

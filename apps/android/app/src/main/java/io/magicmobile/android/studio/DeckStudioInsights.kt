@@ -59,7 +59,6 @@ import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
-import io.magicmobile.android.ui.sf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -286,7 +285,7 @@ fun DeckStudioRoleInsightsView(draft: NativeDeckDraft, metadata: NativeDeckMetad
         }
     }
     review?.let { (name, original) ->
-        BoardSheet({ review = null }, background = rgbLight, skipPartiallyExpanded = true, sound = false) {
+        BoardSheet({ review = null }, background = rgbLight, paper = true, skipPartiallyExpanded = true, sound = false) {
             var selected by remember(name) { mutableStateOf(original) }
             Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
                 StudioSheetBar("Review roles", done = { if (change { it.copy(overrides = it.overrides + (name to selected)) }) review = null },
@@ -300,7 +299,7 @@ fun DeckStudioRoleInsightsView(draft: NativeDeckDraft, metadata: NativeDeckMetad
             }
         }
     }
-    if (showTargets) BoardSheet({ showTargets = false }, background = rgbLight, skipPartiallyExpanded = true, sound = false) {
+    if (showTargets) BoardSheet({ showTargets = false }, background = rgbLight, paper = true, skipPartiallyExpanded = true, sound = false) {
         var targets by remember { mutableStateOf(preferences.targets) }
         Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
             StudioSheetBar("My target ranges", done = { if (change { it.copy(targets = targets) }) showTargets = false }, doneTitle = "Save", cancel = { showTargets = false })
@@ -593,7 +592,7 @@ fun MatchHistoryDashboard(game: DeckStudioRecordedGame, exactDeck: Boolean, meta
         }
     }
     inspected?.let { name ->
-        BoardSheet({ inspected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        BoardSheet({ inspected = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             DeckStudioCardInspector(name, metadata?.card(name)) { inspected = null }
         }
     }

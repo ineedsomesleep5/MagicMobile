@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -65,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.CardArtwork
+import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.board.BoardMenu
 import io.magicmobile.android.board.ManaSymbolView
 import io.magicmobile.android.board.MenuEntry
@@ -74,7 +76,6 @@ import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
-import io.magicmobile.android.ui.sf
 
 /** DeckStudioDesignTokens.swift: a quiet ivory workspace lets real card artwork supply the colour. */
 /** Walnut & Ember's workbench: aged parchment pages in dark brown ink, so real card artwork still supplies the colour. */
@@ -102,6 +103,13 @@ object DeckStudioMetrics {
     val touchTarget = 44.dp
     val panelPadding = 16.dp
 }
+
+/**
+ * Inside the book all type is serif unless a style asks otherwise (SwiftUI `.fontDesign(.serif)` on the page).
+ * Deck Studio's files use this `sf`, not the app-wide one.
+ */
+fun sf(size: Float, weight: androidx.compose.ui.text.font.FontWeight = SfWeight.regular, design: SfDesign = SfDesign.SERIF, tracking: Float = 0f): TextStyle =
+    io.magicmobile.android.ui.sf(size, weight, design, tracking)
 
 /** SwiftUI text styles at the default Dynamic Type size (Large). */
 object StudioText {
@@ -156,8 +164,10 @@ fun StudioIconButton(icon: String, label: String, onClick: () -> Unit, modifier:
 }
 
 /** DeckStudioPanel: 16-point padding on the surface colour, 22-point corners. */
+/** A plate of the book's own paper, a shade lighter than the page, edged with a hairline of ink. */
 fun Modifier.studioPanel(): Modifier = fillMaxWidth()
-    .background(DeckStudioPalette.surface, RoundedCornerShape(DeckStudioMetrics.panelRadius))
+    .grimoirePaper(DeckStudioPalette.surface, 0.2f, RoundedCornerShape(DeckStudioMetrics.panelRadius))
+    .border(0.8.dp, DeckStudioPalette.ink.copy(alpha = 0.14f), RoundedCornerShape(DeckStudioMetrics.panelRadius))
     .padding(DeckStudioMetrics.panelPadding)
 
 @Composable
@@ -358,19 +368,34 @@ fun StudioStepper(label: String, value: Int, range: IntRange, onChange: (Int) ->
     }
 }
 
-/** Picker(.segmented) in the light appearance: grey track, white raised segment. */
+/** A choice written on the page as inked chips, the chosen one filled (GrimoireChoice on iOS), where iOS had a segmented control. */
 @Composable
 fun <T> StudioSegmented(options: List<T>, selected: T, onSelect: (T) -> Unit, title: (T) -> String, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    Row(modifier.fillMaxWidth().height(32.dp).alpha(if (enabled) 1f else 0.45f)
-        .background(rgb(0.46, 0.46, 0.5).copy(alpha = 0.12f), RoundedCornerShape(9.dp)).padding(2.dp)) {
+    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (option in options) {
             val isSelected = option == selected
-            Box(Modifier.weight(1f).height(28.dp)
-                .then(if (isSelected) Modifier.shadow(2.dp, RoundedCornerShape(7.dp)).background(Color.White, RoundedCornerShape(7.dp)) else Modifier)
-                .clickable(enabled = enabled) { onSelect(option) }.semantics { stateDescription = if (isSelected) "Selected" else "" },
+            Box(Modifier.weight(1f).defaultMinSize(minHeight = 40.dp)
+                .background(if (isSelected) DeckStudioPalette.ink else DeckStudioPalette.surface, CircleShape)
+                .border(0.8.dp, DeckStudioPalette.ink.copy(alpha = if (isSelected) 0f else 0.18f), CircleShape)
+                .clip(CircleShape).clickable(enabled = enabled, role = Role.Button) { onSelect(option) }
+                .semantics { this.selected = isSelected }.padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center) {
-                Text(title(option), color = Color.Black, style = sf(13f, if (isSelected) SfWeight.semibold else SfWeight.medium), maxLines = 1)
+                Text(title(option), color = if (isSelected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.ink,
+                    style = StudioText.subheadline.weight(SfWeight.medium), maxLines = 1)
             }
+        }
+    }
+}
+
+/** A run-in heading on a page (a section of the deck's cards): small capitals, an inked rule, a count (GrimoireSubheading on iOS). */
+@Composable
+fun GrimoireSubheading(title: String, count: Int? = null, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title.uppercase(), color = DeckStudioPalette.ink, style = sf(12f, SfWeight.semibold, SfDesign.SERIF, tracking = 1.6f), maxLines = 1)
+        Box(Modifier.weight(1f).height(1.dp).background(DeckStudioPalette.ink.copy(alpha = 0.28f)))
+        count?.let {
+            Text("$it", Modifier.semantics { contentDescription = CardCountText.label(it) }, color = DeckStudioPalette.secondaryInk,
+                style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
         }
     }
 }
@@ -397,7 +422,7 @@ fun StudioMenuPicker(selectedTitle: String, entries: () -> List<MenuEntry>, modi
 @Composable
 fun StudioSearchField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, radius: Dp = 14.dp,
                       padding: Dp = 14.dp, clearLabel: String = "Clear search", trailing: (@Composable () -> Unit)? = null) {
-    Row(modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(radius)).padding(horizontal = padding, vertical = if (padding > 12.dp) padding else 0.dp)
+    Row(modifier.fillMaxWidth().grimoireField(RoundedCornerShape(radius)).padding(horizontal = padding, vertical = if (padding > 12.dp) padding else 0.dp)
         .defaultMinSize(minHeight = 44.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SfImage("magnifyingglass", DeckStudioPalette.ink, 18.dp)
         StudioTextInput(value, onChange, placeholder, Modifier.weight(1f), imeAction = ImeAction.Search)
@@ -430,7 +455,7 @@ fun StudioTextInput(value: String, onChange: (String) -> Unit, placeholder: Stri
 fun StudioRoundedField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier,
                        keyboardType: KeyboardType = KeyboardType.Text, capitalization: KeyboardCapitalization = KeyboardCapitalization.None,
                        enabled: Boolean = true, onSubmit: (() -> Unit)? = null) {
-    Box(modifier.background(Color.White, RoundedCornerShape(6.dp)).border(0.5.dp, rgb(0.78, 0.78, 0.8), RoundedCornerShape(6.dp))
+    Box(modifier.grimoireField(RoundedCornerShape(6.dp))
         .defaultMinSize(minHeight = 34.dp).padding(horizontal = 8.dp, vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
         StudioTextInput(value, onChange, placeholder, Modifier.fillMaxWidth(), keyboardType = keyboardType, capitalization = capitalization,
             enabled = enabled, onSubmit = onSubmit, imeAction = if (onSubmit != null) ImeAction.Search else ImeAction.Done)
@@ -447,7 +472,10 @@ fun StudioNavBar(title: String, modifier: Modifier = Modifier, background: Color
         Box { leading?.let { Row(verticalAlignment = Alignment.CenterVertically, content = it) } }
         Box { if (principal != null) principal() else Text(title, color = DeckStudioPalette.ink, style = sf(17f, SfWeight.semibold), maxLines = 1) }
         Box { trailing?.let { Row(verticalAlignment = Alignment.CenterVertically, content = it) } }
-    }, modifier.fillMaxWidth().background(background).statusBarsPadding().height(56.dp).padding(horizontal = 16.dp)) { measurables, constraints ->
+    }, modifier.fillMaxWidth()
+        // The bar is the head of the page: the same paper, unless a caller asks for another colour.
+        .then(if (background == DeckStudioPalette.background) Modifier.grimoirePaper() else Modifier.background(background))
+        .statusBarsPadding().height(56.dp).padding(horizontal = 16.dp)) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val start = measurables[0].measure(loose); val end = measurables[2].measure(loose)
         val middle = measurables[1].measure(loose)
@@ -511,5 +539,6 @@ fun StudioProgress(label: String, modifier: Modifier = Modifier) {
 /** A Box that fills the screen with the studio background, for full-screen covers. */
 @Composable
 fun StudioScreen(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
-    Box(modifier.fillMaxSize().background(DeckStudioPalette.background), content = content)
+    // Every full screen of Deck Studio is a page of the spell book.
+    Box(modifier.fillMaxSize().grimoirePage(), content = content)
 }

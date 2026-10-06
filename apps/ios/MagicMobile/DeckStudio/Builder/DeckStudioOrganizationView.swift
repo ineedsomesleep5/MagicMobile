@@ -30,7 +30,7 @@ private struct DeckStudioOrganizationSheet: View {
     private var isDirty: Bool { history?.isDirty ?? false }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 if let error { Section { Text(error).foregroundStyle(DeckStudioPalette.danger) } }
                 if let history {
                     Section {
@@ -86,8 +86,8 @@ private struct DeckStudioOrganizationSheet: View {
                 } else if busy { ProgressView("Loading local details…") }
             }
             .disabled(busy)
-            .scrollContentBackground(.hidden).background(DeckStudioPalette.background)
-            .navigationTitle(title.isEmpty ? "Deck details" : title).navigationBarTitleDisplayMode(.inline)
+            .scrollContentBackground(.hidden).background(GrimoirePaper())
+            .grimoireTitle(title.isEmpty ? "Deck details" : title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { if isDirty { discardConfirmation = true } else { dismiss() } }.disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) { Button("Save") { Task { await save() } }.disabled(history == nil || busy) }
@@ -97,7 +97,7 @@ private struct DeckStudioOrganizationSheet: View {
             .confirmationDialog("Discard unsaved deck details?", isPresented: $discardConfirmation, titleVisibility: .visible) {
                 Button("Discard changes", role: .destructive) { dismiss() }
             } message: { Text("Previously saved notes, tags, import receipts and deck cards are unchanged.") }
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     private func edit(_ mutate: (inout DeckStudioOrganization) -> Void) {
         guard !busy, var history else { return }

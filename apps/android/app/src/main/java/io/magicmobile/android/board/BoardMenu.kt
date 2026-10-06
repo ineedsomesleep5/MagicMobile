@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import io.magicmobile.android.studio.grimoirePaper
 import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.LocalTavernBoard
 import io.magicmobile.android.ui.TavernConfirmationDialog
@@ -184,8 +185,9 @@ fun ConfirmationDialog(title: String, message: String?, actions: List<Confirmati
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardSheet(onDismiss: () -> Unit, background: Color = rgb(0.11, 0.11, 0.12), skipPartiallyExpanded: Boolean = false,
-               // Every sheet wears the tavern (Caleb, 2026-10-03), from the menu as much as from the board.
-               sound: Boolean = true, tavern: Boolean = true, content: @Composable () -> Unit) {
+               // Every sheet wears the tavern (Caleb, 2026-10-03), from the menu as much as from the board, except a
+               // Deck Studio sheet, which is a loose leaf of the spell book's paper (`paper`; ink text reads on it).
+               sound: Boolean = true, tavern: Boolean = true, paper: Boolean = false, content: @Composable () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
     androidx.compose.runtime.LaunchedEffect(Unit) { if (sound) GameAudio.play(GameSound.UI_OPEN) }
     ModalBottomSheet({ if (sound) GameAudio.play(GameSound.UI_CLOSE); onDismiss() }, sheetState = state, containerColor = Color.Transparent,
@@ -193,17 +195,19 @@ fun BoardSheet(onDismiss: () -> Unit, background: Color = rgb(0.11, 0.11, 0.12),
         scrimColor = Color.Black.copy(alpha = 0.32f), contentWindowInsets = { WindowInsets(0) }) {
         val shape = RoundedCornerShape(36.dp)
         // A sheet opened from the tavern board: leather backing under a brass rule, and the tavern kit inside (`.tavernSheet`).
-        val backing = if (tavern) Modifier.tavernFill(TavernMaterial.LEATHER, shape,
+        val backing = if (paper) Modifier.grimoirePaper(shape = shape).border(0.8.dp, io.magicmobile.android.studio.DeckStudioPalette.ink.copy(alpha = 0.25f), shape)
+        else if (tavern) Modifier.tavernFill(TavernMaterial.LEATHER, shape,
             overlayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))
             .border(1.dp, TavernPalette.brass.copy(alpha = 0.55f), shape)
         else Modifier.background(background, shape).border(0.5.dp, Color.White.copy(alpha = 0.12f), shape)
         Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp).navigationBarsPadding().padding(bottom = 8.dp)
             .clip(shape).then(backing)) {
             Box(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.widthIn(36.dp, 36.dp).height(5.dp).background(if (tavern) TavernPalette.brass.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.3f),
+                Box(Modifier.widthIn(36.dp, 36.dp).height(5.dp).background(if (paper) io.magicmobile.android.studio.DeckStudioPalette.ink.copy(alpha = 0.35f)
+                    else if (tavern) TavernPalette.brass.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.3f),
                     RoundedCornerShape(3.dp)))
             }
-            androidx.compose.runtime.CompositionLocalProvider(LocalTavernBoard provides tavern) { content() }
+            androidx.compose.runtime.CompositionLocalProvider(LocalTavernBoard provides (tavern && !paper)) { content() }
         }
     }
 }

@@ -227,6 +227,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
     var showDecks by remember { mutableStateOf(false) }
+    // Decks is a spell book: it opens on the tavern table, then Deck Studio is its first page; Done closes it again.
+    val grimoireFilm = remember { io.magicmobile.android.studio.GrimoireFilm() }
+    fun openDecks() { if (!showDecks) grimoireFilm.open { showDecks = true } }
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
     var bannerError by remember { mutableStateOf<String?>(null) }
@@ -895,12 +898,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         readyOnline = { selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) } },
                         back = { GameAudio.play(GameSound.UI_BACK); showSetup = false },
                         openSettings = { GameAudio.play(GameSound.UI_OPEN); showAppearance = true },
-                        openDecks = { showDecks = true }, start = ::startAI, leave = { confirmLeave = true },
-                        openStudio = { studioOpen = it; showDecks = true })
+                        openDecks = ::openDecks, start = ::startAI, leave = { confirmLeave = true },
+                        openStudio = { studioOpen = it; openDecks() })
                 } else if (lobby != null) {
                     val deckSlot: @Composable () -> Unit = {
                         io.magicmobile.android.ranked.PlayDeckSection(selectedDeck?.name, selectedDeck?.commanderName, selectedDeckBracket,
-                            selectedDeckID.startsWith("local:"), selectedDeckID, deckPickerSections, { selectedDeckID = it }, { showDecks = true },
+                            selectedDeckID.startsWith("local:"), selectedDeckID, deckPickerSections, { selectedDeckID = it }, ::openDecks,
                             { showBracketSheet = true }, enabled = !setup.isBusy && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle)
                     }
                     BackHandler { GameAudio.play(GameSound.UI_BACK); lobby = if (lobby == "chooser" || lobby == "profile") null else "chooser" }
@@ -917,7 +920,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     }
                 } else {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { lobby = "chooser" },
-                        decks = { showDecks = true }, settings = { showAppearance = true }, news = { showUpdates = true },
+                        decks = ::openDecks, settings = { showAppearance = true }, news = { showUpdates = true },
                         commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true },
                         friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount,
                         profile = { lobby = "profile" }, rank = record.file.rank.position)
@@ -1036,10 +1039,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null)
             }
             // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
-            io.magicmobile.android.studio.StudioCover(showDecks) {
+            io.magicmobile.android.studio.StudioCover(showDecks, animated = false) {
                 io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
-                    preparePlay = { showSetup = true }, dismiss = { showDecks = false; studioOpen = null }, open = studioOpen)
+                    preparePlay = { showSetup = true }, dismiss = { grimoireFilm.close { showDecks = false; studioOpen = null } }, open = studioOpen)
             }
+            // The film of the book opening and closing plays over the menu and Deck Studio alike.
+            io.magicmobile.android.studio.GrimoireFilmLayer(grimoireFilm)
             if (showDownloads) {
                 LaunchedEffect(Unit) { setup.loadCatalogue() }
                 val catalogueNames = setup.catalogue?.cards?.map { it.name }
@@ -1404,6 +1409,8 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Decks is a spell book: it opens on the tavern table, and every deck screen is a parchment page you turn or swipe through. Held sideways it lies open as two pages.", systemImage = "book.fill")
+                IosListRow("A deck's cards are their full art: tap the right side of a card to add a copy, the left side to take one away.", systemImage = "square.grid.2x2.fill")
                 IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")
                 IosListRow("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage = "figure.fencing")
                 IosListRow("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage = "flame.fill")

@@ -17,7 +17,7 @@ struct DeckStudioReplacementPicker: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
-                TextField("Search exact catalogue cards", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().padding(.horizontal, 20)
+                TextField("Search exact catalogue cards", text: $query).textFieldStyle(GrimoireFieldStyle()).autocorrectionDisabled().padding(.horizontal, 20)
                 if !commander, colors != nil {
                     Toggle(DeckStudioPlayText.withinIdentity, isOn: $constrainIdentity).font(.caption).padding(.horizontal, 20)
                 }
@@ -36,7 +36,7 @@ struct DeckStudioReplacementPicker: View {
                             .frame(minHeight: 44)
                     }.listRowBackground(DeckStudioPalette.surface)
                 }.scrollContentBackground(.hidden)
-            }.background(DeckStudioPalette.background).navigationTitle(commander ? "Change commander" : "Replace card").navigationBarTitleDisplayMode(.inline)
+            }.background(GrimoirePaper()).grimoireTitle(commander ? "Change commander" : "Replace card").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
                 // Identity-limited searches scan several identity buckets, so they run off the main thread.
                 .task(id: request) {
@@ -48,7 +48,7 @@ struct DeckStudioReplacementPicker: View {
                     guard !Task.isCancelled, captured == request else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -64,20 +64,20 @@ struct DeckStudioBasicLandsSheet: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 Text("Set main-deck basic-land counts. Other sections, snow basics and nonbasic lands stay unchanged. This is your edit, not an automatic mana-base recommendation.").font(.caption)
                 ForEach(NativeDeckDraft.basicLandNames, id: \.self) { name in
                     Stepper("\(name): \(values[name, default: 0])", value: Binding(get: { values[name, default: 0] }, set: { values[name] = $0 }), in: 0...2000)
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
-            }.navigationTitle("Basic lands").navigationBarTitleDisplayMode(.inline)
+            }.grimoireTitle("Basic lands").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Apply") { if apply(values, draft) { dismiss() } else { error = "The draft changed or these counts exceed its limits. Nothing was partially applied." } }
                     }
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -97,7 +97,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     Text(DeckStudioPlayText.commanderFirstTitle).font(.headline)
                     Text(DeckStudioPlayText.commanderFirstCaption)
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    TextField(DeckStudioPlayText.searchCommanders, text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                    TextField(DeckStudioPlayText.searchCommanders, text: $query).textFieldStyle(GrimoireFieldStyle()).autocorrectionDisabled()
                         .submitLabel(.search).accessibilityIdentifier("deckStudio.commanderFirst.search")
                     if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
                 }.listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -128,8 +128,8 @@ struct DeckStudioCommanderFirstPicker: View {
                         .accessibilityLabel("Choose \(card.name) as commander")
                 }
             }.listStyle(.plain).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
-                .background(DeckStudioPalette.background)
-                .navigationTitle(DeckStudioPlayText.chooseCommander).navigationBarTitleDisplayMode(.inline)
+                .background(GrimoirePaper())
+                .grimoireTitle(DeckStudioPlayText.chooseCommander).navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(DeckStudioPlayText.skip) { dismiss() }.accessibilityIdentifier("deckStudio.commanderFirst.skip")
@@ -145,7 +145,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     guard !Task.isCancelled, captured == query else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -206,8 +206,8 @@ struct DeckStudioTextEditorSheet: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(DeckStudioPalette.background)
-            .navigationTitle(DeckStudioPlayText.editAsText).navigationBarTitleDisplayMode(.inline)
+            .background(GrimoirePaper())
+            .grimoireTitle(DeckStudioPlayText.editAsText).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     if review != nil { Button(DeckStudioPlayText.keepEditing) { review = nil; error = nil } }
@@ -224,7 +224,7 @@ struct DeckStudioTextEditorSheet: View {
                     }
                 }
             }
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     private func prepareReview() {
         do {

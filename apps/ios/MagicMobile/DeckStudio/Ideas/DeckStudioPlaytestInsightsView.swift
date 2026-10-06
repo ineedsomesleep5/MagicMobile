@@ -210,7 +210,7 @@ private struct MatchHistoryRow: View {
             HStack(alignment: .top, spacing: 12) {
                 if opponentCommanders.isEmpty {
                     Image(systemName: "person.crop.rectangle.stack").font(.title2)
-                        .frame(width: 52, height: 70).background(DeckStudioPalette.background)
+                        .frame(width: 52, height: 70).background(GrimoirePaper())
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .accessibilityHidden(true)
                 } else {
@@ -350,8 +350,8 @@ struct MatchHistoryDashboard: View {
                 .frame(maxWidth: .infinity)
             }
             .accessibilityIdentifier("deckHistory.dashboard.scroll")
-            .background(DeckStudioPalette.background)
-            .navigationTitle("Match history")
+            .background(GrimoirePaper())
+            .grimoireTitle("Match history")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -415,7 +415,7 @@ struct MatchHistoryDashboard: View {
                     Image(systemName: "person.crop.rectangle.stack")
                         .font(.title3)
                         .frame(width: 50, height: 70)
-                        .background(DeckStudioPalette.background)
+                        .background(GrimoirePaper())
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .accessibilityHidden(true)
                 } else {

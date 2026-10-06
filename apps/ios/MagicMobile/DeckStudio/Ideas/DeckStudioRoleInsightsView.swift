@@ -162,7 +162,7 @@ private struct DeckStudioRoleReviewSheet: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 Section {
                     ForEach(DeckStudioRole.allCases) { role in
                         Toggle(role.title, isOn: Binding(get: { selected.contains(role) }, set: { enabled in
@@ -171,12 +171,12 @@ private struct DeckStudioRoleReviewSheet: View {
                     }
                 } header: { Text(name) } footer: { Text("These are your functional tags, not XMage legality or EDHREC statistics. An empty selection explicitly clears automatic hints for this card.") }
                 Button("Use automatic hints again") { if save(nil) { dismiss() } }
-            }.navigationTitle("Review roles").navigationBarTitleDisplayMode(.inline)
+            }.grimoireTitle("Review roles").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("Save") { if save(selected) { dismiss() } } }
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -189,7 +189,7 @@ private struct DeckStudioRoleTargetsSheet: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 Text("Choose your own ranges. All targets start off; there is no universal ideal Commander deck. These targets compare tagged main-deck quantities, not unrecognized effects.").font(.caption)
                 ForEach(DeckStudioRole.allCases) { role in
                     Section(role.title) {
@@ -208,11 +208,11 @@ private struct DeckStudioRoleTargetsSheet: View {
                         }
                     }
                 }
-            }.navigationTitle("My target ranges").navigationBarTitleDisplayMode(.inline)
+            }.grimoireTitle("My target ranges").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("Save") { if save(targets) { dismiss() } } }
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }

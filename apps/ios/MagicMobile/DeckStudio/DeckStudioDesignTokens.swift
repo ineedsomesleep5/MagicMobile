@@ -70,7 +70,13 @@ struct DeckStudioPanel<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content.padding(DeckStudioMetrics.panelPadding).frame(maxWidth: .infinity, alignment: .leading)
-            .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius))
+            // A plate of the book's own paper, a shade lighter than the page, edged with a hairline of ink.
+            .background {
+                GrimoirePaper(tone: .plate)
+                    .clipShape(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius))
+                    .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius)
+                        .strokeBorder(DeckStudioPalette.ink.opacity(0.14), lineWidth: 0.8))
+            }
     }
 }
 

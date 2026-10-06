@@ -10,6 +10,8 @@ struct DeckStudioRootView: View {
     /// Opens straight into this deck (the setup screen's "Fix in Deck Studio").
     var focus: DeckStudioPlaySelection.FixRequest? = nil
     var preparePlay: () -> Void = {}
+    /// Closes the book (the closing film); without it the screen dismisses itself.
+    var close: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicType
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -63,71 +65,106 @@ struct DeckStudioRootView: View {
         return query.apply(to: items, favorites: favorites).compactMap { item in indices[item.id].map { all[$0] } }
     }
 
+    /// Sideways the book lies open as a spread: two pages, each with its own content.
+    @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
+    private var spread: Bool { wide && !dynamicType.isAccessibilitySize }   // Grimoire.isSpread
+
+    /// What opens the library: its heading, the ways to add a deck, anything to tell the player, and
+    /// the search and filters. Upright it heads the shelf; in a spread it is the left page.
+    @ViewBuilder private var libraryIntro: some View {
+        header
+        DeckStudioArtworkInvitation()
+        if let error = error ?? library.notice {
+            DeckStudioNotice(title: "Your library is preserved", message: error, icon: "exclamationmark.triangle")
+        }
+        if let loadError {
+            DeckStudioNotice(title: "Card catalogue unavailable", message: loadError)
+            Button("Retry local catalogue", action: { Task { await loadCatalogue() } })
+        }
+        libraryFilters
+        HStack {
+            Text("\(visible.count) decks").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Spacer()
+            Menu { Picker("Sort decks", selection: $query.sort) { ForEach(DeckStudioLibraryQuery.Sort.allCases) { Text($0.rawValue).tag($0) } } }
+                label: { Label(query.sort.rawValue, systemImage: "arrow.up.arrow.down").font(.subheadline).frame(minHeight: 44) }
+            Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2").frame(width: 44, height: 44) }
+                .accessibilityLabel(grid ? "Show deck list" : "Show deck grid")
+        }
+    }
+
+    /// The decks themselves. In a spread they are the right page.
+    @ViewBuilder private var libraryShelf: some View {
+        if visible.isEmpty {
+            ContentUnavailableView(query.text.isEmpty ? "Your next deck starts here" : "No matching decks",
+                systemImage: "rectangle.stack", description: Text("Create a deck, import a list, or change your filters."))
+        }
+        LazyVGrid(columns: grid && !dynamicType.isAccessibilitySize
+                  ? [GridItem(.adaptive(minimum: 160, maximum: 320), spacing: 16)] : [GridItem(.flexible())], spacing: 16) {
+            ForEach(visible) { value in tile(value.record, included: value.included) }
+        }
+    }
+
+    @ViewBuilder private var nowPlaying: some View {
+        if let playing = records.first(where: { $0.id == selectedDeckID }) {
+            DeckStudioNowPlayingStrip(name: playing.record.name, status: status(playing.id)) { open(playing.id) }
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    header
-                    DeckStudioArtworkInvitation()
-                    if let error = error ?? library.notice {
-                        DeckStudioNotice(title: "Your library is preserved", message: error, icon: "exclamationmark.triangle")
+            Group {
+                if spread {
+                    // Each page scrolls by itself, and nothing runs across the fold (Caleb, 2026-10-05).
+                    GrimoireSpread {
+                        VStack(spacing: 0) {
+                            nowPlaying
+                            ScrollView { VStack(alignment: .leading, spacing: 24) { libraryIntro }.padding(20) }
+                        }
+                    } right: {
+                        ScrollView { VStack(alignment: .leading, spacing: 24) { libraryShelf }.padding(20) }
                     }
-                    if let loadError {
-                        DeckStudioNotice(title: "Card catalogue unavailable", message: loadError)
-                        Button("Retry local catalogue", action: { Task { await loadCatalogue() } })
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            libraryIntro
+                            libraryShelf
+                        }.padding(20).frame(maxWidth: 1000).frame(maxWidth: .infinity)
                     }
-                    libraryFilters
-                    HStack {
-                        Text("\(visible.count) decks").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
-                        Spacer()
-                        Menu { Picker("Sort decks", selection: $query.sort) { ForEach(DeckStudioLibraryQuery.Sort.allCases) { Text($0.rawValue).tag($0) } } }
-                            label: { Label(query.sort.rawValue, systemImage: "arrow.up.arrow.down").font(.subheadline).frame(minHeight: 44) }
-                        Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2").frame(width: 44, height: 44) }
-                            .accessibilityLabel(grid ? "Show deck list" : "Show deck grid")
-                    }
-                    if visible.isEmpty {
-                        ContentUnavailableView(query.text.isEmpty ? "Your next deck starts here" : "No matching decks",
-                            systemImage: "rectangle.stack", description: Text("Create a deck, import a list, or change your filters."))
-                    }
-                    LazyVGrid(columns: grid && !dynamicType.isAccessibilitySize
-                              ? [GridItem(.adaptive(minimum: 160, maximum: 320), spacing: 16)] : [GridItem(.flexible())], spacing: 16) {
-                        ForEach(visible) { value in tile(value.record, included: value.included) }
-                    }
-                }.padding(20).frame(maxWidth: 1000).frame(maxWidth: .infinity)
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let playing = records.first(where: { $0.id == selectedDeckID }) {
-                    DeckStudioNowPlayingStrip(name: playing.record.name, status: status(playing.id)) { open(playing.id) }
+                    .safeAreaInset(edge: .top, spacing: 0) { nowPlaying }
                 }
             }
-            .background(DeckStudioPalette.background.ignoresSafeArea())
-            .navigationTitle("Deck Studio").navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(DeckStudioPalette.background, for: .navigationBar)
+            .background(GrimoirePaper().ignoresSafeArea())
+            .grimoireTitle("Deck Studio", onFold: spread).navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(GrimoirePaper.barStyle, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("Done") { if let close { close() } else { dismiss() } } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showPreferences = true } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
                         .accessibilityLabel("Deck artwork and privacy")
                 }
             }
             .sheet(isPresented: $showPreferences) {
-                NavigationStack { Form { NativeArtworkPreferenceView() }.navigationTitle("Artwork & privacy")
+                NavigationStack { GrimoireForm { NativeArtworkPreferenceView() }.grimoireTitle("Artwork & privacy")
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showPreferences = false } } } }
-                    .preferredColorScheme(.light)
+                    .preferredColorScheme(.light).grimoirePage(.loose)
             }
             .fullScreenCover(item: $route, onDismiss: {
                 Task { await reloadTags() }
                 // A reviewed import opens in its workspace, where Play is one tap away.
-                if let saved = openAfterImport { openAfterImport = nil; route = .deck(saved, false) }
+                if let saved = openAfterImport { openAfterImport = nil; turn(to: .deck(saved, false)) }
             }) { route in
-                switch route {
-                case .deck(let record, let included):
-                    DeckStudioWorkspaceScreen(library: library, record: record, included: included,
-                        metadata: metadata, resolver: resolver, play: play)
-                case .importer:
-                    DeckStudioImportScreen(library: library, resolver: resolver) { saved in openAfterImport = saved }
+                // Each of these is the next page of the book: leaving turns back to this one.
+                Group {
+                    switch route {
+                    case .deck(let record, let included):
+                        DeckStudioWorkspaceScreen(library: library, record: record, included: included,
+                            metadata: metadata, resolver: resolver, play: play)
+                    case .importer:
+                        DeckStudioImportScreen(library: library, resolver: resolver) { saved in openAfterImport = saved }
+                    }
                 }
+                .environment(\.grimoireClose, { turn(to: nil) })
             }
             .confirmationDialog("Delete this local deck?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
                 if let record = pendingDelete {
@@ -144,6 +181,8 @@ struct DeckStudioRootView: View {
             }
         }
         .tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
+        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
+        .grimoirePage()
         .task { connectPlay(); loadFavorites(); await loadCatalogue(); refreshCheckKeys(); openFocus(); await reloadTags() }
         .onChange(of: library.decks.map(\.id)) { _, _ in Task { await reloadTags() } }
         .onChange(of: library.decks) { _, _ in refreshCheckKeys() }
@@ -182,7 +221,11 @@ struct DeckStudioRootView: View {
     }
     private func open(_ id: String) {
         guard let entry = records.first(where: { $0.id == id }) else { return }
-        route = .deck(entry.record, entry.included)
+        turn(to: .deck(entry.record, entry.included))
+    }
+    /// Moving between this page and a deck or the importer turns the page of the book.
+    private func turn(to next: Route?) {
+        GrimoireStage.shared.turnPage(forward: next != nil) { route = next }
     }
     private func openFocus() {
         guard !focusHandled, let focus else { return }
@@ -195,9 +238,7 @@ struct DeckStudioRootView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("YOUR COLLECTION").font(.caption.weight(.semibold)).tracking(1.8).foregroundStyle(DeckStudioPalette.secondaryInk)
-            Text("My Decks").font(.system(.largeTitle, design: .default).weight(.bold)).tracking(-1)
-            Text("Find your next move.").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
+            GrimoireHeading(kicker: "Your collection", title: "My Decks", subtitle: "Find your next move.")
             ViewThatFits(in: .horizontal) {
                 HStack { createButton; importButton }
                 VStack { createButton; importButton }
@@ -205,11 +246,11 @@ struct DeckStudioRootView: View {
         }
     }
     private var createButton: some View {
-        Button { route = .deck(nil, false) } label: { Label("Create deck", systemImage: "plus").frame(maxWidth: .infinity) }
+        Button { turn(to: .deck(nil, false)) } label: { Label("Create deck", systemImage: "plus").frame(maxWidth: .infinity) }
             .buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.create")
     }
     private var importButton: some View {
-        Button { route = .importer } label: { Label("Import", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }
+        Button { turn(to: .importer) } label: { Label("Import", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity) }
             .buttonStyle(DeckStudioButtonStyle(primary: false)).accessibilityIdentifier("deckStudio.import")
             .disabled(resolver == nil)
     }
@@ -220,7 +261,7 @@ struct DeckStudioRootView: View {
                 TextField("Search decks, commanders or tags", text: $query.text).autocorrectionDisabled()
                     .accessibilityIdentifier("deckStudio.library.search")
                 if !query.text.isEmpty { Button { query.text = "" } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Clear search") }
-            }.padding(14).background(.white, in: RoundedRectangle(cornerRadius: 14))
+            }.padding(14).grimoireField(cornerRadius: 14)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(DeckStudioLibraryQuery.Filter.allCases) { filter in
@@ -238,7 +279,7 @@ struct DeckStudioRootView: View {
         let id = selectionID(record, included: included)
         let draft = NativeDeckDraft(deck: record.deckList)
         return VStack(alignment: .leading, spacing: 0) {
-            Button { route = .deck(record, included) } label: {
+            Button { turn(to: .deck(record, included)) } label: {
                 VStack(alignment: .leading, spacing: 10) {
                     DeckStudioTileCover(height: grid ? 164 : 130) {
                         DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
@@ -287,14 +328,14 @@ struct DeckStudioRootView: View {
     @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
             Button(DeckStudioPlayText.play, systemImage: "play.fill") { playFromLibrary(Entry(record: record, included: included)) }
                 .disabled(resolver == nil || play.isChecking)
-            Button("Open deck", systemImage: "pencil") { route = .deck(record, included) }
+            Button("Open deck", systemImage: "pencil") { turn(to: .deck(record, included)) }
             Button("Duplicate locally", systemImage: "doc.on.doc") {
                 Task {
                     do {
                         let copy = try library.duplicateLocalDurably(record, name: record.name + " — Copy")
                         do { try await DeckStudioOrganizationStore.shared.duplicate(from: record.id, to: copy.id) }
                         catch { self.error = "Cards were copied, but their optional details could not be copied: \(error.localizedDescription)" }
-                        await reloadTags(); route = .deck(copy, false)
+                        await reloadTags(); turn(to: .deck(copy, false))
                     } catch { self.error = error.localizedDescription }
                 }
             }

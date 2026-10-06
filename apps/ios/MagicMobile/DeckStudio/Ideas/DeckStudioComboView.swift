@@ -261,9 +261,9 @@ private struct DeckStudioComboDetail: View {
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     if let url = variant.websiteURL { Link("Read on Commander Spellbook", destination: url).frame(minHeight: 44) }
                 }.padding(24).textSelection(.enabled)
-            }.background(DeckStudioPalette.background).navigationTitle("Combo details").navigationBarTitleDisplayMode(.inline)
+            }.background(GrimoirePaper()).grimoireTitle("Combo details").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     @ViewBuilder private func section(_ title: String, _ value: String) -> some View {
         if !value.isEmpty { VStack(alignment: .leading, spacing: 6) { Text(title).font(.headline); GameRulesText(source: value).font(.subheadline) } }

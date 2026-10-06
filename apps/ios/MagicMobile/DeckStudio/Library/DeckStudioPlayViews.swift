@@ -270,8 +270,8 @@ private struct DeckStudioPlaySheet: View {
                 Color.clear
             }
         }
-        .background(DeckStudioPalette.background.ignoresSafeArea())
-        .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        .background(GrimoirePaper().ignoresSafeArea())
+        .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -327,7 +327,7 @@ struct DeckStudioPlayIssues: View {
                 }
                 Button(DeckStudioPlayText.notNow, action: notNow).buttonStyle(DeckStudioButtonStyle(primary: false))
                     .frame(maxWidth: .infinity).accessibilityIdentifier("deckStudio.play.notNow")
-            }.padding(.horizontal, 24).padding(.vertical, 12).background(DeckStudioPalette.background)
+            }.padding(.horizontal, 24).padding(.vertical, 12).background(GrimoirePaper())
         }
         .presentationDetents([.medium, .large])
     }
@@ -441,8 +441,8 @@ struct OnDeviceSetupDeckDetails: View {
                                  message: nil, groups: presented.check.groups, cards: presented.check.cardNames,
                                  hidden: presented.check.issueCount - presented.check.issues.count,
                                  fix: { cards in fixAfterDismiss = cards; issues = nil }, notNow: { issues = nil })
-                .background(DeckStudioPalette.background.ignoresSafeArea())
-                .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+                .background(GrimoirePaper().ignoresSafeArea())
+                .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
         }
     }
 
