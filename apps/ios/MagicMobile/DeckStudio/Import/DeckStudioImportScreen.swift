@@ -37,36 +37,48 @@ struct DeckStudioImportScreen: View {
             Group {
                 if spread {
                     // The list goes in on the left page and is reviewed on the right; nothing runs across the fold.
-                    GrimoireSpread {
-                        ScrollView { VStack(alignment: .leading, spacing: 20) { entry }.padding(20) }
-                    } right: {
-                        VStack(spacing: 0) {
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 20) {
-                                    if preview == nil {
-                                        Text("Your decklist appears here for review, card by card, before anything is saved.")
-                                            .font(.callout).italic().foregroundStyle(DeckStudioPalette.secondaryInk)
-                                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-                                    }
-                                    reviewed
-                                }.padding(20)
+                    HStack(alignment: .top, spacing: 6) {
+                        VStack(spacing: 4) {
+                            importHead
+                            BinderPage(gutter: .trailing) {
+                                ScrollView { VStack(alignment: .leading, spacing: 20) { entry }.padding(16) }
                             }
-                            confirmButton
+                        }
+                        BinderPage(gutter: .leading) {
+                            VStack(spacing: 0) {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 20) {
+                                        if preview == nil {
+                                            Text("Your decklist appears here for review, card by card, before anything is saved.")
+                                                .font(.callout).italic().foregroundStyle(DeckStudioPalette.secondaryInk)
+                                                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                                        }
+                                        reviewed
+                                    }.padding(16)
+                                }
+                                confirmButton
+                            }
                         }
                     }
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            entry
-                            reviewed
-                        }.padding(20).frame(maxWidth: 720).frame(maxWidth: .infinity)
+                    VStack(spacing: 4) {
+                        importHead
+                        BinderPage(gutter: .leading) {
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 20) {
+                                    entry
+                                    reviewed
+                                }.padding(16).frame(maxWidth: 720).frame(maxWidth: .infinity)
+                            }
+                            .safeAreaInset(edge: .bottom) { confirmButton }
+                        }
                     }
-                    .safeAreaInset(edge: .bottom) { confirmButton }
                 }
             }
-            .background(GrimoirePaper()).scrollDismissesKeyboard(.interactively)
-            .grimoireTitle("Import deck", onFold: spread).navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { task?.cancel(); validation.cancelPending(); leave() }.disabled(saving) } }
+            .padding(.horizontal, 4).padding(.bottom, 2)
+            .scrollDismissesKeyboard(.interactively)
+            .binderScreen()
+            .toolbar(.hidden, for: .navigationBar)
             .interactiveDismissDisabled(saving)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.plainText, .json]) { result in
                 do {
@@ -89,7 +101,11 @@ struct DeckStudioImportScreen: View {
             .onDisappear { task?.cancel(); validation.cancelPending() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
-        .grimoirePage()
+    }
+    /// The binder's head: Cancel as the strap, the page's name stamped beside it.
+    private var importHead: some View {
+        BinderHead(strap: "Cancel", strapIdentifier: "deckStudio.import.cancel", title: "Import deck", strapDisabled: saving,
+                   action: { task?.cancel(); validation.cancelPending(); leave() }) { Color.clear.frame(width: 44, height: 1) }
     }
     /// Sideways the book lies open as a spread: two pages, each with its own content.
     @State private var wide = UIScreen.main.bounds.width > UIScreen.main.bounds.height
@@ -147,7 +163,8 @@ struct DeckStudioImportScreen: View {
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Switch to pasted export") { method = "Paste" }.frame(minHeight: 44)
                 } else {
-                    PhotosPicker(selection: $photo, matching: .images) { Label("Choose decklist photo or screenshot", systemImage: "text.viewfinder").frame(minHeight: 60) }
+                    PhotosPicker(selection: $photo, matching: .images) { Label("Choose decklist photo or screenshot", systemImage: "text.viewfinder").frame(maxWidth: .infinity) }
+                        .buttonStyle(BinderPlaqueButtonStyle())
                     Text("Apple Vision recognizes text on this device. Images are not uploaded. Review and correct the recognized text before parsing; this is not a physical-card scanner.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 }

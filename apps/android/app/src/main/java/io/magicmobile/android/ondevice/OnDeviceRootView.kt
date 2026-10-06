@@ -1409,8 +1409,8 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
-                IosListRow("Decks is a spell book: it opens on the tavern table, and every deck screen is a parchment page you turn or swipe through. Held sideways it lies open as two pages.", systemImage = "book.fill")
-                IosListRow("A deck's cards are their full art: tap the right side of a card to add a copy, the left side to take one away.", systemImage = "square.grid.2x2.fill")
+                IosListRow("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage = "book.fill")
+                IosListRow("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage = "books.vertical.fill")
                 IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")
                 IosListRow("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage = "figure.fencing")
                 IosListRow("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage = "flame.fill")

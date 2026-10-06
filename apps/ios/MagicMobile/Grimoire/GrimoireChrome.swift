@@ -22,13 +22,6 @@ enum Grimoire {
     static func isSpread(_ size: CGSize, accessibilitySize: Bool) -> Bool {
         size.width > size.height && !accessibilitySize
     }
-
-    static let ribbonColors: [String: Color] = [
-        "Cards": Color(red: 0.55, green: 0.10, blue: 0.08),
-        "Ideas": Color(red: 0.66, green: 0.46, blue: 0.10),
-        "Analysis": Color(red: 0.14, green: 0.36, blue: 0.22),
-        "Playtest": Color(red: 0.13, green: 0.25, blue: 0.48),
-    ]
 }
 
 extension View {
@@ -40,19 +33,6 @@ extension View {
         modifier(GrimoirePageModifier(leaf: leaf))
     }
 
-    /// A page's title in the book's hand (the system draws navigation titles in its own sans). The bar
-    /// keeps the title for accessibility and tests; the drawn text replaces only how it looks. On a
-    /// spread the middle of the bar is the fold, so nothing is drawn there (`onFold`).
-    func grimoireTitle(_ title: String, onFold: Bool = false) -> some View {
-        navigationTitle(title).toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(title).font(.system(size: 17, weight: .semibold, design: .serif))
-                    .foregroundStyle(DeckStudioPalette.ink).lineLimit(1).accessibilityHidden(true)
-                    .opacity(onFold ? 0 : 1)
-            }
-        }
-    }
-
     /// A place to write on the page (a search or text field): paler paper inside a hairline of ink.
     func grimoireField(cornerRadius: CGFloat) -> some View {
         background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: cornerRadius))
@@ -61,14 +41,82 @@ extension View {
 
     /// Turns the page on a sideways swipe anywhere on it: leftward for `next`, rightward for
     /// `previous`. A swipe that starts on something that scrolls sideways (a row of cards) or slides
-    /// (a slider) belongs to that control and turns nothing.
+    /// (a slider) belongs to that control and turns nothing. The swipe is watched by a UIKit recognizer
+    /// on the window that never takes a touch from anything else: a SwiftUI drag gesture over the whole
+    /// screen swallowed the first tap after the page had scrolled (the binder's index tabs, 2026-10-06).
     func grimoireSwipe(next: @escaping () -> Void, previous: @escaping () -> Void) -> some View {
-        simultaneousGesture(DragGesture(minimumDistance: 30, coordinateSpace: .global).onEnded { drag in
-            let across = drag.translation.width
-            guard abs(across) > 80, abs(across) > 2.5 * abs(drag.translation.height),
-                  !Grimoire.ownsSidewaysDrags(at: drag.startLocation) else { return }
-            if across < 0 { next() } else { previous() }
-        })
+        background(GrimoireSwipeWatcher(next: next, previous: previous).allowsHitTesting(false).accessibilityHidden(true))
+    }
+}
+
+/// Watches the window for a sideways swipe, alongside every other gesture and without delaying or
+/// cancelling any touch.
+private struct GrimoireSwipeWatcher: UIViewRepresentable {
+    let next: () -> Void
+    let previous: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeUIView(context: Context) -> WatcherView {
+        let view = WatcherView()
+        view.isUserInteractionEnabled = false
+        view.coordinator = context.coordinator
+        return view
+    }
+    func updateUIView(_ view: WatcherView, context: Context) {
+        context.coordinator.next = next
+        context.coordinator.previous = previous
+    }
+    static func dismantleUIView(_ view: WatcherView, coordinator: Coordinator) { coordinator.detach() }
+
+    final class WatcherView: UIView {
+        weak var coordinator: Coordinator?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            coordinator?.attach(to: window)
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var next: () -> Void = {}
+        var previous: () -> Void = {}
+        private var recognizer: UIPanGestureRecognizer?
+        private weak var host: UIView?
+        private var start = CGPoint.zero
+
+        func attach(to window: UIWindow?) {
+            guard window !== host else { return }
+            detach()
+            guard let window else { return }
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
+            pan.cancelsTouchesInView = false
+            pan.delaysTouchesBegan = false
+            pan.delaysTouchesEnded = false
+            pan.delegate = self
+            window.addGestureRecognizer(pan)
+            recognizer = pan; host = window
+        }
+
+        func detach() {
+            if let recognizer { host?.removeGestureRecognizer(recognizer) }
+            recognizer = nil; host = nil
+        }
+
+        @objc private func pan(_ gesture: UIPanGestureRecognizer) {
+            let moved = gesture.translation(in: gesture.view)
+            switch gesture.state {
+            case .began:
+                let at = gesture.location(in: gesture.view)
+                start = CGPoint(x: at.x - moved.x, y: at.y - moved.y)
+            case .ended:
+                guard abs(moved.x) > 80, abs(moved.x) > 2.5 * abs(moved.y), !Grimoire.ownsSidewaysDrags(at: start) else { return }
+                if moved.x < 0 { next() } else { previous() }
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 
@@ -241,68 +289,6 @@ struct GrimoireFieldStyle: TextFieldStyle {
     }
 }
 
-/// The chapters of a deck as ribbon markers hanging from the head of the page. The chosen ribbon
-/// hangs longer and brighter; the others wait, darker, tucked up.
-struct GrimoireRibbons: View {
-    let chapters: [String]
-    let selected: String
-    let choose: (String) -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            ForEach(chapters, id: \.self) { chapter in
-                let chosen = chapter == selected
-                Button { choose(chapter) } label: {
-                    Text(chapter)
-                        .font(.system(size: 14, weight: .bold, design: .serif))
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                        .foregroundStyle(Color(red: 1, green: 0.95, blue: 0.84).opacity(chosen ? 1 : 0.82))
-                        .shadow(color: .black.opacity(0.5), radius: 0.5, y: 0.5)
-                        .padding(.horizontal, 4)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: chosen ? 50 : 44, alignment: .top)
-                        .padding(.top, 11)
-                        .background {
-                            RibbonShape(notch: 8)
-                                .fill(LinearGradient(colors: [ribbon(chapter).opacity(chosen ? 1 : 0.78), ribbon(chapter).opacity(chosen ? 0.86 : 0.6)],
-                                                     startPoint: .top, endPoint: .bottom))
-                                .overlay(alignment: .top) {
-                                    // The ribbon passes under the head of the page.
-                                    LinearGradient(colors: [.black.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom).frame(height: 7)
-                                }
-                                .overlay(RibbonShape(notch: 8).stroke(Color.black.opacity(0.18), lineWidth: 0.6))
-                                .shadow(color: DeckStudioPalette.ink.opacity(chosen ? 0.35 : 0.18), radius: chosen ? 3 : 1.5, y: chosen ? 2 : 1)
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(chosen ? [.isSelected] : [])
-            }
-        }
-        .frame(height: 62, alignment: .top)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Deck workspace")
-    }
-
-    private func ribbon(_ chapter: String) -> Color { Grimoire.ribbonColors[chapter] ?? DeckStudioPalette.accent }
-}
-
-/// A ribbon with a swallowtail end.
-struct RibbonShape: Shape {
-    var notch: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY - notch))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
 /// A choice written on the page as inked chips, the chosen one filled (the library's filters wear the
 /// same): where the system would draw a grey segmented control.
 struct GrimoireChoice<Option: Hashable>: View {
@@ -312,19 +298,29 @@ struct GrimoireChoice<Option: Hashable>: View {
     @Binding var selection: Option
 
     var body: some View {
-        HStack(spacing: 8) {
+        // The binder's switch (concept B, 2026-10-06): a dark inset in a brass edge, the chosen option ember glass.
+        HStack(spacing: 0) {
             ForEach(options, id: \.0) { option, label in
                 let chosen = selection == option
                 Button { selection = option } label: {
-                    Text(label).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75)
-                        .padding(.horizontal, 12).frame(minHeight: 40).frame(maxWidth: .infinity)
-                        .foregroundStyle(chosen ? DeckStudioPalette.surfaceElevated : DeckStudioPalette.ink)
-                        .background(chosen ? DeckStudioPalette.ink : DeckStudioPalette.surface, in: Capsule())
-                        .overlay(Capsule().strokeBorder(DeckStudioPalette.ink.opacity(chosen ? 0 : 0.18), lineWidth: 0.8))
-                        .contentShape(Capsule())
+                    Text(label).font(.system(size: 14, weight: .bold, design: .serif)).lineLimit(1).minimumScaleFactor(0.75)
+                        .foregroundStyle(chosen ? Color(red: 1, green: 0.92, blue: 0.7) : TavernPalette.parchment.opacity(0.72))
+                        .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
+                        .padding(.horizontal, 10).frame(minHeight: 36).frame(maxWidth: .infinity)
+                        .background {
+                            if chosen {
+                                TavernFill(material: .ember).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Binder.brassLight.opacity(0.6), lineWidth: 1))
+                            }
+                        }
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(chosen ? [.isSelected] : [])
             }
         }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(red: 0.12, green: 0.06, blue: 0.035).opacity(0.88)))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Binder.brass, lineWidth: 1.5))
+        .frame(minHeight: 44)
         .accessibilityElement(children: .contain).accessibilityLabel(title)
     }
 }

@@ -1,6 +1,7 @@
 package io.magicmobile.android.studio
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +31,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
+import io.magicmobile.android.ui.SfDesign
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -48,6 +59,7 @@ import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
+import io.magicmobile.android.ui.tavernFill
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,17 +137,25 @@ fun DeckStudioEditorModel.playSource() = DeckStudioPlayFlow.Source {
 
 /** The brand's ember accent, as a capsule button (DeckStudioButtonStyle, primary). */
 @Composable
-fun DeckStudioEmberButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: String? = null) {
+fun DeckStudioEmberButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: String? = null,
+                          jewel: Boolean = false, compact: Boolean = false) {
+    // The binder's Play (concept B, 2026-10-06): the tavern's ember glass set in brass, with Play's ember
+    // jewel (the Meshy-made tavern_binder_jewel) beside the title.
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val shape = RoundedCornerShape(DeckStudioMetrics.controlRadius)
-    Row(modifier.alpha(if (!enabled) 0.55f else if (pressed) 0.8f else 1f).defaultMinSize(minHeight = DeckStudioMetrics.controlHeight)
-        .background(DeckStudioPalette.accent, shape).clip(shape)
+    val shape = RoundedCornerShape(10.dp)
+    Row(modifier.alpha(if (!enabled) 0.55f else if (pressed) 0.85f else 1f).defaultMinSize(minHeight = if (compact) 44.dp else DeckStudioMetrics.controlHeight)
+        .shadow(if (pressed) 1.dp else 3.dp, shape)
+        .tavernFill(io.magicmobile.android.ui.TavernMaterial.EMBER, shape)
+        .border(2.5.dp, Binder.brass, shape)
         .clickable(interaction, null, enabled = enabled, role = Role.Button) { GameAudio.play(GameSound.UI_TICK); onClick() }
-        .padding(horizontal = 16.dp, vertical = 12.dp),
+        .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 8.dp else 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-        icon?.let { SfImage(it, Color.White, 15.dp) }
-        Text(title, color = Color.White, style = StudioText.body.weight(SfWeight.semibold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val ink = Binder.emberText
+        if (jewel) androidx.compose.foundation.Image(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_binder_jewel), null,
+            Modifier.size(30.dp)) else icon?.let { SfImage(it, ink, 15.dp) }
+        Text(title, color = ink, style = sf(if (compact) 15f else 17f, SfWeight.heavy).copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.65f),
+            androidx.compose.ui.geometry.Offset(0f, 1.5f), 1f)), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -168,47 +188,54 @@ fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStud
     val action = rememberDeckStudioPlayAction(selection, model, resolver)
     DeckStudioEmberButton(action.title, { selection.play(model.playSource(), resolver, model.draft.name) },
         modifier.fillMaxWidth().semantics { contentDescription = if (action.playing) DeckStudioPlayText.playingAccessibility else action.title },
-        enabled = action.enabled, icon = if (action.playing) "checkmark" else "play.fill")
+        enabled = action.enabled, icon = if (action.playing) "checkmark" else "play.fill", jewel = !action.playing)
 }
 
-/** The ember "Playing" badge on the playing deck's tile. */
+/** The "Playing" mark on the playing deck's tile: an ember-glass tag in a thin brass rim with Play's jewel. */
 @Composable
 fun DeckStudioPlayingBadge(modifier: Modifier = Modifier) {
-    Row(modifier.background(DeckStudioPalette.accent, CircleShape).padding(horizontal = 10.dp, vertical = 7.dp)
-        .clearAndSetSemantics { contentDescription = DeckStudioPlayText.playingAccessibility },
-        horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-        SfImage("flame.fill", Color.White, 12.dp)
-        Text(DeckStudioPlayText.playing, color = Color.White, style = StudioText.caption2.weight(SfWeight.semibold))
-    }
+    BinderTag(DeckStudioPlayText.playing, modifier.clearAndSetSemantics { contentDescription = DeckStudioPlayText.playingAccessibility },
+        material = io.magicmobile.android.ui.TavernMaterial.EMBER, jewel = true)
 }
 
+/** The status's symbol and ink, for the game setup screen's deck line. */
 private fun DeckStudioPlayStatus.icon() = when (this) {
     DeckStudioPlayStatus.READY -> "checkmark.seal.fill" to DeckStudioPalette.success
     DeckStudioPlayStatus.NEEDS_FIXES -> "exclamationmark.triangle.fill" to DeckStudioPalette.warning
     DeckStudioPlayStatus.NOT_CHECKED -> "questionmark.circle" to DeckStudioPalette.secondaryInk
 }
 
-/** A tile's status chip: Ready, Needs fixes or Not checked, from its stored check result. */
-@Composable
-fun DeckStudioPlayStatusChip(status: DeckStudioPlayStatus, modifier: Modifier = Modifier) {
-    val (icon, tint) = status.icon()
-    Row(modifier.background(DeckStudioPalette.surfaceElevated.copy(alpha = 0.94f), CircleShape).padding(horizontal = 9.dp, vertical = 6.dp)
-        .clearAndSetSemantics { contentDescription = "Deck check: ${status.title}" }, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        SfImage(icon, tint, 11.dp)
-        Text(status.title, color = DeckStudioPalette.ink, style = StudioText.caption2.weight(SfWeight.semibold), maxLines = 1)
-    }
+private fun DeckStudioPlayStatus.jewel() = when (this) {
+    DeckStudioPlayStatus.READY -> io.magicmobile.android.ui.rgb(0.42, 0.85, 0.40)
+    DeckStudioPlayStatus.NEEDS_FIXES -> io.magicmobile.android.ui.rgb(1.0, 0.62, 0.18)
+    DeckStudioPlayStatus.NOT_CHECKED -> io.magicmobile.android.ui.rgb(0.78, 0.72, 0.62)
 }
 
-/** The pinned "Now playing: <name> · <status>" row at the top of the library. */
+/** A tile's status: Ready, Needs fixes or Not checked, from its stored check result, as a leather tag whose jewel keeps the colour. */
+@Composable
+fun DeckStudioPlayStatusChip(status: DeckStudioPlayStatus, modifier: Modifier = Modifier) {
+    BinderTag(status.title, modifier.clearAndSetSemantics { contentDescription = "Deck check: ${status.title}" }, accent = status.jewel())
+}
+
+/** The pinned "Now playing: <name> · <status>" band at the top of the library: the binder's leather with Play's jewel and a brass coin. */
 @Composable
 fun DeckStudioNowPlayingStrip(name: String, status: DeckStudioPlayStatus?, open: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).background(DeckStudioPalette.surface, RoundedCornerShape(14.dp))
-        .clip(RoundedCornerShape(14.dp)).clickable(role = Role.Button) { open() }.padding(horizontal = 14.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        SfImage("flame.fill", DeckStudioPalette.accent, 15.dp)
-        Text(DeckStudioPlayText.nowPlayingStrip(name, status), Modifier.weight(1f), color = DeckStudioPalette.ink,
-            style = StudioText.subheadline.weight(SfWeight.medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        SfImage("chevron.right", DeckStudioPalette.secondaryInk, 13.dp)
+    val shape = RoundedCornerShape(10.dp)
+    Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).shadow(3.dp, shape).binderLeather(Binder.oxblood, 0.45f, shape)
+        .border(1.5.dp, Binder.brass, shape)
+        .drawWithContent {
+            drawContent()
+            val inset = 4.dp.toPx()
+            drawRoundRect(Binder.thread, Offset(inset, inset), Size(size.width - 2 * inset, size.height - 2 * inset), CornerRadius(7.dp.toPx()),
+                style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx()))))
+        }
+        .clickable(role = Role.Button) { open() }.padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.Image(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_binder_jewel), null, Modifier.size(28.dp))
+        Text(DeckStudioPlayText.nowPlayingStrip(name, status), Modifier.weight(1f), color = io.magicmobile.android.ui.rgb(0.98, 0.86, 0.62),
+            style = sf(15f, SfWeight.bold, SfDesign.SERIF).copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f)),
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        BinderStamp("chevron.right", size = 26.dp)
     }
 }
 
@@ -222,21 +249,31 @@ fun DeckStudioPlayBanner(selection: DeckStudioPlaySelection, setUpGame: () -> Un
         DeckStudioPlayFlow.Outcome.GameLive -> DeckStudioPlayText.gameLive to null
         else -> return
     }
+    // A leather slip in a brass edge, laid over the page.
+    val shape = RoundedCornerShape(12.dp)
+    val gold = io.magicmobile.android.ui.rgb(0.98, 0.86, 0.62)
+    val onLeather = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f)
     Row(modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp).widthIn(max = 640.dp).fillMaxWidth()
-        .background(DeckStudioPalette.ink, RoundedCornerShape(18.dp)).padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp)
+        .shadow(8.dp, shape).binderLeather(Binder.oxblood, 0.45f, shape).border(2.dp, Binder.brass, shape)
+        .drawWithContent {
+            drawContent()
+            val inset = 4.dp.toPx()
+            drawRoundRect(Binder.thread, Offset(inset, inset), Size(size.width - 2 * inset, size.height - 2 * inset), CornerRadius(9.dp.toPx()),
+                style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))))
+        }
+        .padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
         .semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        SfImage(if (outcome is DeckStudioPlayFlow.Outcome.Playing) "flame.fill" else "exclamationmark.triangle.fill", BrandTheme.ember, 17.dp)
+        if (outcome is DeckStudioPlayFlow.Outcome.Playing) {
+            androidx.compose.foundation.Image(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_binder_jewel), null, Modifier.size(32.dp))
+        } else BinderStamp("exclamationmark.triangle.fill", size = 30.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, color = Color.White, style = StudioText.subheadline.weight(SfWeight.semibold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            detail?.let { Text(it, color = Color.White.copy(alpha = 0.78f), style = StudioText.caption) }
+            Text(title, color = gold, style = sf(15f, SfWeight.bold, SfDesign.SERIF).copy(shadow = onLeather), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            detail?.let { Text(it, color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF).copy(shadow = onLeather)) }
         }
         if (outcome is DeckStudioPlayFlow.Outcome.Playing) {
-            Box(Modifier.defaultMinSize(minHeight = 44.dp).clip(CircleShape).clickable(role = Role.Button) { selection.dismiss(); setUpGame() }
-                .padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-                Text(DeckStudioPlayText.setUpGame, color = BrandTheme.ember, style = StudioText.subheadline.weight(SfWeight.semibold))
-            }
+            DeckStudioEmberButton(DeckStudioPlayText.setUpGame, { selection.dismiss(); setUpGame() }, compact = true)
         }
-        StudioIconButton("xmark", "Dismiss notification", { selection.dismiss() }, tint = Color.White, size = 13.dp)
+        BinderCoin("xmark", "Dismiss notification", onClick = { selection.dismiss() })
     }
 }
 

@@ -194,6 +194,16 @@ object SfSymbols {
         "text.viewfinder" -> Icons.Filled.DocumentScanner
         "text.book.closed" -> Icons.AutoMirrored.Filled.MenuBook
         "tag" -> Icons.Outlined.LocalOffer
+        // The Deck Studio binder (GrimoireBinder.kt): index tabs, rail tools and the tags plaque.
+        "tag.fill" -> Icons.Filled.LocalOffer
+        "rectangle.portrait.on.rectangle.portrait.fill" -> Icons.Filled.Style
+        "lightbulb.fill" -> Icons.Filled.Lightbulb
+        "chart.bar.fill" -> Icons.Filled.BarChart
+        "flag.2.crossed.fill" -> Icons.Filled.Flag
+        "square.stack.3d.up.fill" -> Icons.Filled.Layers
+        "square.grid.3x2" -> Icons.Outlined.GridView
+        "book.closed.fill" -> Icons.Filled.Book
+        "plus.magnifyingglass" -> Icons.Filled.ZoomIn
         "scroll.fill" -> Icons.Filled.HistoryEdu
         "paintpalette.fill" -> Icons.Filled.Palette
         "moon.stars" -> Icons.Outlined.NightsStay

@@ -39,13 +39,13 @@ final class GrimoireUITests: XCTestCase {
         if !deck.isHittable { app.swipeUp() }
         deck.press(forDuration: 0.15)
 
-        // A deck is the next page; its chapters are ribbons.
+        // A deck is the next page; its chapters are the binder's index tabs.
         let cards = app.buttons["Cards"], ideas = app.buttons["Ideas"], analysis = app.buttons["Analysis"]
         XCTAssertTrue(ideas.waitForExistence(timeout: 10))
         XCTAssertTrue(cards.isSelected)
         attach("Spell book deck page")
         ideas.press(forDuration: 0.15)
-        XCTAssertTrue(waitUntil { ideas.isSelected }, "A ribbon turns to its chapter")
+        XCTAssertTrue(waitUntil { ideas.isSelected }, "An index tab turns to its chapter")
 
         // A swipe turns the page: leftward to the next chapter, rightward to the one before. (Both start
         // near the head of the page: lower down, Analysis has a chart that scrolls sideways and keeps
@@ -63,12 +63,12 @@ final class GrimoireUITests: XCTestCase {
         app.buttons["deckStudio.close"].tap()
         XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil { app.buttons["deckStudio.create"].isHittable })
-        app.navigationBars.buttons["Done"].firstMatch.tap()
+        app.buttons["deckStudio.library.close"].tap()
         XCTAssertTrue(waitUntil(timeout: 15) { app.buttons["menu.decks"].isHittable }, "The book closes back onto the menu")
     }
 
-    /// A deck's cards are a grid of their full art: tapping the right half of a card adds a copy, the
-    /// left half takes one away, and the last copy removes the card.
+    /// A deck's cards are sleeves of their full art: the plus under a card (or its right half) adds a copy,
+    /// the minus (or its left half) takes one away, and the last copy removes the card.
     func testTappingACardsRightHalfAddsACopyAndItsLeftHalfTakesOneAway() {
         let app = launch()
         defer { app.terminate() }
@@ -92,12 +92,14 @@ final class GrimoireUITests: XCTestCase {
 
         let cards = app.scrollViews["deckStudio.cards.list"]
         let more = cards.buttons["Add one Sol Ring"], fewer = cards.buttons["Remove one Sol Ring"]
-        XCTAssertTrue(more.waitForExistence(timeout: 10), "The card is a tile whose right half adds a copy")
+        XCTAssertTrue(more.waitForExistence(timeout: 10), "The card is in a sleeve whose plus adds a copy")
         XCTAssertTrue(cards.staticTexts["Sol Ring, quantity 1"].exists)
         let hint = cards.staticTexts["deckStudio.cards.tapHint"]
         XCTAssertTrue(hint.exists, "Until the first tap, the page says what a tap does")
         XCTAssertLessThan(fewer.frame.midX, more.frame.midX, "Left takes away, right adds")
         XCTAssertLessThan(abs(fewer.frame.midY - more.frame.midY), 2, "The two halves of one card")
+        // The sleeve can start just under Quick Add at the foot of the page; bring it up first.
+        for _ in 0..<3 where !more.isHittable { cards.swipeUp() }
         more.tap()
         XCTAssertTrue(cards.staticTexts["Sol Ring, quantity 2"].waitForExistence(timeout: 5), "A tap on the right adds a copy")
         XCTAssertTrue(hint.waitForNonExistence(timeout: 5), "The hint has done its job")
@@ -131,20 +133,27 @@ final class GrimoireUITests: XCTestCase {
         attach("Spell book library spread")
         deck.press(forDuration: 0.15)
 
-        // A deck: ribbons and the title page on the left, its cards on the right.
+        // A deck: the title plate and the rail (search, tools, mana coins) on the left page, its cards on
+        // the right, and the chapters as index tabs standing out of the right page's outer edge.
         let close = app.buttons["deckStudio.close"], cards = app.scrollViews["deckStudio.cards.list"]
+        let deckSearch = app.textFields["deckStudio.cards.search"]
         XCTAssertTrue(close.waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil { close.isHittable }, "The deck's pages settle after the turn")
         XCTAssertTrue(cards.waitForExistence(timeout: 10))
+        XCTAssertTrue(deckSearch.isHittable, "The rail is on the left page")
+        XCTAssertLessThanOrEqual(deckSearch.frame.maxX, cards.frame.minX, "The rail is the left page, the cards the right")
+        XCTAssertLessThanOrEqual(close.frame.maxX, cards.frame.minX)
         for chapter in ["Cards", "Ideas", "Analysis", "Playtest"] {
-            XCTAssertLessThanOrEqual(app.buttons[chapter].frame.maxX, fold, "\(chapter)'s ribbon hangs on the left page")
+            XCTAssertGreaterThanOrEqual(app.buttons[chapter].frame.minX, cards.frame.maxX - 1, "\(chapter)'s tab stands out of the right page")
         }
-        XCTAssertGreaterThanOrEqual(cards.frame.minX, fold - 1, "The deck's cards are the right page")
         attach("Spell book deck spread")
+        // The rail is on the Cards chapter only; the left page's edge is measured before turning.
+        let leftPageEdge = deckSearch.frame.maxX
         app.buttons["Analysis"].press(forDuration: 0.15)
         XCTAssertTrue(waitUntil { app.buttons["Analysis"].isSelected })
         XCTAssertTrue(app.scrollViews["deckStudio.analysis.list"].waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(app.scrollViews["deckStudio.analysis.list"].frame.minX, fold - 1)
+        XCTAssertGreaterThanOrEqual(app.scrollViews["deckStudio.analysis.list"].frame.minX, leftPageEdge - 1,
+                                    "The roles are the right page")
         attach("Spell book analysis spread")
         app.buttons["Playtest"].press(forDuration: 0.15)
         XCTAssertTrue(waitUntil { app.buttons["Playtest"].isSelected })
@@ -155,7 +164,7 @@ final class GrimoireUITests: XCTestCase {
 
         close.tap()
         // Back on the library: Done closes the book.
-        let done = app.navigationBars["Deck Studio"].buttons["Done"]
+        let done = app.buttons["deckStudio.library.close"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil { done.isHittable }, "The library settles after the turn back")
         done.tap()

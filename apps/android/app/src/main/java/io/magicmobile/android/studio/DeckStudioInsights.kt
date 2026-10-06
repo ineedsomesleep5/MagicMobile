@@ -65,6 +65,10 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
 
 @Composable
 private fun Metric(label: String, value: String) {
@@ -544,9 +548,7 @@ fun MatchHistoryDashboard(game: DeckStudioRecordedGame, exactDeck: Boolean, meta
     BackHandler { dismiss() }
     StudioScreen {
         Column(Modifier.fillMaxSize()) {
-            StudioNavBar("Match history", leading = {
-                StudioGlassGroup { StudioGlassIcon("chevron.left", "Back to history", dismiss) }
-            })
+            Box(Modifier.statusBarsPadding()) { StudioSheetBar("Match history", cancel = dismiss, cancelTitle = "Back") }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding()
                 .semantics { contentDescription = "deckHistory.dashboard.scroll" }, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(12.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

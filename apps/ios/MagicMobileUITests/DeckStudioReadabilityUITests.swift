@@ -15,15 +15,29 @@ final class DeckStudioReadabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["menu.decks"].isHittable)
         UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].press(forDuration: 0.15)
-        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
-        app.buttons["deckStudio.create"].tap()
+        let create = app.buttons["deckStudio.create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 15))
+        // Touch the library only once it has finished arriving (a tap during the presentation is dropped).
+        settle(create)
+        create.tap()
         // A new deck opens on the commander picker; these checks start from an empty draft.
         let skip = app.buttons["deckStudio.commanderFirst.skip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        settle(skip)
         skip.tap()
         XCTAssertTrue(skip.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["deckStudio.addCards"].waitForExistence(timeout: 10))
         return app
+    }
+
+    /// Waits until the element is hittable and has stopped moving (a sheet or page still sliding in).
+    private func settle(_ element: XCUIElement) {
+        var last = CGRect.null
+        for _ in 0..<20 {
+            if element.isHittable && element.frame == last { return }
+            last = element.frame
+            Thread.sleep(forTimeInterval: 0.25)
+        }
     }
 
     func testGrayMerchantControlsRemainBesideNameInPortraitAndLandscape() {
@@ -57,7 +71,8 @@ final class DeckStudioReadabilityUITests: XCTestCase {
         let app = launch(extra: ["--deck-combo-readability-ui-test"])
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
         app.buttons["Ideas"].tap()
-        XCTAssertTrue(app.navigationBars["Combo details"].waitForExistence(timeout: 10))
+        // Sheets wear the binder's own head (its title on the parchment), not a system navigation bar.
+        XCTAssertTrue(app.staticTexts["Combo details"].waitForExistence(timeout: 10))
         let cards = app.scrollViews["deckStudio.combo.cards"]
         XCTAssertTrue(cards.exists)
         XCTAssertTrue(app.staticTexts["Alpha"].isHittable)
