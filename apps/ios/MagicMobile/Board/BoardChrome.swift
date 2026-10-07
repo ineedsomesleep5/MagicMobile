@@ -780,6 +780,19 @@ struct ActionRejectionInlineView: View {
 enum GameplayAffordances {
     static func dismissesZone(action: LegalAction) -> Bool { action.type == "cast_spell" }
 
+    /// "Resolve all": one pass that keeps passing until the stack has resolved (XMage's F10). It stops by itself if an
+    /// opponent adds something, and every choice still comes to you. Offered with two or more objects on the stack while
+    /// you hold priority, on engines with the answer action.
+    static func resolveStackCommand(snapshot: GameSnapshot, pendingActionID: String?, supported: Set<String>) -> GameCommand? {
+        let stackCount = snapshot.xmage?.stack.count ?? snapshot.human?.zones.stack.count ?? 0
+        guard stackCount >= 2, pendingActionID == nil, supported.contains("passUntilStackResolved"),
+              let pass = snapshot.legalActions?.first(where: { $0.type == "pass_priority" }) else { return nil }
+        var command = GameCommand(type: "pass_priority", gameId: snapshot.id, playerId: pass.playerId,
+                                  promptId: pass.promptId, messageId: pass.messageId, expectedBridgeRevision: snapshot.bridgeRevision)
+        command.answerActions = ["passUntilStackResolved"]
+        return command
+    }
+
     /// Your zones holding a card you can play right now, besides your hand: a commander, a flashback or
     /// escape card in the graveyard, an impulse-drawn or foretold card in exile, a revealed top card.
     static func castableZones(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?) -> Set<BoardZoneReference.PlayerZone> {
@@ -2587,6 +2600,7 @@ struct RememberChoiceToggle: View {
 
 /// A small brass plaque on leather: "Resolve all" for the stack (PortraitBottomCommandBar.resolveStackCommand).
 struct ResolveStackButton: View {
+    var identifier = "board.stack.resolveAll"
     let action: () -> Void
 
     var body: some View {
@@ -2606,7 +2620,7 @@ struct ResolveStackButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Resolve all")
         .accessibilityHint("Passes until the stack has resolved. Stops if an opponent responds.")
-        .accessibilityIdentifier("board.stack.resolveAll")
+        .accessibilityIdentifier(identifier)
     }
 }
 

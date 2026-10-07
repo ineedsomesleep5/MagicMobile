@@ -350,7 +350,7 @@ private struct DesignPreviewFixtureScreen: View {
                 onInteractionFeedback: { message in status = message; liveUpdateStatus = message },
                 runAction: { action in capture(action.label) },
                 runCommand: { command, label, _ in
-                    capture(label + (command.abilityId.map { " [\($0)]" } ?? ""))
+                    capture(label + (command.abilityId.map { " [\($0)]" } ?? "") + (command.answerActions.map { " {\($0.joined(separator: ","))}" } ?? ""))
                     if ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_CARD_CHOICE_FAILURE"] == "1" {
                         errorMessage = "Development fixture: simulated command failure."
                     }
@@ -359,6 +359,9 @@ private struct DesignPreviewFixtureScreen: View {
                 loadProtocolDebug: { _ in throw CancellationError() },
                 portraitModeEnabled: $portraitModeEnabled, viewZone: { _, _ in }
             )
+            // Fixtures have no engine: offer every answer action so the remember controls and "Resolve all" show.
+            .environment(\.boardAnswerActions, BoardAnswerActions(supported: ["rememberAnswer", "rememberTriggerFirst",
+                "passUntilStackResolved", "resetRememberedAnswers", "resetTriggerOrder", "autoPassAfterCast"]))
         }
         .overlay(alignment: .top) {
             if status.hasPrefix("Development fixture: captured") {

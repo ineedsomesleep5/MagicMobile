@@ -642,7 +642,7 @@ struct NativeGameView: View {
                 )
                 .frame(width: rootProxy.size.width, height: rootProxy.size.height)
                 .sheet(isPresented: $isTavernStackOpen) {
-                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                         .tavernSheet(true)
                 }
                 .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
@@ -930,7 +930,7 @@ struct NativeGameView: View {
                     .presentationDragIndicator(.visible)
                 }
                 .sheet(isPresented: $isLandscapeStackOpen) {
-                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                 }
                 .sheet(isPresented: $isPromptDetailOpen) {
                     UniversalPromptActionPanel(
@@ -1592,7 +1592,7 @@ struct NativeGameView: View {
                 .frame(width: metrics.bottomControlsRect.width, height: metrics.bottomControlsRect.height)
                 .position(x: metrics.bottomControlsRect.midX, y: metrics.bottomControlsRect.midY)
                 .sheet(isPresented: $isTavernStackOpen) {
-                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                         .tavernSheet(true)
                 }
                 .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }

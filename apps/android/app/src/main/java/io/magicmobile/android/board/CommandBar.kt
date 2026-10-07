@@ -277,19 +277,6 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
     }
 }
 
-/**
- * "Resolve all": one tap passes until the stack you're looking at has resolved (XMage's F10). It stops by itself if an opponent
- * adds something, and every choice still comes to you. Shown with two or more objects on the stack (iOS resolveStackCommand).
- */
-private fun resolveStackCommand(snapshot: GameSnapshot, human: PlayerGameState, passAction: LegalAction?, pendingActionId: String?,
-                                supported: Set<String>): GameCommand? {
-    val stackCount = snapshot.xmage?.stack?.size ?: human.zones.stack.size
-    val pass = passAction ?: return null
-    if (stackCount < 2 || pendingActionId != null || "passUntilStackResolved" !in supported || pass.type != "pass_priority") return null
-    return GameCommand("pass_priority", snapshot.id, pass.playerId, promptId = pass.promptId, messageId = pass.messageId,
-        expectedBridgeRevision = snapshot.bridgeRevision, answerActions = listOf("passUntilStackResolved"))
-}
-
 /** Board/GameplayActionDock.swift PortraitBottomCommandBar: your zones, effects, mana, stack tray, life orb and the dock. */
 @Composable
 fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponentId: String, manaPool: ManaPool?, passAction: LegalAction?,
@@ -305,7 +292,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
     if (tavernFrame != null) {
         TavernCommandBar(tavernFrame, human, manaPool, passAction, yieldActions, pendingActionId, snapshot, openLog, openSettings, openPromptDetails,
             viewZone, runAction, runCommand, { isStackOpen = true }, Modifier.zIndex(5f))
-        if (isStackOpen) BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection) { isStackOpen = false } }
+        if (isStackOpen) BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection, runCommand) { isStackOpen = false } }
         return
     }
     Column(modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -325,7 +312,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
                 })
             }
             BoardStackTray(snapshot.stackTopFirst, snapshot.xmage?.stack?.size ?: human.zones.stack.size) { isStackOpen = true }
-            resolveStackCommand(snapshot, human, passAction, pendingActionId, LocalBoardAnswerActions.current.supported)?.let { command ->
+            GameplayAffordances.resolveStackCommand(snapshot, pendingActionId, LocalBoardAnswerActions.current.supported)?.let { command ->
                 ResolveStackButton({ runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}") })
             }
             emoteCenter?.let { TableChatButton(it) }
@@ -358,7 +345,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
         }
     }
     if (isStackOpen) {
-        BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection) { isStackOpen = false } }
+        BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection, runCommand) { isStackOpen = false } }
     }
 }
 
@@ -431,10 +418,11 @@ private fun TavernCommandBar(frame: TavernFrame, human: PlayerGameState, manaPoo
             TavernStackTray(stackCount, snapshot.stackTopFirst.firstOrNull()?.name, openStack,
                 Modifier.tavernPosition(frame, sockets.stackTray), width = if (frame.isLandscape) 106.dp else 124.dp,
                 thumbnail = topCard?.let { card -> { TavernArtCrop(card, "Stack") } })
-            // "Resolve all" hangs above the tray, clear of the hourglass.
-            resolveStackCommand(snapshot, human, passAction, pendingActionId, LocalBoardAnswerActions.current.supported)?.let { command ->
+            // "Resolve all": under the tray in portrait (the mana rail is just above it), above it in landscape, where the
+            // tray stands alone in the right-hand column.
+            GameplayAffordances.resolveStackCommand(snapshot, pendingActionId, LocalBoardAnswerActions.current.supported)?.let { command ->
                 ResolveStackButton({ runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}") },
-                    Modifier.tavernPosition(frame, sockets.stackTray).offset(y = (-46).dp))
+                    Modifier.tavernPosition(frame, sockets.stackTray).offset(y = if (frame.isLandscape) (-46).dp else 40.dp))
             }
         }
         // Counters and attached cards live in the medallion's pop-over; poison and commander damage also show here at a glance.

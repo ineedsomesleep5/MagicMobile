@@ -373,14 +373,7 @@ struct PortraitBottomCommandBar: View {
     /// "Resolve all": one tap passes until the stack you're looking at has resolved (XMage's F10). It stops by itself if an
     /// opponent adds something, and every choice still comes to you. Shown with two or more objects on the stack.
     private var resolveStackCommand: GameCommand? {
-        let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
-        guard stackCount >= 2, pendingActionId == nil, answerActions.supported.contains("passUntilStackResolved"),
-              let passAction, passAction.type == "pass_priority" else { return nil }
-        var command = GameCommand(type: "pass_priority", gameId: snapshot.id, playerId: passAction.playerId,
-                                  promptId: passAction.promptId, messageId: passAction.messageId,
-                                  expectedBridgeRevision: snapshot.bridgeRevision)
-        command.answerActions = ["passUntilStackResolved"]
-        return command
+        GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: pendingActionId, supported: answerActions.supported)
     }
 
     private func resolveStackButton(_ command: GameCommand) -> some View {
@@ -399,7 +392,7 @@ struct PortraitBottomCommandBar: View {
                 #endif
             }
             .sheet(isPresented: $isStackOpen) {
-                BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
             }
             .onChange(of: isStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
         }
@@ -472,10 +465,12 @@ struct PortraitBottomCommandBar: View {
                         TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack,
                                         width: sockets.canvas.width > sockets.canvas.height ? 106 : 124,
                                         topCard: snapshot.stackTopFirst.first?.displaySourceCard)
-                            // "Resolve all" hangs above the tray's trailing edge, clear of the hourglass.
-                            .overlay(alignment: .topTrailing) {
+                            // "Resolve all": under the tray in portrait (the mana rail is just above it), above it in
+                            // landscape, where the tray stands alone in the right-hand column.
+                            .overlay(alignment: sockets.canvas.width > sockets.canvas.height ? .top : .bottom) {
                                 if let resolveStackCommand {
-                                    resolveStackButton(resolveStackCommand).fixedSize().offset(x: 6, y: -40)
+                                    resolveStackButton(resolveStackCommand).fixedSize()
+                                        .offset(y: sockets.canvas.width > sockets.canvas.height ? -42 : 38)
                                 }
                             }
                             .scaleEffect(canvas.tavernControlScale)
@@ -620,10 +615,13 @@ struct PortraitBottomCommandBar: View {
 struct BoardStackInspector: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.nativeTurnControl) private var turnControl
+    @Environment(\.boardAnswerActions) private var answerActions
     @Environment(\.tavernBoard) private var tavern
     let snapshot: GameSnapshot
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    /// Sends "Resolve all" from the sheet; nil hides it.
+    var runCommand: ((GameCommand, String, String) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -639,6 +637,14 @@ struct BoardStackInspector: View {
                     Button("Stop skipping", action: turnControl.stop)
                         .frame(minHeight: 44)
                         .tavernPlaque(tavern, kind: .danger)
+                }
+                // Resolve the whole stack from here too, where you see everything on it.
+                if let runCommand, let resolve = GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: nil,
+                                                                                         supported: answerActions.supported) {
+                    ResolveStackButton(identifier: "board.stack.sheet.resolveAll") {
+                        inspectedCard = nil; dismiss()
+                        runCommand(resolve, "Resolve the stack", "resolve-stack-\(resolve.promptId ?? "")")
+                    }
                 }
                 Button("Done") { inspectedCard = nil; dismiss() }
                     .frame(minHeight: 44)

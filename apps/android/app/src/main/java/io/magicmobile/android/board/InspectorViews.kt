@@ -69,6 +69,7 @@ import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.CardIdentity
 import io.magicmobile.android.game.CardInspectorFit
 import io.magicmobile.android.game.GameBoardInteractionState
+import io.magicmobile.android.game.GameCommand
 import io.magicmobile.android.game.GameLogEntry
 import io.magicmobile.android.game.GameLogPresentation
 import io.magicmobile.android.game.GameSnapshot
@@ -360,8 +361,10 @@ private fun StackObjectView(item: XmageStackObject, snapshot: GameSnapshot, sele
 
 /** The stack sheet: every object on the stack, with a held inspector over it. */
 @Composable
-fun BoardStackInspector(snapshot: GameSnapshot, selection: BoardSelection, done: () -> Unit) {
+fun BoardStackInspector(snapshot: GameSnapshot, selection: BoardSelection, runCommand: ((GameCommand, String, String) -> Unit)? = null,
+                        done: () -> Unit) {
     val turnControl = LocalNativeTurnControl.current
+    val answerActions = LocalBoardAnswerActions.current
     BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 460.dp).padding(12.dp)) {
         val horizontal = maxWidth > maxHeight && maxHeight != Dp.Infinity
         Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -373,6 +376,12 @@ fun BoardStackInspector(snapshot: GameSnapshot, selection: BoardSelection, done:
                     if (tavern) io.magicmobile.android.ui.TavernPlaqueButton("Stop skipping", turnControl.stop, kind = io.magicmobile.android.ui.TavernButtonKind.DANGER)
                     else Text("Stop skipping", Modifier.defaultMinSize(minHeight = 44.dp).clickable(onClick = turnControl.stop).padding(8.dp),
                         color = rgb(0.04, 0.52, 1.0), style = SfText.body())
+                }
+                // Resolve the whole stack from here too, where you see everything on it.
+                val resolve = runCommand?.let { GameplayAffordances.resolveStackCommand(snapshot, null, answerActions.supported) }
+                if (runCommand != null && resolve != null) {
+                    ResolveStackButton({ selection.inspectedCard = null; done(); runCommand(resolve, "Resolve the stack", "resolve-stack-${resolve.promptId ?: ""}") },
+                        Modifier.semantics { contentDescription = "board.stack.sheet.resolveAll" })
                 }
                 if (tavern) io.magicmobile.android.ui.TavernPlaqueButton("Done", { selection.inspectedCard = null; done() },
                     Modifier.semantics { contentDescription = "board.stack.done" }, kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY)

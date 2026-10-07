@@ -386,6 +386,46 @@ final class BoardPolishUITests: XCTestCase {
         captureImage(name: "tavern-zone-menu")
     }
 
+    /// A card's "you may" question offers "Don't ask again this game": ticked, the answer carries the engine's remember
+    /// action. A stack of two or more with priority offers "Resolve all", which passes with the resolve-the-stack action.
+    func testMayTriggerRemembersAndStackResolvesAll() {
+        func launch(_ fixture: String) -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = .portrait
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            return application
+        }
+        var application = launch("may-trigger-prompt")
+        // A toggle-trait button: XCUITest lists it as a switch, so look it up by identifier on any element.
+        let remember = application.descendants(matching: .any)["prompt.remember"].firstMatch
+        XCTAssertTrue(remember.waitForExistence(timeout: 10), "A card's question offers Don't ask again")
+        UITestHarness.settleFirstTouch(application)
+        remember.tap()
+        captureImage(name: "may-trigger-dont-ask-again")
+        application.buttons["Yes"].firstMatch.tap()
+        let captured = application.staticTexts["preview.captured-command"]
+        XCTAssertTrue(captured.waitForExistence(timeout: 5))
+        XCTAssertTrue(captured.label.contains("{rememberAnswer}"), captured.label)
+
+        // This fixture opens the stack sheet, which offers Resolve all beside Done.
+        application = launch("stack-response-prompt")
+        let resolve = application.buttons["board.stack.sheet.resolveAll"]
+        XCTAssertTrue(resolve.waitForExistence(timeout: 10), "Two objects on the stack with priority offer Resolve all")
+        captureImage(name: "stack-resolve-all")
+        UITestHarness.settleFirstTouch(application)
+        resolve.tap()
+        let passed = application.staticTexts["preview.captured-command"]
+        XCTAssertTrue(passed.waitForExistence(timeout: 5))
+        XCTAssertTrue(passed.label.contains("{passUntilStackResolved}"), passed.label)
+    }
+
     /// A player's medallion pop-over shows what they carry as icons (counters, commander damage
     /// taken) and, in a pod, swaps between opponents without closing.
     func testTavernPlayerPopoverShowsStatusIconsAndSwapsOpponents() {
