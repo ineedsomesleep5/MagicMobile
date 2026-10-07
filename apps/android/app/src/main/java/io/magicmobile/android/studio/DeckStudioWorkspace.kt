@@ -526,7 +526,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                 Row(Modifier.fillMaxSize().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = false, screen = binderScreen) {
                         Column(Modifier.fillMaxSize()) {
-                            Box(Modifier.padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 4.dp)) { head() }
+                            head()
                             model.error?.let { message ->
                                 DeckStudioNotice("Check this draft", message, "exclamationmark.triangle", Modifier.padding(start = 12.dp, end = 12.dp, bottom = 6.dp))
                             }
@@ -576,11 +576,13 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                     tabs(Modifier.padding(top = 14.dp).offset(x = (-6).dp))
                 }
             } else {
-                head()
+                // One page with the head written at its top (it is part of the paper and turns with it).
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     BinderPage(Modifier.weight(1f).fillMaxHeight().zIndex(1f), gutterStart = true, screen = binderScreen) {
-                        BoxWithConstraints(Modifier.fillMaxSize()) {
+                        Column(Modifier.fillMaxSize()) {
+                        head()
+                        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                             // A short page shows iOS's one-line header instead: name, card count and save state.
                             val compactHeader = maxHeight <= 500.dp
                             val chapterIndex = 1 + (if (model.error != null) 1 else 0)
@@ -620,6 +622,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                                 }
                             }
                             if (tab == "Cards" && !model.readOnly) bottomBar(Modifier.align(Alignment.BottomCenter))
+                        }
                         }
                     }
                     tabs(Modifier.padding(top = 14.dp))

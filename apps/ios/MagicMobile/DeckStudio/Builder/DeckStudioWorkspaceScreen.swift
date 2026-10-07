@@ -98,24 +98,25 @@ struct DeckStudioWorkspaceScreen: View {
             if spread {
                 spreadWorkspace(size: geometry.size)
             } else {
-                // Upright: the binder's head (Done, Save) on the leather, one page under it, and the
-                // chapters as index tabs down the binder's outer edge (Caleb chose concept B, 2026-10-06).
-                VStack(spacing: 4) {
-                    binderBar
-                    HStack(alignment: .top, spacing: 0) {
-                        BinderPage(gutter: .leading) {
+                // Upright: one page with the binder's head (Done, Save) written at its top, and the chapters as
+                // index tabs down the binder's outer edge (Caleb chose concept B, 2026-10-06; the head is part of
+                // the paper so it turns with the page).
+                HStack(alignment: .top, spacing: 0) {
+                    BinderPage(gutter: .leading) {
+                        VStack(spacing: 0) {
+                            binderBar
                             if verticalSizeClass != .compact && !split {
-                                portraitScrollingWorkspace(height: geometry.size.height - 58)
+                                portraitScrollingWorkspace(height: geometry.size.height - 70)
                             } else {
                                 compactWorkspace(split: split, size: geometry.size)
                             }
                         }
-                        // The page lies over the tabs' tucked ends (BinderIndexTabs.tuck).
-                        .zIndex(1)
-                        indexTabs.padding(.top, 14)
                     }
+                    // The page lies over the tabs' tucked ends (BinderIndexTabs.tuck).
+                    .zIndex(1)
+                    indexTabs.padding(.top, 14)
                 }
-                .padding(.leading, 4).padding(.trailing, dynamicType.isAccessibilitySize ? 4 : 0).padding(.bottom, 2)
+                .padding(.leading, 4).padding(.trailing, dynamicType.isAccessibilitySize ? 4 : 0).padding(.top, 4).padding(.bottom, 2)
             }
             }
             .binderScreen()
@@ -216,7 +217,8 @@ struct DeckStudioWorkspaceScreen: View {
             DeckStudioOrganizationButton(recordID: model.record?.id, title: model.draft.name, binder: true).id(model.record?.id ?? "new")
             moreMenu
         }
-        .padding(.horizontal, 4)
+        // Written at the top of the page, like BinderHead.
+        .padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 4)
     }
     private var moreMenu: some View {
         BinderMenu(accessibilityLabel: "More", identifier: "deckStudio.more") {
@@ -302,7 +304,7 @@ struct DeckStudioWorkspaceScreen: View {
         HStack(alignment: .top, spacing: 6) {
             BinderPage(gutter: .trailing) {
                 VStack(spacing: 0) {
-                    binderBar.padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 4)
+                    binderBar
                     if let error = model.error {
                         DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
                             .padding(.horizontal, 12).padding(.bottom, 6)

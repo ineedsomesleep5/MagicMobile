@@ -37,10 +37,11 @@ struct DeckStudioImportScreen: View {
             Group {
                 if spread {
                     // The list goes in on the left page and is reviewed on the right; nothing runs across the fold.
+                    // The head is written on the left page, so both pages are the same height.
                     HStack(alignment: .top, spacing: 6) {
-                        VStack(spacing: 4) {
-                            importHead
-                            BinderPage(gutter: .trailing) {
+                        BinderPage(gutter: .trailing) {
+                            VStack(spacing: 0) {
+                                importHead
                                 ScrollView { VStack(alignment: .leading, spacing: 20) { entry }.padding(16) }
                             }
                         }
@@ -61,9 +62,9 @@ struct DeckStudioImportScreen: View {
                         }
                     }
                 } else {
-                    VStack(spacing: 4) {
-                        importHead
-                        BinderPage(gutter: .leading) {
+                    BinderPage(gutter: .leading) {
+                        VStack(spacing: 0) {
+                            importHead
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 20) {
                                     entry

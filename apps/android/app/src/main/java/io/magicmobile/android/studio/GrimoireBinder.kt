@@ -510,11 +510,14 @@ fun <T> BinderSleeveRow(items: List<T>, columns: Int, modifier: Modifier = Modif
 @Composable
 fun BinderHead(strap: String, onStrap: () -> Unit, modifier: Modifier = Modifier, title: String? = null, strapTag: String? = null,
                strapEnabled: Boolean = true, trailing: @Composable RowScope.() -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Written at the top of the page (Caleb, 2026-10-06: the head is part of the paper, so facing pages are the same
+    // height and turn together); its title is in ink.
+    Row(modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically) {
         BinderStrapButton(strap, onStrap, if (strapTag != null) Modifier.testTag(strapTag) else Modifier, enabled = strapEnabled)
         Spacer(Modifier.weight(1f))
         title?.let {
-            Text(it, Modifier.semantics { heading() }, color = TavernPalette.parchment, style = sf(17f, SfWeight.bold, SfDesign.SERIF).onLeather(),
+            Text(it, Modifier.semantics { heading() }, color = DeckStudioPalette.ink, style = sf(18f, SfWeight.bold, SfDesign.SERIF),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.weight(1f))
         }

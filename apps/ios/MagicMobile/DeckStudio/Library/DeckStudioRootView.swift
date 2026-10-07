@@ -126,14 +126,13 @@ struct DeckStudioRootView: View {
             Group {
                 if spread {
                     // Each page scrolls by itself, and nothing runs across the fold (Caleb, 2026-10-05).
+                    // The head is written on the left page, so both pages are the same height (Caleb, 2026-10-06).
                     HStack(alignment: .top, spacing: 6) {
-                        VStack(spacing: 4) {
-                            libraryHead
-                            BinderPage(gutter: .trailing) {
-                                VStack(spacing: 0) {
-                                    nowPlaying
-                                    ScrollView { VStack(alignment: .leading, spacing: 20) { libraryIntro }.padding(16) }
-                                }
+                        BinderPage(gutter: .trailing) {
+                            VStack(spacing: 0) {
+                                libraryHead
+                                nowPlaying
+                                ScrollView { VStack(alignment: .leading, spacing: 20) { libraryIntro }.padding(16) }
                             }
                         }
                         BinderPage(gutter: .leading) {
@@ -141,21 +140,18 @@ struct DeckStudioRootView: View {
                         }
                     }
                 } else {
-                    VStack(spacing: 4) {
-                        libraryHead
-                        BinderPage(gutter: .leading) {
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 20) {
-                                    libraryIntro
-                                    libraryShelf
-                                }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
-                            }
-                            .safeAreaInset(edge: .top, spacing: 0) { nowPlaying }
+                    BinderPage(gutter: .leading) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 20) {
+                                libraryIntro
+                                libraryShelf
+                            }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
                         }
+                        .safeAreaInset(edge: .top, spacing: 0) { VStack(spacing: 0) { libraryHead; nowPlaying }.background(GrimoirePaper()) }
                     }
                 }
             }
-            .padding(.horizontal, 4).padding(.bottom, 2)
+            .padding(.horizontal, 4).padding(.top, 4).padding(.bottom, 2)
             .binderScreen()
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showPreferences) {

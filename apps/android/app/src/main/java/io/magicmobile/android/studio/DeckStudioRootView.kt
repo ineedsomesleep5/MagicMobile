@@ -301,14 +301,13 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
             if (spread) {
                 // Sideways the binder lies open as a spread: the library's heading and filters are the left page,
                 // the decks the right, and each scrolls by itself. Nothing runs across the fold.
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        head()
-                        BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = false, screen = binderScreen) {
-                            Column(Modifier.fillMaxSize()) {
-                                nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp))
-                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp)) { intro() }
-                            }
+                // The head is written on the left page, so both pages are the same height (Caleb, 2026-10-06).
+                Row(Modifier.fillMaxSize().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = false, screen = binderScreen) {
+                        Column(Modifier.fillMaxSize()) {
+                            head()
+                            nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp))
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp)) { intro() }
                         }
                     }
                     BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
@@ -318,11 +317,11 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                     }
                 }
             } else {
-                head()
                 Spacer(Modifier.height(4.dp))
                 BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
                     Column(Modifier.fillMaxSize()) {
-                        nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp).widthIn(max = 960.dp))
+                        head()
+                        nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
                         LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

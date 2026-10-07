@@ -62,7 +62,9 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   binder with a stitched seam and brass corner mounts (`BinderPage`). The film still opens the book; inside, the
   pages sit in the binder.
 - **Head.** Done is a leather strap with a brass buckle, Save a brass plaque, then the tags plaque and the ⋯
-  plaque, on the leather above the page (`BinderHead` on the library and importer). There is no system bar.
+  plaque, written at the top of the page itself (`BinderHead` on the library and importer), never on the leather
+  above it (Caleb, October 6: the head is part of the paper, so facing pages are the same height and turn
+  together). There is no system bar.
 - **Chapters are index tabs** (`BinderIndexTabs`): leather tabs with an icon and the chapter's name, standing out
   of the binder's outer edge; the chosen one is red and stands further out. They replace the ribbons and never
   scroll; a chapter change still lands on the chapter's own top with the title plate scrolled away. Each tab is

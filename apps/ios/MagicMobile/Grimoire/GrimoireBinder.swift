@@ -323,15 +323,17 @@ struct BinderHead<Trailing: View>: View {
                 .accessibilityIdentifier(strapIdentifier)
             Spacer(minLength: 2)
             if let title {
-                Text(title).font(.system(size: 17, weight: .bold, design: .serif))
-                    .foregroundStyle(TavernPalette.parchment).shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
+                Text(title).font(.system(size: 18, weight: .bold, design: .serif))
+                    .foregroundStyle(DeckStudioPalette.ink)
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 2)
             }
             trailing
         }
-        .padding(.horizontal, 4)
+        // Written at the top of the page (Caleb, 2026-10-06: the head is part of the paper, so facing pages
+        // are the same height and turn together).
+        .padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 4)
     }
 }
 
