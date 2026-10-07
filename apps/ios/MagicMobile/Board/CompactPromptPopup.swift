@@ -8,6 +8,10 @@ struct CompactPromptPopup: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let openDetails: () -> Void
+    @Environment(\.boardAnswerActions) private var answerActions
+    /// "Don't ask again this game" for this question only.
+    @State private var remember = false
+    @State private var rememberPromptId: String?
 
     private var promptV2: PromptEnvelopeV2? { snapshot.promptEnvelopeV2 }
     private var legalActions: [LegalAction] { snapshot.legalActions ?? [] }
@@ -301,9 +305,18 @@ struct CompactPromptPopup: View {
                 compactCommandButton("Original", systemImage: "arrow.uturn.backward", pendingId: "\(prompt.id)-original-zone", command: command(type: "commander_replacement", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, useCommandZone: false))
             }
         } else if let confirmation = prompt.confirmation, isConfirmationPrompt(prompt) {
+            let rememberable = prompt.canRememberAnswer && answerActions.supported.contains("rememberAnswer")
             HStack(spacing: 7) {
-                compactCommandButton(confirmation.yesLabel ?? "Yes", systemImage: "checkmark.circle", pendingId: "\(prompt.id)-yes", command: explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt))
-                compactCommandButton(confirmation.noLabel ?? "No", systemImage: "xmark.circle", pendingId: "\(prompt.id)-no", command: explicitConfirmationCommand(confirmation.noCommand, prompt: prompt))
+                compactCommandButton(confirmation.yesLabel ?? "Yes", systemImage: "checkmark.circle", pendingId: "\(prompt.id)-yes",
+                                     command: remembering(explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt), prompt: prompt, rememberable: rememberable))
+                compactCommandButton(confirmation.noLabel ?? "No", systemImage: "xmark.circle", pendingId: "\(prompt.id)-no",
+                                     command: remembering(explicitConfirmationCommand(confirmation.noCommand, prompt: prompt), prompt: prompt, rememberable: rememberable))
+            }
+            // A card's "you may" question (sixteen quest counters): answer once for the rest of the game.
+            if rememberable {
+                RememberChoiceToggle(title: "Don't ask again this game",
+                                     isOn: Binding(get: { remember && rememberPromptId == prompt.id },
+                                                   set: { remember = $0; rememberPromptId = prompt.id }))
             }
         } else if Self.shouldPreferCompactActionsBeforeRawChoices(for: snapshot) {
             compactActionButtons(compactPromptActions)
@@ -490,6 +503,12 @@ struct CompactPromptPopup: View {
             manaType: manaType,
             pay: pay
         )
+    }
+
+    private func remembering(_ command: GameCommand?, prompt: PromptEnvelopeV2, rememberable: Bool) -> GameCommand? {
+        guard var command, rememberable, remember, rememberPromptId == prompt.id else { return command }
+        command.answerActions = ["rememberAnswer"]
+        return command
     }
 
     private func explicitConfirmationCommand(_ confirmationCommand: XmageResponseCommand?, prompt: PromptEnvelopeV2) -> GameCommand? {

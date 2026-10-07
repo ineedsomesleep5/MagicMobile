@@ -16,6 +16,11 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage: "checkmark.square.fill")
+                    Label("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage: "forward.fill")
+                    Label("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage: "bolt.fill")
+                    Label("Pick any number of cards at once with Select all, and remember which of your triggers goes first.", systemImage: "rectangle.stack.fill")
+                    Label("The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes.", systemImage: "sparkles")
                     Label("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage: "eye.fill")
                     Label("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage: "sparkles")
                     Label("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage: "moon.stars")

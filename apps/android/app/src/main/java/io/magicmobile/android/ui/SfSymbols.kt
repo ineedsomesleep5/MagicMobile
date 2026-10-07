@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.HowToReg
@@ -232,6 +234,8 @@ object SfSymbols {
         "stop.fill" -> Icons.Filled.Stop
         "trophy.fill" -> Icons.Filled.EmojiEvents
         "forward.fill" -> Icons.Filled.FastForward
+        "checkmark.square.fill" -> Icons.Filled.CheckBox
+        "square" -> Icons.Outlined.CheckBoxOutlineBlank
         "flame.fill" -> Icons.Filled.LocalFireDepartment
         "externaldrive" -> Icons.Filled.Storage
         "dice" -> Icons.Filled.Casino

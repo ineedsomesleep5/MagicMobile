@@ -24,6 +24,39 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         ]))
     }
 
+    /// "Don't ask again this game", "Always put my pick first" and "Resolve all" become the engine's answer actions only
+    /// where they fit the decision (docs/PROTOCOL.md); a question without a source ability is never remembered.
+    func testAnswerActionsFitOnlyTheirDecision() throws {
+        let ask = try prompt("ASK", types: ["boolean"], payload: ["options": .object([
+            "originalId": .string(first), "autoAnswerMessage": .string("Put a quest counter on {this}?")])])
+        var yes = GameCommand(type: "answer_yes_no", gameId: "match", playerId: viewer, promptId: ask.id, messageId: 37, confirmed: true)
+        yes.answerActions = ["rememberAnswer"]
+        XCTAssertTrue(try OnDevicePromptAdapter.presentation(ask, viewerPlayerID: viewer, cards: []).envelope.canRememberAnswer)
+        let actions = try OnDevicePromptAdapter.answerActions(["rememberAnswer"], command: yes, prompt: ask)
+        XCTAssertEqual(actions, [.object(["type": .string("rememberAnswer"), "scope": .string("ability")])])
+        XCTAssertEqual(OnDevicePromptAdapter.answer(try OnDevicePromptAdapter.answer(for: yes, prompt: ask, viewerPlayerID: viewer), with: actions),
+                       .object(["kind": .string("boolean"), "value": .bool(true), "actions": .array(actions)]))
+        XCTAssertEqual(OnDevicePromptAdapter.answer(EnginePrompt.answer("boolean", .bool(true)), with: []), EnginePrompt.answer("boolean", .bool(true)))
+        // Keep this hand? has no source ability.
+        let mulligan = try prompt("ASK", types: ["boolean"])
+        XCTAssertFalse(try OnDevicePromptAdapter.presentation(mulligan, viewerPlayerID: viewer, cards: []).envelope.canRememberAnswer)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answerActions(["rememberAnswer"], command: yes, prompt: mulligan))
+        // A priority pass resolves the stack; it can't remember an answer, and a cast can't resolve the stack.
+        let priority = try prompt("SELECT", types: ["boolean", "uuid"], payload: ["selectMode": .string("priority")])
+        let pass = GameCommand(type: "pass_priority", gameId: "match", playerId: viewer, promptId: priority.id, messageId: 37)
+        XCTAssertEqual(try OnDevicePromptAdapter.answerActions(["passUntilStackResolved"], command: pass, prompt: priority),
+                       [.object(["type": .string("passUntilStackResolved")])])
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answerActions(["rememberAnswer"], command: pass, prompt: priority))
+        let cast = GameCommand(type: "cast_spell", gameId: "match", playerId: viewer, sourceInstanceId: first, promptId: priority.id, messageId: 37)
+        XCTAssertThrowsError(try OnDevicePromptAdapter.answerActions(["passUntilStackResolved"], command: cast, prompt: priority))
+        // The trigger order remembers the ability chosen first.
+        let order = try prompt("PICK_ABILITY", types: ["uuid"], payload: ["abilities": .array([.object(["id": .string(first), "label": .string("Gain 1 life")])])])
+        XCTAssertTrue(try OnDevicePromptAdapter.presentation(order, viewerPlayerID: viewer, cards: []).envelope.isTriggerOrder)
+        let pick = GameCommand(type: "choose_ability", gameId: "match", playerId: viewer, abilityId: first, promptId: order.id, messageId: 37)
+        XCTAssertEqual(try OnDevicePromptAdapter.answerActions(["rememberTriggerFirst"], command: pick, prompt: order),
+                       [.object(["type": .string("rememberTriggerFirst")])])
+    }
+
     func testEngineHTMLMessagesAreDisplayTextWithoutChangingPromptOrAnswer() throws {
         let p = try prompt("ASK", types: ["boolean"], payload: [
             "message": .string("Mulligan <font color=#00ff00>for free</font>, draw another 7 cards?"),

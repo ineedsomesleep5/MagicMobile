@@ -346,9 +346,23 @@ struct BoardCardChoiceView: View {
                 Text("Tap cards in order. Tap a numbered card again to remove it.")
                     .font(.caption)
                 if let bounds = CardChoicePlan.selectionBounds(prompt.message) {
-                    Text(bounds.0 == bounds.1 ? "\(draftIDs.count) of \(bounds.1) selected"
-                                              : "\(draftIDs.count) selected · choose \(bounds.0)–\(bounds.1)")
+                    Text(CardChoicePlan.isUnbounded(bounds) ? "\(draftIDs.count) selected · any number"
+                         : bounds.0 == bounds.1 ? "\(draftIDs.count) of \(bounds.1) selected"
+                         : "\(draftIDs.count) selected · choose \(bounds.0)–\(bounds.1)")
                         .font(.caption.weight(.semibold))
+                    // Every legal card at once, when the choice allows that many (Goblin Recruiter, "any number").
+                    HStack(spacing: 10) {
+                        if bounds.1 >= selectableIDs.count, draftIDs.count < selectableIDs.count {
+                            Button("Select all") { draftIDs = selectableIDs }
+                                .buttonStyle(PanelActionButtonStyle())
+                                .accessibilityIdentifier("board.choice.selectAll")
+                        }
+                        if !draftIDs.isEmpty {
+                            Button("Clear") { draftIDs = [] }
+                                .buttonStyle(PanelActionButtonStyle())
+                                .accessibilityIdentifier("board.choice.clearSelection")
+                        }
+                    }
                 }
                 orderRows(draftIDs, title: "Choice order", top: false)
             }

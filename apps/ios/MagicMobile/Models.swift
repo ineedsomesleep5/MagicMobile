@@ -856,6 +856,17 @@ struct PromptEnvelopeV2: Decodable, Identifiable {
     let options: [String: JSONValue]?
 }
 
+extension PromptEnvelopeV2 {
+    /// A yes/no question asked by a card's ability ("you may put a quest counter on …"): XMage can answer it the same
+    /// way for the rest of the game. Questions with no source (keep this hand?, mana left in pool) never qualify.
+    var canRememberAnswer: Bool {
+        method == "GAME_ASK" && options?["originalId"]?.stringValue.flatMap(UUID.init(uuidString:)) != nil
+            && options?["autoAnswerMessage"]?.stringValue?.isEmpty == false
+    }
+    /// XMage's "which triggered ability goes on the stack first" question.
+    var isTriggerOrder: Bool { method == "GAME_PICK_ABILITY" }
+}
+
 struct XmageResponseCommand: Decodable {
     let type: String?
     let promptId: String?
@@ -1243,6 +1254,9 @@ struct GameCommand: Encodable {
     let blockers: [BlockDeclaration]?
     let combatComplete: Bool?
     let expectedBridgeRevision: Int?
+    /// Standing instructions sent with this answer on engines that list them (docs/PROTOCOL.md "Answer actions"):
+    /// "rememberAnswer" (don't ask this card's question again), "rememberTriggerFirst", "passUntilStackResolved".
+    var answerActions: [String]? = nil
 
     init(
         type: String,

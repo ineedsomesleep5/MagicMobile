@@ -392,6 +392,7 @@ struct AppearanceSettingsView: View {
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
+                    AutoPassAfterCastToggle()
                     BoardEffectsPicker()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
@@ -418,6 +419,21 @@ struct FollowTurnsToggle: View {
     var body: some View {
         TavernToggle(title: "Follow Turns", isOn: $isOn, identifier: "settings.followTurns",
                      subtitle: "Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
+            .modifier(TavernSettingsPanel())
+    }
+}
+
+/// After you cast a spell, priority passes so it resolves without another tap (opponents can still respond). On by default.
+enum AutoPassAfterCast {
+    static let key = "magicmobile.autoPassAfterCast"
+}
+
+struct AutoPassAfterCastToggle: View {
+    @AppStorage(AutoPassAfterCast.key) private var isOn = true
+
+    var body: some View {
+        TavernToggle(title: "Pass After Casting", isOn: $isOn, identifier: "settings.autoPassAfterCast",
+                     subtitle: "Your spell resolves without another tap. Opponents can still respond.")
             .modifier(TavernSettingsPanel())
     }
 }

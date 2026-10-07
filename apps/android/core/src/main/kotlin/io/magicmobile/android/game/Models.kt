@@ -598,7 +598,16 @@ data class PromptEnvelopeV2(
     val orderedItems: List<ChoicePromptOption>? = null,
     val confirmation: XmagePromptConfirmation? = null,
     val options: Map<String, JsonElement>? = null,
-)
+) {
+    /**
+     * A yes/no question asked by a card's ability ("you may put a quest counter on …"): XMage can answer it the same way for
+     * the rest of the game. Questions with no source (keep this hand?, mana left in pool) never qualify.
+     */
+    val canRememberAnswer: Boolean get() = method == "GAME_ASK" && options?.get("originalId").string?.let(::isUuid) == true &&
+        !options?.get("autoAnswerMessage").string.isNullOrEmpty()
+    /** XMage's "which triggered ability goes on the stack first" question. */
+    val isTriggerOrder: Boolean get() = method == "GAME_PICK_ABILITY"
+}
 
 @Serializable
 data class XmageResponseCommand(val type: String? = null, val promptId: String? = null, val messageId: Int? = null,
@@ -755,6 +764,11 @@ data class GameCommand(
     val blockers: List<BlockDeclaration>? = null,
     val combatComplete: Boolean? = null,
     val expectedBridgeRevision: Int? = null,
+    /**
+     * Standing instructions sent with this answer on engines that list them (docs/PROTOCOL.md "Answer actions"):
+     * "rememberAnswer" (don't ask this card's question again), "rememberTriggerFirst", "passUntilStackResolved".
+     */
+    val answerActions: List<String>? = null,
 )
 
 @Serializable

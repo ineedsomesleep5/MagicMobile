@@ -368,6 +368,24 @@ struct PortraitBottomCommandBar: View {
     @Environment(\.emoteCenter) private var emoteCenter
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
+    @Environment(\.boardAnswerActions) private var answerActions
+
+    /// "Resolve all": one tap passes until the stack you're looking at has resolved (XMage's F10). It stops by itself if an
+    /// opponent adds something, and every choice still comes to you. Shown with two or more objects on the stack.
+    private var resolveStackCommand: GameCommand? {
+        let stackCount = snapshot.xmage?.stack.count ?? human.zones.stack.count
+        guard stackCount >= 2, pendingActionId == nil, answerActions.supported.contains("passUntilStackResolved"),
+              let passAction, passAction.type == "pass_priority" else { return nil }
+        var command = GameCommand(type: "pass_priority", gameId: snapshot.id, playerId: passAction.playerId,
+                                  promptId: passAction.promptId, messageId: passAction.messageId,
+                                  expectedBridgeRevision: snapshot.bridgeRevision)
+        command.answerActions = ["passUntilStackResolved"]
+        return command
+    }
+
+    private func resolveStackButton(_ command: GameCommand) -> some View {
+        ResolveStackButton { runCommand(command, "Resolve the stack", "resolve-stack-\(command.promptId ?? "")") }
+    }
 
     var body: some View {
         GeometryReader { _ in
@@ -410,6 +428,7 @@ struct PortraitBottomCommandBar: View {
                 .accessibilityLabel("Floating mana; swipe to view all colors")
                 BoardStackTray(objects: snapshot.stackTopFirst,
                                count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
+                if let resolveStackCommand { resolveStackButton(resolveStackCommand) }
                 if let emoteCenter { TableChatButton(center: emoteCenter) }
             }
             HStack(spacing: 8) {
@@ -453,6 +472,12 @@ struct PortraitBottomCommandBar: View {
                         TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack,
                                         width: sockets.canvas.width > sockets.canvas.height ? 106 : 124,
                                         topCard: snapshot.stackTopFirst.first?.displaySourceCard)
+                            // "Resolve all" hangs above the tray's trailing edge, clear of the hourglass.
+                            .overlay(alignment: .topTrailing) {
+                                if let resolveStackCommand {
+                                    resolveStackButton(resolveStackCommand).fixedSize().offset(x: 6, y: -40)
+                                }
+                            }
                             .scaleEffect(canvas.tavernControlScale)
                             .tavernPosition(sockets.stackTray, canvas: canvas, origin: origin)
                     }

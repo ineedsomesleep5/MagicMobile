@@ -357,6 +357,31 @@ enum OnDevicePromptAdapter {
         }
     }
 
+    /// The engine's answer actions (docs/PROTOCOL.md) for a command's requested ones, only where they fit this prompt.
+    static func answerActions(_ requested: [String], command: GameCommand, prompt: MagicMobileOnDevice.EnginePrompt) throws -> [MagicMobileOnDevice.JSONValue] {
+        try requested.map { type in
+            switch (type, prompt.kind, command.type) {
+            case ("rememberAnswer", "ASK", "answer_yes_no"):
+                guard prompt.payload["options"]?["originalId"]?.string != nil, prompt.payload["options"]?["autoAnswerMessage"]?.string != nil else {
+                    throw invalid("This question cannot be remembered")
+                }
+                return .object(["type": .string(type), "scope": .string("ability")])
+            case ("rememberTriggerFirst", "PICK_ABILITY", "choose_ability"):
+                return .object(["type": .string(type)])
+            case ("passUntilStackResolved", "SELECT", "pass_priority") where prompt.payload["selectMode"]?.string == "priority":
+                return .object(["type": .string(type)])
+            default: throw invalid("\(type) does not fit this decision")
+            }
+        }
+    }
+
+    /// The answer with standing instructions attached; unchanged when there are none.
+    static func answer(_ answer: MagicMobileOnDevice.JSONValue, with actions: [MagicMobileOnDevice.JSONValue]) -> MagicMobileOnDevice.JSONValue {
+        guard !actions.isEmpty, case .object(var fields) = answer else { return answer }
+        fields["actions"] = .array(actions)
+        return .object(fields)
+    }
+
     private static func answer(_ kind: String, _ value: MagicMobileOnDevice.JSONValue, prompt: MagicMobileOnDevice.EnginePrompt) throws -> MagicMobileOnDevice.JSONValue {
         guard prompt.responseTypes.contains(kind) else { throw invalid("Response type \(kind) is not accepted") }
         return MagicMobileOnDevice.EnginePrompt.answer(kind, value)
