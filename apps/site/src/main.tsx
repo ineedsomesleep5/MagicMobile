@@ -383,14 +383,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 18 shows the top of your library when a card
-                lets you see it, right beside your portrait, and you can cast
-                it from there. Your portrait glows whenever you can cast from
-                your graveyard, exile or library, day or night and the storm
-                count show on the table, and the starting roll has more room.
-                It keeps the leather card binder, paper page turns and player
-                profiles. Android is an early alpha; physical-phone acceptance
-                is still pending.
+                Android build 19 updates XMage with 78 new cards and many card
+                fixes, and speeds up big turns: tick “Don’t ask again” on a
+                card’s “you may” question, let a pile of triggers resolve with
+                Resolve all, and your spells resolve without an extra tap. You
+                can choose any card’s artwork, the offline download includes
+                every token, and the stack is easier to read. Android is an
+                early alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -399,15 +398,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 33 shows the top of your library when a card like
-                Conspicuous Snoop or Future Sight lets you see it, right beside
-                your portrait, and you can cast it from there. Your portrait
-                glows whenever you can cast from your graveyard, exile or
-                library, day or night and the storm count show on the table,
-                and the starting roll has more room. It keeps the leather card
-                binder, paper page turns and player profiles. It runs on iPhone
-                and iPad. Apple has approved this build for Internal and
-                External TestFlight.
+                Build 34 updates XMage with 78 new cards and many card fixes,
+                and speeds up big turns: tick “Don’t ask again” on a card’s
+                “you may” question, let a pile of triggers resolve with Resolve
+                all, and your spells resolve without an extra tap. You can
+                choose any card’s artwork, the offline download includes every
+                token, and the stack is easier to read. It runs on iPhone and
+                iPad. Apple has approved this build for Internal and External
+                TestFlight.
               </p>
             </details>
             <details>
