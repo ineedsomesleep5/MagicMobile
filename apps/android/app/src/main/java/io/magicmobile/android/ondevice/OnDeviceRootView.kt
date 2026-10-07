@@ -224,6 +224,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var offlineArtPromptSeen by AppPreferences.boolean(OfflineArtLaunch.SEEN_KEY, false)
     var showOfflineArtPrompt by remember { mutableStateOf(false) }
     var showFriends by remember { mutableStateOf(false) }
+    var chatProfile by remember { mutableStateOf<String?>(null) }
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
     var showDecks by remember { mutableStateOf(false) }
@@ -244,6 +245,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Quick Match, Ranked and the profile (ranked/).
     val record = remember { io.magicmobile.android.ranked.PlayerRecordStore.shared(context) }
     var lobby by rememberSaveable { mutableStateOf<String?>(null) }
+    // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
+    LaunchedEffect(Unit) {
+        when (io.magicmobile.android.ranked.SocialFixtures.openScreen?.substringBefore(":")) {
+            "profile" -> lobby = "profile"
+            "friends", "public", "search" -> showFriends = true
+        }
+    }
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
     var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
     var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
@@ -267,6 +275,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var appForeground by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         record.publish = { rank, title, commander -> scope.launch { vm.account.publishRank(rank, title, commander) } }
+        // Finished games go to the profile server too: now, and again whenever the app is open and online (GameUploader).
+        val uploader = io.magicmobile.android.game.GameUploader(java.io.File(context.filesDir, "Profile/uploaded-games.json"))
+        val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
+        record.didRecord = { scope.launch { upload() } }
+        vm.account.afterRefresh = upload
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -508,7 +521,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID)
         rankChange = change
         match.rankedMatchID?.let { id -> scope.launch { matchmaker.report(id, outcome) } }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
@@ -913,8 +926,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             if (setup.identity == null) setup.status else null, ::startQuickMatch, { lobby = "chooser" }, deckSlot)
                         "ranked" -> io.magicmobile.android.ranked.RankedLobbyScreen(record.file.rank, selectedDeckBracket, vm.account.rankedQueue != null,
                             mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "chooser" }, deckSlot)
-                        "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account.username ?: playerDisplayName,
-                            setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander }) { lobby = null }
+                        "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account, vm.account.username ?: playerDisplayName,
+                            setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander },
+                            loadMetadata = { runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { io.magicmobile.android.studio.NativeDeckMetadataCatalogue(setup.awaitCatalogue()) } }.getOrNull() }) { lobby = null }
                         else -> io.magicmobile.android.ranked.PlayModeChooser(record.file.rank.position, io.magicmobile.android.game.RankLadder.seasonName(record.file.rank.season),
                             quick = { lobby = "quick" }, ranked = { lobby = "ranked" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
                     }
@@ -1058,7 +1072,14 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 val profileReady = vm.account.phase == PlayerAccount.Phase.READY
                 TableChatPanel(vm.emotes, session.snapshot,
                     report = if (profileReady) { line -> scope.launch { vm.account.report(line.name, line.text, "chat") } } else null,
-                    block = if (profileReady) { name -> vm.emotes.mute(name); scope.launch { vm.account.block(name) } } else null) { vm.emotes.openChat(false) }
+                    block = if (profileReady) { name -> vm.emotes.mute(name); scope.launch { vm.account.block(name) } } else null,
+                    viewProfile = if (profileReady) { name -> chatProfile = name } else null) { vm.emotes.openChat(false) }
+                // A player opened from the table chat: their public profile covers the chat.
+                chatProfile?.let { name ->
+                    androidx.compose.ui.window.Dialog({ chatProfile = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                        io.magicmobile.android.ranked.PublicProfileScreen(vm.account, name, null, null) { chatProfile = null }
+                    }
+                }
             }
             if (showBracketSheet) {
                 val deck = selectedDeck; val report = selectedBracketReport

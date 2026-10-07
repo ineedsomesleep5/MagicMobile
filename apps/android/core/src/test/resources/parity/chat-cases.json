@@ -193,6 +193,9 @@
     "too_many_reports": "You've sent a lot of reports. Try again later.",
     "anonymous_provider_disabled": "Profiles aren't available right now. You can still play.",
     "offline": "You're offline. Profiles and friends come back when you reconnect.",
+    "feature_unavailable": "That part of the profile server isn't ready yet. Try again after the next update.",
+    "invalid_visibility": "Choose Public, Friends only or Private.",
+    "too_many_games": "You've played a lot of games. Your game history catches up later.",
     "something_new": "Something went wrong. Try again."
   },
   "requestResults": [

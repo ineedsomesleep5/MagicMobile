@@ -295,6 +295,8 @@ data class MatchRecord(
     val opponentBracket: Int? = null, val aiSkill: Int? = null, val deckID: String, val deckName: String, val commander: String? = null,
     val colors: List<String> = emptyList(), val deckBracket: Int, val outcome: RankOutcome, val turns: Int,
     val rankChange: RankChange? = null, val season: String? = null,
+    /** The engine's id for the game: finds its detailed record (Deck Studio's saved game history). Earlier games have none. */
+    val engineMatchID: String? = null,
 ) {
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
 }
@@ -396,13 +398,13 @@ data class PlayerRecordFile(
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
         val match = MatchRecord(date = now, mode = mode, opponents = opponents, opponentBracket = opponentBracket, aiSkill = aiSkill,
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
-            turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null)
+            turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent) to change
     }
