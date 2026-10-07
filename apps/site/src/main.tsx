@@ -225,7 +225,8 @@ function App() {
                 <p>
                   Ranked 1v1 from Bronze to Mythic in monthly seasons, Quick
                   Match at your deck’s bracket, challenges with friends, and a
-                  profile with your stats.
+                  profile other players can open: your rank history, favorite
+                  commanders and recent games.
                 </p>
               </div>
             </div>
@@ -382,13 +383,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 16 lets you challenge a friend to a Quick Match, or
-                to Ranked when you’re in the same tier, and friend ranked games
-                count. The menu sits in a 3D tavern room that shifts as you tilt
-                your phone, your profile picture is your favorite commander’s
-                art, and the menu and Downloads match the tavern. It keeps
-                Ranked, Quick Match and the Walnut Tavern table. Android is an
-                early alpha; physical-phone acceptance is still pending.
+                Android build 17 turns Decks into a leather card binder: every
+                card sits in a sleeve, pages curl like paper as you drag them,
+                and sideways it lies open as two pages. The starting roll is
+                thrown onto the tavern table, your profile shows your games at
+                a glance, and you can find friends as you type and open any
+                player’s profile. Android is an early alpha; physical-phone
+                acceptance is still pending.
               </p>
             </details>
             <details>
@@ -397,14 +398,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 29 lets you challenge a friend from your friends list to a
-                Quick Match, or to Ranked when you’re in the same tier, and
-                friend ranked games count. The main menu sits in a real 3D
-                tavern room that shifts as you tilt your phone, with flickering
-                candles; your profile picture is your favorite commander’s art;
-                rank badges turn more smoothly; and the menu and Downloads fit
-                the tavern. It runs on iPhone and iPad. Apple has approved this
-                build for Internal and External TestFlight.
+                Build 32 turns Decks into a leather card binder: every card sits
+                in a sleeve with a minus and a plus, pages curl like real paper
+                as you drag them, and held sideways it lies open as two pages.
+                The starting roll is thrown onto the tavern table, your profile
+                shows your win rate, rank history and favorite commanders, and
+                you can find friends as you type, open any player’s profile and
+                choose who can see yours. It runs on iPhone and iPad. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>
