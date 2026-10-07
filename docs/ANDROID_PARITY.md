@@ -57,7 +57,8 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | OpeningHandOverlay.swift, GameStats.swift, GameEmotes.swift, PlayerPortrait.swift | app `board/` | Ported |
 | GameLogPresentation.swift | core `game/GameLogPresentation.kt` | Ported |
 | GameAudio.swift, SoundLabView.swift | app `ui/GameAudio.kt`, `board/SettingsViews.kt` | Ported |
-| OnDeviceRootView.swift, BrandUI.swift, BrandMarkPaths.swift, MultiplayerD20View.swift, OnDeviceStartingRoll.swift | app `ondevice/`, `ui/BrandUI.kt`, `ui/D20Die.kt` | Ported |
+| OnDeviceRootView.swift, BrandUI.swift, BrandMarkPaths.swift, MultiplayerD20View.swift, OnDeviceStartingRoll.swift | app `ondevice/`, `ui/BrandUI.kt` | Ported |
+| StartingRollDice.swift, StartingRollTableView.swift (the 3D starting roll, docs/STARTING_ROLL.md) | `ondevice/StartingRollDice.kt`, `ondevice/StartingRollTable.kt` (Filament instead of SceneKit), `ui/D20Math.kt` | Ported |
 | OnDeviceMultiplayer.swift, RelayTransport.swift (GameKitTransport has no Android counterpart) | app `ondevice/OnDeviceMultiplayer.kt`, `ondevice/RelayTransport.kt` | Ported; relay tables only |
 | DeckStudio/*, DeckLibrary.swift, OnDeviceDeckEditing.swift, NativeDeckMetadataCatalogue.swift, OnDeviceDeckResolver.swift, OnDeviceDeckLinkImporter.swift | core `studio/`, app `studio/` | Ported (37 iOS tests ported) |
 | NativeDownloadsView.swift | app `ondevice/NativeDownloadsView.kt` (Android's download engine and service) | Ported |

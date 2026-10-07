@@ -22,3 +22,7 @@
 -keep class com.google.android.gms.tasks.** { public *; }
 -keep class com.google.mlkit.vision.common.InputImage { public *; }
 -keep class com.google.mlkit.vision.text.** { public *; }
+
+# Filament and gltfio (the starting roll's 3D table) call back into these Java classes by name from native code.
+-keep class com.google.android.filament.** { *; }
+-keepclasseswithmembernames class * { native <methods>; }

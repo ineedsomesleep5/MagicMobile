@@ -184,14 +184,25 @@ struct MagicMobileApp: App {
 }
 
 #if DEBUG
-/// Opt-in visual fixture only. It never creates a Game Center or XMage match.
+/// Opt-in visual fixture only. It never creates a Game Center or XMage match. MAGICMOBILE_D20_AUTOPLAY=1 lets
+/// every roll follow the last by itself (for screenshots); MAGICMOBILE_D20_SEATS=2|3|4 picks the table size.
 private struct MultiplayerD20FixtureScreen: View {
     @State private var dismissed = false
-    @State private var revealedStepCount = 0
+    @State private var revealedStepCount = MultiplayerD20FixtureScreen.autoplay ? 1 : 0
+
+    private static let autoplay = ProcessInfo.processInfo.environment["MAGICMOBILE_D20_AUTOPLAY"] == "1"
+    private static let seatCount = min(4, max(2, Int(ProcessInfo.processInfo.environment["MAGICMOBILE_D20_SEATS"] ?? "") ?? 3))
+    private static let names = ["player1": "Caleb", "player2": "Ruthie", "player3": "AI 1", "player4": "AI 2"]
 
     private static let roll: OnDeviceStartingRoll? = {
-        var values = [12, 12, 7, 20, 14].makeIterator()
-        return try? OnDeviceStartingRoll.generate(seatIDs: ["player1", "player2", "player3"],
+        let draws: [Int]
+        switch seatCount {
+        case 2: draws = [17, 6]
+        case 3: draws = [12, 12, 7, 20, 14]
+        default: draws = [8, 15, 15, 3, 15, 11]
+        }
+        var values = draws.makeIterator()
+        return try? OnDeviceStartingRoll.generate(seatIDs: (1...seatCount).map { "player\($0)" },
                                                   draw: { values.next() ?? 1 })
     }()
 
@@ -208,14 +219,17 @@ private struct MultiplayerD20FixtureScreen: View {
                     .foregroundStyle(.white)
             } else if let roll = Self.roll {
                 MultiplayerD20View(roll: roll,
-                                   seatNames: ["player1": "Caleb", "player2": "Ruthie", "player3": "AI 1"],
+                                   seatNames: Self.names.filter { roll.seatOrder.contains($0.key) },
                                    isLocalWinner: true,
                                    revealedStepCount: revealedStepCount,
                                    // The fixture drives one local tap at a time; it is
                                    // not a substitute for Game Center transport.
                                    localSeatID: roll.steps.indices.contains(revealedStepCount)
                                        ? roll.steps[revealedStepCount].seatID : nil,
-                                   onRollTap: { revealedStepCount += 1 }) {
+                                   onRollTap: { revealedStepCount += 1 },
+                                   onStepPlayed: {
+                                       if Self.autoplay { revealedStepCount = min(revealedStepCount + 1, roll.steps.count) }
+                                   }) {
                     dismissed = true
                 }
             } else {

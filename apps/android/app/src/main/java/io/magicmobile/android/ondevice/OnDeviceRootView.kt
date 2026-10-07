@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -954,16 +955,20 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 submitStartingChoiceIfNeeded()
                             }
                         } else {
-                            Column(Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp).fillMaxWidth()
-                                .background(BrandTheme.surface, RoundedCornerShape(22.dp)).padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("Who goes first?", color = BrandTheme.ink, style = SfText.title2(SfWeight.bold), textAlign = TextAlign.Center)
-                                Text(table.rollStatus, color = BrandTheme.inkSecondary, style = SfText.subheadline(), textAlign = TextAlign.Center)
-                                Text(table.hostAISeatSummary ?: "Each player rolls a D20. Highest starts; ties reroll.", color = BrandTheme.inkSecondary,
-                                    style = SfText.caption(), textAlign = TextAlign.Center)
-                                BrandButton({ runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
-                                    enabled = !table.hasRolled) {
-                                    BrandButtonText(if (table.hasRolled) "Waiting for other players…" else "Roll D20")
+                            // Until the host shares the dice: the same leather and brass the roll itself wears.
+                            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+                                Column(Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp).fillMaxWidth()
+                                    .shadow(10.dp, RoundedCornerShape(14.dp)).tavernBrassFrame(1f).padding(2.dp)
+                                    .tavernFill(io.magicmobile.android.ui.TavernMaterial.LEATHER, RoundedCornerShape(14.dp)).padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    Text("Who goes first?", color = Color(0.98f, 0.92f, 0.80f), style = sf(22f, SfWeight.heavy, SfDesign.SERIF), textAlign = TextAlign.Center)
+                                    Text(table.rollStatus, color = Color(0.84f, 0.72f, 0.52f), style = sf(15f, SfWeight.medium, SfDesign.SERIF), textAlign = TextAlign.Center)
+                                    Text(table.hostAISeatSummary ?: "Each player rolls a D20. Highest starts; ties reroll.", color = Color(0.84f, 0.72f, 0.52f),
+                                        style = sf(12f, SfWeight.regular, SfDesign.SERIF), textAlign = TextAlign.Center)
+                                    io.magicmobile.android.ui.TavernButton({ runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
+                                        enabled = !table.hasRolled, fontSize = 17f, fullWidth = true) {
+                                        io.magicmobile.android.ui.TavernButtonText(if (table.hasRolled) "Waiting for other players…" else "Roll D20")
+                                    }
                                 }
                             }
                         }
