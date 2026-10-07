@@ -1409,6 +1409,11 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage = "hand.draw.fill")
+                IosListRow("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage = "dice")
+                IosListRow("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage = "chart.bar.fill")
+                IosListRow("Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private.", systemImage = "person.2.fill")
+                IosListRow("Deck Studio's menus and prompts are the binder's own, and held sideways both pages fill the binder with Add cards floating over the page.", systemImage = "list.bullet.rectangle.portrait")
                 IosListRow("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage = "book.fill")
                 IosListRow("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage = "books.vertical.fill")
                 IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")
