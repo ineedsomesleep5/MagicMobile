@@ -14,6 +14,9 @@ enum Grimoire {
     static let gutterWidth: CGFloat = 26
     static let edgeWidth: CGFloat = 7
 
+    /// The height of a page's head (the plaques along its top): a drag that begins there turns nothing (PAGE_CURL.md).
+    static var headBand: CGFloat = 64
+
     /// How far each page's content keeps clear of the fold of a spread, beyond its own margins.
     static let foldInset: CGFloat = 12
 
@@ -39,18 +42,19 @@ extension View {
             .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(DeckStudioPalette.ink.opacity(0.2), lineWidth: 0.8))
     }
 
-    /// Turns the page on a sideways swipe anywhere on it: leftward for `next`, rightward for
-    /// `previous`. A swipe that starts on something that scrolls sideways (a row of cards) or slides
-    /// (a slider) belongs to that control and turns nothing. The swipe is watched by a UIKit recognizer
-    /// on the window that never takes a touch from anything else: a SwiftUI drag gesture over the whole
-    /// screen swallowed the first tap after the page had scrolled (the binder's index tabs, 2026-10-06).
+    /// Turns the page on a sideways drag anywhere on it: leftward for `next`, rightward for `previous`. The
+    /// page curls under the finger (GrimoireStage, GrimoirePageCurl) and finishes or springs back when it lets
+    /// go. A drag that starts on something that scrolls sideways (a row of cards) or slides (a slider) belongs
+    /// to that control and turns nothing, and a mostly vertical one is the page's scroll. The drag is watched by
+    /// a UIKit recognizer on the window that never takes a touch from anything else: a SwiftUI drag gesture
+    /// over the whole screen swallowed the first tap after the page had scrolled (the binder's index tabs,
+    /// 2026-10-06). With Reduce Motion, a swipe of more than 80 points turns the page when it ends.
     func grimoireSwipe(next: @escaping () -> Void, previous: @escaping () -> Void) -> some View {
         background(GrimoireSwipeWatcher(next: next, previous: previous).allowsHitTesting(false).accessibilityHidden(true))
     }
 }
 
-/// Watches the window for a sideways swipe, alongside every other gesture and without delaying or
-/// cancelling any touch.
+/// Registers a screen's chapter turns with the hub while the screen is on show.
 private struct GrimoireSwipeWatcher: UIViewRepresentable {
     let next: () -> Void
     let previous: () -> Void
@@ -65,6 +69,7 @@ private struct GrimoireSwipeWatcher: UIViewRepresentable {
     func updateUIView(_ view: WatcherView, context: Context) {
         context.coordinator.next = next
         context.coordinator.previous = previous
+        context.coordinator.refresh()
     }
     static func dismantleUIView(_ view: WatcherView, coordinator: Coordinator) { coordinator.detach() }
 
@@ -76,53 +81,128 @@ private struct GrimoireSwipeWatcher: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+    @MainActor final class Coordinator {
         var next: () -> Void = {}
         var previous: () -> Void = {}
-        private var recognizer: UIPanGestureRecognizer?
-        private weak var host: UIView?
-        private var start = CGPoint.zero
+        private let token = UUID()
+        private weak var window: UIWindow?
 
         func attach(to window: UIWindow?) {
-            guard window !== host else { return }
-            detach()
+            guard let window else { detach(); return }
+            self.window = window
+            refresh()
+        }
+        func refresh() {
             guard let window else { return }
-            let pan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
-            pan.cancelsTouchesInView = false
-            pan.delaysTouchesBegan = false
-            pan.delaysTouchesEnded = false
-            pan.delegate = self
-            window.addGestureRecognizer(pan)
-            recognizer = pan; host = window
+            GrimoireSwipeHub.shared.register(token, window: window, next: { [weak self] in self?.next() }, previous: { [weak self] in self?.previous() })
         }
-
         func detach() {
-            if let recognizer { host?.removeGestureRecognizer(recognizer) }
-            recognizer = nil; host = nil
+            window = nil
+            GrimoireSwipeHub.shared.unregister(token)
         }
-
-        @objc private func pan(_ gesture: UIPanGestureRecognizer) {
-            let moved = gesture.translation(in: gesture.view)
-            switch gesture.state {
-            case .began:
-                let at = gesture.location(in: gesture.view)
-                start = CGPoint(x: at.x - moved.x, y: at.y - moved.y)
-            case .ended:
-                guard abs(moved.x) > 80, abs(moved.x) > 2.5 * abs(moved.y), !Grimoire.ownsSidewaysDrags(at: start) else { return }
-                if moved.x < 0 { next() } else { previous() }
-            default:
-                break
-            }
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 
+/// The one pan recognizer on the window, alongside every other gesture and without delaying or cancelling any
+/// touch. It belongs to the hub, not to a screen: a turn that leaves the screen (back past the first chapter is
+/// the library's page) removes the screen mid-drag, and the drag carries on.
+@MainActor
+final class GrimoireSwipeHub: NSObject, UIGestureRecognizerDelegate {
+    static let shared = GrimoireSwipeHub()
+
+    private struct Handler { let token: UUID; var next: () -> Void; var previous: () -> Void }
+    private var handlers: [Handler] = []
+    private var recognizer: UIPanGestureRecognizer?
+    private weak var host: UIWindow?
+
+    /// What the current gesture is doing.
+    private enum Phase { case undecided, dragging, ignored, legacy }
+    private var phase = Phase.undecided
+    private var start = CGPoint.zero
+    private var owner: Handler?
+
+    func register(_ token: UUID, window: UIWindow, next: @escaping () -> Void, previous: @escaping () -> Void) {
+        let handler = Handler(token: token, next: next, previous: previous)
+        // The first turn should not pay for building the Metal pipeline.
+        DispatchQueue.main.async { _ = PageCurlRenderer.shared }
+        if let index = handlers.firstIndex(where: { $0.token == token }) { handlers[index] = handler } else { handlers.append(handler) }
+        guard window !== host else { return }
+        removeRecognizer()
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
+        pan.cancelsTouchesInView = false
+        pan.delaysTouchesBegan = false
+        pan.delaysTouchesEnded = false
+        pan.delegate = self
+        window.addGestureRecognizer(pan)
+        recognizer = pan; host = window
+    }
+
+    func unregister(_ token: UUID) {
+        handlers.removeAll { $0.token == token }
+        // The recognizer stays until a drag in progress is done.
+        if handlers.isEmpty, phase != .dragging { removeRecognizer() }
+    }
+
+    private func removeRecognizer() {
+        if let recognizer { host?.removeGestureRecognizer(recognizer) }
+        recognizer = nil; host = nil
+    }
+
+    @objc private func pan(_ gesture: UIPanGestureRecognizer) {
+        let moved = gesture.translation(in: gesture.view)
+        switch gesture.state {
+        case .began:
+            let at = gesture.location(in: gesture.view)
+            start = CGPoint(x: at.x - moved.x, y: at.y - moved.y)
+            owner = handlers.last
+            phase = GrimoireStage.pageEffect == .curl ? .undecided : .legacy
+            decide(moved)
+        case .changed:
+            if phase == .undecided { decide(moved) }
+            if phase == .dragging { GrimoireStage.shared.dragChanged(moved) }
+        case .ended, .cancelled, .failed:
+            switch phase {
+            case .dragging:
+                // The last move may have arrived with the lift (a fast swipe sends few events).
+                if gesture.state == .ended { GrimoireStage.shared.dragChanged(moved) }
+                GrimoireStage.shared.dragEnded(speed: gesture.velocity(in: gesture.view).x, cancelled: gesture.state != .ended)
+            case .legacy:
+                // Without the curl a swipe turns the page when it ends: far enough, and mostly sideways.
+                if gesture.state == .ended, abs(moved.x) > 80, abs(moved.x) > 2.5 * abs(moved.y),
+                   !Grimoire.ownsSidewaysDrags(at: start), let owner {
+                    if moved.x < 0 { owner.next() } else { owner.previous() }
+                }
+            case .undecided, .ignored:
+                break
+            }
+            phase = .undecided; owner = nil
+            if handlers.isEmpty { removeRecognizer() }
+        default:
+            break
+        }
+    }
+
+    /// Once the finger has moved far enough to tell, a mostly sideways drag that starts on nothing that uses
+    /// sideways drags turns the page; anything else is left alone for the rest of the gesture.
+    private func decide(_ moved: CGPoint) {
+        guard phase == .undecided, hypot(moved.x, moved.y) >= 12 else { return }
+        guard let owner, abs(moved.x) > 2 * abs(moved.y), !Grimoire.ownsSidewaysDrags(at: start) else { phase = .ignored; return }
+        let forward = moved.x < 0
+        let begun = GrimoireStage.shared.beginDrag(forward: forward, start: start, probe: forward ? owner.next : owner.previous,
+                                                   revert: forward ? owner.previous : owner.next)
+        phase = begun ? .dragging : .ignored
+        if begun { GrimoireStage.shared.dragChanged(moved) }
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+}
+
 extension Grimoire {
-    /// Whether the control under this point (in the window) uses sideways drags itself.
+    /// Whether a drag that begins at this point (in the window) is not the page's to turn: it begins off the paper or on
+    /// a page's head (GrimoireStage.pageMayCurl), or on a control that uses sideways drags itself.
     @MainActor static func ownsSidewaysDrags(at point: CGPoint) -> Bool {
+        if !GrimoireStage.shared.pageMayCurl(from: point) { return true }
         let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
         guard let window = windows.first(where: \.isKeyWindow), var view = window.hitTest(point, with: nil) else { return false }
         while true {

@@ -46,6 +46,7 @@ final class GrimoireUITests: XCTestCase {
         attach("Spell book deck page")
         ideas.press(forDuration: 0.15)
         XCTAssertTrue(waitUntil { ideas.isSelected }, "An index tab turns to its chapter")
+        waitForTurn(app)
 
         // A swipe turns the page: leftward to the next chapter, rightward to the one before. (Both start
         // near the head of the page: lower down, Analysis has a chart that scrolls sideways and keeps
@@ -54,10 +55,12 @@ final class GrimoireUITests: XCTestCase {
         page.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.32))
             .press(forDuration: 0.05, thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.32)))
         XCTAssertTrue(waitUntil { analysis.isSelected }, "Swiping left turns to the next chapter")
+        waitForTurn(app)
         attach("Spell book analysis page")
         page.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.32))
             .press(forDuration: 0.05, thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.32)))
         XCTAssertTrue(waitUntil { ideas.isSelected }, "Swiping right turns back")
+        waitForTurn(app)
 
         // Done turns back to the library; Done there closes the book onto the menu. The library may still be
         // scrolled to the deck it opened, so scroll back to its head first.
@@ -154,12 +157,14 @@ final class GrimoireUITests: XCTestCase {
         let leftPageEdge = deckSearch.frame.maxX
         app.buttons["Analysis"].press(forDuration: 0.15)
         XCTAssertTrue(waitUntil { app.buttons["Analysis"].isSelected })
+        waitForTurn(app)
         XCTAssertTrue(app.scrollViews["deckStudio.analysis.list"].waitForExistence(timeout: 10))
         XCTAssertGreaterThanOrEqual(app.scrollViews["deckStudio.analysis.list"].frame.minX, leftPageEdge - 1,
                                     "The roles are the right page")
         attach("Spell book analysis spread")
         app.buttons["Ideas"].press(forDuration: 0.15)
         XCTAssertTrue(waitUntil { app.buttons["Ideas"].isSelected })
+        waitForTurn(app)
         attach("Spell book ideas spread")
 
         close.tap()
@@ -169,6 +174,87 @@ final class GrimoireUITests: XCTestCase {
         XCTAssertTrue(waitUntil { done.isHittable }, "The library settles after the turn back")
         done.tap()
         XCTAssertTrue(waitUntil(timeout: 15) { app.buttons["menu.decks"].isHittable }, "The book closes back onto the menu")
+    }
+
+    /// The page curls under a finger: let go before a third of the way and it falls back to its chapter, drag it
+    /// further and it turns. A picture is taken while the finger holds the page mid-curl.
+    func testDraggingAPageCurlsItAndLettingGoFinishesOrReturnsIt() {
+        let app = launch()
+        defer { app.terminate() }
+        app.buttons["menu.decks"].press(forDuration: 0.15)
+        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
+        let deck = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'deckStudio.deck.precon:'")).firstMatch
+        XCTAssertTrue(deck.waitForExistence(timeout: 10))
+        if !deck.isHittable { app.swipeUp() }
+        deck.press(forDuration: 0.15)
+        let cards = app.buttons["Cards"], ideas = app.buttons["Ideas"]
+        XCTAssertTrue(ideas.waitForExistence(timeout: 10))
+        XCTAssertTrue(cards.isSelected)
+        Thread.sleep(forTimeInterval: 1)
+
+        let page = app.windows.firstMatch
+        func point(_ x: Double, _ y: Double) -> XCUICoordinate { page.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
+
+        // A drag that starts on the head's Done button is not a page turn: the deck stays where it is.
+        let done = app.buttons["deckStudio.close"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: point(0.85, 0.30), withVelocity: .default, thenHoldForDuration: 0)
+        Thread.sleep(forTimeInterval: 1.2)
+        XCTAssertTrue(cards.isSelected && done.isHittable && ideas.exists, "A drag that starts on a head button turns nothing")
+
+        // A short slow drag, held, then let go: the page goes back.
+        capturingDrag(from: point(0.85, 0.32), to: point(0.66, 0.32), name: "Page curling, finger held (portrait, short)")
+        XCTAssertTrue(waitUntil { cards.isSelected && !ideas.isSelected }, "A page let go early falls back to its chapter")
+        Thread.sleep(forTimeInterval: 0.8)
+
+        // A long slow drag: the page turns to the next chapter.
+        capturingDrag(from: point(0.85, 0.32), to: point(0.30, 0.32), name: "Page curling, finger held (portrait, far)")
+        XCTAssertTrue(waitUntil { ideas.isSelected }, "A page dragged most of the way turns")
+    }
+
+    /// Held sideways, the right page curls onto the left for the next chapter.
+    func testDraggingASpreadsPageCurlsItOverTheSpine() {
+        let app = launch()
+        defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
+        app.buttons["menu.decks"].press(forDuration: 0.15)
+        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
+        let deck = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'deckStudio.deck.precon:'")).firstMatch
+        XCTAssertTrue(deck.waitForExistence(timeout: 10))
+        if !deck.isHittable { app.swipeUp() }
+        deck.press(forDuration: 0.15)
+        let ideas = app.buttons["Ideas"]
+        XCTAssertTrue(ideas.waitForExistence(timeout: 10))
+        // Turn the phone sideways with the deck open: the deck's page becomes a spread.
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let page = app.windows.firstMatch
+        XCTAssertTrue(waitUntil { page.frame.width > page.frame.height })
+        XCTAssertTrue(app.scrollViews["deckStudio.cards.list"].waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1.5)
+        func point(_ x: Double, _ y: Double) -> XCUICoordinate { page.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y)) }
+        capturingDrag(from: point(0.88, 0.45), to: point(0.62, 0.45), name: "Spread curling, finger held (right page)")
+        XCTAssertTrue(waitUntil { ideas.isSelected }, "Dragging the right page over the spine turns to the next chapter")
+        Thread.sleep(forTimeInterval: 0.8)
+        capturingDrag(from: point(0.12, 0.45), to: point(0.40, 0.45), name: "Spread curling, finger held (left page back)")
+        XCTAssertTrue(waitUntil { app.buttons["Cards"].isSelected }, "Dragging the left page over the spine turns back")
+    }
+
+    /// Drags slowly and holds the finger down, taking a picture while the page is mid-curl.
+    private func capturingDrag(from start: XCUICoordinate, to end: XCUICoordinate, name: String) {
+        final class Captured: @unchecked Sendable { var shot: XCUIScreenshot? }
+        let captured = Captured()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2.4) { captured.shot = XCUIScreen.main.screenshot() }
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 2.0)
+        if let shot = captured.shot {
+            let attachment = XCTAttachment(screenshot: shot)
+            attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+    }
+
+    /// The page has stopped turning: nothing covers the binder, so its Done button can be pressed. (Fingers pass through a
+    /// curl, but XCUITest cannot find a hit point while the stage window is up.)
+    private func waitForTurn(_ app: XCUIApplication) {
+        _ = waitUntil { app.buttons["deckStudio.close"].isHittable }
     }
 
     private func waitUntil(timeout: TimeInterval = 8, _ condition: () -> Bool) -> Bool {
