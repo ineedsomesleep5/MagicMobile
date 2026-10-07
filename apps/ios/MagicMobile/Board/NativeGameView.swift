@@ -775,7 +775,7 @@ struct NativeGameView: View {
                             // The revealed top of your library, under your zones.
                             if let top = human.zones.library.first {
                                 TopOfLibraryCard(card: top, playable: GameplayAffordances.castableZones(player: human, snapshot: snapshot, pendingActionID: pendingActionId).contains(.library),
-                                                 owner: "your", height: 40) { localViewZone("Top of your library", [top]) }
+                                                 owner: "your", height: 40) { localViewZone(title: "Top of your library", cards: [top]) }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Groups
@@ -209,6 +211,8 @@ object SfSymbols {
         "scroll.fill" -> Icons.Filled.HistoryEdu
         "paintpalette.fill" -> Icons.Filled.Palette
         "moon.stars" -> Icons.Outlined.NightsStay
+        "moon.fill" -> Icons.Filled.DarkMode
+        "sun.max.fill" -> Icons.Filled.WbSunny
         "list.number" -> Icons.Filled.FormatListNumbered
         "link" -> Icons.Filled.Link
         "leaf" -> Icons.Outlined.Eco

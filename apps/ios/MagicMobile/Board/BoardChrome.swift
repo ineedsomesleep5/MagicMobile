@@ -2509,8 +2509,9 @@ struct TopOfLibraryCard: View {
     }
 }
 
-/// Day or night and the storm count, as small tavern tags under the phase plate. Each shows only when it matters:
-/// day or night once a daybound card has made it so, the storm count once a spell has been cast this turn.
+/// Day or night and the storm count under the phase plate. Each shows only when it matters: day or night once a
+/// daybound card has made it so, as a small sun or moon coin (few cards care, so it stays quiet), the storm count
+/// once a spell has been cast this turn.
 struct TavernTableHints: View {
     let dayNight: String?
     let stormCount: Int?
@@ -2518,8 +2519,13 @@ struct TavernTableHints: View {
     var body: some View {
         HStack(spacing: 6) {
             if let dayNight {
-                TavernTag(text: dayNight == "night" ? "NIGHT" : "DAY", leather: true,
-                          accent: dayNight == "night" ? Color(red: 0.55, green: 0.65, blue: 1) : Color(red: 1, green: 0.82, blue: 0.35))
+                let night = dayNight == "night"
+                Image(systemName: night ? "moon.fill" : "sun.max.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(night ? Color(red: 0.72, green: 0.80, blue: 1) : Color(red: 1, green: 0.85, blue: 0.4))
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(TavernPalette.leather.opacity(0.92)))
+                    .overlay(Circle().stroke(TavernPalette.brass.opacity(0.8), lineWidth: 1))
                     .accessibilityLabel("It's \(dayNight)")
             }
             if let stormCount, stormCount > 0 {

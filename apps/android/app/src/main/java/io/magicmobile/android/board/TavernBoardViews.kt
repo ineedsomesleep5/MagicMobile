@@ -530,8 +530,9 @@ fun TopOfLibraryCard(card: ZoneCard, owner: String, modifier: Modifier = Modifie
 }
 
 /**
- * Day or night and the storm count, as small tavern tags under the phase plate. Each shows only when it matters:
- * day or night once a daybound card has made it so, the storm count once a spell has been cast this turn.
+ * Day or night and the storm count under the phase plate. Each shows only when it matters: day or night once a
+ * daybound card has made it so, as a small sun or moon coin (few cards care, so it stays quiet), the storm count
+ * once a spell has been cast this turn.
  */
 @Composable
 fun TavernTableHints(dayNight: String?, stormCount: Int?, modifier: Modifier = Modifier) {
@@ -539,8 +540,11 @@ fun TavernTableHints(dayNight: String?, stormCount: Int?, modifier: Modifier = M
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         if (dayNight != null) {
             val night = dayNight == "night"
-            TavernTag(if (night) "NIGHT" else "DAY", Modifier.semantics { contentDescription = "It's $dayNight" }, leather = true,
-                accent = if (night) rgb(0.55, 0.65, 1.0) else rgb(1.0, 0.82, 0.35))
+            Box(Modifier.size(18.dp).background(TavernPalette.leather.copy(alpha = 0.92f), CircleShape)
+                .border(1.dp, TavernPalette.brass.copy(alpha = 0.8f), CircleShape)
+                .semantics { contentDescription = "It's $dayNight" }, contentAlignment = Alignment.Center) {
+                SfImage(if (night) "moon.fill" else "sun.max.fill", if (night) rgb(0.72, 0.80, 1.0) else rgb(1.0, 0.85, 0.4), 10.dp)
+            }
         }
         if (stormCount != null && stormCount > 0) {
             TavernTag("STORM $stormCount", Modifier.semantics { contentDescription = "Storm count $stormCount" }, leather = true, accent = rgb(0.6, 0.8, 1.0))
