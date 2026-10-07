@@ -295,7 +295,7 @@ private fun ResultRow(result: PlayerSearchResult, openProfile: () -> Unit, add: 
             Spacer(Modifier.weight(1f))
             TavernPlaqueButton("Profile", openProfile, Modifier.testTag("friends.result.profile.${result.username}"), kind = TavernButtonKind.SECONDARY)
             when (result.relation) {
-                "friend" -> TavernTag("FRIENDS", leather = true, accent = rgb(0.4, 0.85, 0.4))
+                "friend" -> TavernTag("FRIENDS", leather = true, accent = if (result.online == true) rgb(0.4, 0.85, 0.4) else null)
                 "outgoing" -> TavernTag("REQUESTED", leather = true)
                 "incoming" -> TavernPlaqueButton("Accept", accept, Modifier.testTag("friends.result.accept.${result.username}"))
                 else -> TavernPlaqueButton("Add friend", add, Modifier.testTag("friends.result.add.${result.username}"))

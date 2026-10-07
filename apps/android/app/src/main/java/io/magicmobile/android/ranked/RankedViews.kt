@@ -739,7 +739,7 @@ private fun commanderSections(stats: PlayerStats, deckCommanders: List<String>, 
 @Composable
 fun CommanderArtMedallion(name: String?, diameter: Dp, modifier: Modifier = Modifier) {
     val placeholder: @Composable () -> Unit = {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { SfImage("person.fill", TavernPalette.parchment.copy(alpha = 0.55f), diameter * 0.42f) }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { PersonGlyph(TavernPalette.parchment.copy(alpha = 0.55f), diameter * 0.42f) }
     }
     io.magicmobile.android.board.TavernMedallion(diameter, null, modifier.semantics { contentDescription = name?.let { "Profile picture: $it" } ?: "Profile picture" }) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(io.magicmobile.android.ui.MagicPalette.iron, io.magicmobile.android.ui.MagicPalette.leather)))) {

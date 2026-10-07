@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -328,6 +330,8 @@ fun ColorPie(shares: List<ProfileShare>, size: Dp = 112.dp) {
             }
             SfImage("sparkle", TavernPalette.brass, size * 0.2f)
         }
+        // The legend's mana symbols are the tavern's crests (the iOS rows set tavernBoard the same way).
+        androidx.compose.runtime.CompositionLocalProvider(io.magicmobile.android.ui.LocalTavernBoard provides true) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             for (share in shares) {
                 Row(Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = "${PlayerStats.colorName(share.id)}: ${share.games} games, ${share.wins} wins" },
@@ -338,6 +342,7 @@ fun ColorPie(shares: List<ProfileShare>, size: Dp = 112.dp) {
                         style = sf(12f, SfWeight.heavy, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"))
                 }
             }
+        }
         }
     }
 }
@@ -472,7 +477,7 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(58.dp).clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(MagicPalette.iron, MagicPalette.leather)))
                 .border(1.5.dp, TavernPalette.brassLine, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
-                val placeholder: @Composable () -> Unit = { SfImage("person.fill", parchment.copy(alpha = 0.4f), 20.dp) }
+                val placeholder: @Composable () -> Unit = { PersonGlyph(parchment.copy(alpha = 0.4f), 20.dp) }
                 if (game.commander != null) CardArtwork(game.commander!!, Modifier.fillMaxSize(), artOnly = true, placeholder = placeholder) else placeholder()
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -541,6 +546,12 @@ fun ProfileEmptyNote(text: String, icon: String = "sparkles") {
         SfImage(icon, TavernPalette.brass, 16.dp)
         Text(text, Modifier.weight(1f).alpha(0.75f), color = parchment, style = sf(13f, SfWeight.regular, SfDesign.SERIF))
     }
+}
+
+/** A person's bust: the stand-in picture for a player with no commander to show (the symbol table has no "person.fill"). */
+@Composable
+fun PersonGlyph(tint: Color, size: Dp) {
+    androidx.compose.material3.Icon(Icons.Filled.Person, null, Modifier.size(size * 1.3f), tint = tint)
 }
 
 /** A horizontal row of chips that scrolls. */

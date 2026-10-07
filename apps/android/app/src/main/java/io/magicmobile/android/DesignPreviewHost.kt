@@ -48,7 +48,9 @@ object DesignPreview {
         "MAGICMOBILE_PREVIEW_INSPECT", "MAGICMOBILE_BOARD_FX_AUTOPLAY", "MAGICMOBILE_BOARD_EFFECTS", "MAGICMOBILE_FONT_CHECK", "MAGICMOBILE_RELAY_URL",
         "MAGICMOBILE_BOARD_FX_FREEZE", "MAGICMOBILE_PREVIEW_OPEN_LOG", "MAGICMOBILE_PREVIEW_TOKENS", "MAGICMOBILE_PREVIEW_AMOUNT", io.magicmobile.android.game.HowToPlayLaunch.FIRST_LAUNCH_EXTRA,
         // Ranked (as on iOS): a seeded standing, sample history, and a rank moment.
-        "MAGICMOBILE_UI_TEST_RANK", "MAGICMOBILE_UI_TEST_MATCHES", "MAGICMOBILE_UI_TEST_CEREMONY")
+        "MAGICMOBILE_UI_TEST_RANK", "MAGICMOBILE_UI_TEST_MATCHES", "MAGICMOBILE_UI_TEST_CEREMONY",
+        // Profiles and friends (ranked/SocialFixtures.kt): a fixture account instead of the server, and a screen to open at launch.
+        "MAGICMOBILE_UI_TEST_SOCIAL", "MAGICMOBILE_UI_TEST_OPEN")
 
     fun extras(intent: Intent?): Map<String, String> {
         if (!BuildConfig.DEBUG || intent == null) return emptyMap()
