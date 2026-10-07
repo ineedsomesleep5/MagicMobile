@@ -69,7 +69,7 @@ struct DeckStudioWorkspaceScreen: View {
         _model = StateObject(wrappedValue: DeckStudioEditorModel(library: library, record: record, included: included, defaults: MagicMobilePreferences.current))
         self.metadata = metadata; self.resolver = resolver; self.play = play
     }
-    private struct InspectedCard: Identifiable { let name: String; var id: String { name } }
+    private struct InspectedCard: Identifiable { let name: String; var art: CardArtSelection = .active; var id: String { name } }
     /// Inside the book, leaving turns the page back to the library.
     private func leave() { if let grimoireClose { grimoireClose() } else { dismiss() } }
     /// The deck's chapters. There is no Playtest chapter (Caleb, 2026-10-06): a game against the AI is the
@@ -127,7 +127,7 @@ struct DeckStudioWorkspaceScreen: View {
             .sheet(isPresented: $showSearch) {
                 cardSearch(embedded: false)
             }
-            .sheet(item: $inspection) { item in DeckStudioCardInspector(name: item.name, metadata: metadata?.card(named: item.name)) }
+            .sheet(item: $inspection) { item in DeckStudioCardInspector(name: item.name, metadata: metadata?.card(named: item.name), art: item.art) }
             .sheet(item: $artworkRow) { row in
                 DeckStudioArtworkPicker(name: row.cardName, current: row.printing) { model.setPrinting(id: row.id, $0) }
             }
@@ -772,7 +772,7 @@ struct DeckStudioWorkspaceScreen: View {
         }.padding(8).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
     }
     private func cardIdentity(_ row: NativeDeckRow, issues: [DeckStudioPreflight.Issue]) -> some View {
-        BinderGuardedButton { inspect(row.cardName) } label: {
+        BinderGuardedButton { inspect(row.cardName, art: .exact(row.printing)) } label: {
             identityContent(row, issues: issues)
         }.buttonStyle(.plain).accessibilityLabel("Inspect \(row.cardName), quantity \(row.quantity)")
             .binderContextMenu { cardActions(row) }
@@ -802,13 +802,13 @@ struct DeckStudioWorkspaceScreen: View {
                      art: .exact(row.printing),
                      add: { model.quantity(id: row.id, delta: 1); tapHintSeen = true },
                      remove: { model.quantity(id: row.id, delta: -1); tapHintSeen = true },
-                     tap: { if selecting { toggleSelection(row.id) } else { inspect(row.cardName) } })
+                     tap: { if selecting { toggleSelection(row.id) } else { inspect(row.cardName, art: .exact(row.printing)) } })
             .binderContextMenu(enabled: !selecting) { cardActions(row) }
     }
     /// Long-press actions shared by list rows and grid tiles.
     @ViewBuilder private func cardActions(_ row: NativeDeckRow) -> some View {
         BinderMenuHeading(row.cardName)
-        BinderMenuButton(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(row.cardName) }
+        BinderMenuButton(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(row.cardName, art: .exact(row.printing)) }
         if !model.readOnly {
             BinderMenuButton(DeckStudioPlayText.addOne, systemImage: "plus") { model.quantity(id: row.id, delta: 1) }
             BinderMenuButton(DeckStudioPlayText.removeOne, systemImage: "minus") { model.quantity(id: row.id, delta: -1) }
@@ -980,7 +980,7 @@ struct DeckStudioWorkspaceScreen: View {
         let filter = DeckStudioListFilter.needsFixes(cards)
         listFilter = cards.isEmpty || listRows(filter).isEmpty ? nil : filter
     }
-    private func inspect(_ name: String) { inspection = InspectedCard(name: name) }
+    private func inspect(_ name: String, art: CardArtSelection = .active) { inspection = InspectedCard(name: name, art: art) }
 }
 
 /// The point a portrait tab change scrolls to: just above the pinned workspace tabs, so the

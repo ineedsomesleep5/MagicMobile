@@ -165,6 +165,57 @@ final class CardArtChoicesTests: XCTestCase {
                       "default art stored later still matters: it is the fallback")
     }
 
+    func testThumbnailsComeOnlyFromScryfallsImageHostAreCachedAndSpendNoApiRequest() async throws {
+        let (assets, directory) = store(); defer { try? FileManager.default.removeItem(at: directory) }
+        let bytes = try png(width: 146, height: 204)
+        PrintingFixtureProtocol.configure(["/small/front/a.jpg": .image(bytes)])
+        let artwork = NativeDeckArtwork(cache: URLCache(memoryCapacity: 4_000_000, diskCapacity: 0, diskPath: nil),
+                                        protocolClasses: [PrintingFixtureProtocol.self], assetStore: assets, frontFaceOfReverse: { _ in nil })
+        let url = try XCTUnwrap(URL(string: "https://cards.scryfall.io/small/front/a.jpg"))
+        let offlineMiss = try await artwork.thumbnailData(url: url, allowNetwork: false)
+        XCTAssertNil(offlineMiss)
+        let first = try await artwork.thumbnailData(url: url, allowNetwork: true)
+        XCTAssertEqual(first, bytes)
+        let cached = try await artwork.thumbnailData(url: url, allowNetwork: false)
+        XCTAssertEqual(cached, bytes)
+        XCTAssertEqual(PrintingFixtureProtocol.requested, [url.absoluteString], "One request, to the image host, then the cache")
+        for text in ["https://api.scryfall.com/cards/cmm/400?format=image", "http://cards.scryfall.io/a.jpg", "https://evil.test/a.jpg",
+                     "https://cards.scryfall.io.evil.test/a.jpg"] {
+            do { _ = try await artwork.thumbnailData(url: try XCTUnwrap(URL(string: text)), allowNetwork: true); XCTFail(text) }
+            catch NativeDeckArtwork.ArtworkError.unsafeURL { }
+        }
+    }
+
+    // MARK: The printings Scryfall lists
+
+    func testPrintingsRequestAndReadingAreExactAndBounded() async throws {
+        let request = try DeckStudioScryfallClient.printingsRequest(name: "Sol Ring", page: 2)
+        let parts = try XCTUnwrap(URLComponents(url: XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+        XCTAssertEqual(parts.host, "api.scryfall.com"); XCTAssertEqual(parts.path, "/cards/search")
+        XCTAssertEqual(parts.queryItems, [.init(name: "q", value: "!\"Sol Ring\""), .init(name: "unique", value: "prints"),
+                                          .init(name: "order", value: "released"), .init(name: "dir", value: "desc"), .init(name: "page", value: "2")])
+        XCTAssertThrowsError(try DeckStudioScryfallClient.printingsRequest(name: "Ach! \"Hans\"", page: 1))
+        XCTAssertThrowsError(try DeckStudioScryfallClient.printingsRequest(name: "Sol Ring", page: 11))
+        XCTAssertThrowsError(try DeckStudioScryfallClient.printingsRequest(name: "a\\b", page: 1))
+        let ids = (1...3).map { _ in UUID().uuidString }
+        let list: [String: Any] = ["object": "list", "has_more": true, "data": [
+            ["id": ids[0], "name": "Sol Ring", "set": "cmm", "set_name": "Commander Masters", "collector_number": "400", "released_at": "2023-08-04",
+             "image_uris": ["small": "https://cards.scryfall.io/small/front/a.jpg"]],
+            ["id": ids[1], "name": "Delver", "set": "isd", "set_name": "Innistrad", "collector_number": "51", "released_at": "2011-09-30",
+             "card_faces": [["name": "Delver of Secrets", "image_uris": ["small": "https://cards.scryfall.io/small/front/b.jpg"]],
+                            ["name": "Insectile Aberration", "image_uris": ["small": "https://cards.scryfall.io/small/back/b.jpg"]]]],
+            ["id": ids[2], "name": "Evil", "set": "zzz", "set_name": "Evil", "collector_number": "1/2", "image_uris": ["small": "https://evil.test/a.jpg"]]]]
+        let client = DeckStudioScryfallClient(transport: PrintingListTransport(try JSONSerialization.data(withJSONObject: list)), directory: nil, pace: false)
+        let page = try await XCTUnwrap(client.printings(of: "Sol Ring", allowNetwork: true))
+        XCTAssertTrue(page.hasMore)
+        XCTAssertEqual(page.printings.map { $0.printing?.key }, ["cmm/400", "isd/51", nil])
+        XCTAssertEqual(page.printings[0].caption, "Commander Masters · 2023")
+        XCTAssertEqual(page.printings[1].thumbnailURL?.absoluteString, "https://cards.scryfall.io/small/front/b.jpg")
+        XCTAssertNil(page.printings[2].thumbnailURL, "only Scryfall's image host is trusted")
+        let offline = try await client.printings(of: "Sol Ring", page: 3, allowNetwork: false)
+        XCTAssertNil(offline, "no network and nothing cached: no request is made")
+    }
+
     private func png(width: Int, height: Int) throws -> Data {
         let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
                                               space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
@@ -176,6 +227,12 @@ final class CardArtChoicesTests: XCTestCase {
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         return data as Data
     }
+}
+
+private struct PrintingListTransport: DeckStudioScryfallHTTP {
+    let data: Data
+    init(_ data: Data) { self.data = data }
+    func send(_ request: URLRequest) async throws -> Data { data }
 }
 
 /// Answers by path and records every URL asked for.

@@ -382,22 +382,25 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         /// The chosen printing this card is drawn from; nil is the card's default art.
         let art: CardArtChoices.Selection?
 
+        /// The chosen printing in a key; empty for the card's default art.
+        private var artKey: String {
+            guard let art else { return "" }
+            return art.printing.key + (art.back ? ":back" : "")
+        }
         /// Names the decoded image in NativeArtworkMemory (everything that decides the pixels shown).
         var memoryKey: NSString {
-            [name, variant.rawValue, allowNetwork ? "n" : "l", artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
-             tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? "",
-             art.map { $0.printing.key + ($0.back ? ":back" : "") } ?? ""]
-                .joined(separator: "\u{1F}") as NSString
+            let parts: [String] = [name, variant.rawValue, allowNetwork ? "n" : "l", artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
+                                   tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? "", artKey]
+            return parts.joined(separator: "\u{1F}") as NSString
         }
         /// Inspection images are large and seen one at a time: decoded when needed, never kept.
         var remembers: Bool { variant != .inspection }
         /// Which card and crop this is, whatever the download state: two requests with one subject
         /// show the same card.
         var subject: NSString {
-            [name, variant.rawValue, artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
-             tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? "",
-             art.map { $0.printing.key + ($0.back ? ":back" : "") } ?? ""]
-                .joined(separator: "\u{1F}") as NSString
+            let parts: [String] = [name, variant.rawValue, artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
+                                   tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? "", artKey]
+            return parts.joined(separator: "\u{1F}") as NSString
         }
     }
 

@@ -301,8 +301,9 @@ struct DeckStudioRootView: View {
             BinderGuardedButton { turn(to: .deck(record, included)) } label: {
                 VStack(alignment: .leading, spacing: 10) {
                     DeckStudioTileCover(height: grid ? 164 : 130) {
-                        DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true, art: .exact(record.commander?.printing),
-                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
+                        DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
+                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
+                                          art: .exact(record.commander?.printing))
                     }
                         .overlay(alignment: .topTrailing) {
                             // The deck's Commander bracket (Ranked/CommanderBrackets.swift).
