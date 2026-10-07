@@ -383,13 +383,14 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 17 turns Decks into a leather card binder: every
-                card sits in a sleeve, pages curl like paper as you drag them,
-                and sideways it lies open as two pages. The starting roll is
-                thrown onto the tavern table, your profile shows your games at
-                a glance, and you can find friends as you type and open any
-                player’s profile. Android is an early alpha; physical-phone
-                acceptance is still pending.
+                Android build 18 shows the top of your library when a card
+                lets you see it, right beside your portrait, and you can cast
+                it from there. Your portrait glows whenever you can cast from
+                your graveyard, exile or library, day or night and the storm
+                count show on the table, and the starting roll has more room.
+                It keeps the leather card binder, paper page turns and player
+                profiles. Android is an early alpha; physical-phone acceptance
+                is still pending.
               </p>
             </details>
             <details>
@@ -398,14 +399,15 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 32 turns Decks into a leather card binder: every card sits
-                in a sleeve with a minus and a plus, pages curl like real paper
-                as you drag them, and held sideways it lies open as two pages.
-                The starting roll is thrown onto the tavern table, your profile
-                shows your win rate, rank history and favorite commanders, and
-                you can find friends as you type, open any player’s profile and
-                choose who can see yours. It runs on iPhone and iPad. Apple has
-                approved this build for Internal and External TestFlight.
+                Build 33 shows the top of your library when a card like
+                Conspicuous Snoop or Future Sight lets you see it, right beside
+                your portrait, and you can cast it from there. Your portrait
+                glows whenever you can cast from your graveyard, exile or
+                library, day or night and the storm count show on the table,
+                and the starting roll has more room. It keeps the leather card
+                binder, paper page turns and player profiles. It runs on iPhone
+                and iPad. Apple has approved this build for Internal and
+                External TestFlight.
               </p>
             </details>
             <details>
