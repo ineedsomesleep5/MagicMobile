@@ -30,6 +30,7 @@ actor NativeDeckArtwork {
     private var tokenBusy = Set<String>()
     private var tokenRetryAfter: [String: TimeInterval] = [:]
     private var networkBusy = false
+    private var thumbnailsInFlight = 0
     private var nextRequestAt: TimeInterval = 0
     private var blockedUntil: TimeInterval = 0
     init(cache: URLCache = URLCache(memoryCapacity: 8 * 1024 * 1024,
@@ -239,6 +240,38 @@ actor NativeDeckArtwork {
                 return data
             }
             throw ArtworkError.tooManyRedirects
+        } onCancel: { session.invalidateAndCancel() }
+    }
+    /// A small picture straight from Scryfall's image host, for choosing among printings. It spends none
+    /// of the API budget (the address comes from a search the player asked for), runs a few at a time
+    /// and is kept in the URL cache. Only an https `cards.scryfall.io` address is fetched.
+    func thumbnailData(url: URL, allowNetwork: Bool) async throws -> Data? {
+        guard Self.isAllowed(url), url.host?.lowercased() == "cards.scryfall.io" else { throw ArtworkError.unsafeURL }
+        let request = try Self.request(url: url)
+        if let data = cachedData(for: request, variant: .compact) { return data }
+        guard allowNetwork else { return nil }
+        while thumbnailsInFlight >= 4 { try await Task.sleep(for: .milliseconds(20)) }
+        try Task.checkCancellation()
+        thumbnailsInFlight += 1
+        defer { thumbnailsInFlight -= 1 }
+        let configuration = URLSessionConfiguration.ephemeral
+        if let protocolClasses { configuration.protocolClasses = protocolClasses }
+        configuration.httpCookieStorage = nil; configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil; configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = 15; configuration.timeoutIntervalForResource = 25
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        return try await withTaskCancellationHandler {
+            let (bytes, response) = try await session.bytes(for: request, delegate: NoRedirects())
+            defer { bytes.task.cancel() }
+            try Task.checkCancellation()
+            guard let http = response as? HTTPURLResponse else { throw ArtworkError.invalidResponse }
+            try Self.validate(http)
+            var data = Data()
+            for try await byte in bytes { try Task.checkCancellation(); try Self.append(byte, to: &data) }
+            guard Self.isSufficient(data, for: .compact) else { throw ArtworkError.invalidResponse }
+            cache.storeCachedResponse(CachedURLResponse(response: http, data: data, storagePolicy: .allowed), for: request)
+            return data
         } onCancel: { session.invalidateAndCancel() }
     }
     private func cachedData(for request: URLRequest, variant: Variant) -> Data? {

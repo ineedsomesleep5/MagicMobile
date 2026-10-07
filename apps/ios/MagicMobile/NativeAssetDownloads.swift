@@ -79,6 +79,8 @@ actor NativeAssetStore {
     }
     /// Case- and spacing-insensitive token name, without a trailing " Token".
     static func tokenNameKey(_ name: String) -> String { normalizedTokenText(tokenArtworkName(name)) }
+    /// A type line without its "Token" prefix, in lower case and plain spacing: "Token Creature — Soldier" is "creature - soldier".
+    static func tokenTypeKey(_ typeLine: String?) -> String { normalizedTokenType(typeLine ?? "") }
     func file(key: String, extension suffix: String = "image") -> URL {
         let hash = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(hash).appendingPathExtension(suffix)
@@ -157,11 +159,14 @@ actor NativeAssetStore {
         NotificationCenter.default.post(name: Self.didStoreArtwork, object: nil,
                                         userInfo: ["key": key, "name": name ?? ""])
     }
+    /// "relations-v2": lists saved before emblems counted as tokens are read as unknown, so one more
+    /// download adds the emblems they lack.
+    private func relationsFile(_ name: String) -> URL { file(key: "relations-v2:" + Self.cardKey(name), extension: "json") }
     func relations(name: String) -> [NativeTokenArtwork]? {
-        tokenList(at: file(key: Self.cardKey(name), extension: "json"), count: 100, bytes: 128 * 1024)
+        tokenList(at: relationsFile(name), count: 100, bytes: 128 * 1024)
     }
     func saveRelations(_ tokens: [NativeTokenArtwork], name: String) throws {
-        try saveTokenList(tokens, to: file(key: Self.cardKey(name), extension: "json"), count: 100, bytes: 128 * 1024)
+        try saveTokenList(tokens, to: relationsFile(name), count: 100, bytes: 128 * 1024)
     }
     /// Deck-scope tokens beyond each card's own relations: the common list and the selected
     /// AI opponents' decks. `key` names that opponent selection, so a change reads as unknown.
@@ -215,8 +220,11 @@ actor NativeAssetStore {
               manifest.tokens.count + manifest.unavailableNames.count <= 10_000 else { return nil }
         return manifest
     }
+    /// 3: the list also holds the emblems and the tokens cards point to that Oracle bulk lacks. A manifest
+    /// from an older build reads as incomplete until one more download refreshes it.
+    static let tokenCoverageVersion = 3
     func catalogueTokens() -> [NativeTokenArtwork]? { catalogueTokenManifest()?.tokens }
-    func catalogueTokenCoverageCurrent() -> Bool { catalogueTokenManifest()?.coverageVersion == 2 }
+    func catalogueTokenCoverageCurrent() -> Bool { catalogueTokenManifest()?.coverageVersion == Self.tokenCoverageVersion }
     func unavailableCatalogueTokenNames() -> [String] { catalogueTokenManifest()?.unavailableNames ?? [] }
     private static func validUnavailableTokens(_ names: [String]) -> Bool {
         names.count <= 10_000 && names.allSatisfy { !$0.isEmpty && $0.utf8.count <= 512 &&
@@ -225,7 +233,7 @@ actor NativeAssetStore {
     func saveCatalogueTokens(_ tokens: [NativeTokenArtwork], unavailableNames: [String] = []) throws {
         guard Self.validCatalogueTokens(tokens), Self.validUnavailableTokens(unavailableNames),
               tokens.count + unavailableNames.count <= 10_000 else { throw DeckStudioScryfallError.invalidResponse }
-        let data = try JSONEncoder().encode(CatalogueTokenManifest(tokens: tokens, unavailableNames: unavailableNames, coverageVersion: 2))
+        let data = try JSONEncoder().encode(CatalogueTokenManifest(tokens: tokens, unavailableNames: unavailableNames, coverageVersion: Self.tokenCoverageVersion))
         guard data.count <= 8 * 1024 * 1024 else { throw DeckStudioScryfallError.tooLarge }
         try write(data, to: catalogueTokensFile)
     }
@@ -528,15 +536,31 @@ actor NativeTokenDiscovery {
         return token
     }
     static func decode(_ data: Data) throws -> [NativeTokenArtwork] {
-        struct Related: Decodable { let id: UUID; let name: String; let component: String }
+        struct Related: Decodable { let id: UUID; let name: String; let component: String; let type_line: String? }
         struct Card: Decodable { let object: String; let all_parts: [Related]? }
         guard data.count <= 4 * 1024 * 1024 else { throw DeckStudioScryfallError.tooLarge }
         let card = try JSONDecoder().decode(Card.self, from: data)
         guard card.object == "card", (card.all_parts?.count ?? 0) <= 100 else { throw DeckStudioScryfallError.invalidResponse }
         var seen = Set<UUID>()
-        return try (card.all_parts ?? []).filter { $0.component == "token" }.compactMap {
+        return try (card.all_parts ?? []).filter { NativeArtworkCatalogue.isTokenPart(component: $0.component, typeLine: $0.type_line) }.compactMap {
             guard !$0.name.isEmpty, $0.name.utf8.count <= 512 else { throw DeckStudioScryfallError.invalidResponse }
             return seen.insert($0.id).inserted ? NativeTokenArtwork(id: $0.id, name: $0.name) : nil
+        }
+    }
+}
+
+/// A card whose art the player chose: the offline pack saves that printing's image as well as the card's default.
+struct NativeChosenArt: Hashable, Sendable {
+    let name: String
+    let printing: CardPrinting
+    /// "Sol Ring · CMM 400", as the download lists name it.
+    var label: String { "\(name) · \(printing.label)" }
+    /// The chosen printings in a deck, one per printing, commander first.
+    static func choices(in deck: DeckList) -> [NativeChosenArt] {
+        var seen = Set<String>()
+        return ([deck.commander].compactMap { $0 } + deck.entries).compactMap { entry in
+            guard let printing = entry.printing, seen.insert(printing.key).inserted else { return nil }
+            return NativeChosenArt(name: entry.cardName, printing: printing)
         }
     }
 }
@@ -572,6 +596,8 @@ actor NativeTokenDiscovery {
     private let tokenSearch: @Sendable ([String]) async throws -> NativeArtworkCatalogue
     private let rulesText: @Sendable ([String]) async -> [String: String]
     private let opponentDecks: @MainActor () -> [OpponentDeck]
+    private let printingSearch: @Sendable ([CardPrinting]) async throws -> NativeArtworkCatalogue
+    private let tokenIDSearch: @Sendable ([UUID]) async throws -> NativeArtworkCatalogue
     private var task: Task<Void, Never>?
     private var scanGeneration = UUID()
     private struct ScanContext {
@@ -579,6 +605,7 @@ actor NativeTokenDiscovery {
         let quality: NativeArtworkQuality
         let fullCatalogue: Bool
         let tokenOnly: Bool
+        var chosen: [NativeChosenArt] = []
     }
     private var scanContext: ScanContext?
     private var missingTokenIDs = Set<String>()
@@ -596,11 +623,14 @@ actor NativeTokenDiscovery {
          deckCatalogueLoader: @escaping @Sendable ([String], Bool) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load(names: $0, includeTokens: $1) },
          tokenSearch: @escaping @Sendable ([String]) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.searchTokens(names: $0) },
          rulesText: @escaping @Sendable ([String]) async -> [String: String] = { await NativeAssetDownloads.bundledRulesText(names: $0) },
-         opponentDecks: @escaping @MainActor () -> [OpponentDeck] = { NativeAssetDownloads.selectedOpponentDecks() }) {
+         opponentDecks: @escaping @MainActor () -> [OpponentDeck] = { NativeAssetDownloads.selectedOpponentDecks() },
+         printingSearch: @escaping @Sendable ([CardPrinting]) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load(printings: $0) },
+         tokenIDSearch: @escaping @Sendable ([UUID]) async throws -> NativeArtworkCatalogue = { try await NativeArtworkCatalogue.load(tokenIDs: $0) }) {
         self.store = store; self.artwork = artwork; self.discovery = discovery; self.catalogueLoader = catalogueLoader
         self.backgroundQueue = backgroundQueue
         self.deckCatalogueLoader = deckCatalogueLoader
         self.tokenSearch = tokenSearch; self.rulesText = rulesText; self.opponentDecks = opponentDecks
+        self.printingSearch = printingSearch; self.tokenIDSearch = tokenIDSearch
         if let backgroundQueue {
             queueObservation = backgroundQueue.objectWillChange.sink { [weak self] in
                 Task { @MainActor [weak self] in self?.syncBackgroundProgress() }
@@ -651,8 +681,9 @@ actor NativeTokenDiscovery {
         }.value
     }
     func scan(names: [String], quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false,
-              tokenOnly: Bool = false) async {
-        scanContext = ScanContext(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
+              tokenOnly: Bool = false, chosen chosenInput: [NativeChosenArt] = []) async {
+        let chosen = tokenOnly ? [] : chosenInput
+        scanContext = ScanContext(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen)
         let generation = UUID(); scanGeneration = generation
         scanSucceeded = false
         isScanning = true
@@ -669,10 +700,13 @@ actor NativeTokenDiscovery {
             var missingTokens: [String] = []
             var missingIDs = Set<String>()
             var unavailable: [String] = []
-            let storedCards = await store.storedArtworkKeys(cards: names.map(NativeAssetStore.cardKey), tokens: [], quality: quality)
+            let storedCards = await store.storedArtworkKeys(cards: names.map(NativeAssetStore.cardKey) + chosen.map { NativeAssetStore.printingKey($0.printing) },
+                                                            tokens: [], quality: quality)
             guard generation == scanGeneration, !Task.isCancelled else { return }
             storedBytes = storedCards.bytes
             missing = names.filter { !storedCards.cards.contains(NativeAssetStore.cardKey($0)) }
+            // The art the player chose is its own image, beside the card's default one.
+            let missingChosen = chosen.filter { !storedCards.cards.contains(NativeAssetStore.printingKey($0.printing)) }.map(\.label)
             if !fullCatalogue {
                 for name in names {
                     guard generation == scanGeneration, !Task.isCancelled else { return }
@@ -699,7 +733,8 @@ actor NativeTokenDiscovery {
             }
             let bytes = storedCards.bytes
             guard generation == scanGeneration, !Task.isCancelled else { return }
-            cardTotal = names.count; cardStored = names.count - missing.count; missingNames = missing
+            cardTotal = names.count + chosen.count; cardStored = cardTotal - missing.count - missingChosen.count
+            missingNames = missing + missingChosen
             tokens = related; tokenTotal = related.count + unavailable.count; tokenStored = savedTokens; tokenDiscoveryRemaining = unknown; storedBytes = bytes
             missingTokenNames = missingTokens + unavailable
             missingTokenIDs = missingIDs
@@ -714,19 +749,22 @@ actor NativeTokenDiscovery {
     }
     func download(names rawNames: [String], includeTokens: Bool, allowNetwork: Bool,
                   quality: NativeArtworkQuality = .high, fullCatalogue: Bool = false,
-                  tokenOnly: Bool = false) {
+                  tokenOnly: Bool = false, chosen chosenInput: [NativeChosenArt] = []) {
         guard !isRunning else { return }
         guard allowNetwork else { status = "Enable online artwork before downloading from Scryfall."; return }
         guard !tokenOnly || (fullCatalogue && includeTokens) else { status = "Token-only downloads require the supported token catalogue."; return }
         let inputNames: [String]
         do { inputNames = tokenOnly ? [] : try Self.names(rawNames) } catch { status = error.localizedDescription; return }
-        scanContext = ScanContext(names: inputNames, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
+        // The art the player chose comes with the cards, once for each printing.
+        var seenPrintings = Set<String>()
+        let chosen = tokenOnly ? [] : chosenInput.filter { seenPrintings.insert($0.printing.key).inserted }
+        scanContext = ScanContext(names: inputNames, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen)
         if let backgroundQueue {
             prepareBackgroundDownload(names: inputNames, includeTokens: includeTokens, quality: quality,
-                                      fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, queue: backgroundQueue)
+                                      fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen, queue: backgroundQueue)
             return
         }
-        isRunning = true; failures = []; completed = 0; total = inputNames.count
+        isRunning = true; failures = []; completed = 0; total = inputNames.count + chosen.count
         task = Task { [weak self] in
             guard let self else { return }
             var names = inputNames
@@ -734,10 +772,15 @@ actor NativeTokenDiscovery {
             var savedCards = Set<String>()
             var savedTokens = Set<String>()
             do {
-                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
+                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen)
                 try Task.checkCancellation()
                 status = fullCatalogue ? "Preparing Scryfall artwork catalogue…" : "Preparing artwork downloads…"
-                let catalogue = fullCatalogue ? try await catalogueLoader() : nil
+                var catalogue = fullCatalogue ? try await catalogueLoader() : nil
+                if let loaded = catalogue, includeTokens {
+                    let completed = try await withReferencedTokens(loaded)
+                    catalogue = completed.0
+                    failures += completed.1
+                }
                 try Task.checkCancellation()
                 if let catalogue, !tokenOnly {
                     let faces = catalogue.additionalFaceNames(for: inputNames)
@@ -745,7 +788,7 @@ actor NativeTokenDiscovery {
                     names = try Self.names(inputNames + faces)
                     total = names.count
                     status = "Checking \(names.count) card faces for offline artwork…"
-                    await scan(names: names, quality: quality, fullCatalogue: true)
+                    await scan(names: names, quality: quality, fullCatalogue: true, chosen: chosen)
                     try Task.checkCancellation()
                 }
                 if includeTokens, let catalogue {
@@ -776,7 +819,26 @@ actor NativeTokenDiscovery {
                     }
                     completed += 1
                 }
-                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
+                // The art the player chose, one image for each printing.
+                for item in chosen where !stopped {
+                    try Task.checkCancellation()
+                    status = "Downloading \(item.label)…"
+                    do {
+                        let key = NativeAssetStore.printingKey(item.printing)
+                        if await store.image(key: key, quality: quality) == nil {
+                            guard let data = try await artwork.downloadImage(printing: item.printing, quality: quality) else { throw NativeAssetStore.StoreError.invalidImage }
+                            try Task.checkCancellation()
+                            try await store.save(data, key: key, quality: quality)
+                            savedCards.insert(item.label)
+                        }
+                    } catch is CancellationError { throw CancellationError() }
+                    catch {
+                        failures.append("\(item.label): \(error.localizedDescription)")
+                        if Self.mustStop(error) { stopped = true; break }
+                    }
+                    completed += 1
+                }
+                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen)
                 try Task.checkCancellation()
                 savedCards = []
                 if includeTokens && !stopped {
@@ -811,7 +873,7 @@ actor NativeTokenDiscovery {
                     }
                 }
                 try Task.checkCancellation()
-                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
+                await scan(names: names, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen)
                 status = stopped ? "Download paused after an error. Completed images are preserved; retry when ready." :
                     (failures.isEmpty ? "Download complete." : "Download finished with \(failures.count) issues. Retry missing items when ready.")
             } catch {
@@ -850,7 +912,7 @@ actor NativeTokenDiscovery {
                 isScanning = true
                 Task { [weak self] in
                     await self?.scan(names: context.names, quality: context.quality,
-                                     fullCatalogue: context.fullCatalogue, tokenOnly: context.tokenOnly)
+                                     fullCatalogue: context.fullCatalogue, tokenOnly: context.tokenOnly, chosen: context.chosen)
                 }
             }
         }
@@ -858,9 +920,9 @@ actor NativeTokenDiscovery {
 
     private func prepareBackgroundDownload(names inputNames: [String], includeTokens: Bool,
                                            quality: NativeArtworkQuality, fullCatalogue: Bool,
-                                           tokenOnly: Bool, queue: NativeArtworkBackgroundQueue) {
+                                           tokenOnly: Bool, chosen: [NativeChosenArt], queue: NativeArtworkBackgroundQueue) {
         preparingBackgroundJob = true; isRunning = true; failures = []; preparationFailures = []
-        completed = 0; total = inputNames.count
+        completed = 0; total = inputNames.count + chosen.count
         status = "Preparing image list… You can play while this finishes."
 #if canImport(UIKit)
         preparationBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Prepare artwork downloads") { [weak self] in
@@ -879,6 +941,11 @@ actor NativeTokenDiscovery {
             do {
                 var catalogue = fullCatalogue ? try await catalogueLoader() :
                     try await deckCatalogueLoader(inputNames, includeTokens)
+                if fullCatalogue && includeTokens {
+                    let completed = try await withReferencedTokens(catalogue)
+                    catalogue = completed.0
+                    preparationFailures += completed.1
+                }
                 try Task.checkCancellation()
                 let faces = tokenOnly ? [] : catalogue.additionalFaceNames(for: inputNames)
                 let names = tokenOnly ? [] : try Self.names(inputNames + faces)
@@ -920,6 +987,26 @@ actor NativeTokenDiscovery {
                     try await store.saveExtraTokens(extras, key: Self.extraTokenKey(opponents))
                     relatedTokens += extras.filter { tokenIDs.insert($0.artworkKey).inserted }
                 }
+                // The art the player chose: each printing's own image, and a double-faced card's other side.
+                // These queue ahead of the default card art, since they were asked for by name.
+                if !chosen.isEmpty {
+                    var chosenEntries: [NativeArtworkBackgroundQueue.Entry] = []
+                    var found = NativeArtworkCatalogue()
+                    do { found = try await printingSearch(chosen.map(\.printing)) }
+                    catch is CancellationError { throw CancellationError() }
+                    catch { preparationFailures.append("Chosen artwork: \(error.localizedDescription)") }
+                    for item in chosen {
+                        try Task.checkCancellation()
+                        for back in found.hasBackFace(printing: item.printing) ? [false, true] : [false] {
+                            let key = NativeAssetStore.printingKey(item.printing, back: back)
+                            if await store.image(key: key, quality: quality) != nil { continue }
+                            if let url = found.imageURL(printing: item.printing, size: quality.imageSizeString, back: back) {
+                                chosenEntries.append(.init(key: key, name: item.label + (back ? " (back)" : ""), url: url, quality: quality))
+                            } else if !back { preparationFailures.append("\(item.label): this printing's artwork is unavailable.") }
+                        }
+                    }
+                    cardEntries = chosenEntries + cardEntries
+                }
                 if includeTokens {
                     if fullCatalogue {
                         relatedTokens = catalogue.allTokens
@@ -944,7 +1031,7 @@ actor NativeTokenDiscovery {
                 try queue.start(entries: entries + cardEntries)
                 preparingBackgroundJob = false; task = nil
                 syncBackgroundProgress()
-                await scan(names: inputNames, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly)
+                await scan(names: inputNames, quality: quality, fullCatalogue: fullCatalogue, tokenOnly: tokenOnly, chosen: chosen)
             } catch {
                 preparingBackgroundJob = false; isRunning = false; task = nil
                 status = error is CancellationError ? "Download cancelled. Completed images remain available offline." :
@@ -952,6 +1039,20 @@ actor NativeTokenDiscovery {
                 if !(error is CancellationError) { failures = [error.localizedDescription] }
             }
         }
+    }
+
+    /// Adds the tokens and emblems that cards point to which Oracle bulk lacks (see
+    /// `NativeArtworkCatalogue.referencedTokensWithoutDownload`), fetched by ID. A token Scryfall cannot
+    /// return is reported in the notes, never dropped without a word.
+    private func withReferencedTokens(_ catalogue: NativeArtworkCatalogue) async throws -> (NativeArtworkCatalogue, [String]) {
+        guard !catalogue.referencedTokensWithoutDownload.isEmpty else { return (catalogue, []) }
+        var result = catalogue
+        var notes: [String] = []
+        do { result.addTokens(from: try await tokenIDSearch(catalogue.referencedTokensWithoutDownload.map(\.id))) }
+        catch is CancellationError { throw CancellationError() }
+        catch { notes.append("Tokens cards point to: \(error.localizedDescription)") }
+        notes += result.referencedTokensWithoutDownload.prefix(100).map { "Token \($0.name): Scryfall did not return its artwork." }
+        return (result, notes)
     }
 
     /// Tokens the deck's cards make (their rules text), plus the common list and the tokens

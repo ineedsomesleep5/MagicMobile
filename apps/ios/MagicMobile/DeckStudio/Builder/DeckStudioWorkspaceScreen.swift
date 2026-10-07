@@ -50,6 +50,8 @@ struct DeckStudioWorkspaceScreen: View {
     @State private var showCommander = false
     @State private var showBasics = false
     @State private var replacement: NativeDeckRow?
+    /// The row whose artwork is being chosen.
+    @State private var artworkRow: NativeDeckRow?
     @State private var inspection: InspectedCard?
     @State private var confirmClose = false
     @State private var showRename = false
@@ -126,6 +128,9 @@ struct DeckStudioWorkspaceScreen: View {
                 cardSearch(embedded: false)
             }
             .sheet(item: $inspection) { item in DeckStudioCardInspector(name: item.name, metadata: metadata?.card(named: item.name)) }
+            .sheet(item: $artworkRow) { row in
+                DeckStudioArtworkPicker(name: row.cardName, current: row.printing) { model.setPrinting(id: row.id, $0) }
+            }
             .sheet(isPresented: $showCommanderFirst) {
                 DeckStudioCommanderFirstPicker(metadata: metadata) { name in
                     model.change { try DeckStudioEditorOperations.startWithCommander(in: &$0, name: name) }
@@ -807,6 +812,7 @@ struct DeckStudioWorkspaceScreen: View {
         if !model.readOnly {
             BinderMenuButton(DeckStudioPlayText.addOne, systemImage: "plus") { model.quantity(id: row.id, delta: 1) }
             BinderMenuButton(DeckStudioPlayText.removeOne, systemImage: "minus") { model.quantity(id: row.id, delta: -1) }
+            BinderMenuButton(DeckStudioPlayText.chooseArtwork, systemImage: "photo.on.rectangle") { artworkRow = row }
             BinderMenuButton(DeckStudioPlayText.replaceCard, systemImage: "arrow.triangle.2.circlepath") { replacement = row }
             BinderMenuSubmenu(DeckStudioPlayText.moveTo, systemImage: "arrow.right.doc.on.clipboard") {
                 ForEach(DeckStudioBulkBar.destinations, id: \.section) { destination in BinderMenuButton(destination.title) { model.move(id: row.id, to: destination.section) } }
@@ -824,6 +830,7 @@ struct DeckStudioWorkspaceScreen: View {
             if !model.readOnly {
                     Button { model.quantity(id: row.id, delta: 1) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.accessibilityLabel("Add one \(row.cardName)")
                     BinderMenu(accessibilityLabel: "More options for \(row.cardName)") {
+                        BinderMenuButton(DeckStudioPlayText.chooseArtwork, systemImage: "photo.on.rectangle") { artworkRow = row }
                         BinderMenuButton("Replace card", systemImage: "arrow.triangle.2.circlepath") { replacement = row }
                         BinderMenuSubmenu("Move to…", systemImage: "arrow.right.doc.on.clipboard") {
                             ForEach(["deck", "commanders", "companions", "sideboard", "maybeboard"], id: \.self) { destination in BinderMenuButton(destination.capitalized) { model.move(id: row.id, to: destination) } }
