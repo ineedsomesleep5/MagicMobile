@@ -81,6 +81,7 @@ import io.magicmobile.android.ui.TavernImages
 import io.magicmobile.android.ui.TavernMenuDivider
 import io.magicmobile.android.ui.TavernNamePlate
 import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.TavernTag
 import io.magicmobile.android.ui.colorAdjust
 import io.magicmobile.android.ui.drawStretched
 import io.magicmobile.android.ui.engraved
@@ -500,3 +501,49 @@ fun TavernPassStage(enabled: Boolean, turnsOnTap: Boolean, title: String, showsT
 /** The pass button diameter on this canvas (its ring matches the life medallion's frame). */
 fun TavernFrame.passDiameter(): Float = TavernDesign.passDiameter(canvas)
 
+/**
+ * The revealed top card of a library (Conspicuous Snoop, Future Sight, Courser of Kruphix, an opponent's Oracle of
+ * Mul Daya), a small card leaning beside its owner's portrait with an eye on a brass coin. When you can play it from
+ * there it glows ember. A tap opens it large, with Cast or Play when allowed (TopOfLibraryCard on iOS).
+ */
+@Composable
+fun TopOfLibraryCard(card: ZoneCard, owner: String, modifier: Modifier = Modifier, playable: Boolean = false, height: Dp = 52.dp, open: () -> Unit) {
+    val width = height / BattlefieldLayoutMetrics.magicCardHeightToWidth
+    val corner = RoundedCornerShape(height * 0.06f)
+    Box(modifier.size(maxOf(width, 44.dp), maxOf(height, 44.dp)).clickable(onClick = open)
+        .semantics { contentDescription = "Top of $owner library: ${card.card.name}" + if (playable) ", you can play it" else "" },
+        contentAlignment = Alignment.Center) {
+        Box(Modifier.graphicsLayer { rotationZ = 8f }) {
+            Box(Modifier.size(width, height)
+                .glow(if (playable) TavernPalette.ember.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.55f), if (playable) 7.dp else 3.dp, height * 0.06f)
+                .clip(corner).border(if (playable) 2.dp else 1.2.dp, if (playable) TavernPalette.ember else TavernPalette.brass, corner)) {
+                CardTile(card, false, castOffered = playable, zoneName = "Library", width = width, height = height, ignoreTappedRotation = true)
+            }
+            val coin = maxOf(16.dp, height * 0.32f)
+            Box(Modifier.offset(-height * 0.14f, -height * 0.14f).size(coin)
+                .background(Brush.verticalGradient(listOf(rgb(1.0, 0.88, 0.58), TavernPalette.brass)), CircleShape)
+                .border(0.8.dp, Color.Black.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
+                SfImage("eye.fill", rgb(0.24, 0.13, 0.05), maxOf(8.dp, height * 0.15f))
+            }
+        }
+    }
+}
+
+/**
+ * Day or night and the storm count, as small tavern tags under the phase plate. Each shows only when it matters:
+ * day or night once a daybound card has made it so, the storm count once a spell has been cast this turn.
+ */
+@Composable
+fun TavernTableHints(dayNight: String?, stormCount: Int?, modifier: Modifier = Modifier) {
+    if (dayNight == null && (stormCount ?: 0) <= 0) return
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (dayNight != null) {
+            val night = dayNight == "night"
+            TavernTag(if (night) "NIGHT" else "DAY", Modifier.semantics { contentDescription = "It's $dayNight" }, leather = true,
+                accent = if (night) rgb(0.55, 0.65, 1.0) else rgb(1.0, 0.82, 0.35))
+        }
+        if (stormCount != null && stormCount > 0) {
+            TavernTag("STORM $stormCount", Modifier.semantics { contentDescription = "Storm count $stormCount" }, leather = true, accent = rgb(0.6, 0.8, 1.0))
+        }
+    }
+}

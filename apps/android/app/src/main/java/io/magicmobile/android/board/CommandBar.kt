@@ -44,6 +44,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import io.magicmobile.android.game.BattlefieldAttachments
+import io.magicmobile.android.game.BoardZoneReference
 import io.magicmobile.android.game.CompactPromptPopup
 import io.magicmobile.android.game.GameActionDockModel
 import io.magicmobile.android.game.GameCommand
@@ -297,6 +298,11 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
     Column(modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             PlayerZoneMenu(human, viewZone, snapshot, pendingActionId)
+            // The revealed top of your library, next to your zones.
+            human.zones.library.firstOrNull()?.let { top ->
+                TopOfLibraryCard(top, "your", playable = BoardZoneReference.PlayerZone.LIBRARY in GameplayAffordances.castableZones(human, snapshot, pendingActionId),
+                    height = 40.dp) { viewZone("Top of your library", listOf(top)) }
+            }
             BoardPlayerEffects(human, BattlefieldAttachments.enchanting(human.playerId, snapshot.players.flatMap { it.zones.battlefield }), viewZone)
             Box(Modifier.weight(1f).horizontalScroll(rememberScrollState()).semantics { contentDescription = "Floating mana; swipe to view all colors" }) {
                 ManaPoolHUD(manaPool, compact = true, payableSymbols = GameplayAffordances.floatingManaSymbols(snapshot, pendingActionId), payMana = { symbol ->
@@ -360,15 +366,20 @@ private fun TavernCommandBar(frame: TavernFrame, human: PlayerGameState, manaPoo
     Box(modifier.fillMaxSize()) {
         // Your commander's portrait in the life socket; it opens your zones like the classic grid button.
         val diameter = frame.length(sockets.lifeHoleRadius * 2).dp
-        val commanderReady = GameplayAffordances.commanderCastAvailable(human, snapshot, pendingActionId)
+        val castable = GameplayAffordances.castableZones(human, snapshot, pendingActionId)
         Box(Modifier.tavernPosition(frame, sockets.lifeMedallion)) {
             Box(Modifier.cardBounds(TavernSeatAnchor.bottom)) {
                 TavernPlayerZoneMenu(human, viewZone, snapshot = snapshot, pendingActionID = pendingActionId,
-                    contentDescription = "Your life: ${human.life}" + if (commanderReady) ", commander cast available" else "") {
-                    TavernMedallion(diameter, human.life, active = snapshot.isViewer(snapshot.activePlayerId), commanderReady = commanderReady) {
+                    contentDescription = "Your life: ${human.life}" + GameplayAffordances.castableDescription(castable)) {
+                    TavernMedallion(diameter, human.life, active = snapshot.isViewer(snapshot.activePlayerId), commanderReady = castable.isNotEmpty()) {
                         PlayerPortrait(human, diameter)
                     }
                 }
+            }
+            // The revealed top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix…) beside your portrait.
+            human.zones.library.firstOrNull()?.let { top ->
+                TopOfLibraryCard(top, "your", Modifier.align(Alignment.TopEnd).offset(diameter * 0.62f, -diameter * 0.05f).wrapContentSize(unbounded = true),
+                    playable = BoardZoneReference.PlayerZone.LIBRARY in castable, height = diameter * 0.72f) { viewZone("Top of your library", listOf(top)) }
             }
             if (emoteCenter != null) {
                 EmoteBubbleSlot(emoteCenter, human.playerId, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-56).dp)

@@ -898,9 +898,15 @@ final class BoardPolishUITests: XCTestCase {
             graveyard.tap()
             visible(app.buttons["Close Aurelia · Graveyard"], in: app)
             visible(app.staticTexts["Aurelia · Graveyard · 0"], in: app)
-            visible(app.staticTexts["No cards in this zone."], in: app)
+            visible(app.staticTexts["No cards here."], in: app)
             XCTAssertFalse(app.buttons["Inspect Spirited Companion"].exists)
             app.buttons["Close Aurelia · Graveyard"].tap()
+            // A revealed top card shows beside your zones, castable; night and the storm count show on the table.
+            let top = app.buttons["board.topOfLibrary"]
+            visible(top, in: app)
+            XCTAssertTrue(top.label.contains("Llanowar Elves") && top.label.contains("you can play it"), top.label)
+            XCTAssertTrue(app.staticTexts["NIGHT"].exists || app.descendants(matching: .any)["board.tableHints"].exists)
+            capture(app, name: currentCapture + "-top-of-library")
             let ownZones = app.buttons["board.zones.human"]
             visible(ownZones, in: app)
             XCTAssertTrue(ownZones.label.contains("commander cast available"))

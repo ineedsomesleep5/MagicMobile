@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.filled.Link
@@ -180,6 +181,7 @@ object SfSymbols {
         "wifi.exclamationmark" -> Icons.Filled.WifiOff
         "hourglass" -> Icons.Outlined.HourglassEmpty
         "flag.fill" -> Icons.Filled.Flag
+        "building.columns.fill" -> Icons.Filled.AccountBalance
         "flag.checkered" -> Icons.Filled.SportsScore
         "eye" -> Icons.Outlined.Visibility
         "eye.fill" -> Icons.Filled.Visibility

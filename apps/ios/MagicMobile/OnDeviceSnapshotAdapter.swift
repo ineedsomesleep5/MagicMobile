@@ -34,7 +34,11 @@ enum OnDeviceSnapshotAdapter {
             }
             zones["command"] = .array(try cards(player["commandList"]))
             zones["hand"] = .array(try cards(hand))
-            zones["library"] = .array([])
+            // Only a revealed top card is ever visible (Conspicuous Snoop, Future Sight, Courser of Kruphix, an
+            // opponent's Oracle of Mul Daya): XMage sends it as the player's `topCard`. It is the library's one
+            // visible card, so the board can show it and its play actions resolve to a known card.
+            if let top = player["topCard"], top != .null { zones["library"] = .array([try card(top)]) }
+            else { zones["library"] = .array([]) }
             zones["stack"] = .array([])
             zones["handCount"] = player["handCount"]
             zones["libraryCount"] = player["libraryCount"]
@@ -63,6 +67,8 @@ enum OnDeviceSnapshotAdapter {
             ]
             // Players XMage removed (conceded or lost in a pod), and which seats are AI.
             fields["hasLeft"] = player["hasLeft"] ?? .bool(false)
+            // Designations such as the City's Blessing (ascend).
+            fields["designations"] = player["designationNames"] ?? .array([])
             fields["isHuman"] = player["isHuman"] ?? .null
             players.append(.object(fields))
             var skips: [String: J] = [:]
@@ -134,6 +140,7 @@ enum OnDeviceSnapshotAdapter {
         let decodedXmage: XmageMobileSnapshot = try decode(xmage)
         let allCards = decodedPlayers.flatMap { player in
             player.zones.hand + player.zones.battlefield + player.zones.graveyard + player.zones.exile + player.zones.command
+                + player.zones.library
         } + decodedXmage.stack.compactMap(\.sourceCard)
             + (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap(\.cards)
         let prompt = poll.prompt.flatMap { $0.submitted ? nil : $0 }
@@ -152,7 +159,8 @@ enum OnDeviceSnapshotAdapter {
                                                           players: decodedPlayers, actingAttackerPlayerID: attackerID)
         }
         let cardActions: [LegalAction] = try decode(.array(playability.actions))
-        return GameSnapshot(
+        let tableHints = Self.tableHints(view["myHelperEmblems"])
+        var snapshot = GameSnapshot(
             id: poll.matchID, source: "xmage-ondevice", activePlayerId: view["activePlayerId"]?.string,
             phase: view["phase"]?.string ?? poll.phase, step: view["step"]?.string,
             turn: Int(view["turn"]?.integer ?? 0), priorityPlayerId: priority?.string,
@@ -166,6 +174,28 @@ enum OnDeviceSnapshotAdapter {
             winnerPlayerIds: root["outcome"]?["winnerPlayerIds"]?.array?.compactMap(\.string),
             endReason: nil, viewerPlayerId: viewer
         )
+        snapshot.dayNight = tableHints.dayNight
+        snapshot.stormCount = tableHints.storm
+        return snapshot
+    }
+
+    /// XMage's helper emblems carry the table's global hints as rules text: "It's currently day, …" or "It's
+    /// neither day nor night." and "Spells cast this turn: 2" (the storm count).
+    private static func tableHints(_ emblems: J?) -> (dayNight: String?, storm: Int?) {
+        var dayNight: String?, storm: Int?
+        for emblem in (emblems?.object ?? [:]).values {
+            for rule in (emblem["rules"]?.array ?? []).compactMap(\.string) {
+                let text = rule.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.hasPrefix("It's currently day") { dayNight = "day" }
+                else if text.hasPrefix("It's currently night") { dayNight = "night" }
+                else if text.hasPrefix("Spells cast this turn:"),
+                        let value = Int(text.dropFirst("Spells cast this turn:".count).trimmingCharacters(in: .whitespaces)) {
+                    storm = value
+                }
+            }
+        }
+        return (dayNight, storm)
     }
 
     /// Combat membership comes only from the public GameView groups, never card-type guesses.

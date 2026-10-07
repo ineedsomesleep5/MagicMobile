@@ -16,6 +16,10 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage: "eye.fill")
+                    Label("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage: "sparkles")
+                    Label("Day or night and the storm count show under the turn plate, and City's Blessing shows on your medallion.", systemImage: "moon.stars")
+                    Label("The starting roll has more table: the header sits at the top and the dice get the room below it.", systemImage: "dice")
                     Label("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage: "hand.draw.fill")
                     Label("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage: "dice")
                     Label("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage: "chart.bar.fill")
