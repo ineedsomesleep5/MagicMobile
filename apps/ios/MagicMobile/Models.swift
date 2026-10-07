@@ -1,10 +1,35 @@
 import Foundation
 
-struct DeckEntry: Codable, Identifiable, Hashable {
-    var id: String { "\(section)-\(cardName)-\(quantity)" }
+struct DeckEntry: Identifiable, Hashable {
+    var id: String { "\(section)-\(cardName)-\(quantity)" + (printing.map { "-" + $0.key } ?? "") }
     let cardName: String
     let quantity: Int
     let section: String
+    /// The printing whose artwork the player chose for this row; nil shows the card's default artwork.
+    /// It never reaches the engine: the compiled printing still decides rules and validation.
+    var printing: CardPrinting? = nil
+}
+
+/// Saved as `cardName`, `quantity`, `section` and, once art is chosen, `setCode` and `collectorNumber`
+/// (both or neither). An unreadable pair is dropped, so a damaged choice shows default art, not an error.
+extension DeckEntry: Codable {
+    private enum CodingKeys: String, CodingKey { case cardName, quantity, section, setCode, collectorNumber }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(cardName: try values.decode(String.self, forKey: .cardName),
+                  quantity: try values.decode(Int.self, forKey: .quantity),
+                  section: try values.decode(String.self, forKey: .section),
+                  printing: CardPrinting(set: try values.decodeIfPresent(String.self, forKey: .setCode) ?? "",
+                                         number: try values.decodeIfPresent(String.self, forKey: .collectorNumber) ?? ""))
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(cardName, forKey: .cardName)
+        try values.encode(quantity, forKey: .quantity)
+        try values.encode(section, forKey: .section)
+        try values.encodeIfPresent(printing?.setCode, forKey: .setCode)
+        try values.encodeIfPresent(printing?.number, forKey: .collectorNumber)
+    }
 }
 
 struct DeckList: Codable, Hashable {

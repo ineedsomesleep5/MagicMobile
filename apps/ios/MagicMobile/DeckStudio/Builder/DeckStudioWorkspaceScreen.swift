@@ -357,7 +357,7 @@ struct DeckStudioWorkspaceScreen: View {
     private var spreadHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "")
+                DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "", art: .exact(DeckStudioDraftPresentation.commanderPrinting(model.draft)))
                     .frame(width: 54, height: 75).clipShape(RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Binder.brass, lineWidth: 2))
                     .overlay { BinderCorners(size: 11, style: .card).allowsHitTesting(false) }
@@ -439,7 +439,7 @@ struct DeckStudioWorkspaceScreen: View {
     private var expandedHeader: some View {
         HStack(alignment: .top, spacing: 12) {
             if !dynamicType.isAccessibilitySize {
-                DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "")
+                DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "", art: .exact(DeckStudioDraftPresentation.commanderPrinting(model.draft)))
                     .frame(width: 72, height: 100).clipShape(RoundedRectangle(cornerRadius: 5))
                     .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Binder.brass, lineWidth: 2.5))
                     .overlay { BinderCorners(size: 14, style: .card).allowsHitTesting(false) }
@@ -774,7 +774,7 @@ struct DeckStudioWorkspaceScreen: View {
     }
     private func identityContent(_ row: NativeDeckRow, issues: [DeckStudioPreflight.Issue]) -> some View {
             HStack(spacing: 8) {
-                if !dynamicType.isAccessibilitySize { DeckStudioArtwork(name: row.cardName).frame(width: 38, height: 52).clipShape(RoundedRectangle(cornerRadius: 5)) }
+                if !dynamicType.isAccessibilitySize { DeckStudioArtwork(name: row.cardName, art: .exact(row.printing)).frame(width: 38, height: 52).clipShape(RoundedRectangle(cornerRadius: 5)) }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(row.cardName).font(.subheadline.weight(.medium)).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     if let card = metadata?.card(named: row.cardName) {
@@ -794,6 +794,7 @@ struct DeckStudioWorkspaceScreen: View {
                      notes: issues.map(\.badge), selected: selecting ? selection.contains(row.id) : nil,
                      canEdit: !model.readOnly,
                      tapLabel: selecting ? "\(row.cardName), quantity \(row.quantity)" : "Inspect \(row.cardName), quantity \(row.quantity)",
+                     art: .exact(row.printing),
                      add: { model.quantity(id: row.id, delta: 1); tapHintSeen = true },
                      remove: { model.quantity(id: row.id, delta: -1); tapHintSeen = true },
                      tap: { if selecting { toggleSelection(row.id) } else { inspect(row.cardName) } })

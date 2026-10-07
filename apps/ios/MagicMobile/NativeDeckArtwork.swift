@@ -24,6 +24,9 @@ actor NativeDeckArtwork {
     private let protocolClasses: [AnyClass]?
     private let requestBudget: DeckStudioScryfallBudget
     private let tokenLookup: @Sendable (String, String, String, String?, String?, [String], NativeArtworkQuality) async throws -> (NativeTokenArtwork, URL)?
+    /// A double-faced card's reverse face names its front ("Insectile Aberration" gives "Delver of Secrets"),
+    /// because Scryfall's image for a back-face name is the front face unless `face=back` asks otherwise.
+    private let frontFaceOfReverse: @Sendable (String) async -> String?
     private var tokenBusy = Set<String>()
     private var tokenRetryAfter: [String: TimeInterval] = [:]
     private var networkBusy = false
@@ -36,10 +39,14 @@ actor NativeDeckArtwork {
          tokenLookup: @escaping @Sendable (String, String, String, String?, String?, [String], NativeArtworkQuality) async throws -> (NativeTokenArtwork, URL)? = {
              try await NativeArtworkCatalogue.searchToken(name: $0, typeLine: $1, oracleText: $2,
                                                           power: $3, toughness: $4, colors: $5, quality: $6)
+         },
+         frontFaceOfReverse: @escaping @Sendable (String) async -> String? = { name in
+             await Task.detached(priority: .utility) { (try? NativeDeckMetadataCatalogue.bundled())?.frontFace(ofReverse: name) }.value
          }) {
         self.cache = cache; self.protocolClasses = protocolClasses
         self.assetStore = assetStore
         self.tokenLookup = tokenLookup
+        self.frontFaceOfReverse = frontFaceOfReverse
         // Production artwork and card-reference lookups share one budget.
         // Injected HTTP fixture sessions default to an isolated budget.
         self.requestBudget = requestBudget ?? (protocolClasses == nil ? .shared : DeckStudioScryfallBudget())
@@ -59,13 +66,13 @@ actor NativeDeckArtwork {
     func imageData(name: String, variant: Variant = .board, allowNetwork: Bool,
                    tokenTypeLine: String? = nil, tokenOracleText: String? = nil,
                    tokenPower: String? = nil, tokenToughness: String? = nil, tokenColors: [String]? = nil,
-                   tokenSourceName: String? = nil) async throws -> Data? {
+                   tokenSourceName: String? = nil, art: CardArtChoices.Selection? = nil) async throws -> Data? {
         try Task.checkCancellation()
         if let tokenTypeLine {
             // Only a caller with an explicitly disclosed copy-source identity may
             // use ordinary card artwork; never infer one from a generic token name.
             if let tokenSourceName, Self.permitsSourceName(tokenSourceName) {
-                return try await imageData(name: tokenSourceName, variant: variant, allowNetwork: allowNetwork)
+                return try await imageData(name: tokenSourceName, variant: variant, allowNetwork: allowNetwork, art: art)
             }
             let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
             let stored = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
@@ -109,7 +116,12 @@ actor NativeDeckArtwork {
                 throw error
             }
         }
-        let original = try Self.request(name: name, variant: variant)
+        _ = try Self.request(name: name, variant: variant) // rejects an unusable name before any lookup
+        // The art the player chose for this card, exactly that printing. It falls back to the card's
+        // default art only when Scryfall has no such printing, or offline with nothing saved for it.
+        if let art {
+            if let data = try await printedImageData(art, name: name, variant: variant, allowNetwork: allowNetwork) { return data }
+        }
         let downloaded = await assetStore.image(key: NativeAssetStore.cardKey(name))
         // Bulk-download quality stays untouched. Live upgrades use only the bounded
         // URL cache, and happen only with explicit network consent.
@@ -117,14 +129,53 @@ actor NativeDeckArtwork {
             let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
             if !allowNetwork || quality.accepts(downloaded) { return downloaded }
         }
-        do { return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) ?? downloaded }
+        do {
+            let original = try await nameRequest(name, variant: variant)
+            return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) ?? downloaded
+        }
         catch is CancellationError { throw CancellationError() }
         catch { if let downloaded { return downloaded }; throw error }
     }
+    /// The saved image of a chosen printing, else Scryfall's image of exactly that printing.
+    private func printedImageData(_ art: CardArtChoices.Selection, name: String, variant: Variant, allowNetwork: Bool) async throws -> Data? {
+        let quality = Self.quality(for: variant)
+        let stored = await assetStore.image(key: NativeAssetStore.printingKey(art.printing, back: art.back))
+        if let stored, !allowNetwork || quality.accepts(stored) { return stored }
+        do {
+            let request = try Self.request(printing: art.printing, back: art.back, variant: variant)
+            return try await imageData(request: request, variant: variant, allowNetwork: allowNetwork) ?? stored
+        } catch is CancellationError { throw CancellationError() }
+        catch ArtworkError.httpStatus(let status) where status == 404 || status == 422 {
+            return stored // Scryfall has no such printing or face: the default art shows instead
+        } catch {
+            if let stored { return stored }
+            if let fallback = await assetStore.image(key: NativeAssetStore.cardKey(name)) { return fallback }
+            throw error
+        }
+    }
+    /// Scryfall's image route for a card name; a double-faced card's reverse face asks its front for `face=back`.
+    private func nameRequest(_ name: String, variant: Variant) async throws -> URLRequest {
+        if let front = await frontFaceOfReverse(name) { return try Self.request(name: front, variant: variant, back: true) }
+        return try Self.request(name: name, variant: variant)
+    }
     func downloadImage(name: String, quality: NativeArtworkQuality, imageURL: URL? = nil) async throws -> Data? {
         let variant = Self.variant(for: quality)
-        let request = try imageURL.map { try Self.request(url: $0) } ?? Self.request(name: name, variant: variant)
+        let request: URLRequest
+        if let imageURL { request = try Self.request(url: imageURL) } else { request = try await nameRequest(name, variant: variant) }
         return try await imageData(request: request, variant: variant, allowNetwork: true)
+    }
+    /// A chosen printing for the offline pack: its resolved image URL, else Scryfall's route for it.
+    func downloadImage(printing: CardPrinting, back: Bool = false, quality: NativeArtworkQuality, imageURL: URL? = nil) async throws -> Data? {
+        let variant = Self.variant(for: quality)
+        let request = try imageURL.map { try Self.request(url: $0) } ?? Self.request(printing: printing, back: back, variant: variant)
+        return try await imageData(request: request, variant: variant, allowNetwork: true)
+    }
+    static func request(printing: CardPrinting, back: Bool = false, variant: Variant = .board) throws -> URLRequest {
+        guard let url = printing.imageURL(version: variant.rawValue, back: back) else { throw ArtworkError.invalidInput }
+        return try request(url: url)
+    }
+    static func quality(for variant: Variant) -> NativeArtworkQuality {
+        variant == .inspection ? .high : (variant == .board ? .standard : .compact)
     }
     func imageData(id: UUID, allowNetwork: Bool, quality: NativeArtworkQuality = .high, imageURL: URL? = nil, face: String? = nil) async throws -> Data? {
         if let data = await assetStore.image(key: NativeAssetStore.tokenKey(id, face: face), quality: quality) { return data }
@@ -247,12 +298,14 @@ actor NativeDeckArtwork {
             try await Task.sleep(for: .seconds(delay))
         }
     }
-    static func request(name: String, variant: Variant = .board) throws -> URLRequest {
+    /// `back` asks for a double-faced card's reverse face; `name` is then its front face.
+    static func request(name: String, variant: Variant = .board, back: Bool = false) throws -> URLRequest {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.utf8.count <= 512,
               !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { throw ArtworkError.invalidInput }
         var url = URLComponents(string: "https://api.scryfall.com/cards/named")!
         url.queryItems = [URLQueryItem(name: "exact", value: name), URLQueryItem(name: "format", value: "image"), URLQueryItem(name: "version", value: variant.rawValue)]
+        if back { url.queryItems?.append(URLQueryItem(name: "face", value: "back")) }
         guard let endpoint = url.url else { throw ArtworkError.invalidInput }
         return try request(url: endpoint)
     }

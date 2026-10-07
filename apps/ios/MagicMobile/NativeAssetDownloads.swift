@@ -59,7 +59,13 @@ actor NativeAssetStore {
     static func tokenKey(_ id: UUID, face: String? = nil) -> String {
         "token:" + id.uuidString.lowercased() + (face == "back" ? ":back" : "")
     }
-    static func artworkChangeAffects(key: String, storedName: String?, name: String, isToken: Bool, sourceName: String? = nil) -> Bool {
+    /// A chosen printing's art, stored apart from the card's default art: "print:cmm/400".
+    static func printingKey(_ printing: CardPrinting) -> String { "print:" + printing.key }
+    /// The reverse face of a double-faced card's chosen printing: "print:cmm/400:back".
+    static func printingKey(_ printing: CardPrinting, back: Bool) -> String { printingKey(printing) + (back ? ":back" : "") }
+    static func artworkChangeAffects(key: String, storedName: String?, name: String, isToken: Bool, sourceName: String? = nil,
+                                     printing: CardPrinting? = nil, back: Bool = false) -> Bool {
+        if let printing, !isToken, key == printingKey(printing, back: back) { return true }
         if let sourceName { return key == cardKey(sourceName) }
         if !isToken { return key == cardKey(name) }
         return key.hasPrefix("token:") && storedName.map {

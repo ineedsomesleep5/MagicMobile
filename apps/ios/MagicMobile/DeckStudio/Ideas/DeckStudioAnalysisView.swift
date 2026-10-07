@@ -83,7 +83,7 @@ struct DeckStudioAnalysisContent: View {
                                 Button { inspect(row.cardName) } label: {
                                     HStack(spacing: 10) {
                                         if !dynamicType.isAccessibilitySize {
-                                            DeckStudioArtwork(name: row.cardName).frame(width: 36, height: 50)
+                                            DeckStudioArtwork(name: row.cardName, art: .exact(row.printing)).frame(width: 36, height: 50)
                                                 .clipShape(RoundedRectangle(cornerRadius: 5))
                                         }
                                         metric(row.cardName, "×\(row.quantity)")

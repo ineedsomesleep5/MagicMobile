@@ -7,10 +7,37 @@ struct NativeDeckRow: Identifiable, Equatable, Codable {
     var section: String
     /// Clear when the user explicitly changes this row's section.
     var isPrimaryCommander: Bool
+    /// The printing whose artwork the player chose; nil shows the default artwork. Replacing the
+    /// card clears it, because the choice belonged to the old card.
+    var printing: CardPrinting?
 
-    init(id: UUID = UUID(), cardName: String = "", quantity: Int = 1, section: String = "deck", isPrimaryCommander: Bool = false) {
+    init(id: UUID = UUID(), cardName: String = "", quantity: Int = 1, section: String = "deck", isPrimaryCommander: Bool = false,
+         printing: CardPrinting? = nil) {
         self.id = id; self.cardName = cardName; self.quantity = quantity; self.section = section
-        self.isPrimaryCommander = isPrimaryCommander
+        self.isPrimaryCommander = isPrimaryCommander; self.printing = printing
+    }
+}
+
+/// A saved choice in a recovery draft: `setCode` and `collectorNumber` beside the row's other fields.
+extension NativeDeckRow {
+    private enum CodingKeys: String, CodingKey { case id, cardName, quantity, section, isPrimaryCommander, setCode, collectorNumber }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try values.decode(UUID.self, forKey: .id), cardName: try values.decode(String.self, forKey: .cardName),
+                  quantity: try values.decode(Int.self, forKey: .quantity), section: try values.decode(String.self, forKey: .section),
+                  isPrimaryCommander: try values.decode(Bool.self, forKey: .isPrimaryCommander),
+                  printing: CardPrinting(set: try values.decodeIfPresent(String.self, forKey: .setCode) ?? "",
+                                         number: try values.decodeIfPresent(String.self, forKey: .collectorNumber) ?? ""))
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(cardName, forKey: .cardName)
+        try values.encode(quantity, forKey: .quantity)
+        try values.encode(section, forKey: .section)
+        try values.encode(isPrimaryCommander, forKey: .isPrimaryCommander)
+        try values.encodeIfPresent(printing?.setCode, forKey: .setCode)
+        try values.encodeIfPresent(printing?.number, forKey: .collectorNumber)
     }
 }
 
@@ -57,9 +84,9 @@ struct NativeDeckDraft: Equatable, Codable {
     init(deck: DeckList) {
         name = deck.name
         rows = ((deck.commander.map { [$0] }) ?? []).map {
-            NativeDeckRow(cardName: $0.cardName, quantity: $0.quantity, section: $0.section, isPrimaryCommander: true)
+            NativeDeckRow(cardName: $0.cardName, quantity: $0.quantity, section: $0.section, isPrimaryCommander: true, printing: $0.printing)
         } + deck.entries.map {
-            NativeDeckRow(cardName: $0.cardName, quantity: $0.quantity, section: $0.section)
+            NativeDeckRow(cardName: $0.cardName, quantity: $0.quantity, section: $0.section, printing: $0.printing)
         }
     }
 
@@ -72,7 +99,7 @@ struct NativeDeckDraft: Equatable, Codable {
         var commander: DeckEntry?
         var entries: [DeckEntry] = []
         for (index, row) in rows.enumerated() {
-            let entry = DeckEntry(cardName: row.cardName, quantity: row.quantity, section: row.section)
+            let entry = DeckEntry(cardName: row.cardName, quantity: row.quantity, section: row.section, printing: row.printing)
             if index == primaryIndex {
                 commander = entry
             } else { entries.append(entry) }
@@ -260,7 +287,11 @@ struct OnDeviceDeckEditing {
             if let foil = takeSuffix(#"\s+\*(?:F|E)\*$"#) {
                 annotations.append(TextAnnotation(line: number, text: foil))
             }
+            // "(CMM) 400" names one printing, which the row keeps as its chosen art. A set code
+            // with no number cannot. The review still lists the suffix either way.
+            var chosen: CardPrinting?
             if let printing = takeSuffix(#"\s+\([A-Za-z0-9]+\)(?:\s+[A-Za-z0-9★†-]+)?$"#) {
+                chosen = CardPrinting.parse(suffix: printing)
                 annotations.append(TextAnnotation(line: number, text: printing))
             }
             // Fail explicitly on malformed/unrecognized export decorations rather than
@@ -270,9 +301,9 @@ struct OnDeviceDeckEditing {
                 throw invalid("Unsupported or malformed export suffix; use one bracket category and the documented printing/foil/label syntax.")
             }
             cardName = cardName.trimmingCharacters(in: .whitespaces)
-            let entry = DeckEntry(cardName: cardName, quantity: count, section: rowSection)
+            let entry = DeckEntry(cardName: cardName, quantity: count, section: rowSection, printing: chosen)
             do { try validate(entry) } catch { throw invalid("Card name or section is empty or too long.") }
-            rows.append(NativeDeckRow(cardName: cardName, quantity: count, section: rowSection))
+            rows.append(NativeDeckRow(cardName: cardName, quantity: count, section: rowSection, printing: chosen))
             total += count
         }
         guard !rows.isEmpty else { throw TextImportError(line: 1, reason: "The list has no card rows.") }
@@ -293,7 +324,7 @@ struct OnDeviceDeckEditing {
     mutating func setQuantity(_ quantity: Int, at index: Int) throws {
         guard entries.indices.contains(index) else { throw Error.missingEntry }
         let entry = entries[index]
-        try replace(at: index, with: DeckEntry(cardName: entry.cardName, quantity: quantity, section: entry.section))
+        try replace(at: index, with: DeckEntry(cardName: entry.cardName, quantity: quantity, section: entry.section, printing: entry.printing))
     }
 
     mutating func remove(at index: Int) throws {

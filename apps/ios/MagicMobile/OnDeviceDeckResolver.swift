@@ -45,7 +45,7 @@ struct OnDeviceDeckResolver {
             guard let name = canonicalCardName(value.cardName) else {
                 throw ResolutionError("No compiled printing for '\(value.cardName)'. Use the exact card name from this app's catalogue or update the app.")
             }
-            return DeckEntry(cardName: name, quantity: value.quantity, section: value.section)
+            return DeckEntry(cardName: name, quantity: value.quantity, section: value.section, printing: value.printing)
         }
         return try DeckList(name: deck.name, commander: deck.commander.map(entry), entries: deck.entries.map(entry))
     }
