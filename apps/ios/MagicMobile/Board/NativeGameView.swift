@@ -1432,7 +1432,6 @@ struct NativeGameView: View {
         }
     }
 
-    @ViewBuilder
     /// The Walnut Tavern table is portrait-only for now; landscape keeps the classic controls.
     private var isTavernBoard: Bool { BattlefieldBackdrop.resolved(boardAppearance) == .tavern }
 
