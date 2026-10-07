@@ -110,7 +110,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
                     mobile.checkConcede();
                     Player asked=game.getPlayer(getId());
                     if(game.hasEnded() || asked==null || !asked.isInGame() || !controller.isInGame()) {
-                        response.clear();
+                        response.resetAnswers();
                         input.onRetracted.run();
                         return;
                     }
@@ -121,7 +121,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
         } catch(InterruptedException e) {
             Thread.currentThread().interrupt();throw new CancellationException("Mobile match interrupted");
         }
-        response.clear();
+        response.resetAnswers();
         String kind=Json.requiredString(answer,"kind");Object value=answer.get("value");
         switch(kind) {
             case "boolean": response.setBoolean(Json.bool(value));break;
