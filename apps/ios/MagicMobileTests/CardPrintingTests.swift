@@ -3,7 +3,7 @@ import XCTest
 @testable import MagicMobile
 
 /// The chosen printing of a deck row: validation, how it is saved, exported and imported again.
-/// Android's CardPrintingTest follows the same cases.
+/// Android's CardPrintingTest follows the same cases, and both read parity/printing-cases.json.
 final class CardPrintingTests: XCTestCase {
     private let solRing = CardPrinting(set: "CMM", number: "400")!
 
@@ -164,5 +164,56 @@ final class CardPrintingTests: XCTestCase {
         // Deleting the suffix returns the card to its default art.
         let cleared = try DeckStudioTextDiff.draft(from: exported.replacingOccurrences(of: " (CMM) 400", with: ""), replacing: draft)
         XCTAssertEqual(DeckStudioTextDiff(from: draft, to: cleared.draft).art.map(\.label), ["Sol Ring · CMM 400 → default art"])
+    }
+
+    // MARK: Shared cases (apps/android/core/src/test/resources/parity/printing-cases.json)
+
+    private func parityCases() throws -> [String: Any] {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("apps/android/core/src/test/resources/parity/printing-cases.json"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    func testSharedPrintingCasesMatchAndroid() throws {
+        let cases = try parityCases()
+        let valid = try XCTUnwrap(cases["valid"] as? [[String: String]])
+        XCTAssertFalse(valid.isEmpty)
+        for item in valid {
+            let printing = try XCTUnwrap(CardPrinting(set: item["set"] ?? "", number: item["number"] ?? ""), "\(item)")
+            XCTAssertEqual(printing.key, item["key"], "\(item)")
+            XCTAssertEqual(printing.exportSuffix, item["export"], "\(item)")
+            XCTAssertEqual(printing.label, item["label"], "\(item)")
+        }
+        let invalid = try XCTUnwrap(cases["invalid"] as? [[String]])
+        XCTAssertFalse(invalid.isEmpty)
+        for pair in invalid { XCTAssertNil(CardPrinting(set: pair[0], number: pair[1]), "\(pair)") }
+        for item in try XCTUnwrap(cases["suffixes"] as? [[String: Any]]) {
+            let suffix = try XCTUnwrap(item["suffix"] as? String)
+            XCTAssertEqual(CardPrinting.parse(suffix: suffix)?.key, item["key"] as? String, suffix)
+        }
+        for item in try XCTUnwrap(cases["imageUrls"] as? [[String: Any]]) {
+            let printing = try XCTUnwrap(CardPrinting(set: try XCTUnwrap(item["set"] as? String), number: try XCTUnwrap(item["number"] as? String)))
+            let url = printing.imageURL(version: try XCTUnwrap(item["version"] as? String), back: item["back"] as? Bool ?? false)
+            XCTAssertEqual(url?.absoluteString, item["url"] as? String)
+        }
+    }
+
+    func testSharedDeckListLinesAndExportsMatchAndroid() throws {
+        let cases = try parityCases()
+        for item in try XCTUnwrap(cases["textLines"] as? [[String: Any]]) {
+            let text = try XCTUnwrap(item["text"] as? String)
+            let entry = try XCTUnwrap(OnDeviceDeckEditing.importText(text, name: "Lines").deck.entries.first, text)
+            XCTAssertEqual(entry.cardName, item["name"] as? String, text)
+            XCTAssertEqual(entry.quantity, item["quantity"] as? Int, text)
+            XCTAssertEqual(entry.printing?.key, item["key"] as? String, text)
+        }
+        for item in try XCTUnwrap(cases["exports"] as? [[String: Any]]) {
+            let set = item["set"] as? String, number = item["number"] as? String
+            let printing = set.flatMap { set in number.flatMap { CardPrinting(set: set, number: $0) } }
+            let deck = DeckList(name: "Export", commander: nil, entries: [DeckEntry(cardName: try XCTUnwrap(item["name"] as? String),
+                quantity: try XCTUnwrap(item["quantity"] as? Int), section: "deck", printing: printing)])
+            XCTAssertEqual(try DeckStudioTextExport.text(deck), "Deck\n\(try XCTUnwrap(item["line"] as? String))\n")
+        }
     }
 }

@@ -980,7 +980,9 @@ struct DeckStudioWorkspaceScreen: View {
         let filter = DeckStudioListFilter.needsFixes(cards)
         listFilter = cards.isEmpty || listRows(filter).isEmpty ? nil : filter
     }
-    private func inspect(_ name: String, art: CardArtSelection = .active) { inspection = InspectedCard(name: name, art: art) }
+    private func inspect(_ name: String) { inspect(name, art: .active) }
+    /// A deck row passes its own chosen printing; other lists show the card with the art it has everywhere else.
+    private func inspect(_ name: String, art: CardArtSelection) { inspection = InspectedCard(name: name, art: art) }
 }
 
 /// The point a portrait tab change scrolls to: just above the pinned workspace tabs, so the

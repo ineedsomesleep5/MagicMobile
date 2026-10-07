@@ -206,7 +206,8 @@ final class CardArtChoicesTests: XCTestCase {
                             ["name": "Insectile Aberration", "image_uris": ["small": "https://cards.scryfall.io/small/back/b.jpg"]]]],
             ["id": ids[2], "name": "Evil", "set": "zzz", "set_name": "Evil", "collector_number": "1/2", "image_uris": ["small": "https://evil.test/a.jpg"]]]]
         let client = DeckStudioScryfallClient(transport: PrintingListTransport(try JSONSerialization.data(withJSONObject: list)), directory: nil, pace: false)
-        let page = try await XCTUnwrap(client.printings(of: "Sol Ring", allowNetwork: true))
+        let fetched = try await client.printings(of: "Sol Ring", allowNetwork: true)
+        let page = try XCTUnwrap(fetched)
         XCTAssertTrue(page.hasMore)
         XCTAssertEqual(page.printings.map { $0.printing?.key }, ["cmm/400", "isd/51", nil])
         XCTAssertEqual(page.printings[0].caption, "Commander Masters · 2023")
