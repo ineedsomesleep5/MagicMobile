@@ -1447,6 +1447,9 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
+                IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")
+                IosListRow("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage = "square.stack.3d.up.fill")
                 IosListRow("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage = "checkmark.square.fill")
                 IosListRow("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage = "forward.fill")
                 IosListRow("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage = "bolt.fill")

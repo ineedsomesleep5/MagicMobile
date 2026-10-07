@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,6 +91,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.tavernBrassFrame
 import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.tavernPanelChrome
 import kotlin.math.roundToInt
@@ -300,6 +302,10 @@ fun PortraitStackLane(snapshot: GameSnapshot, humanStack: List<ZoneCard>, legalA
     val stackCount = snapshot.xmage?.stack?.size?.takeIf { it > 0 } ?: humanStack.size
     val respond = legalActions.any { it.type in setOf("pass_priority", "pass_until_response", "advance_phase") }
     val xmageObjects = snapshot.stackTopFirst
+    if (io.magicmobile.android.ui.LocalTavernBoard.current) {
+        TavernStackLane(snapshot, humanStack, xmageObjects, stackCount, respond, selection, modifier, horizontal)
+        return
+    }
     val shape = RoundedCornerShape(8.dp)
     Column(modifier.background(MagicPalette.iron.copy(alpha = 0.78f), shape).border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.30f), shape).padding(7.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -321,6 +327,72 @@ fun PortraitStackLane(snapshot: GameSnapshot, humanStack: List<ZoneCard>, legalA
             LazyColumn(Modifier.fillMaxWidth().semantics { contentDescription = "board.stack.items" }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(xmageObjects, key = { it.id }) { item -> StackObjectView(item, snapshot, selection, horizontal) }
                 if (xmageObjects.isEmpty()) items(humanStack.reversed(), key = { it.id }) { card -> StackCardView(card, selection, horizontal) }
+            }
+        }
+    }
+}
+
+/**
+ * Walnut Tavern (iOS PortraitStackLane.tavernBody): each object on the stack is a parchment slip in brass trim (top first,
+ * marked as resolving next), with its card, whose it is, its targets and its rules, in the table's serif.
+ */
+@Composable
+private fun TavernStackLane(snapshot: GameSnapshot, humanStack: List<ZoneCard>, objects: List<XmageStackObject>, stackCount: Int, respond: Boolean,
+                            selection: BoardSelection, modifier: Modifier, horizontal: Boolean) {
+    Column(modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // The sheet's title already says Stack: the count on a coin, and whether it waits on you.
+            io.magicmobile.android.ui.TavernCoin(stackCount, 26.dp, Modifier.semantics { contentDescription = "$stackCount on the stack" })
+            Spacer(Modifier.weight(1f))
+            io.magicmobile.android.ui.TavernTag(if (respond) "YOUR RESPONSE" else "WAITING", leather = true,
+                accent = if (respond) io.magicmobile.android.ui.TavernPalette.ember else null)
+        }
+        if (stackCount == 0) {
+            Text("Spells and abilities wait here before they resolve.", Modifier.fillMaxWidth().padding(vertical = 40.dp),
+                color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.8f),
+                style = sf(14f, design = io.magicmobile.android.ui.SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        } else {
+            LazyColumn(Modifier.fillMaxWidth().semantics { contentDescription = "board.stack.items" }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                itemsIndexed(objects, key = { _, item -> item.id }) { index, item -> TavernStackSlip(item, index, snapshot, selection, horizontal) }
+                if (objects.isEmpty()) items(humanStack.reversed(), key = { it.id }) { card -> StackCardView(card, selection, horizontal) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TavernStackSlip(item: XmageStackObject, position: Int, snapshot: GameSnapshot, selection: BoardSelection, horizontal: Boolean) {
+    val ink = io.magicmobile.android.ui.TavernPalette.ink
+    val width = if (horizontal) 96.dp else 84.dp
+    val shape = RoundedCornerShape(9.dp)
+    Row(Modifier.fillMaxWidth().glow(Color.Black.copy(alpha = 0.4f), 4.dp, 9.dp)
+        .tavernFill(io.magicmobile.android.ui.TavernMaterial.PARCHMENT, shape).tavernBrassFrame(0.5f).padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val card = item.displaySourceCard
+        if (card != null) CardTile(card, false, Modifier.clickable { selection.inspectedCard = card }
+            .semantics { contentDescription = "${card.card.name}. Tap to inspect source card" },
+            zoneName = "Stack", width = width, height = width * 1.4f, ignoreTappedRotation = true)
+        else SyntheticStackObjectTile(item, width, width * 1.4f)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(if (position == 0) "RESOLVES NEXT" else "THEN", color = if (position == 0) rgb(0.62, 0.20, 0.08) else ink.copy(alpha = 0.55f),
+                style = sf(10f, SfWeight.heavy, io.magicmobile.android.ui.SfDesign.SERIF, tracking = 0.8f))
+            Text(item.displayName, color = ink, style = sf(17f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF))
+            val source = "from ${item.displaySourceName}"
+            val controller = item.controllerId
+            Text(if (controller == null) source else (if (snapshot.isViewer(controller)) "Yours" else "${snapshot.playerLabel(controller)}’s") + " · " + source,
+                color = ink.copy(alpha = 0.72f), style = sf(12f, design = io.magicmobile.android.ui.SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+            item.targetIds?.takeIf { it.isNotEmpty() }?.let { targets ->
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SfImage("scope", ink, 12.dp)
+                    Text(StackTargetPresentation.labels(targets, snapshot).joinToString(", "), color = ink,
+                        style = sf(13f, SfWeight.semibold, io.magicmobile.android.ui.SfDesign.SERIF))
+                }
+            }
+            item.rulesText?.let { rules ->
+                GameRulesText(rules, cardName = item.displaySourceCard?.card?.name ?: item.sourceName,
+                    isHidden = item.displaySourceCard?.let { !NativeCardArtworkPolicy.permitsLookup(it) } ?: false,
+                    style = sf(13f, design = io.magicmobile.android.ui.SfDesign.SERIF), color = ink)
             }
         }
     }

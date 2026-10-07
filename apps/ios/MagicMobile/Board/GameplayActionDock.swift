@@ -828,8 +828,110 @@ struct PortraitStackLane: View {
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
     var horizontal = false
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
+        if tavern && TavernUIKit.available { tavernBody } else { classicBody }
+    }
+
+    /// Walnut Tavern: each object on the stack is a parchment slip in brass trim (top first, marked as resolving next),
+    /// with its card, whose it is, its targets and its rules, in the table's serif.
+    private var tavernBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // The sheet's title already says Stack: the count on a coin, and whether it waits on you.
+            HStack(spacing: 8) {
+                TavernCoin(value: stackCount, size: 26)
+                    .accessibilityLabel("\(stackCount) on the stack")
+                Spacer(minLength: 0)
+                TavernTag(text: responseLabel == "RESPOND" ? "YOUR RESPONSE" : "WAITING", leather: true,
+                          accent: responseLabel == "RESPOND" ? TavernPalette.ember : nil)
+            }
+            .accessibilityElement(children: .combine)
+            if stackCount == 0 {
+                Text("Spells and abilities wait here before they resolve.")
+                    .font(.system(size: 14, design: .serif).italic())
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.8))
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 10) {
+                        ForEach(Array(xmageObjects.enumerated()), id: \.element.id) { index, object in
+                            tavernSlip(object, position: index)
+                        }
+                        if xmageObjects.isEmpty {
+                            ForEach(Array(humanStack.reversed().enumerated()), id: \.element.id) { _, card in
+                                stackCardView(card)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("board.stack.items")
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func tavernSlip(_ object: XmageStackObject, position: Int) -> some View {
+        let width: CGFloat = horizontal ? 96 : 84
+        return HStack(alignment: .top, spacing: 12) {
+            Group {
+                if let card = object.displaySourceCard {
+                    CardTile(card: card, selected: false, legal: false, zoneName: "Stack", width: width, height: width * 1.4,
+                             ignoreTappedRotation: true, imageVariant: .inspection)
+                        .onTapGesture { inspectedCard = card }
+                        .accessibilityHint("Tap to inspect source card")
+                } else {
+                    SyntheticStackObjectTile(object: object, width: width, height: width * 1.4)
+                }
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text(position == 0 ? "RESOLVES NEXT" : "THEN")
+                    .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
+                    .foregroundStyle(position == 0 ? Color(red: 0.62, green: 0.20, blue: 0.08) : TavernPalette.ink.opacity(0.55))
+                Text(object.displayName)
+                    .font(.system(size: 17, weight: .bold, design: .serif))
+                    .foregroundStyle(TavernPalette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(sourceLine(object))
+                    .font(.system(size: 12, design: .serif).italic())
+                    .foregroundStyle(TavernPalette.ink.opacity(0.72))
+                if let targets = object.targetIds, !targets.isEmpty {
+                    Label {
+                        Text(StackTargetPresentation.labels(for: targets, in: snapshot).joined(separator: ", "))
+                    } icon: {
+                        Image(systemName: "scope")
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.ink)
+                }
+                if let rules = object.rulesText {
+                    GameRulesText(source: rules,
+                                  cardName: object.displaySourceCard?.card.name ?? object.sourceName,
+                                  isHidden: object.displaySourceCard.map { !NativeCardArtworkPolicy.permitsLookup(card: $0) } ?? false)
+                        .font(.system(size: 13, design: .serif))
+                        .foregroundStyle(TavernPalette.ink)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background { TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 9)) }
+        .overlay { TavernBrassFrame(scale: 0.5) }
+        .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// "Yours · from Swords to Plowshares", "Aurelia's · from Prodigal Pyromancer".
+    private func sourceLine(_ object: XmageStackObject) -> String {
+        let source = "from \(object.displaySourceName)"
+        guard let controller = object.controllerId else { return source }
+        return (snapshot.isViewer(controller) ? "Yours" : "\(snapshot.playerLabel(controller))’s") + " · " + source
+    }
+
+    private var classicBody: some View {
         VStack(spacing: 5) {
             HStack(spacing: 4) {
                 Text("STACK")
