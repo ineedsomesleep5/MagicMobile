@@ -182,9 +182,16 @@ actor DeckStudioScryfallClient {
     }
     /// Every printing of exactly this card, newest first, one page (up to 175) at a time. Only the card
     /// name goes to Scryfall. A name with a quote or backslash cannot be searched exactly and has none.
+    /// A name safe to quote in an exact Scryfall search (the rule NativeArtworkCatalogue.safeTokenSearchName uses; kept here
+    /// so Deck Studio's services still build on their own).
+    static func safeExactName(_ name: String) -> Bool {
+        !name.isEmpty && name.utf8.count <= 120 && !name.contains("\"") && !name.contains("\\") &&
+            !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+    }
+
     static func printingsRequest(name: String, page: Int) throws -> URLRequest {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard NativeArtworkCatalogue.safeTokenSearchName(name), (1...10).contains(page) else { throw DeckStudioScryfallError.invalidInput }
+        guard safeExactName(name), (1...10).contains(page) else { throw DeckStudioScryfallError.invalidInput }
         var parts = URLComponents(string: "https://api.scryfall.com/cards/search")!
         parts.queryItems = [.init(name: "q", value: "!\"\(name)\""), .init(name: "unique", value: "prints"),
                             .init(name: "order", value: "released"), .init(name: "dir", value: "desc"), .init(name: "page", value: String(page))]
