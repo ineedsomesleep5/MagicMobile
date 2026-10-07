@@ -233,11 +233,16 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
             val wide = maxWidth > maxHeight && maxWidth >= 560.dp
             val stageHeight = maxHeight
             val columnCount = if (wide) playerIDs.size else 2
+            // Upright the roll area takes everything the header, the result and the seat plates leave, so the throw
+            // runs its full length across the table (Caleb, 2026-10-07: the dice had too little room).
+            val plateRows = (playerIDs.size + columnCount - 1) / columnCount
+            val uprightRoll = max(260f, stageHeight.value - 128f - 64f - (plateRows * 70f + max(0, plateRows - 1) * 18f) - 18f * 3 - 16f)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center) {
+                verticalArrangement = Arrangement.Top) {
+                // The header sits at the top of the screen, not floating in the middle.
                 Column(Modifier.widthIn(max = if (wide) 900.dp else 620.dp).fillMaxWidth().heightIn(min = stageHeight)
-                    .padding(horizontal = if (wide) 24.dp else 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(if (wide) 8.dp else 18.dp, Alignment.CenterVertically)) {
+                    .padding(start = if (wide) 24.dp else 18.dp, end = if (wide) 24.dp else 18.dp, top = if (wide) 4.dp else 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (wide) 8.dp else 18.dp, Alignment.Top)) {
                     // Header: leather in brass, the skip plaque riveted at its corner.
                     val headline = when {
                         playbackFinished && winnerName != null -> if (isLocalWinner) "You go first" else "$winnerName goes first"
@@ -277,8 +282,7 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                         }
                     }
                     // The roll area stays, so the dice stay in view under the result; it only speaks while rolling.
-                    Spacer(Modifier.fillMaxWidth().height(if (wide) max(120f, stageHeight.value - 178f).dp
-                        else min(320f, max(240f, stageHeight.value * 0.32f)).dp)
+                    Spacer(Modifier.fillMaxWidth().height(if (wide) max(120f, stageHeight.value - 178f).dp else uprightRoll.dp)
                         .onGloballyPositioned { rollRegion = it.boundsInRoot() }
                         .then(if (playbackFinished) Modifier.clearAndSetSemantics {} else Modifier.semantics {
                             contentDescription = if (reboundTurn == spinTurns) "Rebounded from screen edge" else if (edgeHitTurn == spinTurns) "Touched screen edge" else "D20 roll area"

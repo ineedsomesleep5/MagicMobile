@@ -56,6 +56,10 @@ struct GameSnapshot: Decodable {
     let winnerPlayerIds: [String]?
     let endReason: String?
     var viewerPlayerId: String? = nil
+    /// "day" or "night" once a daybound card has made it so; nil while it's neither.
+    var dayNight: String? = nil
+    /// Spells cast this turn, which a storm spell copies.
+    var stormCount: Int? = nil
     var selectedOpponentId: String? = nil
     /// Presentation only: who the bottom seat shows while the viewer watches after leaving the
     /// game (BoardOpponentFocus). Nil is the viewer's own seat.
@@ -543,6 +547,8 @@ struct PlayerGameState: Decodable, Identifiable {
     var hasLeft: Bool? = nil
     /// False for the engine's AI seats.
     var isHuman: Bool? = nil
+    /// Designations such as the City's Blessing.
+    var designations: [String]? = nil
 
     var hasKnownCommanderTax: Bool { commanderTaxKnown ?? true }
     var isOut: Bool { hasLeft == true }

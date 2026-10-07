@@ -59,9 +59,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -275,6 +277,7 @@ fun OpponentFocusMenu(snapshot: GameSnapshot, selectOpponent: (String) -> Unit) 
 fun PlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCard>) -> Unit, snapshot: GameSnapshot? = null, pendingActionID: String? = null) {
     val inspectZone = LocalBoardZoneInspectionAction.current
     val commanderReady = snapshot?.let { GameplayAffordances.commanderCastAvailable(player, it, pendingActionID) } ?: false
+    val castable = snapshot?.let { GameplayAffordances.castableZones(player, it, pendingActionID) } ?: emptySet()
     fun open(zone: BoardZoneReference.PlayerZone, cards: List<ZoneCard>) {
         if (inspectZone != null) inspectZone(BoardZoneReference.Player(player.playerId, zone))
         else viewZone("${player.displayName ?: player.playerId} · ${capitalizedWords(zone.rawValue)}", cards)
@@ -282,10 +285,10 @@ fun PlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCard>) -
     BoardMenu({
         buildList {
             add(MenuEntry.Item(if (commanderReady) "Command · Cast available" else "Command · ${player.zones.command.size}") { open(BoardZoneReference.PlayerZone.COMMAND, player.zones.command) })
-            add(MenuEntry.Item("Graveyard · ${player.zones.graveyard.size}") { open(BoardZoneReference.PlayerZone.GRAVEYARD, player.zones.graveyard) })
-            add(MenuEntry.Item("Exile · ${player.zones.exile.size}") { open(BoardZoneReference.PlayerZone.EXILE, player.zones.exile) })
+            add(MenuEntry.Item(zoneRow(castable, BoardZoneReference.PlayerZone.GRAVEYARD, "Graveyard", player.zones.graveyard.size)) { open(BoardZoneReference.PlayerZone.GRAVEYARD, player.zones.graveyard) })
+            add(MenuEntry.Item(zoneRow(castable, BoardZoneReference.PlayerZone.EXILE, "Exile", player.zones.exile.size)) { open(BoardZoneReference.PlayerZone.EXILE, player.zones.exile) })
             add(MenuEntry.Item("Hand · ${player.zones.visibleHandCount}") { open(BoardZoneReference.PlayerZone.HAND, player.zones.hand) })
-            add(MenuEntry.Item("Library · ${player.zones.visibleLibraryCount}") { open(BoardZoneReference.PlayerZone.LIBRARY, player.zones.library) })
+            add(MenuEntry.Item(libraryRow(player, castable)) { open(BoardZoneReference.PlayerZone.LIBRARY, player.zones.library) })
             add(MenuEntry.Item("Battlefield · ${player.zones.battlefield.size}") { open(BoardZoneReference.PlayerZone.BATTLEFIELD, player.zones.battlefield) })
             if (snapshot != null) {
                 val named = BoardZoneReference.namedReferences(snapshot)
@@ -297,15 +300,29 @@ fun PlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCard>) -
                 }
             }
         }
-    }, Modifier.semantics { contentDescription = "${player.displayName ?: player.playerId} zones${if (commanderReady) ", commander cast available" else ""}" }) {
+    }, Modifier.semantics { contentDescription = "${player.displayName ?: player.playerId} zones" +
+        if (commanderReady) ", commander cast available" else GameplayAffordances.castableDescription(castable) }) {
+        // Glows whenever a card can be played from these zones: the commander, the graveyard, exile, the top card.
+        val ready = castable.isNotEmpty()
         Box(Modifier.defaultMinSize(44.dp, 44.dp)
-            .glow(if (commanderReady) MagicPalette.antiqueGold.copy(alpha = 0.75f) else Color.Transparent, 7.dp, 10.dp)
-            .background(if (commanderReady) MagicPalette.antiqueGold.copy(alpha = 0.22f) else Color.Transparent, RoundedCornerShape(10.dp))
-            .border(1.5.dp, if (commanderReady) Color.White.copy(alpha = 0.9f) else Color.Transparent, RoundedCornerShape(10.dp)),
+            .glow(if (ready) MagicPalette.antiqueGold.copy(alpha = 0.75f) else Color.Transparent, 7.dp, 10.dp)
+            .background(if (ready) MagicPalette.antiqueGold.copy(alpha = 0.22f) else Color.Transparent, RoundedCornerShape(10.dp))
+            .border(1.5.dp, if (ready) Color.White.copy(alpha = 0.9f) else Color.Transparent, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center) {
-            SfImage("square.grid.2x2", if (commanderReady) Color.White else MagicPalette.parchment, 14.dp)
+            SfImage("square.grid.2x2", if (ready) Color.White else MagicPalette.parchment, 14.dp)
         }
     }
+}
+
+/** A zone row: "Graveyard · Cast available" when you can play a card from it now, else its count. */
+private fun zoneRow(castable: Set<BoardZoneReference.PlayerZone>, zone: BoardZoneReference.PlayerZone, name: String, count: Int) =
+    if (zone in castable) "$name · Cast available" else "$name · $count"
+
+/** The library row says when its top card is revealed, and when you can play it. */
+private fun libraryRow(player: PlayerGameState, castable: Set<BoardZoneReference.PlayerZone>) = when {
+    BoardZoneReference.PlayerZone.LIBRARY in castable -> "Library · Top card playable"
+    player.zones.library.isNotEmpty() -> "Library · Top card revealed"
+    else -> "Library · ${player.zones.visibleLibraryCount}"
 }
 
 /** Whose turn it is, colored so a glance answers it: gold for you, blue for opponents. */
@@ -421,7 +438,11 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
         }
         TavernCardBackFan(opponent.zones.visibleHandCount, Modifier.tavernPosition(frame, sockets.opponentHand))
         // The step of the turn mirrors the nameplate; the log is in the controls menu.
-        TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.turn, Modifier.tavernPosition(frame, sockets.phasePlate), plateWidth)
+        Box(Modifier.tavernPosition(frame, sockets.phasePlate)) {
+            TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.turn, width = plateWidth)
+            // Day or night and the storm count hang under the plate when they matter, without moving it.
+            TavernTableHints(snapshot.dayNight, snapshot.stormCount, Modifier.align(Alignment.BottomCenter).hangBelow(5.dp))
+        }
         // Counters, commander damage and attached cards are in the medallion's pop-over; poison and the worst commander damage show here too.
         TavernStatusGlance(PlayerStatusSummary(opponent, snapshot), Modifier.tavernPosition(frame, sockets.opponentGlance))
         Box(Modifier.tavernPosition(frame, sockets.opponentMedallion).cardBounds(TavernSeatAnchor.top)) {
@@ -447,13 +468,27 @@ private fun TavernOpponentMedallion(diameter: Dp, snapshot: GameSnapshot, oppone
             PlayerPortrait(opponent, diameter, active = false, thinking = snapshot.thinkingPlayerID == opponent.playerId)
         }
     }
-    if (combatTargetable || viewZone == null) {
-        PressableBox({ if (combatTargetable) combatTargetAction() },
-            Modifier.semantics { contentDescription = label + if (combatTargetable) ". Attacks this player" else "" }) { medallion() }
-    } else {
-        TavernPlayerZoneMenu(opponent, viewZone, statusSnapshot = snapshot, edge = TavernMenuEdge.BELOW,
-            swapOpponents = BoardOpponentFocus.opponents(snapshot), swap = selectOpponent, contentDescription = label) { medallion() }
+    Box {
+        if (combatTargetable || viewZone == null) {
+            PressableBox({ if (combatTargetable) combatTargetAction() },
+                Modifier.semantics { contentDescription = label + if (combatTargetable) ". Attacks this player" else "" }) { medallion() }
+        } else {
+            TavernPlayerZoneMenu(opponent, viewZone, statusSnapshot = snapshot, edge = TavernMenuEdge.BELOW,
+                swapOpponents = BoardOpponentFocus.opponents(snapshot), swap = selectOpponent, contentDescription = label) { medallion() }
+        }
+        // An opponent's revealed top card leans beside their portrait.
+        val top = opponent.zones.library.firstOrNull()
+        if (top != null && viewZone != null) {
+            TopOfLibraryCard(top, "$opponentName's", Modifier.align(Alignment.BottomEnd).offset(diameter * 0.55f, diameter * 0.1f)
+                .wrapContentSize(unbounded = true), height = diameter * 0.66f) { viewZone("Top of $opponentName's library", listOf(top)) }
+        }
     }
+}
+
+/** Hangs a child under its parent's bottom edge (aligned bottom-centre) without changing the parent's size. */
+private fun Modifier.hangBelow(gap: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity, minHeight = 0))
+    layout(0, 0) { placeable.place(-placeable.width / 2, gap.roundToPx()) }
 }
 
 /**
@@ -469,19 +504,21 @@ fun TavernPlayerZoneMenu(player: PlayerGameState, viewZone: (String, List<ZoneCa
                          swap: ((String) -> Unit)? = null, contentDescription: String? = null, label: @Composable () -> Unit) {
     val inspectZone = LocalBoardZoneInspectionAction.current
     val commanderReady = snapshot?.let { GameplayAffordances.commanderCastAvailable(player, it, pendingActionID) } ?: false
+    val castable = snapshot?.let { GameplayAffordances.castableZones(player, it, pendingActionID) } ?: emptySet()
     val game = statusSnapshot ?: snapshot
     fun open(zone: BoardZoneReference.PlayerZone, cards: List<ZoneCard>) {
         if (inspectZone != null) inspectZone(BoardZoneReference.Player(player.playerId, zone))
         else viewZone("${player.displayName ?: player.playerId} · ${capitalizedWords(zone.rawValue)}", cards)
     }
     TavernMenu(modifier, edge, contentDescription = contentDescription
-        ?: "${player.displayName ?: player.playerId} zones${if (commanderReady) ", commander cast available" else ""}", label = { label() }) {
+        ?: "${player.displayName ?: player.playerId} zones" + if (commanderReady) ", commander cast available" else GameplayAffordances.castableDescription(castable),
+        label = { label() }) {
         TavernPlayerStatusPanel(game?.playerLabel(player.playerId) ?: player.displayName ?: "Player", PlayerStatusSummary(player, game), viewZone)
         TavernMenuItem(if (commanderReady) "Command · Cast available" else "Command · ${player.zones.command.size}", { open(BoardZoneReference.PlayerZone.COMMAND, player.zones.command) }, "crown")
-        TavernMenuItem("Graveyard · ${player.zones.graveyard.size}", { open(BoardZoneReference.PlayerZone.GRAVEYARD, player.zones.graveyard) }, "leaf")
-        TavernMenuItem("Exile · ${player.zones.exile.size}", { open(BoardZoneReference.PlayerZone.EXILE, player.zones.exile) }, "sparkles")
+        TavernMenuItem(zoneRow(castable, BoardZoneReference.PlayerZone.GRAVEYARD, "Graveyard", player.zones.graveyard.size), { open(BoardZoneReference.PlayerZone.GRAVEYARD, player.zones.graveyard) }, "leaf")
+        TavernMenuItem(zoneRow(castable, BoardZoneReference.PlayerZone.EXILE, "Exile", player.zones.exile.size), { open(BoardZoneReference.PlayerZone.EXILE, player.zones.exile) }, "sparkles")
         TavernMenuItem("Hand · ${player.zones.visibleHandCount}", { open(BoardZoneReference.PlayerZone.HAND, player.zones.hand) }, "hand.raised")
-        TavernMenuItem("Library · ${player.zones.visibleLibraryCount}", { open(BoardZoneReference.PlayerZone.LIBRARY, player.zones.library) }, "books.vertical")
+        TavernMenuItem(libraryRow(player, castable), { open(BoardZoneReference.PlayerZone.LIBRARY, player.zones.library) }, "books.vertical")
         TavernMenuItem("Battlefield · ${player.zones.battlefield.size}", { open(BoardZoneReference.PlayerZone.BATTLEFIELD, player.zones.battlefield) }, "square.grid.2x2")
         if (snapshot != null) {
             val references = BoardZoneReference.namedReferences(snapshot)

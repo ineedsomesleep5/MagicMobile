@@ -42,7 +42,10 @@ object OnDeviceSnapshotAdapter {
             }
             zones["command"] = JsonArray(cards(player["commandList"]))
             zones["hand"] = JsonArray(cards(hand))
-            zones["library"] = JsonArray(emptyList())
+            // Only a revealed top card is ever visible (Conspicuous Snoop, Future Sight, Courser of Kruphix, an
+            // opponent's Oracle of Mul Daya): XMage sends it as the player's `topCard`. It is the library's one known
+            // card, so a play or cast offered for it resolves; the rest of the library stays face down.
+            zones["library"] = JsonArray(player["topCard"]?.takeUnless { it is JsonNull }?.let { listOf(card(it)) } ?: emptyList())
             zones["stack"] = JsonArray(emptyList())
             zones["handCount"] = player["handCount"] ?: JsonNull
             zones["libraryCount"] = player["libraryCount"] ?: JsonNull
@@ -74,6 +77,7 @@ object OnDeviceSnapshotAdapter {
             // Players XMage removed (conceded or lost in a pod), and which seats are AI.
             fields["hasLeft"] = player["hasLeft"] ?: b(false)
             fields["isHuman"] = player["isHuman"] ?: JsonNull
+            fields["designations"] = player["designationNames"] ?: JsonArray(emptyList())
             players += JsonObject(fields)
             val skips = linkedMapOf<String, J>()
             for (key in listOf("passedTurn", "passedUntilEndOfTurn", "passedUntilNextMain", "passedUntilStackResolved", "passedAllTurns", "passedUntilEndStepBeforeMyTurn")) {
@@ -136,7 +140,7 @@ object OnDeviceSnapshotAdapter {
         val priority = rawPlayers.firstOrNull { it["hasPriority"].bool == true }?.get("playerId")
         val decodedPlayers = EngineJson.format.decodeFromJsonElement(ListSerializer(PlayerGameState.serializer()), JsonArray(players))
         val decodedXmage = EngineJson.format.decodeFromJsonElement(XmageMobileSnapshot.serializer(), xmage)
-        val allCards = decodedPlayers.flatMap { it.zones.hand + it.zones.battlefield + it.zones.graveyard + it.zones.exile + it.zones.command } +
+        val allCards = decodedPlayers.flatMap { it.zones.hand + it.zones.battlefield + it.zones.graveyard + it.zones.exile + it.zones.command + it.zones.library } +
             decodedXmage.stack.mapNotNull { it.sourceCard } +
             (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap { it.cards }
         val prompt = poll.prompt?.takeUnless { it.submitted }
@@ -155,6 +159,7 @@ object OnDeviceSnapshotAdapter {
             OnDevicePromptAdapter.presentation(it, viewer, allCards, decodedPlayers, attackerID)
         }
         val cardActions = EngineJson.format.decodeFromJsonElement(ListSerializer(LegalAction.serializer()), JsonArray(playability.second))
+        val hints = tableHints(view["myHelperEmblems"])
         return GameSnapshot(
             id = poll.matchID, source = "xmage-ondevice", activePlayerId = view["activePlayerId"].string,
             phase = view["phase"].string ?: poll.phase, step = view["step"].string,
@@ -167,7 +172,24 @@ object OnDeviceSnapshotAdapter {
             manaPayment = presentation?.manaPayment,
             gameStatus = if (root["outcome"]["ended"].bool == true) GameStatus.COMPLETED else GameStatus.IN_PROGRESS,
             winnerPlayerIds = root["outcome"]["winnerPlayerIds"].array?.mapNotNull { it.string },
-            viewerPlayerId = viewer)
+            viewerPlayerId = viewer, dayNight = hints.first, stormCount = hints.second)
+    }
+
+    /** Day or night and the storm count, read from XMage's helper emblems (their hint lines). */
+    private fun tableHints(emblems: J?): Pair<String?, Int?> {
+        var dayNight: String? = null
+        var storm: Int? = null
+        for (emblem in (emblems.obj ?: emptyMap()).values) {
+            for (rule in (emblem["rules"].array ?: emptyList()).mapNotNull { it.string }) {
+                val text = rule.replace(Regex("<[^>]+>"), "").trim()
+                when {
+                    text.startsWith("It's currently day") -> dayNight = "day"
+                    text.startsWith("It's currently night") -> dayNight = "night"
+                    text.startsWith("Spells cast this turn:") -> text.removePrefix("Spells cast this turn:").trim().toIntOrNull()?.let { storm = it }
+                }
+            }
+        }
+        return dayNight to storm
     }
 
     /** Combat membership comes only from the public GameView groups, never card-type guesses. */
