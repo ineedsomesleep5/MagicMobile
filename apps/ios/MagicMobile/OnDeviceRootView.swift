@@ -712,27 +712,32 @@ struct OnDeviceRootView: View {
                     submitStartingChoiceIfNeeded()
                 }
             } else {
-                VStack(spacing: 16) {
+                // Until the host shares the dice: the same leather and brass the roll itself wears.
+                VStack(spacing: 14) {
                     Text("Who goes first?")
-                        .font(.title2.bold())
+                        .font(.system(.title2, design: .serif, weight: .heavy))
+                        .foregroundStyle(Color(red: 0.98, green: 0.92, blue: 0.80))
+                        .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
                     Text(multiplayer.rollStatus)
-                        .font(.subheadline).multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .font(.system(.subheadline, design: .serif, weight: .medium)).multilineTextAlignment(.center)
+                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
                     Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
-                        .font(.caption).multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .font(.system(.caption, design: .serif)).multilineTextAlignment(.center)
+                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
                     Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
                         do { try multiplayer.rollStartingPlayer() }
                         catch { bannerError = error.localizedDescription }
                     }
-                    .buttonStyle(CommanderActionStyle())
+                    .buttonStyle(TavernButtonStyle(kind: .primary, fontSize: 17, fullWidth: true))
                     .disabled(multiplayer.hasRolled)
                     .accessibilityIdentifier("ondevice.multiplayer.roll")
                 }
-                .foregroundStyle(CommanderPresentation.ink)
                 .padding(24)
                 .frame(maxWidth: 440)
-                .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
+                .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 14)).padding(2) }
+                .overlay { TavernBrassFrame() }
+                .shadow(color: .black.opacity(0.5), radius: 10, y: 5)
+                .padding(.horizontal, 16)
             }
         } else if let roll = aiStartingRoll {
             MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
