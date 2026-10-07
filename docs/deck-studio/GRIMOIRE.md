@@ -159,9 +159,13 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   full-screen cover alike. Deck Studio is presented underneath, without its own animation, as soon as the film
   covers the screen; building its first page is hidden behind the film. Android plays it in a `TextureView`
   over the root (`GrimoireFilmLayer`).
-- **Page turns.** iOS pictures the key window (`snapshotView`) and swings that picture about the spine while
-  the real screen changes underneath. Android records Deck Studio into a `GraphicsLayer` (`GrimoirePages`) and
-  swings the bitmap. On a spread the far half of the old spread lifts and the near half of the new one lands.
+- **Page turns are a paper curl** (Caleb, October 6: "a piece of paper being folded and turned, not a stiff
+  page", and draggable). The page bends over a moving cylinder with the parchment's back on the flap, shading
+  across the bend and a shadow on the page underneath, in a Metal layer on iOS (`PageCurl.metal`,
+  `GrimoirePageCurl.swift`) and an AGSL shader on Android 13+ (`PageCurlShader.kt`; older Android keeps the swing).
+  A sideways drag curls the page under the finger (`GrimoireSwipeHub`); it finishes past 40% or on a fling and
+  otherwise falls back. Taps, Done and opening a deck play the same curl. A drag starting in the head band (the
+  top 64 points) never turns. Reduce Motion crossfades. Details, math, knobs and sources: `PAGE_CURL.md`.
 - **Paper.** One opaque tile per tone (the page and the lighter "plate" used by panels) with the tavern's
   parchment grain baked in. iOS bakes it once (`GrimoirePaperTile`); blending the grain live would cost an
   offscreen pass per surface on every scrolled frame. Nothing is drawn over the middle of a page, so card art
