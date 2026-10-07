@@ -224,7 +224,7 @@ end $$;
 -- Another player's profile (or the caller's own, as others see it). Not found when either side blocked
 -- the other. A profile the caller may not open returns only {username, restricted: true, visibility,
 -- relation}. Otherwise: rank, rank history (ladder points over time), totals, streaks, favourite
--- commanders, colour shares, games per week for the last 8 weeks and the 30 latest games with their
+-- commanders, color shares, games per week for the last 8 weeks and the 30 latest games with their
 -- opponents' names (a human opponent who blocked or was blocked by the caller reads "Hidden player").
 create or replace function public.mm_public_profile(p_username text) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$

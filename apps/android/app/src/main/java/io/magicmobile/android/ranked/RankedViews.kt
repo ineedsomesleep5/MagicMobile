@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +88,8 @@ import io.magicmobile.android.game.DeckBracketPreference
 import io.magicmobile.android.game.MatchRecord
 import io.magicmobile.android.game.PlayMode
 import io.magicmobile.android.game.PlayerStats
+import io.magicmobile.android.game.ProfileGame
+import io.magicmobile.android.game.ProfileSummary
 import io.magicmobile.android.game.RankBonus
 import io.magicmobile.android.game.RankChange
 import io.magicmobile.android.game.RankLadder
@@ -314,11 +317,11 @@ fun Modifier.parchmentCard(): Modifier = this.fillMaxWidth()
 fun Modifier.leatherCard(): Modifier = this.fillMaxWidth().glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).tavernPanel(12.dp).padding(16.dp)
 
 @Composable
-fun TavernLobbyPage(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+fun TavernLobbyPage(title: String, back: () -> Unit, backTitle: String = "Main menu", content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize()) {
         BrandBackdrop(Modifier.fillMaxSize(), cards = false)
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Box(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { TavernScreenHeader(title, back) }
+            Box(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { TavernScreenHeader(title, back, backTitle) }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                 Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
             }
@@ -745,166 +748,157 @@ fun CommanderArtMedallion(name: String?, diameter: Dp, modifier: Modifier = Modi
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+private enum class ResultFilter(val title: String) {
+    ALL("All"), WINS("Wins"), LOSSES("Losses"), DRAWS("Draws");
+    fun includes(outcome: RankOutcome) = when (this) {
+        ALL -> true; WINS -> outcome == RankOutcome.WIN; LOSSES -> outcome == RankOutcome.LOSS; DRAWS -> outcome == RankOutcome.DRAW
+    }
+}
+
+/**
+ * The player's own profile, made to be looked at (PlayerProfileView in ProfileView.swift): rank and its history, the record as a
+ * ring, games over time, the commanders played most (as art), color identity, streaks, a shelf of trophies and the latest games as
+ * cards. A game with a saved detailed record opens the match dashboard.
+ */
 @Composable
-fun PlayerProfileScreen(store: PlayerRecordStore, playerName: String, deckCommanders: List<String> = emptyList(), back: () -> Unit) {
+fun PlayerProfileScreen(store: PlayerRecordStore, account: io.magicmobile.android.social.PlayerAccount, playerName: String, deckCommanders: List<String> = emptyList(),
+                        loadMetadata: suspend () -> io.magicmobile.android.studio.NativeDeckMetadataCatalogue? = { null }, back: () -> Unit) {
     val file = store.file
     val stats = remember(file.matches) { PlayerStats(file.matches) }
     val unlocked = remember(file.matches, file.rank) { Achievement.unlocked(file.matches, file.rank) }
+    var deckFilter by remember { mutableStateOf<String?>(null) }
+    var resultFilter by remember { mutableStateOf(ResultFilter.ALL) }
     var showAll by remember { mutableStateOf(false) }
+    val details = rememberProfileGameDetails()
+    var review by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioRecordedGame?>(null) }
+    var metadata by remember { mutableStateOf<io.magicmobile.android.studio.NativeDeckMetadataCatalogue?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var previewAsOthers by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { store.refreshSeason() }
-    TavernLobbyPage("Profile", back) {
-        Row(Modifier.leatherCard(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            CommanderArtMedallion(store.shownCommander, 78.dp, Modifier.testTag("profile.picture"))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                FitText(playerName.ifBlank { "Player" }, sf(24f, SfWeight.black, SfDesign.SERIF), Modifier.testTag("profile.name"), color = TavernPalette.parchment, minimumScale = 0.7f)
-                TavernPicker("Title", file.title, listOf(TavernPickerSection(null, listOf<Pair<String, Achievement?>>("No title" to null) +
-                    Achievement.entries.filter { it in unlocked }.map { it.title to it })), { store.setTitle(it) }, Modifier.testTag("profile.title"))
-                TavernPicker("Profile picture", file.favoriteCommander, commanderSections(stats, deckCommanders, file.favoriteCommander),
-                    { store.setFavoriteCommander(it) }, Modifier.testTag("profile.commander"))
-            }
-        }
-        Row(Modifier.leatherCard().testTag("profile.season"), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            RankBadge(file.rank.position, 104.dp)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(file.rank.position.title, style = sf(22f, SfWeight.black, SfDesign.SERIF)
-                    .copy(brush = Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.62), file.rank.position.tier.tint))))
-                Text("Season ${RankLadder.seasonName(file.rank.season)}", color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.semibold, SfDesign.SERIF))
-                Text("Ranked ${file.rank.wins}–${file.rank.losses} · Peak ${file.rank.peak.title}", color = TavernPalette.parchment, style = sf(14f, SfWeight.regular, SfDesign.SERIF))
-                for (past in file.rank.history.take(4)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RankEmblem(past.peak.tier, 22.dp)
-                    Text("${RankLadder.seasonName(past.season)}: ${past.peak.title}", Modifier.weight(1f), color = TavernPalette.parchment, style = sf(13f, SfWeight.regular, SfDesign.SERIF))
-                    Text("${past.wins}–${past.losses}", color = TavernPalette.parchment.copy(alpha = 0.7f), style = sf(12f, SfWeight.regular, SfDesign.SERIF))
+    val scoped = remember(file.matches, deckFilter) { deckFilter?.let { id -> file.matches.filter { it.deckID == id } } ?: file.matches }
+    val summary = remember(scoped, file.matches, deckFilter) {
+        // The rank history is the ranked standings, whatever deck the totals are narrowed to.
+        ProfileSummary.of(scoped).let { if (deckFilter != null) it.copy(rankPoints = ProfileSummary.of(file.matches).rankPoints) else it }
+    }
+    Box(Modifier.fillMaxSize()) {
+        TavernLobbyPage("Profile", back) {
+            Row(Modifier.leatherCard(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                CommanderArtMedallion(store.shownCommander, 78.dp, Modifier.testTag("profile.picture"))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FitText(playerName.ifBlank { "Player" }, sf(24f, SfWeight.black, SfDesign.SERIF), Modifier.testTag("profile.name"), color = TavernPalette.parchment, minimumScale = 0.7f)
+                    TavernPicker("Title", file.title, listOf(TavernPickerSection(null, listOf<Pair<String, Achievement?>>("No title" to null) +
+                        Achievement.entries.filter { it in unlocked }.map { it.title to it })), { store.setTitle(it) }, Modifier.testTag("profile.title"))
+                    TavernPicker("Profile picture", file.favoriteCommander, commanderSections(stats, deckCommanders, file.favoriteCommander),
+                        { store.setFavoriteCommander(it) }, Modifier.testTag("profile.commander"))
                 }
             }
-        }
-        Column(Modifier.leatherCard().testTag("profile.stats"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionLabel("Record")
-            val tiles = listOf("Games" to "${stats.games}", "Wins" to "${stats.wins}",
-                "Win rate" to (if (stats.games == 0) "–" else "${Math.round(stats.winRate * 100)}%"), "Streak" to "${stats.currentStreak}",
-                "Best streak" to "${stats.bestStreak}", "Avg. turns" to (stats.averageTurns?.let { "%.1f".format(it) } ?: "–"))
-            for (row in tiles.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                for ((title, value) in row) Column(Modifier.weight(1f).defaultMinSize(minHeight = 58.dp).background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                    .border(1.dp, TavernPalette.brass.copy(alpha = 0.4f), RoundedCornerShape(8.dp)).padding(6.dp).semantics(mergeDescendants = true) {},
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    FitText(value, sf(20f, SfWeight.black, SfDesign.SERIF), color = TavernPalette.parchment, minimumScale = 0.6f)
-                    FitText(title.uppercase(), sf(9f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f), color = TavernPalette.parchment.copy(alpha = 0.7f), minimumScale = 0.7f)
+            Column(Modifier.leatherCard().testTag("profile.season"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                ProfileRankSummary(file.rank.position, RankLadder.seasonName(file.rank.season), file.rank.wins, file.rank.losses, file.rank.peak)
+                Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.4f)))
+                ProfileSectionTitle("Rank history")
+                if (summary.rankPoints.isEmpty()) ProfileEmptyNote("Play ranked games to chart your climb.", "chart.bar.fill")
+                else RankHistoryChart(summary.rankPoints)
+                if (file.rank.history.isNotEmpty()) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.4f)))
+                    for (past in file.rank.history.take(4)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RankEmblem(past.peak.tier, 22.dp)
+                        Text("${RankLadder.seasonName(past.season)}: ${past.peak.title}", Modifier.weight(1f), color = TavernPalette.parchment, style = sf(13f, SfWeight.regular, SfDesign.SERIF))
+                        Text("${past.wins}–${past.losses}", Modifier.alpha(0.7f), color = TavernPalette.parchment, style = sf(12f, SfWeight.regular, SfDesign.SERIF))
+                    }
                 }
             }
-        }
-        if (stats.colors.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionLabel("Colors")
-            for (line in stats.colors) Row(Modifier.semantics(mergeDescendants = true) { contentDescription = "${line.label}: ${line.wins} wins in ${line.games} games" },
-                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                io.magicmobile.android.board.TavernAwareManaSymbol(line.id, 20.dp)
-                Text(line.label, Modifier.width(64.dp), color = TavernPalette.parchment, style = sf(14f, SfWeight.semibold, SfDesign.SERIF))
-                Box(Modifier.weight(1f).height(10.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape)) {
-                    Box(Modifier.fillMaxWidth(line.winRate.toFloat().coerceAtLeast(0.03f)).height(10.dp)
-                        .background(Brush.horizontalGradient(listOf(rgb(1.0, 0.62, 0.32), TavernPalette.enamel)), CircleShape))
-                }
-                Text("${line.wins}/${line.games}", color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(12f, SfWeight.regular, SfDesign.SERIF))
+            if (stats.decks.size > 1) ChipRow(Modifier.testTag("profile.filter.decks")) {
+                ProfileChip("All decks", deckFilter == null, "profile.filter.deck.all", { deckFilter = null; showAll = false }, detail = "${file.matches.size}")
+                for (deck in stats.decks.take(8)) ProfileChip(deck.label, deckFilter == deck.id, "profile.filter.deck.${deck.id}", { deckFilter = deck.id; showAll = false }, detail = "${deck.games}")
             }
-        }
-        if (stats.decks.isNotEmpty()) Column(Modifier.parchmentCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionLabel("Your decks", brassLabel)
-            for (line in stats.decks.take(6)) Row(Modifier.semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                CommanderDeckPortrait(line.detail, Modifier.size(34.dp, 47.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(line.label, color = parchmentInk, style = sf(15f, SfWeight.bold, SfDesign.SERIF), maxLines = 1)
-                    line.detail?.let { Text(it, color = parchmentInk.copy(alpha = 0.7f), style = sf(12f, SfWeight.regular, SfDesign.SERIF), maxLines = 1) }
-                }
-                Text("${line.wins}–${line.games - line.wins}", color = parchmentInk, style = sf(14f, SfWeight.heavy, SfDesign.SERIF))
-            }
-        }
-        Column(Modifier.leatherCard().testTag("profile.achievements"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionLabel("Achievements · ${unlocked.size}/${Achievement.entries.size}")
-            for (row in Achievement.entries.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                for (achievement in row) {
-                    val earned = achievement in unlocked
-                    Row(Modifier.weight(1f).alpha(if (earned) 1f else 0.5f).semantics(mergeDescendants = true) { contentDescription = "${achievement.title}. ${achievement.detail}. ${if (earned) "Earned" else "Locked"}" },
-                        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(36.dp).background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                            .border(1.5.dp, if (earned) TavernPalette.brass else Color.Gray.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
-                            SfImage(achievementIcon(achievement), if (earned) TavernPalette.brass else Color.Gray, 16.dp)
+            Column(Modifier.leatherCard().testTag("profile.stats"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                ProfileSectionTitle(deckFilter?.let { id -> stats.decks.firstOrNull { it.id == id }?.label } ?: "Record", "${summary.games} games")
+                if (summary.games == 0) ProfileEmptyNote("Your games show here after you play.")
+                else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        WinRateRing(summary.wins, summary.losses, summary.draws, 118.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ProfileStatTile("Wins", "${summary.wins}", Modifier.weight(1f)); ProfileStatTile("Losses", "${summary.losses}", Modifier.weight(1f))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ProfileStatTile("Draws", "${summary.draws}", Modifier.weight(1f))
+                                ProfileStatTile("Avg. turns", summary.averageTurns?.let { "%.1f".format(it) } ?: "–", Modifier.weight(1f))
+                            }
                         }
-                        Column {
-                            Text(achievement.title, color = TavernPalette.parchment, style = sf(13f, SfWeight.heavy, SfDesign.SERIF), maxLines = 1)
-                            Text(achievement.detail, color = TavernPalette.parchment.copy(alpha = 0.75f), style = sf(11f, SfWeight.regular, SfDesign.SERIF))
+                    }
+                    StreakRow(summary.currentStreak, summary.bestStreak)
+                }
+            }
+            Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileSectionTitle("Games over time", "last 8 weeks")
+                if (summary.weeks.all { it.games == 0 }) ProfileEmptyNote("Nothing played in the last eight weeks.", "hourglass")
+                else {
+                    WeeklyBars(summary.weeks)
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        for ((color, text) in listOf(ProfilePalette.win to "Won", ProfilePalette.loss to "Not won")) Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(9.dp).background(color, CircleShape))
+                            Text(text, Modifier.alpha(0.75f), color = TavernPalette.parchment, style = sf(11f, SfWeight.semibold, SfDesign.SERIF))
                         }
                     }
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
-        }
-        Column(Modifier.leatherCard().testTag("profile.history"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SectionLabel("Match history")
-            if (file.matches.isEmpty()) Text("Your games show here after you play.", color = TavernPalette.parchment.copy(alpha = 0.75f), style = sf(14f, SfWeight.regular, SfDesign.SERIF))
-            for (match in file.matches.take(if (showAll) 60 else 8)) MatchRow(match)
-            if (file.matches.size > 8) TavernPlaqueButton(if (showAll) "Show fewer" else "Show more", { showAll = !showAll }, kind = TavernButtonKind.SECONDARY)
-        }
-    }
-}
-
-private fun achievementIcon(a: Achievement): String = when (a) {
-    Achievement.FIRST_WIN -> "star.fill"; Achievement.FIRST_RANKED_WIN -> "shield.lefthalf.filled"
-    Achievement.SILVER, Achievement.GOLD, Achievement.PLATINUM, Achievement.DIAMOND, Achievement.MYTHIC -> "crown.fill"
-    Achievement.STREAK5 -> "flame.fill"; Achievement.VETERAN -> "hourglass"; Achievement.PRISMATIC -> "circle.hexagongrid.fill"
-    Achievement.GIANT_SLAYER -> "bolt.shield.fill"; Achievement.QUICK_DRAW -> "hare.fill"; Achievement.HUMAN_WIN -> "person.2.fill"
-}
-
-@Composable
-private fun MatchRow(match: MatchRecord) {
-    val names = match.opponents.map { it.name }
-    val opponent = if (names.size <= 1) names.firstOrNull() ?: "Opponent" else "${names.size} opponents"
-    val mode = when (match.mode) {
-        PlayMode.QUICK -> "Quick"; PlayMode.RANKED -> if (match.vsHuman) "Ranked · Player" else "Ranked · AI"; PlayMode.CASUAL -> "Custom"
-    }
-    val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(match.date))
-    Row(Modifier.semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        val (letter, color) = when (match.outcome) { RankOutcome.WIN -> "W" to rgb(0.25, 0.5, 0.2); RankOutcome.LOSS -> "L" to rgb(0.45, 0.10, 0.08); RankOutcome.DRAW -> "D" to rgb(0.35, 0.35, 0.35) }
-        Box(Modifier.size(30.dp).background(color, CircleShape).border(1.dp, TavernPalette.brass.copy(alpha = 0.7f), CircleShape), contentAlignment = Alignment.Center) {
-            Text(letter, color = Color.White, style = sf(15f, SfWeight.black, SfDesign.SERIF))
-        }
-        Column(Modifier.weight(1f)) {
-            Text("vs $opponent", color = TavernPalette.parchment, style = sf(14f, SfWeight.bold, SfDesign.SERIF), maxLines = 1)
-            Text("$mode · ${match.deckName} · $date", color = TavernPalette.parchment.copy(alpha = 0.7f), style = sf(11f, SfWeight.regular, SfDesign.SERIF), maxLines = 1)
-        }
-        match.rankChange?.let { change ->
-            Column(horizontalAlignment = Alignment.End) {
-                Text(if (change.pipDelta > 0) "+${change.pipDelta}" else "${change.pipDelta}", color = if (change.pipDelta >= 0) good else bad, style = sf(13f, SfWeight.heavy, SfDesign.SERIF))
-                Text(change.after.title, color = TavernPalette.parchment.copy(alpha = 0.7f), style = sf(10f, SfWeight.regular, SfDesign.SERIF))
+            if (summary.commanders.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileSectionTitle("Most played commanders")
+                CommanderTiles(summary.commanders)
             }
-        }
-    }
-}
-
-/** A friend's ranked card, opened from the friends list. */
-@Composable
-fun PlayerCardSheet(username: String, card: PlayerProfileCard?, loading: Boolean, close: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(Modifier.fillMaxWidth().tavernTitleBar(), verticalAlignment = Alignment.CenterVertically) {
-            TavernPanelTitle(username, Modifier.weight(1f))
-            TavernSealButton(close, Modifier.testTag("playerCard.close"), contentDescription = "Done")
-        }
-        val position = card?.position
-        when {
-            loading -> CircularProgressIndicator(color = TavernPalette.brass, modifier = Modifier.padding(40.dp))
-            card != null && position != null -> {
-                RankBadge(position, 120.dp, showsPips = true, showsTitle = true)
-                card.title?.let { TavernTag(it, leather = true, accent = TavernPalette.ember) }
-                Text("Ranked ${card.wins ?: 0}–${card.losses ?: 0} this season", color = TavernPalette.parchment, style = sf(15f, SfWeight.regular, SfDesign.SERIF))
-                card.peakStep?.let { Text("Peak ${RankPosition.atStep(it).title}", color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF)) }
-                card.favoriteCommander?.let {
-                    CommanderArtMedallion(it, 72.dp)
-                    Text(it, color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF))
+            if (summary.colors.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileSectionTitle("Color identity")
+                ColorPie(summary.colors)
+            }
+            Column(Modifier.leatherCard().testTag("profile.achievements"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileSectionTitle("Trophies", "${unlocked.size}/${Achievement.entries.size}")
+                TrophyShelf(unlocked)
+            }
+            val visible = scoped.filter { resultFilter.includes(it.outcome) }
+            Column(Modifier.leatherCard().testTag("profile.history"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileSectionTitle("Recent games", "${visible.size} shown")
+                ChipRow { for (filter in ResultFilter.entries) ProfileChip(filter.title, resultFilter == filter, "profile.filter.result.${filter.name.lowercase()}", { resultFilter = filter; showAll = false }) }
+                if (file.matches.isEmpty()) ProfileEmptyNote("Your games show here after you play.")
+                else if (visible.isEmpty()) ProfileEmptyNote("No games match these filters.", "line.3.horizontal.decrease")
+                for (match in visible.take(if (showAll) 40 else 6)) {
+                    val recorded = match.engineMatchID?.let { details.byMatch[it] }
+                    ProfileGameCard(ProfileGame.of(match), recorded?.let { "deckHistory.match.${it.id}.expand" } ?: "profile.game.${match.id}",
+                        onOpenDetail = recorded?.let { game -> {
+                            review = game
+                            if (metadata == null) scope.launch { metadata = loadMetadata() }
+                        } })
                 }
+                if (visible.size > 6) TavernPlaqueButton(if (showAll) "Show fewer" else "Show more", { showAll = !showAll }, Modifier.testTag("profile.games.more"), kind = TavernButtonKind.SECONDARY)
             }
-            else -> {
-                SfImage("shield.lefthalf.filled", TavernPalette.brass, 40.dp)
-                Text("$username hasn't played ranked this season.", color = TavernPalette.parchment, style = sf(15f, SfWeight.regular, SfDesign.SERIF), textAlign = TextAlign.Center)
+            // Who may open this profile: Public (the default), Friends only or Private. The server enforces it.
+            val signedIn = account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && account.username != null
+            Column(Modifier.leatherCard().testTag("profile.privacyCard"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProfileSectionTitle("Who can see your profile")
+                Box(Modifier.alpha(if (signedIn && account.visibilityKnown) 1f else 0.55f)) {
+                    ProfileSegmented(io.magicmobile.android.game.ProfileVisibility.entries.map { visibility ->
+                        SegmentOption(visibility, visibility.title, when (visibility) {
+                            io.magicmobile.android.game.ProfileVisibility.PUBLIC -> "globe"; io.magicmobile.android.game.ProfileVisibility.FRIENDS -> "person.2.fill"
+                            io.magicmobile.android.game.ProfileVisibility.PRIVATE -> "hand.raised"
+                        }, "profile.privacy.${visibility.raw}")
+                    }, account.visibility, "profile.privacy") { choice -> if (signedIn && account.visibilityKnown) scope.launch { account.setVisibility(choice) } }
+                }
+                Text(when {
+                    !signedIn -> "Choose your player name in Friends to share a profile with other players."
+                    !account.visibilityKnown -> "Privacy settings arrive with the next server update. Until then your profile stays as it is."
+                    else -> account.visibility.detail
+                }, Modifier.alpha(0.8f).testTag("profile.privacy.note"), color = TavernPalette.parchment, style = sf(12f, SfWeight.regular, SfDesign.SERIF))
+                if (signedIn && account.profilesAvailable) TavernPlaqueButton("See it as others do", { previewAsOthers = true }, Modifier.testTag("profile.privacy.preview"), kind = TavernButtonKind.SECONDARY)
+            }
+            Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) { ProfileHistorySettings(details) }
+        }
+        if (previewAsOthers) account.username?.let { name ->
+            androidx.compose.ui.window.Dialog({ previewAsOthers = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                PublicProfileScreen(account, name, null, null) { previewAsOthers = false }
             }
         }
-        Spacer(Modifier.height(20.dp))
+        io.magicmobile.android.studio.StudioCover(review != null) {
+            review?.let { game -> io.magicmobile.android.studio.MatchHistoryDashboard(game, false, metadata) { review = null } }
+        }
     }
 }

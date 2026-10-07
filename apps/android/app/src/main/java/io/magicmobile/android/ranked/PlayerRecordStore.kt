@@ -29,6 +29,8 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     var file by mutableStateOf(load()); private set
     /** Set by the root to share ranked results with friends. */
     var publish: ((RankState, Achievement?, String?) -> Unit)? = null
+    /** Set by the root to send each finished game to the profile server. */
+    var didRecord: ((MatchRecord) -> Unit)? = null
 
     init {
         val rolled = file.copy(rank = RankLadder.rollover(file.rank, RankLadder.season(now())))
@@ -53,11 +55,14 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
 
     /** Records a finished game; a ranked game moves the ladder and returns how. */
     fun record(mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?, deckID: String,
-               deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int, aiDeckID: String? = null): RankChange? {
+               deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int, aiDeckID: String? = null,
+               engineMatchID: String? = null): RankChange? {
         val (next, change) = file.recording(now(), mode, outcome, opponents, opponentBracket, aiSkill, deckID, deckName, commander, colors,
-            deckBracket, turns, aiDeckID)
+            deckBracket, turns, aiDeckID, engineMatchID)
         file = next; save()
         if (mode == PlayMode.RANKED) publish?.invoke(file.rank, file.title, shownCommander)
+        // The finished game goes to the profile server too (when there is a profile): never blocks play.
+        next.matches.firstOrNull()?.let { didRecord?.invoke(it) }
         return change
     }
 
@@ -73,6 +78,11 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
 
     /** Debug intent extras (as on iOS): MAGICMOBILE_UI_TEST_RANK=<tier>-<division>-<pips> and MAGICMOBILE_UI_TEST_MATCHES=<n>. */
     private fun applyUITestSeed(values: Map<String, String>) {
+        if (SocialFixtures.isActive) {
+            val (matches, rank) = SocialFixtures.matches(now(), RankLadder.season(now()))
+            file = file.copy(matches = matches, rank = rank, favoriteCommander = null)
+            return
+        }
         values["MAGICMOBILE_UI_TEST_RANK"]?.split("-")?.let { parts ->
             val tier = parts.getOrNull(0)?.let(RankTier::of) ?: return@let
             val position = RankPosition.make(tier, parts.getOrNull(1)?.toIntOrNull() ?: 4, parts.getOrNull(2)?.toIntOrNull() ?: 0)

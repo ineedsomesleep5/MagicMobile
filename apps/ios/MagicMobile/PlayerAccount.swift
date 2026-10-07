@@ -19,6 +19,9 @@ enum PlayerAccountRules {
         case "too_many_requests": return String(localized: "You have too many friend requests waiting.")
         case "too_many_reports": return String(localized: "You've sent a lot of reports. Try again later.")
         case "anonymous_provider_disabled", "anonymous_disabled": return String(localized: "Profiles aren't available right now. You can still play.")
+        case "feature_unavailable": return String(localized: "That part of the profile server isn't ready yet. Try again after the next update.")
+        case "invalid_visibility": return String(localized: "Choose Public, Friends only or Private.")
+        case "too_many_games": return String(localized: "You've played a lot of games. Your game history catches up later.")
         case "offline": return String(localized: "You're offline. Profiles and friends come back when you reconnect.")
         default: return String(localized: "Something went wrong. Try again.")
         }
@@ -52,6 +55,12 @@ struct PlayerFriend: Identifiable, Equatable, Decodable {
 
     var isFriend: Bool { relation == "friend" }
     var isIncoming: Bool { relation == "incoming" }
+    var isOutgoing: Bool { relation == "outgoing" }
+
+    func with(relation: String) -> PlayerFriend {
+        PlayerFriend(id: id, username: username, relation: relation, online: relation == "friend" ? online : false, lastSeenAt: lastSeenAt,
+                     platform: platform, hostingCode: hostingCode, hostingOpenSeats: hostingOpenSeats)
+    }
     /// A table this online friend is hosting with a seat still open.
     var joinableCode: String? {
         guard isFriend, online, let code = hostingCode, (hostingOpenSeats ?? 0) > 0 else { return nil }
@@ -92,6 +101,28 @@ struct PlayerProfileCard: Equatable, Decodable {
     }
 }
 
+/// What opening another player's profile came to.
+enum PublicProfileResult: Equatable {
+    case profile(PublicProfile)
+    /// No such player, or one that blocked you (or whom you blocked): the server says the same for both.
+    case notFound
+    /// The server doesn't have public profiles yet.
+    case unavailable
+    case failed(String)
+}
+
+/// What sending a finished game to the profile server came to.
+enum GameUploadResult: Equatable {
+    /// Stored, or already there.
+    case sent
+    /// Offline, rate limited or not signed in: try again later.
+    case retryLater
+    /// The server refused this game for good; sending it again would fail the same way.
+    case rejected
+    /// The server doesn't record games yet, or there is no profile name: nothing to retry now.
+    case unavailable
+}
+
 /// The player's instant profile: an anonymous Supabase account made on first use, a unique
 /// username used at every table, friends with presence, and the table the player hosts.
 /// Games never depend on it: offline, the app keeps the typed name and plays as before.
@@ -107,7 +138,15 @@ final class PlayerAccount: ObservableObject {
     @Published private(set) var blocked: [String] = []
     /// Friends' ranked standings by username (mm_friend_ranks), for their badges.
     @Published private(set) var friendRanks: [String: RankPosition] = [:]
+    /// Who may open this player's profile (mm_profile). `visibilityKnown` is false on a server that predates the setting.
+    @Published private(set) var visibility: ProfileVisibility = .public
+    @Published private(set) var visibilityKnown = false
+    /// False once the server has said it has no player search / public profiles yet: the screens fall back gently.
+    @Published private(set) var searchAvailable = true
+    @Published private(set) var profilesAvailable = true
     @Published var notice: String?
+    /// Runs after each refresh while the app is open: the app sends games that could not be sent before.
+    var afterRefresh: (() async -> Void)?
 
     /// The code of the table this player hosts while it still has open seats (shared with friends).
     var hosting: (code: String, openSeats: Int)? {
@@ -122,9 +161,39 @@ final class PlayerAccount: ObservableObject {
     var onlineFriendCount: Int { friends.filter { $0.isFriend && $0.online }.count }
     var incomingCount: Int { friends.filter(\.isIncoming).count }
 
+    #if DEBUG
+    /// Development fixtures (SocialFixtures): a signed-in account with friends, instead of the server.
+    private func applyFixtureAccount() {
+        phase = .ready
+        username = SocialFixtures.ownName
+        friends = SocialFixtures.startingFriends()
+        friendRanks = Dictionary(uniqueKeysWithValues: friends.compactMap { friend in SocialFixtures.rank(friend.username).map { (friend.username, $0) } })
+        visibilityKnown = true
+    }
+
+    /// The friend actions on the fixture: they change the local list the way the server would.
+    private func fixturePerform(_ function: String, _ params: [String: Any]) {
+        switch function {
+        case "mm_respond_friend":
+            guard let id = (params["p_requester"] as? String).flatMap(UUID.init(uuidString:)), let index = friends.firstIndex(where: { $0.id == id }) else { return }
+            if params["p_accept"] as? Bool == true { friends[index] = friends[index].with(relation: "friend") } else { friends.remove(at: index) }
+        case "mm_remove_friend":
+            if let id = (params["p_other"] as? String).flatMap(UUID.init(uuidString:)) { friends.removeAll { $0.id == id } }
+        case "mm_block":
+            if let name = params["p_username"] as? String { friends.removeAll { $0.username == name }; if !blocked.contains(name) { blocked.append(name) } }
+        case "mm_unblock":
+            if let name = params["p_username"] as? String { blocked.removeAll { $0 == name } }
+        default: break
+        }
+    }
+    #endif
+
     /// Signs in (making the anonymous account on first use) and loads the profile. Safe to call often.
     func start() async {
         guard phase != .loading else { return }
+        #if DEBUG
+        if SocialFixtures.isActive { applyFixtureAccount(); return }
+        #endif
         // UI tests and previews never make accounts on the real server.
         guard !HowToPlayLaunch.isAutomated(arguments: ProcessInfo.processInfo.arguments,
                                            environment: ProcessInfo.processInfo.environment) else {
@@ -135,6 +204,9 @@ final class PlayerAccount: ObservableObject {
             let data = try await api.rpc("mm_profile")
             let profile = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             username = profile?["username"] as? String
+            if let raw = profile?["visibility"] as? String, let known = ProfileVisibility(rawValue: raw) {
+                visibility = known; visibilityKnown = true
+            }
             phase = .ready
             await refresh()
         } catch {
@@ -161,6 +233,9 @@ final class PlayerAccount: ObservableObject {
 
     func refresh() async {
         guard phase == .ready else { return }
+        #if DEBUG
+        if SocialFixtures.isActive { return }
+        #endif
         do {
             friends = try PlayerFriend.decodeList(try await api.rpc("mm_friends"))
             let rows = try JSONSerialization.jsonObject(with: try await api.rpc("mm_blocked")) as? [[String: Any]] ?? []
@@ -201,9 +276,104 @@ final class PlayerAccount: ObservableObject {
         return try? JSONDecoder().decode(PlayerProfileCard.self, from: data)
     }
 
+    /// Players whose name starts with `prefix` (at least two letters; the server returns nothing for less). Throws
+    /// CancellationError when a newer search replaced this one.
+    func search(_ prefix: String) async throws -> [PlayerSearchResult] {
+        guard phase == .ready, let text = PlayerSearchRules.normalized(prefix) else { return [] }
+        #if DEBUG
+        if SocialFixtures.isActive { return SocialFixtures.search(text, friends: friends) }
+        #endif
+        do {
+            let results = try PlayerSearchResult.parse(try await api.rpc("mm_search_players", ["p_prefix": text]))
+            try Task.checkCancellation()
+            searchAvailable = true
+            return results
+        } catch {
+            if SupabaseLite.isCancellation(error) || Task.isCancelled { throw CancellationError() }
+            if SupabaseLite.code(of: error) == "feature_unavailable" { searchAvailable = false }
+            throw error
+        }
+    }
+
+    /// Another player's profile (or your own, as others see it).
+    func publicProfile(_ name: String) async -> PublicProfileResult {
+        guard phase == .ready else { return .failed(PlayerAccountRules.message(for: "offline")) }
+        #if DEBUG
+        if SocialFixtures.isActive { return SocialFixtures.publicProfile(name, friends: friends, own: username) }
+        #endif
+        do {
+            let profile = try PublicProfile.parse(try await api.rpc("mm_public_profile", ["p_username": name]))
+            profilesAvailable = true
+            return .profile(profile)
+        } catch {
+            let code = SupabaseLite.code(of: error)
+            if code == "feature_unavailable" { profilesAvailable = false; return .unavailable }
+            if code == "not_found" { return .notFound }
+            return .failed(PlayerAccountRules.message(for: code))
+        }
+    }
+
+    /// Who may open this player's profile. Quiet about a server that doesn't have the setting yet.
+    @discardableResult
+    func setVisibility(_ next: ProfileVisibility) async -> Bool {
+        #if DEBUG
+        if SocialFixtures.isActive { visibility = next; visibilityKnown = true; return true }
+        #endif
+        guard phase == .ready, username != nil else { return false }
+        do {
+            _ = try await api.rpc("mm_set_visibility", ["p_visibility": next.rawValue])
+            visibility = next; visibilityKnown = true
+            notice = nil
+            return true
+        } catch {
+            let code = SupabaseLite.code(of: error)
+            if code == "feature_unavailable" { visibilityKnown = false }
+            notice = PlayerAccountRules.message(for: code)
+            return false
+        }
+    }
+
+    /// Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later.
+    func recordGame(_ match: MatchRecord) async -> GameUploadResult {
+        guard phase == .ready, username != nil else { return .unavailable }
+        #if DEBUG
+        if SocialFixtures.isActive { return .sent }
+        #endif
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var params: [String: Any] = [
+            "p_client_id": match.id.uuidString, "p_played_at": stamp.string(from: match.date), "p_mode": match.mode.rawValue,
+            "p_result": match.outcome.rawValue, "p_deck_name": String(match.deckName.prefix(80)),
+            "p_commanders": match.commander.map { [String($0.prefix(160))] } ?? [], "p_colors": match.colors,
+            "p_opponents": match.opponents.prefix(3).map { opponent -> [String: Any] in
+                ["name": String(opponent.name.prefix(60)), "commander": opponent.commander.map { String($0.prefix(160)) } ?? NSNull(), "ai": opponent.isAI]
+            }]
+        if match.turns > 0 { params["p_turns"] = min(1000, match.turns) }
+        if let change = match.rankChange { params["p_rank_points"] = change.after.points }
+        do {
+            _ = try await api.rpc("mm_record_game", params)
+            return .sent
+        } catch {
+            switch SupabaseLite.code(of: error) {
+            case "feature_unavailable", "no_username": return .unavailable
+            case "invalid_game": return .rejected
+            default: return .retryLater
+            }
+        }
+    }
+
     func addFriend(_ name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
+        #if DEBUG
+        if SocialFixtures.isActive {
+            if !friends.contains(where: { $0.username == trimmed }) {
+                friends.append(PlayerFriend(id: UUID(), username: trimmed, relation: "outgoing", online: false, lastSeenAt: nil, platform: nil, hostingCode: nil, hostingOpenSeats: nil))
+            }
+            notice = PlayerAccountRules.requestResult("requested", username: trimmed)
+            return
+        }
+        #endif
         do {
             let data = try await api.rpc("mm_friend_request", ["p_username": trimmed])
             let result = (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) as? String) ?? "requested"
@@ -250,6 +420,7 @@ final class PlayerAccount: ObservableObject {
             while !Task.isCancelled {
                 await self?.heartbeat()
                 await self?.refresh()
+                await self?.afterRefresh?()
                 try? await Task.sleep(for: .seconds(45))
             }
         }
@@ -263,6 +434,9 @@ final class PlayerAccount: ObservableObject {
     }
 
     private func perform(_ function: String, _ params: [String: Any], refreshAfter: Bool = true) async {
+        #if DEBUG
+        if SocialFixtures.isActive { fixturePerform(function, params); return }
+        #endif
         do {
             _ = try await api.rpc(function, params)
             notice = nil
@@ -298,6 +472,11 @@ final class SupabaseLite: @unchecked Sendable {
         return "error"
     }
 
+    /// A request cancelled because a newer one replaced it (typing in search), not a failure.
+    static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
+    }
+
     func rpc(_ function: String, _ params: [String: Any] = [:]) async throws -> Data {
         let token = try await accessToken()
         var request = URLRequest(url: Self.baseURL.appendingPathComponent("rest/v1/rpc/\(function)"))
@@ -310,7 +489,9 @@ final class SupabaseLite: @unchecked Sendable {
         let (data, response) = try await urlSession.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 { lock.withLock { session?.expiresAt = .distantPast } }
-        guard (200..<300).contains(status) else { throw Failure(code: Self.errorCode(data) ?? (status == 401 ? "not_signed_in" : "error")) }
+        guard (200..<300).contains(status) else {
+            throw Failure(code: Self.errorCode(data) ?? (status == 401 ? "not_signed_in" : status == 404 ? "feature_unavailable" : "error"))
+        }
         return data
     }
 
@@ -322,6 +503,8 @@ final class SupabaseLite: @unchecked Sendable {
     /// PostgREST's {"message": "username_taken", ...} or Auth's {"error_code": ...}.
     static func errorCode(_ data: Data) -> String? {
         guard let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        // A function the server doesn't have yet (PostgREST PGRST202, or Postgres 42883): the feature isn't there.
+        if let code = body["code"] as? String, ["PGRST202", "42883"].contains(code) { return "feature_unavailable" }
         if let code = body["error_code"] as? String { return code }
         return body["message"] as? String
     }

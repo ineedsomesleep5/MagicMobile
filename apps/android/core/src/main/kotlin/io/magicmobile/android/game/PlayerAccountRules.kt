@@ -26,6 +26,9 @@ object PlayerAccountRules {
         "too_many_reports" -> "You've sent a lot of reports. Try again later."
         "anonymous_provider_disabled", "anonymous_disabled" -> "Profiles aren't available right now. You can still play."
         "offline" -> "You're offline. Profiles and friends come back when you reconnect."
+        "feature_unavailable" -> "That part of the profile server isn't ready yet. Try again after the next update."
+        "invalid_visibility" -> "Choose Public, Friends only or Private."
+        "too_many_games" -> "You've played a lot of games. Your game history catches up later."
         else -> "Something went wrong. Try again."
     }
 
@@ -42,6 +45,7 @@ data class PlayerFriend(val id: String, val username: String, val relation: Stri
                         val platform: String?, val hostingCode: String?, val hostingOpenSeats: Int?) {
     val isFriend: Boolean get() = relation == "friend"
     val isIncoming: Boolean get() = relation == "incoming"
+    val isOutgoing: Boolean get() = relation == "outgoing"
     /** A table this online friend is hosting with a seat still open. */
     val joinableCode: String? get() =
         if (isFriend && online && (hostingOpenSeats ?: 0) > 0) hostingCode?.let(TableJoinLink::normalized) else null
