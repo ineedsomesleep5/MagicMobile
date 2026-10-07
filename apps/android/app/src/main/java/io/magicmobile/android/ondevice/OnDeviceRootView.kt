@@ -1274,7 +1274,10 @@ private fun MenuIdentity(compact: Boolean, playerName: String, density: Int) {
         BrandTitle(if (density == 0 && compact) "Your next\ngreat game." else "Your next great game.",
             if (compact) (when (density) { 0 -> 32f; 1 -> 27f; else -> 24f }) else (if (density == 0) 30f else 26f),
             textAlign = if (compact) TextAlign.Start else TextAlign.Center)
-        if (density < 2 && playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = BrandTheme.inkSecondary, style = SfText.subheadline(),
+        // In the tavern's hand, like the title above it (no system type on the menu).
+        if (density < 2 && playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.8f),
+            style = io.magicmobile.android.ui.sf(16f, io.magicmobile.android.ui.SfWeight.regular, io.magicmobile.android.ui.SfDesign.SERIF)
+                .copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
             textAlign = if (compact) TextAlign.Start else TextAlign.Center)
     }
 }
