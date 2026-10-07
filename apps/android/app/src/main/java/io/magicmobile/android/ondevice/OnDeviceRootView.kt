@@ -1438,6 +1438,10 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage = "eye.fill")
+                IosListRow("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage = "sparkles")
+                IosListRow("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage = "moon.stars")
+                IosListRow("The starting roll has more table: the header sits at the top and the dice get the room below it.", systemImage = "dice")
                 IosListRow("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage = "hand.draw.fill")
                 IosListRow("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage = "dice")
                 IosListRow("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage = "chart.bar.fill")

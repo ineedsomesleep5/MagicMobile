@@ -187,6 +187,11 @@ fun LandscapeGameContent(
                     PlayerZoneMenu(human, viewZone, snapshot, pendingActionId)
                     BoardPlayerEffects(human, BattlefieldAttachments.enchanting(human.playerId, allBattlefield), viewZone)
                 }
+                // The revealed top of your library, under your zones.
+                human.zones.library.firstOrNull()?.let { top ->
+                    TopOfLibraryCard(top, "your", playable = io.magicmobile.android.game.BoardZoneReference.PlayerZone.LIBRARY in
+                        GameplayAffordances.castableZones(human, snapshot, pendingActionId), height = 40.dp) { viewZone("Top of your library", listOf(top)) }
+                }
             }
         }
         Box(Modifier.width(1.dp).fillMaxHeight().background(MagicPalette.antiqueGold.copy(alpha = 0.28f)))

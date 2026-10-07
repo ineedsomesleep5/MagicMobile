@@ -31,8 +31,10 @@ struct CompactZoneInspectorOverlay: View {
             // Title Bar
             HStack {
                 Text("\(title) · \(cards.count)")
-                    .font(.system(size: 11, weight: .black))
+                    .font(.system(size: 14, weight: .bold, design: .serif))
                     .foregroundStyle(MagicPalette.antiqueGold)
+                    .lineLimit(2).minimumScaleFactor(0.8)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button(action: closeAction) {
                     Image(systemName: "xmark.circle.fill")
@@ -53,9 +55,11 @@ struct CompactZoneInspectorOverlay: View {
             // Scrollable Grid of Cards
             ScrollView {
                 if cards.isEmpty {
-                    Text("No cards in this zone.")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(MagicPalette.parchment.opacity(0.78))
+                    Text(title.contains("Library") ? "The library is face down. Only a revealed top card shows here." : "No cards here.")
+                        .font(.system(size: 14, design: .serif).italic())
+                        .foregroundStyle(MagicPalette.parchment.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
                         .padding(.top, 20)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
@@ -77,7 +81,7 @@ struct CompactZoneInspectorOverlay: View {
                                         runTargetAction?(card)
                                     } label: {
                                         Label("Target", systemImage: "scope")
-                                            .font(.system(size: 12, weight: .semibold))
+                                            .font(.system(size: 13, weight: .bold, design: .serif))
                                             .frame(maxWidth: .infinity, minHeight: 44)
                                             .contentShape(Rectangle())
                                     }
@@ -90,7 +94,7 @@ struct CompactZoneInspectorOverlay: View {
                                         perform(action)
                                     } label: {
                                         Text(action.displayLabel)
-                                            .font(.system(size: 12, weight: .semibold))
+                                            .font(.system(size: 13, weight: .bold, design: .serif))
                                             .foregroundStyle(.white)
                                             .multilineTextAlignment(.center)
                                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -99,23 +103,27 @@ struct CompactZoneInspectorOverlay: View {
                                     .disabled(pendingActionId != nil)
                                 }
                                 if cardActions.count > 1 {
-                                    Menu {
+                                    // The tavern's own leather pop-over, not the system menu.
+                                    TavernMenu(arrowEdge: .bottom) {
                                         ForEach(cardActions) { action in
-                                            Button(action.displayLabel) { perform(action) }
+                                            TavernMenuItem(title: action.displayLabel, systemImage: "sparkles") { perform(action) }
                                         }
                                     } label: {
                                         Text("Actions")
-                                            .font(.system(size: 12, weight: .semibold))
+                                            .font(.system(size: 13, weight: .bold, design: .serif))
+                                            .foregroundStyle(MagicPalette.parchment)
                                             .frame(maxWidth: .infinity, minHeight: 44)
                                             .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.plain)
                                     .disabled(pendingActionId != nil)
                                 }
                                 Button {
                                     inspectedCard = card
                                 } label: {
                                     Text("Inspect")
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(.system(size: 13, weight: .semibold, design: .serif))
+                                        .foregroundStyle(MagicPalette.parchment.opacity(0.85))
                                         .frame(maxWidth: .infinity, minHeight: 44)
                                         .contentShape(Rectangle())
                                 }

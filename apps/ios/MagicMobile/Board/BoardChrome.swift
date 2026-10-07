@@ -780,6 +780,19 @@ struct ActionRejectionInlineView: View {
 enum GameplayAffordances {
     static func dismissesZone(action: LegalAction) -> Bool { action.type == "cast_spell" }
 
+    /// Your zones holding a card you can play right now, besides your hand: a commander, a flashback or
+    /// escape card in the graveyard, an impulse-drawn or foretold card in exile, a revealed top card.
+    static func castableZones(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?) -> Set<BoardZoneReference.PlayerZone> {
+        guard pendingActionID == nil, snapshot.human?.playerId == player.playerId else { return [] }
+        let actions = (snapshot.legalActions ?? []).filter { ["cast_spell", "play_land"].contains($0.type) && $0.playerId == player.playerId }
+        guard !actions.isEmpty else { return [] }
+        let zones: [(BoardZoneReference.PlayerZone, [ZoneCard])] = [(.command, player.zones.command), (.graveyard, player.zones.graveyard),
+                                                                    (.exile, player.zones.exile), (.library, player.zones.library)]
+        return Set(zones.compactMap { zone, cards in
+            cards.contains { !GameBoardInteractionState.cardActions(for: $0, actions: actions).isEmpty } ? zone : nil
+        })
+    }
+
     static func commanderCastAvailable(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?) -> Bool {
         guard pendingActionID == nil, snapshot.human?.playerId == player.playerId else { return false }
         return player.zones.command.contains { card in
@@ -2178,6 +2191,10 @@ struct PlayerStatusSummary {
             badges.append(Badge(id: "initiative", icon: .symbol("flag.fill"), tint: Color(red: 0.95, green: 0.55, blue: 0.35),
                                 count: nil, label: "Has the initiative"))
         }
+        for designation in player.designations ?? [] where !designation.isEmpty {
+            badges.append(Badge(id: "designation-\(designation)", icon: .symbol("building.columns.fill"),
+                                tint: Color(red: 0.95, green: 0.85, blue: 0.55), count: nil, label: designation))
+        }
         if let snapshot {
             // Each opposing commander that has hit this player, with its art when it is visible.
             for owner in snapshot.players where owner.playerId != player.playerId {
@@ -2449,4 +2466,74 @@ struct TavernCommanderReadyGlow: View {
 enum TavernSeatAnchor {
     static let bottom = "tavern-seat:bottom"
     static let top = "tavern-seat:top"
+}
+
+/// The revealed top card of a library (Conspicuous Snoop, Future Sight, Courser of Kruphix, an opponent's Oracle of
+/// Mul Daya), a small card leaning beside its owner's portrait with an eye on a brass coin. When you can play it from
+/// there it glows ember. A tap opens it large, with Cast or Play when allowed.
+struct TopOfLibraryCard: View {
+    let card: ZoneCard
+    var playable = false
+    /// "your" or the owner's name, for VoiceOver.
+    let owner: String
+    var height: CGFloat = 52
+    let open: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let width = height / BattlefieldLayoutMetrics.magicCardHeightToWidth
+        Button(action: open) {
+            CardTile(card: card, selected: false, castOffered: playable, zoneName: "Library", width: width, height: height,
+                     ignoreTappedRotation: true)
+                .frame(width: width, height: height)
+                .clipShape(RoundedRectangle(cornerRadius: height * 0.06))
+                .overlay(RoundedRectangle(cornerRadius: height * 0.06)
+                    .strokeBorder(playable ? TavernPalette.ember : TavernPalette.brass, lineWidth: playable ? 2 : 1.2))
+                .shadow(color: playable ? TavernPalette.ember.opacity(0.85) : .black.opacity(0.55), radius: playable ? 7 : 3, y: 2)
+                .overlay(alignment: .topLeading) {
+                    Image(systemName: "eye.fill").font(.system(size: max(8, height * 0.15), weight: .bold))
+                        .foregroundStyle(Color(red: 0.24, green: 0.13, blue: 0.05))
+                        .frame(width: max(16, height * 0.32), height: max(16, height * 0.32))
+                        .background(Circle().fill(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.58), TavernPalette.brass],
+                                                                 startPoint: .top, endPoint: .bottom)))
+                        .overlay(Circle().stroke(.black.opacity(0.5), lineWidth: 0.8))
+                        .offset(x: -height * 0.14, y: -height * 0.14)
+                }
+                .rotationEffect(.degrees(8))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Top of \(owner) library: \(card.card.name)\(playable ? ", you can play it" : "")")
+        .accessibilityIdentifier("board.topOfLibrary")
+    }
+}
+
+/// Day or night and the storm count under the phase plate. Each shows only when it matters: day or night once a
+/// daybound card has made it so, as a small sun or moon coin (few cards care, so it stays quiet), the storm count
+/// once a spell has been cast this turn.
+struct TavernTableHints: View {
+    let dayNight: String?
+    let stormCount: Int?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let dayNight {
+                let night = dayNight == "night"
+                Image(systemName: night ? "moon.fill" : "sun.max.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(night ? Color(red: 0.72, green: 0.80, blue: 1) : Color(red: 1, green: 0.85, blue: 0.4))
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(TavernPalette.leather.opacity(0.92)))
+                    .overlay(Circle().stroke(TavernPalette.brass.opacity(0.8), lineWidth: 1))
+                    .accessibilityLabel("It's \(dayNight)")
+            }
+            if let stormCount, stormCount > 0 {
+                TavernTag(text: "STORM \(stormCount)", leather: true, accent: Color(red: 0.6, green: 0.8, blue: 1))
+                    .accessibilityLabel("Storm count \(stormCount)")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("board.tableHints")
+    }
 }

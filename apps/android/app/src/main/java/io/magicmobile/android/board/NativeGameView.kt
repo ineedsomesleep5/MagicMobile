@@ -711,6 +711,8 @@ fun NativeGameView(
             }
 
             // --- Phase presentation ---
+            // The classic board: day or night and the storm count under the top bar (the tavern table hangs them under its phase plate).
+            if (!isTavernBoard) TavernTableHints(board.dayNight, board.stormCount, Modifier.align(Alignment.TopCenter).padding(top = 64.dp))
             val activeId = board.activePlayerId
             AnimatedVisibility(showsTurnBanner && activeId != null && !isCardChoiceOpen && !isPromptDetailOpen, Modifier.align(Alignment.Center),
                 enter = fadeIn(), exit = scaleOut(targetScale = 0.2f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)) +

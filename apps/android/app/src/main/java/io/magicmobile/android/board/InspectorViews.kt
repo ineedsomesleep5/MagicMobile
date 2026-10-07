@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -409,15 +410,18 @@ fun CompactZoneInspectorOverlay(title: String, cards: List<ZoneCard>, legalActio
         .tavernPanelChrome(io.magicmobile.android.ui.LocalTavernBoard.current),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("$title · ${cards.size}", Modifier.weight(1f), color = MagicPalette.antiqueGold, style = sf(11f, SfWeight.black))
+            Text("$title · ${cards.size}", Modifier.weight(1f).semantics { heading() }, color = MagicPalette.antiqueGold,
+                style = sf(14f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF), maxLines = 2)
             PressableBox(closeAction, Modifier.size(44.dp).semantics { contentDescription = "Close $title" }) {
                 SfImage("xmark.circle.fill", MagicPalette.parchment.copy(alpha = 0.6f), 16.dp)
             }
         }
         HorizontalDivider(color = MagicPalette.antiqueGold.copy(alpha = 0.18f))
         if (cards.isEmpty()) {
-            Text("No cards in this zone.", Modifier.fillMaxWidth().padding(top = 20.dp), color = MagicPalette.parchment.copy(alpha = 0.78f),
-                style = sf(12f, SfWeight.semibold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(if (title.contains("Library")) "The library is face down. Only a revealed top card shows here." else "No cards here.",
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp), color = MagicPalette.parchment.copy(alpha = 0.8f),
+                style = sf(14f, design = io.magicmobile.android.ui.SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         } else {
             LazyVerticalGrid(GridCells.Adaptive(100.dp), Modifier.fillMaxWidth().weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -434,24 +438,27 @@ fun CompactZoneInspectorOverlay(title: String, cards: List<ZoneCard>, legalActio
                         }, Modifier.fillMaxWidth().semantics { contentDescription = "Target ${card.card.name}" }, isPrimary = true, compact = true, enabled = pendingActionId == null) {
                             Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
                                 verticalAlignment = Alignment.CenterVertically) {
-                                SfImage("scope", Color.White, 12.dp); Text("Target", color = Color.White, style = sf(12f, SfWeight.semibold))
+                                SfImage("scope", Color.White, 12.dp); Text("Target", color = Color.White, style = sf(13f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF))
                             }
                         }
                         val single = cardActions.singleOrNull()
                         if (single != null) PanelActionButton({ perform(single) }, Modifier.fillMaxWidth(), isPrimary = true, compact = true, enabled = pendingActionId == null) {
                             Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp), contentAlignment = Alignment.Center) {
-                                Text(LegalActionDisplay.displayLabel(single), color = androidx.compose.material3.LocalContentColor.current, style = sf(12f, SfWeight.semibold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                Text(LegalActionDisplay.displayLabel(single), color = androidx.compose.material3.LocalContentColor.current, style = sf(13f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
-                        if (cardActions.size > 1) BoardMenu({ cardActions.map { action -> MenuEntry.Item(LegalActionDisplay.displayLabel(action)) { perform(action) } } },
-                            enabled = pendingActionId == null) {
-                            Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp), contentAlignment = Alignment.Center) {
-                                Text("Actions", color = rgb(0.04, 0.52, 1.0), style = sf(12f, SfWeight.semibold))
-                            }
+                        // The tavern's own leather pop-over, not the system menu.
+                        if (cardActions.size > 1) io.magicmobile.android.ui.TavernMenu(Modifier.fillMaxWidth(), io.magicmobile.android.ui.TavernMenuEdge.ABOVE,
+                            enabled = pendingActionId == null, label = {
+                                Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp), contentAlignment = Alignment.Center) {
+                                    Text("Actions", color = MagicPalette.parchment, style = sf(13f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF))
+                                }
+                            }) {
+                            for (action in cardActions) io.magicmobile.android.ui.TavernMenuItem(LegalActionDisplay.displayLabel(action), { perform(action) }, "sparkles")
                         }
                         Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable { selection.inspectedCard = card }
                             .semantics { contentDescription = "Inspect ${card.card.name}" }, contentAlignment = Alignment.Center) {
-                            Text("Inspect", color = MagicPalette.parchment, style = sf(12f, SfWeight.semibold))
+                            Text("Inspect", color = MagicPalette.parchment.copy(alpha = 0.85f), style = sf(13f, SfWeight.semibold, io.magicmobile.android.ui.SfDesign.SERIF))
                         }
                     }
                 }

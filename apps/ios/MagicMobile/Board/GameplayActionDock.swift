@@ -391,6 +391,11 @@ struct PortraitBottomCommandBar: View {
         VStack(spacing: 6) {
             HStack(spacing: 4) {
                 PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                // The revealed top of your library, next to your zones.
+                if let top = human.zones.library.first {
+                    TopOfLibraryCard(card: top, playable: GameplayAffordances.castableZones(player: human, snapshot: snapshot, pendingActionID: pendingActionId).contains(.library),
+                                     owner: "your", height: 40) { viewZone("Top of your library", [top]) }
+                }
                 BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
                 ScrollView(.horizontal, showsIndicators: false) {
                     ManaPoolHUD(manaPool: manaPool, compact: true,
@@ -493,7 +498,8 @@ struct PortraitBottomCommandBar: View {
     /// Your commander's portrait in the life socket; it opens your zones like the old grid button.
     private func tavernMedallion(canvas: CGSize) -> some View {
         let diameter = canvas.tavernLength(TavernSockets.current(canvas).lifeHoleRadius * 2)
-        let commanderReady = GameplayAffordances.commanderCastAvailable(player: human, snapshot: snapshot, pendingActionID: pendingActionId)
+        let castable = GameplayAffordances.castableZones(player: human, snapshot: snapshot, pendingActionID: pendingActionId)
+        let commanderReady = !castable.isEmpty
         return PlayerZoneMenu(
             player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId,
             customLabel: AnyView(
@@ -503,9 +509,18 @@ struct PortraitBottomCommandBar: View {
                 }
                 .frame(width: diameter + 8, height: diameter + 8)
             ),
-            accessibilityOverride: ("Your life: \(human.life)\(commanderReady ? ", commander cast available" : "")", "board.lifeOrb")
+            accessibilityOverride: ("Your life: \(human.life)\(Self.castableDescription(castable))", "board.lifeOrb")
         )
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
+        // The revealed top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix…) beside your portrait.
+        .overlay(alignment: .topTrailing) {
+            if let top = human.zones.library.first {
+                TopOfLibraryCard(card: top, playable: castable.contains(.library), owner: "your", height: diameter * 0.72) {
+                    viewZone("Top of your library", [top])
+                }
+                .offset(x: diameter * 0.62, y: -diameter * 0.05)
+            }
+        }
         .overlay(alignment: .top) {
             if let emoteCenter {
                 EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
@@ -513,6 +528,13 @@ struct PortraitBottomCommandBar: View {
                     .offset(y: -56)
             }
         }
+    }
+
+    /// "commander cast available" and the rest, for VoiceOver.
+    static func castableDescription(_ zones: Set<BoardZoneReference.PlayerZone>) -> String {
+        let names: [(BoardZoneReference.PlayerZone, String)] = [(.command, "commander"), (.graveyard, "graveyard"), (.exile, "exile"), (.library, "top of library")]
+        let ready = names.filter { zones.contains($0.0) }.map(\.1)
+        return ready.isEmpty ? "" : ", cast available from \(ready.joined(separator: ", "))"
     }
 
     private var lifeOrb: some View {
@@ -644,6 +666,17 @@ struct PlayerZoneMenu: View {
     private var commanderReady: Bool {
         snapshot.map { GameplayAffordances.commanderCastAvailable(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? false
     }
+    /// Zones with a card you can play now (graveyard, exile, the revealed top card), shown on their rows.
+    private var castable: Set<BoardZoneReference.PlayerZone> {
+        snapshot.map { GameplayAffordances.castableZones(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? []
+    }
+    private func row(_ zone: BoardZoneReference.PlayerZone, _ name: String, _ count: Int) -> String {
+        castable.contains(zone) ? "\(name) · Cast available" : "\(name) · \(count)"
+    }
+    private var libraryRow: String {
+        if castable.contains(.library) { return "Library · Top card playable" }
+        return player.zones.library.isEmpty ? "Library · \(player.zones.visibleLibraryCount)" : "Library · Top card revealed"
+    }
 
     var body: some View {
         if customLabel != nil && TavernUIKit.available {
@@ -661,10 +694,10 @@ struct PlayerZoneMenu: View {
                                     summary: PlayerStatusSummary(player: player, snapshot: game), inspect: viewZone)
             TavernMenuItem(title: commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)",
                            systemImage: "crown") { open(.command, player.zones.command) }
-            TavernMenuItem(title: "Graveyard · \(player.zones.graveyard.count)", systemImage: "leaf") { open(.graveyard, player.zones.graveyard) }
-            TavernMenuItem(title: "Exile · \(player.zones.exile.count)", systemImage: "sparkles") { open(.exile, player.zones.exile) }
+            TavernMenuItem(title: row(.graveyard, "Graveyard", player.zones.graveyard.count), systemImage: "leaf") { open(.graveyard, player.zones.graveyard) }
+            TavernMenuItem(title: row(.exile, "Exile", player.zones.exile.count), systemImage: "sparkles") { open(.exile, player.zones.exile) }
             TavernMenuItem(title: "Hand · \(player.zones.visibleHandCount)", systemImage: "hand.raised") { open(.hand, player.zones.hand) }
-            TavernMenuItem(title: "Library · \(player.zones.visibleLibraryCount)", systemImage: "books.vertical") { open(.library, player.zones.library) }
+            TavernMenuItem(title: libraryRow, systemImage: "books.vertical") { open(.library, player.zones.library) }
             TavernMenuItem(title: "Battlefield · \(player.zones.battlefield.count)", systemImage: "square.grid.2x2") { open(.battlefield, player.zones.battlefield) }
             if let snapshot {
                 let references = BoardZoneReference.namedReferences(in: snapshot)
@@ -689,17 +722,17 @@ struct PlayerZoneMenu: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityOverride?.label
-            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : PortraitBottomCommandBar.castableDescription(castable))")
         .accessibilityIdentifier(accessibilityOverride?.identifier ?? "board.zones.\(player.playerId)")
     }
 
     private var systemMenu: some View {
         Menu {
             Button(commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
-            Button("Graveyard · \(player.zones.graveyard.count)") { open(.graveyard, player.zones.graveyard) }
-            Button("Exile · \(player.zones.exile.count)") { open(.exile, player.zones.exile) }
+            Button(row(.graveyard, "Graveyard", player.zones.graveyard.count)) { open(.graveyard, player.zones.graveyard) }
+            Button(row(.exile, "Exile", player.zones.exile.count)) { open(.exile, player.zones.exile) }
             Button("Hand · \(player.zones.visibleHandCount)") { open(.hand, player.zones.hand) }
-            Button("Library · \(player.zones.visibleLibraryCount)") { open(.library, player.zones.library) }
+            Button(libraryRow) { open(.library, player.zones.library) }
             Button("Battlefield · \(player.zones.battlefield.count)") { open(.battlefield, player.zones.battlefield) }
             if let snapshot {
                 Divider()
@@ -718,7 +751,7 @@ struct PlayerZoneMenu: View {
             if let customLabel { customLabel } else { defaultLabel }
         }
         .accessibilityLabel(accessibilityOverride?.label
-            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : PortraitBottomCommandBar.castableDescription(castable))")
         .accessibilityIdentifier(accessibilityOverride?.identifier ?? "board.zones.\(player.playerId)")
     }
 
@@ -726,10 +759,11 @@ struct PlayerZoneMenu: View {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 12, weight: .semibold))
                 .frame(minWidth: 44, minHeight: 44)
-                .foregroundStyle(commanderReady ? .white : MagicPalette.parchment)
-                .background(commanderReady ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(commanderReady ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
-                .shadow(color: commanderReady ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
+                // Glows whenever a card can be played from these zones: the commander, the graveyard, exile, the top card.
+                .foregroundStyle(!castable.isEmpty ? .white : MagicPalette.parchment)
+                .background(!castable.isEmpty ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(!castable.isEmpty ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
+                .shadow(color: !castable.isEmpty ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
     }
 
     private func open(_ zone: BoardZoneReference.PlayerZone, _ cards: [ZoneCard]) {

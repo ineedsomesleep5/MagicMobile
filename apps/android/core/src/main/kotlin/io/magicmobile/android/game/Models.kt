@@ -58,6 +58,10 @@ data class GameSnapshot(
     val winnerPlayerIds: List<String>? = null,
     val endReason: String? = null,
     val viewerPlayerId: String? = null,
+    /** "day" or "night" once the game has it (XMage's helper emblem); null before either. */
+    val dayNight: String? = null,
+    /** Spells cast this turn, while a storm card is in the game. */
+    val stormCount: Int? = null,
     val selectedOpponentId: String? = null,
     /** Presentation only: who the bottom seat shows while the viewer watches after leaving the game (BoardOpponentFocus). Null is the viewer's own seat. */
     val seatPlayerId: String? = null,
@@ -328,6 +332,8 @@ data class PlayerGameState(
     val hasLeft: Boolean? = null,
     /** False for the engine's AI seats. */
     val isHuman: Boolean? = null,
+    /** XMage designations such as City's Blessing. */
+    val designations: List<String>? = null,
 ) {
     val hasKnownCommanderTax: Boolean get() = commanderTaxKnown ?: true
     val isOut: Boolean get() = hasLeft == true
