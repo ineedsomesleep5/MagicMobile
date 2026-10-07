@@ -715,6 +715,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Lifecycle: prepare once, pause input and polling in the background.
     LaunchedEffect(Unit) { setup.prepare() }
     LaunchedEffect(setup.identity, setup.localDecks) { if (!activeGame) restoreSetupPreferences() }
+    // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
+    LaunchedEffect(selectedDeckID) { io.magicmobile.android.ArtChoices.shared.select(selectedDeckID) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

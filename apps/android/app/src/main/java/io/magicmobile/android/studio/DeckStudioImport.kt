@@ -314,7 +314,7 @@ private fun ImportReview(preview: OnDeviceDeckLinkImporter.Preview) {
             StudioDisclosure("${preview.annotations.size} source annotations") {
                 preview.annotations.forEach { Text("Line ${it.line}: ${it.text}", color = DeckStudioPalette.ink, style = StudioText.caption) }
             }
-            Text("An on-device import receipt preserves these annotations and the reviewed deck. Printing annotations do not change the compiled gameplay identity.",
+            Text("An on-device import receipt preserves these annotations and the reviewed deck. A printing written as (SET) number is kept as that card's chosen artwork; it does not change the compiled gameplay identity.",
                 color = DeckStudioPalette.ink, style = StudioText.caption2)
         }
     }

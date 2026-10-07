@@ -216,6 +216,8 @@ class OnDeviceDeckResolver(private val index: PrintingIndex) {
 
     fun canonicalCardName(name: String): String? = if (name in index.names) name else nameAliases[name] ?: reverseFaces[name]
     fun containsCard(name: String): Boolean = canonicalCardName(name) != null
+    /** Every reverse face and the front face it belongs to. */
+    val reverseFaceFronts: Map<String, String> get() = reverseFaces
 
     fun canonicalized(deck: DeckList): DeckList {
         fun entry(value: DeckEntry): DeckEntry {

@@ -463,7 +463,8 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
             .semantics { contentDescription = "deckStudio.deck.${if (included) record.id else "local:${record.id}"}" },
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.fillMaxWidth().height(if (grid) 164.dp else 130.dp).clip(RoundedCornerShape(0.dp))) {
-                DeckStudioArtwork(record.commander?.cardName ?: "", Modifier.fillMaxSize(), hero = true, colors = colors)
+                DeckStudioArtwork(record.commander?.cardName ?: "", Modifier.fillMaxSize(), hero = true, colors = colors,
+                    art = io.magicmobile.android.CardArtSelection.Exact(record.commander?.printing))
                 if (selected) DeckStudioPlayingBadge(Modifier.padding(10.dp))
                 // The deck's Commander bracket (game/Ranked.kt).
                 bracket?.let { Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) { io.magicmobile.android.ranked.BracketTag(it, short = true) } }
