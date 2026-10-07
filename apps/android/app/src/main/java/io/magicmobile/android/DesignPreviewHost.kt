@@ -48,7 +48,11 @@ object DesignPreview {
         "MAGICMOBILE_PREVIEW_INSPECT", "MAGICMOBILE_BOARD_FX_AUTOPLAY", "MAGICMOBILE_BOARD_EFFECTS", "MAGICMOBILE_FONT_CHECK", "MAGICMOBILE_RELAY_URL",
         "MAGICMOBILE_BOARD_FX_FREEZE", "MAGICMOBILE_PREVIEW_OPEN_LOG", "MAGICMOBILE_PREVIEW_TOKENS", "MAGICMOBILE_PREVIEW_AMOUNT", io.magicmobile.android.game.HowToPlayLaunch.FIRST_LAUNCH_EXTRA,
         // Ranked (as on iOS): a seeded standing, sample history, and a rank moment.
-        "MAGICMOBILE_UI_TEST_RANK", "MAGICMOBILE_UI_TEST_MATCHES", "MAGICMOBILE_UI_TEST_CEREMONY")
+        "MAGICMOBILE_UI_TEST_RANK", "MAGICMOBILE_UI_TEST_MATCHES", "MAGICMOBILE_UI_TEST_CEREMONY",
+        // Profiles and friends (ranked/SocialFixtures.kt): a fixture account instead of the server, and a screen to open at launch.
+        "MAGICMOBILE_UI_TEST_SOCIAL", "MAGICMOBILE_UI_TEST_OPEN",
+        // The starting roll preview (MAGICMOBILE_DESIGN_PREVIEW=starting-roll): seats 2-4, and 1 to roll by itself.
+        "MAGICMOBILE_STARTING_ROLL_SEATS", "MAGICMOBILE_STARTING_ROLL_AUTO")
 
     fun extras(intent: Intent?): Map<String, String> {
         if (!BuildConfig.DEBUG || intent == null) return emptyMap()
@@ -79,6 +83,7 @@ private fun FontCheck() {
 fun DesignPreviewHost() {
     if (LaunchEnvironment["MAGICMOBILE_FONT_CHECK"] == "1") FontCheck()
     val preview = LaunchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] ?: return
+    if (preview == "starting-roll") { StartingRollPreview(); return }
     val state = GameBoardDesignPreviewState.of(preview) ?: GameBoardDesignPreviewState.NORMAL_BATTLEFIELD
     var boardFXStep by remember { mutableIntStateOf(0) }
     var snapshot by remember { mutableStateOf(if (preview == "board-fx") GameBoardPreviewFixtures.boardFXStep(0)

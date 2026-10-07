@@ -82,6 +82,7 @@ private struct BinderScreenModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.environment(\.binderScreen, id)
             .binderControls()
+            .binderOverlayHost()
             .scrollContentBackground(.hidden)
             .background { BinderCover().ignoresSafeArea() }
             .fontDesign(.serif)
@@ -200,7 +201,7 @@ struct BinderIndexTabs: View {
     let choose: (String) -> Void
 
     static let icons = ["Cards": "rectangle.portrait.on.rectangle.portrait.fill", "Ideas": "lightbulb.fill",
-                        "Analysis": "chart.bar.fill", "Playtest": "flag.2.crossed.fill"]
+                        "Analysis": "chart.bar.fill"]
     /// How far each tab runs in under the page's edge: the page lies over it and shades it, so the tabs
     /// stand out of the binder rather than beside it. Put the page above the tabs (zIndex).
     static let tuck: CGFloat = 12
@@ -322,15 +323,17 @@ struct BinderHead<Trailing: View>: View {
                 .accessibilityIdentifier(strapIdentifier)
             Spacer(minLength: 2)
             if let title {
-                Text(title).font(.system(size: 17, weight: .bold, design: .serif))
-                    .foregroundStyle(TavernPalette.parchment).shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
+                Text(title).font(.system(size: 18, weight: .bold, design: .serif))
+                    .foregroundStyle(DeckStudioPalette.ink)
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 2)
             }
             trailing
         }
-        .padding(.horizontal, 4)
+        // Written at the top of the page (Caleb, 2026-10-06: the head is part of the paper, so facing pages
+        // are the same height and turn together).
+        .padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 4)
     }
 }
 
@@ -449,6 +452,8 @@ enum BinderShelf: String { case deck, all }
 /// The two shelves as a brass switch on the rail.
 struct BinderShelfSwitch: View {
     @Binding var shelf: BinderShelf
+    /// Symbols only, for a short sideways page (the titles stay for VoiceOver).
+    var compact = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -466,11 +471,13 @@ struct BinderShelfSwitch: View {
         let chosen = shelf == value
         return Button { shelf = value } label: {
             Label(title, systemImage: icon)
+                .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
                 .font(.system(size: 14, weight: .bold, design: .serif))
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .foregroundStyle(chosen ? Color(red: 1, green: 0.92, blue: 0.7) : TavernPalette.parchment.opacity(0.7))
                 .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
-                .frame(maxWidth: .infinity, minHeight: 36)
+                .frame(maxWidth: compact ? nil : .infinity, minHeight: compact ? 34 : 36)
+                .frame(width: compact ? 42 : nil)
                 .background {
                     if chosen {
                         TavernFill(material: .ember).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -480,8 +487,16 @@ struct BinderShelfSwitch: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(chosen ? [.isSelected] : [])
     }
+}
+
+/// A label style chosen at run time.
+struct AnyLabelStyle: LabelStyle {
+    private let make: (Configuration) -> AnyView
+    init<S: LabelStyle>(_ style: S) { make = { AnyView(style.makeBody(configuration: $0)) } }
+    func makeBody(configuration: Configuration) -> some View { make(configuration) }
 }
 
 /// Mana values 0 to 7+ as brass coins: tap one or more to see only those costs; none shows all.
@@ -585,8 +600,11 @@ struct BinderSleeve: View {
     let add: () -> Void
     let remove: () -> Void
     let tap: () -> Void
+    @Environment(\.binderOverlayHost) private var host
 
     private var editing: Bool { canEdit && selected == nil }
+    /// A long press that opens the card's menu must not also add or take away a copy.
+    private func guarded(_ action: @escaping () -> Void) -> () -> Void { { if host?.tapAllowed ?? true { action() } } }
 
     var body: some View {
         VStack(spacing: 5) {
@@ -626,13 +644,13 @@ struct BinderSleeve: View {
                         // The card's halves: left takes a copy away, right adds one. The strip's buttons
                         // say the same to VoiceOver, so these stay out of its way.
                         HStack(spacing: 0) {
-                            Button { if quantity > 0 { remove() } } label: { Color.clear.contentShape(Rectangle()) }
-                            Button(action: add) { Color.clear.contentShape(Rectangle()) }
+                            Button(action: guarded { if quantity > 0 { remove() } }) { Color.clear.contentShape(Rectangle()) }
+                            Button(action: guarded(add)) { Color.clear.contentShape(Rectangle()) }
                         }
                         .buttonStyle(.plain)
                         .accessibilityHidden(true)
                     } else {
-                        Button(action: tap) { Color.clear.contentShape(Rectangle()) }
+                        Button(action: guarded(tap)) { Color.clear.contentShape(Rectangle()) }
                             .buttonStyle(.plain)
                             .accessibilityLabel(tapLabel ?? name)
                             .accessibilityAddTraits(selected == true ? [.isSelected] : [])

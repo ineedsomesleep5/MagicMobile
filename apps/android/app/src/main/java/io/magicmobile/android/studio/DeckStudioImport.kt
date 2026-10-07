@@ -247,11 +247,12 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
             }
             if (spread) {
                 // The list goes in on the left page and is reviewed on the right; nothing runs across the fold.
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        head()
-                        BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = false, screen = binderScreen) {
-                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
+                // The head is written on the left page, so both pages are the same height.
+                Row(Modifier.weight(1f).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = false, screen = binderScreen) {
+                        Column(Modifier.fillMaxSize()) {
+                            head()
+                            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) { entry() }
                         }
                     }
                     BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
@@ -266,10 +267,10 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                     }
                 }
             } else {
-                head()
                 Spacer(Modifier.height(4.dp))
                 BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
                     Column(Modifier.fillMaxSize()) {
+                        head()
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 720.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                             entry()
                             reviewed()

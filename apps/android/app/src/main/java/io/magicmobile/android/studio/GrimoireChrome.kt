@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -39,7 +42,9 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -55,6 +60,7 @@ import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.ui.tavernImage
 import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * GrimoireChrome.swift: Deck Studio as a spell book. Every screen is a parchment page of the grimoire the
@@ -66,6 +72,9 @@ object Grimoire {
     /** How wide the gutter's shadow and the stack of leaf edges are. */
     val gutterWidth = 26.dp
     val edgeWidth = 7.dp
+
+    /** The height of a page's head (the plaques along its top): a drag that begins there turns nothing (PAGE_CURL.md). */
+    val headBand = 64.dp
 
     /** How far each page's content keeps clear of the fold of a spread, beyond its own margins. */
     val foldInset = 12.dp
@@ -157,11 +166,29 @@ fun GrimoireRule(modifier: Modifier = Modifier) {
 }
 
 /**
- * Turns the page on a sideways swipe anywhere on it: leftward for `next`, rightward for `previous`. The swipe
- * is only watched (never consumed), and one that a child used for itself (a row of cards scrolling sideways)
- * turns nothing.
+ * Turns the page on a sideways drag anywhere on it: leftward for `next`, rightward for `previous`. The page curls
+ * under the finger (GrimoireStage, PageCurlShader) and finishes or springs back when it lets go. This only registers
+ * the screen's chapter turns with the book while the screen is on show; the drags themselves are watched by
+ * `watchGrimoireDrags` on the book (GrimoirePages), which carry on when a turn takes the screen away. Outside a
+ * book it watches the swipe itself and turns the page when it ends.
  */
-fun Modifier.grimoireSwipe(next: () -> Unit, previous: () -> Unit): Modifier = pointerInput(Unit) {
+fun Modifier.grimoireSwipe(next: () -> Unit, previous: () -> Unit): Modifier = composed {
+    val stage = LocalGrimoireStage.current
+    val currentNext by rememberUpdatedState(next)
+    val currentPrevious by rememberUpdatedState(previous)
+    if (stage == null) Modifier.pointerInput(Unit) { watchSwipeWhenItEnds({ currentNext() }, { currentPrevious() }) }
+    else {
+        DisposableEffect(stage) {
+            val token = Any()
+            stage.registerSwipe(token, { currentNext() }, { currentPrevious() })
+            onDispose { stage.unregisterSwipe(token) }
+        }
+        Modifier
+    }
+}
+
+/** A swipe of more than 80 dp, mostly sideways and not used by a child (a row of cards scrolling), turns the page when it ends. */
+private suspend fun PointerInputScope.watchSwipeWhenItEnds(next: () -> Unit, previous: () -> Unit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
         var last = down.position; var claimed = false
@@ -176,5 +203,51 @@ fun Modifier.grimoireSwipe(next: () -> Unit, previous: () -> Unit): Modifier = p
         }
         val across = last.x - down.position.x; val along = last.y - down.position.y
         if (!claimed && abs(across) > 80.dp.toPx() && abs(across) > 2.5f * abs(along)) { if (across < 0) next() else previous() }
+    }
+}
+
+private enum class DragPhase { UNDECIDED, DRAGGING, IGNORED, LEGACY }
+
+/**
+ * Watches every gesture on the book, only watching: a drag that starts sideways turns the page under the finger. Once
+ * the finger has moved 12 dp a mostly sideways drag that no child has used for itself (a row of cards scrolling, a
+ * vertical scroll, a slider) starts the turn; anything else is left alone for the rest of the gesture. With animations
+ * off a swipe turns the page when it ends instead.
+ */
+internal suspend fun PointerInputScope.watchGrimoireDrags(stage: GrimoireStage) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+        if (!stage.hasSwipes) return@awaitEachGesture
+        val slop = 12.dp.toPx()
+        val tracker = VelocityTracker().also { it.addPosition(down.uptimeMillis, down.position) }
+        var phase = if (stage.effect == PageEffect.CURL) DragPhase.UNDECIDED else DragPhase.LEGACY
+        var consumed = false
+        var last = down.position
+        var cancelled = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Final)
+            val change = event.changes.firstOrNull { it.id == down.id }
+            if (change == null) { cancelled = true; break }
+            tracker.addPosition(change.uptimeMillis, change.position)
+            if (change.isConsumed) consumed = true
+            last = change.position
+            val dx = last.x - down.position.x; val dy = last.y - down.position.y
+            if (phase == DragPhase.UNDECIDED && hypot(dx, dy) >= slop) {
+                phase = if (consumed || abs(dx) <= 2f * abs(dy) || !stage.pageMayCurl(down.position)) DragPhase.IGNORED else {
+                    val forward = dx < 0
+                    val begun = stage.beginDrag(forward, down.position.x, probe = { if (forward) stage.swipeNext() else stage.swipePrevious() },
+                        revert = { if (forward) stage.swipePrevious() else stage.swipeNext() })
+                    if (begun) DragPhase.DRAGGING else DragPhase.IGNORED
+                }
+            }
+            if (phase == DragPhase.DRAGGING) stage.dragChanged(dx, dy)
+            if (!change.pressed) break
+        }
+        val dx = last.x - down.position.x; val dy = last.y - down.position.y
+        when (phase) {
+            DragPhase.DRAGGING -> stage.dragEnded(if (cancelled) 0f else tracker.calculateVelocity().x, cancelled)
+            DragPhase.LEGACY -> if (!consumed && stage.pageMayCurl(down.position) && abs(dx) > 80.dp.toPx() && abs(dx) > 2.5f * abs(dy)) { if (dx < 0) stage.swipeNext() else stage.swipePrevious() }
+            else -> {}
+        }
     }
 }

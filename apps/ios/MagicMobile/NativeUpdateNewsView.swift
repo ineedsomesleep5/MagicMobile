@@ -16,6 +16,11 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage: "hand.draw.fill")
+                    Label("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage: "dice")
+                    Label("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage: "chart.bar.fill")
+                    Label("Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private.", systemImage: "person.2.fill")
+                    Label("Deck Studio's menus and prompts are the binder's own, and held sideways both pages fill the binder with Add cards floating over the page.", systemImage: "list.bullet.rectangle.portrait")
                     Label("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage: "book.fill")
                     Label("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage: "books.vertical.fill")
                     Label("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage: "battery.100")

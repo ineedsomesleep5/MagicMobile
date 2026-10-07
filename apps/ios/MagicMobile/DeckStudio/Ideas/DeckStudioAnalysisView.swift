@@ -49,7 +49,7 @@ struct DeckStudioAnalysisContent: View {
                             metric("Other sections", "\(draft.rows.filter { !["deck", "commanders"].contains(DeckStudioDraftPresentation.section($0)) }.reduce(0) { $0 + $1.quantity })")
                             metric("Lands in main", "\(statistics.landCount)")
                             metric("Average nonland mana value", statistics.averageManaValue.map { String(format: "%.2f", $0) } ?? "Unavailable")
-                            Text("Deck statistics · check legality in Playtest.")
+                            Text("Deck statistics · check legality with Validate deck in the ⋯ menu.")
                                 .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         }
                     }

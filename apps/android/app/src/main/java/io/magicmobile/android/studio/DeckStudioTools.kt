@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -615,7 +616,8 @@ private data class QuickAddToast(val message: String, val generation: UUID)
 fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStudioEditorModel, openSearch: () -> Unit, modifier: Modifier = Modifier,
                           binder: Boolean = false) {
     // At the foot of a binder page, on leather: parchment lettering, a dark well to write in and brass plaques.
-    val hintInk = if (binder) io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.85f) else DeckStudioPalette.secondaryInk
+    // The bar floats over the page (Caleb, 2026-10-06), so its notes are written in ink.
+    val hintInk = DeckStudioPalette.secondaryInk
     var text by remember { mutableStateOf("") }
     var maybeboard by rememberSaveable { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<CardInfo>>(emptyList()) }
@@ -645,8 +647,10 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
     }
     val shape = RoundedCornerShape(DeckStudioMetrics.controlRadius)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (focused && suggestions.isNotEmpty()) Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(12.dp))
-            .border(1.dp, DeckStudioPalette.separator, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp))) {
+        if (focused && suggestions.isNotEmpty()) Column(Modifier.fillMaxWidth().shadow(if (binder) 4.dp else 0.dp, RoundedCornerShape(12.dp))
+            .grimoirePaper(DeckStudioPalette.surface, 0.2f, RoundedCornerShape(12.dp))
+            .border(if (binder) 1.5.dp else 1.dp, if (binder) Binder.brass else androidx.compose.ui.graphics.SolidColor(DeckStudioPalette.separator), RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))) {
             suggestions.forEachIndexed { index, card ->
                 Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable { commit(card) }.padding(horizontal = 12.dp)
                     .clearAndSetSemantics { contentDescription = "Quick add ${parsed?.quantity ?: 1} ${card.name}" },
@@ -659,20 +663,18 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
             }
         }
         when {
-            error != null -> Text(error ?: "", color = if (binder) rgb(1.0, 0.62, 0.5) else DeckStudioPalette.danger, style = StudioText.caption)
+            error != null -> Text(error ?: "", color = DeckStudioPalette.danger, style = StudioText.caption)
             note != null -> Text(note ?: "", color = hintInk, style = StudioText.caption)
             focused && text.isEmpty() -> Text(DeckStudioPlayText.quickAddHint, color = hintInk, style = StudioText.caption)
         }
         toast?.let { shown ->
-            Row(Modifier.fillMaxWidth().background(DeckStudioPalette.ink, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp)
+            // A leather slip in brass with a brass Undo plaque.
+            Row(Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(12.dp)).binderLeather(Binder.oxblood, 0.4f, RoundedCornerShape(12.dp))
+                .border(1.5.dp, Binder.brass, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }, verticalAlignment = Alignment.CenterVertically) {
-                Text(shown.message, Modifier.weight(1f), color = DeckStudioPalette.surfaceElevated, style = StudioText.caption.weight(SfWeight.semibold), maxLines = 2)
+                Text(shown.message, Modifier.weight(1f), color = rgb(0.98, 0.86, 0.62), style = sf(13f, SfWeight.bold), maxLines = 2)
                 val canUndo = model.history.generation == shown.generation
-                Box(Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp).alpha(if (canUndo) 1f else 0.4f)
-                    .clickable(enabled = canUndo, role = Role.Button) { model.undo(); toast = null }.testTag("deckStudio.quickAdd.undo"),
-                    contentAlignment = Alignment.Center) {
-                    Text(DeckStudioPlayText.undo, color = DeckStudioPalette.surfaceElevated, style = StudioText.caption.weight(SfWeight.semibold))
-                }
+                BinderPlaque(Modifier.testTag("deckStudio.quickAdd.undo"), title = DeckStudioPlayText.undo, enabled = canUndo) { model.undo(); toast = null }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

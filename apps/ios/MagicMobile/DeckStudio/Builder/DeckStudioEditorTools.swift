@@ -299,25 +299,33 @@ struct DeckStudioQuickAddBar: View {
                             .accessibilityLabel("Quick add \(parsed?.quantity ?? 1) \(card.name)")
                         if card.id != suggestions.last?.id { Divider() }
                     }
-                }.background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(DeckStudioPalette.separator))
+                }.background { GrimoirePaper(tone: .plate).clipShape(RoundedRectangle(cornerRadius: 12)) }
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(binder ? AnyShapeStyle(Binder.brass) : AnyShapeStyle(DeckStudioPalette.separator), lineWidth: binder ? 1.5 : 1))
+                    .shadow(color: .black.opacity(binder ? 0.25 : 0), radius: 8, y: 3)
             }
-            if let error { Text(error).font(.caption).foregroundStyle(binder ? Color(red: 1, green: 0.62, blue: 0.5) : DeckStudioPalette.danger) }
-            else if let note { Text(note).font(.caption).foregroundStyle(binder ? TavernPalette.parchment.opacity(0.85) : DeckStudioPalette.secondaryInk) }
+            // The bar floats over the page (Caleb, 2026-10-06), so its notes are written in ink.
+            if let error { Text(error).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(DeckStudioPalette.danger) }
+            else if let note { Text(note).font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk) }
             else if focused, text.isEmpty {
                 Text(DeckStudioPlayText.quickAddHint)
-                    .font(.caption).foregroundStyle(binder ? TavernPalette.parchment.opacity(0.85) : DeckStudioPalette.secondaryInk)
+                    .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
             }
             if let toast {
                 HStack {
-                    Text(toast.message).font(.caption.weight(.semibold)).lineLimit(2)
+                    Text(toast.message).font(.system(size: 13, weight: .bold, design: .serif)).lineLimit(2)
+                        .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
                     Spacer(minLength: 8)
                     Button(DeckStudioPlayText.undo) { model.undo(); self.toast = nil }
-                        .font(.caption.weight(.semibold)).frame(minHeight: 44)
+                        .buttonStyle(BinderPlaqueButtonStyle())
                         .disabled(model.history.generation != toast.generation)
                         .accessibilityIdentifier("deckStudio.quickAdd.undo")
-                }.padding(.horizontal, 12).foregroundStyle(DeckStudioPalette.surfaceElevated).tint(DeckStudioPalette.surfaceElevated)
-                    .background(DeckStudioPalette.ink, in: RoundedRectangle(cornerRadius: 12))
+                }.padding(.leading, 12).padding(.trailing, 4)
+                    .background {
+                        ZStack { TavernFill(material: .leather); Binder.dye(Binder.oxblood, 0.4) }
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Binder.brass, lineWidth: 1.5))
+                    }
+                    .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
                     .accessibilityElement(children: .contain)
             }
             if dynamicType.isAccessibilitySize {
@@ -351,7 +359,16 @@ struct DeckStudioQuickAddBar: View {
                     .accessibilityLabel("Clear quick add")
             }
         }.padding(.horizontal, 10).frame(minHeight: DeckStudioMetrics.controlHeight)
-            .background(binder ? Color.black.opacity(0.5) : DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
+            // Floating over the page's cards, the well is solid leather so nothing shows through it.
+            .background {
+                if binder {
+                    ZStack { TavernFill(material: .leather); Binder.dye(Binder.leatherDark, 0.55) }
+                        .clipShape(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
+                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                } else {
+                    RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).fill(DeckStudioPalette.surfaceElevated)
+                }
+            }
             .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(binder ? Binder.brassLight.opacity(0.3) : DeckStudioPalette.separator))
     }
     private var destinationToggle: some View {
@@ -430,9 +447,10 @@ struct DeckStudioBulkBar: View {
                 Button(DeckStudioPlayText.selectAll, action: selectAll).font(.subheadline).frame(minHeight: 44)
             }
             HStack(spacing: 8) {
-                Menu {
+                BinderMenu {
+                    BinderMenuHeading(DeckStudioPlayText.moveTo)
                     ForEach(Self.destinations, id: \.section) { destination in
-                        Button(destination.title) { move(destination.section) }
+                        BinderMenuButton(destination.title) { move(destination.section) }
                     }
                 } label: { action(DeckStudioPlayText.moveTo, "arrow.right.square", tint: DeckStudioPalette.ink) }
                 Button(action: setQuantity) { action(DeckStudioPlayText.setQuantity, "number", tint: DeckStudioPalette.ink) }.buttonStyle(.plain)

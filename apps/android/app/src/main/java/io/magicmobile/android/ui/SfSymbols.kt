@@ -229,6 +229,7 @@ object SfSymbols {
         "flame.fill" -> Icons.Filled.LocalFireDepartment
         "externaldrive" -> Icons.Filled.Storage
         "dice" -> Icons.Filled.Casino
+        "hand.draw.fill" -> Icons.Filled.Gesture
         "circle" -> Icons.Outlined.RadioButtonUnchecked
         "book.fill" -> Icons.AutoMirrored.Filled.MenuBook
         "books.vertical" -> Icons.AutoMirrored.Outlined.LibraryBooks

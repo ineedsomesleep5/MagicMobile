@@ -10,6 +10,8 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
     @ObservedObject private var account = PlayerAccount.shared
     @State private var showFriends = false
+    /// A player opened from the table chat: their public profile covers the chat.
+    @State private var chatProfile: ChatProfileTarget?
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -551,6 +553,16 @@ struct OnDeviceRootView: View {
             account.setForeground(phase == .active)
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
+        #if DEBUG
+        // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
+        .task {
+            switch SocialFixtures.openScreen?.split(separator: ":").first.map(String.init) {
+            case "profile": lobby = .profile
+            case "friends", "public", "search": showFriends = true
+            default: break
+            }
+        }
+        #endif
         // The profile name is the name at every table.
         .onChange(of: account.username) { _, name in if let name { playerDisplayName = name } }
         // Friends see the table this phone hosts while it has open seats.
@@ -627,6 +639,12 @@ struct OnDeviceRootView: View {
             profileRecord.publish = { [account] rank, stats, title, commander in
                 Task { await account.publishRank(rank, stats: stats, title: title, commander: commander) }
             }
+            // Finished games go to the profile server too: now, and again whenever the app is open and online.
+            let upload: () async -> Void = { [account, profileRecord] in
+                await GameUploader.shared.flush(matches: profileRecord.matches) { await account.recordGame($0) }
+            }
+            profileRecord.didRecord = { _ in Task { await upload() } }
+            account.afterRefresh = upload
         }
         .onChange(of: setup.isBusy) { _, busy in
             if !busy { submitStartingChoiceIfNeeded() }
@@ -712,27 +730,32 @@ struct OnDeviceRootView: View {
                     submitStartingChoiceIfNeeded()
                 }
             } else {
-                VStack(spacing: 16) {
+                // Until the host shares the dice: the same leather and brass the roll itself wears.
+                VStack(spacing: 14) {
                     Text("Who goes first?")
-                        .font(.title2.bold())
+                        .font(.system(.title2, design: .serif, weight: .heavy))
+                        .foregroundStyle(Color(red: 0.98, green: 0.92, blue: 0.80))
+                        .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
                     Text(multiplayer.rollStatus)
-                        .font(.subheadline).multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .font(.system(.subheadline, design: .serif, weight: .medium)).multilineTextAlignment(.center)
+                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
                     Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
-                        .font(.caption).multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .font(.system(.caption, design: .serif)).multilineTextAlignment(.center)
+                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
                     Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
                         do { try multiplayer.rollStartingPlayer() }
                         catch { bannerError = error.localizedDescription }
                     }
-                    .buttonStyle(CommanderActionStyle())
+                    .buttonStyle(TavernButtonStyle(kind: .primary, fontSize: 17, fullWidth: true))
                     .disabled(multiplayer.hasRolled)
                     .accessibilityIdentifier("ondevice.multiplayer.roll")
                 }
-                .foregroundStyle(CommanderPresentation.ink)
                 .padding(24)
                 .frame(maxWidth: 440)
-                .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
+                .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 14)).padding(2) }
+                .overlay { TavernBrassFrame() }
+                .shadow(color: .black.opacity(0.5), radius: 10, y: 5)
+                .padding(.horizontal, 16)
             }
         } else if let roll = aiStartingRoll {
             MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
@@ -890,7 +913,11 @@ struct OnDeviceRootView: View {
                            block: account.phase == .ready ? { name in
                                emotes.mute(name)
                                Task { await account.block(name) }
-                           } : nil)
+                           } : nil,
+                           viewProfile: account.phase == .ready ? { name in chatProfile = ChatProfileTarget(name: name) } : nil)
+                .fullScreenCover(item: $chatProfile) { target in
+                    PublicProfileView(account: account, username: target.name) { chatProfile = nil }
+                }
                 .presentationDetents([.medium, .large])
         }
         .onAppear { connectEmotes() }
@@ -1000,7 +1027,7 @@ struct OnDeviceRootView: View {
                             mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
                             profile: { lobby = .profile }, back: { lobby = .chooser }) { playDeckSlot }
         case .profile:
-            PlayerProfileView(record: profileRecord, playerName: account.username ?? playerDisplayName,
+            PlayerProfileView(record: profileRecord, account: account, playerName: account.username ?? playerDisplayName,
                               deckCommanders: library.decks.compactMap { $0.deckList.commander?.cardName } + AIDeckPool.all.map(\.commander),
                               back: { lobby = nil })
         }
@@ -1259,7 +1286,8 @@ struct OnDeviceRootView: View {
         let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
         let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
                                    aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
-                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID)
+                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
+                                   engineMatchID: session.matchID)
         rankChange = change
         if let id = match.rankedMatchID { Task { await matchmaker.report(match: id, outcome: outcome) } }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
@@ -2278,4 +2306,10 @@ private enum ResumeBackgroundTask {
             identifier = .invalid
         }
     }
+}
+
+/// A player whose profile is open over the table chat.
+private struct ChatProfileTarget: Identifiable {
+    let name: String
+    var id: String { name }
 }

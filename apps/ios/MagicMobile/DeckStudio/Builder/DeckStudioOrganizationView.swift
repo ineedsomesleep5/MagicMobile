@@ -98,9 +98,11 @@ private struct DeckStudioOrganizationSheet: View {
                         trailing: BinderLeafAction(title: "Save", disabled: history == nil || busy) { Task { await save() } })
             .task { await load() }
             .interactiveDismissDisabled(isDirty || busy)
-            .confirmationDialog("Discard unsaved deck details?", isPresented: $discardConfirmation, titleVisibility: .visible) {
+            .binderConfirm("Discard unsaved deck details?", isPresented: $discardConfirmation,
+                           message: "Previously saved notes, tags, import receipts and deck cards are unchanged.") {
                 Button("Discard changes", role: .destructive) { dismiss() }
-            } message: { Text("Previously saved notes, tags, import receipts and deck cards are unchanged.") }
+            }
+            .binderOverlayHost()
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     private func edit(_ mutate: (inout DeckStudioOrganization) -> Void) {

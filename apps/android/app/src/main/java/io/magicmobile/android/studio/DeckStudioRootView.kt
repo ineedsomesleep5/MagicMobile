@@ -301,14 +301,13 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
             if (spread) {
                 // Sideways the binder lies open as a spread: the library's heading and filters are the left page,
                 // the decks the right, and each scrolls by itself. Nothing runs across the fold.
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        head()
-                        BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = false, screen = binderScreen) {
-                            Column(Modifier.fillMaxSize()) {
-                                nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp))
-                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp)) { intro() }
-                            }
+                // The head is written on the left page, so both pages are the same height (Caleb, 2026-10-06).
+                Row(Modifier.fillMaxSize().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = false, screen = binderScreen) {
+                        Column(Modifier.fillMaxSize()) {
+                            head()
+                            nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp))
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp)) { intro() }
                         }
                     }
                     BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
@@ -318,11 +317,11 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                     }
                 }
             } else {
-                head()
                 Spacer(Modifier.height(4.dp))
                 BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
                     Column(Modifier.fillMaxSize()) {
-                        nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 4.dp).widthIn(max = 960.dp))
+                        head()
+                        nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
                         LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -487,23 +486,11 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
     }
 }
 
-/** The tile's long-press menu: the ⋯ menu's entries in the same light pull-down style. */
+/** The tile's long-press menu: the ⋯ menu's entries in the binder's own drop-down. */
 @Composable
 private fun DeckTileContextMenu(expanded: Boolean, dismiss: () -> Unit, entries: () -> List<MenuEntry>) {
-    val background = io.magicmobile.android.ui.rgb(0.97, 0.97, 0.97)
-    DropdownMenu(expanded, dismiss, Modifier.background(background).widthIn(min = 220.dp, max = 300.dp), shape = RoundedCornerShape(13.dp),
-        containerColor = background) {
-        if (!expanded) return@DropdownMenu
-        for (entry in entries()) when (entry) {
-            is MenuEntry.Item -> Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(enabled = entry.enabled) { dismiss(); entry.action() }
-                .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                val tint = when { !entry.enabled -> Color.Black.copy(alpha = 0.3f); entry.destructive -> DeckStudioPalette.danger; else -> Color.Black }
-                Text(entry.title, Modifier.weight(1f), color = tint, style = sf(17f))
-                entry.icon?.let { SfImage(it, tint, 17.dp) }
-            }
-            is MenuEntry.Label -> Text(entry.title, Modifier.padding(horizontal = 16.dp, vertical = 11.dp), color = Color.Black.copy(alpha = 0.6f), style = sf(15f))
-            else -> {}
-        }
+    io.magicmobile.android.board.BinderDropdown(expanded, dismiss) {
+        io.magicmobile.android.board.BinderMenuEntries(if (expanded) entries() else emptyList(), dismiss)
     }
 }
 

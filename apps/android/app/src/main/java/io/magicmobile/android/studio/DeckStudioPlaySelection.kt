@@ -184,11 +184,12 @@ fun rememberDeckStudioPlayAction(selection: DeckStudioPlaySelection, model: Deck
  * disabled "Playing" with a checkmark when this deck is already selected and its stored check is still current.
  */
 @Composable
-fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStudioEditorModel, resolver: OnDeviceDeckResolver?, modifier: Modifier = Modifier) {
+fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStudioEditorModel, resolver: OnDeviceDeckResolver?, modifier: Modifier = Modifier,
+                             compact: Boolean = false) {
     val action = rememberDeckStudioPlayAction(selection, model, resolver)
     DeckStudioEmberButton(action.title, { selection.play(model.playSource(), resolver, model.draft.name) },
         modifier.fillMaxWidth().semantics { contentDescription = if (action.playing) DeckStudioPlayText.playingAccessibility else action.title },
-        enabled = action.enabled, icon = if (action.playing) "checkmark" else "play.fill", jewel = !action.playing)
+        enabled = action.enabled, icon = if (action.playing) "checkmark" else "play.fill", jewel = !action.playing, compact = compact)
 }
 
 /** The "Playing" mark on the playing deck's tile: an ember-glass tag in a thin brass rim with Play's jewel. */
