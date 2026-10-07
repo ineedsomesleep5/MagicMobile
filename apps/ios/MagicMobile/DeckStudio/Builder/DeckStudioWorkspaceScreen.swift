@@ -22,6 +22,8 @@ struct DeckStudioWorkspaceScreen: View {
     private var spread: Bool { wide && !dynamicType.isAccessibilitySize }   // Grimoire.isSpread
     @State private var tab = "Cards"
     @State private var headerExpanded = true
+    /// The sideways title plate's quick check, folded into a chip until tapped.
+    @State private var spreadQuickCheck = false
     /// An upright chapter change waiting to land on the chapter's top.
     @State private var landingTab: String?
     @State private var ideas = "Combos"
@@ -49,7 +51,6 @@ struct DeckStudioWorkspaceScreen: View {
     @State private var showBasics = false
     @State private var replacement: NativeDeckRow?
     @State private var inspection: InspectedCard?
-    @State private var historyReview: HistoryReview?
     @State private var confirmClose = false
     @State private var showRename = false
     @State private var showArtworkPreferences = false
@@ -67,18 +68,11 @@ struct DeckStudioWorkspaceScreen: View {
         self.metadata = metadata; self.resolver = resolver; self.play = play
     }
     private struct InspectedCard: Identifiable { let name: String; var id: String { name } }
-    private struct HistoryReview: Identifiable {
-        let game: DeckStudioRecordedGame
-        let exactDeck: Bool
-        let layoutFixture: Bool
-        var id: UUID { game.id }
-    }
-    private func openHistory(_ game: DeckStudioRecordedGame, fixture: Bool) {
-        historyReview = HistoryReview(game: game, exactDeck: signature == game.deck, layoutFixture: fixture)
-    }
     /// Inside the book, leaving turns the page back to the library.
     private func leave() { if let grimoireClose { grimoireClose() } else { dismiss() } }
-    private static let chapters = ["Cards", "Ideas", "Analysis", "Playtest"]
+    /// The deck's chapters. There is no Playtest chapter (Caleb, 2026-10-06): a game against the AI is the
+    /// playtest, and the game history lives in the player's profile.
+    private static let chapters = ["Cards", "Ideas", "Analysis"]
     /// A chapter change turns the page: forward for a later chapter, back for an earlier one.
     private func chooseTab(_ destination: String) {
         guard destination != tab else { return }
@@ -142,19 +136,19 @@ struct DeckStudioWorkspaceScreen: View {
                     return model.change { $0 = next }
                 }
             }
-            .alert(DeckStudioPlayText.setQuantity, isPresented: $showBulkQuantity) {
+            .binderConfirm(DeckStudioPlayText.setQuantity, isPresented: $showBulkQuantity, message: DeckStudioPlayText.quantityMessage) {
                 TextField("Quantity", text: $bulkQuantity).keyboardType(.numberPad)
+                    .font(.system(size: 17, weight: .semibold, design: .serif)).multilineTextAlignment(.center)
+                    .padding(.vertical, 10).background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Binder.brass, lineWidth: 1))
                 Button("Apply") { applyBulkQuantity() }
-                Button("Cancel", role: .cancel) {}
-            } message: { Text(DeckStudioPlayText.quantityMessage) }
-            .confirmationDialog(DeckStudioPlayText.removeSelectedTitle, isPresented: $confirmBulkRemove, titleVisibility: .visible) {
+            }
+            .binderConfirm(DeckStudioPlayText.removeSelectedTitle, isPresented: $confirmBulkRemove, message: DeckStudioPlayText.removeSelectedMessage) {
                 Button(DeckStudioPlayText.remove, role: .destructive) { removeSelection() }
-            } message: { Text(DeckStudioPlayText.removeSelectedMessage) }
+            }
             .overlay(alignment: .top) {
                 if listCopied {
-                    Label(DeckStudioPlayText.listCopied, systemImage: "checkmark").font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 14).frame(minHeight: 40)
-                        .foregroundStyle(DeckStudioPalette.surfaceElevated).background(DeckStudioPalette.ink, in: Capsule())
+                    BinderTag(text: DeckStudioPlayText.listCopied, material: .leather, accent: Color(red: 0.42, green: 0.85, blue: 0.40))
                         .padding(.top, 8).transition(.opacity).accessibilityAddTraits(.isStaticText)
                 }
             }
@@ -163,12 +157,6 @@ struct DeckStudioWorkspaceScreen: View {
             .onChange(of: tab) { _, value in if value == "Cards" { loadRolePreferences() } else { selecting = false; selection = [] } }
             // A fixed issue clears its filter, so the list never stays filtered to nothing.
             .onChange(of: model.draft) { _, _ in if let listFilter, listRows(listFilter).isEmpty { self.listFilter = nil } }
-            // Presentation belongs to the workspace, not a lazy history row or
-            // an orientation-specific branch which can disappear while covered.
-            .fullScreenCover(item: $historyReview) { review in
-                MatchHistoryDashboard(game: review.game, exactDeck: review.exactDeck,
-                                      layoutFixture: review.layoutFixture, metadata: metadata)
-            }
             .sheet(isPresented: $showCommander) { DeckStudioReplacementPicker(metadata: metadata, commander: true) { model.commander($0, keepOld: $1) } }
             .sheet(item: $replacement) { row in
                 DeckStudioReplacementPicker(metadata: metadata, commander: false, colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata)) { name, _ in model.replace(rowID: row.id, name: name) }
@@ -178,7 +166,7 @@ struct DeckStudioWorkspaceScreen: View {
                 NavigationStack {
                     ScrollView { DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay).padding(20) }
                         .background(GrimoirePaper())
-                        .binderLeaf("Validate & playtest", trailing: BinderLeafAction(title: "Done") { showValidation = false })
+                        .binderLeaf("Validate deck", trailing: BinderLeafAction(title: "Done") { showValidation = false })
                 }.preferredColorScheme(.light).grimoirePage(.loose)
             }
             .sheet(isPresented: $showRename) {
@@ -193,16 +181,19 @@ struct DeckStudioWorkspaceScreen: View {
                         .binderLeaf("Artwork & privacy", trailing: BinderLeafAction(title: "Done") { showArtworkPreferences = false })
                 }.preferredColorScheme(.light).grimoirePage(.loose)
             }
-            .confirmationDialog("Save your changes?", isPresented: $confirmClose, titleVisibility: .visible) {
+            .binderConfirm("Save your changes?", isPresented: $confirmClose,
+                           message: model.recoveryBlocked ? "Recovery is paused to preserve unreadable data. Save this deck before closing to keep your edits, or cancel to continue editing." : "Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") {
                 Button("Save and close") { if model.save() != nil { leave() } }.disabled(!model.canSave)
                 Button("Keep recovery draft and close") { if model.persistRecovery() { leave() } }.disabled(model.recoveryBlocked)
                 Button("Discard unsaved changes and close", role: .destructive) { model.discardUnsavedChanges(); leave() }
-            } message: { Text(model.recoveryBlocked ? "Recovery is paused to preserve unreadable data. Save this deck before closing to keep your edits, or cancel to continue editing." : "Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") }
+            }
             .interactiveDismissDisabled(model.isDirty)
             .onChange(of: scenePhase) { _, phase in if phase != .active { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() } }
             .onChange(of: tab) { _, value in if value != "Ideas" { browser.pause() } }
             .onChange(of: ideas) { _, value in if value != "EDHREC", !spread { browser.pause() } }
             .onDisappear { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() }
+            // The workspace's confirmations sit outside binderScreen(), so they get a host of their own.
+            .binderOverlayHost()
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
         .grimoireSwipe(next: { turnChapter(by: 1) }, previous: { turnChapter(by: -1) })
@@ -228,22 +219,25 @@ struct DeckStudioWorkspaceScreen: View {
         .padding(.horizontal, 4)
     }
     private var moreMenu: some View {
-        Menu {
-            DeckStudioPlayMenuItem(selection: play, model: model)
-            Button("Validate & playtest", systemImage: "checkmark.shield") { showValidation = true }
-            Button("Change primary commander", systemImage: "crown") { showCommander = true }.disabled(model.readOnly || metadata == nil)
-            Button("Basic lands", systemImage: "leaf") { showBasics = true }.disabled(model.readOnly)
-            Button("Rename deck", systemImage: "pencil") { showRename = true }.disabled(model.readOnly)
-            Button("Artwork & privacy", systemImage: "photo") { showArtworkPreferences = true }
-            if let deck, let text = try? DeckStudioTextExport.text(deck) { ShareLink(item: text) { Label("Export plain text", systemImage: "doc.plaintext") } }
-            else { Text("Plain text unavailable · use JSON to preserve this draft") }
-            if let data = try? model.draft.exportJSON(), let json = String(data: data, encoding: .utf8) { ShareLink(item: json) { Label("Export native JSON", systemImage: "square.and.arrow.up") } }
-            Button(DeckStudioPlayText.editAsText, systemImage: "text.alignleft") { showTextEditor = true }.disabled(model.readOnly)
+        BinderMenu(accessibilityLabel: "More", identifier: "deckStudio.more") {
+            let action = DeckStudioPlayAction(selection: play, model: model)
+            BinderMenuButton(action.title, systemImage: action.kind == .playing ? "checkmark.circle" : "play.circle") {
+                DeckStudioPlayAction.perform(play, model: model)
+            }.disabled(!action.enabled)
+            BinderMenuButton("Validate deck", systemImage: "checkmark.shield") { showValidation = true }
+            BinderMenuButton("Change primary commander", systemImage: "crown") { showCommander = true }.disabled(model.readOnly || metadata == nil)
+            BinderMenuButton("Basic lands", systemImage: "leaf") { showBasics = true }.disabled(model.readOnly)
+            BinderMenuButton("Rename deck", systemImage: "pencil") { showRename = true }.disabled(model.readOnly)
+            BinderMenuButton("Artwork & privacy", systemImage: "photo") { showArtworkPreferences = true }
+            BinderMenuDivider()
+            if let deck, let text = try? DeckStudioTextExport.text(deck) { BinderMenuShare(title: "Export plain text", systemImage: "doc.plaintext", item: text) }
+            else { BinderMenuNote("Plain text unavailable · use JSON to preserve this draft") }
+            if let data = try? model.draft.exportJSON(), let json = String(data: data, encoding: .utf8) { BinderMenuShare(title: "Export native JSON", systemImage: "square.and.arrow.up", item: json) }
+            BinderMenuButton(DeckStudioPlayText.editAsText, systemImage: "text.alignleft") { showTextEditor = true }.disabled(model.readOnly)
             if let deck, let list = try? DeckStudioTextExport.text(deck) {
-                Button(DeckStudioPlayText.copyList, systemImage: "doc.on.doc") { copyList(list) }
+                BinderMenuButton(DeckStudioPlayText.copyList, systemImage: "doc.on.doc") { copyList(list) }
             }
         } label: { BinderPlaque(square: true) { Image(systemName: "ellipsis") } }
-        .accessibilityLabel("More").accessibilityIdentifier("deckStudio.more")
     }
     /// The deck's chapters as leather index tabs down the binder's outer edge. At the accessibility text
     /// sizes the chapters are a menu at the head of the page instead (`workspaceTabs`), so their names
@@ -255,7 +249,7 @@ struct DeckStudioWorkspaceScreen: View {
     }
     @ViewBuilder private var workspaceTabs: some View {
         if dynamicType.isAccessibilitySize {
-            Picker("Deck workspace", selection: Binding(get: { tab }, set: chooseTab)) { ForEach(Self.chapters, id: \.self) { Text($0).tag($0) } }.pickerStyle(.menu)
+            BinderMenuPicker(title: "Deck workspace", selection: Binding(get: { tab }, set: chooseTab), options: Self.chapters.map { ($0, $0) })
         }
     }
     /// The deck's title plate: its name (which folds the plate away), and under it who leads it, how
@@ -296,39 +290,37 @@ struct DeckStudioWorkspaceScreen: View {
     }
 
     /// Sideways the binder lies open as a spread and each page has its own content: nothing runs across
-    /// the fold (Caleb, 2026-10-05). The left page carries the binder's head and the chapter's companion;
-    /// the right page its main list, with the index tabs on its outer edge.
+    /// the fold (Caleb, 2026-10-05). Both pages run the binder's full height (Caleb, 2026-10-06: the head
+    /// above the left page made the two pages look mismatched), so the head — Done, Save, tags, ⋯ — is
+    /// written at the top of the left page. The left page carries the chapter's companion, the right page
+    /// its main list, with the index tabs on its outer edge.
     ///
-    ///     Cards     the title plate and the rail (shelf, search, tools, mana coins) | the cards
-    ///     Ideas     combos                                                        | EDHREC
-    ///     Analysis  the deck at a glance                                          | roles
-    ///     Playtest  the rules check and a sample hand                             | game history
+    ///     Cards     the compact title plate and the rail (shelf, search, tools, mana coins) | the cards
+    ///     Ideas     combos                                                                | EDHREC
+    ///     Analysis  the deck at a glance                                                  | roles
     private func spreadWorkspace(size: CGSize) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            VStack(spacing: 4) {
-                binderBar
-                BinderPage(gutter: .trailing) {
-                    VStack(spacing: 0) {
-                        if let error = model.error {
-                            DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
-                                .padding(.horizontal, 12).padding(.top, 10)
-                        }
+            BinderPage(gutter: .trailing) {
+                VStack(spacing: 0) {
+                    binderBar.padding(.horizontal, 6).padding(.top, 8).padding(.bottom, 4)
+                    if let error = model.error {
+                        DeckStudioNotice(title: "Check this draft", message: error, icon: "exclamationmark.triangle")
+                            .padding(.horizontal, 12).padding(.bottom, 6)
+                    }
+                    Group {
                         switch tab {
                         case "Cards":
-                            ScrollView { header.padding(12) }
-                            binderRail.padding(.bottom, 10)
+                            ScrollView {
+                                VStack(spacing: 10) {
+                                    spreadHeader.padding(.horizontal, 12)
+                                    binderRail(compact: true)
+                                }.padding(.top, 2).padding(.bottom, 12)
+                            }
                         case "Ideas":
                             combosPanel(embedded: false)
-                        case "Analysis":
-                            ScrollView {
-                                DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect).padding(16)
-                            }
                         default:
                             ScrollView {
-                                VStack(spacing: 16) {
-                                    DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
-                                    DeckStudioSampleHandView(draft: model.draft, metadata: metadata, inspect: inspect)
-                                }.padding(16)
+                                DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect).padding(16)
                             }
                         }
                     }
@@ -343,22 +335,73 @@ struct DeckStudioWorkspaceScreen: View {
                         cardsTab(showAddButton: true, rail: false)
                     case "Ideas":
                         DeckStudioEDHRECPanel(model: browser, commanders: DeckStudioDraftPresentation.commanders(model.draft))
-                    case "Analysis":
+                    default:
                         ScrollView {
                             DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect).padding(16)
                         }.accessibilityIdentifier("deckStudio.analysis.list")
-                    default:
-                        ScrollView {
-                            DeckStudioPlaytestInsightsView(signature: signature, metadata: metadata, openMatch: openHistory).padding(16)
-                        }.accessibilityIdentifier("deckStudio.playtest.list")
                     }
                 }
                 .id(tab)
             }
             .zIndex(1)
-            indexTabs.padding(.top, 8).padding(.leading, -6)   // against the page, not the spread's spacing
+            indexTabs.padding(.top, 14).padding(.leading, -6)   // against the page, not the spread's spacing
         }
-        .padding(.bottom, 2)
+        .padding(.top, 4).padding(.bottom, 2)
+    }
+
+    /// The title plate for a sideways page, where height is short: the commander's art beside the name,
+    /// colours, the gauge and the save state, then Play beside the quick check, which opens on a tap.
+    /// Everything shows whole (Caleb, 2026-10-06: no cut-off text or commander art on the left page).
+    private var spreadHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                DeckStudioArtwork(name: DeckStudioDraftPresentation.commanders(model.draft).first ?? "")
+                    .frame(width: 54, height: 75).clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Binder.brass, lineWidth: 2))
+                    .overlay { BinderCorners(size: 11, style: .card).allowsHitTesting(false) }
+                    .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name)
+                        .font(.system(size: 20, weight: .bold, design: .serif)).lineLimit(1).minimumScaleFactor(0.6)
+                        .accessibilityAddTraits(.isHeader)
+                    HStack(spacing: 6) {
+                        DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata))
+                        Text(DeckStudioDraftPresentation.commanders(model.draft).joined(separator: " • "))
+                            .font(.system(size: 12, design: .serif)).lineLimit(1).minimumScaleFactor(0.8)
+                            .foregroundStyle(DeckStudioPalette.secondaryInk)
+                    }
+                    BinderGauge(count: DeckStudioDraftPresentation.gameCount(model.draft))
+                    Text(model.saveLabel).font(.system(size: 11, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(1)
+                }
+            }
+            HStack(spacing: 8) {
+                DeckStudioPlayDeckButton(selection: play, model: model, compact: true)
+                quickCheckChip
+            }
+            if spreadQuickCheck {
+                preflightBar.transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(10)
+        .binderPlate()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("deckStudio.deckHeader")
+    }
+
+    /// The quick check folded into one chip: the count and what it found. A tap opens the details.
+    private var quickCheckChip: some View {
+        let check = preflight
+        return Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { spreadQuickCheck.toggle() }
+        } label: {
+            BinderChip(title: check.issueCount == 0 ? "No issues" : "\(check.issueCount) to check",
+                       icon: check.issueCount == 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill", chosen: spreadQuickCheck)
+                .fixedSize()
+                .frame(minHeight: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Quick check: \(check.summary)")
+        .accessibilityValue(spreadQuickCheck ? "Expanded" : "Collapsed")
     }
 
     /// One page that is not the upright scroll: an iPad held upright (the card search beside the deck's
@@ -381,19 +424,13 @@ struct DeckStudioWorkspaceScreen: View {
             else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        if tab == "Analysis" {
-                            DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
-                            DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
-                        } else {
-                            DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
-                            DeckStudioPlaytestInsightsView(signature: signature, metadata: metadata, openMatch: openHistory)
-                            DeckStudioSampleHandView(draft: model.draft, metadata: metadata, inspect: inspect)
-                        }
+                        DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
+                        DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
                     }.padding(16)
                 }
                 // Each chapter starts at its top, as upright.
                 .id(tab)
-                .accessibilityIdentifier(tab == "Playtest" ? "deckStudio.playtest.list" : "deckStudio.analysis.list")
+                .accessibilityIdentifier("deckStudio.analysis.list")
             }
         }
     }
@@ -435,14 +472,16 @@ struct DeckStudioWorkspaceScreen: View {
         DeckStudioCardSearch(metadata: metadata, colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata), add: { model.add($0, section: $1) }, resolver: resolver, model: model, embedded: embedded)
     }
     /// The Cards chapter on a page of its own: the rail (unless it is on the facing page), the shelf, and
-    /// Quick Add at the foot of the page.
+    /// Quick Add floating over the foot of the page, with the cards running under it.
     private func cardsTab(showAddButton: Bool, rail: Bool) -> some View {
         VStack(spacing: 0) {
-            if rail { binderRail.padding(.top, 10) }
+            if rail { binderRail().padding(.top, 10) }
             ScrollView {
                 shelfContent.padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 16)
             }.scrollDismissesKeyboard(.interactively).accessibilityIdentifier("deckStudio.cards.list")
-            if !model.readOnly { cardsBottomBar(showAdd: showAddButton).padding(.top, 8).background(binderFoot) }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !model.readOnly { cardsBottomBar(showAdd: showAddButton).padding(.top, 18).background(pageFade) }
+            }
         }
     }
 
@@ -459,14 +498,14 @@ struct DeckStudioWorkspaceScreen: View {
               identity: withinIdentity ? DeckStudioDraftPresentation.colors(model.draft, metadata: metadata) : nil)
     }
 
-    /// The foot of the page Quick Add sits on: a strip of the binder's leather under a brass edge.
-    private var binderFoot: some View {
-        ZStack {
-            TavernFill(material: .leather)
-            Binder.dye(Binder.leatherDark, 0.3)
-        }
-        .overlay(alignment: .top) { Rectangle().fill(Binder.brass).frame(height: 2) }
-        .accessibilityHidden(true)
+    /// Under the floating Quick Add: the page's own paper, fading in from clear so the cards slip under it
+    /// (Caleb, 2026-10-06: no leather foot; the page runs from top to bottom).
+    private var pageFade: some View {
+        GrimoirePaper()
+            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black.opacity(0.85), location: 0.35),
+                                         .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     /// Quick Add with Add cards, or the bulk actions while selecting. A narrow sideways page keeps the
@@ -478,7 +517,9 @@ struct DeckStudioWorkspaceScreen: View {
                               remove: { confirmBulkRemove = true },
                               selectAll: { selection = Set(filteredRows(preflight).map(\.id)) })
                 .padding(.horizontal, 12).padding(.bottom, 8)
-                .background(DeckStudioPalette.surfaceElevated.opacity(0.92), in: RoundedRectangle(cornerRadius: 10))
+                .background { GrimoirePaper(tone: .plate).clipShape(RoundedRectangle(cornerRadius: 10)) }
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Binder.brass, lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
                 .padding(.horizontal, 8).padding(.bottom, 6)
         } else if showAdd {
             if compactLandscape { addCardsButton }
@@ -512,34 +553,25 @@ struct DeckStudioWorkspaceScreen: View {
                 DeckStudioTabsLanding(tab: tab, landing: $landingTab, proxy: proxy)
                 switch tab {
                 case "Cards":
-                    binderRail.padding(.top, 2).padding(.bottom, 12)
+                    binderRail().padding(.top, 2).padding(.bottom, 12)
                     shelfContent.padding(.horizontal, 12).padding(.bottom, 16)
                 case "Ideas":
                     // The combo results keep their own lazy stack inside this plain one.
                     ideasTab(embedded: true, viewport: content).padding(.top, 4)
                         .frame(minHeight: content, alignment: .top)
-                case "Analysis":
+                default:
                     VStack(spacing: 16) {
                         DeckStudioAnalysisContent(draft: model.draft, metadata: metadata, curveOnly: false, inspect: inspect)
                         DeckStudioRoleInsightsView(draft: model.draft, metadata: metadata, contextID: model.record?.id, inspect: inspect)
-                    }.padding(16).frame(minHeight: content, alignment: .top)
-                default:
-                    // Three fixed panels: a plain stack. A lazy one here, between the outer lazy
-                    // stack and the history's lazy rows, kept re-measuring near the end of the
-                    // history under UI automation and hung the main thread.
-                    VStack(spacing: 16) {
-                        DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay)
-                        DeckStudioPlaytestInsightsView(signature: signature, metadata: metadata, openMatch: openHistory)
-                        DeckStudioSampleHandView(draft: model.draft, metadata: metadata, inspect: inspect)
                     }.padding(16).frame(minHeight: content, alignment: .top)
                 }
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .accessibilityIdentifier(Self.listIdentifiers[tab] ?? "deckStudio.playtest.list")
+        .accessibilityIdentifier(Self.listIdentifiers[tab] ?? "deckStudio.analysis.list")
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if tab == "Cards" && !model.readOnly {
-                cardsBottomBar(showAdd: true).padding(.top, 8).background(binderFoot)
+                cardsBottomBar(showAdd: true).padding(.top, 18).background(pageFade)
             }
         }
         }
@@ -549,7 +581,7 @@ struct DeckStudioWorkspaceScreen: View {
         .onChange(of: tab) { _, value in landingTab = value }
     }
     private static let listIdentifiers = ["Cards": "deckStudio.cards.list", "Ideas": "deckStudio.ideas.list",
-                                          "Analysis": "deckStudio.analysis.list", "Playtest": "deckStudio.playtest.list"]
+                                          "Analysis": "deckStudio.analysis.list"]
 
     private var addCardsButton: some View {
         Button { showSearch = true } label: { Label(DeckStudioPlayText.addCards, systemImage: "plus").frame(maxWidth: .infinity) }
@@ -561,15 +593,24 @@ struct DeckStudioWorkspaceScreen: View {
     /// between the deck's cards and cards to add): which shelf, the search, the tools, and the mana
     /// value coins. It is a plain row of the page, never a pinned header (flexible things laid out in a
     /// lazy list's pinned header kept that list re-measuring; see GRIMOIRE.md).
-    private var binderRail: some View {
-        BinderRail {
-            VStack(spacing: 8) {
-                if !model.readOnly { BinderShelfSwitch(shelf: $shelf) }
-                BinderSearchField(placeholder: shelf == .all ? "Search all cards" : "Search this deck",
-                                  text: shelf == .all ? $catalogueQuery : $query,
-                                  identifier: shelf == .all ? "deckStudio.catalogue.search" : "deckStudio.cards.search",
-                                  clearLabel: shelf == .all ? "Clear card search" : "Clear deck search",
-                                  focus: $deckSearchFocused)
+    /// `compact` (a sideways page) puts the shelf switch, as symbols, beside the search.
+    private func binderRail(compact: Bool = false) -> some View {
+        let search = BinderSearchField(placeholder: shelf == .all ? "Search all cards" : "Search this deck",
+                                       text: shelf == .all ? $catalogueQuery : $query,
+                                       identifier: shelf == .all ? "deckStudio.catalogue.search" : "deckStudio.cards.search",
+                                       clearLabel: shelf == .all ? "Clear card search" : "Clear deck search",
+                                       focus: $deckSearchFocused)
+        return BinderRail {
+            VStack(spacing: compact ? 6 : 8) {
+                if compact {
+                    HStack(spacing: 8) {
+                        if !model.readOnly { BinderShelfSwitch(shelf: $shelf, compact: true) }
+                        search
+                    }
+                } else {
+                    if !model.readOnly { BinderShelfSwitch(shelf: $shelf) }
+                    search
+                }
                 ViewThatFits(in: .horizontal) {
                     railTools(compact: false)
                     railTools(compact: true)
@@ -595,26 +636,27 @@ struct DeckStudioWorkspaceScreen: View {
         let deckShelf = shelf == .deck || model.readOnly
         let filtersOn = !colorFilter.isEmpty || (deckShelf ? !sectionFilter.isEmpty : !catalogueType.isEmpty || !withinIdentity)
         return HStack(spacing: 0) {
-            Menu {
+            BinderMenu(accessibilityLabel: compact ? "Filters, grouping and layout" : "Filter", identifier: "deckStudio.cards.filter") {
                 if deckShelf { deckFilterOptions } else { catalogueFilterOptions }
                 if compact && deckShelf {
-                    Picker("Group cards", selection: $grouping) { ForEach(Self.groupings, id: \.self) { Text($0).tag($0) } }
-                    Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } }
-                    Button(cardLayout == "Grid" ? DeckStudioPlayText.showAsList : DeckStudioPlayText.showAsGrid, systemImage: cardLayout == "Grid" ? "list.bullet" : "square.grid.3x2") { toggleLayout() }
-                    if !model.readOnly { Button(selecting ? DeckStudioPlayText.doneSelecting : DeckStudioPlayText.selectCards, systemImage: "checkmark.circle") { toggleSelecting() } }
+                    BinderMenuDivider()
+                    BinderMenuPick("Group cards", selection: $grouping, options: Self.groupings.map { ($0, $0) })
+                    BinderMenuPick("Sort cards", selection: $sorting, options: Self.sortings.map { ($0, $0) })
+                    BinderMenuDivider()
+                    BinderMenuButton(cardLayout == "Grid" ? DeckStudioPlayText.showAsList : DeckStudioPlayText.showAsGrid, systemImage: cardLayout == "Grid" ? "list.bullet" : "square.grid.3x2") { toggleLayout() }
+                    if !model.readOnly { BinderMenuButton(selecting ? DeckStudioPlayText.doneSelecting : DeckStudioPlayText.selectCards, systemImage: "checkmark.circle") { toggleSelecting() } }
                 }
             } label: {
                 BinderPlaque(square: true, on: filtersOn) { Image(systemName: filtersOn ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease") }
             }
-            .accessibilityLabel(compact ? "Filters, grouping and layout" : "Filter").accessibilityIdentifier("deckStudio.cards.filter")
             .frame(maxWidth: .infinity)
             if !compact {
-                Menu { Picker("Group cards", selection: $grouping) { ForEach(Self.groupings, id: \.self) { Text($0).tag($0) } } }
+                BinderMenu(accessibilityLabel: "Group") { BinderMenuPick("Group cards", selection: $grouping, options: Self.groupings.map { ($0, $0) }) }
                     label: { BinderPlaque(square: true) { Image(systemName: "square.stack.3d.up.fill") } }
-                    .disabled(!deckShelf).accessibilityLabel("Group").frame(maxWidth: .infinity)
-                Menu { Picker("Sort cards", selection: $sorting) { ForEach(["Name", "Quantity", "Mana value"], id: \.self) { Text($0).tag($0) } } }
+                    .disabled(!deckShelf).frame(maxWidth: .infinity)
+                BinderMenu(accessibilityLabel: "Sort") { BinderMenuPick("Sort cards", selection: $sorting, options: Self.sortings.map { ($0, $0) }) }
                     label: { BinderPlaque(square: true) { Image(systemName: "arrow.up.arrow.down") } }
-                    .disabled(!deckShelf).accessibilityLabel("Sort").frame(maxWidth: .infinity)
+                    .disabled(!deckShelf).frame(maxWidth: .infinity)
                 Button { toggleLayout() } label: { Image(systemName: cardLayout == "Grid" ? "list.bullet" : "square.grid.3x2") }
                     .buttonStyle(BinderPlaqueButtonStyle(square: true)).disabled(!deckShelf)
                     .accessibilityLabel(cardLayout == "Grid" ? DeckStudioPlayText.showAsList : DeckStudioPlayText.showAsGrid)
@@ -635,17 +677,18 @@ struct DeckStudioWorkspaceScreen: View {
         }
     }
     @ViewBuilder private var catalogueFilterOptions: some View {
-        Picker("Card type", selection: $catalogueType) {
-            Text("All types").tag("")
-            ForEach(["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"], id: \.self) { Text($0).tag($0) }
-        }
-        Picker("Card color", selection: $colorFilter) { Text("Any color").tag(""); ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { Text($0 == "C" ? "Colorless" : $0).tag($0) } }
+        BinderMenuPick("Card type", selection: $catalogueType,
+                       options: [("", "All types")] + ["Creature", "Artifact", "Enchantment", "Instant", "Sorcery", "Land", "Planeswalker", "Battle"].map { ($0, $0) })
+        BinderMenuColorPick(selection: $colorFilter)
         if DeckStudioDraftPresentation.colors(model.draft, metadata: metadata) != nil {
-            Toggle(DeckStudioPlayText.withinIdentity, isOn: $withinIdentity)
+            BinderMenuDivider()
+            BinderMenuToggle(DeckStudioPlayText.withinIdentity, isOn: $withinIdentity)
         }
-        Button("Clear filters") { catalogueType = ""; colorFilter = ""; manaFilter = []; withinIdentity = true }
+        BinderMenuDivider()
+        BinderMenuButton("Clear filters", systemImage: "xmark.circle") { catalogueType = ""; colorFilter = ""; manaFilter = []; withinIdentity = true }
     }
     private static let groupings = ["Type", "Role", "Section", "Mana value", "Color", "Name"]
+    private static let sortings = ["Name", "Quantity", "Mana value"]
     private func toggleLayout() { cardLayout = cardLayout == "Grid" ? "List" : "Grid" }
     private func toggleSelecting() {
         selecting.toggle(); selection = []
@@ -689,9 +732,11 @@ struct DeckStudioWorkspaceScreen: View {
                     }
     }
     @ViewBuilder private var deckFilterOptions: some View {
-        Picker("Section", selection: $sectionFilter) { Text("All sections").tag(""); ForEach(Set(model.draft.rows.map(DeckStudioBoard.of)).sorted(), id: \.self) { Text($0.capitalized).tag($0) } }
-        Picker("Card color", selection: $colorFilter) { Text("Any color").tag(""); ForEach(["W", "U", "B", "R", "G", "C"], id: \.self) { Text($0 == "C" ? "Colorless" : $0).tag($0) } }
-        Button("Clear filters") { sectionFilter = ""; colorFilter = ""; manaFilter = []; listFilter = nil }
+        BinderMenuPick("Section", selection: $sectionFilter,
+                       options: [("", "All sections")] + Set(model.draft.rows.map(DeckStudioBoard.of)).sorted().map { ($0, $0.capitalized) })
+        BinderMenuColorPick(selection: $colorFilter)
+        BinderMenuDivider()
+        BinderMenuButton("Clear filters", systemImage: "xmark.circle") { sectionFilter = ""; colorFilter = ""; manaFilter = []; listFilter = nil }
     }
     private func cardRow(_ row: NativeDeckRow, issues: [DeckStudioPreflight.Issue]) -> some View {
         Group {
@@ -720,10 +765,10 @@ struct DeckStudioWorkspaceScreen: View {
         }.padding(8).background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 12))
     }
     private func cardIdentity(_ row: NativeDeckRow, issues: [DeckStudioPreflight.Issue]) -> some View {
-        Button { inspect(row.cardName) } label: {
+        BinderGuardedButton { inspect(row.cardName) } label: {
             identityContent(row, issues: issues)
         }.buttonStyle(.plain).accessibilityLabel("Inspect \(row.cardName), quantity \(row.quantity)")
-            .contextMenu { cardActions(row) } preview: { DeckStudioCardPreview(name: row.cardName, card: metadata?.card(named: row.cardName)) }
+            .binderContextMenu { cardActions(row) }
     }
     private func identityContent(_ row: NativeDeckRow, issues: [DeckStudioPreflight.Issue]) -> some View {
             HStack(spacing: 8) {
@@ -750,17 +795,21 @@ struct DeckStudioWorkspaceScreen: View {
                      add: { model.quantity(id: row.id, delta: 1); tapHintSeen = true },
                      remove: { model.quantity(id: row.id, delta: -1); tapHintSeen = true },
                      tap: { if selecting { toggleSelection(row.id) } else { inspect(row.cardName) } })
-            .contextMenu { if !selecting { cardActions(row) } } preview: { DeckStudioCardPreview(name: row.cardName, card: metadata?.card(named: row.cardName)) }
+            .binderContextMenu(enabled: !selecting) { cardActions(row) }
     }
     /// Long-press actions shared by list rows and grid tiles.
     @ViewBuilder private func cardActions(_ row: NativeDeckRow) -> some View {
-        Button(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(row.cardName) }
+        BinderMenuHeading(row.cardName)
+        BinderMenuButton(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(row.cardName) }
         if !model.readOnly {
-            Button(DeckStudioPlayText.addOne, systemImage: "plus") { model.quantity(id: row.id, delta: 1) }
-            Button(DeckStudioPlayText.removeOne, systemImage: "minus") { model.quantity(id: row.id, delta: -1) }
-            Button(DeckStudioPlayText.replaceCard, systemImage: "arrow.triangle.2.circlepath") { replacement = row }
-            Menu(DeckStudioPlayText.moveTo) { ForEach(DeckStudioBulkBar.destinations, id: \.section) { destination in Button(destination.title) { model.move(id: row.id, to: destination.section) } } }
-            Button(DeckStudioPlayText.removeRow, systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
+            BinderMenuButton(DeckStudioPlayText.addOne, systemImage: "plus") { model.quantity(id: row.id, delta: 1) }
+            BinderMenuButton(DeckStudioPlayText.removeOne, systemImage: "minus") { model.quantity(id: row.id, delta: -1) }
+            BinderMenuButton(DeckStudioPlayText.replaceCard, systemImage: "arrow.triangle.2.circlepath") { replacement = row }
+            BinderMenuSubmenu(DeckStudioPlayText.moveTo, systemImage: "arrow.right.doc.on.clipboard") {
+                ForEach(DeckStudioBulkBar.destinations, id: \.section) { destination in BinderMenuButton(destination.title) { model.move(id: row.id, to: destination.section) } }
+            }
+            BinderMenuDivider()
+            BinderMenuButton(DeckStudioPlayText.removeRow, systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
         }
     }
     private func cardControls(_ row: NativeDeckRow) -> some View {
@@ -771,11 +820,13 @@ struct DeckStudioWorkspaceScreen: View {
             Text("\(row.quantity)").font(.subheadline.monospacedDigit()).frame(minWidth: 20)
             if !model.readOnly {
                     Button { model.quantity(id: row.id, delta: 1) } label: { Image(systemName: "plus").frame(width: 44, height: 44) }.accessibilityLabel("Add one \(row.cardName)")
-                    Menu {
-                        Button("Replace card", systemImage: "arrow.triangle.2.circlepath") { replacement = row }
-                        Menu("Move to…") { ForEach(["deck", "commanders", "companions", "sideboard", "maybeboard"], id: \.self) { destination in Button(destination.capitalized) { model.move(id: row.id, to: destination) } } }
-                        Button("Remove row", systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
-                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }.accessibilityLabel("More options for \(row.cardName)")
+                    BinderMenu(accessibilityLabel: "More options for \(row.cardName)") {
+                        BinderMenuButton("Replace card", systemImage: "arrow.triangle.2.circlepath") { replacement = row }
+                        BinderMenuSubmenu("Move to…", systemImage: "arrow.right.doc.on.clipboard") {
+                            ForEach(["deck", "commanders", "companions", "sideboard", "maybeboard"], id: \.self) { destination in BinderMenuButton(destination.capitalized) { model.move(id: row.id, to: destination) } }
+                        }
+                        BinderMenuButton("Remove row", systemImage: "trash", role: .destructive) { model.remove(id: row.id) }
+                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle()) }
             }
         }.fixedSize(horizontal: true, vertical: false)
     }

@@ -81,12 +81,14 @@ struct DeckStudioPlayAction {
 struct DeckStudioPlayDeckButton: View {
     @ObservedObject var selection: DeckStudioPlaySelection
     @ObservedObject var model: DeckStudioEditorModel
+    /// Shorter, for a sideways page.
+    var compact = false
     var body: some View {
         let action = DeckStudioPlayAction(selection: selection, model: model)
         Button { DeckStudioPlayAction.perform(selection, model: model) } label: {
             Label(action.title, systemImage: action.icon).frame(maxWidth: .infinity)
         }
-        .buttonStyle(DeckStudioPlayButtonStyle(settled: action.kind == .playing, jewel: true))
+        .buttonStyle(DeckStudioPlayButtonStyle(settled: action.kind == .playing, compact: compact, jewel: true))
         .disabled(!action.enabled)
         .accessibilityLabel(action.kind == .playing ? DeckStudioPlayText.playingAccessibility : action.title)
         .accessibilityIdentifier("deckStudio.play")

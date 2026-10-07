@@ -206,6 +206,7 @@
 		A7E8BDDEC540CD342D60E499 /* exile.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6B654A0CD4BD1CE20C3577DB /* exile.m4a */; };
 		AAAC586BD6F179123B648653 /* BoardPromptRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414816254DDDDA03802F4719 /* BoardPromptRules.swift */; };
 		AB0937C200B4B60D2ACC8F1C /* DeckStudioValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDBB34E02563A49074BE4DE /* DeckStudioValidationService.swift */; };
+		ABF01CC5DB13800E3FF8E8D4 /* GrimoireBinderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B854BEB232063C4338556D /* GrimoireBinderMenu.swift */; };
 		AF35E236FEE71179A81F56AD /* DeckStudioCardSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FA91A26BEAAE41F9CC7036 /* DeckStudioCardSearch.swift */; };
 		AFC034863C93994107926EE3 /* cast-red.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 0D2CD2666EF8ADE6AB9AB6FB /* cast-red.m4a */; };
 		B0C5D4EBA3173AAFED846BA4 /* OnDevice in Resources */ = {isa = PBXBuildFile; fileRef = E25161EF0DCBD6D130249073 /* OnDevice */; };
@@ -319,6 +320,7 @@
 		01185AEE490D6677672B1123 /* TableChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableChatTests.swift; sourceTree = "<group>"; };
 		016E2D71DFF094B2DF0979FA /* DeckStudioValidationPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioValidationPanel.swift; sourceTree = "<group>"; };
 		027FECE1805BD7CA79FAA7D0 /* spell-big.m4a */ = {isa = PBXFileReference; path = "spell-big.m4a"; sourceTree = "<group>"; };
+		02B854BEB232063C4338556D /* GrimoireBinderMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoireBinderMenu.swift; sourceTree = "<group>"; };
 		03776AA5903A753166553C23 /* SoundLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundLabView.swift; sourceTree = "<group>"; };
 		039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldAdaptiveSizing.swift; sourceTree = "<group>"; };
 		050CFDDBEFC8A3ED48848333 /* land-drop.m4a */ = {isa = PBXFileReference; path = "land-drop.m4a"; sourceTree = "<group>"; };
@@ -712,6 +714,7 @@
 			children = (
 				1E95A0AA622E54611A0F02F2 /* GrimoireBinder.swift */,
 				58022487E5CA39B4D09E0879 /* GrimoireBinderControls.swift */,
+				02B854BEB232063C4338556D /* GrimoireBinderMenu.swift */,
 				74E7B0118A6BED61D52A7524 /* GrimoireChrome.swift */,
 				9CF9197593085EEE0D392D17 /* GrimoireStage.swift */,
 			);
@@ -1405,6 +1408,7 @@
 				6AF3BEE2F3620A42DFA8661D /* GameplayActionDock.swift in Sources */,
 				09ECBDEB8668A86586BF6955 /* GrimoireBinder.swift in Sources */,
 				5FFFF2F919812D3B94FD466B /* GrimoireBinderControls.swift in Sources */,
+				ABF01CC5DB13800E3FF8E8D4 /* GrimoireBinderMenu.swift in Sources */,
 				48EC33D6FF02D804D7F02A3D /* GrimoireChrome.swift in Sources */,
 				7FA0A8BEBB5BD68B417FFB4B /* GrimoireStage.swift in Sources */,
 				C226A496EE0E388518322E62 /* HandCardPan.swift in Sources */,

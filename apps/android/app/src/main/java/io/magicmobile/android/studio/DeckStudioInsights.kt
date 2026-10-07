@@ -115,7 +115,7 @@ fun DeckStudioAnalysisContent(draft: NativeDeckDraft, metadata: NativeDeckMetada
             Metric("Other sections", "${draft.rows.filter { DeckStudioDraftPresentation.section(it) !in setOf("deck", "commanders") }.sumOf { it.quantity }}")
             Metric("Lands in main", "${statistics.landCount}")
             Metric("Average nonland mana value", statistics.averageManaValue?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "Unavailable")
-            Text("Deck statistics · check legality in Playtest.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+            Text("Deck statistics · check legality with Validate deck in the ⋯ menu.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         }
         StudioPanel {
             Text("Main-deck mana curve", color = DeckStudioPalette.ink, style = StudioText.headline)

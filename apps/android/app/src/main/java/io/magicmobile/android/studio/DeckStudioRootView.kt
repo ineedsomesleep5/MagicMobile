@@ -487,23 +487,11 @@ private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boo
     }
 }
 
-/** The tile's long-press menu: the ⋯ menu's entries in the same light pull-down style. */
+/** The tile's long-press menu: the ⋯ menu's entries in the binder's own drop-down. */
 @Composable
 private fun DeckTileContextMenu(expanded: Boolean, dismiss: () -> Unit, entries: () -> List<MenuEntry>) {
-    val background = io.magicmobile.android.ui.rgb(0.97, 0.97, 0.97)
-    DropdownMenu(expanded, dismiss, Modifier.background(background).widthIn(min = 220.dp, max = 300.dp), shape = RoundedCornerShape(13.dp),
-        containerColor = background) {
-        if (!expanded) return@DropdownMenu
-        for (entry in entries()) when (entry) {
-            is MenuEntry.Item -> Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(enabled = entry.enabled) { dismiss(); entry.action() }
-                .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                val tint = when { !entry.enabled -> Color.Black.copy(alpha = 0.3f); entry.destructive -> DeckStudioPalette.danger; else -> Color.Black }
-                Text(entry.title, Modifier.weight(1f), color = tint, style = sf(17f))
-                entry.icon?.let { SfImage(it, tint, 17.dp) }
-            }
-            is MenuEntry.Label -> Text(entry.title, Modifier.padding(horizontal = 16.dp, vertical = 11.dp), color = Color.Black.copy(alpha = 0.6f), style = sf(15f))
-            else -> {}
-        }
+    io.magicmobile.android.board.BinderDropdown(expanded, dismiss) {
+        io.magicmobile.android.board.BinderMenuEntries(if (expanded) entries() else emptyList(), dismiss)
     }
 }
 

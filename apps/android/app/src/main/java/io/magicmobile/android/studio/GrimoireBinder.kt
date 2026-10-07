@@ -116,7 +116,7 @@ object Binder {
     val brass: Brush get() = Brush.verticalGradient(listOf(brassLight, TavernPalette.brass, brassDeep))
     val brassPressed: Brush get() = Brush.verticalGradient(listOf(brassDeep, TavernPalette.brass, brassLight.copy(alpha = 0.8f)))
     val chapterIcons = mapOf("Cards" to "rectangle.portrait.on.rectangle.portrait.fill", "Ideas" to "lightbulb.fill",
-        "Analysis" to "chart.bar.fill", "Playtest" to "flag.2.crossed.fill")
+        "Analysis" to "chart.bar.fill")
 }
 
 private fun TextStyle.onLeather(): TextStyle = copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f))
@@ -367,21 +367,22 @@ enum class BinderShelf { DECK, ALL }
 
 /** The two shelves as a switch on the rail. */
 @Composable
-fun BinderShelfSwitch(shelf: BinderShelf, onChange: (BinderShelf) -> Unit, modifier: Modifier = Modifier) {
+fun BinderShelfSwitch(shelf: BinderShelf, onChange: (BinderShelf) -> Unit, modifier: Modifier = Modifier, compact: Boolean = false) {
     val shape = RoundedCornerShape(9.dp)
-    Row(modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.5f), shape).border(1.5.dp, Binder.brass, shape).padding(3.dp)
+    // compact: symbols only, for a short sideways page (the titles stay for TalkBack).
+    Row((if (compact) modifier else modifier.fillMaxWidth()).background(Color.Black.copy(alpha = 0.5f), shape).border(1.5.dp, Binder.brass, shape).padding(3.dp)
         .semantics { contentDescription = "Show cards" }) {
         for ((value, title, icon) in listOf(Triple(BinderShelf.DECK, "My deck", "rectangle.stack.fill"), Triple(BinderShelf.ALL, "All cards", "books.vertical.fill"))) {
             val chosen = shelf == value
             val inner = RoundedCornerShape(7.dp)
-            Row(Modifier.weight(1f).height(36.dp)
+            Row((if (compact) Modifier.width(42.dp).height(34.dp) else Modifier.weight(1f).height(36.dp))
                 .then(if (chosen) Modifier.tavernFill(TavernMaterial.EMBER, inner).border(1.dp, Binder.brassLight.copy(alpha = 0.6f), inner) else Modifier)
                 .clickable(role = Role.Tab) { onChange(value) }
                 .semantics(mergeDescendants = true) { contentDescription = title; selected = chosen },
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                 val tint = if (chosen) Binder.emberText else TavernPalette.parchment.copy(alpha = 0.7f)
                 SfImage(icon, tint, 14.dp)
-                Text(title, color = tint, style = sf(14f, SfWeight.bold, SfDesign.SERIF).onLeather(), maxLines = 1)
+                if (!compact) Text(title, color = tint, style = sf(14f, SfWeight.bold, SfDesign.SERIF).onLeather(), maxLines = 1)
             }
         }
     }

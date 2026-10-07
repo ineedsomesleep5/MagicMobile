@@ -59,10 +59,13 @@ final class GrimoireUITests: XCTestCase {
             .press(forDuration: 0.05, thenDragTo: page.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.32)))
         XCTAssertTrue(waitUntil { ideas.isSelected }, "Swiping right turns back")
 
-        // Done turns back to the library; Done there closes the book onto the menu.
+        // Done turns back to the library; Done there closes the book onto the menu. The library may still be
+        // scrolled to the deck it opened, so scroll back to its head first.
         app.buttons["deckStudio.close"].tap()
-        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 10))
-        XCTAssertTrue(waitUntil { app.buttons["deckStudio.create"].isHittable })
+        let create = app.buttons["deckStudio.create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        for _ in 0..<3 where !waitUntil(timeout: 3, { create.isHittable }) { app.swipeDown() }
+        XCTAssertTrue(waitUntil { create.isHittable })
         app.buttons["deckStudio.library.close"].tap()
         XCTAssertTrue(waitUntil(timeout: 15) { app.buttons["menu.decks"].isHittable }, "The book closes back onto the menu")
     }
@@ -143,7 +146,7 @@ final class GrimoireUITests: XCTestCase {
         XCTAssertTrue(deckSearch.isHittable, "The rail is on the left page")
         XCTAssertLessThanOrEqual(deckSearch.frame.maxX, cards.frame.minX, "The rail is the left page, the cards the right")
         XCTAssertLessThanOrEqual(close.frame.maxX, cards.frame.minX)
-        for chapter in ["Cards", "Ideas", "Analysis", "Playtest"] {
+        for chapter in ["Cards", "Ideas", "Analysis"] {
             XCTAssertGreaterThanOrEqual(app.buttons[chapter].frame.minX, cards.frame.maxX - 1, "\(chapter)'s tab stands out of the right page")
         }
         attach("Spell book deck spread")
@@ -155,9 +158,6 @@ final class GrimoireUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(app.scrollViews["deckStudio.analysis.list"].frame.minX, leftPageEdge - 1,
                                     "The roles are the right page")
         attach("Spell book analysis spread")
-        app.buttons["Playtest"].press(forDuration: 0.15)
-        XCTAssertTrue(waitUntil { app.buttons["Playtest"].isSelected })
-        attach("Spell book playtest spread")
         app.buttons["Ideas"].press(forDuration: 0.15)
         XCTAssertTrue(waitUntil { app.buttons["Ideas"].isSelected })
         attach("Spell book ideas spread")
