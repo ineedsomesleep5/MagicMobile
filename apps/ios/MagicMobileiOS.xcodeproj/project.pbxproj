@@ -197,6 +197,7 @@
 		A027D40215D35D66677834B2 /* HowToPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71109D10367C90948D0DD475 /* HowToPlayTests.swift */; };
 		A03D00F367E4052993B8D536 /* DeckStudioRoleInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6F72661D390397DCB49F7B /* DeckStudioRoleInsightsView.swift */; };
 		A1EB8BCA1D5440E2D4CC3912 /* GameLogPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0CBD72B102EF72829ECBE6 /* GameLogPresentationTests.swift */; };
+		A282AB4C1F3FF4580DE77777 /* GrimoirePageCurl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988DBFFA77578C5DFCF416B0 /* GrimoirePageCurl.swift */; };
 		A291A2BCB1C5B68DDD056800 /* DeckStudioRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA64811675FC3884DD08546 /* DeckStudioRootView.swift */; };
 		A2ED80A1AAEC165CA264AE59 /* BattlefieldBackdropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E01CDDFBE4A2CB47963D37 /* BattlefieldBackdropTests.swift */; };
 		A31A4E6160F42888F3DD8A0E /* PortraitPolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 860E2CBE7896CA937E309ED2 /* PortraitPolishTests.swift */; };
@@ -249,6 +250,7 @@
 		D2B46EEE34E03522188A8F54 /* BattlefieldViewportMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93A6775473574CAA20CEFA3 /* BattlefieldViewportMetrics.swift */; };
 		D2D1083B4DE92C3604479959 /* ui-back.caf in Resources */ = {isa = PBXBuildFile; fileRef = ADA936262E9D0B0749874951 /* ui-back.caf */; };
 		D2E089CDF9632261BE3D1881 /* NativeGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B6B13C7760E08AB713BE5AA /* NativeGameView.swift */; };
+		D427B72C060696322A131804 /* PageCurl.metal in Sources */ = {isa = PBXBuildFile; fileRef = 73EF1AAB576974F522E630EA /* PageCurl.metal */; };
 		D5F1B8E47E4EC2C59757F2E5 /* music-menu-4.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 619AE047B553E57279DEAC03 /* music-menu-4.m4a */; };
 		D6F34A2AC883611AC41BD711 /* NativeDeckArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1722A4752D3856C3BE4097AE /* NativeDeckArtworkTests.swift */; };
 		D72E744D05ABA30CF168A5B9 /* GameResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9C4605720EAE8CA9AE7379 /* GameResumeTests.swift */; };
@@ -444,6 +446,7 @@
 		7192BE431A0A5F389E034747 /* GameBoardScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameBoardScreen.swift; sourceTree = "<group>"; };
 		71FA1327EADF12DC5FCC75CE /* DeckStudioCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCoreTests.swift; sourceTree = "<group>"; };
 		7310F972E936D7992D841C36 /* MagicMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MagicMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		73EF1AAB576974F522E630EA /* PageCurl.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = PageCurl.metal; sourceTree = "<group>"; };
 		74E7B0118A6BED61D52A7524 /* GrimoireChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoireChrome.swift; sourceTree = "<group>"; };
 		74EB99E9AF40C4282D158D78 /* music-game-4.m4a */ = {isa = PBXFileReference; path = "music-game-4.m4a"; sourceTree = "<group>"; };
 		750D36F231104F825F37D72F /* HandCardPan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandCardPan.swift; sourceTree = "<group>"; };
@@ -477,6 +480,7 @@
 		96E2ED36108D267B1AF8DFD1 /* ui-toggle.caf */ = {isa = PBXFileReference; path = "ui-toggle.caf"; sourceTree = "<group>"; };
 		97833FE1555BEBD1F63EA0F1 /* counter.caf */ = {isa = PBXFileReference; path = counter.caf; sourceTree = "<group>"; };
 		97DC7F0B807BBD3DE03B62D6 /* DeckStudioValidationReceipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioValidationReceipt.swift; sourceTree = "<group>"; };
+		988DBFFA77578C5DFCF416B0 /* GrimoirePageCurl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoirePageCurl.swift; sourceTree = "<group>"; };
 		9B7A28D6C74C34A9AE62C4F9 /* DeckStudioPlaySelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlaySelectionTests.swift; sourceTree = "<group>"; };
 		9BC0EAEA663F3051BA202B5A /* DeckStudioEditorTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioEditorTools.swift; sourceTree = "<group>"; };
 		9C3713BAC2F8354AD17630E1 /* OnDeviceSessionLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSessionLifecycleTests.swift; sourceTree = "<group>"; };
@@ -713,7 +717,9 @@
 				1E95A0AA622E54611A0F02F2 /* GrimoireBinder.swift */,
 				58022487E5CA39B4D09E0879 /* GrimoireBinderControls.swift */,
 				74E7B0118A6BED61D52A7524 /* GrimoireChrome.swift */,
+				988DBFFA77578C5DFCF416B0 /* GrimoirePageCurl.swift */,
 				9CF9197593085EEE0D392D17 /* GrimoireStage.swift */,
+				73EF1AAB576974F522E630EA /* PageCurl.metal */,
 			);
 			path = Grimoire;
 			sourceTree = "<group>";
@@ -1406,6 +1412,7 @@
 				09ECBDEB8668A86586BF6955 /* GrimoireBinder.swift in Sources */,
 				5FFFF2F919812D3B94FD466B /* GrimoireBinderControls.swift in Sources */,
 				48EC33D6FF02D804D7F02A3D /* GrimoireChrome.swift in Sources */,
+				A282AB4C1F3FF4580DE77777 /* GrimoirePageCurl.swift in Sources */,
 				7FA0A8BEBB5BD68B417FFB4B /* GrimoireStage.swift in Sources */,
 				C226A496EE0E388518322E62 /* HandCardPan.swift in Sources */,
 				E818FEA4B24A1A603A22CB8B /* HoldCardInspection.swift in Sources */,
@@ -1444,6 +1451,7 @@
 				FED0BE0C9BC36D9A2CCC9753 /* OnDeviceStartingRoll.swift in Sources */,
 				46C654118FE25509AF4A6E15 /* OnDeviceYieldPolicy.swift in Sources */,
 				875E1236463DE53AB3B8902B /* OpeningHandOverlay.swift in Sources */,
+				D427B72C060696322A131804 /* PageCurl.metal in Sources */,
 				B1FC1993442DE0508DA1472B /* PlayModeViews.swift in Sources */,
 				96BFFC36ABF3E8ECB6513F69 /* PlayerAccount.swift in Sources */,
 				3F96EC34853B9833765AD8A7 /* PlayerPortrait.swift in Sources */,
