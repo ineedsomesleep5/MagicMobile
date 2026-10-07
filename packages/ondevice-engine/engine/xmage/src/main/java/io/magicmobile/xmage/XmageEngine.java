@@ -20,7 +20,7 @@ import java.util.concurrent.*;
  * This adapter must pass the real-engine and native build gates before being released.
  */
 public final class XmageEngine implements EnginePort {
-    public static final String UPSTREAM="4825513287ba6c42c32fd205d227f4a5fc44c2f3";
+    public static final String UPSTREAM="dac400ba1380f17492c9ad6a65ab60f12f28cd97";
     private final Map<String,Running> matches=new HashMap<>();
     private final String execution;
     private boolean closed;
@@ -441,7 +441,9 @@ public final class XmageEngine implements EnginePort {
             // True only when this build passes its checkpoint round trip (native needs serialization metadata).
             // It saves only when asked (the checkpoint op), never at every decision.
             "saveResume",Checkpoints.available(),"checkpointOnDemand",Checkpoints.available(),
-            "concede",true,"experimental",true);
+            "concede",true,"experimental",true,
+            // Optional standing instructions an answer may carry (AnswerActions, docs/PROTOCOL.md).
+            "answerActions",AnswerActions.TYPES);
     }
     @Override public synchronized void close() {
         closed=true;
