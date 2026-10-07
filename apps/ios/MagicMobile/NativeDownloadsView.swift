@@ -5,11 +5,14 @@ struct NativeDownloadDeck: Identifiable {
     let id: String
     let name: String
     let cardNames: [String]
+    /// The printings whose art the player chose in this deck.
+    let chosenArt: [NativeChosenArt]
 
     init(id: String, deck: DeckList) {
         self.id = id
         name = deck.name
         cardNames = Array(Set(deck.entries.map(\.cardName) + [deck.commander?.cardName].compactMap { $0 })).sorted()
+        chosenArt = NativeChosenArt.choices(in: deck)
     }
 }
 
@@ -45,15 +48,25 @@ struct NativeDownloadsView: View {
         default: return decks.first { $0.id == selectedDeckID }?.cardNames ?? []
         }
     }
+    /// The art chosen in Deck Studio always comes with a download of cards: this deck's for One deck,
+    /// every saved deck's otherwise (the full catalogue included), and none for tokens alone.
+    private var chosenArt: [NativeChosenArt] {
+        if scope == "tokens" { return [] }
+        let source = scope == "deck" ? (decks.first { $0.id == selectedDeckID }?.chosenArt ?? []) : decks.flatMap(\.chosenArt)
+        var seen = Set<String>()
+        return source.filter { seen.insert($0.printing.key).inserted }
+    }
     private struct ScanSelection: Equatable {
         let scope: String
         let deck: String
         let quality: NativeArtworkQuality
         let catalogueCount: Int
+        let chosen: [String]
     }
     @State private var scannedSelection: ScanSelection?
     private var scanSelection: ScanSelection {
-        ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count)
+        ScanSelection(scope: scope, deck: selectedDeckID, quality: quality, catalogueCount: catalogueNames.count,
+                      chosen: chosenArt.map { $0.printing.key })
     }
     private var downloadsTokens: Bool { includeTokens || scope == "tokens" }
     private var missingCardCount: Int { scope == "tokens" ? 0 : downloads.missingNames.count }
@@ -81,7 +94,7 @@ struct NativeDownloadsView: View {
     }
     private func startDownload() {
         downloads.download(names: names, includeTokens: downloadsTokens, allowNetwork: remoteArtwork,
-                           quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
+                           quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens", chosen: chosenArt)
     }
     private var catalogueIncluded: Bool {
         BundledCatalogueData.url(in: .main) != nil
@@ -135,7 +148,7 @@ struct NativeDownloadsView: View {
         .task(id: scanSelection) {
             // Checking reads one directory listing, so it also runs during a download.
             let selection = scanSelection
-            await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens")
+            await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens", chosen: chosenArt)
             if selection == scanSelection && !downloads.isScanning && downloads.scanSucceeded { scannedSelection = selection }
         }
         .onChange(of: remoteArtwork) { _, enabled in if !enabled { downloads.cancel() } }
@@ -190,7 +203,7 @@ struct NativeDownloadsView: View {
             row("Estimated additional download", estimatedAdditionalSize)
             note("Approximate at \(quality.label.lowercased()) quality. Actual download and device storage vary with image sizes, metadata and images already stored.")
             Button("Check for missing artwork") {
-                Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens") }
+                Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens", chosen: chosenArt) }
             }
             .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
             .disabled(downloads.isRunning || downloads.isScanning)
@@ -272,6 +285,7 @@ struct NativeDownloadsView: View {
             note("These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.")
             note("Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.")
             note("Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates use currently discovered missing images; more faces or tokens may be found while preparing. Actual download and storage vary. Check for missing artwork after app updates.")
+            note("Art you chose in Deck Studio is saved as its own image beside the card’s default one, so a card shows the printing you picked even offline. It comes with every download of cards.")
             note("Full and token-only downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.")
             note("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
             note("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")

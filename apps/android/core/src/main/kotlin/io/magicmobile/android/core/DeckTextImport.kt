@@ -8,7 +8,7 @@ object DeckTextImport {
         catch(error:java.nio.charset.CharacterCodingException){throw IllegalArgumentException("Deck file is not valid UTF-8. No cards were imported.",error)}
     }
     /** Current iOS DeckList JSON. Commander rows remain in entries so row order is retained. */
-    fun exportJSON(deck:Deck):String=io.magicmobile.core.Json.write(mapOf("name" to deck.name,"commander" to null,"entries" to deck.entries.map{mapOf("cardName" to it.name,"quantity" to it.quantity,"section" to it.section)})).also{require(it.toByteArray().size<=2*1024*1024){"Deck JSON exceeds the 2 MiB interchange limit."}}
+    fun exportJSON(deck:Deck):String=io.magicmobile.core.Json.write(mapOf("name" to deck.name,"commander" to null,"entries" to deck.entries.map{entry->linkedMapOf<String,Any?>("cardName" to entry.name,"quantity" to entry.quantity,"section" to entry.section).also{row->entry.printing?.let{row["setCode"]=it.setCode;row["collectorNumber"]=it.number}}})).also{require(it.toByteArray().size<=2*1024*1024){"Deck JSON exceeds the 2 MiB interchange limit."}}
     fun exportText(deck:Deck):String {
         val text=deck.export()
         val decoded=runCatching{preview(deck.name,text).deck}.getOrElse{throw IllegalArgumentException("Use JSON export to preserve empty drafts, custom boards or unusual card names.")}
@@ -32,12 +32,15 @@ object DeckTextImport {
             require(!envelope||!ios){"Android envelope contains an incompatible deck schema."}
             fun entry(row:Obj,primary:Boolean=false):CardEntry {
                 val nameKey=if(ios)"cardName" else "name"
-                require(row.keys==setOf(nameKey,"quantity","section")){"Unexpected or missing card fields. No cards imported."}
+                // A row may also name the printing whose art was chosen: setCode and collectorNumber, both or neither.
+                require(row.keys.containsAll(setOf(nameKey,"quantity","section"))&&setOf(nameKey,"quantity","section","setCode","collectorNumber").containsAll(row.keys)&&
+                    ("setCode" in row)==("collectorNumber" in row)){"Unexpected or missing card fields. No cards imported."}
                 val count=Wire.integer(row["quantity"]);require(count in 1..2000){"Card quantity must be between 1 and 2,000."}
                 val sourceSection=Wire.string(row["section"])
                 val destination=if(primary)"commanders" else DeckSections.normalize(sourceSection)
                 if(destination!=sourceSection)annotations+="${Wire.string(row[nameKey])}: source board '$sourceSection' interpreted as '$destination'. Original JSON retained."
-                return CardEntry(Wire.string(row[nameKey]),count.toInt(),destination)
+                val printing=if("setCode" in row)CardPrinting.of(Wire.string(row["setCode"]),Wire.string(row["collectorNumber"])) else null
+                return CardEntry(Wire.string(row[nameKey]),count.toInt(),destination,printing)
             }
             val entries=data["commander"]?.let{listOf(entry(Wire.objectValue(it),true))}.orEmpty()+rows.map{entry(it)}
             return DeckTextPreview(Deck(Wire.string(data["name"]),entries),annotations,text)

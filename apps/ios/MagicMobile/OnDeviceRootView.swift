@@ -542,6 +542,8 @@ struct OnDeviceRootView: View {
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
+        // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
+        .onChange(of: selectedDeckID, initial: true) { _, id in CardArtChoices.shared.select(deckID: id) }
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }

@@ -1,6 +1,7 @@
 package io.magicmobile.android.studio
 
 import io.magicmobile.android.core.CardEntry
+import io.magicmobile.android.core.CardPrinting
 import io.magicmobile.android.core.Deck
 import io.magicmobile.android.core.DeckSections
 import io.magicmobile.android.game.J
@@ -18,16 +19,30 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.UUID
 
-/** Models.swift DeckEntry. */
-data class DeckEntry(val cardName: String, val quantity: Int, val section: String) {
-    fun json(): JsonObject = JsonObject(sortedMapOf("cardName" to JsonPrimitive(cardName),
-        "quantity" to JsonPrimitive(quantity), "section" to JsonPrimitive(section)))
+/**
+ * Models.swift DeckEntry. Saved as `cardName`, `quantity`, `section` and, once art is chosen, `setCode` and
+ * `collectorNumber` (both or neither). An unreadable pair is dropped, so a damaged choice shows default art.
+ */
+data class DeckEntry(val cardName: String, val quantity: Int, val section: String,
+                     /** The printing whose artwork the player chose; null shows the card's default artwork. It never reaches the engine. */
+                     val printing: CardPrinting? = null) {
+    fun json(): JsonObject = JsonObject(sortedMapOf<String, JsonElement>("cardName" to JsonPrimitive(cardName),
+        "quantity" to JsonPrimitive(quantity), "section" to JsonPrimitive(section)).also { fields ->
+        printing?.let { fields["setCode"] = JsonPrimitive(it.setCode); fields["collectorNumber"] = JsonPrimitive(it.number) }
+    })
 
     companion object {
         fun decode(value: J?): DeckEntry {
             val name = value["cardName"].string; val quantity = value["quantity"].integer; val section = value["section"].string
             if (name == null || quantity == null || section == null || quantity !in Int.MIN_VALUE..Int.MAX_VALUE) throw DeckEditingError.InvalidEntry
-            return DeckEntry(name, quantity.toInt(), section)
+            return DeckEntry(name, quantity.toInt(), section, printing(value))
+        }
+
+        /** The printing a saved row names with `setCode` and `collectorNumber`; null unless both read as one. */
+        fun printing(value: J?): CardPrinting? {
+            val set = value["setCode"].string ?: return null
+            val number = value["collectorNumber"].string ?: return null
+            return CardPrinting.of(set, number)
         }
     }
 }
@@ -47,8 +62,8 @@ data class DeckList(val name: String, val commander: DeckEntry?, val entries: Li
      * The Android library keeps one entry list with the primary commander first in the
      * commander section, the shape build 7 saved. Card names and quantities are unchanged.
      */
-    fun storedDeck(): Deck = Deck(name, listOfNotNull(commander?.let { CardEntry(it.cardName, it.quantity, "commanders") }) +
-        entries.map { CardEntry(it.cardName, it.quantity, DeckSections.normalize(it.section)) })
+    fun storedDeck(): Deck = Deck(name, listOfNotNull(commander?.let { CardEntry(it.cardName, it.quantity, "commanders", it.printing) }) +
+        entries.map { CardEntry(it.cardName, it.quantity, DeckSections.normalize(it.section), it.printing) })
 
     companion object {
         fun decode(value: J?): DeckList {
@@ -61,7 +76,7 @@ data class DeckList(val name: String, val commander: DeckEntry?, val entries: Li
         /** The first commander-section entry is the primary commander, as the link importer decides. */
         fun fromStored(deck: Deck): DeckList {
             val index = deck.entries.indexOfFirst { it.section == "commanders" }
-            val rows = deck.entries.map { DeckEntry(it.name, it.quantity, it.section) }
+            val rows = deck.entries.map { DeckEntry(it.name, it.quantity, it.section, it.printing) }
             return DeckList(deck.name, rows.getOrNull(index), rows.filterIndexed { i, _ -> i != index })
         }
     }
@@ -92,16 +107,21 @@ data class NativeDeckRow(
     val section: String = "deck",
     /** Clear when the user explicitly changes this row's section. */
     val isPrimaryCommander: Boolean = false,
+    /** The printing whose artwork the player chose; null shows the default artwork. Replacing the card clears it. */
+    val printing: CardPrinting? = null,
 ) {
-    fun json(): JsonObject = JsonObject(sortedMapOf("cardName" to JsonPrimitive(cardName), "id" to JsonPrimitive(id.toString().uppercase()),
-        "isPrimaryCommander" to JsonPrimitive(isPrimaryCommander), "quantity" to JsonPrimitive(quantity), "section" to JsonPrimitive(section)))
+    fun json(): JsonObject = JsonObject(sortedMapOf<String, JsonElement>("cardName" to JsonPrimitive(cardName), "id" to JsonPrimitive(id.toString().uppercase()),
+        "isPrimaryCommander" to JsonPrimitive(isPrimaryCommander), "quantity" to JsonPrimitive(quantity), "section" to JsonPrimitive(section)).also { fields ->
+        printing?.let { fields["setCode"] = JsonPrimitive(it.setCode); fields["collectorNumber"] = JsonPrimitive(it.number) }
+    })
 
     companion object {
         fun decode(value: J?): NativeDeckRow {
             val id = value["id"].string?.takeIf(::isUuid) ?: throw DeckEditingError.InvalidEntry
             val quantity = value["quantity"].integer?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE } ?: throw DeckEditingError.InvalidEntry
             return NativeDeckRow(UUID.fromString(id), value["cardName"].string ?: throw DeckEditingError.InvalidEntry, quantity.toInt(),
-                value["section"].string ?: throw DeckEditingError.InvalidEntry, value["isPrimaryCommander"].bool ?: throw DeckEditingError.InvalidEntry)
+                value["section"].string ?: throw DeckEditingError.InvalidEntry, value["isPrimaryCommander"].bool ?: throw DeckEditingError.InvalidEntry,
+                DeckEntry.printing(value))
         }
     }
 }
@@ -131,7 +151,7 @@ data class NativeDeckDraft(val name: String = "New Commander Deck", val rows: Li
         var commander: DeckEntry? = null
         val entries = ArrayList<DeckEntry>()
         rows.forEachIndexed { index, row ->
-            val entry = DeckEntry(row.cardName, row.quantity, row.section)
+            val entry = DeckEntry(row.cardName, row.quantity, row.section, row.printing)
             if (index == primary) commander = entry else entries += entry
         }
         val result = DeckList(name, commander, entries)
@@ -147,8 +167,8 @@ data class NativeDeckDraft(val name: String = "New Commander Deck", val rows: Li
         val basicLandNames = listOf("Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes")
 
         fun of(deck: DeckList): NativeDeckDraft = NativeDeckDraft(deck.name,
-            listOfNotNull(deck.commander).map { NativeDeckRow(cardName = it.cardName, quantity = it.quantity, section = it.section, isPrimaryCommander = true) } +
-                deck.entries.map { NativeDeckRow(cardName = it.cardName, quantity = it.quantity, section = it.section) })
+            listOfNotNull(deck.commander).map { NativeDeckRow(cardName = it.cardName, quantity = it.quantity, section = it.section, isPrimaryCommander = true, printing = it.printing) } +
+                deck.entries.map { NativeDeckRow(cardName = it.cardName, quantity = it.quantity, section = it.section, printing = it.printing) })
 
         fun importJSON(text: String): NativeDeckDraft = of(OnDeviceDeckEditing.importJSON(text))
 
@@ -292,14 +312,17 @@ object OnDeviceDeckEditing {
                 annotations += TextAnnotation(number, "Category retained: $category")
             }
             takeSuffix(foil)?.let { annotations += TextAnnotation(number, it) }
-            takeSuffix(printing)?.let { annotations += TextAnnotation(number, it) }
+            // "(CMM) 400" names one printing, which the row keeps as its chosen art. A set code with no number
+            // cannot. The review still lists the suffix either way.
+            var chosen: CardPrinting? = null
+            takeSuffix(printing)?.let { chosen = CardPrinting.parseSuffix(it); annotations += TextAnnotation(number, it) }
             // Fail on malformed or unrecognized export decorations rather than import an altered name.
             if ("[" in cardName || "]" in cardName || "^" in cardName || "#!" in cardName || strayDecoration.containsMatchIn(cardName)) {
                 throw invalid("Unsupported or malformed export suffix; use one bracket category and the documented printing/foil/label syntax.")
             }
             cardName = cardName.trimSpaces()
-            try { validate(DeckEntry(cardName, count, rowSection)) } catch (error: DeckEditingError) { throw invalid("Card name or section is empty or too long.") }
-            rows += NativeDeckRow(cardName = cardName, quantity = count, section = rowSection)
+            try { validate(DeckEntry(cardName, count, rowSection, chosen)) } catch (error: DeckEditingError) { throw invalid("Card name or section is empty or too long.") }
+            rows += NativeDeckRow(cardName = cardName, quantity = count, section = rowSection, printing = chosen)
             total += count
         }
         if (rows.isEmpty()) throw TextImportError(1, "The list has no card rows.")

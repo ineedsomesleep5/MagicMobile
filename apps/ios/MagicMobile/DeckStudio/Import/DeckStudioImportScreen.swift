@@ -194,7 +194,7 @@ struct DeckStudioImportScreen: View {
                     DisclosureGroup("\(preview.annotations.count) source annotations") {
                         ForEach(Array(preview.annotations.enumerated()), id: \.offset) { _, note in Text("Line \(note.line): \(note.text)").font(.caption) }
                     }
-                    Text("An on-device import receipt preserves these annotations and the reviewed deck. Printing annotations do not change the compiled gameplay identity.").font(.caption2)
+                    Text("An on-device import receipt preserves these annotations and the reviewed deck. A printing written as (SET) number is kept as that card's chosen artwork; it does not change the compiled gameplay identity.").font(.caption2)
                 }
             }
         }

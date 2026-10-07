@@ -237,12 +237,14 @@ struct DeckStudioCardSearch: View {
 struct DeckStudioCardInspector: View {
     let name: String
     let metadata: NativeDeckMetadataCatalogue.Card?
+    /// A deck row passes the printing it chose; elsewhere the player's choice for the name shows.
+    var art: CardArtSelection = .active
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    NativeCardArtworkView(name: name, variant: .inspection) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
+                    NativeCardArtworkView(name: name, variant: .inspection, art: art) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
                         .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
                     Text(name).font(.title.weight(.bold))
                     DeckStudioArtworkInvitation()

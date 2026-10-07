@@ -117,6 +117,13 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** The Commander bracket card lists (commander-brackets.json). */
     var bracketRules by mutableStateOf(io.magicmobile.android.game.BracketRules.EMPTY); private set
     var localDecks by mutableStateOf<List<SavedDeck>>(emptyList()); private set
+    /** Every saved deck's chosen art is what cards drawn by name show (CardArtChoices). */
+    private fun publishLocalDecks(saved: List<SavedDeck>) {
+        localDecks = saved
+        io.magicmobile.android.ArtChoices.shared.setLibrary(saved.map {
+            io.magicmobile.android.core.CardArtChoices.SavedDeck("local:${it.id}", io.magicmobile.android.studio.DeckList.fromStored(it.deck), it.modifiedAtMillis)
+        })
+    }
     var isBusy by mutableStateOf(false); private set
     var usingMultiplayer by mutableStateOf(false); private set
     var closeFailed by mutableStateOf(false); private set
@@ -182,7 +189,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                     runCatching { io.magicmobile.android.game.AIDeckPool.parse(context.assets.open("ai-decks.json").use { it.readBytes().decodeToString() }) } to
                         runCatching { io.magicmobile.android.game.BracketRules.parse(context.assets.open("commander-brackets.json").use { it.readBytes().decodeToString() }) }
                 }.let { (aiDecks, rules) -> aiDecks.onSuccess { bracketDecks = it }; rules.onSuccess { bracketRules = it } }
-                decks.second.onSuccess { localDecks = it }.onFailure { errorMessage = "Saved decks could not be read: ${it.message}" }
+                decks.second.onSuccess { publishLocalDecks(it) }.onFailure { errorMessage = "Saved decks could not be read: ${it.message}" }
                 // The compact printing index names the build and resolves decks; the full catalogue
                 // (rules text and metadata for 30,000 cards) loads only for screens that need it.
                 val started = System.nanoTime()
@@ -190,6 +197,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 android.util.Log.i("MagicMobile", "Printing index loaded in ${(System.nanoTime() - started) / 1_000_000} ms")
                 printings = index
                 deckResolver = withContext(Dispatchers.Default) { OnDeviceDeckResolver(index) }
+                // A double-faced card's other face shows its own side of the chosen printing.
+                deckResolver?.let { io.magicmobile.android.ArtChoices.shared.setReverseFaces(it.reverseFaceFronts) }
                 val built = BuildIdentity(index.upstreamCommit, index.catalogueHash,
                     "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1")
                 identity = built
@@ -207,7 +216,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
 
     /** Deck Studio's library store: saved decks stay in this model's deck store. */
     val library: io.magicmobile.android.studio.DeckLibraryStore by lazy {
-        io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> localDecks = saved }
+        io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> publishLocalDecks(saved) }
     }
 
     /** The full catalogue, loading it on first use. */
@@ -218,7 +227,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     }
 
     fun reloadLocalDecks() {
-        scope.launch { runCatching { withContext(Dispatchers.IO) { store.all() } }.onSuccess { localDecks = it } }
+        scope.launch { runCatching { withContext(Dispatchers.IO) { store.all() } }.onSuccess { publishLocalDecks(it) } }
     }
 
     /**

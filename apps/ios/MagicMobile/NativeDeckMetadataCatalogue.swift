@@ -231,6 +231,11 @@ struct NativeDeckMetadataCatalogue {
         index[name] ?? aliases[name].flatMap { index[$0] } ?? reverseFaces[name].flatMap { index[$0] }
     }
 
+    /// The front face of a double-faced card, named by its reverse face; nil for any other name.
+    func frontFace(ofReverse name: String) -> String? { reverseFaces[name] }
+    /// Every reverse face and the front face it belongs to.
+    var reverseFaceFronts: [String: String] { reverseFaces }
+
     /// All names supported by this installed engine catalogue, without the UI search limit.
     var artworkCardNames: [String] { cards.map(\.name) }
 

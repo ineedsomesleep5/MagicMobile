@@ -78,10 +78,12 @@ import io.magicmobile.android.ui.tavernTitleBar
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
-/** One deck the downloads screen can target (NativeDownloadDeck). */
-data class NativeDownloadDeck(val id: String, val name: String, val cardNames: List<String>) {
+/** One deck the downloads screen can target (NativeDownloadDeck). `chosenArt` holds the printings whose art the player chose in it. */
+data class NativeDownloadDeck(val id: String, val name: String, val cardNames: List<String>,
+                              val chosenArt: List<io.magicmobile.android.ChosenArt> = emptyList()) {
     companion object {
-        fun of(id: String, deck: Deck) = NativeDownloadDeck(id, deck.name, deck.entries.map { it.name }.toSortedSet().toList())
+        fun of(id: String, deck: Deck) = NativeDownloadDeck(id, deck.name, deck.entries.map { it.name }.toSortedSet().toList(),
+            io.magicmobile.android.ChosenArt.choices(deck))
     }
 }
 
@@ -157,7 +159,13 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
         else -> decks.firstOrNull { it.id == deckID }?.cardNames ?: emptyList()
     }
     val downloadsTokens = includeTokens || downloadScope == "tokens"
-    val selectionKey = "$downloadScope|$deckID|${quality.id}|${names.size}|$downloadsTokens"
+    // The art chosen in Deck Studio always comes with a download of cards: this deck's for One deck, every saved deck's
+    // otherwise (the full catalogue included), and none for tokens alone.
+    val chosen = remember(downloadScope, deckID, decks) {
+        val source = if (downloadScope == "tokens") emptyList() else if (downloadScope == "deck") decks.firstOrNull { it.id == deckID }?.chosenArt.orEmpty() else decks.flatMap { it.chosenArt }
+        source.distinctBy { it.printing.key }
+    }
+    val selectionKey = "$downloadScope|$deckID|${quality.id}|${names.size}|$downloadsTokens|${chosen.joinToString(",") { it.printing.key }}"
     val scanPending = scanning || scan == null || scanned != selectionKey
     val current = scan
     val missingCards = if (downloadScope == "tokens" || current == null) 0 else current.missingCards.size
@@ -177,7 +185,7 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
         if (downloadScope == "catalogue" && loadingCatalogue) return
         scanning = true
         scope.launch {
-            runCatching { ArtworkDownloadClient(context).scan(names, quality, downloadsTokens, fullCatalogue) }
+            runCatching { ArtworkDownloadClient(context).scan(names, quality, downloadsTokens, fullCatalogue, chosen) }
                 .onSuccess { scan = it; scanned = key }
             scanning = false
         }
@@ -189,7 +197,7 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
             preferences.edit().putBoolean("askedDownloadNotifications", true).apply()
             notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
-        scope.launch { runCatching { ArtworkDownloadService.start(context.applicationContext, names, quality, downloadsTokens, fullCatalogue) } }
+        scope.launch { runCatching { ArtworkDownloadService.start(context.applicationContext, names, quality, downloadsTokens, fullCatalogue, chosen) } }
     }
     LaunchedEffect(selectionKey, loadingCatalogue) { runScan() }
     LaunchedEffect(running) { if (!running) runScan() }
@@ -221,7 +229,7 @@ fun NativeDownloadsView(decks: List<NativeDownloadDeck>, selectedDeckID: String,
                 if (catalogueError != null && downloadScope == "catalogue") Text(catalogueError, color = warning, style = sf(14f, design = SfDesign.SERIF))
                 if (downloadScope != "tokens") {
                     Labeled("Cards", if (scanPending || (downloadScope == "catalogue" && loadingCatalogue)) "Checking needed"
-                        else "${number.format(current!!.cards + current.faceStored)} / ${number.format(names.size + current.faceTotal)}",
+                        else "${number.format(current!!.cards + current.faceStored + current.printingStored)} / ${number.format(names.size + current.faceTotal + current.printingTotal)}",
                         Modifier.testTag("downloads.cards"))
                 }
                 Labeled("Tokens", if (scanPending || current?.tokensKnown != true && downloadsTokens) "Checking needed"
@@ -320,6 +328,7 @@ private fun MoreInfo(engineReady: Boolean, catalogueIncluded: Boolean) {
             "These downloads supply artwork for decks and games. Rules and the supported card catalogue are already included; artwork is optional.",
             "Compact saves space. Standard balances clarity and size. High gives the sharpest inspection images. Higher-quality files already stored count toward lower-quality coverage.",
             "Full catalogue covers this build’s supported cards, not every printing. Alternate faces are checked during download. Estimates use currently discovered missing images; more faces or tokens may be found while preparing. Actual download and storage vary. Check for missing artwork after app updates.",
+            "Art you chose in Deck Studio is saved as its own image beside the card’s default one, so a card shows the printing you picked even offline. It comes with every download of cards.",
             "Full and token-only downloads use Scryfall’s bulk image index. Deck and on-demand requests share card names and your IP address. Stored artwork works offline.",
             "Compact is fastest. Downloads use several direct image transfers at once and remember completed files. Android shows a notification while it downloads; closing the app from recents may pause transfers until you reopen it. The initial image-list preparation may need the app open on a slow connection.",
             "Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.",

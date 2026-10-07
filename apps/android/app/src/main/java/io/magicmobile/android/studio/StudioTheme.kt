@@ -216,10 +216,14 @@ fun NativeDeckManaCost(cost: String?, modifier: Modifier = Modifier) {
     }
 }
 
-/** DeckStudioArtwork: the commander's art cropped as a cover (hero) or a whole card. */
+/**
+ * DeckStudioArtwork: the commander's art cropped as a cover (hero) or a whole card. A deck's own row passes the printing
+ * it chose as `art`; anywhere else the player's choice for the card name shows.
+ */
 @Composable
-fun DeckStudioArtwork(name: String, modifier: Modifier = Modifier, hero: Boolean = false, colors: List<String>? = null) {
-    CardArtwork(name, modifier, artOnly = hero) {
+fun DeckStudioArtwork(name: String, modifier: Modifier = Modifier, hero: Boolean = false, colors: List<String>? = null,
+                      art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active) {
+    CardArtwork(name, modifier, artOnly = hero, art = art) {
         if (hero) DeckCoverPlaceholder(name, colors)
         else Box(Modifier.fillMaxSize().background(DeckStudioPalette.background), contentAlignment = Alignment.Center) {
             SfImage("sparkle", DeckStudioPalette.secondaryInk, 17.dp)
