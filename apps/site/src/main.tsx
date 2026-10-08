@@ -383,13 +383,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 19 updates XMage with 78 new cards and many card
-                fixes, and speeds up big turns: tick “Don’t ask again” on a
-                card’s “you may” question, let a pile of triggers resolve with
-                Resolve all, and your spells resolve without an extra tap. You
-                can choose any card’s artwork, the offline download includes
-                every token, and the stack is easier to read. Android is an
-                early alpha; physical-phone acceptance is still pending.
+                Android build 20 lets you keep your profile: sign in with
+                Google on the Profile screen and your name, friends and rank
+                follow you to any phone. It keeps everything from build 19:
+                the updated XMage with 78 new cards, “Don’t ask again”,
+                Resolve all, your choice of card artwork and every token in
+                the offline download. Android is an early alpha;
+                physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -398,14 +398,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 34 updates XMage with 78 new cards and many card fixes,
-                and speeds up big turns: tick “Don’t ask again” on a card’s
-                “you may” question, let a pile of triggers resolve with Resolve
-                all, and your spells resolve without an extra tap. You can
-                choose any card’s artwork, the offline download includes every
-                token, and the stack is easier to read. It runs on iPhone and
-                iPad. Apple has approved this build for Internal and External
-                TestFlight.
+                Build 35 lets you keep your profile: sign in with Apple or
+                Google on the Profile screen and your name, friends and rank
+                follow you to any phone. It keeps everything from build 34:
+                the updated XMage with 78 new cards, “Don’t ask again”,
+                Resolve all, your choice of card artwork and every token in
+                the offline download. It runs on iPhone and iPad. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>
