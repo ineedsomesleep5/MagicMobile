@@ -183,6 +183,15 @@
       "valid": false
     }
   ],
+  "linkedIdentities": {
+    "user": {"id": "u1", "is_anonymous": false, "identities": [
+      {"provider": "anonymous", "identity_data": {"sub": "u1"}},
+      {"provider": "google", "identity_data": {"email": "player@gmail.com", "sub": "g1"}},
+      {"provider": "apple", "identity_data": {"sub": "a1"}, "email": "relay@privaterelay.appleid.com"}
+    ]},
+    "expected": [{"provider": "google", "title": "Google", "email": "player@gmail.com"},
+                 {"provider": "apple", "title": "Apple", "email": "relay@privaterelay.appleid.com"}]
+  },
   "messages": {
     "username_taken": "That name is taken. Try another.",
     "invalid_username": "Use 3–20 letters, numbers or underscores.",
@@ -196,6 +205,9 @@
     "feature_unavailable": "That part of the profile server isn't ready yet. Try again after the next update.",
     "invalid_visibility": "Choose Public, Friends only or Private.",
     "too_many_games": "You've played a lot of games. Your game history catches up later.",
+    "provider_disabled": "Signing in isn't switched on yet. Try again after the next update.",
+    "manual_linking_disabled": "Signing in isn't switched on yet. Try again after the next update.",
+    "sign_in_cancelled": "Sign-in cancelled.",
     "something_new": "Something went wrong. Try again."
   },
   "requestResults": [

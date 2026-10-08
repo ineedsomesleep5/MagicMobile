@@ -56,6 +56,7 @@ struct PlayerProfileView: View {
             if !summary.colors.isEmpty { colorsCard(summary) }
             trophyCard
             gamesCard(scoped)
+            AccountSignInCard(account: account)
             privacyCard
             ProfileHistorySettings(details: details).modifier(TavernLeatherCard())
         }

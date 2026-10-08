@@ -16,6 +16,7 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("Keep your profile: sign in with Apple or Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage: "person.crop.circle.badge.checkmark")
                     Label("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage: "paintpalette.fill")
                     Label("The offline download now includes every token and emblem.", systemImage: "arrow.down.to.line.circle.fill")
                     Label("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage: "square.stack.3d.up.fill")

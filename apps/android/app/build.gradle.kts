@@ -126,6 +126,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // WebSocket client for the cross-play table relay.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Google sign-in for the profile (social/GoogleSignIn.kt): Android's Credential Manager with Google's ID token option.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     // The starting roll's 3D table: Google Filament renders the d20 and the tavern table; gltfio reads the .glb
     // models. Only the arm64 libraries ship (abiFilters above), about 3 MB.
     implementation("com.google.android.filament:filament-android:1.75.1")

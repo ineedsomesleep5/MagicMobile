@@ -29,6 +29,8 @@ object PlayerAccountRules {
         "feature_unavailable" -> "That part of the profile server isn't ready yet. Try again after the next update."
         "invalid_visibility" -> "Choose Public, Friends only or Private."
         "too_many_games" -> "You've played a lot of games. Your game history catches up later."
+        "provider_disabled", "manual_linking_disabled", "validation_failed" -> "Signing in isn't switched on yet. Try again after the next update."
+        "sign_in_cancelled" -> "Sign-in cancelled."
         else -> "Something went wrong. Try again."
     }
 

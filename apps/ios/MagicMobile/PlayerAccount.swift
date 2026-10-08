@@ -23,6 +23,9 @@ enum PlayerAccountRules {
         case "invalid_visibility": return String(localized: "Choose Public, Friends only or Private.")
         case "too_many_games": return String(localized: "You've played a lot of games. Your game history catches up later.")
         case "offline": return String(localized: "You're offline. Profiles and friends come back when you reconnect.")
+        case "provider_disabled", "manual_linking_disabled", "validation_failed":
+            return String(localized: "Signing in isn't switched on yet. Try again after the next update.")
+        case "sign_in_cancelled": return String(localized: "Sign-in cancelled.")
         default: return String(localized: "Something went wrong. Try again.")
         }
     }
@@ -145,6 +148,9 @@ final class PlayerAccount: ObservableObject {
     @Published private(set) var searchAvailable = true
     @Published private(set) var profilesAvailable = true
     @Published var notice: String?
+    /// Google or Apple sign-ins on this account; empty while the profile lives only on this phone (anonymous).
+    @Published private(set) var linkedIdentities: [LinkedIdentity] = []
+    @Published private(set) var isSigningIn = false
     /// Runs after each refresh while the app is open: the app sends games that could not be sent before.
     var afterRefresh: (() async -> Void)?
 
@@ -208,6 +214,7 @@ final class PlayerAccount: ObservableObject {
                 visibility = known; visibilityKnown = true
             }
             phase = .ready
+            linkedIdentities = (try? await api.linkedIdentities()) ?? linkedIdentities
             await refresh()
         } catch {
             phase = .unavailable
@@ -229,6 +236,37 @@ final class PlayerAccount: ObservableObject {
         } catch {
             notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error)); return false
         }
+    }
+
+    /// Keeps the profile with a Google or Apple account. The first time, the sign-in joins this phone's account, so its
+    /// name, friends and rank stay. If that Google or Apple account already has a profile (another phone), this phone
+    /// switches to it.
+    func signIn(provider: String, idToken: String, nonce: String?) async {
+        guard !isSigningIn else { return }
+        isSigningIn = true
+        defer { isSigningIn = false }
+        do {
+            do {
+                try await api.signIn(idToken: idToken, provider: provider, nonce: nonce, link: true)
+            } catch where SupabaseLite.code(of: error) == "identity_already_exists" {
+                try await api.signIn(idToken: idToken, provider: provider, nonce: nonce, link: false)
+            }
+            phase = .idle
+            await start()
+            notice = nil
+        } catch {
+            notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error))
+        }
+    }
+
+    /// Signs out of Google or Apple on this phone. The profile stays on the account; this phone starts a fresh one
+    /// until the player signs in again.
+    func signOut() async {
+        api.forgetSession()
+        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []
+        visibility = .public; visibilityKnown = false
+        phase = .idle
+        await start()
     }
 
     func refresh() async {
@@ -447,6 +485,23 @@ final class PlayerAccount: ObservableObject {
     }
 }
 
+/// A sign-in method on the account (Google, Apple), from Auth's user record.
+struct LinkedIdentity: Equatable, Identifiable {
+    let provider: String
+    let email: String?
+    var id: String { provider }
+    var title: String { provider == "apple" ? "Apple" : provider == "google" ? "Google" : provider.capitalized }
+
+    /// Auth's `identities`, without the anonymous one. An Apple email may be a private relay address.
+    static func parse(_ user: [String: Any]) -> [LinkedIdentity] {
+        ((user["identities"] as? [[String: Any]]) ?? []).compactMap { identity in
+            guard let provider = identity["provider"] as? String, provider != "anonymous" else { return nil }
+            let data = identity["identity_data"] as? [String: Any]
+            return LinkedIdentity(provider: provider, email: (data?["email"] as? String) ?? (identity["email"] as? String))
+        }
+    }
+}
+
 /// The few Supabase Auth and PostgREST calls the profile needs, with the session in the Keychain.
 /// The publishable key is public by design; every call runs as the signed-in player.
 final class SupabaseLite: @unchecked Sendable {
@@ -493,6 +548,51 @@ final class SupabaseLite: @unchecked Sendable {
             throw Failure(code: Self.errorCode(data) ?? (status == 401 ? "not_signed_in" : status == 404 ? "feature_unavailable" : "error"))
         }
         return data
+    }
+
+    /// Google or Apple sign-in from the native flow (an OpenID Connect ID token). With `link`, the identity joins the current
+    /// (anonymous) account so its profile, friends and rank stay; without it, this phone switches to the account that
+    /// already has that identity. `nonce` is the raw value whose SHA-256 the provider put in the token.
+    func signIn(idToken: String, provider: String, nonce: String?, link: Bool) async throws {
+        var components = URLComponents(url: Self.baseURL.appendingPathComponent("auth/v1/token"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "id_token")]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.publishableKey, forHTTPHeaderField: "apikey")
+        var body: [String: Any] = ["provider": provider, "id_token": idToken]
+        if let nonce { body["nonce"] = nonce }
+        if link {
+            body["link_identity"] = true
+            request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await urlSession.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let access = json["access_token"] as? String, let refresh = json["refresh_token"] as? String else {
+            throw Failure(code: Self.errorCode(data) ?? (status == 0 ? "offline" : "error"))
+        }
+        let next = Session(accessToken: access, refreshToken: refresh,
+                           expiresAt: Date().addingTimeInterval((json["expires_in"] as? Double) ?? 3600))
+        lock.withLock { session = next }
+        saveSession(next)
+    }
+
+    /// The sign-in methods on this account beyond its anonymous start ("google", "apple"), with their email.
+    func linkedIdentities() async throws -> [LinkedIdentity] {
+        var request = URLRequest(url: Self.baseURL.appendingPathComponent("auth/v1/user"))
+        request.timeoutInterval = 15
+        request.setValue(Self.publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await urlSession.data(for: request)
+        guard ((response as? HTTPURLResponse)?.statusCode ?? 0) == 200,
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure(code: Self.errorCode(data) ?? "error")
+        }
+        return LinkedIdentity.parse(json)
     }
 
     func forgetSession() {

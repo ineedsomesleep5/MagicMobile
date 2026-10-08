@@ -871,6 +871,7 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: io.magicmobile.androi
                 }
                 if (visible.size > 6) TavernPlaqueButton(if (showAll) "Show fewer" else "Show more", { showAll = !showAll }, Modifier.testTag("profile.games.more"), kind = TavernButtonKind.SECONDARY)
             }
+            AccountSignInCard(account)
             // Who may open this profile: Public (the default), Friends only or Private. The server enforces it.
             val signedIn = account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && account.username != null
             Column(Modifier.leatherCard().testTag("profile.privacyCard"), verticalArrangement = Arrangement.spacedBy(12.dp)) {

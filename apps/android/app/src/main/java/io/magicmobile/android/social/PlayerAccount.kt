@@ -80,6 +80,9 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     var searchAvailable by mutableStateOf(true); private set
     var profilesAvailable by mutableStateOf(true); private set
     var notice by mutableStateOf<String?>(null)
+    /** Google sign-ins on this account; empty while the profile lives only on this phone (anonymous). */
+    var linkedIdentities by mutableStateOf<List<LinkedIdentity>>(emptyList()); private set
+    var isSigningIn by mutableStateOf(false); private set
     /** Runs after each refresh while the app is open: the app sends games that could not be sent before. */
     var afterRefresh: (suspend () -> Unit)? = null
 
@@ -105,11 +108,42 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
             username = (profile?.get("username") as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
             ProfileVisibility.of((profile?.get("visibility") as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull)?.let { visibility = it; visibilityKnown = true }
             phase = Phase.READY
+            linkedIdentities = runCatching { api.linkedIdentities() }.getOrDefault(linkedIdentities)
             refresh()
         } catch (error: Exception) {
             phase = Phase.UNAVAILABLE
             notice = PlayerAccountRules.message(SupabaseLite.code(error))
         }
+    }
+
+    /**
+     * Keeps the profile with a Google account. The first time, the sign-in joins this phone's account, so its name,
+     * friends and rank stay. If that Google account already has a profile (another phone), this phone switches to it.
+     */
+    suspend fun signIn(provider: String, idToken: String, nonce: String?) {
+        if (isSigningIn) return
+        isSigningIn = true
+        try {
+            try { api.signIn(idToken, provider, nonce, link = true) }
+            catch (error: SupabaseLite.Failure) {
+                if (error.code != "identity_already_exists") throw error
+                api.signIn(idToken, provider, nonce, link = false)
+            }
+            phase = Phase.IDLE
+            start()
+            notice = null
+        } catch (error: Exception) {
+            notice = PlayerAccountRules.message(SupabaseLite.code(error))
+        } finally { isSigningIn = false }
+    }
+
+    /** Signs out on this phone. The profile stays on the account; this phone starts a fresh one until the player signs in again. */
+    suspend fun signOut() {
+        api.forgetSession()
+        username = null; friends = emptyList(); blocked = emptyList(); friendRanks = emptyMap(); linkedIdentities = emptyList()
+        visibility = ProfileVisibility.PUBLIC; visibilityKnown = false
+        phase = Phase.IDLE
+        start()
     }
 
     suspend fun claim(name: String): Boolean {
@@ -381,6 +415,47 @@ internal class SupabaseLite(context: Context) {
         return body
     }
 
+    /**
+     * Google sign-in from Credential Manager (an OpenID Connect ID token). With [link], the identity joins the current
+     * (anonymous) account so its profile, friends and rank stay; without it, this phone switches to the account that
+     * already has that identity. [nonce] is the raw value whose SHA-256 the provider put in the token.
+     */
+    suspend fun signIn(idToken: String, provider: String, nonce: String?, link: Boolean) {
+        val body = buildMap<String, JsonElement> {
+            put("provider", JsonPrimitive(provider)); put("id_token", JsonPrimitive(idToken))
+            nonce?.let { put("nonce", JsonPrimitive(it)) }
+            if (link) put("link_identity", JsonPrimitive(true))
+        }
+        val (status, text) = post("$BASE/auth/v1/token?grant_type=id_token", JsonObject(body).toString(), if (link) accessToken() else null)
+        val fields = runCatching { Json.parseToJsonElement(text) as JsonObject }.getOrNull()
+        val access = (fields?.get("access_token") as? JsonPrimitive)?.contentOrNull
+        val refresh = (fields?.get("refresh_token") as? JsonPrimitive)?.contentOrNull
+        if (status !in 200..299 || access == null || refresh == null) throw Failure(errorCode(text) ?: "error")
+        val expiresIn = (fields["expires_in"] as? JsonPrimitive)?.longOrNull ?: 3600
+        tokenLock.withLock {
+            val next = Session(access, refresh, System.currentTimeMillis() + expiresIn * 1000)
+            session = next
+            prefs.edit().putString("access", next.access).putString("refresh", next.refresh).putLong("expiresAt", next.expiresAt).apply()
+        }
+    }
+
+    /** The sign-in methods on this account beyond its anonymous start ("google", "apple"), with their email. */
+    suspend fun linkedIdentities(): List<LinkedIdentity> {
+        val token = accessToken()
+        val (status, text) = withContext(Dispatchers.IO) {
+            val connection = (URL("$BASE/auth/v1/user").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000; readTimeout = 15_000; useCaches = false; instanceFollowRedirects = false
+                setRequestProperty("apikey", PUBLISHABLE_KEY); setRequestProperty("Authorization", "Bearer $token")
+            }
+            try {
+                val code = connection.responseCode
+                code to ((if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() } ?: "")
+            } finally { connection.disconnect() }
+        }
+        if (status != 200) throw Failure(errorCode(text) ?: "error")
+        return LinkedIdentity.parse(Json.parseToJsonElement(text) as JsonObject)
+    }
+
     fun forgetSession() {
         session = null
         prefs.edit().clear().apply()
@@ -422,6 +497,21 @@ internal class SupabaseLite(context: Context) {
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             status to (stream?.bufferedReader()?.use { it.readText() } ?: "")
         } finally { connection.disconnect() }
+    }
+}
+
+/** A sign-in method on the account (Google, Apple), from Auth's user record (LinkedIdentity in PlayerAccount.swift). */
+data class LinkedIdentity(val provider: String, val email: String?) {
+    val title: String get() = when (provider) { "apple" -> "Apple"; "google" -> "Google"; else -> provider.replaceFirstChar { it.uppercase() } }
+
+    companion object {
+        /** Auth's `identities`, without the anonymous one. */
+        fun parse(user: JsonObject): List<LinkedIdentity> = (user["identities"] as? JsonArray).orEmpty().mapNotNull { item ->
+            val identity = item as? JsonObject ?: return@mapNotNull null
+            val provider = (identity["provider"] as? JsonPrimitive)?.contentOrNull?.takeIf { it != "anonymous" } ?: return@mapNotNull null
+            fun email(o: JsonObject?) = (o?.get("email") as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull
+            LinkedIdentity(provider, email(identity["identity_data"] as? JsonObject) ?: email(identity))
+        }
     }
 }
 
