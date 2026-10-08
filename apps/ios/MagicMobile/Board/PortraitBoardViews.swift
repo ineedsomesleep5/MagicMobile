@@ -156,6 +156,12 @@ struct PortraitOpponentStatusBar: View {
                     // The step of the turn mirrors the nameplate; the log is in the controls menu.
                     TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn,
                                      width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118))
+                        // Day or night and the storm count hang under the plate when they matter.
+                        .overlay(alignment: .bottom) {
+                            TavernTableHints(dayNight: snapshot.dayNight, stormCount: snapshot.stormCount)
+                                .fixedSize()
+                                .offset(y: 16)
+                        }
                         .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.phasePlate, canvas: canvas, origin: origin)
                     // Counters, commander damage and attached cards are in the medallion's
@@ -196,6 +202,15 @@ struct PortraitOpponentStatusBar: View {
         }
         .opacity(opponent.isOut ? 0.45 : 1)
         .frame(width: diameter + 8, height: diameter + 8)
+        // An opponent's revealed top card leans beside their portrait.
+        .overlay(alignment: .bottomTrailing) {
+            if let top = opponent.zones.library.first, let viewZone {
+                TopOfLibraryCard(card: top, owner: "\(opponentName)'s", height: diameter * 0.66) {
+                    viewZone("Top of \(opponentName)'s library", [top])
+                }
+                .offset(x: diameter * 0.55, y: diameter * 0.1)
+            }
+        }
         let label = opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life"
         if combatTargetable || viewZone == nil {
             Button { if combatTargetable { combatTargetAction() } } label: { medallion }

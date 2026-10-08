@@ -77,12 +77,16 @@ struct MultiplayerD20View: View {
             let wide = geometry.size.width > geometry.size.height && geometry.size.width >= 560
             let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : (wide ? playerIDs.count : 2)
             let columns = Array(repeating: GridItem(.flexible(), spacing: wide ? 10 : 12), count: max(1, columnCount))
+            // Upright the roll area takes everything the header, the result and the seat plates leave, so the throw
+            // runs its full length across the table (Caleb, 2026-10-07: the dice had too little room).
+            let plateRows = CGFloat((playerIDs.count + max(1, columnCount) - 1) / max(1, columnCount))
+            let plates = plateRows * 66 + max(0, plateRows - 1) * 12
+            let uprightRoll = max(260, geometry.size.height - 128 - 64 - plates - 18 * 3 - 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: wide ? 8 : 18) {
                     header(wide: wide)
                     // The roll area stays, so the dice stay in view under the result; it only speaks while rolling.
-                    rollArea(height: wide ? max(120, geometry.size.height - 178)
-                                          : min(320, max(240, geometry.size.height * 0.32)))
+                    rollArea(height: wide ? max(120, geometry.size.height - 178) : uprightRoll)
                     resultAndRollControl(wide: wide)
                     LazyVGrid(columns: columns, spacing: wide ? 10 : 12) {
                         ForEach(playerIDs, id: \.self) { playerID in
@@ -92,7 +96,9 @@ struct MultiplayerD20View: View {
                 }
                 .frame(maxWidth: wide ? 900 : 620)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: geometry.size.height, alignment: .center)
+                // The header sits at the top of the screen, not floating in the middle.
+                .frame(minHeight: geometry.size.height, alignment: .top)
+                .padding(.top, wide ? 4 : 8)
                 .padding(.horizontal, wide ? 24 : 18)
             }
             .scrollIndicators(.hidden)

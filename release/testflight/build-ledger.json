@@ -3,9 +3,9 @@
   "bundleId": "com.calebfeliciano.magicmobile",
   "marketingVersion": "0.1.1",
   "nextBuildFloor": "5000000000",
-  "lastPreparedBuild": "32",
+  "lastPreparedBuild": "33",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "32",
+  "lastUploadedBuild": "33",
   "uploads": [
     {
       "build": "2026062701",
@@ -399,9 +399,16 @@
       "uploadedAt": "2026-10-07T16:31:28.272Z",
       "deliveryUuid": "44e82cb2-7134-41a6-b787-0667b4da2f6a",
       "ipaPath": "build_output/testflight/native-release.E3H3B8/export/MagicMobile.ipa"
+    },
+    {
+      "build": "33",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-07T18:30:52.026Z",
+      "deliveryUuid": "d1634b35-9432-4732-84cb-d9cab08d88b3",
+      "ipaPath": "build_output/testflight/native-release.9OOgCk/export/MagicMobile.ipa"
     }
   ],
-  "lastPreparedAt": "2026-10-07T16:21:48.624Z",
+  "lastPreparedAt": "2026-10-07T18:22:43.233Z",
   "lastPreparedMarketingVersion": "0.1.1",
   "lastUploadedMarketingVersion": "0.1.1",
   "lastInstalledMarketingVersion": "0.1.0",

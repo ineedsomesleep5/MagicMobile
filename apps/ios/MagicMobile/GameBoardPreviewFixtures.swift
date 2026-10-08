@@ -360,6 +360,8 @@ enum GameBoardPreviewFixtures {
                     graveyard.append(card("graveyard-overflow-\(number)", "Fixture Graveyard \(number)", "Creature", "", "Development scrolling fixture.", power: 1))
                 }
                 zones["graveyard"] = graveyard
+                // A revealed top card (Conspicuous Snoop): it leans beside your portrait, castable.
+                zones["library"] = [card("human-library-top", "Llanowar Elves", "Creature — Elf Druid", "{G}", "{T}: Add {G}.", power: 1)]
             }
             if (state == .stackResponsePrompt || state == .abilityShowcase) && index == 1 {
                 battlefield.append(card("ai-1-ability-source", "Prodigal Pyromancer", "Creature — Human Wizard", "{2}{R}", "{T}: This creature deals 1 damage to any target.", power: 1))
@@ -528,6 +530,8 @@ enum GameBoardPreviewFixtures {
         }
         if state == .zoneInspection {
             actions.append(["id": "cast-preview-commander", "type": "cast_spell", "playerId": "human", "label": "Cast commander", "cardInstanceId": "human-command-1", "cardName": "Isamaru, Hound of Konda", "sourceZone": "command"])
+            actions.append(["id": "cast-preview-library-top", "type": "cast_spell", "playerId": "human", "label": "Cast Llanowar Elves", "cardInstanceId": "human-library-top", "cardName": "Llanowar Elves", "sourceZone": "library"])
+            root["dayNight"] = "night"; root["stormCount"] = 2
             root["legalActions"] = actions
             for key in ["exileZones", "revealed", "lookedAt", "companion"] {
                 xmage[key] = [["id": "preview-\(key)", "name": "Development \(key)", "cards": [card("preview-\(key)-card", "Forest", "Basic Land — Forest", "", "{T}: Add {G}.")]]]
