@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -75,7 +76,7 @@ import io.magicmobile.android.core.CardInfo
 import io.magicmobile.android.game.CardCountText
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
-import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.rgb
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -111,7 +112,7 @@ fun DeckStudioCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List<St
         else LocalCardSearch(metadata, colors, section, add, model, feedback, addError, { feedback = it }, { addError = it }) { inspection = it }
     }
     inspection?.let { card ->
-        io.magicmobile.android.board.BoardSheet({ inspection = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        io.magicmobile.android.board.BoardSheet({ inspection = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             DeckStudioCardInspector(card.name, card) { inspection = null }
         }
     }
@@ -129,6 +130,10 @@ private fun LocalCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List
     var constrainIdentity by remember { mutableStateOf(true) }
     var results by remember { mutableStateOf<List<CardInfo>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    // The deck's cards and the search results share one layout choice (the Cards toolbar's toggle).
+    val cardLayout by io.magicmobile.android.ui.AppPreferences.string("deckStudio.cards.layout.v1", "Grid")
+    // Sleeves at least 100 points wide.
+    val gridColumns = maxOf(2, (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 40 + 10) / 110)
     val identity = if (constrainIdentity) colors else null
     LaunchedEffect(query, type, identity, setCode, minMV, maxMV, metadata) {
         val catalogue = metadata ?: return@LaunchedEffect
@@ -182,7 +187,28 @@ private fun LocalCardSearch(metadata: NativeDeckMetadataCatalogue?, colors: List
             DeckStudioNotice("Local catalogue unavailable", "Close this editor and retry the catalogue from your library, or use online search for reference.",
                 modifier = Modifier.padding(20.dp))
         } else if (!loading && results.isEmpty()) item { StudioContentUnavailable("No matching cards", "magnifyingglass", "Try another name or reset the filters.") }
-        items(results, key = { it.name }) { card ->
+        fun addOne(card: CardInfo) {
+            if (add(card.name, section)) { setFeedback("Added ${card.name} to $section"); setError(null) }
+            else { setFeedback(null); setError("Could not add this card. Check the draft quantity or section limits.") }
+        }
+        fun removeOne(card: CardInfo) {
+            val before = model.cardCount(card.name, section)
+            model.removeOne(card.name, section)
+            if (model.cardCount(card.name, section) < before) { setFeedback("Removed one ${card.name} from $section"); setError(null) }
+            else { setFeedback(null); setError("Could not remove this card; check the draft.") }
+        }
+        // The results in sleeves, like the deck's own cards (Caleb, 2026-10-05 and 2026-10-06): the plus (or the
+        // card's right half) adds a copy; once the deck holds it the minus (or the left half) takes one away.
+        if (cardLayout == "Grid") items(results.chunked(gridColumns), key = { "grid/${it.first().name}" }) { chunk ->
+            BinderSleeveRow(chunk, gridColumns, Modifier.padding(horizontal = 8.dp)) { card, modifier ->
+                BinderSleeve(card.name, model.cardCount(card.name, section), card, modifier,
+                    notes = if (model.needsSingletonReview(card.name, card, section)) listOf("Already in playing deck, check the copy limit") else emptyList(),
+                    addLabel = "Add ${card.name} to $section", removeLabel = "Remove one ${card.name} from $section", tapLabel = "Inspect ${card.name}",
+                    add = { io.magicmobile.android.ui.GameAudio.play(io.magicmobile.android.ui.GameSound.UI_TICK); addOne(card) },
+                    remove = { io.magicmobile.android.ui.GameAudio.play(io.magicmobile.android.ui.GameSound.UI_TICK); removeOne(card) },
+                    tap = { inspect(card) }, preview = { inspect(card) })
+            }
+        } else items(results, key = { it.name }) { card ->
             Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -305,7 +331,7 @@ private fun DeckStudioOnlineSearch(resolver: OnDeviceDeckResolver?, destination:
         }
     }
     selected?.let { card ->
-        io.magicmobile.android.board.BoardSheet({ selected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        io.magicmobile.android.board.BoardSheet({ selected = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             Column(Modifier.fillMaxWidth()) {
                 StudioSheetBar("Card reference", done = { selected = null })
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) { DeckStudioScryfallReference(card.name, card) }
@@ -319,13 +345,14 @@ fun formatDateTime(millis: Long): String =
 
 /** DeckStudioCardInspector: bundled metadata offline, an optional Scryfall reference online. */
 @Composable
-fun DeckStudioCardInspector(name: String, metadata: CardInfo?, dismiss: () -> Unit) {
+fun DeckStudioCardInspector(name: String, metadata: CardInfo?, art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active,
+                            dismiss: () -> Unit) {
     Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
         StudioSheetBar("", done = dismiss)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 io.magicmobile.android.CardArtwork(name, Modifier.widthIn(max = 340.dp).fillMaxWidth().heightIn(min = 120.dp, max = 420.dp)
-                    .clip(RoundedCornerShape(14.dp))) {
+                    .clip(RoundedCornerShape(14.dp)), art = art) {
                     DeckStudioNotice(name, "Artwork is optional. Card text remains available offline.", "rectangle.portrait", Modifier.padding(12.dp))
                 }
             }
@@ -396,7 +423,7 @@ fun DeckStudioBasicLandsSheet(draft: NativeDeckDraft, apply: (Map<String, Int>, 
             StudioSheetBar("Basic lands", done = { if (apply(values, draft)) dismiss() else error = "The draft changed or these counts exceed its limits. Nothing was partially applied." },
                 doneTitle = "Apply", cancel = dismiss)
         }
-        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text("Set main-deck basic-land counts. Other sections, snow basics and nonbasic lands stay unchanged. This is your edit, not an automatic mana-base recommendation.",
                 Modifier.padding(vertical = 8.dp), color = DeckStudioPalette.ink, style = StudioText.caption)
             for (name in NativeDeckDraft.basicLandNames) {
@@ -504,7 +531,7 @@ fun DeckStudioOrganizationSheet(recordID: String, title: String, dismiss: () -> 
 fun FormSection(header: String? = null, footer: String? = null, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         header?.let { Text(it.uppercase(), Modifier.padding(start = 16.dp, bottom = 6.dp), color = DeckStudioPalette.secondaryInk, style = sf(13f)) }
-        Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+        Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
         footer?.let { Text(it, Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp), color = DeckStudioPalette.secondaryInk, style = sf(13f)) }
     }
@@ -536,22 +563,21 @@ class DeckStudioBuilderState {
     fun liveSelection(draft: NativeDeckDraft): Set<UUID> = selection.intersect(draft.rows.map { it.id }.toSet())
 }
 
-/** Live quick check in the workspace header. Tapping a row issue filters the Cards list. */
+/** Live quick check on the title plate: the brass gauge and leather chips. Tapping a row issue filters the Cards list. */
 @Composable
 fun DeckStudioPreflightBar(preflight: DeckStudioPreflight, filter: DeckStudioPreflight.Issue?, setFilter: (DeckStudioPreflight.Issue?) -> Unit,
                            chooseCommander: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(14.dp)).padding(12.dp).testTag("deckStudio.quickCheck"),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxWidth().testTag("deckStudio.quickCheck"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Ruled off from the plate above it rather than boxed.
+        GrimoireRule()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${preflight.count}/${DeckStudioPreflight.targetCount}",
                 Modifier.semantics { contentDescription = "${CardCountText.label(preflight.count)} of ${DeckStudioPreflight.targetCount}" },
-                color = DeckStudioPalette.ink, style = StudioText.headline)
-            Text(preflight.summary, color = if (preflight.issueCount == 0) DeckStudioPalette.success else DeckStudioPalette.warning, style = StudioText.caption)
+                color = DeckStudioPalette.ink, style = sf(17f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
+            Text(preflight.summary, color = if (preflight.issueCount == 0) DeckStudioPalette.success else DeckStudioPalette.warning,
+                style = sf(13f, SfWeight.semibold))
         }
-        Box(Modifier.fillMaxWidth().height(4.dp).background(DeckStudioPalette.separator, CircleShape).clearAndSetSemantics {}) {
-            Box(Modifier.fillMaxWidth(minOf(preflight.count, DeckStudioPreflight.targetCount).toFloat() / DeckStudioPreflight.targetCount).height(4.dp)
-                .background(if (preflight.count == DeckStudioPreflight.targetCount) DeckStudioPalette.success else DeckStudioPalette.accent, CircleShape))
-        }
+        BinderGauge(preflight.count, Modifier.clearAndSetSemantics {}, target = DeckStudioPreflight.targetCount, showsCount = false)
         if (preflight.activeIssues.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (issue in preflight.activeIssues) {
                 val selected = filter == issue
@@ -562,17 +588,12 @@ fun DeckStudioPreflightBar(preflight: DeckStudioPreflight, filter: DeckStudioPre
                     stateDescription = if (issue == DeckStudioPreflight.Issue.MISSING_COMMANDER) "Choose a commander" else if (selected) "Shows every card again" else "Shows only these cards"
                     this.selected = selected
                 }, contentAlignment = Alignment.Center) {
-                    Row(Modifier.defaultMinSize(minHeight = 32.dp).background(if (selected) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, CircleShape)
-                        .border(1.dp, if (selected) Color.Transparent else DeckStudioPalette.separator, CircleShape).padding(horizontal = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val tint = if (selected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.warning
-                        SfImage(if (issue == DeckStudioPreflight.Issue.MISSING_COMMANDER) "crown" else "exclamationmark.triangle", tint, 12.dp)
-                        Text(preflight.chipTitle(issue), color = tint, style = StudioText.caption.weight(SfWeight.semibold), maxLines = 1)
-                    }
+                    BinderChip(preflight.chipTitle(issue), icon = if (issue == DeckStudioPreflight.Issue.MISSING_COMMANDER) "crown" else "exclamationmark.triangle",
+                        chosen = selected)
                 }
             }
         }
-        Text(DeckStudioPreflight.caption, color = DeckStudioPalette.secondaryInk, style = StudioText.caption2)
+        Text(DeckStudioPreflight.caption, color = DeckStudioPalette.secondaryInk, style = sf(12f))
     }
 }
 
@@ -593,7 +614,11 @@ private data class QuickAddToast(val message: String, val generation: UUID)
  * and keep typing. Each add can be undone from its toast.
  */
 @Composable
-fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStudioEditorModel, openSearch: () -> Unit, modifier: Modifier = Modifier) {
+fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStudioEditorModel, openSearch: () -> Unit, modifier: Modifier = Modifier,
+                          binder: Boolean = false) {
+    // At the foot of a binder page, on leather: parchment lettering, a dark well to write in and brass plaques.
+    // The bar floats over the page (Caleb, 2026-10-06), so its notes are written in ink.
+    val hintInk = DeckStudioPalette.secondaryInk
     var text by remember { mutableStateOf("") }
     var maybeboard by rememberSaveable { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<CardInfo>>(emptyList()) }
@@ -623,8 +648,10 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
     }
     val shape = RoundedCornerShape(DeckStudioMetrics.controlRadius)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (focused && suggestions.isNotEmpty()) Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(12.dp))
-            .border(1.dp, DeckStudioPalette.separator, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp))) {
+        if (focused && suggestions.isNotEmpty()) Column(Modifier.fillMaxWidth().shadow(if (binder) 4.dp else 0.dp, RoundedCornerShape(12.dp))
+            .grimoirePaper(DeckStudioPalette.surface, 0.2f, RoundedCornerShape(12.dp))
+            .border(if (binder) 1.5.dp else 1.dp, if (binder) Binder.brass else androidx.compose.ui.graphics.SolidColor(DeckStudioPalette.separator), RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))) {
             suggestions.forEachIndexed { index, card ->
                 Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable { commit(card) }.padding(horizontal = 12.dp)
                     .clearAndSetSemantics { contentDescription = "Quick add ${parsed?.quantity ?: 1} ${card.name}" },
@@ -638,41 +665,46 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
         }
         when {
             error != null -> Text(error ?: "", color = DeckStudioPalette.danger, style = StudioText.caption)
-            note != null -> Text(note ?: "", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-            focused && text.isEmpty() -> Text(DeckStudioPlayText.quickAddHint,
-                color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+            note != null -> Text(note ?: "", color = hintInk, style = StudioText.caption)
+            focused && text.isEmpty() -> Text(DeckStudioPlayText.quickAddHint, color = hintInk, style = StudioText.caption)
         }
         toast?.let { shown ->
-            Row(Modifier.fillMaxWidth().background(DeckStudioPalette.ink, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp)
+            // A leather slip in brass with a brass Undo plaque.
+            Row(Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(12.dp)).binderLeather(Binder.oxblood, 0.4f, RoundedCornerShape(12.dp))
+                .border(1.5.dp, Binder.brass, RoundedCornerShape(12.dp)).padding(start = 12.dp, end = 4.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }, verticalAlignment = Alignment.CenterVertically) {
-                Text(shown.message, Modifier.weight(1f), color = DeckStudioPalette.surfaceElevated, style = StudioText.caption.weight(SfWeight.semibold), maxLines = 2)
+                Text(shown.message, Modifier.weight(1f), color = rgb(0.98, 0.86, 0.62), style = sf(13f, SfWeight.bold), maxLines = 2)
                 val canUndo = model.history.generation == shown.generation
-                Box(Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp).alpha(if (canUndo) 1f else 0.4f)
-                    .clickable(enabled = canUndo, role = Role.Button) { model.undo(); toast = null }.testTag("deckStudio.quickAdd.undo"),
-                    contentAlignment = Alignment.Center) {
-                    Text(DeckStudioPlayText.undo, color = DeckStudioPalette.surfaceElevated, style = StudioText.caption.weight(SfWeight.semibold))
-                }
+                BinderPlaque(Modifier.testTag("deckStudio.quickAdd.undo"), title = DeckStudioPlayText.undo, enabled = canUndo) { model.undo(); toast = null }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).defaultMinSize(minHeight = DeckStudioMetrics.controlHeight).background(DeckStudioPalette.surfaceElevated, shape)
-                .border(1.dp, DeckStudioPalette.separator, shape).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            val fieldInk = if (binder) io.magicmobile.android.ui.TavernPalette.parchment else DeckStudioPalette.ink
+            Row(Modifier.weight(1f).defaultMinSize(minHeight = DeckStudioMetrics.controlHeight)
+                .background(if (binder) Color.Black.copy(alpha = 0.5f) else DeckStudioPalette.surfaceElevated, shape)
+                .border(1.dp, if (binder) Binder.brassLight.copy(alpha = 0.3f) else DeckStudioPalette.separator, shape).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                SfImage("magnifyingglass", DeckStudioPalette.secondaryInk, 15.dp)
+                SfImage("magnifyingglass", if (binder) Binder.brassLight else DeckStudioPalette.secondaryInk, 15.dp)
                 BasicTextField(text, { text = it; if (it.isNotEmpty()) { error = null; note = null } },
                     Modifier.weight(1f).onFocusChanged { focused = it.isFocused }.testTag("deckStudio.quickAdd").semantics { contentDescription = "Quick add" },
-                    singleLine = true, textStyle = StudioText.body.copy(color = DeckStudioPalette.ink), cursorBrush = SolidColor(DeckStudioPalette.ink),
+                    singleLine = true, textStyle = StudioText.body.copy(color = fieldInk), cursorBrush = SolidColor(if (binder) Binder.brassLight else DeckStudioPalette.ink),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     // Handling Done here, without clearing focus, keeps the keyboard up for the next card.
                     keyboardActions = KeyboardActions(onDone = { commit(null) }),
                     decorationBox = { inner ->
                         Box {
-                            if (text.isEmpty()) Text(DeckStudioPlayText.quickAdd, color = DeckStudioPalette.secondaryInk.copy(alpha = 0.6f), style = StudioText.body, maxLines = 1)
+                            if (text.isEmpty()) Text(DeckStudioPlayText.quickAdd, color = if (binder) fieldInk.copy(alpha = 0.5f) else DeckStudioPalette.secondaryInk.copy(alpha = 0.6f),
+                                style = StudioText.body, maxLines = 1)
                             inner()
                         }
                     })
-                if (text.isNotEmpty()) StudioIconButton("xmark.circle.fill", "Clear quick add", { text = "" }, tint = DeckStudioPalette.secondaryInk, size = 16.dp)
+                if (text.isNotEmpty()) StudioIconButton("xmark.circle.fill", "Clear quick add", { text = "" }, tint = if (binder) fieldInk.copy(alpha = 0.7f) else DeckStudioPalette.secondaryInk, size = 16.dp)
             }
+            if (binder) {
+                BinderPlaque(Modifier.testTag("deckStudio.quickAdd.maybeboard"), title = if (maybeboard) DeckStudioPlayText.quickAddMaybe else DeckStudioPlayText.quickAddMain,
+                    on = maybeboard, label = DeckStudioPlayText.quickAddMaybeboard + if (maybeboard) ", on" else ", off") { maybeboard = !maybeboard }
+                BinderPlaque(Modifier.testTag("deckStudio.addCards"), title = DeckStudioPlayText.addCards, icon = "plus") { openSearch() }
+            } else {
             Box(Modifier.defaultMinSize(minWidth = 52.dp, minHeight = DeckStudioMetrics.controlHeight)
                 .background(if (maybeboard) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, shape)
                 .border(1.dp, if (maybeboard) Color.Transparent else DeckStudioPalette.separator, shape).clip(shape)
@@ -687,6 +719,7 @@ fun DeckStudioQuickAddBar(metadata: NativeDeckMetadataCatalogue?, model: DeckStu
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 SfImage("plus", DeckStudioPalette.surfaceElevated, 14.dp)
                 Text(DeckStudioPlayText.addCards, color = DeckStudioPalette.surfaceElevated, style = StudioText.subheadline.weight(SfWeight.semibold), maxLines = 1)
+            }
             }
         }
     }
@@ -728,7 +761,7 @@ private fun BulkAction(title: String, icon: String, tint: Color, modifier: Modif
 fun DeckStudioQuantityDialog(apply: (String) -> Unit, dismiss: () -> Unit) {
     var value by remember { mutableStateOf("") }
     Dialog(dismiss) {
-        Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(14.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(14.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(DeckStudioPlayText.setQuantity, color = DeckStudioPalette.ink, style = StudioText.headline)
             Text(DeckStudioPlayText.quantityMessage, color = DeckStudioPalette.secondaryInk, style = StudioText.footnote)
             StudioRoundedField(value, { value = it.filter(Char::isDigit).take(4) }, "Quantity", Modifier.fillMaxWidth(), keyboardType = KeyboardType.Number)
@@ -775,6 +808,9 @@ fun DeckStudioTextEditorSheet(draft: NativeDeckDraft, apply: (NativeDeckDraft, N
                     }
                     if (current.second.removed.isNotEmpty()) FormSection(DeckStudioPlayText.diffRemoved) {
                         current.second.removed.forEach { Text(it.label, color = DeckStudioPalette.danger, style = StudioText.subheadline) }
+                    }
+                    if (current.second.art.isNotEmpty()) FormSection(DeckStudioPlayText.diffArt) {
+                        current.second.art.forEach { Text(it.label, color = DeckStudioPalette.ink, style = StudioText.subheadline) }
                     }
                     if (current.third.isNotEmpty()) FormSection("Notes") { current.third.forEach { Text(it, color = DeckStudioPalette.ink, style = StudioText.caption) } }
                     error?.let { Text(it, color = DeckStudioPalette.danger, style = StudioText.caption) }

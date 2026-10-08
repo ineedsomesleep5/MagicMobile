@@ -38,6 +38,9 @@ struct NativeArtworkCatalogue {
     private var backTokens: [UUID: NativeTokenArtwork] = [:]
     private var backTokenImages: [UUID: Images] = [:]
     private var relations: [UUID: [NativeTokenArtwork]] = [:]
+    /// Chosen printings: "set/number" to the card's Scryfall ID, and a double-faced card's back pictures.
+    private var printingIDs: [String: UUID] = [:]
+    private var printingBackImages: [UUID: Images] = [:]
     var cardCount: Int { imagesByID.count }
     private var tokenFaces: [NativeTokenArtwork] { Array(tokens.values) + Array(backTokens.values) }
     var tokenCount: Int { tokens.count + backTokens.count }
@@ -77,6 +80,15 @@ struct NativeArtworkCatalogue {
     }
     func imageURL(id: UUID, size: String, face: String? = nil) -> URL? {
         face == "back" ? backTokenImages[id]?.url(size) : imagesByID[id]?.url(size)
+    }
+    /// The image of exactly this printing (loaded with `load(printings:)`), or its reverse face.
+    func imageURL(printing: CardPrinting, size: String, back: Bool = false) -> URL? {
+        guard let id = printingIDs[printing.key] else { return nil }
+        return back ? printingBackImages[id]?.url(size) : imagesByID[id]?.url(size)
+    }
+    /// Whether the printing came back from Scryfall with a reverse face of its own.
+    func hasBackFace(printing: CardPrinting) -> Bool {
+        printingIDs[printing.key].map { printingBackImages[$0] != nil } ?? false
     }
     func token(id: UUID, face: String? = nil) -> NativeTokenArtwork? { face == "back" ? backTokens[id] : tokens[id] }
     /// Bounded on-demand lookup for a visible token name. Search is only invoked
@@ -198,8 +210,26 @@ struct NativeArtworkCatalogue {
         return result
     }
 
+    /// The images of the exact printings a player chose: ten requests of up to 75 `set` + `collector_number`
+    /// identifiers cover hundreds of cards. A printing Scryfall does not return has no image URL.
+    static func load(printings: [CardPrinting],
+                     transport: any DeckStudioScryfallHTTP = DeckStudioScryfallHTTPTransport(),
+                     budget: DeckStudioScryfallBudget = .shared) async throws -> Self {
+        var seen = Set<String>()
+        let unique = printings.filter { seen.insert($0.key).inserted }
+        guard unique.count <= NativeAssetDownloads.maximumNames else { throw DeckStudioScryfallError.invalidInput }
+        var result = Self()
+        for start in stride(from: 0, to: unique.count, by: 75) {
+            try Task.checkCancellation()
+            let batch = unique[start..<min(start + 75, unique.count)]
+            try await result.fetchCollection(batch.map { ["set": $0.setCode, "collector_number": $0.number] },
+                                             transport: transport, budget: budget, printings: true)
+        }
+        return result
+    }
+
     private mutating func fetchCollection(_ identifiers: [[String: String]], transport: any DeckStudioScryfallHTTP,
-                                          budget: DeckStudioScryfallBudget) async throws {
+                                          budget: DeckStudioScryfallBudget, printings: Bool = false) async throws {
         guard (1...75).contains(identifiers.count) else { throw CatalogueError.invalidResponse }
         var request = try Self.request(URL(string: "https://api.scryfall.com/cards/collection")!)
         request.httpMethod = "POST"
@@ -213,7 +243,29 @@ struct NativeArtworkCatalogue {
               let cards = object["data"] as? [[String: Any]], cards.count <= identifiers.count else {
             throw CatalogueError.invalidResponse
         }
-        for card in cards { try accept(JSONSerialization.data(withJSONObject: card)) }
+        for card in cards {
+            let data = try JSONSerialization.data(withJSONObject: card)
+            if printings { try acceptPrinting(data) } else { try accept(data) }
+        }
+    }
+    /// One card returned for a chosen printing: its pictures are kept under the printing, never under
+    /// the card's name, so a chosen printing cannot become the card's default art.
+    private mutating func acceptPrinting(_ object: Data) throws {
+        try Task.checkCancellation()
+        let card = try JSONDecoder().decode(Card.self, from: object)
+        guard let set = card.set, let number = card.collector_number, let printing = CardPrinting(set: set, number: number) else { return }
+        printingIDs[printing.key] = card.id
+        imagesByID[card.id] = Self.images(card.image_uris ?? card.card_faces?.first?.image_uris ?? [:])
+        if card.image_uris == nil, let back = card.card_faces?.dropFirst().first?.image_uris {
+            printingBackImages[card.id] = Self.images(back)
+        }
+    }
+    private static func images(_ uris: [String: String]) -> Images {
+        func safe(_ size: String) -> URL? {
+            guard let raw = uris[size], let url = URL(string: raw), isAllowed(url, host: "cards.scryfall.io") else { return nil }
+            return url
+        }
+        return Images(small: safe("small"), normal: safe("normal"), large: safe("large"))
     }
 
     /// Reuse today's compressed index when checking another download scope.
@@ -395,6 +447,8 @@ struct NativeArtworkCatalogue {
         struct Part: Decodable { let id: UUID; let component: String; let name: String; let type_line: String? }
         let id: UUID
         let name: String
+        let set: String?
+        let collector_number: String?
         let layout: String?
         let set_type: String?
         let type_line: String?
@@ -413,13 +467,7 @@ struct NativeArtworkCatalogue {
         // Art Series inserts are not playable cards. Their repeated face names can
         // collide with the transform card's real front/back artwork aliases.
         guard card.layout != "art_series", card.layout != "front_card", card.type_line != "Card" else { return }
-        func images(_ uris: [String: String]) -> Images {
-            func safe(_ size: String) -> URL? {
-                guard let raw = uris[size], let url = URL(string: raw), Self.isAllowed(url, host: "cards.scryfall.io") else { return nil }
-                return url
-            }
-            return Images(small: safe("small"), normal: safe("normal"), large: safe("large"))
-        }
+        func images(_ uris: [String: String]) -> Images { Self.images(uris) }
         imagesByID[card.id] = images(card.image_uris ?? card.card_faces?.first?.image_uris ?? [:])
         let tokenLike = ["token", "double_faced_token", "emblem"].contains(card.layout ?? "") ||
             card.type_line?.localizedCaseInsensitiveContains("token") == true ||
@@ -469,10 +517,48 @@ struct NativeArtworkCatalogue {
                 faceNamesByID[card.id, default: []].append(face.name)
             }
         }
-        let related = (card.all_parts ?? []).filter { $0.component == "token" }.map {
+        let related = (card.all_parts ?? []).filter { Self.isTokenPart(component: $0.component, typeLine: $0.type_line) }.map {
             NativeTokenArtwork(id: $0.id, name: $0.name, typeLine: $0.type_line)
         }
         if !related.isEmpty { relations[card.id] = related }
+    }
+
+    /// A related card that is a token or an emblem. Scryfall links a planeswalker's emblem to it as a
+    /// combo piece, not as a token, so the component alone would leave every emblem out of a download.
+    /// Meld parts and real combo pieces have neither type.
+    static func isTokenPart(component: String, typeLine: String?) -> Bool {
+        if component == "token" { return true }
+        guard let typeLine else { return false }
+        return typeLine.hasPrefix("Emblem") || typeLine.hasPrefix("Token")
+    }
+
+    /// Tokens and emblems that cards point to which this catalogue cannot download: not in it, and with no
+    /// token of the same name and type in it either (Oracle bulk keeps one printing per token, so a different
+    /// printing of the same token is covered). A download resolves these by ID before it counts or queues.
+    var referencedTokensWithoutDownload: [NativeTokenArtwork] {
+        func key(_ name: String, _ typeLine: String?) -> String {
+            let front = name.components(separatedBy: " // ")[0]
+            return NativeAssetStore.tokenNameKey(front) + "\u{0}" + NativeAssetStore.tokenTypeKey(typeLine?.components(separatedBy: " // ")[0])
+        }
+        let covered = Set(allTokens.map { key($0.name, $0.typeLine) })
+        var seen = Set<UUID>()
+        return relations.values.flatMap { $0 }.filter { part in
+            guard tokens[part.id] == nil, backTokens[part.id] == nil, !covered.contains(key(part.name, part.typeLine)) else { return false }
+            return seen.insert(part.id).inserted
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    /// The tokens with these exact IDs, in collection batches of 75, so a download can add what the bulk lacks.
+    static func load(tokenIDs: [UUID], transport: any DeckStudioScryfallHTTP = DeckStudioScryfallHTTPTransport(),
+                     budget: DeckStudioScryfallBudget = .shared) async throws -> Self {
+        var result = Self()
+        let ids = Array(Set(tokenIDs)).sorted { $0.uuidString < $1.uuidString }
+        for start in stride(from: 0, to: ids.count, by: 75) {
+            try Task.checkCancellation()
+            try await result.fetchCollection(ids[start..<min(start + 75, ids.count)].map { ["id": $0.uuidString.lowercased()] },
+                                             transport: transport, budget: budget)
+        }
+        return result
     }
 
     private final class BoundedTransfer: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {

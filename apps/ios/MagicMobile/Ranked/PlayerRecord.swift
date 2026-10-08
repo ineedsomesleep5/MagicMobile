@@ -35,6 +35,9 @@ struct MatchRecord: Codable, Equatable, Identifiable, Sendable {
     let turns: Int
     let rankChange: RankChange?
     let season: String?
+    /// The engine's id for the game: it finds the detailed record (Deck Studio's saved game history), when
+    /// the player chose to keep one. Games from earlier builds have none.
+    var engineMatchID: String? = nil
 
     var vsHuman: Bool { opponents.contains { !$0.isAI } }
 }
@@ -215,6 +218,8 @@ final class PlayerRecordStore: ObservableObject {
     private(set) var recentAIDecks: [String] = []
     /// Set by the app to share rank changes with friends; nil in tests.
     var publish: ((RankState, PlayerStats, Achievement?, String?) -> Void)?
+    /// Set by the app to send each finished game to the profile server; nil in tests.
+    var didRecord: ((MatchRecord) -> Void)?
 
     private let fileURL: URL?
     private let now: () -> Date
@@ -268,7 +273,7 @@ final class PlayerRecordStore: ObservableObject {
     @discardableResult
     func record(mode: PlayMode, outcome: RankOutcome, opponents: [MatchRecord.Opponent], opponentBracket: Int?, aiSkill: Int?,
                 deckID: String, deckName: String, commander: String?, colors: [String], deckBracket: Int, turns: Int,
-                aiDeckID: String? = nil) -> RankChange? {
+                aiDeckID: String? = nil, engineMatchID: String? = nil) -> RankChange? {
         refreshSeason()
         var change: RankChange?
         if mode == .ranked {
@@ -278,12 +283,15 @@ final class PlayerRecordStore: ObservableObject {
         }
         let match = MatchRecord(date: now(), mode: mode, opponents: opponents, opponentBracket: opponentBracket, aiSkill: aiSkill,
                                 deckID: deckID, deckName: deckName, commander: commander, colors: colors, deckBracket: deckBracket,
-                                outcome: outcome, turns: turns, rankChange: change, season: mode == .ranked ? rank.season : nil)
+                                outcome: outcome, turns: turns, rankChange: change, season: mode == .ranked ? rank.season : nil,
+                                engineMatchID: engineMatchID)
         matches.insert(match, at: 0)
         if matches.count > Self.maxMatches { matches.removeLast(matches.count - Self.maxMatches) }
         if let aiDeckID { recentAIDecks = Array(([aiDeckID] + recentAIDecks.filter { $0 != aiDeckID }).prefix(4)) }
         save()
         if mode == .ranked { publish?(rank, stats, title, shownCommander) }
+        // The finished game goes to the profile server too (when there is a profile): never blocks play.
+        didRecord?(match)
         return change
     }
 
@@ -304,6 +312,17 @@ final class PlayerRecordStore: ObservableObject {
     /// UI tests: MAGICMOBILE_UI_TEST_RANK=<tier>-<division>-<pips>[-<streak>] sets the standing, and
     /// MAGICMOBILE_UI_TEST_MATCHES=<n> adds sample history.
     func applyUITestSeed(_ environment: [String: String]) {
+        if SocialFixtures.isActive {
+            let fixture = SocialFixtures.matches(now: now(), season: rank.season)
+            matches = fixture.matches
+            rank = fixture.rank
+            favoriteCommander = nil
+            return
+        }
+        if ProfileHistoryFixture.isActive {
+            matches = ProfileHistoryFixture.matches()
+            return
+        }
         if let seed = environment["MAGICMOBILE_UI_TEST_RANK"] {
             let parts = seed.split(separator: "-").map(String.init)
             if parts.count >= 3, let tier = RankTier.allCases.first(where: { String(describing: $0) == parts[0] }),

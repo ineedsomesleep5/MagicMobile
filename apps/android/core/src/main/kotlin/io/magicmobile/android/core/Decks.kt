@@ -15,7 +15,9 @@ object DeckSections {
     fun normalize(value:String):String=known(value)?:value
 }
 
-data class CardEntry(val name: String, val quantity: Int, val section: String = "deck")
+data class CardEntry(val name: String, val quantity: Int, val section: String = "deck",
+                     /** The printing whose artwork the player chose; null shows the card's default artwork. It never reaches the engine. */
+                     val printing: CardPrinting? = null)
 data class Deck(val name: String, val entries: List<CardEntry>) {
     init { require(name.isNotBlank() && name.length <= 300 && entries.size <= 2000)
         var total = 0L
@@ -26,13 +28,18 @@ data class Deck(val name: String, val entries: List<CardEntry>) {
             appendLine(section.replaceFirstChar { it.uppercase() }); rows.forEach { appendLine("${it.quantity} ${it.name}") }; appendLine()
         }
     }
-    fun json(): Obj = mapOf("name" to name, "entries" to entries.map { mapOf("name" to it.name, "quantity" to it.quantity, "section" to it.section) })
+    fun json(): Obj = mapOf("name" to name, "entries" to entries.map { entry ->
+        val row = linkedMapOf<String, Any?>("name" to entry.name, "quantity" to entry.quantity, "section" to entry.section)
+        entry.printing?.let { row["setCode"] = it.setCode; row["collectorNumber"] = it.number }
+        row
+    })
     fun change(index: Int, delta: Int): Deck { val row = entries[index]; val n = row.quantity.toLong() + delta
         require(n in 0..2000); return copy(entries = entries.toMutableList().apply { if(n == 0L) removeAt(index) else set(index,row.copy(quantity = n.toInt())) }) }
     companion object {
         fun decode(value: Obj): Deck = Deck(Wire.string(value["name"]), value.array("entries").map {
             val row = Wire.objectValue(it); val count = Wire.integer(row["quantity"]); require(count in 1..2000)
-            CardEntry(Wire.string(row["name"]),count.toInt(),DeckSections.normalize(Wire.string(row["section"]))) })
+            CardEntry(Wire.string(row["name"]),count.toInt(),DeckSections.normalize(Wire.string(row["section"])),
+                (row["setCode"] as? String)?.let{set->(row["collectorNumber"] as? String)?.let{number->CardPrinting.of(set,number)}}) })
         fun parse(name: String, text: String): Deck {
             require(text.toByteArray().size <= 2 * 1024 * 1024)
             var section = "deck"; val entries = mutableListOf<CardEntry>()

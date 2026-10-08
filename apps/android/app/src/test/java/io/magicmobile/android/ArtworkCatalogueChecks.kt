@@ -51,6 +51,9 @@ fun main() {
         check(live.card("Delver of Secrets")?.faces?.any{it.name=="Insectile Aberration"}==true)
         check(live.card("Insectile Aberration")?.images?.get("normal")!=live.card("Delver of Secrets")?.images?.get("normal"))
         println("Live catalogue tokens: ${live.tokens.size}; unavailable: ${live.unavailableTokens.size}")
+        // What a full download would still miss: tokens and emblems cards point to that this bulk lacks.
+        val uncovered=live.referencedTokensWithoutDownload()
+        println("TOKEN_COVERAGE_AUDIT referencedWithoutDownload=${uncovered.size} names=${uncovered.take(40).map{it.name}}")
     }
     println("Artwork catalogue checks passed")
 }

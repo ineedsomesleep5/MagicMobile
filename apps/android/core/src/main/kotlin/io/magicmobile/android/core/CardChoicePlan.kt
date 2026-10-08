@@ -113,9 +113,10 @@ class CardChoicePlan private constructor(
         }
         /** TargetImpl's aggregate selection limit is in the message, not the one-UUID transport bounds. */
         fun selectionBounds(prompt:Decision):Pair<Int,Int>? {
-            val match=Regex("selected\\s+\\d+\\s+of\\s+(\\d+)(?:,\\s*min\\s+(\\d+))?",RegexOption.IGNORE_CASE)
+            // "Any number" targets omit "of <max>" ("(selected 1)"): no upper bound.
+            val match=Regex("\\(selected\\s+\\d+(?:\\s+of\\s+(\\d+))?(?:,\\s*min\\s+(\\d+))?\\)",RegexOption.IGNORE_CASE)
                 .find(prompt.payload.text("message").orEmpty()) ?: return null
-            val maximum=match.groupValues[1].toIntOrNull() ?: return null
+            val maximum=match.groupValues[1].takeIf(String::isNotEmpty)?.toIntOrNull() ?: Int.MAX_VALUE
             val minimum=match.groupValues[2].takeIf(String::isNotEmpty)?.toIntOrNull() ?: 0
             return if(maximum>=minimum)minimum to maximum else null
         }
@@ -136,7 +137,7 @@ class CardChoicePlan private constructor(
             }
         }
         private fun context(prompt:Decision)=prompt.payload.text("message").orEmpty()
-            .replace(Regex("\\s*\\(selected \\d+ of \\d+(?:, min \\d+)?\\)"),"")
+            .replace(Regex("\\s*\\(selected \\d+(?: of \\d+)?(?:, min \\d+)?\\)"),"")
         private fun candidates(prompt:Decision):Set<String>? {
             val ids=candidateIds(prompt)
             return ids.takeIf{it.isNotEmpty()}?.toSet()

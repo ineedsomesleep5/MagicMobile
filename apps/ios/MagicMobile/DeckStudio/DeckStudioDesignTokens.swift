@@ -70,24 +70,22 @@ struct DeckStudioPanel<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content.padding(DeckStudioMetrics.panelPadding).frame(maxWidth: .infinity, alignment: .leading)
-            .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius))
+            // A plate of the book's own paper, a shade lighter than the page, edged with a hairline of ink.
+            .background {
+                GrimoirePaper(tone: .plate)
+                    .clipShape(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius))
+                    .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.panelRadius)
+                        .strokeBorder(DeckStudioPalette.ink.opacity(0.14), lineWidth: 0.8))
+            }
     }
 }
 
+/// Something to tell the player, written on the page in the binder's hand (BinderNote).
 struct DeckStudioNotice: View {
     let title: String
     let message: String
     var icon = "info.circle"
-    var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(message).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-            }
-        } icon: { Image(systemName: icon) }
-        .foregroundStyle(DeckStudioPalette.ink)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    var body: some View { BinderNote(title: title, message: message, icon: icon) }
 }
 
 struct DeckStudioColorIdentity: View {

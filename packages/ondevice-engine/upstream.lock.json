@@ -1,10 +1,10 @@
 {
-  "commit": "4825513287ba6c42c32fd205d227f4a5fc44c2f3",
+  "commit": "dac400ba1380f17492c9ad6a65ab60f12f28cd97",
   "magicmobileBase": "058478f690b713332c13d0a8369e98f5b792a282",
   "repository": "https://github.com/magefree/mage.git",
   "sourceBlobs": {
     "Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java": "9d148fb1c9de93d0f59ad9d4877906eda58dd371",
-    "Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java": "0dd5cf47a77d96a580882fecf0f468c46dd5a44a",
+    "Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java": "e13acd23c296aa9979b8c9672b4c4590fce6b94b",
     "Mage.Sets/src/mage/cards/a/ArcaneBombardment.java": "3441716b459247082646c9bb294a458d8ce9c4d6",
     "Mage.Sets/src/mage/cards/c/CaptainNghathrod.java": "e1a1e39f4248f44cddec788f0e83080598969bad",
     "Mage.Sets/src/mage/cards/f/ForTheAncestors.java": "afffd910b71d534c94519086969f93ff24bab12f",
@@ -21,7 +21,7 @@
     "Mage/src/main/java/mage/cards/CardImpl.java": "ab184ebab0b1e0421e4165404fb9d49ea18b0981",
     "Mage/src/main/java/mage/cards/Sets.java": "152d51e53bf55ea0a8337eba6e86964bcbb65a90",
     "Mage/src/main/java/mage/game/Exile.java": "4342443b3214932e5ca560ffa6060bbea398cf0d",
-    "Mage/src/main/java/mage/game/GameImpl.java": "a405b1ebba1c3c8d4302835335d95d9b9fb2966a",
+    "Mage/src/main/java/mage/game/GameImpl.java": "2b6dbb6f0aaa87ce9b143dae4c4e99d7f06bf7aa",
     "Mage/src/main/java/mage/util/RandomUtil.java": "b0424863455056a82e2bed7ce7699cbdc30c81c3"
   }
 }

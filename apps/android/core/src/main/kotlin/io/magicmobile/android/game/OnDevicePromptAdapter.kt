@@ -401,6 +401,29 @@ object OnDevicePromptAdapter {
         }
     }
 
+    /** The engine's answer actions (docs/PROTOCOL.md) for a command's requested ones, only where they fit this prompt. */
+    fun answerActions(requested: List<String>, command: GameCommand, prompt: EnginePrompt): List<J> = requested.map { type ->
+        when {
+            type == "rememberAnswer" && prompt.kind == "ASK" && command.type == "answer_yes_no" -> {
+                if (prompt.payload["options"]["originalId"].string == null || prompt.payload["options"]["autoAnswerMessage"].string == null) {
+                    throw invalid("This question cannot be remembered")
+                }
+                jsonObject("type" to s(type), "scope" to s("ability"))
+            }
+            type == "rememberTriggerFirst" && prompt.kind == "PICK_ABILITY" && command.type == "choose_ability" -> jsonObject("type" to s(type))
+            type == "passUntilStackResolved" && prompt.kind == "SELECT" && command.type == "pass_priority" &&
+                prompt.payload["selectMode"].string == "priority" -> jsonObject("type" to s(type))
+            else -> throw invalid("$type does not fit this decision")
+        }
+    }
+
+    /** The answer with standing instructions attached; unchanged when there are none. */
+    fun answer(answer: J, actions: List<J>): J {
+        val fields = (answer as? JsonObject) ?: return answer
+        if (actions.isEmpty()) return answer
+        return JsonObject(fields + ("actions" to JsonArray(actions)))
+    }
+
     private fun answer(kind: String, value: J, prompt: EnginePrompt): J {
         if (!prompt.responseTypes.contains(kind)) throw invalid("Response type $kind is not accepted")
         return EnginePrompt.answer(kind, value)

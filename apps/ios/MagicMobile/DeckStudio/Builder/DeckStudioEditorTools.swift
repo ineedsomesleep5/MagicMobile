@@ -17,7 +17,7 @@ struct DeckStudioReplacementPicker: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
-                TextField("Search exact catalogue cards", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().padding(.horizontal, 20)
+                TextField("Search exact catalogue cards", text: $query).textFieldStyle(GrimoireFieldStyle()).autocorrectionDisabled().padding(.horizontal, 20)
                 if !commander, colors != nil {
                     Toggle(DeckStudioPlayText.withinIdentity, isOn: $constrainIdentity).font(.caption).padding(.horizontal, 20)
                 }
@@ -36,8 +36,8 @@ struct DeckStudioReplacementPicker: View {
                             .frame(minHeight: 44)
                     }.listRowBackground(DeckStudioPalette.surface)
                 }.scrollContentBackground(.hidden)
-            }.background(DeckStudioPalette.background).navigationTitle(commander ? "Change commander" : "Replace card").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            }.background(GrimoirePaper())
+                .binderLeaf(commander ? "Change commander" : "Replace card", leading: BinderLeafAction(title: "Cancel") { dismiss() })
                 // Identity-limited searches scan several identity buckets, so they run off the main thread.
                 .task(id: request) {
                     guard let metadata else { results = []; return }
@@ -48,7 +48,7 @@ struct DeckStudioReplacementPicker: View {
                     guard !Task.isCancelled, captured == request else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -64,20 +64,17 @@ struct DeckStudioBasicLandsSheet: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 Text("Set main-deck basic-land counts. Other sections, snow basics and nonbasic lands stay unchanged. This is your edit, not an automatic mana-base recommendation.").font(.caption)
                 ForEach(NativeDeckDraft.basicLandNames, id: \.self) { name in
-                    Stepper("\(name): \(values[name, default: 0])", value: Binding(get: { values[name, default: 0] }, set: { values[name] = $0 }), in: 0...2000)
+                    BinderStepper("\(name): \(values[name, default: 0])", value: Binding(get: { values[name, default: 0] }, set: { values[name] = $0 }), in: 0...2000)
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
-            }.navigationTitle("Basic lands").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Apply") { if apply(values, draft) { dismiss() } else { error = "The draft changed or these counts exceed its limits. Nothing was partially applied." } }
-                    }
-                }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+            }.binderLeaf("Basic lands", leading: BinderLeafAction(title: "Cancel") { dismiss() },
+                         trailing: BinderLeafAction(title: "Apply", identifier: "deckStudio.basics.apply") {
+                             if apply(values, draft) { dismiss() } else { error = "The draft changed or these counts exceed its limits. Nothing was partially applied." }
+                         })
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -97,7 +94,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     Text(DeckStudioPlayText.commanderFirstTitle).font(.headline)
                     Text(DeckStudioPlayText.commanderFirstCaption)
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
-                    TextField(DeckStudioPlayText.searchCommanders, text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                    TextField(DeckStudioPlayText.searchCommanders, text: $query).textFieldStyle(GrimoireFieldStyle()).autocorrectionDisabled()
                         .submitLabel(.search).accessibilityIdentifier("deckStudio.commanderFirst.search")
                     if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
                 }.listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -105,7 +102,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     DeckStudioNotice(title: "Local catalogue unavailable", message: "Skip for now and add a commander from Add cards once the catalogue loads.")
                         .listRowBackground(Color.clear)
                 } else if results.isEmpty && !query.isEmpty {
-                    ContentUnavailableView("No matching commanders", systemImage: "crown", description: Text("Try another name."))
+                    BinderEmptyLeaf(title: "No matching commanders", icon: "crown", message: "Try another name.")
                         .listRowBackground(Color.clear)
                 }
                 ForEach(results) { card in
@@ -128,13 +125,9 @@ struct DeckStudioCommanderFirstPicker: View {
                         .accessibilityLabel("Choose \(card.name) as commander")
                 }
             }.listStyle(.plain).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
-                .background(DeckStudioPalette.background)
-                .navigationTitle(DeckStudioPlayText.chooseCommander).navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(DeckStudioPlayText.skip) { dismiss() }.accessibilityIdentifier("deckStudio.commanderFirst.skip")
-                    }
-                }
+                .background(GrimoirePaper())
+                .binderLeaf(DeckStudioPlayText.chooseCommander,
+                            leading: BinderLeafAction(title: DeckStudioPlayText.skip, identifier: "deckStudio.commanderFirst.skip") { dismiss() })
                 .task(id: query) {
                     guard let metadata else { return }
                     let captured = query
@@ -145,7 +138,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     guard !Task.isCancelled, captured == query else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -188,6 +181,11 @@ struct DeckStudioTextEditorSheet: View {
                                 ForEach(review.diff.removed) { Text($0.label).font(.subheadline).foregroundStyle(DeckStudioPalette.danger) }
                             }
                         }
+                        if !review.diff.art.isEmpty {
+                            Section(DeckStudioPlayText.diffArt) {
+                                ForEach(review.diff.art) { Text($0.label).font(.subheadline) }
+                            }
+                        }
                         if !review.notes.isEmpty {
                             Section("Notes") { ForEach(review.notes, id: \.self) { Text($0).font(.caption) } }
                         }
@@ -206,25 +204,17 @@ struct DeckStudioTextEditorSheet: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(DeckStudioPalette.background)
-            .navigationTitle(DeckStudioPlayText.editAsText).navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if review != nil { Button(DeckStudioPlayText.keepEditing) { review = nil; error = nil } }
-                    else { Button("Cancel") { dismiss() } }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if let review {
-                        Button(DeckStudioPlayText.applyChanges) {
-                            if apply(draft, review.draft) { dismiss() }
-                            else { error = "The deck changed while you were editing, or this list exceeds its limits. Nothing was applied." }
-                        }.disabled(review.diff.isEmpty).accessibilityIdentifier("deckStudio.textEditor.apply")
-                    } else if !unsupported {
-                        Button(DeckStudioPlayText.reviewChanges) { prepareReview() }.accessibilityIdentifier("deckStudio.textEditor.review")
-                    }
-                }
-            }
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
+            .background(GrimoirePaper())
+            .binderLeaf(DeckStudioPlayText.editAsText,
+                        leading: review != nil ? BinderLeafAction(title: DeckStudioPlayText.keepEditing) { review = nil; error = nil }
+                            : BinderLeafAction(title: "Cancel") { dismiss() },
+                        trailing: review.map { review in
+                            BinderLeafAction(title: DeckStudioPlayText.applyChanges, identifier: "deckStudio.textEditor.apply", disabled: review.diff.isEmpty) {
+                                if apply(draft, review.draft) { dismiss() }
+                                else { error = "The deck changed while you were editing, or this list exceeds its limits. Nothing was applied." }
+                            }
+                        } ?? (unsupported ? nil : BinderLeafAction(title: DeckStudioPlayText.reviewChanges, identifier: "deckStudio.textEditor.review") { prepareReview() }))
+        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     private func prepareReview() {
         do {
@@ -243,24 +233,26 @@ struct DeckStudioPreflightBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(preflight.count)/\(DeckStudioPreflight.targetCount)").font(.headline.monospacedDigit())
+                Text("\(preflight.count)/\(DeckStudioPreflight.targetCount)").font(.system(size: 17, weight: .heavy, design: .serif).monospacedDigit())
+                    .foregroundStyle(DeckStudioPalette.ink)
                     .accessibilityLabel("\(CardCountText.label(preflight.count)) of \(DeckStudioPreflight.targetCount)")
-                Text(preflight.summary).font(.caption)
+                Text(preflight.summary).font(.system(size: 13, weight: .semibold, design: .serif))
                     .foregroundStyle(preflight.issueCount == 0 ? DeckStudioPalette.success : DeckStudioPalette.warning)
                 Spacer(minLength: 0)
             }
-            ProgressView(value: Double(min(preflight.count, DeckStudioPreflight.targetCount)), total: Double(DeckStudioPreflight.targetCount))
-                .tint(preflight.count == DeckStudioPreflight.targetCount ? DeckStudioPalette.success : DeckStudioPalette.accent)
+            // The brass gauge, as on the title plate.
+            BinderGauge(count: preflight.count, target: DeckStudioPreflight.targetCount, showsCount: false)
                 .accessibilityHidden(true)
             if !preflight.activeIssues.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) { ForEach(preflight.activeIssues) { chip($0) } }
+                    HStack(spacing: 8) { ForEach(preflight.activeIssues) { chip($0) } }.padding(.vertical, 2)
                 }
             }
-            Text(DeckStudioPreflight.caption).font(.caption2).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Text(DeckStudioPreflight.caption).font(.system(size: 12, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(DeckStudioPalette.surface, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.top, 16).padding(.bottom, 6).frame(maxWidth: .infinity, alignment: .leading)
+        // Ruled off from the plate above it rather than boxed.
+        .overlay(alignment: .top) { GrimoireRule() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("deckStudio.quickCheck")
     }
@@ -270,12 +262,7 @@ struct DeckStudioPreflightBar: View {
             if issue == .missingCommander { chooseCommander() }
             else { filter = selected ? nil : issue }
         } label: {
-            Label(preflight.chipTitle(issue), systemImage: issue == .missingCommander ? "crown" : "exclamationmark.triangle")
-                .font(.caption.weight(.semibold)).lineLimit(1)
-                .padding(.horizontal, 10).frame(minHeight: 32)
-                .foregroundStyle(selected ? DeckStudioPalette.surfaceElevated : DeckStudioPalette.warning)
-                .background(selected ? DeckStudioPalette.accent : DeckStudioPalette.surfaceElevated, in: Capsule())
-                .overlay(Capsule().stroke(selected ? .clear : DeckStudioPalette.separator))
+            BinderChip(title: preflight.chipTitle(issue), icon: issue == .missingCommander ? "crown" : "exclamationmark.triangle", chosen: selected)
                 .frame(minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.plain)
             .accessibilityLabel(issue == .missingCommander ? issue.title : "\(issue.title), \(CardCountText.label(preflight.rows(issue).count))")
@@ -290,6 +277,8 @@ struct DeckStudioQuickAddBar: View {
     let metadata: NativeDeckMetadataCatalogue?
     @ObservedObject var model: DeckStudioEditorModel
     let openSearch: () -> Void
+    /// At the foot of a binder page, on leather: a dark well to write in and brass plaques.
+    var binder = false
     @Environment(\.dynamicTypeSize) private var dynamicType
     @State private var text = ""
     @State private var maybeboard = false
@@ -315,25 +304,33 @@ struct DeckStudioQuickAddBar: View {
                             .accessibilityLabel("Quick add \(parsed?.quantity ?? 1) \(card.name)")
                         if card.id != suggestions.last?.id { Divider() }
                     }
-                }.background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(DeckStudioPalette.separator))
+                }.background { GrimoirePaper(tone: .plate).clipShape(RoundedRectangle(cornerRadius: 12)) }
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(binder ? AnyShapeStyle(Binder.brass) : AnyShapeStyle(DeckStudioPalette.separator), lineWidth: binder ? 1.5 : 1))
+                    .shadow(color: .black.opacity(binder ? 0.25 : 0), radius: 8, y: 3)
             }
-            if let error { Text(error).font(.caption).foregroundStyle(DeckStudioPalette.danger) }
-            else if let note { Text(note).font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk) }
+            // The bar floats over the page (Caleb, 2026-10-06), so its notes are written in ink.
+            if let error { Text(error).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(DeckStudioPalette.danger) }
+            else if let note { Text(note).font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk) }
             else if focused, text.isEmpty {
                 Text(DeckStudioPlayText.quickAddHint)
-                    .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
             }
             if let toast {
                 HStack {
-                    Text(toast.message).font(.caption.weight(.semibold)).lineLimit(2)
+                    Text(toast.message).font(.system(size: 13, weight: .bold, design: .serif)).lineLimit(2)
+                        .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
                     Spacer(minLength: 8)
                     Button(DeckStudioPlayText.undo) { model.undo(); self.toast = nil }
-                        .font(.caption.weight(.semibold)).frame(minHeight: 44)
+                        .buttonStyle(BinderPlaqueButtonStyle())
                         .disabled(model.history.generation != toast.generation)
                         .accessibilityIdentifier("deckStudio.quickAdd.undo")
-                }.padding(.horizontal, 12).foregroundStyle(DeckStudioPalette.surfaceElevated).tint(DeckStudioPalette.surfaceElevated)
-                    .background(DeckStudioPalette.ink, in: RoundedRectangle(cornerRadius: 12))
+                }.padding(.leading, 12).padding(.trailing, 4)
+                    .background {
+                        ZStack { TavernFill(material: .leather); Binder.dye(Binder.oxblood, 0.4) }
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Binder.brass, lineWidth: 1.5))
+                    }
+                    .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
                     .accessibilityElement(children: .contain)
             }
             if dynamicType.isAccessibilitySize {
@@ -353,32 +350,55 @@ struct DeckStudioQuickAddBar: View {
     }
     private var field: some View {
         HStack(spacing: 4) {
-            Image(systemName: "plus.magnifyingglass").foregroundStyle(DeckStudioPalette.secondaryInk).accessibilityHidden(true)
-            TextField(DeckStudioPlayText.quickAdd, text: $text).autocorrectionDisabled().textInputAutocapitalization(.words)
+            Image(systemName: "plus.magnifyingglass").foregroundStyle(binder ? Binder.brassLight : DeckStudioPalette.secondaryInk).accessibilityHidden(true)
+            TextField(DeckStudioPlayText.quickAdd, text: $text,
+                      prompt: binder ? Text(DeckStudioPlayText.quickAdd).foregroundStyle(TavernPalette.parchment.opacity(0.5)) : nil)
+                .foregroundStyle(binder ? TavernPalette.parchment : DeckStudioPalette.ink).tint(binder ? Binder.brassLight : DeckStudioPalette.ink)
+                .autocorrectionDisabled().textInputAutocapitalization(.words)
                 .focused($focused).submitLabel(.done)
                 .onSubmit { commit(nil); DispatchQueue.main.async { focused = true } }
                 .accessibilityIdentifier("deckStudio.quickAdd")
             if !text.isEmpty {
                 Button { text = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 32, height: 44) }
-                    .buttonStyle(.plain).accessibilityLabel("Clear quick add")
+                    .buttonStyle(.plain).foregroundStyle(binder ? TavernPalette.parchment.opacity(0.7) : DeckStudioPalette.secondaryInk)
+                    .accessibilityLabel("Clear quick add")
             }
         }.padding(.horizontal, 10).frame(minHeight: DeckStudioMetrics.controlHeight)
-            .background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
-            .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(DeckStudioPalette.separator))
+            // Floating over the page's cards, the well is solid leather so nothing shows through it.
+            .background {
+                if binder {
+                    ZStack { TavernFill(material: .leather); Binder.dye(Binder.leatherDark, 0.55) }
+                        .clipShape(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
+                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                } else {
+                    RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).fill(DeckStudioPalette.surfaceElevated)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(binder ? Binder.brassLight.opacity(0.3) : DeckStudioPalette.separator))
     }
     private var destinationToggle: some View {
         Button { maybeboard.toggle() } label: {
+            if binder {
+                Text(maybeboard ? DeckStudioPlayText.quickAddMaybe : DeckStudioPlayText.quickAddMain).font(.caption.weight(.heavy))
+                    .frame(minWidth: 44)
+            } else {
             Text(maybeboard ? DeckStudioPlayText.quickAddMaybe : DeckStudioPlayText.quickAddMain).font(.caption.weight(.semibold)).frame(minWidth: 52, minHeight: DeckStudioMetrics.controlHeight)
                 .foregroundStyle(maybeboard ? DeckStudioPalette.surfaceElevated : DeckStudioPalette.ink)
                 .background(maybeboard ? DeckStudioPalette.accent : DeckStudioPalette.surfaceElevated,
                             in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
                 .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(maybeboard ? .clear : DeckStudioPalette.separator))
-        }.buttonStyle(.plain)
+            }
+        }.buttonStyle(BinderOrPlainButtonStyle(binder: binder, on: maybeboard))
             .accessibilityLabel(DeckStudioPlayText.quickAddMaybeboard).accessibilityValue(maybeboard ? "On" : "Off")
             .accessibilityAddTraits(maybeboard ? [.isSelected] : [])
             .accessibilityIdentifier("deckStudio.quickAdd.maybeboard")
     }
-    private var addCardsButton: some View {
+    @ViewBuilder private var addCardsButton: some View {
+        if binder {
+            Button(action: openSearch) { Label(DeckStudioPlayText.addCards, systemImage: "plus").fixedSize(horizontal: true, vertical: false) }
+                .buttonStyle(BinderPlaqueButtonStyle())
+                .accessibilityIdentifier("deckStudio.addCards")
+        } else {
         Button(action: openSearch) {
             Label(DeckStudioPlayText.addCards, systemImage: "plus").font(.subheadline.weight(.semibold)).lineLimit(1)
                 .padding(.horizontal, 12).frame(minHeight: DeckStudioMetrics.controlHeight)
@@ -387,6 +407,7 @@ struct DeckStudioQuickAddBar: View {
                 .fixedSize(horizontal: true, vertical: false)
         }.buttonStyle(DeckStudioArtworkButtonStyle())
             .accessibilityIdentifier("deckStudio.addCards")
+        }
     }
     private func suggest() async {
         guard let metadata, let name = parsed?.name else { suggestions = []; return }
@@ -431,9 +452,10 @@ struct DeckStudioBulkBar: View {
                 Button(DeckStudioPlayText.selectAll, action: selectAll).font(.subheadline).frame(minHeight: 44)
             }
             HStack(spacing: 8) {
-                Menu {
+                BinderMenu {
+                    BinderMenuHeading(DeckStudioPlayText.moveTo)
                     ForEach(Self.destinations, id: \.section) { destination in
-                        Button(destination.title) { move(destination.section) }
+                        BinderMenuButton(destination.title) { move(destination.section) }
                     }
                 } label: { action(DeckStudioPlayText.moveTo, "arrow.right.square", tint: DeckStudioPalette.ink) }
                 Button(action: setQuantity) { action(DeckStudioPlayText.setQuantity, "number", tint: DeckStudioPalette.ink) }.buttonStyle(.plain)
@@ -449,5 +471,18 @@ struct DeckStudioBulkBar: View {
             .background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
             .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).stroke(DeckStudioPalette.separator))
             .contentShape(Rectangle())
+    }
+}
+
+/// The brass plaque on a binder page, the plain button elsewhere.
+private struct BinderOrPlainButtonStyle: ButtonStyle {
+    let binder: Bool
+    var on = false
+    func makeBody(configuration: Configuration) -> some View {
+        if binder {
+            BinderPlaque(square: false, on: on, pressed: configuration.isPressed) { configuration.label }
+        } else {
+            configuration.label.opacity(configuration.isPressed ? 0.7 : 1)
+        }
     }
 }

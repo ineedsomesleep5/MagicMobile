@@ -642,7 +642,7 @@ struct NativeGameView: View {
                 )
                 .frame(width: rootProxy.size.width, height: rootProxy.size.height)
                 .sheet(isPresented: $isTavernStackOpen) {
-                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                         .tavernSheet(true)
                 }
                 .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
@@ -771,6 +771,11 @@ struct NativeGameView: View {
                             HStack(spacing: 4) {
                                 PlayerZoneMenu(player: human, viewZone: localViewZone, snapshot: snapshot, pendingActionID: pendingActionId)
                                 BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: localViewZone)
+                            }
+                            // The revealed top of your library, under your zones.
+                            if let top = human.zones.library.first {
+                                TopOfLibraryCard(card: top, playable: GameplayAffordances.castableZones(player: human, snapshot: snapshot, pendingActionID: pendingActionId).contains(.library),
+                                                 owner: "your", height: 40) { localViewZone(title: "Top of your library", cards: [top]) }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -925,7 +930,7 @@ struct NativeGameView: View {
                     .presentationDragIndicator(.visible)
                 }
                 .sheet(isPresented: $isLandscapeStackOpen) {
-                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                 }
                 .sheet(isPresented: $isPromptDetailOpen) {
                     UniversalPromptActionPanel(
@@ -1279,6 +1284,15 @@ struct NativeGameView: View {
 
     private func boardPhasePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
+            // The classic board: day or night and the storm count under the top bar (the tavern table hangs them
+            // under its phase plate).
+            .overlay(alignment: .top) {
+                if !isTavernBoard {
+                    TavernTableHints(dayNight: snapshot.dayNight, stormCount: snapshot.stormCount)
+                        .padding(.top, 64)
+                        .allowsHitTesting(false)
+                }
+            }
             .overlay {
                 if showsTurnBanner, let active = snapshot.activePlayerId, !isCardChoiceOpen, !isPromptDetailOpen {
                     BoardTurnBanner(title: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn",
@@ -1418,7 +1432,6 @@ struct NativeGameView: View {
         }
     }
 
-    @ViewBuilder
     /// The Walnut Tavern table is portrait-only for now; landscape keeps the classic controls.
     private var isTavernBoard: Bool { BattlefieldBackdrop.resolved(boardAppearance) == .tavern }
 
@@ -1579,7 +1592,7 @@ struct NativeGameView: View {
                 .frame(width: metrics.bottomControlsRect.width, height: metrics.bottomControlsRect.height)
                 .position(x: metrics.bottomControlsRect.midX, y: metrics.bottomControlsRect.midY)
                 .sheet(isPresented: $isTavernStackOpen) {
-                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                    BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                         .tavernSheet(true)
                 }
                 .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }

@@ -497,7 +497,9 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                 BoardAppearancePicker()
                 PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
                 FollowTurnsToggle()
+                AutoPassAfterCastToggle()
                 BoardEffectsPicker()
+                RememberedChoicesPanel()
                 CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
                     SfImage("questionmark.circle", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
                 }

@@ -58,7 +58,11 @@ enum BoardZoneReference: Hashable {
         case let .player(playerID, zone):
             let name = snapshot.players.first { $0.playerId == playerID }?.displayName
             let label = name.map { EngineDisplayText.label($0) } ?? ""
-            let zoneTitle = zone.rawValue.capitalized + ([PlayerZone.hand, .library].contains(zone) ? " — visible cards" : "")
+            let zoneTitle: String = switch zone {
+            case .library: cards(in: snapshot).isEmpty ? "Library" : "Library · revealed top card"
+            case .hand: "Hand — visible cards"
+            default: zone.rawValue.capitalized
+            }
             return label.isEmpty ? zoneTitle : "\(label) · \(zoneTitle)"
         case let .named(kind, id):
             let name = kind.groups(in: snapshot).first { $0.id == id }?.name

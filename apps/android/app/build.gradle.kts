@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026100501
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026100701
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "16")
+        buildConfigField("int", "RELEASE_BUILD", "17")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
@@ -26,6 +26,7 @@ android {
     if(withNative) externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-assets"))
     sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-audio"))
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/magicmobile-d20"))
     sourceSets["main"].res.srcDir(layout.buildDirectory.dir("generated/magicmobile-res"))
     // Compress the large AOT engine in the download; Android extracts its aligned
     // ELF at install time. The actual native ABI is unchanged.
@@ -77,6 +78,19 @@ val prepareBrandAssets by tasks.registering(Sync::class) {
         eachFile { path = "drawable-nodpi/" + name.replace('-', '_').lowercase() }
         includeEmptyDirs = false
     }
+    // The spell book's opening and closing films (scripts/brand/install_grimoire.sh): grimoire-open-portrait.mp4
+    // becomes R.raw.grimoire_open_portrait.
+    from(rootProject.file("../ios/MagicMobile/Resources/Grimoire")) {
+        include("*.mp4")
+        eachFile { path = "raw/" + name.replace('-', '_').lowercase() }
+        includeEmptyDirs = false
+    }
+}
+// The starting roll's dice (scripts/brand/d20.py, installed by scripts/brand/install_d20.sh): the die, the tavern
+// tables and soft discs as .glb, the face list and the recorded throws as JSON. Both apps read these same files.
+val prepareD20Assets by tasks.registering(Sync::class) {
+    from(rootProject.file("../ios/MagicMobile/Resources/D20")) { include("*.glb", "*.json") }
+    into(layout.buildDirectory.dir("generated/magicmobile-d20/d20"))
 }
 val prepareAudio by tasks.registering(Exec::class) {
     val script = rootProject.file("../../scripts/android/prepare_audio.py")
@@ -86,7 +100,7 @@ val prepareAudio by tasks.registering(Exec::class) {
     commandLine("python3", script.absolutePath, rootProject.file("../..").absolutePath,
         layout.buildDirectory.dir("generated/magicmobile-audio").get().asFile.absolutePath)
 }
-tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets,prepareAudio) }
+tasks.named("preBuild").configure { dependsOn(prepareAssets,prepareBrandAssets,prepareAudio,prepareD20Assets) }
 if(withNative) {
     val verifyNative by tasks.registering(Exec::class) {
         commandLine("python3",rootProject.file("../../scripts/android/verify_native.py").absolutePath,rootProject.file("../..").absolutePath)
@@ -112,6 +126,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // WebSocket client for the cross-play table relay.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // The starting roll's 3D table: Google Filament renders the d20 and the tavern table; gltfio reads the .glb
+    // models. Only the arm64 libraries ship (abiFilters above), about 3 MB.
+    implementation("com.google.android.filament:filament-android:1.75.1")
+    implementation("com.google.android.filament:gltfio-android:1.75.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 tasks.register<JavaExec>("artworkCatalogueChecks") {

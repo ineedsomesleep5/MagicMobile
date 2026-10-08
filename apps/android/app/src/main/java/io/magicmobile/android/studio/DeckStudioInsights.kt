@@ -59,13 +59,16 @@ import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
-import io.magicmobile.android.ui.sf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
 
 @Composable
 private fun Metric(label: String, value: String) {
@@ -112,7 +115,7 @@ fun DeckStudioAnalysisContent(draft: NativeDeckDraft, metadata: NativeDeckMetada
             Metric("Other sections", "${draft.rows.filter { DeckStudioDraftPresentation.section(it) !in setOf("deck", "commanders") }.sumOf { it.quantity }}")
             Metric("Lands in main", "${statistics.landCount}")
             Metric("Average nonland mana value", statistics.averageManaValue?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "Unavailable")
-            Text("Deck statistics · check legality in Playtest.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+            Text("Deck statistics · check legality with Validate deck in the ⋯ menu.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
         }
         StudioPanel {
             Text("Main-deck mana curve", color = DeckStudioPalette.ink, style = StudioText.headline)
@@ -286,7 +289,7 @@ fun DeckStudioRoleInsightsView(draft: NativeDeckDraft, metadata: NativeDeckMetad
         }
     }
     review?.let { (name, original) ->
-        BoardSheet({ review = null }, background = rgbLight, skipPartiallyExpanded = true, sound = false) {
+        BoardSheet({ review = null }, background = rgbLight, paper = true, skipPartiallyExpanded = true, sound = false) {
             var selected by remember(name) { mutableStateOf(original) }
             Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
                 StudioSheetBar("Review roles", done = { if (change { it.copy(overrides = it.overrides + (name to selected)) }) review = null },
@@ -300,7 +303,7 @@ fun DeckStudioRoleInsightsView(draft: NativeDeckDraft, metadata: NativeDeckMetad
             }
         }
     }
-    if (showTargets) BoardSheet({ showTargets = false }, background = rgbLight, skipPartiallyExpanded = true, sound = false) {
+    if (showTargets) BoardSheet({ showTargets = false }, background = rgbLight, paper = true, skipPartiallyExpanded = true, sound = false) {
         var targets by remember { mutableStateOf(preferences.targets) }
         Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
             StudioSheetBar("My target ranges", done = { if (change { it.copy(targets = targets) }) showTargets = false }, doneTitle = "Save", cancel = { showTargets = false })
@@ -545,9 +548,7 @@ fun MatchHistoryDashboard(game: DeckStudioRecordedGame, exactDeck: Boolean, meta
     BackHandler { dismiss() }
     StudioScreen {
         Column(Modifier.fillMaxSize()) {
-            StudioNavBar("Match history", leading = {
-                StudioGlassGroup { StudioGlassIcon("chevron.left", "Back to history", dismiss) }
-            })
+            Box(Modifier.statusBarsPadding()) { StudioSheetBar("Match history", cancel = dismiss, cancelTitle = "Back") }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).navigationBarsPadding()
                 .semantics { contentDescription = "deckHistory.dashboard.scroll" }, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(12.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -593,7 +594,7 @@ fun MatchHistoryDashboard(game: DeckStudioRecordedGame, exactDeck: Boolean, meta
         }
     }
     inspected?.let { name ->
-        BoardSheet({ inspected = null }, background = DeckStudioPalette.background, skipPartiallyExpanded = true, sound = false) {
+        BoardSheet({ inspected = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
             DeckStudioCardInspector(name, metadata?.card(name)) { inspected = null }
         }
     }

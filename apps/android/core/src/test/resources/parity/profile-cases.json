@@ -1,0 +1,150 @@
+{
+  "_comment": "Profile numbers and public-profile parsing, checked by ProfileAnalyticsTests.swift and ProfileAnalyticsTest.kt. Games are newest first, like the phone's record. Weeks start on Monday 00:00 UTC.",
+  "summaries": [
+    {
+      "name": "mixed history with a draw, an unknown turn count and games older than eight weeks",
+      "now": "2026-10-07T12:00:00Z",
+      "games": [
+        { "id": "g1", "at": "2026-10-06T10:00:00Z", "result": "win", "mode": "ranked", "commanders": ["Krenko, Mob Boss"], "colors": ["R"], "turns": 8, "rankAfter": 26 },
+        { "id": "g2", "at": "2026-10-05T00:00:00Z", "result": "loss", "mode": "ranked", "commanders": ["Krenko, Mob Boss"], "colors": ["R"], "turns": 6, "rankAfter": 25 },
+        { "id": "g3", "at": "2026-10-04T23:59:59Z", "result": "win", "mode": "quick", "commanders": ["Edgar Markov"], "colors": ["W", "B", "R"], "turns": 10 },
+        { "id": "g4", "at": "2026-09-30T12:00:00Z", "result": "win", "mode": "ranked", "commanders": ["Krenko, Mob Boss"], "colors": ["R"], "turns": 0, "rankAfter": 26 },
+        { "id": "g5", "at": "2026-09-20T09:00:00Z", "result": "draw", "mode": "ranked", "commanders": ["Edgar Markov"], "colors": ["W", "B", "R"], "turns": 12, "rankAfter": 25 },
+        { "id": "g6", "at": "2026-09-10T09:00:00Z", "result": "win", "mode": "casual", "commanders": ["Atraxa, Praetors' Voice"], "colors": ["W", "U", "B", "G"], "turns": 9 },
+        { "id": "g7", "at": "2026-08-01T00:00:00Z", "result": "loss", "mode": "ranked", "commanders": ["Krenko, Mob Boss"], "colors": ["R"], "turns": 5, "rankAfter": 25 },
+        { "id": "g8", "at": "2026-07-30T00:00:00Z", "result": "win", "mode": "ranked", "commanders": ["Krenko, Mob Boss"], "colors": ["R", "R", "X"], "turns": 7, "rankAfter": 26 }
+      ],
+      "expect": {
+        "games": 8, "wins": 5, "losses": 2, "draws": 1, "currentStreak": 1, "bestStreak": 2, "averageTurns": 8.142857142857142,
+        "weeks": [
+          { "start": "2026-08-17", "games": 0, "wins": 0 }, { "start": "2026-08-24", "games": 0, "wins": 0 },
+          { "start": "2026-08-31", "games": 0, "wins": 0 }, { "start": "2026-09-07", "games": 1, "wins": 1 },
+          { "start": "2026-09-14", "games": 1, "wins": 0 }, { "start": "2026-09-21", "games": 0, "wins": 0 },
+          { "start": "2026-09-28", "games": 2, "wins": 2 }, { "start": "2026-10-05", "games": 2, "wins": 1 }
+        ],
+        "commanders": [
+          { "id": "Krenko, Mob Boss", "games": 5, "wins": 3 }, { "id": "Edgar Markov", "games": 2, "wins": 1 },
+          { "id": "Atraxa, Praetors' Voice", "games": 1, "wins": 1 }
+        ],
+        "colors": [
+          { "id": "W", "games": 3, "wins": 2 }, { "id": "U", "games": 1, "wins": 1 }, { "id": "B", "games": 3, "wins": 2 },
+          { "id": "R", "games": 7, "wins": 4 }, { "id": "G", "games": 1, "wins": 1 }
+        ],
+        "rankPoints": [26, 25, 25, 26, 25, 26]
+      }
+    },
+    {
+      "name": "no games",
+      "now": "2026-10-07T12:00:00Z",
+      "games": [],
+      "expect": {
+        "games": 0, "wins": 0, "losses": 0, "draws": 0, "currentStreak": 0, "bestStreak": 0, "averageTurns": null,
+        "weeks": [
+          { "start": "2026-08-17", "games": 0, "wins": 0 }, { "start": "2026-08-24", "games": 0, "wins": 0 },
+          { "start": "2026-08-31", "games": 0, "wins": 0 }, { "start": "2026-09-07", "games": 0, "wins": 0 },
+          { "start": "2026-09-14", "games": 0, "wins": 0 }, { "start": "2026-09-21", "games": 0, "wins": 0 },
+          { "start": "2026-09-28", "games": 0, "wins": 0 }, { "start": "2026-10-05", "games": 0, "wins": 0 }
+        ],
+        "commanders": [], "colors": [], "rankPoints": []
+      }
+    },
+    {
+      "name": "seven commanders keep the six most played, ties alphabetical; a Monday morning is the new week",
+      "now": "2026-10-05T00:00:00Z",
+      "games": [
+        { "id": "a", "at": "2026-10-05T00:00:00Z", "result": "win", "mode": "quick", "commanders": ["Zada"], "colors": [], "turns": 4 },
+        { "id": "b", "at": "2026-10-04T12:00:00Z", "result": "win", "mode": "quick", "commanders": ["Yuriko"], "colors": [], "turns": 4 },
+        { "id": "c", "at": "2026-10-03T12:00:00Z", "result": "loss", "mode": "quick", "commanders": ["Xenagos"], "colors": [], "turns": 4 },
+        { "id": "d", "at": "2026-10-02T12:00:00Z", "result": "win", "mode": "quick", "commanders": ["Wort"], "colors": [], "turns": 4 },
+        { "id": "e", "at": "2026-10-01T12:00:00Z", "result": "win", "mode": "quick", "commanders": ["Vial"], "colors": [], "turns": 4 },
+        { "id": "f", "at": "2026-09-30T12:00:00Z", "result": "win", "mode": "quick", "commanders": ["Urza"], "colors": [], "turns": 4 },
+        { "id": "g", "at": "2026-09-29T12:00:00Z", "result": "win", "mode": "quick", "commanders": ["Tymna"], "colors": [], "turns": 4 },
+        { "id": "h", "at": "2026-09-28T12:00:00Z", "result": "win", "mode": "quick", "commanders": ["Tymna"], "colors": [], "turns": 4 }
+      ],
+      "expect": {
+        "games": 8, "wins": 7, "losses": 1, "draws": 0, "currentStreak": 2, "bestStreak": 5, "averageTurns": 4.0,
+        "weeks": [
+          { "start": "2026-08-17", "games": 0, "wins": 0 }, { "start": "2026-08-24", "games": 0, "wins": 0 },
+          { "start": "2026-08-31", "games": 0, "wins": 0 }, { "start": "2026-09-07", "games": 0, "wins": 0 },
+          { "start": "2026-09-14", "games": 0, "wins": 0 }, { "start": "2026-09-21", "games": 0, "wins": 0 },
+          { "start": "2026-09-28", "games": 7, "wins": 6 }, { "start": "2026-10-05", "games": 1, "wins": 1 }
+        ],
+        "commanders": [
+          { "id": "Tymna", "games": 2, "wins": 2 }, { "id": "Urza", "games": 1, "wins": 1 }, { "id": "Vial", "games": 1, "wins": 1 },
+          { "id": "Wort", "games": 1, "wins": 1 }, { "id": "Xenagos", "games": 1, "wins": 0 }, { "id": "Yuriko", "games": 1, "wins": 1 }
+        ],
+        "colors": [], "rankPoints": []
+      }
+    }
+  ],
+  "publicProfiles": [
+    {
+      "name": "a friend's public profile with every part",
+      "json": {
+        "username": "DaAlpha", "restricted": false, "visibility": "public", "relation": "friend", "online": true,
+        "title": "Rising Star", "favoriteCommander": "Krenko, Mob Boss",
+        "rank": { "season": "2026-10", "step": 13, "pips": 1, "peakStep": 14, "wins": 9, "losses": 3 },
+        "stats": { "games": 5, "wins": 4, "losses": 1, "draws": 0, "avgTurns": 8.8, "bestStreak": 3, "currentStreak": 1 },
+        "rankHistory": [
+          { "at": "2026-09-27T10:00:00+00:00", "points": 52 }, { "at": "2026-09-28T10:00:00.123456+00:00", "points": 53 }
+        ],
+        "commanders": [ { "name": "Krenko, Mob Boss", "games": 4, "wins": 3 } ],
+        "colors": [ { "color": "R", "games": 5, "wins": 4 }, { "color": "G", "games": 1, "wins": 1 } ],
+        "weekly": [
+          { "week": "2026-08-17", "games": 0, "wins": 0 }, { "week": "2026-08-24", "games": 0, "wins": 0 },
+          { "week": "2026-08-31", "games": 0, "wins": 0 }, { "week": "2026-09-07", "games": 0, "wins": 0 },
+          { "week": "2026-09-14", "games": 1, "wins": 1 }, { "week": "2026-09-21", "games": 0, "wins": 0 },
+          { "week": "2026-09-28", "games": 3, "wins": 2 }, { "week": "2026-10-05", "games": 1, "wins": 1 }
+        ],
+        "games": [
+          {
+            "id": "a0000000-0000-0000-0000-000000000005", "playedAt": "2026-10-06T10:00:00+00:00", "mode": "casual", "result": "win",
+            "deckName": "Edgar", "commanders": ["Edgar Markov"], "colors": ["W", "B", "R"], "turns": 12, "durationSeconds": 3600,
+            "opponents": [
+              { "name": "Hidden player", "commander": null, "ai": false, "hidden": true },
+              { "name": "DaFriend", "commander": "Edgar Markov", "ai": false },
+              { "name": "Bot Three", "commander": "Atraxa", "ai": true }
+            ]
+          },
+          { "id": "a0000000-0000-0000-0000-000000000004", "playedAt": "2026-09-30T10:00:00+00:00", "mode": "ranked", "result": "loss",
+            "deckName": null, "commanders": [], "colors": [], "turns": null, "opponents": [] },
+          { "id": "broken", "playedAt": "not a date", "mode": "ranked", "result": "win", "opponents": [] }
+        ]
+      },
+      "expect": {
+        "username": "DaAlpha", "restricted": false, "visibility": "public", "relation": "friend", "online": true, "isFriend": true,
+        "title": "Rising Star", "favoriteCommander": "Krenko, Mob Boss", "rankStep": 13, "rankPips": 1, "rankPeak": 14,
+        "games": 5, "wins": 4, "losses": 1, "currentStreak": 1, "bestStreak": 3, "averageTurns": 8.8,
+        "weeks": 8, "weekGames": [0, 0, 0, 0, 1, 0, 3, 1], "rankPoints": [52, 53], "colors": ["R", "G"], "commanders": ["Krenko, Mob Boss"],
+        "gameCount": 2, "firstGameOpponents": ["Hidden player", "DaFriend", "Bot Three"], "firstGameHidden": [true, false, false],
+        "firstGameHuman": [true, true, false], "secondGameDeck": ""
+      }
+    },
+    {
+      "name": "a restricted profile has the name and no data",
+      "json": { "username": "DaPrivate", "restricted": true, "visibility": "private", "relation": "none" },
+      "expect": {
+        "username": "DaPrivate", "restricted": true, "visibility": "private", "relation": "none", "online": null, "isFriend": false,
+        "games": 0, "weeks": 8, "gameCount": 0, "rankStep": null
+      }
+    }
+  ],
+  "searchResults": {
+    "json": [
+      { "username": "DaFriend", "favorite_commander": "Edgar Markov", "season": "2026-10", "rank_step": 9, "pips": 2, "visibility": "public", "relation": "friend", "online": true },
+      { "username": "DaFriendsOnly", "favorite_commander": null, "season": null, "rank_step": null, "pips": null, "visibility": "friends", "relation": "none", "online": null },
+      { "username": "Da_x", "visibility": "bogus", "relation": "incoming" }
+    ],
+    "expect": [
+      { "username": "DaFriend", "visibility": "public", "relation": "friend", "online": true, "rankStep": 9 },
+      { "username": "DaFriendsOnly", "visibility": "friends", "relation": "none", "online": null, "rankStep": null },
+      { "username": "Da_x", "visibility": "public", "relation": "incoming", "online": null, "rankStep": null }
+    ]
+  },
+  "searchPrefixes": [
+    { "text": "da", "normalized": "da" }, { "text": "  DA  ", "normalized": "DA" }, { "text": "Da_x", "normalized": "Da_x" },
+    { "text": "d", "normalized": null }, { "text": "", "normalized": null }, { "text": "da%", "normalized": null },
+    { "text": "da x", "normalized": null }, { "text": "dä", "normalized": null }, { "text": "aaaaaaaaaaaaaaaaaaaaa", "normalized": null },
+    { "text": "aaaaaaaaaaaaaaaaaaaa", "normalized": "aaaaaaaaaaaaaaaaaaaa" }
+  ]
+}

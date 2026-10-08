@@ -368,6 +368,17 @@ struct PortraitBottomCommandBar: View {
     @Environment(\.emoteCenter) private var emoteCenter
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
+    @Environment(\.boardAnswerActions) private var answerActions
+
+    /// "Resolve all": one tap passes until the stack you're looking at has resolved (XMage's F10). It stops by itself if an
+    /// opponent adds something, and every choice still comes to you. Shown with two or more objects on the stack.
+    private var resolveStackCommand: GameCommand? {
+        GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: pendingActionId, supported: answerActions.supported)
+    }
+
+    private func resolveStackButton(_ command: GameCommand) -> some View {
+        ResolveStackButton { runCommand(command, "Resolve the stack", "resolve-stack-\(command.promptId ?? "")") }
+    }
 
     var body: some View {
         GeometryReader { _ in
@@ -381,7 +392,7 @@ struct PortraitBottomCommandBar: View {
                 #endif
             }
             .sheet(isPresented: $isStackOpen) {
-                BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard)
+                BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
             }
             .onChange(of: isStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
         }
@@ -391,6 +402,11 @@ struct PortraitBottomCommandBar: View {
         VStack(spacing: 6) {
             HStack(spacing: 4) {
                 PlayerZoneMenu(player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId)
+                // The revealed top of your library, next to your zones.
+                if let top = human.zones.library.first {
+                    TopOfLibraryCard(card: top, playable: GameplayAffordances.castableZones(player: human, snapshot: snapshot, pendingActionID: pendingActionId).contains(.library),
+                                     owner: "your", height: 40) { viewZone("Top of your library", [top]) }
+                }
                 BoardPlayerEffects(player: human, attachments: BattlefieldAttachments.enchanting(playerID: human.playerId, allCards: snapshot.players.flatMap { $0.zones.battlefield }), viewZone: viewZone)
                 ScrollView(.horizontal, showsIndicators: false) {
                     ManaPoolHUD(manaPool: manaPool, compact: true,
@@ -405,6 +421,7 @@ struct PortraitBottomCommandBar: View {
                 .accessibilityLabel("Floating mana; swipe to view all colors")
                 BoardStackTray(objects: snapshot.stackTopFirst,
                                count: snapshot.xmage?.stack.count ?? human.zones.stack.count) { isStackOpen = true }
+                if let resolveStackCommand { resolveStackButton(resolveStackCommand) }
                 if let emoteCenter { TableChatButton(center: emoteCenter) }
             }
             HStack(spacing: 8) {
@@ -448,6 +465,14 @@ struct PortraitBottomCommandBar: View {
                         TavernStackTray(count: stackCount, topName: snapshot.stackTopFirst.first?.name, open: openStack,
                                         width: sockets.canvas.width > sockets.canvas.height ? 106 : 124,
                                         topCard: snapshot.stackTopFirst.first?.displaySourceCard)
+                            // "Resolve all": under the tray in portrait (the mana rail is just above it), above it in
+                            // landscape, where the tray stands alone in the right-hand column.
+                            .overlay(alignment: sockets.canvas.width > sockets.canvas.height ? .top : .bottom) {
+                                if let resolveStackCommand {
+                                    resolveStackButton(resolveStackCommand).fixedSize()
+                                        .offset(y: sockets.canvas.width > sockets.canvas.height ? -42 : 38)
+                                }
+                            }
                             .scaleEffect(canvas.tavernControlScale)
                             .tavernPosition(sockets.stackTray, canvas: canvas, origin: origin)
                     }
@@ -493,7 +518,8 @@ struct PortraitBottomCommandBar: View {
     /// Your commander's portrait in the life socket; it opens your zones like the old grid button.
     private func tavernMedallion(canvas: CGSize) -> some View {
         let diameter = canvas.tavernLength(TavernSockets.current(canvas).lifeHoleRadius * 2)
-        let commanderReady = GameplayAffordances.commanderCastAvailable(player: human, snapshot: snapshot, pendingActionID: pendingActionId)
+        let castable = GameplayAffordances.castableZones(player: human, snapshot: snapshot, pendingActionID: pendingActionId)
+        let commanderReady = !castable.isEmpty
         return PlayerZoneMenu(
             player: human, viewZone: viewZone, snapshot: snapshot, pendingActionID: pendingActionId,
             customLabel: AnyView(
@@ -503,9 +529,18 @@ struct PortraitBottomCommandBar: View {
                 }
                 .frame(width: diameter + 8, height: diameter + 8)
             ),
-            accessibilityOverride: ("Your life: \(human.life)\(commanderReady ? ", commander cast available" : "")", "board.lifeOrb")
+            accessibilityOverride: ("Your life: \(human.life)\(Self.castableDescription(castable))", "board.lifeOrb")
         )
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
+        // The revealed top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix…) beside your portrait.
+        .overlay(alignment: .topTrailing) {
+            if let top = human.zones.library.first {
+                TopOfLibraryCard(card: top, playable: castable.contains(.library), owner: "your", height: diameter * 0.72) {
+                    viewZone("Top of your library", [top])
+                }
+                .offset(x: diameter * 0.62, y: -diameter * 0.05)
+            }
+        }
         .overlay(alignment: .top) {
             if let emoteCenter {
                 EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId)
@@ -513,6 +548,13 @@ struct PortraitBottomCommandBar: View {
                     .offset(y: -56)
             }
         }
+    }
+
+    /// "commander cast available" and the rest, for VoiceOver.
+    static func castableDescription(_ zones: Set<BoardZoneReference.PlayerZone>) -> String {
+        let names: [(BoardZoneReference.PlayerZone, String)] = [(.command, "commander"), (.graveyard, "graveyard"), (.exile, "exile"), (.library, "top of library")]
+        let ready = names.filter { zones.contains($0.0) }.map(\.1)
+        return ready.isEmpty ? "" : ", cast available from \(ready.joined(separator: ", "))"
     }
 
     private var lifeOrb: some View {
@@ -573,10 +615,13 @@ struct PortraitBottomCommandBar: View {
 struct BoardStackInspector: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.nativeTurnControl) private var turnControl
+    @Environment(\.boardAnswerActions) private var answerActions
     @Environment(\.tavernBoard) private var tavern
     let snapshot: GameSnapshot
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
+    /// Sends "Resolve all" from the sheet; nil hides it.
+    var runCommand: ((GameCommand, String, String) -> Void)? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -592,6 +637,14 @@ struct BoardStackInspector: View {
                     Button("Stop skipping", action: turnControl.stop)
                         .frame(minHeight: 44)
                         .tavernPlaque(tavern, kind: .danger)
+                }
+                // Resolve the whole stack from here too, where you see everything on it.
+                if let runCommand, let resolve = GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: nil,
+                                                                                         supported: answerActions.supported) {
+                    ResolveStackButton(identifier: "board.stack.sheet.resolveAll") {
+                        inspectedCard = nil; dismiss()
+                        runCommand(resolve, "Resolve the stack", "resolve-stack-\(resolve.promptId ?? "")")
+                    }
                 }
                 Button("Done") { inspectedCard = nil; dismiss() }
                     .frame(minHeight: 44)
@@ -644,6 +697,17 @@ struct PlayerZoneMenu: View {
     private var commanderReady: Bool {
         snapshot.map { GameplayAffordances.commanderCastAvailable(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? false
     }
+    /// Zones with a card you can play now (graveyard, exile, the revealed top card), shown on their rows.
+    private var castable: Set<BoardZoneReference.PlayerZone> {
+        snapshot.map { GameplayAffordances.castableZones(player: player, snapshot: $0, pendingActionID: pendingActionID) } ?? []
+    }
+    private func row(_ zone: BoardZoneReference.PlayerZone, _ name: String, _ count: Int) -> String {
+        castable.contains(zone) ? "\(name) · Cast available" : "\(name) · \(count)"
+    }
+    private var libraryRow: String {
+        if castable.contains(.library) { return "Library · Top card playable" }
+        return player.zones.library.isEmpty ? "Library · \(player.zones.visibleLibraryCount)" : "Library · Top card revealed"
+    }
 
     var body: some View {
         if customLabel != nil && TavernUIKit.available {
@@ -661,10 +725,10 @@ struct PlayerZoneMenu: View {
                                     summary: PlayerStatusSummary(player: player, snapshot: game), inspect: viewZone)
             TavernMenuItem(title: commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)",
                            systemImage: "crown") { open(.command, player.zones.command) }
-            TavernMenuItem(title: "Graveyard · \(player.zones.graveyard.count)", systemImage: "leaf") { open(.graveyard, player.zones.graveyard) }
-            TavernMenuItem(title: "Exile · \(player.zones.exile.count)", systemImage: "sparkles") { open(.exile, player.zones.exile) }
+            TavernMenuItem(title: row(.graveyard, "Graveyard", player.zones.graveyard.count), systemImage: "leaf") { open(.graveyard, player.zones.graveyard) }
+            TavernMenuItem(title: row(.exile, "Exile", player.zones.exile.count), systemImage: "sparkles") { open(.exile, player.zones.exile) }
             TavernMenuItem(title: "Hand · \(player.zones.visibleHandCount)", systemImage: "hand.raised") { open(.hand, player.zones.hand) }
-            TavernMenuItem(title: "Library · \(player.zones.visibleLibraryCount)", systemImage: "books.vertical") { open(.library, player.zones.library) }
+            TavernMenuItem(title: libraryRow, systemImage: "books.vertical") { open(.library, player.zones.library) }
             TavernMenuItem(title: "Battlefield · \(player.zones.battlefield.count)", systemImage: "square.grid.2x2") { open(.battlefield, player.zones.battlefield) }
             if let snapshot {
                 let references = BoardZoneReference.namedReferences(in: snapshot)
@@ -689,17 +753,17 @@ struct PlayerZoneMenu: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityOverride?.label
-            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : PortraitBottomCommandBar.castableDescription(castable))")
         .accessibilityIdentifier(accessibilityOverride?.identifier ?? "board.zones.\(player.playerId)")
     }
 
     private var systemMenu: some View {
         Menu {
             Button(commanderReady ? "Command · Cast available" : "Command · \(player.zones.command.count)") { open(.command, player.zones.command) }
-            Button("Graveyard · \(player.zones.graveyard.count)") { open(.graveyard, player.zones.graveyard) }
-            Button("Exile · \(player.zones.exile.count)") { open(.exile, player.zones.exile) }
+            Button(row(.graveyard, "Graveyard", player.zones.graveyard.count)) { open(.graveyard, player.zones.graveyard) }
+            Button(row(.exile, "Exile", player.zones.exile.count)) { open(.exile, player.zones.exile) }
             Button("Hand · \(player.zones.visibleHandCount)") { open(.hand, player.zones.hand) }
-            Button("Library · \(player.zones.visibleLibraryCount)") { open(.library, player.zones.library) }
+            Button(libraryRow) { open(.library, player.zones.library) }
             Button("Battlefield · \(player.zones.battlefield.count)") { open(.battlefield, player.zones.battlefield) }
             if let snapshot {
                 Divider()
@@ -718,7 +782,7 @@ struct PlayerZoneMenu: View {
             if let customLabel { customLabel } else { defaultLabel }
         }
         .accessibilityLabel(accessibilityOverride?.label
-            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : "")")
+            ?? "\(player.displayName ?? player.playerId) zones\(commanderReady ? ", commander cast available" : PortraitBottomCommandBar.castableDescription(castable))")
         .accessibilityIdentifier(accessibilityOverride?.identifier ?? "board.zones.\(player.playerId)")
     }
 
@@ -726,10 +790,11 @@ struct PlayerZoneMenu: View {
             Image(systemName: "square.grid.2x2")
                 .font(.system(size: 12, weight: .semibold))
                 .frame(minWidth: 44, minHeight: 44)
-                .foregroundStyle(commanderReady ? .white : MagicPalette.parchment)
-                .background(commanderReady ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(commanderReady ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
-                .shadow(color: commanderReady ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
+                // Glows whenever a card can be played from these zones: the commander, the graveyard, exile, the top card.
+                .foregroundStyle(!castable.isEmpty ? .white : MagicPalette.parchment)
+                .background(!castable.isEmpty ? MagicPalette.antiqueGold.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(!castable.isEmpty ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
+                .shadow(color: !castable.isEmpty ? MagicPalette.antiqueGold.opacity(0.75) : .clear, radius: 7)
     }
 
     private func open(_ zone: BoardZoneReference.PlayerZone, _ cards: [ZoneCard]) {
@@ -763,8 +828,110 @@ struct PortraitStackLane: View {
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
     var horizontal = false
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
+        if tavern && TavernUIKit.available { tavernBody } else { classicBody }
+    }
+
+    /// Walnut Tavern: each object on the stack is a parchment slip in brass trim (top first, marked as resolving next),
+    /// with its card, whose it is, its targets and its rules, in the table's serif.
+    private var tavernBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // The sheet's title already says Stack: the count on a coin, and whether it waits on you.
+            HStack(spacing: 8) {
+                TavernCoin(value: stackCount, size: 26)
+                    .accessibilityLabel("\(stackCount) on the stack")
+                Spacer(minLength: 0)
+                TavernTag(text: responseLabel == "RESPOND" ? "YOUR RESPONSE" : "WAITING", leather: true,
+                          accent: responseLabel == "RESPOND" ? TavernPalette.ember : nil)
+            }
+            .accessibilityElement(children: .combine)
+            if stackCount == 0 {
+                Text("Spells and abilities wait here before they resolve.")
+                    .font(.system(size: 14, design: .serif).italic())
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.8))
+                    .frame(maxWidth: .infinity, minHeight: 120)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(spacing: 10) {
+                        ForEach(Array(xmageObjects.enumerated()), id: \.element.id) { index, object in
+                            tavernSlip(object, position: index)
+                        }
+                        if xmageObjects.isEmpty {
+                            ForEach(Array(humanStack.reversed().enumerated()), id: \.element.id) { _, card in
+                                stackCardView(card)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("board.stack.items")
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func tavernSlip(_ object: XmageStackObject, position: Int) -> some View {
+        let width: CGFloat = horizontal ? 96 : 84
+        return HStack(alignment: .top, spacing: 12) {
+            Group {
+                if let card = object.displaySourceCard {
+                    CardTile(card: card, selected: false, legal: false, zoneName: "Stack", width: width, height: width * 1.4,
+                             ignoreTappedRotation: true, imageVariant: .inspection)
+                        .onTapGesture { inspectedCard = card }
+                        .accessibilityHint("Tap to inspect source card")
+                } else {
+                    SyntheticStackObjectTile(object: object, width: width, height: width * 1.4)
+                }
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text(position == 0 ? "RESOLVES NEXT" : "THEN")
+                    .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
+                    .foregroundStyle(position == 0 ? Color(red: 0.62, green: 0.20, blue: 0.08) : TavernPalette.ink.opacity(0.55))
+                Text(object.displayName)
+                    .font(.system(size: 17, weight: .bold, design: .serif))
+                    .foregroundStyle(TavernPalette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(sourceLine(object))
+                    .font(.system(size: 12, design: .serif).italic())
+                    .foregroundStyle(TavernPalette.ink.opacity(0.72))
+                if let targets = object.targetIds, !targets.isEmpty {
+                    Label {
+                        Text(StackTargetPresentation.labels(for: targets, in: snapshot).joined(separator: ", "))
+                    } icon: {
+                        Image(systemName: "scope")
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.ink)
+                }
+                if let rules = object.rulesText {
+                    GameRulesText(source: rules,
+                                  cardName: object.displaySourceCard?.card.name ?? object.sourceName,
+                                  isHidden: object.displaySourceCard.map { !NativeCardArtworkPolicy.permitsLookup(card: $0) } ?? false)
+                        .font(.system(size: 13, design: .serif))
+                        .foregroundStyle(TavernPalette.ink)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background { TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 9)) }
+        .overlay { TavernBrassFrame(scale: 0.5) }
+        .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// "Yours · from Swords to Plowshares", "Aurelia's · from Prodigal Pyromancer".
+    private func sourceLine(_ object: XmageStackObject) -> String {
+        let source = "from \(object.displaySourceName)"
+        guard let controller = object.controllerId else { return source }
+        return (snapshot.isViewer(controller) ? "Yours" : "\(snapshot.playerLabel(controller))’s") + " · " + source
+    }
+
+    private var classicBody: some View {
         VStack(spacing: 5) {
             HStack(spacing: 4) {
                 Text("STACK")

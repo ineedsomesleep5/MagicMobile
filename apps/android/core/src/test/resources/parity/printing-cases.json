@@ -1,0 +1,38 @@
+{
+  "valid": [
+    {"set": "CMM", "number": "400", "key": "cmm/400", "export": "(CMM) 400", "label": "CMM 400"},
+    {"set": " plst ", "number": "107m", "key": "plst/107m", "export": "(PLST) 107m", "label": "PLST 107m"},
+    {"set": "sld", "number": "★1", "key": "sld/★1", "export": "(SLD) ★1", "label": "SLD ★1"},
+    {"set": "tmm3", "number": "A-12", "key": "tmm3/A-12", "export": "(TMM3) A-12", "label": "TMM3 A-12"},
+    {"set": "30a", "number": "123†", "key": "30a/123†", "export": "(30A) 123†", "label": "30A 123†"}
+  ],
+  "invalid": [
+    ["c", "1"], ["toolong1", "1"], ["cmm", ""], ["cmm", "1/2"], ["cm m", "1"], ["cmm", "1?x=1"], ["cmm", "../1"], ["é", "1"],
+    ["cmm", "12345678901234567"]
+  ],
+  "suffixes": [
+    {"suffix": "(CMM) 400", "key": "cmm/400"},
+    {"suffix": " (cmm) 400 ", "key": "cmm/400"},
+    {"suffix": "(SLD) 1234★", "key": "sld/1234★"},
+    {"suffix": "(clb)", "key": null},
+    {"suffix": "CMM 400", "key": null},
+    {"suffix": "(CMM", "key": null}
+  ],
+  "imageUrls": [
+    {"set": "cmm", "number": "400", "version": "normal", "back": false, "url": "https://api.scryfall.com/cards/cmm/400?format=image&version=normal"},
+    {"set": "sld", "number": "★1", "version": "large", "back": true, "url": "https://api.scryfall.com/cards/sld/%E2%98%851?format=image&version=large&face=back"},
+    {"set": "isd", "number": "51", "version": "small", "back": true, "url": "https://api.scryfall.com/cards/isd/51?format=image&version=small&face=back"}
+  ],
+  "textLines": [
+    {"text": "1 Sol Ring (CMM) 400", "name": "Sol Ring", "quantity": 1, "key": "cmm/400"},
+    {"text": "2x Forest (unf) 5 *F*", "name": "Forest", "quantity": 2, "key": "unf/5"},
+    {"text": "1x Sol Ring (clb) [Ramp]", "name": "Sol Ring", "quantity": 1, "key": null},
+    {"text": "3 Island", "name": "Island", "quantity": 3, "key": null},
+    {"text": "1 Swords to Plowshares (SLD) ★12", "name": "Swords to Plowshares", "quantity": 1, "key": "sld/★12"}
+  ],
+  "exports": [
+    {"quantity": 1, "name": "Sol Ring", "set": "cmm", "number": "400", "line": "1 Sol Ring (CMM) 400"},
+    {"quantity": 20, "name": "Forest", "set": null, "number": null, "line": "20 Forest"},
+    {"quantity": 1, "name": "Swords to Plowshares", "set": "sld", "number": "★12", "line": "1 Swords to Plowshares (SLD) ★12"}
+  ]
+}

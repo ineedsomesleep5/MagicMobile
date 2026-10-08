@@ -6,8 +6,9 @@ struct DeckStudioCardImageTile: View {
     let name: String
     let card: NativeDeckMetadataCatalogue.Card?
     var large = false
+    var art: CardArtSelection = .active
     var body: some View {
-        NativeCardArtworkView(name: name, variant: large ? .inspection : .board, contentMode: .fit) { _, _ in textTile }
+        NativeCardArtworkView(name: name, variant: large ? .inspection : .board, contentMode: .fit, art: art) { _, _ in textTile }
             .aspectRatio(63.0 / 88.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: large ? 14 : DeckStudioMetrics.cardRadius))
             .overlay(RoundedRectangle(cornerRadius: large ? 14 : DeckStudioMetrics.cardRadius).stroke(DeckStudioPalette.separator))
@@ -34,10 +35,11 @@ struct DeckStudioCardImageTile: View {
 struct DeckStudioCardPreview: View {
     let name: String
     let card: NativeDeckMetadataCatalogue.Card?
+    var art: CardArtSelection = .active
     var body: some View {
-        DeckStudioCardImageTile(name: name, card: card, large: true)
-            .frame(width: 300).padding(8).background(DeckStudioPalette.background)
-            .preferredColorScheme(.light)
+        DeckStudioCardImageTile(name: name, card: card, large: true, art: art)
+            .frame(width: 300).padding(8).background(GrimoirePaper())
+            .preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -56,41 +58,5 @@ struct DeckStudioIssueBadges: View {
             }.accessibilityElement(children: .ignore)
                 .accessibilityLabel("Quick check: " + issues.map(\.badge).joined(separator: ", "))
         }
-    }
-}
-
-/// One card in the Cards grid. In select mode a tap toggles the selection.
-struct DeckStudioCardGridTile: View {
-    let row: NativeDeckRow
-    let card: NativeDeckMetadataCatalogue.Card?
-    let issues: [DeckStudioPreflight.Issue]
-    /// nil outside select mode.
-    let selected: Bool?
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            DeckStudioCardImageTile(name: row.cardName, card: card)
-                .overlay(alignment: .topTrailing) {
-                    if row.quantity > 1 {
-                        Text("×\(row.quantity)").font(.caption.weight(.bold)).monospacedDigit()
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .foregroundStyle(DeckStudioPalette.surfaceElevated)
-                            .background(DeckStudioPalette.ink.opacity(0.85), in: Capsule()).padding(4)
-                    }
-                }
-                .overlay(alignment: .topLeading) {
-                    if let selected {
-                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                            .font(.title3).foregroundStyle(selected ? DeckStudioPalette.accent : DeckStudioPalette.surfaceElevated)
-                            .background(Circle().fill(selected ? DeckStudioPalette.surfaceElevated : DeckStudioPalette.ink.opacity(0.35)))
-                            .padding(4)
-                    }
-                }
-                .overlay {
-                    if selected == true {
-                        RoundedRectangle(cornerRadius: DeckStudioMetrics.cardRadius).stroke(DeckStudioPalette.accent, lineWidth: 3)
-                    }
-                }
-            DeckStudioIssueBadges(issues: issues)
-        }.contentShape(Rectangle())
     }
 }

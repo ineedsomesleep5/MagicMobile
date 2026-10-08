@@ -55,6 +55,11 @@ public final class RealQueryTests {
         run("MDFC target face mapping and zone boundaries",RealQueryTests::targetFaces);
         run("trigger ordering and metadata boundaries",RealQueryTests::orderingMetadata);
         run("real HumanPlayer library ordering",RealQueryTests::libraryOrder);
+        run("answer actions: validation and engine-derived keys",RealQueryTests::answerActionValidation);
+        run("real HumanPlayer remembered yes/no by ability and by text",RealQueryTests::rememberedAnswers);
+        run("real HumanPlayer remembered trigger order",RealQueryTests::rememberedTriggerOrder);
+        run("auto-pass after cast preference",RealQueryTests::autoPassPreference);
+        run("AI repeats a pass only while the stack resolves",RealQueryTests::aiRepeatPass);
         System.out.println("RealQueryTests: "+passed+" passed, "+failed+" failed");
         if(failed!=0) throw new AssertionError("Real-upstream query tests failed");
     }
@@ -367,6 +372,107 @@ public final class RealQueryTests {
         }
     }
 
+    private static void answerActionValidation() {
+        DecisionSpec ask=encode(PlayerQueryEvent.askEvent(PLAYER,"Pay {1}?",null,options(Constants.Option.AUTO_ANSWER_MESSAGE,"Pay {1}?")));
+        Map<String,Object> text=Json.object(Json.array(ask.validate(withActions(answer("boolean",true),
+            Json.map("type","rememberAnswer","scope","text"))).get("actions")).get(0));
+        eq(text,Json.map("type","rememberAnswer","scope","text","key","Pay {1}?","answer",true));
+        // No source ability on this question, and a key is never taken from the client.
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true),Json.map("type","rememberAnswer","scope","ability"))));
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true),Json.map("type","rememberAnswer","scope","text","key","x"))));
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true),Json.map("type","passUntilStackResolved"))));
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true),Json.map("type","shuffleMyLibrary"))));
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true))));
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true),Json.map("type","resetTriggerOrder"),Json.map("type","resetTriggerOrder"))));
+        DecisionSpec priority=encode(PlayerQueryEvent.selectEvent(PLAYER,"Play spells and abilities"));
+        List<Object> actions=Json.array(priority.validate(withActions(answer("boolean",false),Json.map("type","passUntilStackResolved"),
+            Json.map("type","autoPassAfterCast","enabled",true),Json.map("type","resetRememberedAnswers"))).get("actions"));
+        // Resets run first; everything else keeps its order.
+        eq(Json.object(actions.get(0)).get("type"),"resetRememberedAnswers");
+        eq(Json.object(actions.get(1)).get("type"),"passUntilStackResolved");
+        eq(Json.object(actions.get(2)),Json.map("type","autoPassAfterCast","enabled",true));
+        expectCode("invalid_response",()->priority.validate(withActions(answer("uuid",UUID.randomUUID().toString()),Json.map("type","passUntilStackResolved"))));
+        expectCode("invalid_response",()->priority.validate(withActions(answer("boolean",false),Json.map("type","rememberAnswer","scope","text"))));
+        expectCode("invalid_response",()->priority.validate(withActions(answer("boolean",false),Json.map("type","rememberTriggerFirst"))));
+    }
+
+    private static void rememberedAnswers() {
+        try(Fixture f=new Fixture()) {
+            Card bear=f.bear();
+            TriggeredAbility quest=f.trigger(bear,1),other=f.trigger(bear,2);
+            String message="Put a quest counter on "+bear.getName()+"?";
+            f.answer(s->{
+                eq(option(s,"originalId"),quest.getOriginalId().toString());
+                // XMage's own lookup key (it swaps the source's name for {this} when it can name the source).
+                check(option(s,Constants.Option.AUTO_ANSWER_MESSAGE) instanceof String,"auto-answer key offered");
+                return withActions(answer("boolean",true),Json.map("type","rememberAnswer","scope","ability"));
+            });
+            check(f.player.chooseUse(Outcome.Benefit,message,quest,f.game),"first answer yes");
+            // The same ability asking the same question is answered by XMage without a prompt.
+            check(f.player.chooseUse(Outcome.Benefit,message,quest,f.game),"remembered yes");
+            check(f.player.chooseUse(Outcome.Benefit,message,quest,f.game),"remembered yes again");
+            // Another ability with the same words still asks.
+            f.answer(s->answer("boolean",false));
+            check(!f.player.chooseUse(Outcome.Benefit,message,other,f.game),"another ability asks");
+            // Text scope remembers the words for any source; a reset forgets both kinds.
+            f.answer(s->withActions(answer("boolean",false),Json.map("type","rememberAnswer","scope","text")));
+            check(!f.player.chooseUse(Outcome.Benefit,"Pay {1}?",other,f.game),"text answer no");
+            check(!f.player.chooseUse(Outcome.Benefit,"Pay {1}?",quest,f.game),"remembered by text for any source");
+            // A remembered question is not asked again, so the reset rides on another answer.
+            f.answer(s->withActions(answer("boolean",true),Json.map("type","resetRememberedAnswers")));
+            check(f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"reset delivered with another answer");
+            f.answer(s->answer("boolean",true));
+            check(f.player.chooseUse(Outcome.Benefit,"Pay {1}?",quest,f.game),"reset asks again");
+            f.answer(s->answer("boolean",false));
+            check(!f.player.chooseUse(Outcome.Benefit,message,quest,f.game),"ability memory reset too");
+            f.drained();
+        }
+    }
+
+    private static void rememberedTriggerOrder() {
+        try(Fixture f=new Fixture()) {
+            Card bear=f.bear();
+            TriggeredAbility gain=f.trigger(bear,1),more=f.trigger(bear,2);
+            f.game.getState().addTriggeredAbility(gain);f.game.getState().addTriggeredAbility(more);
+            f.answer(s->{eq(s.kind,"PICK_ABILITY");return withActions(answer("uuid",more.getId()),Json.map("type","rememberTriggerFirst"));});
+            eq(f.player.chooseTriggeredAbility(new ArrayList<>(List.of(gain,more)),f.game),more);
+            eq(f.player.chooseTriggeredAbility(new ArrayList<>(List.of(gain,more)),f.game),more);
+            // A remembered order is never asked again, so a reset rides on the next question of any kind.
+            f.answer(s->withActions(answer("boolean",true),Json.map("type","resetTriggerOrder")));
+            check(f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"reset delivered with another answer");
+            f.answer(s->answer("uuid",gain.getId()));
+            eq(f.player.chooseTriggeredAbility(new ArrayList<>(List.of(gain,more)),f.game),gain);
+            f.drained();
+        }
+    }
+
+    private static void autoPassPreference() {
+        try(Fixture f=new Fixture()) {
+            check(!f.player.getUserData().isPassPriorityCast(),"upstream default keeps priority after a cast");
+            f.answer(s->withActions(answer("boolean",true),Json.map("type","autoPassAfterCast","enabled",true)));
+            check(f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"answer still applied");
+            check(f.player.getUserData().isPassPriorityCast(),"auto-pass after cast on");
+            f.answer(s->withActions(answer("boolean",false),Json.map("type","autoPassAfterCast","enabled",false)));
+            check(!f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"answer still applied");
+            check(!f.player.getUserData().isPassPriorityCast(),"auto-pass after cast off");
+            f.drained();
+        }
+    }
+
+    private static void aiRepeatPass() {
+        String situation="7:PRECOMBAT_MAIN:a,b";
+        check(MobileAICancellation.repeatsPass(situation,16,situation,15),"one trigger resolved: pass again");
+        check(!MobileAICancellation.repeatsPass(situation,16,situation,16),"same stack size: search");
+        check(!MobileAICancellation.repeatsPass(situation,15,situation,16),"something was added: search");
+        check(!MobileAICancellation.repeatsPass(situation,16,"7:PRECOMBAT_MAIN:a",15),"options changed: search");
+        check(!MobileAICancellation.repeatsPass(null,16,situation,15),"nothing declined yet: search");
+        check(!MobileAICancellation.repeatsPass(situation,16,null,15),"a spell or own ability on top: search");
+    }
+
+    private static Map<String,Object> withActions(Map<String,Object> answer,Object... actions) {
+        Map<String,Object> result=new LinkedHashMap<>(answer);result.put("actions",new ArrayList<>(List.of(actions)));return result;
+    }
+
     private static final class Fixture implements AutoCloseable {
         final MobileCommanderGame game=new MobileCommanderGame();
         final MobileHumanPlayer player=new MobileHumanPlayer("Query test player");
@@ -384,6 +490,10 @@ public final class RealQueryTests {
         Card bear() {Card c=new GrizzlyBears(player.getId(),info("Grizzly Bears","LEA","202"));hand(c);return c;}
         void hand(Card card) {game.loadCards(new HashSet<>(List.of(card)),player.getId());card.setZone(Zone.HAND,game);player.getHand().add(card);}
         void answer(Function<DecisionSpec,Map<String,Object>> reply) {replies.add(reply);}
+        TriggeredAbility trigger(Card source,int life) {
+            EntersBattlefieldTriggeredAbility trigger=new EntersBattlefieldTriggeredAbility(new GainLifeEffect(life));
+            trigger.setSourceId(source.getId());trigger.setControllerId(player.getId());return trigger;
+        }
         void drained() {check(replies.isEmpty(),"All scripted real queries consumed");}
         @Override public void close() {player.closeChannel();}
     }

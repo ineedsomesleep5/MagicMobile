@@ -295,7 +295,9 @@ struct GameManagementMenu: View {
             BoardAppearancePicker()
             PortraitModeToggle(isOn: $portraitModeEnabled)
             FollowTurnsToggle()
+            AutoPassAfterCastToggle()
             BoardEffectsPicker()
+            RememberedChoicesPanel()
 
             Button { showHowToPlay = true } label: {
                 Label(HowToPlayText.title, systemImage: "questionmark.circle")
@@ -366,6 +368,36 @@ struct GameManagementMenu: View {
     /// Engine concede on device; XMage's own action on hosted games. Never after you're out.
     private var canConcede: Bool {
         !snapshot.isCompleted && snapshot.human?.isOut != true && (gameConcede != nil || concedeAction != nil)
+    }
+}
+
+/// The questions and trigger orders this game remembers ("Don't ask again", "Always first"), with a button to forget
+/// each kind. Hidden until something is remembered.
+struct RememberedChoicesPanel: View {
+    @Environment(\.boardAnswerActions) private var answerActions
+
+    var body: some View {
+        if answerActions.rememberedAnswers > 0 || answerActions.rememberedTriggerOrders > 0 {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Remembered this game")
+                    .font(.system(size: 15, weight: .bold, design: .serif))
+                Text("XMage answers these for you until you forget them.")
+                    .font(.system(size: 12, design: .serif).italic())
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.75))
+                if answerActions.rememberedAnswers > 0 {
+                    Button("Ask Again (\(answerActions.rememberedAnswers) answered)") { answerActions.forgetAnswers() }
+                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                        .accessibilityIdentifier("board.menu.forgetAnswers")
+                }
+                if answerActions.rememberedTriggerOrders > 0 {
+                    Button("Ask Trigger Order Again") { answerActions.forgetTriggerOrder() }
+                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                        .accessibilityIdentifier("board.menu.forgetTriggerOrder")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(TavernSettingsPanel())
+        }
     }
 }
 

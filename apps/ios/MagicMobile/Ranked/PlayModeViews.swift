@@ -91,6 +91,7 @@ struct TavernLobbyPage<Content: View>: View {
                     .frame(maxWidth: .infinity)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .accessibilityIdentifier("lobby.scroll")
         }
         .background(BrandBackdrop(cards: false).ignoresSafeArea())
         .environment(\.tavernBoard, true)

@@ -24,6 +24,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -340,6 +344,10 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
     val legalActions = snapshot.legalActions ?: emptyList()
     val compactPromptActions = CompactPromptPopup.compactLegalPromptActions(snapshot)
     val presentation = MobilePromptPresentation.make(snapshot, legalActions)
+    val answerActions = LocalBoardAnswerActions.current
+    // "Don't ask again this game" for this question only.
+    var rememberChoice by remember { mutableStateOf(false) }
+    var rememberPromptId by remember { mutableStateOf<String?>(null) }
     val paymentPrompt = when {
         promptV2 != null && CompactPromptPopup.isManaPaymentPrompt(promptV2) -> promptV2
         CompactPromptPopup.shouldShowStackPaymentTray(snapshot) -> CompactPromptPopup.syntheticStackPaymentPrompt(snapshot)
@@ -419,9 +427,16 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
                 commandButton("Command zone", "crown.fill", "${prompt.id}-command-zone", command("commander_replacement", promptId, prompt.playerId, useCommandZone = true), Modifier.weight(1f))
                 commandButton("Original", "arrow.uturn.backward", "${prompt.id}-original-zone", command("commander_replacement", promptId, prompt.playerId, useCommandZone = false), Modifier.weight(1f))
             }
-            confirmation != null && CompactPromptPopup.isConfirmationPrompt(prompt) -> Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                commandButton(confirmation.yesLabel ?: "Yes", "checkmark.circle", "${prompt.id}-yes", explicitConfirmationCommand(confirmation.yesCommand, prompt), Modifier.weight(1f))
-                commandButton(confirmation.noLabel ?: "No", "xmark.circle", "${prompt.id}-no", explicitConfirmationCommand(confirmation.noCommand, prompt), Modifier.weight(1f))
+            confirmation != null && CompactPromptPopup.isConfirmationPrompt(prompt) -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val rememberable = prompt.canRememberAnswer && "rememberAnswer" in answerActions.supported
+                val remembered = rememberable && rememberChoice && rememberPromptId == prompt.id
+                fun remembering(command: GameCommand?) = if (command != null && remembered) command.copy(answerActions = listOf("rememberAnswer")) else command
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    commandButton(confirmation.yesLabel ?: "Yes", "checkmark.circle", "${prompt.id}-yes", remembering(explicitConfirmationCommand(confirmation.yesCommand, prompt)), Modifier.weight(1f))
+                    commandButton(confirmation.noLabel ?: "No", "xmark.circle", "${prompt.id}-no", remembering(explicitConfirmationCommand(confirmation.noCommand, prompt)), Modifier.weight(1f))
+                }
+                // A card's "you may" question (sixteen quest counters): answer once for the rest of the game.
+                if (rememberable) RememberChoiceToggle("Don't ask again this game", remembered, { rememberChoice = it; rememberPromptId = prompt.id })
             }
             CompactPromptPopup.shouldPreferCompactActionsBeforeRawChoices(snapshot) -> actionButtons(compactPromptActions)
             !choices.isNullOrEmpty() && choices.size <= 3 -> {

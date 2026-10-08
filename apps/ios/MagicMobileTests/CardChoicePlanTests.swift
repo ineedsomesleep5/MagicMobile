@@ -21,7 +21,13 @@ final class CardChoicePlanTests: XCTestCase {
         XCTAssertEqual(CardChoicePlan.selectionBounds("Select targets (selected 0 of 3)")?.0, 0)
         XCTAssertEqual(CardChoicePlan.selectionBounds("Select targets (selected 2 of 6, min 3)")?.0, 3)
         XCTAssertNil(CardChoicePlan.selectionBounds("Select up to one target"))
-        XCTAssertNil(CardChoicePlan.selectionBounds("Select targets (selected 2, min 1)"))
+        // "Any number" targets omit "of <max>" (Goblin Recruiter): no upper bound, so they can be picked all at once.
+        XCTAssertEqual(CardChoicePlan.selectionBounds("Select Goblin cards (selected 1)")?.0, 0)
+        XCTAssertEqual(CardChoicePlan.selectionBounds("Select Goblin cards (selected 1)")?.1, Int.max)
+        XCTAssertEqual(CardChoicePlan.selectionBounds("Select cards (selected 0, min 2)")?.0, 2)
+        XCTAssertTrue(CardChoicePlan.isUnbounded(CardChoicePlan.selectionBounds("Select cards (selected 0, min 2)")!))
+        XCTAssertFalse(CardChoicePlan.isUnbounded(CardChoicePlan.selectionBounds("Select targets (selected 0 of 3)")!))
+        XCTAssertEqual(CardChoicePlan.selectionBounds("Select targets (selected 2, min 1)")?.0, 1)
         XCTAssertEqual(CardChoicePlan.toggled([ids[0], ids[1]], id: ids[0]), [ids[1]])
         XCTAssertEqual(CardChoicePlan.toggled([ids[1]], id: ids[0]), [ids[1], ids[0]])
     }

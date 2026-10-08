@@ -158,6 +158,14 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
     var selectedSearchPromptId by remember { mutableStateOf<String?>(null) }
     var selectedSearchCardIds by remember { mutableStateOf(listOf<String>()) }
     var choiceSearch by remember { mutableStateOf("") }
+    // "Don't ask again this game" / "Always put my pick first", per question (cleared when the question changes).
+    var rememberChoice by remember { mutableStateOf(false) }
+    var rememberPromptId by remember { mutableStateOf<String?>(null) }
+    val answerActions = LocalBoardAnswerActions.current
+    fun rememberOn(prompt: PromptEnvelopeV2) = rememberChoice && rememberPromptId == prompt.id
+    fun setRemember(prompt: PromptEnvelopeV2, on: Boolean) { rememberChoice = on; rememberPromptId = prompt.id }
+    fun remembering(command: GameCommand?, prompt: PromptEnvelopeV2, action: String?): GameCommand? =
+        if (command != null && action != null && rememberOn(prompt)) command.copy(answerActions = listOf(action)) else command
     val legalActions = snapshot.legalActions ?: emptyList()
     val passTypes = setOf("pass_priority", "pass_until_response", "resolve_stack", "pass_until_stack_resolved", "end_turn", "pass_until_end_of_turn",
         "yield_until_next_turn", "pass_until_next_turn", "advance_phase")
@@ -352,8 +360,12 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
     @Composable
     fun abilityPicker(abilities: List<XmagePromptAbility>, prompt: PromptEnvelopeV2) {
         PromptMiniLabel("Abilities")
+        if (prompt.isTriggerOrder && "rememberTriggerFirst" in answerActions.supported) {
+            RememberChoiceToggle("Always put my pick first", rememberOn(prompt), { setRemember(prompt, it) })
+        }
         val compactHeight = LocalConfigurationHeightCompact()
-        fun choiceCommand(index: Int) = command("choose_ability", prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, listOf(abilities[index].id))
+        fun choiceCommand(index: Int) = remembering(command("choose_ability", prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, listOf(abilities[index].id)),
+            prompt, if (prompt.isTriggerOrder) "rememberTriggerFirst" else null)
         // Rows of two, every cell top-aligned and as tall as its row, so the cards line up whatever the length of each
         // ability's text. Occurrences are distinct rows even if XMage repeats an ability UUID.
         EqualHeightAbilityRows(abilities.size, top = { index ->
@@ -500,8 +512,10 @@ fun UniversalPromptActionPanel(snapshot: GameSnapshot, selectedCardActions: List
 
     @Composable
     fun confirmationPicker(confirmation: XmagePromptConfirmation, prompt: PromptEnvelopeV2) {
-        val yes = explicitConfirmationCommand(confirmation.yesCommand, prompt)
-        val no = explicitConfirmationCommand(confirmation.noCommand, prompt)
+        val rememberable = prompt.canRememberAnswer && "rememberAnswer" in answerActions.supported
+        val yes = remembering(explicitConfirmationCommand(confirmation.yesCommand, prompt), prompt, if (rememberable) "rememberAnswer" else null)
+        val no = remembering(explicitConfirmationCommand(confirmation.noCommand, prompt), prompt, if (rememberable) "rememberAnswer" else null)
+        if (rememberable) RememberChoiceToggle("Don't ask again this game", rememberOn(prompt), { setRemember(prompt, it) })
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             promptButton(confirmation.yesLabel ?: "Yes", "${prompt.id}-yes", yes, systemImage = "checkmark.circle", buttonModifier = Modifier.weight(1f))
             promptButton(confirmation.noLabel ?: "No", "${prompt.id}-no", no, systemImage = "xmark.circle", buttonModifier = Modifier.weight(1f))

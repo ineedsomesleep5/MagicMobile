@@ -83,7 +83,7 @@ struct DeckStudioOnlineSearch: View {
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
             }.font(.caption)
             HStack {
-                TextField("Name or Scryfall query", text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
+                TextField("Name or Scryfall query", text: $query).textFieldStyle(GrimoireFieldStyle()).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .focused($searchFocused).submitLabel(.search).onSubmit { submitSearch() }
                 Button("Search") { submitSearch() }.disabled(busy || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).frame(minHeight: 44)
             }
@@ -143,10 +143,9 @@ struct DeckStudioOnlineSearch: View {
         .sheet(item: $selected) { card in
             NavigationStack {
                 ScrollView { DeckStudioScryfallReference(name: card.name, initialCard: card).padding(20) }
-                    .navigationTitle("Card reference").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selected = nil } } }
-                    .background(DeckStudioPalette.background)
-            }.preferredColorScheme(.light)
+                    .binderLeaf("Card reference", trailing: BinderLeafAction(title: "Done") { selected = nil })
+                    .background(GrimoirePaper())
+            }.preferredColorScheme(.light).grimoirePage(.loose)
         }
     }
     private func submitSearch() {

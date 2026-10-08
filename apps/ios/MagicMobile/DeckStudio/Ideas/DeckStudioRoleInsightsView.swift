@@ -162,7 +162,7 @@ private struct DeckStudioRoleReviewSheet: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 Section {
                     ForEach(DeckStudioRole.allCases) { role in
                         Toggle(role.title, isOn: Binding(get: { selected.contains(role) }, set: { enabled in
@@ -171,12 +171,9 @@ private struct DeckStudioRoleReviewSheet: View {
                     }
                 } header: { Text(name) } footer: { Text("These are your functional tags, not XMage legality or EDHREC statistics. An empty selection explicitly clears automatic hints for this card.") }
                 Button("Use automatic hints again") { if save(nil) { dismiss() } }
-            }.navigationTitle("Review roles").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Save") { if save(selected) { dismiss() } } }
-                }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+            }.binderLeaf("Review roles", leading: BinderLeafAction(title: "Cancel") { dismiss() },
+                         trailing: BinderLeafAction(title: "Save") { if save(selected) { dismiss() } })
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }
 
@@ -189,7 +186,7 @@ private struct DeckStudioRoleTargetsSheet: View {
     }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 Text("Choose your own ranges. All targets start off; there is no universal ideal Commander deck. These targets compare tagged main-deck quantities, not unrecognized effects.").font(.caption)
                 ForEach(DeckStudioRole.allCases) { role in
                     Section(role.title) {
@@ -197,22 +194,19 @@ private struct DeckStudioRoleTargetsSheet: View {
                             targets[role, default: .init()].enabled = $0
                         }))
                         if targets[role]?.enabled == true {
-                            Stepper("Minimum: \(targets[role]?.lower ?? 0)", value: Binding(get: { targets[role]?.lower ?? 0 }, set: {
+                            BinderStepper("Minimum: \(targets[role]?.lower ?? 0)", value: Binding(get: { targets[role]?.lower ?? 0 }, set: {
                                 targets[role, default: .init()].lower = $0
                                 targets[role, default: .init()].upper = max($0, targets[role]?.upper ?? 0)
                             }), in: 0...2000)
-                            Stepper("Maximum: \(targets[role]?.upper ?? 0)", value: Binding(get: { targets[role]?.upper ?? 0 }, set: {
+                            BinderStepper("Maximum: \(targets[role]?.upper ?? 0)", value: Binding(get: { targets[role]?.upper ?? 0 }, set: {
                                 targets[role, default: .init()].upper = $0
                                 targets[role, default: .init()].lower = min($0, targets[role]?.lower ?? 0)
                             }), in: 0...2000)
                         }
                     }
                 }
-            }.navigationTitle("My target ranges").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Save") { if save(targets) { dismiss() } } }
-                }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+            }.binderLeaf("My target ranges", leading: BinderLeafAction(title: "Cancel") { dismiss() },
+                         trailing: BinderLeafAction(title: "Save") { if save(targets) { dismiss() } })
+        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
 }

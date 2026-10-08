@@ -54,7 +54,7 @@ struct CardChoicePlan {
     }
 
     static func context(_ prompt: PromptEnvelopeV2) -> String {
-        prompt.message.replacingOccurrences(of: #"\s*\(selected \d+ of \d+(?:, min \d+)?\)"#,
+        prompt.message.replacingOccurrences(of: #"\s*\(selected \d+(?: of \d+)?(?:, min \d+)?\)"#,
                                             with: "", options: .regularExpression)
     }
 
@@ -77,15 +77,20 @@ struct CardChoicePlan {
         return ids + [id]
     }
 
+    /// The selection range XMage states in a target message. TargetImpl writes "(selected 1 of 3, min 1)", omits ", min 0",
+    /// and omits "of <max>" for "any number" targets ("Select Goblin cards (selected 1)"): those have no upper bound.
     static func selectionBounds(_ message: String) -> (Int, Int)? {
-        let pattern = #"(?:selected\s+)\d+\s+of\s+(\d+)(?:,\s*min\s+(\d+))?"#
-        guard let match = message.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
-        let part = String(message[match])
-        let numbers = part.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-        guard numbers.count >= 2 else { return nil }
-        // TargetImpl omits ", min 0" while retaining "of <max>".
-        return (numbers.count >= 3 ? numbers[2] : 0, numbers[1])
+        let pattern = #"\(selected\s+(\d+)(?:\s+of\s+(\d+))?(?:,\s*min\s+(\d+))?\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: message, range: NSRange(message.startIndex..., in: message)) else { return nil }
+        func group(_ index: Int) -> Int? {
+            Range(match.range(at: index), in: message).flatMap { Int(message[$0]) }
+        }
+        return (group(3) ?? 0, group(2) ?? Int.max)
     }
+
+    /// True when the range has no upper bound ("any number").
+    static func isUnbounded(_ bounds: (Int, Int)) -> Bool { bounds.1 == Int.max }
 
     init(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, selected: [String], top: [String] = []) {
         gameID = snapshot.id; playerID = prompt.playerId; turn = snapshot.turn
