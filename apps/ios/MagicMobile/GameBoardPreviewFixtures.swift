@@ -499,7 +499,7 @@ enum GameBoardPreviewFixtures {
                 ["id": "stack-spell-object", "objectId": "stack-spell-object", "objectType": "SPELL", "name": "Swords to Plowshares", "sourceName": "Swords to Plowshares", "sourceCard": spell, "controllerId": "human", "targetIds": ["ai-creature-1"], "paid": true]
             ]
         }
-        if state == .stackTray {
+        if state == .stackTray || state == .mayTriggerPrompt {
             // Roaming Throne doubling Chatterfang: twelve identical triggers above a spell.
             // Preview snapshots list the stack bottom first.
             let chatterfang = card("ai-1-chatterfang", "Chatterfang, Squirrel General", "Legendary Creature — Squirrel Warrior", "{2}{G}", "Forestwalk", power: 3)
@@ -760,6 +760,10 @@ enum GameBoardPreviewFixtures {
         case .searchSelectPrompt:
             return #"""
             {"id":"preview-search","method":"GAME_SELECT","messageId":2,"playerId":"human","responseKind":"choose_card","message":"Search your library for a basic land card.","required":true,"minChoices":1,"maxChoices":1,"cards":[{"instanceId":"search-plains","card":{"name":"Plains","typeLine":"Basic Land - Plains","oracleText":"{T}: Add {W}."}},{"instanceId":"search-forest","card":{"name":"Forest","typeLine":"Basic Land - Forest","oracleText":"{T}: Add {G}."}}],"choices":[{"id":"search-plains","label":"Plains","cardInstanceId":"search-plains"},{"id":"search-forest","label":"Forest","cardInstanceId":"search-forest"}],"responseCommand":{"type":"choose_card","promptId":"preview-search","messageId":2}}
+            """#
+        case .mayTriggerPrompt:
+            return #"""
+            {"id":"preview-may-trigger","method":"GAME_ASK","messageId":6,"playerId":"human","responseKind":"confirmation","message":"Whenever a Goblin you control enters, you may put a quest counter on Quest for the Goblin Lord.","required":true,"minChoices":1,"maxChoices":1,"options":{"originalId":"6f1c2b4e-0000-4000-8000-000000000001","autoAnswerMessage":"Whenever a Goblin you control enters, you may put a quest counter on {this}."},"confirmation":{"yesLabel":"Yes","noLabel":"No","defaultValue":null,"yesCommand":{"type":"answer_yes_no","promptId":"preview-may-trigger","messageId":6,"confirmed":true},"noCommand":{"type":"answer_yes_no","promptId":"preview-may-trigger","messageId":6,"confirmed":false}},"responseCommand":{"type":"answer_yes_no","promptId":"preview-may-trigger","messageId":6}}
             """#
         case .stackResponsePrompt:
             return #"""

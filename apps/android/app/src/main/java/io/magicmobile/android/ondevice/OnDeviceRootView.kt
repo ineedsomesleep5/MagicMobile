@@ -715,6 +715,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Lifecycle: prepare once, pause input and polling in the background.
     LaunchedEffect(Unit) { setup.prepare() }
     LaunchedEffect(setup.identity, setup.localDecks) { if (!activeGame) restoreSetupPreferences() }
+    // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
+    LaunchedEffect(selectedDeckID) { io.magicmobile.android.ArtChoices.shared.select(selectedDeckID) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -870,7 +872,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalEmoteCenter provides vm.emotes,
+                        io.magicmobile.android.board.LocalBoardAnswerActions provides io.magicmobile.android.board.BoardAnswerActions(
+                            session.supportedAnswerActions, session.rememberedAnswers, session.rememberedTriggerOrders,
+                            { session.forgetRememberedAnswers() }, { session.forgetTriggerOrder() }),
                         LocalStartingRollVisible provides boardQuiet) {
+                        // Settings → Pass After Casting, sent with this seat's next answer when it changes.
+                        val autoPassAfterCast by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.board.AutoPassAfterCast.KEY, true)
+                        androidx.compose.runtime.LaunchedEffect(autoPassAfterCast) { session.setAutoPassAfterCast(autoPassAfterCast) }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
                             .then(if (boardQuiet) Modifier.clearAndSetSemantics {} else Modifier)) {
@@ -1420,6 +1428,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             BoardAppearancePicker()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
+            io.magicmobile.android.board.AutoPassAfterCastToggle()
             BoardEffectsPicker()
         }
     }
@@ -1438,6 +1447,14 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
+                IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")
+                IosListRow("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage = "square.stack.3d.up.fill")
+                IosListRow("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage = "checkmark.square.fill")
+                IosListRow("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage = "forward.fill")
+                IosListRow("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage = "bolt.fill")
+                IosListRow("Pick any number of cards at once with Select all, and remember which of your triggers goes first.", systemImage = "rectangle.stack.fill")
+                IosListRow("The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes.", systemImage = "sparkles")
                 IosListRow("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage = "eye.fill")
                 IosListRow("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage = "sparkles")
                 IosListRow("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage = "moon.stars")

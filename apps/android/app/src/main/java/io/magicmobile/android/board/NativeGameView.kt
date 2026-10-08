@@ -764,7 +764,7 @@ fun NativeGameView(
         if (isLogOpen) BoardSheet({ isLogOpen = false }, sound = false) {
             GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f), combatReasons)
         }
-        if (isStackSheetOpen) BoardSheet({ isStackSheetOpen = false }) { BoardStackInspector(board, selection) { isStackSheetOpen = false } }
+        if (isStackSheetOpen) BoardSheet({ isStackSheetOpen = false }) { BoardStackInspector(board, selection, runCommand) { isStackSheetOpen = false } }
         if (isPromptDetailOpen) BoardSheet({ isPromptDetailOpen = false }) {
             key("${board.promptEnvelopeV2?.id ?: ""}:${board.promptEnvelopeV2?.messageId ?: 0}") {
                 UniversalPromptActionPanel(board, selection.selectedCard?.let { GameBoardInteractionState.cardActions(it, board.legalActions ?: emptyList()) } ?: emptyList(),

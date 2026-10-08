@@ -201,6 +201,19 @@ object GameplayAffordances {
         return if (ready.isEmpty()) "" else ", cast available from ${ready.joinToString(", ")}"
     }
 
+    /**
+     * "Resolve all": one pass that keeps passing until the stack has resolved (XMage's F10). It stops by itself if an
+     * opponent adds something, and every choice still comes to you. Offered with two or more objects on the stack while
+     * you hold priority, on engines with the answer action (iOS GameplayAffordances.resolveStackCommand).
+     */
+    fun resolveStackCommand(snapshot: GameSnapshot, pendingActionID: String?, supported: Set<String>): GameCommand? {
+        val stackCount = snapshot.xmage?.stack?.size ?: snapshot.human?.zones?.stack?.size ?: 0
+        if (stackCount < 2 || pendingActionID != null || "passUntilStackResolved" !in supported) return null
+        val pass = snapshot.legalActions?.firstOrNull { it.type == "pass_priority" } ?: return null
+        return GameCommand("pass_priority", snapshot.id, pass.playerId, promptId = pass.promptId, messageId = pass.messageId,
+            expectedBridgeRevision = snapshot.bridgeRevision, answerActions = listOf("passUntilStackResolved"))
+    }
+
     fun commanderCastAvailable(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?): Boolean {
         if (pendingActionID != null || snapshot.human?.playerId != player.playerId) return false
         return player.zones.command.any { card ->

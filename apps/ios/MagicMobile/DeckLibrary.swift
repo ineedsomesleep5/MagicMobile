@@ -189,6 +189,12 @@ final class DeckLibraryStore: ObservableObject {
         try data.write(to: cacheURL, options: .atomic)
         cacheBaseline = data
         decks = candidate
+        publishArtChoices()
+    }
+
+    /// Every saved deck's chosen art is what cards drawn by name show (CardArtChoices).
+    private func publishArtChoices() {
+        CardArtChoices.shared.setLibrary(decks.map { .init(id: "local:\($0.id)", deck: $0.deckList, updated: $0.updatedAt) })
     }
 
     private func loadCache() {
@@ -197,6 +203,7 @@ final class DeckLibraryStore: ObservableObject {
             let data = try Data(contentsOf: cacheURL)
             decks = try JSONDecoder.magicMobileDecks.decode([DeckLibraryRecord].self, from: data)
             cacheBaseline = data
+            publishArtChoices()
         } catch { cacheReadFailed = true; notice = "The saved deck library could not be read. It has not been replaced." }
     }
 

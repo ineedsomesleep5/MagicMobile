@@ -78,6 +78,8 @@ object DeckStudioPlayText {
     const val keepEditing = "Keep editing"
     const val diffAdded = "Added"
     const val diffRemoved = "Removed"
+    const val diffArt = "Artwork"
+    const val chooseArtwork = "Choose artwork"
     const val noChanges = "No changes to apply."
     const val textEditorHint = "One card per line, like 1 Sol Ring, under Commander, Deck, Companion, Sideboard or Maybeboard headings."
     // Commander-first new decks

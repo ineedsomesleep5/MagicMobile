@@ -54,9 +54,10 @@ import io.magicmobile.android.ui.SfWeight
  * With no downloaded art it becomes a text tile (name, cost and type), never a blank box.
  */
 @Composable
-fun DeckStudioCardImage(name: String, card: CardInfo?, modifier: Modifier = Modifier, large: Boolean = false) {
+fun DeckStudioCardImage(name: String, card: CardInfo?, modifier: Modifier = Modifier, large: Boolean = false,
+                        art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active) {
     val shape = RoundedCornerShape(if (large) 14.dp else DeckStudioMetrics.cardRadius)
-    CardArtwork(name, modifier.aspectRatio(63f / 88f).clip(shape).border(1.dp, DeckStudioPalette.separator, shape)) {
+    CardArtwork(name, modifier.aspectRatio(63f / 88f).clip(shape).border(1.dp, DeckStudioPalette.separator, shape), art = art) {
         Column(Modifier.fillMaxSize().background(DeckStudioPalette.surfaceElevated).padding(if (large) 16.dp else 8.dp),
             verticalArrangement = Arrangement.spacedBy(if (large) 10.dp else 4.dp)) {
             Text(name, color = DeckStudioPalette.ink, style = if (large) StudioText.title3.weight(SfWeight.bold) else StudioText.caption.weight(SfWeight.semibold),

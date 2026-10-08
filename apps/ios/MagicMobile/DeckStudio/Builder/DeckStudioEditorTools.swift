@@ -181,6 +181,11 @@ struct DeckStudioTextEditorSheet: View {
                                 ForEach(review.diff.removed) { Text($0.label).font(.subheadline).foregroundStyle(DeckStudioPalette.danger) }
                             }
                         }
+                        if !review.diff.art.isEmpty {
+                            Section(DeckStudioPlayText.diffArt) {
+                                ForEach(review.diff.art) { Text($0.label).font(.subheadline) }
+                            }
+                        }
                         if !review.notes.isEmpty {
                             Section("Notes") { ForEach(review.notes, id: \.self) { Text($0).font(.caption) } }
                         }

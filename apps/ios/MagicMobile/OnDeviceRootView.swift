@@ -35,6 +35,7 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
     @AppStorage("magicmobile.gamecenter.aiOpponentCount") private var gameCenterAIStoredCount = 0
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
+    @AppStorage(AutoPassAfterCast.key) private var autoPassAfterCast = true
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
@@ -541,6 +542,8 @@ struct OnDeviceRootView: View {
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
+        // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
+        .onChange(of: selectedDeckID, initial: true) { _, id in CardArtChoices.shared.select(deckID: id) }
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
@@ -903,6 +906,11 @@ struct OnDeviceRootView: View {
                      : activeMatch?.mode == .quick ? String(localized: "Play Again")
                      : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch")
         .environment(\.gameRankChange, rankChange)
+        .environment(\.boardAnswerActions, BoardAnswerActions(
+            supported: session.supportedAnswerActions, rememberedAnswers: session.rememberedAnswers,
+            rememberedTriggerOrders: session.rememberedTriggerOrders,
+            forgetAnswers: { session.forgetRememberedAnswers() }, forgetTriggerOrder: { session.forgetTriggerOrder() }))
+        .onChange(of: autoPassAfterCast) { _, enabled in session.setAutoPassAfterCast(enabled) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
         .sheet(isPresented: $emotes.isChatOpen) {
@@ -1681,6 +1689,14 @@ private final class OnDeviceSetupModel: ObservableObject {
     private let session: OnDeviceSession
     private let resume: GameResumeCoordinator
     private let runtime = OnDeviceRuntimeManager()
+    /// The answer actions this phone's engine accepts (docs/PROTOCOL.md); empty on an older engine.
+    private var engineAnswerActions: Set<String> {
+        Set(runtime.capabilities?["answerActions"]?.array?.compactMap(\.string) ?? [])
+    }
+    /// Settings → Pass After Casting (on by default).
+    private var autoPassAfterCastSetting: Bool {
+        UserDefaults.standard.object(forKey: AutoPassAfterCast.key) as? Bool ?? true
+    }
     private var resolver: OnDeviceDeckResolver?
     private var multiplayerObservation: AnyCancellable?
     private var resumeObservations: [AnyCancellable] = []
@@ -1783,7 +1799,8 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode,
                 mode: mode?.rawValue, deckBracket: deckBracket), playerDeckName: deck.name)
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true,
+                                     answerActions: engineAnswerActions, autoPassAfterCast: autoPassAfterCastSetting, close: { [self] in try await closeAI() })
             status = "Game started"
             // XMage checked every deck when it created the game: the player's deck passed.
             recordStartPass(deckID: deckID, deck: deck)
@@ -1816,7 +1833,8 @@ private final class OnDeviceSetupModel: ObservableObject {
             aiMatchID = restored.matchID
             updateSessionForeground()
             try await session.attach(client: client, matchID: restored.matchID, seatID: record.setup.seatID,
-                                     allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
+                                     allowsSeatScopedAutoYield: true, answerActions: engineAnswerActions,
+                                     autoPassAfterCast: autoPassAfterCastSetting, close: { [self] in try await closeAI() })
             status = "Game resumed"
             return true
         } catch {
@@ -1901,8 +1919,10 @@ private final class OnDeviceSetupModel: ObservableObject {
         defer { isBusy = false }
         do {
             updateSessionForeground()
+            // A table seats only phones with this exact build, so this phone's engine speaks for the host's.
             try await session.attach(client: endpoint.client, matchID: endpoint.matchID, seatID: endpoint.seatID,
                                      allowsSeatScopedAutoYield: true, table: endpoint.table,
+                                     answerActions: engineAnswerActions, autoPassAfterCast: autoPassAfterCastSetting,
                                      close: { try await multiplayer.leave() })
             resume.tableGameStarted()
             // Only the host's engine created this game, so only the host's deck check is local.

@@ -141,7 +141,7 @@ class CardChoicePlan private constructor(
             return Kind.SELECTION
         }
 
-        private val selectedSuffix = Regex("\\s*\\(selected \\d+ of \\d+(?:, min \\d+)?\\)")
+        private val selectedSuffix = Regex("\\s*\\(selected \\d+(?: of \\d+)?(?:, min \\d+)?\\)")
         fun context(prompt: PromptEnvelopeV2): String = prompt.message.replace(selectedSuffix, "")
 
         fun supportsDraft(prompt: PromptEnvelopeV2): Boolean {
@@ -154,14 +154,20 @@ class CardChoicePlan private constructor(
 
         fun toggled(ids: List<String>, id: String): List<String> = if (id in ids) ids - id else ids + id
 
-        private val boundsPattern = Regex("(?:selected\\s+)\\d+\\s+of\\s+(\\d+)(?:,\\s*min\\s+(\\d+))?", RegexOption.IGNORE_CASE)
-        /** (minimum, maximum). TargetImpl omits ", min 0" while retaining "of <max>". */
+        private val boundsPattern = Regex("\\(selected\\s+(\\d+)(?:\\s+of\\s+(\\d+))?(?:,\\s*min\\s+(\\d+))?\\)", RegexOption.IGNORE_CASE)
+        /**
+         * (minimum, maximum). TargetImpl writes "(selected 1 of 3, min 1)", omits ", min 0", and omits "of <max>" for "any
+         * number" targets ("Select Goblin cards (selected 1)"): those have no upper bound (Int.MAX_VALUE).
+         */
         fun selectionBounds(message: String): Pair<Int, Int>? {
             val match = boundsPattern.find(message) ?: return null
-            val numbers = Regex("\\d+").findAll(match.value).mapNotNull { it.value.toIntOrNull() }.toList()
-            if (numbers.size < 2) return null
-            return (if (numbers.size >= 3) numbers[2] else 0) to numbers[1]
+            val maximum = match.groupValues[2].takeIf(String::isNotEmpty)?.toIntOrNull() ?: Int.MAX_VALUE
+            val minimum = match.groupValues[3].takeIf(String::isNotEmpty)?.toIntOrNull() ?: 0
+            return minimum to maximum
         }
+
+        /** True when the range has no upper bound ("any number"). */
+        fun isUnbounded(bounds: Pair<Int, Int>): Boolean = bounds.second == Int.MAX_VALUE
 
         private fun command(prompt: PromptEnvelopeV2, gameID: String, id: String): GameCommand? =
             PromptCommandBuilder.command(gameID, prompt, "choose_target", prompt.id, prompt.playerId, listOf(id))

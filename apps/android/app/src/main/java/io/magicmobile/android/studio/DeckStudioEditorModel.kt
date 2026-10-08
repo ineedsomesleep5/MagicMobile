@@ -132,6 +132,12 @@ class DeckStudioEditorModel(private val library: DeckLibraryStore, record: DeckL
     }
 
     fun remove(id: UUID) { change { value -> value.copy(rows = value.rows.filterNot { it.id == id }) } }
+    /** Chooses the printing whose art this row shows (null returns it to the card's default art). One undo step. */
+    fun setPrinting(id: UUID, printing: io.magicmobile.android.core.CardPrinting?): Boolean = change { value ->
+        val index = value.rows.indexOfFirst { it.id == id }
+        if (index < 0) throw DeckEditingError.MissingEntry
+        value.copy(rows = value.rows.toMutableList().also { it[index] = it[index].copy(printing = printing) })
+    }
     fun replace(rowID: UUID, name: String): Boolean = change { DeckStudioEditorOperations.replaceCard(it, rowID, name) }
     fun commander(name: String, keepOld: Boolean): Boolean = change { DeckStudioEditorOperations.replacePrimaryCommander(it, name, keepOld) }
     fun basics(values: Map<String, Int>, expected: NativeDeckDraft): Boolean {

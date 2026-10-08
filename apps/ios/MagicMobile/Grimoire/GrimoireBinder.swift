@@ -597,6 +597,8 @@ struct BinderSleeve: View {
     var addLabel: String? = nil
     var removeLabel: String? = nil
     var tapLabel: String? = nil
+    /// The art this row chose; the catalogue shelf leaves it to the player's choice for the name.
+    var art: CardArtSelection = .active
     let add: () -> Void
     let remove: () -> Void
     let tap: () -> Void
@@ -608,7 +610,7 @@ struct BinderSleeve: View {
 
     var body: some View {
         VStack(spacing: 5) {
-            DeckStudioCardImageTile(name: name, card: card)
+            DeckStudioCardImageTile(name: name, card: card, art: art)
                 .padding(4)
                 .background {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)

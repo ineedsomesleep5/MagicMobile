@@ -138,11 +138,13 @@ enum OnDeviceSnapshotAdapter {
         let priority = rawPlayers.first { $0["hasPriority"]?.bool == true }?["playerId"]
         let decodedPlayers: [PlayerGameState] = try decode(.array(players))
         let decodedXmage: XmageMobileSnapshot = try decode(xmage)
-        let allCards = decodedPlayers.flatMap { player in
-            player.zones.hand + player.zones.battlefield + player.zones.graveyard + player.zones.exile + player.zones.command
-                + player.zones.library
-        } + decodedXmage.stack.compactMap(\.sourceCard)
-            + (decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion).flatMap(\.cards)
+        // Typed steps: one long chain of `+` takes the type checker too long on CI's compiler.
+        let playerCards: [ZoneCard] = decodedPlayers.flatMap { player -> [ZoneCard] in
+            let zones = player.zones
+            return [zones.hand, zones.battlefield, zones.graveyard, zones.exile, zones.command, zones.library].flatMap { $0 }
+        }
+        let disclosedZones: [XmageNamedZone] = decodedXmage.exileZones + decodedXmage.revealed + decodedXmage.lookedAt + decodedXmage.companion
+        let allCards: [ZoneCard] = playerCards + decodedXmage.stack.compactMap(\.sourceCard) + disclosedZones.flatMap(\.cards)
         let prompt = poll.prompt.flatMap { $0.submitted ? nil : $0 }
         let presentation = try prompt.map { prompt in
             var attackerID: String?

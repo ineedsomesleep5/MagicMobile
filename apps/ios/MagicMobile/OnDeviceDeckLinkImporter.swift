@@ -21,7 +21,7 @@ struct OnDeviceDeckLinkImporter {
         func entry(_ row: DeckEntry) -> DeckEntry {
             let canonical = resolver.canonicalCardName(row.cardName)
             if canonical == nil { unresolved.insert(row.cardName) }
-            return DeckEntry(cardName: canonical ?? row.cardName, quantity: row.quantity, section: row.section)
+            return DeckEntry(cardName: canonical ?? row.cardName, quantity: row.quantity, section: row.section, printing: row.printing)
         }
         let result = DeckList(name: deck.name, commander: deck.commander.map(entry), entries: deck.entries.map(entry))
         return Preview(deck: result, unresolvedNames: unresolved.sorted())

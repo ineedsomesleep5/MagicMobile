@@ -732,6 +732,10 @@ final class OnDeviceSessionTests: XCTestCase {
         XCTAssertEqual(Schedule.interval(idlePolls: Schedule.awaitingAfter - 1, awaitingPlayer: true), Schedule.idle)
         XCTAssertEqual(Schedule.interval(idlePolls: Schedule.awaitingAfter, awaitingPlayer: true), Schedule.awaitingPlayer)
         XCTAssertGreaterThan(Schedule.awaitingPlayer, Schedule.idle)
+        // A stack resolving right after an answer polls faster, but only while it keeps changing.
+        XCTAssertEqual(Schedule.interval(idlePolls: 0, awaitingPlayer: false, stackChain: true), Schedule.chain)
+        XCTAssertLessThan(Schedule.chain, Schedule.active)
+        XCTAssertEqual(Schedule.interval(idlePolls: Schedule.idleAfter, awaitingPlayer: false, stackChain: true), Schedule.idle)
     }
 
     func testHostRetryPolicyRetriesOnlyLostHostAnswersAFewTimes() {

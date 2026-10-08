@@ -43,7 +43,7 @@ class ArtworkDownloadService:Service() {
                     check(input.channel.size() in 1..Wire.LIMIT.toLong()){"Download request is too large."}
                     ArtworkDownloadRequest.decode(input.readBytes())
                 }
-                val failures=ArtworkDownloadClient(applicationContext).download(request.names,request.quality,request.tokens,request.catalogue){progress->
+                val failures=ArtworkDownloadClient(applicationContext).download(request.names,request.quality,request.tokens,request.catalogue,request.chosen){progress->
                     withContext(Dispatchers.Main.immediate){
                         if(ownsRun()){
                             state.value=state.value.copy(progress=progress)
@@ -87,7 +87,7 @@ class ArtworkDownloadService:Service() {
         private fun requestFile(context:Context)=File(context.filesDir,"artwork-download-request.json")
         internal fun hasPending(context:Context)=requestFile(context).isFile
         internal fun resume(context:Context){check(Artwork.enabled(context)){"Online artwork is disabled."};context.startForegroundService(Intent(context,ArtworkDownloadService::class.java))}
-        internal suspend fun start(context:Context,names:List<String>,quality:ArtworkQuality,tokens:Boolean,catalogue:Boolean) {
+        internal suspend fun start(context:Context,names:List<String>,quality:ArtworkQuality,tokens:Boolean,catalogue:Boolean,chosen:List<ChosenArt> = emptyList()) {
             startLock.lock()
             try {
             check(Artwork.enabled(context)){"Online artwork is disabled."}
@@ -95,7 +95,7 @@ class ArtworkDownloadService:Service() {
             state.value=ArtworkDownloadState(true,DownloadProgress(0,0,"Preparing artwork…"))
             withContext(Dispatchers.IO){
                 val file=AtomicFile(requestFile(context));val output=file.startWrite()
-                try{output.write(ArtworkDownloadRequest(names,quality,tokens,catalogue).encode());file.finishWrite(output)}
+                try{output.write(ArtworkDownloadRequest(names,quality,tokens,catalogue,chosen).encode());file.finishWrite(output)}
                 catch(failure:Throwable){file.failWrite(output);throw failure}
             }
             check(Artwork.enabled(context)){"Online artwork is disabled."}

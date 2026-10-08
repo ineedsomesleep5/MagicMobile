@@ -16,6 +16,10 @@ struct UniversalPromptActionPanel: View {
     @State private var selectedSearchPromptId: String?
     @State private var selectedSearchCardIds: [String] = []
     @State private var choiceSearch = ""
+    /// "Don't ask again this game" / "Always put my pick first", per question (cleared when the question changes).
+    @State private var remember = false
+    @State private var rememberPromptId: String?
+    @Environment(\.boardAnswerActions) private var answerActions
     @Environment(\.dismiss) private var dismiss
     let pendingActionId: String?
     let runAction: (LegalAction) -> Void
@@ -676,6 +680,9 @@ struct UniversalPromptActionPanel: View {
     @ViewBuilder
     private func abilityPicker(abilities: [XmagePromptAbility], prompt: PromptEnvelopeV2) -> some View {
         PromptMiniLabel("Abilities")
+        if prompt.isTriggerOrder, answerActions.supported.contains("rememberTriggerFirst") {
+            RememberChoiceToggle(title: "Always put my pick first", isOn: rememberBinding(prompt))
+        }
         // Rows of two, every cell top-aligned and as tall as its row, so the cards line up
         // whatever the length of each ability's text.
         let items = Array(abilities.enumerated())
@@ -695,7 +702,8 @@ struct UniversalPromptActionPanel: View {
     }
 
     private func abilityCell(_ ability: XmagePromptAbility, prompt: PromptEnvelopeV2) -> some View {
-        let choiceCommand = command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id])
+        let choiceCommand = remembering(command(type: "choose_ability", promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [ability.id]),
+                                        prompt: prompt, action: prompt.isTriggerOrder ? "rememberTriggerFirst" : nil)
         return VStack(alignment: .leading, spacing: 8) {
             if let source = ability.sourceCard {
                 let selectAbility = {
@@ -749,6 +757,18 @@ struct UniversalPromptActionPanel: View {
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(MagicPalette.iron.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// The remember box belongs to one question; a new question starts unticked.
+    private func rememberBinding(_ prompt: PromptEnvelopeV2) -> Binding<Bool> {
+        Binding(get: { remember && rememberPromptId == prompt.id },
+                set: { remember = $0; rememberPromptId = prompt.id })
+    }
+
+    private func remembering(_ command: GameCommand?, prompt: PromptEnvelopeV2, action: String?) -> GameCommand? {
+        guard var command, let action, remember, rememberPromptId == prompt.id else { return command }
+        command.answerActions = [action]
+        return command
     }
 
     @ViewBuilder
@@ -1037,8 +1057,12 @@ struct UniversalPromptActionPanel: View {
     }
     @ViewBuilder
     private func confirmationPicker(confirmation: XmagePromptConfirmation, prompt: PromptEnvelopeV2) -> some View {
-        let yesCommand = explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt)
-        let noCommand = explicitConfirmationCommand(confirmation.noCommand, prompt: prompt)
+        let rememberable = prompt.canRememberAnswer && answerActions.supported.contains("rememberAnswer")
+        let yesCommand = remembering(explicitConfirmationCommand(confirmation.yesCommand, prompt: prompt), prompt: prompt, action: rememberable ? "rememberAnswer" : nil)
+        let noCommand = remembering(explicitConfirmationCommand(confirmation.noCommand, prompt: prompt), prompt: prompt, action: rememberable ? "rememberAnswer" : nil)
+        if rememberable {
+            RememberChoiceToggle(title: "Don't ask again this game", isOn: rememberBinding(prompt))
+        }
         HStack(spacing: 6) {
             promptButton(
                 label: confirmation.yesLabel ?? "Yes",

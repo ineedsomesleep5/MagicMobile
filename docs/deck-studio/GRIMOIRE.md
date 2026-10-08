@@ -151,6 +151,7 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
 | Leaf heads, switches, disclosures, steppers, menu plaques | `MagicMobile/Grimoire/GrimoireBinderControls.swift` | `studio/StudioTheme.kt`, `StudioSheetBar` |
 | Tags, coins, chips, notes, empty pages | `MagicMobile/Grimoire/GrimoireBinderControls.swift` | end of `studio/GrimoireBinder.kt` |
 | All cards shelf | `DeckStudio/Builder/DeckStudioBinderCatalogue.swift` | `binderCatalogue` in `studio/DeckStudioWorkspace.kt` |
+| Choose artwork (a deck row's printing; see "Chosen artwork") | `DeckStudio/Builder/DeckStudioArtworkPicker.swift`, `CardPrinting.swift`, `CardArtChoices.swift` | `studio/DeckStudioArtworkPicker.kt`, core `CardPrinting.kt`, `studio/DeckStudioPrintings.kt` |
 | Meshy parts (buckle, jewel, corners, index tab) | `scripts/brand/binder_parts.py`, `install_binder_parts.sh` | same images |
 | The film clips | `Resources/Grimoire/grimoire-{open,close}-{portrait,landscape}.mp4` | copied to `res/raw` by `prepareBrandAssets` |
 | The 3D book | `scripts/brand/grimoire.py` (Blender), `scripts/brand/install_grimoire.sh` (encode) | same clips |
@@ -189,6 +190,30 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   grid inside a single self-sizing list row sends UIKit into a layout loop).
 - **Type.** iOS sets `.fontDesign(.serif)` on the page and draws navigation titles itself (`grimoireTitle`).
   Android's Deck Studio files use the package's own `sf`, which defaults to the serif family.
+
+## Chosen artwork
+
+A card's long-press menu (and the list row's ⋯) has **Choose artwork**: a sheet of every printing Scryfall lists
+for the card, newest first, thumbnails from Scryfall's image host. The pick belongs to the **deck row**.
+
+- **Stored** on the row as `setCode` + `collectorNumber` (both or neither; an unreadable pair reads as no choice),
+  so it survives restarts, editing, undo, recovery drafts and the native JSON export. It never reaches the engine:
+  `OnDeviceDeckResolver` still resolves the catalogue's one compiled printing, so deck validation and saved checks
+  are unchanged. Replacing a card clears the choice; promoting a main-deck copy to commander carries it.
+- **Exported** as `1 Sol Ring (CMM) 400` (Moxfield/Archidekt style) in plain text, which the importer reads back,
+  and in native JSON as the two fields. Quick Add still ignores a typed `(set) number`.
+- **Drawn** everywhere a card is drawn by name through `CardArtChoices` (playing deck first, then saved decks by
+  recency); Deck Studio's own rows pass their exact printing. Online it asks Scryfall for that exact printing
+  (`/cards/{set}/{number}`, `face=back` for a reverse face), offline it uses the pack's image under
+  `print:set/number`, and only if that is neither saved nor reachable does the default art show.
+- **Offline pack.** Every download of cards also saves the chosen printings (the scope's decks; the full catalogue
+  and All decks include every saved deck's), queued ahead of default art, by exact set and collector number.
+- **Tokens.** Emblems (Scryfall links them as `combo_piece`, not `token`) now count as related tokens; a full
+  download fetches referenced tokens the Oracle bulk lacks; Android downloads a double-faced token's back face.
+  Token manifests from before this read as incomplete until one more download.
+- **Not covered.** Opponents' and remote players' cards use your choice only when the name matches one of your
+  decks (the wire protocol carries no printing); Quick Add, and Archidekt/Moxfield link imports do not set art.
+  An emblem on the board is drawn by the engine's name for it, which may differ from Scryfall's.
 
 ## Remaking the film
 

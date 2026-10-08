@@ -446,6 +446,7 @@ fun BinderGauge(count: Int, modifier: Modifier = Modifier, target: Int = 100, sh
 @Composable
 fun BinderSleeve(name: String, quantity: Int, card: CardInfo?, modifier: Modifier = Modifier, notes: List<String> = emptyList(), selected: Boolean? = null,
                  canEdit: Boolean = true, addLabel: String = "Add one $name", removeLabel: String = "Remove one $name", tapLabel: String = name,
+                 art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active,
                  add: () -> Unit, remove: () -> Unit, tap: () -> Unit, preview: () -> Unit = {}) {
     val editing = canEdit && selected == null
     val pocket = RoundedCornerShape(7.dp)
@@ -455,7 +456,7 @@ fun BinderSleeve(name: String, quantity: Int, card: CardInfo?, modifier: Modifie
             .border(0.8.dp, Color.White.copy(alpha = 0.4f), pocket)
             .binderCorners(16.dp, BinderCornerStyle.CARD)
             .padding(4.dp)) {
-            DeckStudioCardImage(name, card, Modifier.fillMaxWidth())
+            DeckStudioCardImage(name, card, Modifier.fillMaxWidth(), art = art)
             if (selected != null) Box(Modifier.align(Alignment.TopStart).padding(3.dp)
                 .background(if (selected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.ink.copy(alpha = 0.35f), CircleShape)) {
                 SfImage(if (selected) "checkmark.circle.fill" else "circle", if (selected) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, 20.dp)

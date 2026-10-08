@@ -302,7 +302,8 @@ struct DeckStudioRootView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     DeckStudioTileCover(height: grid ? 164 : 130) {
                         DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
-                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
+                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
+                                          art: .exact(record.commander?.printing))
                     }
                         .overlay(alignment: .topTrailing) {
                             // The deck's Commander bracket (Ranked/CommanderBrackets.swift).
@@ -466,8 +467,10 @@ struct DeckStudioArtwork: View {
     var hero = false
     /// Color identity for the cover drawn when the commander's art is not on this iPhone.
     var colors: [String]? = nil
+    /// A deck's own row passes its chosen printing here; anywhere else the player's choice for the name shows.
+    var art: CardArtSelection = .active
     var body: some View {
-        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero) { _, _ in
+        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero, art: art) { _, _ in
             if hero {
                 DeckCoverPlaceholder(commander: name, colors: colors)
             } else {

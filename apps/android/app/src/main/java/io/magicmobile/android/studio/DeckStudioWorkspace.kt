@@ -140,7 +140,11 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     var showCommander by remember { mutableStateOf(false) }
     var showBasics by remember { mutableStateOf(false) }
     var replacement by remember { mutableStateOf<NativeDeckRow?>(null) }
+    /** The row whose artwork is being chosen. */
+    var artworkRow by remember { mutableStateOf<NativeDeckRow?>(null) }
     var inspection by remember { mutableStateOf<String?>(null) }
+    /** The art the inspected card shows: a deck row passes its own printing; elsewhere the player's choice for the name. */
+    var inspectionArt by remember { mutableStateOf<io.magicmobile.android.CardArtSelection>(io.magicmobile.android.CardArtSelection.Active) }
     // The sideways title plate's quick check, folded into a chip until tapped.
     var spreadQuickCheck by rememberSaveable { mutableStateOf(false) }
     var confirmClose by remember { mutableStateOf(false) }
@@ -155,7 +159,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     val draft = model.draft
     val deck = runCatching { draft.deck() }.getOrNull()
     val signature = if (deck != null && resolver != null) runCatching { DeckStudioDeckSignature.native(DeckStudioPlayProjection(deck).resolve(resolver)) }.getOrNull() else null
-    fun inspect(name: String) { inspection = name }
+    fun inspect(name: String, art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active) { inspection = name; inspectionArt = art }
     val canonical: (String) -> String? = { name -> resolver?.canonicalCardName(name) }
     /** The validation panel's Play this deck: the same flow as the header button, for this draft. */
     fun preparePlay(@Suppress("UNUSED_PARAMETER") playing: DeckList) {
@@ -270,10 +274,11 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     val playAction = rememberDeckStudioPlayAction(play, model, resolver)
     /** Long-press actions shared by list rows and grid tiles (cardActions in DeckStudioWorkspaceScreen.swift). */
     fun cardActions(row: NativeDeckRow): List<DeckStudioCardAction> = buildList {
-        add(DeckStudioCardAction(DeckStudioPlayText.cardDetails, "info.circle") { inspect(row.cardName) })
+        add(DeckStudioCardAction(DeckStudioPlayText.cardDetails, "info.circle") { inspect(row.cardName, io.magicmobile.android.CardArtSelection.Exact(row.printing)) })
         if (!model.readOnly) {
             add(DeckStudioCardAction(DeckStudioPlayText.addOne, "plus") { model.quantity(row.id, 1) })
             add(DeckStudioCardAction(DeckStudioPlayText.removeOne, "minus") { model.quantity(row.id, -1) })
+            add(DeckStudioCardAction(DeckStudioPlayText.chooseArtwork, "photo.on.rectangle") { artworkRow = row })
             add(DeckStudioCardAction(DeckStudioPlayText.replaceCard, "arrow.triangle.2.circlepath") { replacement = row })
             add(DeckStudioCardAction(DeckStudioPlayText.moveTo, null,
                 choices = DeckStudioPlayText.destinations.map { (section, title) -> title to { model.move(row.id, section) } }))
@@ -437,7 +442,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
             item(key = "group-$group") {
                 GrimoireSubheading(group, groupCount(group, rows), Modifier.padding(horizontal = 14.dp).padding(top = 8.dp).padding(vertical = 10.dp))
             }
-            fun tap(row: NativeDeckRow) { if (builder.selecting) builder.toggle(row.id) else inspect(row.cardName) }
+            fun tap(row: NativeDeckRow) { if (builder.selecting) builder.toggle(row.id) else inspect(row.cardName, io.magicmobile.android.CardArtSelection.Exact(row.printing)) }
             // Long-press: the large preview with the row's actions, as the iOS context menu; not while selecting.
             fun longPress(row: NativeDeckRow) { if (!builder.selecting) builder.previewRow = row.id }
             if (cardLayout == "Grid") items(rows.chunked(gridColumns), key = { "$group/grid/${it.first().id}" }) { chunk ->
@@ -445,6 +450,7 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
                     BinderSleeve(row.cardName, row.quantity, metadata?.card(row.cardName), modifier, notes = preflight.issues(row.id).map { it.badge },
                         selected = if (builder.selecting) row.id in builder.selection else null, canEdit = !model.readOnly,
                         tapLabel = (if (builder.selecting) "" else "Inspect ") + "${row.cardName}, quantity ${row.quantity}",
+                        art = io.magicmobile.android.CardArtSelection.Exact(row.printing),
                         add = { GameAudio.play(GameSound.UI_TICK); model.quantity(row.id, 1); tapHintSeen = true },
                         remove = { GameAudio.play(GameSound.UI_TICK); model.quantity(row.id, -1); tapHintSeen = true },
                         tap = { tap(row) }, preview = { longPress(row) })
@@ -452,7 +458,8 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
             } else items(rows, key = { "$group/${it.id}" }) { row ->
                 Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                     CardRow(row, model, metadata, inspect = { tap(row) }, replace = { replacement = it }, issues = preflight.issues(row.id),
-                        selected = if (builder.selecting) row.id in builder.selection else null, preview = { longPress(row) })
+                        selected = if (builder.selecting) row.id in builder.selection else null, preview = { longPress(row) },
+                        chooseArt = { artworkRow = it })
                 }
             }
         }
@@ -638,11 +645,16 @@ fun DeckStudioWorkspaceScreen(library: DeckLibraryStore, record: DeckLibraryReco
     }
     inspection?.let { name ->
         BoardSheet({ inspection = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
-            DeckStudioCardInspector(name, metadata?.card(name)) { inspection = null }
+            DeckStudioCardInspector(name, metadata?.card(name), art = inspectionArt) { inspection = null }
         }
     }
     if (showCommander) BoardSheet({ showCommander = false }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
         DeckStudioReplacementPicker(metadata, commander = true, replace = { name, keepOld -> model.commander(name, keepOld) }) { showCommander = false }
+    }
+    artworkRow?.let { row ->
+        BoardSheet({ artworkRow = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
+            DeckStudioArtworkPicker(row.cardName, row.printing, choose = { model.setPrinting(row.id, it) }) { artworkRow = null }
+        }
     }
     replacement?.let { row ->
         BoardSheet({ replacement = null }, background = DeckStudioPalette.background, paper = true, skipPartiallyExpanded = true, sound = false) {
@@ -778,7 +790,7 @@ private fun WorkspaceHeader(model: DeckStudioEditorModel, metadata: NativeDeckMe
                     val frame = RoundedCornerShape(5.dp)
                     Box(Modifier.size(72.dp, 100.dp).shadow(4.dp, frame).clip(frame).border(2.5.dp, Binder.brass, frame)
                         .binderCorners(14.dp, BinderCornerStyle.CARD)) {
-                        DeckStudioArtwork(DeckStudioDraftPresentation.commanders(draft).firstOrNull() ?: "", Modifier.fillMaxSize())
+                        DeckStudioArtwork(DeckStudioDraftPresentation.commanders(draft).firstOrNull() ?: "", Modifier.fillMaxSize(), art = io.magicmobile.android.CardArtSelection.Exact(DeckStudioDraftPresentation.commanderPrinting(draft)))
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(DeckStudioDraftPresentation.commanders(draft).joinToString(" • "), color = DeckStudioPalette.secondaryInk, style = StudioText.caption, maxLines = 2)
@@ -810,7 +822,7 @@ private fun SpreadWorkspaceHeader(model: DeckStudioEditorModel, metadata: Native
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val frame = RoundedCornerShape(4.dp)
             Box(Modifier.size(54.dp, 75.dp).shadow(3.dp, frame).clip(frame).border(2.dp, Binder.brass, frame).binderCorners(11.dp, BinderCornerStyle.CARD)) {
-                DeckStudioArtwork(DeckStudioDraftPresentation.commanders(draft).firstOrNull() ?: "", Modifier.fillMaxSize())
+                DeckStudioArtwork(DeckStudioDraftPresentation.commanders(draft).firstOrNull() ?: "", Modifier.fillMaxSize(), art = io.magicmobile.android.CardArtSelection.Exact(DeckStudioDraftPresentation.commanderPrinting(draft)))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(draft.name.ifEmpty { "Untitled draft" }, Modifier.semantics { heading() }, color = DeckStudioPalette.ink,
@@ -890,7 +902,8 @@ private fun catalogueFilterOptions(type: String, color: String, withinIdentity: 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CardRow(row: NativeDeckRow, model: DeckStudioEditorModel, metadata: NativeDeckMetadataCatalogue?, inspect: (String) -> Unit, replace: (NativeDeckRow) -> Unit,
-                    issues: List<DeckStudioPreflight.Issue> = emptyList(), selected: Boolean? = null, preview: () -> Unit = {}) {
+                    issues: List<DeckStudioPreflight.Issue> = emptyList(), selected: Boolean? = null, preview: () -> Unit = {},
+                    chooseArt: (NativeDeckRow) -> Unit = {}) {
     val selecting = selected != null
     Row(Modifier.fillMaxWidth().background(DeckStudioPalette.surface, RoundedCornerShape(12.dp)).padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -901,7 +914,7 @@ private fun CardRow(row: NativeDeckRow, model: DeckStudioEditorModel, metadata: 
             },
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (selected != null) SfImage(if (selected) "checkmark.circle.fill" else "circle", if (selected) DeckStudioPalette.accent else DeckStudioPalette.secondaryInk, 22.dp)
-            Box(Modifier.size(38.dp, 52.dp).clip(RoundedCornerShape(5.dp))) { DeckStudioArtwork(row.cardName, Modifier.fillMaxSize()) }
+            Box(Modifier.size(38.dp, 52.dp).clip(RoundedCornerShape(5.dp))) { DeckStudioArtwork(row.cardName, Modifier.fillMaxSize(), art = io.magicmobile.android.CardArtSelection.Exact(row.printing)) }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(row.cardName, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
                 val card = metadata?.card(row.cardName)
@@ -921,6 +934,7 @@ private fun CardRow(row: NativeDeckRow, model: DeckStudioEditorModel, metadata: 
                 StudioIconButton("plus", "Add one ${row.cardName}", { model.quantity(row.id, 1) }, size = 16.dp)
                 StudioMenu({
                     buildList {
+                        add(MenuEntry.Item(DeckStudioPlayText.chooseArtwork, "photo.on.rectangle") { chooseArt(row) })
                         add(MenuEntry.Item("Replace card", "arrow.triangle.2.circlepath") { replace(row) })
                         add(MenuEntry.Section("Move to…"))
                         listOf("deck", "commanders", "companions", "sideboard", "maybeboard").forEach { destination ->

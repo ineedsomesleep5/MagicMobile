@@ -292,7 +292,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
     if (tavernFrame != null) {
         TavernCommandBar(tavernFrame, human, manaPool, passAction, yieldActions, pendingActionId, snapshot, openLog, openSettings, openPromptDetails,
             viewZone, runAction, runCommand, { isStackOpen = true }, Modifier.zIndex(5f))
-        if (isStackOpen) BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection) { isStackOpen = false } }
+        if (isStackOpen) BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection, runCommand) { isStackOpen = false } }
         return
     }
     Column(modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -312,6 +312,9 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
                 })
             }
             BoardStackTray(snapshot.stackTopFirst, snapshot.xmage?.stack?.size ?: human.zones.stack.size) { isStackOpen = true }
+            GameplayAffordances.resolveStackCommand(snapshot, pendingActionId, LocalBoardAnswerActions.current.supported)?.let { command ->
+                ResolveStackButton({ runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}") })
+            }
             emoteCenter?.let { TableChatButton(it) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -342,7 +345,7 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
         }
     }
     if (isStackOpen) {
-        BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection) { isStackOpen = false } }
+        BoardSheet({ isStackOpen = false }) { BoardStackInspector(snapshot, selection, runCommand) { isStackOpen = false } }
     }
 }
 
@@ -415,6 +418,12 @@ private fun TavernCommandBar(frame: TavernFrame, human: PlayerGameState, manaPoo
             TavernStackTray(stackCount, snapshot.stackTopFirst.firstOrNull()?.name, openStack,
                 Modifier.tavernPosition(frame, sockets.stackTray), width = if (frame.isLandscape) 106.dp else 124.dp,
                 thumbnail = topCard?.let { card -> { TavernArtCrop(card, "Stack") } })
+            // "Resolve all": under the tray in portrait (the mana rail is just above it), above it in landscape, where the
+            // tray stands alone in the right-hand column.
+            GameplayAffordances.resolveStackCommand(snapshot, pendingActionId, LocalBoardAnswerActions.current.supported)?.let { command ->
+                ResolveStackButton({ runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}") },
+                    Modifier.tavernPosition(frame, sockets.stackTray).offset(y = if (frame.isLandscape) (-46).dp else 40.dp))
+            }
         }
         // Counters and attached cards live in the medallion's pop-over; poison and commander damage also show here at a glance.
         Row(Modifier.tavernPosition(frame, sockets.chat), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {

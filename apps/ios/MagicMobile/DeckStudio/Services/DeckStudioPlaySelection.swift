@@ -73,6 +73,8 @@ enum DeckStudioPlayText {
     static let keepEditing = "Keep editing"
     static let diffAdded = "Added"
     static let diffRemoved = "Removed"
+    static let diffArt = "Artwork"
+    static let chooseArtwork = "Choose artwork"
     static let noChanges = "No changes to apply."
     static let textEditorHint = "One card per line, like 1 Sol Ring, under Commander, Deck, Companion, Sideboard or Maybeboard headings."
     // Commander-first new decks

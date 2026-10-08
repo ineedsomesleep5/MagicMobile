@@ -1,6 +1,7 @@
 package io.magicmobile.android.studio
 
 import io.magicmobile.android.core.CardInfo
+import io.magicmobile.android.core.CardPrinting
 import io.magicmobile.android.game.CardCountText
 import java.net.URI
 import java.text.Normalizer
@@ -149,7 +150,7 @@ object DeckStudioEditorOperations {
     fun replaceCard(draft: NativeDeckDraft, rowID: UUID, name: String): NativeDeckDraft {
         val index = draft.rows.indexOfFirst { it.id == rowID }
         if (index < 0) throw DeckEditingError.MissingEntry
-        return draft.copy(rows = draft.rows.toMutableList().also { it[index] = it[index].copy(cardName = name) })
+        return draft.copy(rows = draft.rows.toMutableList().also { it[index] = it[index].copy(cardName = name, printing = null) })
     }
 
     fun replacePrimaryCommander(draft: NativeDeckDraft, name: String, keepOld: Boolean): NativeDeckDraft {
@@ -159,12 +160,15 @@ object DeckStudioEditorOperations {
         if (primary != null && rows[primary].cardName == name) return draft
         if (primary != null) {
             val old = rows[primary]
-            rows[primary] = old.copy(cardName = name, quantity = 1, section = "commanders", isPrimaryCommander = true)
-            if (keepOld) rows += NativeDeckRow(cardName = old.cardName, quantity = old.quantity, section = "maybeboard")
+            rows[primary] = old.copy(cardName = name, quantity = 1, section = "commanders", isPrimaryCommander = true, printing = null)
+            if (keepOld) rows += NativeDeckRow(cardName = old.cardName, quantity = old.quantity, section = "maybeboard", printing = old.printing)
         } else rows.add(0, NativeDeckRow(cardName = name, section = "commanders", isPrimaryCommander = true))
         // Explicit promotion moves one main-deck copy; partners and other boards stay intact.
         val index = rows.indexOfFirst { !it.isPrimaryCommander && it.cardName == name && it.section.trim().lowercase() in setOf("main", "deck") }
         if (index >= 0) {
+            // The commander keeps the art the promoted copy had.
+            val commander = rows.indexOfFirst { it.isPrimaryCommander && it.cardName == name }
+            if (commander >= 0 && rows[commander].printing == null) rows[commander] = rows[commander].copy(printing = rows[index].printing)
             if (rows[index].quantity == 1) rows.removeAt(index) else rows[index] = rows[index].copy(quantity = rows[index].quantity - 1)
         }
         return draft.copy(rows = rows)
@@ -268,13 +272,18 @@ data class DeckStudioQuickAdd(val quantity: Int, val name: String, val ignored: 
  * Edit as text (DeckStudioTextDiff in DeckStudioTextExport.swift): the whole deck in the export
  * format, reviewed as cards added and removed per board before it is applied as one undo step.
  */
-data class DeckStudioTextDiff(val added: List<Change>, val removed: List<Change>) {
+data class DeckStudioTextDiff(val added: List<Change>, val removed: List<Change>, val art: List<ArtChange> = emptyList()) {
     data class Change(val board: String, val name: String, val before: Int, val after: Int) {
         val delta: Int get() = after - before
         /** e.g. "+2 Sol Ring · Deck", "−1 Island · Maybeboard". */
         val label: String get() = "${if (delta > 0) "+" else "−"}${kotlin.math.abs(delta)} $name · ${title(board)}"
     }
-    val isEmpty: Boolean get() = added.isEmpty() && removed.isEmpty()
+    /** A card whose chosen printing changed, written "(SET) number" in the text. */
+    data class ArtChange(val board: String, val name: String, val before: List<String>, val after: List<String>) {
+        /** e.g. "Sol Ring · default art → CMM 400". */
+        val label: String get() = "$name · ${before.joinToString(", ")} → ${after.joinToString(", ")}"
+    }
+    val isEmpty: Boolean get() = added.isEmpty() && removed.isEmpty() && art.isEmpty()
 
     companion object {
         private val order = listOf("commanders", "deck", "companions", "sideboard", "maybeboard")
@@ -296,7 +305,18 @@ data class DeckStudioTextDiff(val added: List<Change>, val removed: List<Change>
                 val right = order.indexOf(b.board).let { if (it < 0) order.size else it }
                 if (left != right) left.compareTo(right) else if (a.board == b.board) a.name.compareTo(b.name) else a.board.compareTo(b.board)
             }
-            return DeckStudioTextDiff(changes.filter { it.delta > 0 }, changes.filter { it.delta < 0 })
+            // The chosen printings per card and board, one entry per row: default art reads "default art".
+            fun artwork(draft: NativeDeckDraft): Map<Pair<String, String>, List<String>> {
+                val result = LinkedHashMap<Pair<String, String>, MutableList<String>>()
+                for (row in draft.rows) result.getOrPut(DeckStudioDraftPresentation.section(row) to row.cardName) { ArrayList() } += (row.printing?.label ?: "default art")
+                return result.mapValues { it.value.sorted() }
+            }
+            val beforeArt = artwork(old); val afterArt = artwork(new)
+            val art = beforeArt.keys.filter { it in afterArt }.mapNotNull { key ->
+                val was = beforeArt.getValue(key); val now = afterArt.getValue(key)
+                ArtChange(key.first, key.second, was, now).takeIf { was != now }
+            }.sortedWith(compareBy({ it.board }, { it.name }))
+            return DeckStudioTextDiff(changes.filter { it.delta > 0 }, changes.filter { it.delta < 0 }, art)
         }
 
         /**
@@ -552,8 +572,11 @@ object DeckStudioBuilderSearch {
 object DeckStudioTextExport {
     class RequiresJSON : Exception("Use JSON export for empty drafts, custom sections or unusual card names.")
 
+    /** One line per row, "2 Sol Ring" or, with chosen art, "2 Sol Ring (CMM) 400" as Moxfield and Archidekt write it. */
+    fun line(entry: DeckEntry): String = "${entry.quantity} ${entry.cardName}" + (entry.printing?.let { " " + it.exportSuffix } ?: "")
+
     fun text(deck: DeckList): String {
-        val entries = listOfNotNull(deck.commander?.let { DeckEntry(it.cardName, it.quantity, "commanders") }) + deck.entries
+        val entries = listOfNotNull(deck.commander?.let { DeckEntry(it.cardName, it.quantity, "commanders", it.printing) }) + deck.entries
         if (entries.isEmpty()) throw RequiresJSON()
         val groups = LinkedHashMap<String, MutableList<DeckEntry>>()
         for (entry in entries) {
@@ -569,16 +592,16 @@ object DeckStudioTextExport {
         }
         val text = listOf("Commander", "Deck", "Companion", "Sideboard", "Maybeboard").mapNotNull { section ->
             val rows = groups[section]?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-            section + "\n" + rows.joinToString("\n") { "${it.quantity} ${it.cardName}" }
+            section + "\n" + rows.joinToString("\n") { line(it) }
         }.joinToString("\n\n") + "\n"
-        // The real importer must preserve every name, quantity and board before sharing.
+        // The real importer must preserve every name, quantity, board and chosen printing before sharing.
         val decoded = try { OnDeviceDeckEditing.importText(text, deck.name).deck } catch (error: Exception) { throw RequiresJSON() }
         fun counts(values: List<DeckEntry>): Map<String, Int> =
-            values.groupingBy { "${it.section}\u0000${it.cardName}" }.fold(0) { total, row -> total + row.quantity }
+            values.groupingBy { "${it.section}\u0000${it.cardName}\u0000${it.printing?.key ?: ""}" }.fold(0) { total, row -> total + row.quantity }
         val expected = groups.flatMap { (key, values) ->
-            values.map { DeckEntry(it.cardName, it.quantity, when (key) { "Commander" -> "commanders"; "Companion" -> "companions"; else -> key.lowercase() }) }
+            values.map { DeckEntry(it.cardName, it.quantity, when (key) { "Commander" -> "commanders"; "Companion" -> "companions"; else -> key.lowercase() }, it.printing) }
         }
-        val actual = listOfNotNull(decoded.commander?.let { DeckEntry(it.cardName, it.quantity, "commanders") }) + decoded.entries
+        val actual = listOfNotNull(decoded.commander?.let { DeckEntry(it.cardName, it.quantity, "commanders", it.printing) }) + decoded.entries
         if (counts(expected) != counts(actual)) throw RequiresJSON()
         return text
     }
@@ -596,6 +619,8 @@ object DeckStudioDraftPresentation {
     }
     fun section(row: NativeDeckRow): String = if (row.isPrimaryCommander) "commanders" else normalizedSection(row.section)
     fun commanders(draft: NativeDeckDraft): List<String> = draft.rows.filter { section(it) == "commanders" }.map { it.cardName }
+    /** The art chosen for the first commander, which the deck's cover draws. */
+    fun commanderPrinting(draft: NativeDeckDraft): CardPrinting? = draft.rows.firstOrNull { section(it) == "commanders" }?.printing
     fun gameCount(draft: NativeDeckDraft): Int = draft.rows.filter { section(it) in setOf("deck", "commanders") }.sumOf { it.quantity }
     fun colors(draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?): List<String>? {
         val commanders = commanders(draft)

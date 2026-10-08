@@ -20,6 +20,7 @@ import io.magicmobile.android.game.array
 import io.magicmobile.android.game.bool
 import io.magicmobile.android.game.get
 import io.magicmobile.android.game.integer
+import io.magicmobile.android.game.jsonObject
 import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
 import io.magicmobile.android.ondevice.OnDeviceHostUnavailable
@@ -36,6 +37,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import java.io.IOException
 import java.util.UUID
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Port of OnDeviceTableLink (OnDeviceSession.swift): a seat's side of a phone-hosted table. The host's
@@ -142,10 +144,16 @@ object OnDeviceLocalPollSchedule {
     /** Unchanged polls before the idle spacing, and before the awaiting-player spacing. */
     const val IDLE_AFTER = 3
     const val AWAITING_AFTER = 8
+    /**
+     * A stack resolving right after this player's answer (a run of triggers, "Resolve all", a remembered answer): each
+     * resolution shows as soon as the engine has it. Only while things keep changing, and only for a few seconds.
+     */
+    const val CHAIN_MILLIS = 120L
+    const val CHAIN_WINDOW_MILLIS = 6_000L
 
-    fun intervalMillis(idlePolls: Int, awaitingPlayer: Boolean): Long =
+    fun intervalMillis(idlePolls: Int, awaitingPlayer: Boolean, stackChain: Boolean = false): Long =
         if (awaitingPlayer && idlePolls >= AWAITING_AFTER) AWAITING_PLAYER_MILLIS
-        else if (idlePolls >= IDLE_AFTER) IDLE_MILLIS else ACTIVE_MILLIS
+        else if (idlePolls >= IDLE_AFTER) IDLE_MILLIS else if (stackChain) CHAIN_MILLIS else ACTIVE_MILLIS
 }
 
 /**
@@ -165,6 +173,13 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     var errorMessage by mutableStateOf<String?>(null); private set
     var isAutoPassing by mutableStateOf(false); private set
     var autoPassStatus by mutableStateOf(""); private set
+    /** Answer actions this game's engine accepts (its `answerActions` capability); empty on older engines. */
+    var supportedAnswerActions by mutableStateOf<Set<String>>(emptySet()); private set
+    /** Questions and trigger orders this seat asked XMage to remember this game, for the "forget" controls. */
+    var rememberedAnswers by mutableIntStateOf(0); private set
+    var rememberedTriggerOrders by mutableIntStateOf(0); private set
+    /** Standing instructions waiting for this seat's next answer of any kind (a preference, a reset), by type. */
+    private var standingActions: Map<String, J> = emptyMap()
     private var activeRefreshes by mutableIntStateOf(0)
 
     private var allowsSeatScopedAutoYield = false
@@ -206,14 +221,24 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var heldAbilitySnapshot: Pair<String, GameSnapshot>? = null
     private var abilityAutoAnswer: Job? = null
 
+    /** The stack is resolving shortly after this seat's own answer (OnDeviceLocalPollSchedule.CHAIN_MILLIS). */
+    private val inStackChain: Boolean get() {
+        val at = lastActionAt ?: return false
+        if (snapshot?.xmage?.stack.isNullOrEmpty()) return false
+        return nowMillis() - at < OnDeviceLocalPollSchedule.CHAIN_WINDOW_MILLIS
+    }
+
     private fun uptime(): Double = System.nanoTime() / 1_000_000_000.0
     private fun nowMillis(): Long = System.nanoTime() / 1_000_000
 
     suspend fun attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Boolean = true,
                        allowsSeatScopedAutoYield: Boolean = false, reconnectsAutomatically: Boolean = false,
-                       table: OnDeviceTableLink? = null, observe: ((MatchPoll) -> Unit)? = null, close: suspend () -> Unit) {
+                       table: OnDeviceTableLink? = null, observe: ((MatchPoll) -> Unit)? = null,
+                       answerActions: Set<String> = emptySet(), autoPassAfterCast: Boolean? = null, close: suspend () -> Unit) {
         if (this.client != null || isWorking) throw EngineError.InvalidMessage("Close the active game first")
         this.client = client; this.matchID = matchID; this.seatID = seatID; observer = observe
+        supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = emptyMap()
+        autoPassAfterCast?.let(::setAutoPassAfterCast)
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
         this.table = table; lastActionAt = null
@@ -439,6 +464,26 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         submit(command, label, actionID)
     }
 
+    /** Passing priority after casting a spell (Settings), sent with this seat's next answer. */
+    fun setAutoPassAfterCast(enabled: Boolean) {
+        if ("autoPassAfterCast" !in supportedAnswerActions) return
+        standingActions = standingActions + ("autoPassAfterCast" to jsonObject("type" to JsonPrimitive("autoPassAfterCast"), "enabled" to JsonPrimitive(enabled)))
+    }
+
+    /** Forget every remembered answer (asked again from the next one). */
+    fun forgetRememberedAnswers() {
+        if ("resetRememberedAnswers" !in supportedAnswerActions) return
+        standingActions = standingActions + ("resetRememberedAnswers" to jsonObject("type" to JsonPrimitive("resetRememberedAnswers")))
+        rememberedAnswers = 0
+    }
+
+    /** Forget every remembered trigger order. */
+    fun forgetTriggerOrder() {
+        if ("resetTriggerOrder" !in supportedAnswerActions) return
+        standingActions = standingActions + ("resetTriggerOrder" to jsonObject("type" to JsonPrimitive("resetTriggerOrder")))
+        rememberedTriggerOrders = 0
+    }
+
     private suspend fun submit(command: GameCommand, label: String, actionID: String) {
         val token = epoch
         acquireResponseSlot()
@@ -451,7 +496,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                 (command.expectedBridgeRevision != null && command.expectedBridgeRevision != snapshot.bridgeRevision)) {
                 throw EngineError.InvalidMessage("The game or decision changed. Refresh before choosing again.")
             }
-            val answer = OnDevicePromptAdapter.answer(command, prompt, snapshot.viewerID)
+            val requested = command.answerActions.orEmpty().filter { it in supportedAnswerActions }
+            val standing = standingActions.values.toList()
+            val answer = OnDevicePromptAdapter.answer(OnDevicePromptAdapter.answer(command, prompt, snapshot.viewerID),
+                OnDevicePromptAdapter.answerActions(requested, command, prompt) + standing)
             val ability = command.abilityId
             val source = command.sourceInstanceId ?: command.cardInstanceId
             if (command.type in setOf("make_mana", "activate_ability", "play_land", "cast_spell") && ability != null && source != null) {
@@ -462,6 +510,13 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             pending = Submission(prompt, answer, UUID.randomUUID(), label)
             pendingActionID = actionID; pendingCardID = command.cardInstanceId ?: command.sourceInstanceId
             performPendingResponse()
+            // Delivered: the standing instructions went with it (one changed meanwhile stays queued), and what was
+            // remembered is counted for the forget controls.
+            if (epoch == token) {
+                standingActions = standingActions.filterValues { it !in standing }
+                if ("rememberAnswer" in requested) rememberedAnswers += 1
+                if ("rememberTriggerFirst" in requested) rememberedTriggerOrders += 1
+            }
         } finally {
             if (epoch == token) { isWorking = false; responding = false; waitingForPolls = false }
         }
@@ -650,7 +705,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             while (isActive) {
                 try {
                     val interval = if (reconnectsAutomatically) 1000L
-                        else OnDeviceLocalPollSchedule.intervalMillis(idlePolls, awaitsLocalAnswer)
+                        else OnDeviceLocalPollSchedule.intervalMillis(idlePolls, awaitsLocalAnswer, inStackChain)
                     if (firstPoll) delay(if (reconnectsAutomatically) interval else minOf(interval, OnDeviceLocalPollSchedule.IDLE_MILLIS))
                     else if (!retryNow) waitForNextPoll(lastPoll, interval)
                     firstPoll = false; retryNow = false

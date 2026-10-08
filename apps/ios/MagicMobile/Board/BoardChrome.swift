@@ -780,6 +780,19 @@ struct ActionRejectionInlineView: View {
 enum GameplayAffordances {
     static func dismissesZone(action: LegalAction) -> Bool { action.type == "cast_spell" }
 
+    /// "Resolve all": one pass that keeps passing until the stack has resolved (XMage's F10). It stops by itself if an
+    /// opponent adds something, and every choice still comes to you. Offered with two or more objects on the stack while
+    /// you hold priority, on engines with the answer action.
+    static func resolveStackCommand(snapshot: GameSnapshot, pendingActionID: String?, supported: Set<String>) -> GameCommand? {
+        let stackCount = snapshot.xmage?.stack.count ?? snapshot.human?.zones.stack.count ?? 0
+        guard stackCount >= 2, pendingActionID == nil, supported.contains("passUntilStackResolved"),
+              let pass = snapshot.legalActions?.first(where: { $0.type == "pass_priority" }) else { return nil }
+        var command = GameCommand(type: "pass_priority", gameId: snapshot.id, playerId: pass.playerId,
+                                  promptId: pass.promptId, messageId: pass.messageId, expectedBridgeRevision: snapshot.bridgeRevision)
+        command.answerActions = ["passUntilStackResolved"]
+        return command
+    }
+
     /// Your zones holding a card you can play right now, besides your hand: a commander, a flashback or
     /// escape card in the graveyard, an impulse-drawn or foretold card in exile, a revealed top card.
     static func castableZones(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?) -> Set<BoardZoneReference.PlayerZone> {
@@ -2537,3 +2550,77 @@ struct TavernTableHints: View {
         .accessibilityIdentifier("board.tableHints")
     }
 }
+
+/// What this game's engine lets a seat ask XMage to remember (OnDeviceSession.supportedAnswerActions), and the controls to
+/// forget it again. Empty on older engines and for guests, which hides every remember control.
+struct BoardAnswerActions {
+    var supported: Set<String> = []
+    var rememberedAnswers = 0
+    var rememberedTriggerOrders = 0
+    var forgetAnswers: () -> Void = {}
+    var forgetTriggerOrder: () -> Void = {}
+}
+
+private struct BoardAnswerActionsKey: EnvironmentKey { static let defaultValue = BoardAnswerActions() }
+
+extension EnvironmentValues {
+    var boardAnswerActions: BoardAnswerActions {
+        get { self[BoardAnswerActionsKey.self] }
+        set { self[BoardAnswerActionsKey.self] = newValue }
+    }
+}
+
+/// "Don't ask again this game" under a card's yes/no question, "Always put my pick first" on the trigger order: a brass
+/// check box on leather. Ticked, the next answer also asks XMage to remember it.
+struct RememberChoiceToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 7) {
+                Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isOn ? TavernPalette.brass : TavernPalette.parchment.opacity(0.7))
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.92))
+                    .lineLimit(2).minimumScaleFactor(0.85)
+            }
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityIdentifier("prompt.remember")
+    }
+}
+
+/// A small brass plaque on leather: "Resolve all" for the stack (PortraitBottomCommandBar.resolveStackCommand).
+struct ResolveStackButton: View {
+    var identifier = "board.stack.resolveAll"
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: "forward.fill").font(.system(size: 10, weight: .bold))
+                Text("Resolve all").font(.system(size: 12, weight: .bold, design: .serif))
+            }
+            .foregroundStyle(TavernPalette.parchment)
+            .padding(.horizontal, 11).frame(minHeight: 30)
+            .background(Capsule().fill(TavernPalette.leather.opacity(0.95)))
+            .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1.2))
+            .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Resolve all")
+        .accessibilityHint("Passes until the stack has resolved. Stops if an opponent responds.")
+        .accessibilityIdentifier(identifier)
+    }
+}
+

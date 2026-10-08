@@ -345,13 +345,14 @@ fun formatDateTime(millis: Long): String =
 
 /** DeckStudioCardInspector: bundled metadata offline, an optional Scryfall reference online. */
 @Composable
-fun DeckStudioCardInspector(name: String, metadata: CardInfo?, dismiss: () -> Unit) {
+fun DeckStudioCardInspector(name: String, metadata: CardInfo?, art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active,
+                            dismiss: () -> Unit) {
     Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
         StudioSheetBar("", done = dismiss)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 io.magicmobile.android.CardArtwork(name, Modifier.widthIn(max = 340.dp).fillMaxWidth().heightIn(min = 120.dp, max = 420.dp)
-                    .clip(RoundedCornerShape(14.dp))) {
+                    .clip(RoundedCornerShape(14.dp)), art = art) {
                     DeckStudioNotice(name, "Artwork is optional. Card text remains available offline.", "rectangle.portrait", Modifier.padding(12.dp))
                 }
             }
@@ -807,6 +808,9 @@ fun DeckStudioTextEditorSheet(draft: NativeDeckDraft, apply: (NativeDeckDraft, N
                     }
                     if (current.second.removed.isNotEmpty()) FormSection(DeckStudioPlayText.diffRemoved) {
                         current.second.removed.forEach { Text(it.label, color = DeckStudioPalette.danger, style = StudioText.subheadline) }
+                    }
+                    if (current.second.art.isNotEmpty()) FormSection(DeckStudioPlayText.diffArt) {
+                        current.second.art.forEach { Text(it.label, color = DeckStudioPalette.ink, style = StudioText.subheadline) }
                     }
                     if (current.third.isNotEmpty()) FormSection("Notes") { current.third.forEach { Text(it, color = DeckStudioPalette.ink, style = StudioText.caption) } }
                     error?.let { Text(it, color = DeckStudioPalette.danger, style = StudioText.caption) }
