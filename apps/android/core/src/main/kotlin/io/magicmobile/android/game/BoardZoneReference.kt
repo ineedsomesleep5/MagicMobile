@@ -35,7 +35,11 @@ sealed class BoardZoneReference {
         is PlayerEnchantments -> "Enchanting ${snapshot.playerLabel(playerID)}"
         is Player -> {
             val label = snapshot.players.firstOrNull { it.playerId == playerID }?.displayName?.let { EngineDisplayText.label(it) } ?: ""
-            val zoneTitle = capitalizedWords(zone.rawValue) + if (zone == PlayerZone.HAND || zone == PlayerZone.LIBRARY) " — visible cards" else ""
+            val zoneTitle = when (zone) {
+                PlayerZone.LIBRARY -> if (cards(snapshot).isEmpty()) "Library" else "Library · revealed top card"
+                PlayerZone.HAND -> "Hand — visible cards"
+                else -> capitalizedWords(zone.rawValue)
+            }
             if (label.isEmpty()) zoneTitle else "$label · $zoneTitle"
         }
         is Named -> kind.groups(snapshot).firstOrNull { it.id == id }?.name?.let { EngineDisplayText.label(it, kind.title) } ?: kind.title

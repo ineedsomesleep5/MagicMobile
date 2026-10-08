@@ -5,11 +5,14 @@ import mage.abilities.ActivatedAbility;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
+import mage.game.stack.Spell;
+import mage.game.stack.StackObject;
 import mage.players.Player;
 import mage.player.ai.ComputerPlayerControllableProxy;
 import mage.player.ai.SimulationNode2;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -73,6 +76,19 @@ final class MobileAICancellation {
         return step==PhaseStep.PRECOMBAT_MAIN || step==PhaseStep.DECLARE_ATTACKERS
             || step==PhaseStep.DECLARE_BLOCKERS || step==PhaseStep.POSTCOMBAT_MAIN;
     }
+    /**
+     * The situation in which a pass can be repeated without another search: an opponent's ability (not a spell) is on
+     * top of the stack, in this turn and step, with this AI holding the same instant-speed options. Null otherwise.
+     */
+    static String repeatablePassSituation(Game game,UUID aiId,List<String> playableIds) {
+        StackObject top=game.getStack().getFirstOrNull();
+        if(top==null || top instanceof Spell || aiId.equals(top.getControllerId())) return null;
+        return game.getTurnNum()+":"+game.getTurnStepType()+":"+String.join(",",new TreeSet<>(playableIds));
+    }
+    /** True when the AI already passed in this situation and the stack has only resolved since (nothing was added). */
+    static boolean repeatsPass(String declined,int declinedStackSize,String situation,int stackSize) {
+        return situation!=null && situation.equals(declined) && stackSize<declinedStackSize;
+    }
     static int thinkBudget(int configured,boolean stackEmpty,boolean humansPlaying) {
         return stackEmpty && humansPlaying?configured:Math.min(configured,STACK_THINK_SECS);
     }
@@ -110,9 +126,26 @@ final class MobileAICancellation {
         }
         @Override public CancellablePlayer copy() { return new CancellablePlayer(this); }
         SimulationNode2 swapSearchTree(SimulationNode2 tree) { SimulationNode2 previous=root;root=tree;return previous; }
+        // A pass the AI already chose while an opponent's triggers resolve (16 quest-counter triggers give it priority
+        // 16 times). Transient: a copy or a restored game simply searches again.
+        private transient String declinedSituation;
+        private transient int declinedStackSize;
         @Override public boolean priority(Game game) {
-            if(game.isSimulation() || !isGameUnderControl() || !actions.isEmpty()
-                || !searchesAt(game.getTurnStepType()) || hasNonManaPlayable(game)) return super.priority(game);
+            if(game.isSimulation() || !isGameUnderControl() || !actions.isEmpty() || !searchesAt(game.getTurnStepType()))
+                return super.priority(game);
+            List<String> playable=nonManaPlayableIds(game);
+            if(!playable.isEmpty()) {
+                String situation=repeatablePassSituation(game,playerId,playable);
+                int stackSize=game.getStack().size();
+                if(!repeatsPass(declinedSituation,declinedStackSize,situation,stackSize)) {
+                    boolean result=super.priority(game);
+                    // Remember only a pass, and only in a repeatable situation; any action clears it.
+                    declinedSituation=isPassed()?situation:null;
+                    declinedStackSize=stackSize;
+                    return result;
+                }
+                declinedStackSize=stackSize;
+            }
             // Upstream search would only list Pass here (it skips mana abilities), so skip its
             // full game copy. Same observable steps as ComputerPlayer7.priorityPlay then act.
             game.resumeTimer(getTurnControlledBy());
@@ -124,9 +157,10 @@ final class MobileAICancellation {
                 return true;
             } finally { game.pauseTimer(getTurnControlledBy()); }
         }
-        private boolean hasNonManaPlayable(Game game) {
-            for(ActivatedAbility ability:getPlayable(game,true)) if(!ability.isManaAbility()) return true;
-            return false;
+        private List<String> nonManaPlayableIds(Game game) {
+            List<String> ids=new ArrayList<>();
+            for(ActivatedAbility ability:getPlayable(game,true)) if(!ability.isManaAbility()) ids.add(String.valueOf(ability.getOriginalId()));
+            return ids;
         }
         @Override protected Integer addActionsTimed() {
             int configured=maxThinkTimeSecs;

@@ -63,9 +63,10 @@ struct DeckStudioBinderCatalogue: View {
                             add: { if !model.add(card.name, section: "deck") { error = "Could not add \(card.name). Check the draft's quantity or section limits." } else { error = nil } },
                             remove: { model.removeOne(card.name, section: "deck"); error = nil },
                             tap: { inspect(card.name) })
-            .contextMenu {
-                Button(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(card.name) }
-            } preview: { DeckStudioCardPreview(name: card.name, card: card) }
+            .binderContextMenu {
+                BinderMenuHeading(card.name)
+                BinderMenuButton(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspect(card.name) }
+            }
     }
 
     private func search() async {

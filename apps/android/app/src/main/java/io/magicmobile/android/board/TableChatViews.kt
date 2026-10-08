@@ -75,7 +75,7 @@ fun TableChatButton(center: EmoteCenter) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TableChatPanel(center: EmoteCenter, snapshot: GameSnapshot?, report: ((EmoteCenter.ChatLine) -> Unit)?, block: ((String) -> Unit)? = null,
-                   done: () -> Unit) {
+                   viewProfile: ((String) -> Unit)? = null, done: () -> Unit) {
     var filterLanguage by AppPreferences.boolean("magicmobile.chat.filterLanguage", true)
     var draft by remember { mutableStateOf("") }
     var actionsFor by remember { mutableStateOf<EmoteCenter.ChatLine?>(null) }
@@ -139,6 +139,7 @@ fun TableChatPanel(center: EmoteCenter, snapshot: GameSnapshot?, report: ((Emote
 
     actionsFor?.let { line ->
         val actions = buildList {
+            if (viewProfile != null) add(ConfirmationAction("View ${line.name}'s profile") { viewProfile(line.name) })
             add(ConfirmationAction("Mute ${line.name}") { center.mute(line.name) })
             if (block != null) add(ConfirmationAction("Block ${line.name}") { block(line.name) })
             if (report != null && line.id !in reported) add(ConfirmationAction("Report message", destructive = true) { report(line); reported = reported + line.id })

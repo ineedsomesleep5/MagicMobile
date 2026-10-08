@@ -29,7 +29,8 @@ public final class DecisionSpec {
                 "min",min,"max",max);
     }
     public Map<String,Object> validate(Map<String,Object> answer) {
-        if(!answer.keySet().equals(Set.of("kind","value"))) reject("Expected exactly kind and value");
+        boolean withActions=answer.keySet().equals(Set.of("kind","value","actions"));
+        if(!withActions && !answer.keySet().equals(Set.of("kind","value"))) reject("Expected kind and value, and optional actions");
         String type=Json.requiredString(answer,"kind"); Object value=answer.get("value");
         if(!types.contains(type)) reject("Response type is not accepted by this prompt: "+type);
         switch(type) {
@@ -81,6 +82,11 @@ public final class DecisionSpec {
                 break;
             }
             default: reject("Unimplemented response encoder: "+type);
+        }
+        if(withActions) {
+            Map<String,Object> normalized=new LinkedHashMap<>(answer);
+            normalized.put("actions",AnswerActions.validate(this,type,value,answer.get("actions")));
+            return Json.object(Json.freeze(normalized));
         }
         return Json.object(Json.freeze(answer));
     }

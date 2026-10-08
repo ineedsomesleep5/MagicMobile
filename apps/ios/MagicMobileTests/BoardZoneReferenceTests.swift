@@ -21,10 +21,12 @@ final class BoardZoneReferenceTests: XCTestCase {
         }
         XCTAssertEqual(empty.players[0].zones.visibleHandCount, 7)
         XCTAssertEqual(empty.players[0].zones.visibleLibraryCount, 92)
-        for zone in [BoardZoneReference.PlayerZone.hand, .library] {
-            XCTAssertTrue(BoardZoneReference.player(playerID: "a", zone: zone).title(in: empty).contains("visible cards"))
-            XCTAssertTrue(BoardZoneReference.player(playerID: "missing", zone: zone).title(in: empty).contains("visible cards"))
-        }
+        XCTAssertTrue(BoardZoneReference.player(playerID: "a", zone: .hand).title(in: empty).contains("visible cards"))
+        XCTAssertTrue(BoardZoneReference.player(playerID: "missing", zone: .hand).title(in: empty).contains("visible cards"))
+        // The library is face down; its title says so only when a revealed top card is there.
+        XCTAssertTrue(BoardZoneReference.player(playerID: "a", zone: .library).title(in: empty).hasSuffix("Library"))
+        let revealed = try snapshot(zonesA: ["library": [card("top")]])
+        XCTAssertTrue(BoardZoneReference.player(playerID: "a", zone: .library).title(in: revealed).hasSuffix("Library · revealed top card"))
         XCTAssertTrue(BoardZoneReference.player(playerID: "missing", zone: .hand).cards(in: empty).isEmpty)
     }
 

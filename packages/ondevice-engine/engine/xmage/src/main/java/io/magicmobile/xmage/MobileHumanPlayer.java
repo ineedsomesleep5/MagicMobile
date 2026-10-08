@@ -110,7 +110,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
                     mobile.checkConcede();
                     Player asked=game.getPlayer(getId());
                     if(game.hasEnded() || asked==null || !asked.isInGame() || !controller.isInGame()) {
-                        response.clear();
+                        response.resetAnswers();
                         input.onRetracted.run();
                         return;
                     }
@@ -121,7 +121,10 @@ public final class MobileHumanPlayer extends HumanPlayer {
         } catch(InterruptedException e) {
             Thread.currentThread().interrupt();throw new CancellationException("Mobile match interrupted");
         }
-        response.clear();
+        response.resetAnswers();
+        // Standing instructions validated against this prompt (AnswerActions), applied on the GAME thread before the
+        // answer itself. A pass action's own skip() marks the response; the answer below is the same pass.
+        if(answer.containsKey("actions")) applyActions(Json.array(answer.get("actions")),game,(MobileHumanPlayer)controller);
         String kind=Json.requiredString(answer,"kind");Object value=answer.get("value");
         switch(kind) {
             case "boolean": response.setBoolean(Json.bool(value));break;
@@ -140,6 +143,32 @@ public final class MobileHumanPlayer extends HumanPlayer {
             default: throw new BridgeException("unsupported_response","Unknown response type");
         }
         input.onConsumed.run();
+    }
+    /**
+     * XMage desktop player actions, already validated and keyed by AnswerActions. Remembered answers and trigger order
+     * belong to the player answering this question; passing after a cast is the controlling user's preference, as
+     * HumanPlayer.priority reads it through getControllingPlayersUserData.
+     */
+    private void applyActions(List<Object> actions,Game game,MobileHumanPlayer controller) {
+        for(Object item:actions) {
+            Map<String,Object> action=Json.object(item);
+            switch(Json.requiredString(action,"type")) {
+                case "resetRememberedAnswers": sendPlayerAction(PlayerAction.REQUEST_AUTO_ANSWER_RESET_ALL,game,null);break;
+                case "resetTriggerOrder": sendPlayerAction(PlayerAction.TRIGGER_AUTO_ORDER_RESET_ALL,game,null);break;
+                case "rememberAnswer": {
+                    boolean ability=Json.requiredString(action,"scope").equals("ability"), yes=Json.bool(action.get("answer"));
+                    PlayerAction remember=ability
+                        ? (yes?PlayerAction.REQUEST_AUTO_ANSWER_ID_YES:PlayerAction.REQUEST_AUTO_ANSWER_ID_NO)
+                        : (yes?PlayerAction.REQUEST_AUTO_ANSWER_TEXT_YES:PlayerAction.REQUEST_AUTO_ANSWER_TEXT_NO);
+                    sendPlayerAction(remember,game,Json.requiredString(action,"key"));break;
+                }
+                case "rememberTriggerFirst":
+                    sendPlayerAction(PlayerAction.TRIGGER_AUTO_ORDER_ABILITY_FIRST,game,UUID.fromString(Json.requiredString(action,"abilityId")));break;
+                case "passUntilStackResolved": sendPlayerAction(PlayerAction.PASS_PRIORITY_UNTIL_STACK_RESOLVED,game,null);break;
+                case "autoPassAfterCast": controller.userData.setPassPriorityCast(Json.bool(action.get("enabled")));break;
+                default: throw new BridgeException("unsupported_response","Unknown answer action");
+            }
+        }
     }
     @Override public Player prepareControllableProxy(Player playerUnderControl) {
         if(playerUnderControl==null || !getId().equals(playerUnderControl.getTurnControlledBy()))

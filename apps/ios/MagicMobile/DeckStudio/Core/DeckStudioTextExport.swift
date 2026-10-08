@@ -7,8 +7,13 @@ enum DeckStudioTextExport {
         case requiresJSON
         var errorDescription: String? { "Use JSON export for empty drafts, custom sections or unusual card names." }
     }
+    /// One line per row, "2 Sol Ring" or, with chosen art, "2 Sol Ring (CMM) 400" as Moxfield and
+    /// Archidekt write it, so the printing survives a round trip through this importer or theirs.
+    static func line(_ entry: DeckEntry) -> String {
+        "\(entry.quantity) \(entry.cardName)" + (entry.printing.map { " " + $0.exportSuffix } ?? "")
+    }
     static func text(_ deck: DeckList) throws -> String {
-        let entries = (deck.commander.map { [DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: "commanders")] } ?? []) + deck.entries
+        let entries = (deck.commander.map { [DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: "commanders", printing: $0.printing)] } ?? []) + deck.entries
         guard !entries.isEmpty else { throw ExportError.requiresJSON }
         var groups: [String: [DeckEntry]] = [:]
         for entry in entries {
@@ -25,17 +30,17 @@ enum DeckStudioTextExport {
         }
         let text = ["Commander", "Deck", "Companion", "Sideboard", "Maybeboard"].compactMap { section -> String? in
             guard let rows = groups[section], !rows.isEmpty else { return nil }
-            return section + "\n" + rows.map { "\($0.quantity) \($0.cardName)" }.joined(separator: "\n")
+            return section + "\n" + rows.map(line).joined(separator: "\n")
         }.joined(separator: "\n\n") + "\n"
-        // Verify the actual importer preserves every name/quantity/board before sharing.
+        // Verify the actual importer preserves every name/quantity/board and chosen printing before sharing.
         let decoded = try OnDeviceDeckEditing.importText(text, name: deck.name).deck
         func counts(_ values: [DeckEntry]) -> [String: Int] {
             var result: [String: Int] = [:]
-            for value in values { result["\(value.section)\u{0}\(value.cardName)", default: 0] += value.quantity }
+            for value in values { result["\(value.section)\u{0}\(value.cardName)\u{0}\(value.printing?.key ?? "")", default: 0] += value.quantity }
             return result
         }
-        let expected = groups.flatMap { key, values in values.map { DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: key == "Commander" ? "commanders" : key == "Companion" ? "companions" : key.lowercased()) } }
-        let actual = (decoded.commander.map { [DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: "commanders")] } ?? []) + decoded.entries
+        let expected = groups.flatMap { key, values in values.map { DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: key == "Commander" ? "commanders" : key == "Companion" ? "companions" : key.lowercased(), printing: $0.printing) } }
+        let actual = (decoded.commander.map { [DeckEntry(cardName: $0.cardName, quantity: $0.quantity, section: "commanders", printing: $0.printing)] } ?? []) + decoded.entries
         guard counts(expected) == counts(actual) else { throw ExportError.requiresJSON }
         return text
     }
@@ -54,9 +59,20 @@ struct DeckStudioTextDiff: Equatable {
         /// e.g. "+2 Sol Ring · Deck", "−1 Island · Maybeboard".
         var label: String { "\(delta > 0 ? "+" : "−")\(abs(delta)) \(name) · \(DeckStudioTextDiff.title(board))" }
     }
+    /// A card whose chosen printing changed, written "(SET) number" in the text.
+    struct ArtChange: Equatable, Identifiable {
+        let board: String
+        let name: String
+        let before: [String]
+        let after: [String]
+        var id: String { board + "\u{0}" + name }
+        /// e.g. "Sol Ring · default art → CMM 400".
+        var label: String { "\(name) · \(before.joined(separator: ", ")) → \(after.joined(separator: ", "))" }
+    }
     let added: [Change]
     let removed: [Change]
-    var isEmpty: Bool { added.isEmpty && removed.isEmpty }
+    let art: [ArtChange]
+    var isEmpty: Bool { added.isEmpty && removed.isEmpty && art.isEmpty }
 
     static func title(_ board: String) -> String {
         ["commanders": "Commander", "deck": "Deck", "companions": "Companion", "sideboard": "Sideboard", "maybeboard": "Maybeboard"][board]
@@ -85,6 +101,23 @@ struct DeckStudioTextDiff: Equatable {
         }
         added = changes.filter { $0.delta > 0 }
         removed = changes.filter { $0.delta < 0 }
+        // The chosen printings per card and board, one entry per row: default art reads "default art".
+        func artwork(_ draft: NativeDeckDraft) -> [String: (board: String, name: String, labels: [String])] {
+            var result: [String: (board: String, name: String, labels: [String])] = [:]
+            for row in draft.rows {
+                let board = DeckStudioBoard.of(row)
+                let key = board + "\u{0}" + row.cardName
+                var value = result[key] ?? (board, row.cardName, [])
+                value.labels.append(row.printing?.label ?? "default art")
+                result[key] = value
+            }
+            return result.mapValues { ($0.board, $0.name, $0.labels.sorted()) }
+        }
+        let beforeArt = artwork(old), afterArt = artwork(new)
+        art = Set(beforeArt.keys).intersection(afterArt.keys).compactMap { key -> ArtChange? in
+            guard let was = beforeArt[key], let now = afterArt[key], was.labels != now.labels else { return nil }
+            return ArtChange(board: was.board, name: was.name, before: was.labels, after: now.labels)
+        }.sorted { ($0.board, $0.name) < ($1.board, $1.name) }
     }
 
     /// Parses edited text with the plain-text importer and returns the new draft.

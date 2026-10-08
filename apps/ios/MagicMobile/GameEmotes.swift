@@ -314,6 +314,8 @@ struct TableChatPanel: View {
     var report: ((EmoteCenter.ChatLine) -> Void)?
     /// Blocks a player by their table name (their profile name); nil without a profile.
     var block: ((String) -> Void)?
+    /// Opens a player's profile by their table name; nil without a profile.
+    var viewProfile: ((String) -> Void)?
     @AppStorage("magicmobile.chat.filterLanguage") private var filterLanguage = true
     @State private var draft = ""
     @State private var reported: Set<UUID> = []
@@ -427,6 +429,9 @@ struct TableChatPanel: View {
         .accessibilityElement(children: .combine)
         .contextMenu {
             if !line.isLocal {
+                if let viewProfile {
+                    Button("View \(line.name)'s profile", systemImage: "person.crop.circle") { viewProfile(line.name) }
+                }
                 Button("Mute \(line.name)", systemImage: "speaker.slash") { center.mute(line.name) }
                 if let block {
                     Button("Block \(line.name)", systemImage: "hand.raised") { block(line.name) }

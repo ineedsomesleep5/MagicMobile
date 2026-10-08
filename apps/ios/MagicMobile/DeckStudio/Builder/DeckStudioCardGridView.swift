@@ -6,8 +6,9 @@ struct DeckStudioCardImageTile: View {
     let name: String
     let card: NativeDeckMetadataCatalogue.Card?
     var large = false
+    var art: CardArtSelection = .active
     var body: some View {
-        NativeCardArtworkView(name: name, variant: large ? .inspection : .board, contentMode: .fit) { _, _ in textTile }
+        NativeCardArtworkView(name: name, variant: large ? .inspection : .board, contentMode: .fit, art: art) { _, _ in textTile }
             .aspectRatio(63.0 / 88.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: large ? 14 : DeckStudioMetrics.cardRadius))
             .overlay(RoundedRectangle(cornerRadius: large ? 14 : DeckStudioMetrics.cardRadius).stroke(DeckStudioPalette.separator))
@@ -34,8 +35,9 @@ struct DeckStudioCardImageTile: View {
 struct DeckStudioCardPreview: View {
     let name: String
     let card: NativeDeckMetadataCatalogue.Card?
+    var art: CardArtSelection = .active
     var body: some View {
-        DeckStudioCardImageTile(name: name, card: card, large: true)
+        DeckStudioCardImageTile(name: name, card: card, large: true, art: art)
             .frame(width: 300).padding(8).background(GrimoirePaper())
             .preferredColorScheme(.light).grimoirePage(.loose)
     }

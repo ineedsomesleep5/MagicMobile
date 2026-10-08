@@ -179,6 +179,41 @@ object TargetingHelperVisibility {
 object GameplayAffordances {
     fun dismissesZone(action: LegalAction): Boolean = action.type == "cast_spell"
 
+    /**
+     * Your zones holding a card you can play right now, besides your hand: a commander, a flashback or escape card in
+     * the graveyard, an impulse-drawn or foretold card in exile, a revealed top card.
+     */
+    fun castableZones(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?): Set<BoardZoneReference.PlayerZone> {
+        if (pendingActionID != null || snapshot.human?.playerId != player.playerId) return emptySet()
+        val actions = (snapshot.legalActions ?: emptyList()).filter { (it.type == "cast_spell" || it.type == "play_land") && it.playerId == player.playerId }
+        if (actions.isEmpty()) return emptySet()
+        return listOf(BoardZoneReference.PlayerZone.COMMAND to player.zones.command, BoardZoneReference.PlayerZone.GRAVEYARD to player.zones.graveyard,
+            BoardZoneReference.PlayerZone.EXILE to player.zones.exile, BoardZoneReference.PlayerZone.LIBRARY to player.zones.library)
+            .filter { (_, cards) -> cards.any { GameBoardInteractionState.cardActions(it, actions).isNotEmpty() } }
+            .map { it.first }.toSet()
+    }
+
+    /** "cast available from commander, graveyard" and the rest, for TalkBack. */
+    fun castableDescription(zones: Set<BoardZoneReference.PlayerZone>): String {
+        val names = listOf(BoardZoneReference.PlayerZone.COMMAND to "commander", BoardZoneReference.PlayerZone.GRAVEYARD to "graveyard",
+            BoardZoneReference.PlayerZone.EXILE to "exile", BoardZoneReference.PlayerZone.LIBRARY to "top of library")
+        val ready = names.filter { it.first in zones }.map { it.second }
+        return if (ready.isEmpty()) "" else ", cast available from ${ready.joinToString(", ")}"
+    }
+
+    /**
+     * "Resolve all": one pass that keeps passing until the stack has resolved (XMage's F10). It stops by itself if an
+     * opponent adds something, and every choice still comes to you. Offered with two or more objects on the stack while
+     * you hold priority, on engines with the answer action (iOS GameplayAffordances.resolveStackCommand).
+     */
+    fun resolveStackCommand(snapshot: GameSnapshot, pendingActionID: String?, supported: Set<String>): GameCommand? {
+        val stackCount = snapshot.xmage?.stack?.size ?: snapshot.human?.zones?.stack?.size ?: 0
+        if (stackCount < 2 || pendingActionID != null || "passUntilStackResolved" !in supported) return null
+        val pass = snapshot.legalActions?.firstOrNull { it.type == "pass_priority" } ?: return null
+        return GameCommand("pass_priority", snapshot.id, pass.playerId, promptId = pass.promptId, messageId = pass.messageId,
+            expectedBridgeRevision = snapshot.bridgeRevision, answerActions = listOf("passUntilStackResolved"))
+    }
+
     fun commanderCastAvailable(player: PlayerGameState, snapshot: GameSnapshot, pendingActionID: String?): Boolean {
         if (pendingActionID != null || snapshot.human?.playerId != player.playerId) return false
         return player.zones.command.any { card ->

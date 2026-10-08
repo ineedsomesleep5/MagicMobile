@@ -30,6 +30,15 @@ final class GrimoireStage {
         if binderScreens[index].pages.isEmpty { binderScreens.remove(at: index) }
     }
     /// The newest binder screen's pages, left to right.
+    /// Whether a drag that begins at this point (in the window) may turn the page: it has to begin on the paper, below
+    /// the page's head (Done, Save, the tags and the other plaques sit at the top of each page, and a finger that
+    /// slides off one of them is not turning anything). With no binder pages registered, anywhere will do.
+    func pageMayCurl(from point: CGPoint) -> Bool {
+        let pages = binderPages
+        guard !pages.isEmpty else { return true }
+        guard let page = pages.first(where: { $0.contains(point) }) else { return false }
+        return point.y >= page.minY + Grimoire.headBand
+    }
     private var binderPages: [CGRect] { (binderScreens.last?.pages.values).map { $0.sorted { $0.minX < $1.minX } } ?? [] }
     private var window: UIWindow?
     private var endObserver: NSObjectProtocol?
@@ -126,74 +135,198 @@ final class GrimoireStage {
 
     // MARK: Page turns
 
-    /// Turns the page. `change` swaps what is on screen (with no animation of its own) while a picture
-    /// of the old page swings over the spine: forward, the old page lifts away to the left; back, the
-    /// new page comes down from the left onto the old one. Upright, the spine is the screen's left
-    /// edge; sideways, the book lies open as a spread with its spine down the middle, and the far
-    /// half lifts while the near half of the new spread lands.
+    /// What a page turn looks like right now: the curl, a quick crossfade under Reduce Motion, or nothing
+    /// (UI tests, unless they ask for motion with MAGICMOBILE_UI_TEST_GRIMOIRE_MOTION).
+    enum PageEffect { case none, crossfade, curl }
+    static var pageEffect: PageEffect {
+        let environment = ProcessInfo.processInfo.environment
+        let automated = HowToPlayLaunch.isAutomated(arguments: ProcessInfo.processInfo.arguments, environment: environment)
+        if automated && environment["MAGICMOBILE_UI_TEST_GRIMOIRE_MOTION"] == nil { return .none }
+        if UIAccessibility.isReduceMotionEnabled { return .crossfade }
+        return PageCurlRenderer.shared == nil ? .crossfade : .curl
+    }
+
+    /// A page turned by a finger. The swipe watcher arms one (`beginDrag`) and calls the screen's own "next
+    /// chapter" or "previous chapter", which reaches `turnPage` as it always did; `turnPage` then follows the
+    /// finger instead of playing the turn by itself.
+    private final class DragSession {
+        let forward: Bool
+        let start: CGPoint
+        let revert: () -> Void
+        var turn: PageCurlTurn?
+        var travel: CGFloat = 1
+        var distance: CGFloat = 0
+        var lift: CGFloat = 0
+        var released: (speed: CGFloat, cancelled: Bool)?
+        /// A turn that moved to another screen (the library, a deck) cannot be put back from here.
+        var revertible = true
+        var screenBefore: UUID?
+        var finishing = false
+        /// The turn is falling back and still has to put the screen back.
+        var reverting = false
+        init(forward: Bool, start: CGPoint, revert: @escaping () -> Void) { self.forward = forward; self.start = start; self.revert = revert }
+    }
+    private var armedDrag: DragSession?
+    private var drag: DragSession?
+    private var turn: PageCurlTurn?
+
+    /// Starts a page turn that follows the finger. `probe` makes the screen's change (the same call a swipe
+    /// always made); if it turns a page, the turn is live and this returns true. `revert` puts the screen
+    /// back if the finger lets go before the turn is half done.
+    func beginDrag(forward: Bool, start: CGPoint, probe: () -> Void, revert: @escaping () -> Void) -> Bool {
+        finishAutomaticTurn()
+        guard Self.pageEffect == .curl, !busy, drag == nil else { return false }
+        let session = DragSession(forward: forward, start: start, revert: revert)
+        armedDrag = session
+        probe()
+        armedDrag = nil
+        return drag === session
+    }
+
+    /// The finger's total movement since it touched, in the window's points.
+    func dragChanged(_ translation: CGPoint) {
+        guard let drag else { return }
+        drag.distance = drag.forward ? -translation.x : translation.x
+        drag.lift = -translation.y
+        drag.turn?.drag(distance: drag.distance, travel: drag.travel, lift: drag.lift)
+    }
+
+    /// The finger lifted (or the touch was cancelled). `speed` is its sideways speed in points per second.
+    func dragEnded(speed: CGFloat, cancelled: Bool) {
+        guard let drag else { return }
+        drag.released = (drag.forward ? -speed : speed, cancelled)
+        if drag.turn?.isReady == true { finishDrag(drag) }
+    }
+
+    private func finishDrag(_ session: DragSession) {
+        guard let turn = session.turn, let released = session.released, !session.finishing else { return }
+        session.finishing = true
+        let complete = !session.revertible
+            || (!released.cancelled && PageCurlModel.completes(progress: turn.progress, along: released.speed))
+        let remaining = complete ? 1 - turn.progress : turn.progress
+        session.reverting = !complete
+        turn.animate(to: complete ? 1 : 0, duration: 0.16 + 0.34 * Double(remaining), easeOut: true) { [weak self] in
+            guard let self else { return }
+            if complete { self.tearDown(); return }
+            // The page lies flat again over the old screen: put the screen back, give it a moment to draw, and go.
+            session.reverting = false
+            self.putBack(session)
+            let current = self.turn
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { if self.turn === current { self.tearDown() } }
+        }
+    }
+
+    /// A curl that plays by itself (or is settling after a finger let go) lets touches through, so a tap or a
+    /// drag during it is never lost: it is taken to its end at once (what is underneath already shows the new
+    /// page, or has the old one put back) and the new turn begins.
+    private func finishAutomaticTurn() {
+        guard busy, turn != nil else { return }
+        if let session = drag {
+            guard session.finishing else { return }
+            if session.reverting { session.reverting = false; putBack(session) }
+        }
+        tearDown()
+    }
+
+    /// Puts the screen back as a plain change, with no turn of its own.
+    private var applyingSilently = false
+    private func putBack(_ session: DragSession) {
+        applyingSilently = true
+        session.revert()
+        applyingSilently = false
+    }
+
+    /// Turns the page. `change` swaps what is on screen (with no animation of its own) while the paper of the
+    /// binder's pages curls: forward, the old page peels away from its free corner toward the spine and the new
+    /// page lies revealed under it; back, the new page unrolls from the spine over the old one. Upright, the
+    /// spine is the page's left edge; sideways, the book lies open as a spread, the right page curling over the
+    /// spine onto the left for forward and the left onto the right for back. Only the paper turns: the binder's
+    /// leather, head and index tabs stay still.
     func turnPage(forward: Bool, change: @escaping () -> Void) {
-        guard Self.motionEnabled, !busy, let scene = Self.activeScene, let source = Self.keyWindow(in: scene),
-              let old = source.snapshotView(afterScreenUpdates: false) else {
+        if applyingSilently { Self.withoutAnimation(change); return }
+        let session = armedDrag
+        armedDrag = nil
+        finishAutomaticTurn()
+        let effect = Self.pageEffect
+        guard effect != .none, !busy, let scene = Self.activeScene, let source = Self.keyWindow(in: scene) else {
             Self.withoutAnimation(change); return
         }
+        let bounds = source.bounds
+        let layout = pageLayout(in: bounds)
+        let scale = source.traitCollection.displayScale
+        if effect == .curl, let picture = grimoirePicture(of: source, in: layout.rect, afterScreenUpdates: false),
+           let turn = PageCurlTurn(forward: forward, layout: layout, old: picture, scale: scale) {
+            busy = true
+            self.turn = turn
+            // A drag already has its finger on the screen; a curl that plays by itself lets touches through.
+            let stage = makeWindow(scene, blocksTouches: false)
+            turn.view.frame = layout.rect
+            stage.addSubview(turn.view)
+            let screenBefore = binderScreens.last?.screen
+            Self.withoutAnimation(change)
+            GameAudio.shared.play(.pageFlip)
+            if let session {
+                session.turn = turn; session.screenBefore = screenBefore
+                session.travel = turn.dragTravel(startX: session.start.x)
+                drag = session
+            }
+            // Never strand the stage behind a turn whose new page does not arrive.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, self.turn === turn, !turn.isReady else { return }
+                turn.stop(); self.tearDown()
+            }
+            // The new page needs a moment to be drawn underneath before it can be pictured or revealed.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { [weak self] in
+                guard let self, self.window === stage else { return }
+                // If the new page cannot be pictured the turn is given up: what is underneath already shows it.
+                guard let new = grimoirePicture(of: source, in: layout.rect, afterScreenUpdates: true), turn.provideNew(new) else {
+                    turn.stop(); self.tearDown(); return
+                }
+                if let session {
+                    session.revertible = self.binderScreens.last?.screen == session.screenBefore
+                    turn.drag(distance: session.distance, travel: session.travel, lift: session.lift)
+                    if session.released != nil { self.finishDrag(session) }
+                } else {
+                    turn.animate(to: 1, duration: 0.5, easeOut: false) { self.tearDown() }
+                }
+            }
+            return
+        }
+        // Reduce Motion (or no Metal): the old page fades into the new one.
+        guard let old = source.snapshotView(afterScreenUpdates: false) else { Self.withoutAnimation(change); return }
         busy = true
         let stage = makeWindow(scene)
-        let bounds = stage.bounds
-        // In the binder only its pages turn: each picture is cut to the pages it shows.
-        let oldPages = binderPages.filter { bounds.intersects($0) }
         old.frame = bounds
-        let oldPage = oldPages.count == 1 ? piece(old, oldPages[0], in: bounds) : old
-        stage.addSubview(oldPage)
+        let cut = piece(old, layout.rect, in: bounds)
+        stage.addSubview(cut)
         Self.withoutAnimation(change)
-        GameAudio.shared.play(.pageFlip)
-        // The new page needs a moment to be drawn underneath before it can be pictured or revealed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { [weak self] in
-            guard let self else { return }
-            if Grimoire.isSpread(bounds.size, accessibilitySize: UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory) {
-                guard let new = source.snapshotView(afterScreenUpdates: true) else { self.tearDown(); return }
-                let halves = oldPages.count == 2 ? (oldPages[0], oldPages[1])
-                    : (CGRect(x: 0, y: 0, width: bounds.width / 2, height: bounds.height),
-                       CGRect(x: bounds.width / 2, y: 0, width: bounds.width / 2, height: bounds.height))
-                self.turnSpread(forward: forward, old: old, new: new, in: stage, left: halves.0, right: halves.1)
-            } else if forward {
-                self.swing(oldPage, anchorLeft: true, from: 0, to: -.pi / 2 * 0.98, duration: 0.42, easeIn: true) { self.tearDown() }
-            } else {
-                guard let new = source.snapshotView(afterScreenUpdates: true) else { self.tearDown(); return }
-                new.frame = bounds
-                let newPages = self.binderPages.filter { bounds.intersects($0) }
-                let newPage = newPages.count == 1 ? self.piece(new, newPages[0], in: bounds) : new
-                stage.addSubview(newPage)
-                self.swing(newPage, anchorLeft: true, from: -.pi / 2 * 0.98, to: 0, duration: 0.42, easeIn: false) { self.tearDown() }
-            }
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseInOut]) { cut.alpha = 0 } completion: { _ in self?.tearDown() }
         }
     }
 
-    /// A spread's turn: the far half of the old spread lifts to upright, then the near half of the new
-    /// one comes down on the other side, while the halves that do not move stay where they are.
-    private func turnSpread(forward: Bool, old: UIView, new: UIView, in stage: UIWindow, left leftRect: CGRect, right rightRect: CGRect) {
-        let bounds = stage.bounds
-        // The old spread is pictured twice (one picture per page), the new one once for its moving page.
-        guard let oldCopy = old.snapshotView(afterScreenUpdates: false) else { tearDown(); return }
-        old.removeFromSuperview()
-        let staying = piece(old, forward ? leftRect : rightRect, in: bounds)
-        let lifting = piece(oldCopy, forward ? rightRect : leftRect, in: bounds)
-        let landing = piece(new, forward ? leftRect : rightRect, in: bounds)
-        stage.addSubview(staying)
-        stage.addSubview(lifting)
-        stage.addSubview(landing)
-        landing.isHidden = true
-        let upright = CGFloat.pi / 2 * 0.98
-        // Forward: the right half lifts about its left edge (the spine); the new left half lands about its right edge.
-        swing(lifting, anchorLeft: forward, from: 0, to: forward ? -upright : upright, duration: 0.24, easeIn: true) {
-            lifting.isHidden = true
-            landing.isHidden = false
-            self.swing(landing, anchorLeft: !forward, from: forward ? upright : -upright, to: 0, duration: 0.26, easeIn: false) {
-                self.tearDown()
-            }
+    /// The paper that turns: the newest binder screen's page (one upright, two sideways), or the whole screen.
+    private func pageLayout(in bounds: CGRect) -> PageCurlLayout {
+        let registered = binderPages.filter { bounds.intersects($0) }
+        let spread = Grimoire.isSpread(bounds.size, accessibilitySize: UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory)
+        var frames = [bounds]
+        var corner: CGFloat = 0
+        if spread {
+            if registered.count == 2 { frames = registered; corner = 13 }
+            else { frames = [CGRect(x: 0, y: 0, width: bounds.width / 2, height: bounds.height),
+                             CGRect(x: bounds.width / 2, y: 0, width: bounds.width / 2, height: bounds.height)] }
+        } else if registered.count == 1 {
+            frames = registered; corner = 13
         }
+        frames = frames.map { $0.intersection(bounds) }
+        let union = frames.dropFirst().reduce(frames[0]) { $0.union($1) }.integral.intersection(bounds)
+        let local = frames.map { $0.offsetBy(dx: -union.minX, dy: -union.minY) }
+        var spine: CGFloat = 0
+        if spread { spine = local.count == 2 ? (local[0].maxX + local[1].minX) / 2 : union.width / 2 }
+        return PageCurlLayout(rect: union, spine: spine, spread: spread, pages: local, cornerRadius: corner)
     }
 
-    /// A picture of the whole window cut down to one page's frame.
+    /// A picture of the whole window cut down to one rectangle.
     private func piece(_ view: UIView, _ rect: CGRect, in bounds: CGRect) -> UIView {
         let container = UIView(frame: rect)
         container.clipsToBounds = true
@@ -202,35 +335,11 @@ final class GrimoireStage {
         return container
     }
 
-    /// Swings a page about its left or right edge (the spine), with perspective and a shade that
-    /// deepens as it stands up.
-    private func swing(_ page: UIView, anchorLeft: Bool, from: CGFloat, to: CGFloat, duration: TimeInterval, easeIn: Bool,
-                       completion: @escaping () -> Void) {
-        let frame = page.frame
-        page.layer.anchorPoint = CGPoint(x: anchorLeft ? 0 : 1, y: 0.5)
-        page.frame = frame
-        let shade = UIView(frame: page.bounds)
-        shade.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        shade.backgroundColor = .black
-        page.addSubview(shade)
-        func transform(_ angle: CGFloat) -> CATransform3D {
-            var t = CATransform3DIdentity
-            t.m34 = -1 / 1600
-            return CATransform3DRotate(t, angle, 0, 1, 0)
-        }
-        func shadeAlpha(_ angle: CGFloat) -> CGFloat { 0.42 * abs(angle) / (.pi / 2) }
-        page.layer.transform = transform(from)
-        shade.alpha = shadeAlpha(from)
-        UIView.animate(withDuration: duration, delay: 0, options: [easeIn ? .curveEaseIn : .curveEaseOut]) {
-            page.layer.transform = transform(to)
-            shade.alpha = shadeAlpha(to)
-        } completion: { _ in completion() }
-    }
-
     // MARK: Window
 
-    private func makeWindow(_ scene: UIWindowScene) -> UIWindow {
+    private func makeWindow(_ scene: UIWindowScene, blocksTouches: Bool = true) -> UIWindow {
         let stage = PassiveWindow(windowScene: scene)
+        stage.blocksTouches = blocksTouches
         stage.frame = scene.coordinateSpace.bounds
         stage.windowLevel = .normal + 1
         stage.backgroundColor = .clear
@@ -241,6 +350,10 @@ final class GrimoireStage {
     }
 
     private func tearDown() {
+        turn?.stop()
+        turn = nil
+        drag = nil
+        armedDrag = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
         readyObservation = nil
@@ -263,7 +376,11 @@ final class GrimoireStage {
 /// The stage's window: it takes touches while something plays (so nothing underneath is tapped
 /// mid-turn) but never becomes the key window.
 private final class PassiveWindow: UIWindow {
+    var blocksTouches = true
     override var canBecomeKey: Bool { false }
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        blocksTouches ? super.hitTest(point, with: event) : nil
+    }
 }
 
 /// Follows the app's own rotation rules and stays out of the status bar's way.

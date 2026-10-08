@@ -4,12 +4,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.HowToReg
@@ -180,6 +185,7 @@ object SfSymbols {
         "wifi.exclamationmark" -> Icons.Filled.WifiOff
         "hourglass" -> Icons.Outlined.HourglassEmpty
         "flag.fill" -> Icons.Filled.Flag
+        "building.columns.fill" -> Icons.Filled.AccountBalance
         "flag.checkered" -> Icons.Filled.SportsScore
         "eye" -> Icons.Outlined.Visibility
         "eye.fill" -> Icons.Filled.Visibility
@@ -207,6 +213,8 @@ object SfSymbols {
         "scroll.fill" -> Icons.Filled.HistoryEdu
         "paintpalette.fill" -> Icons.Filled.Palette
         "moon.stars" -> Icons.Outlined.NightsStay
+        "moon.fill" -> Icons.Filled.DarkMode
+        "sun.max.fill" -> Icons.Filled.WbSunny
         "list.number" -> Icons.Filled.FormatListNumbered
         "link" -> Icons.Filled.Link
         "leaf" -> Icons.Outlined.Eco
@@ -226,9 +234,12 @@ object SfSymbols {
         "stop.fill" -> Icons.Filled.Stop
         "trophy.fill" -> Icons.Filled.EmojiEvents
         "forward.fill" -> Icons.Filled.FastForward
+        "checkmark.square.fill" -> Icons.Filled.CheckBox
+        "square" -> Icons.Outlined.CheckBoxOutlineBlank
         "flame.fill" -> Icons.Filled.LocalFireDepartment
         "externaldrive" -> Icons.Filled.Storage
         "dice" -> Icons.Filled.Casino
+        "hand.draw.fill" -> Icons.Filled.Gesture
         "circle" -> Icons.Outlined.RadioButtonUnchecked
         "book.fill" -> Icons.AutoMirrored.Filled.MenuBook
         "books.vertical" -> Icons.AutoMirrored.Outlined.LibraryBooks

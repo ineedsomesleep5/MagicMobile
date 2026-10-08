@@ -19,10 +19,9 @@ The code calls it the **grimoire**, because `Spellbook…` already names the Com
    | Screen | Left page | Right page |
    | --- | --- | --- |
    | Library | Now playing, the heading, Create and Import, search and filters | the decks |
-   | Deck, Cards | the head, the title plate and the rail | the cards, with the index tabs on its edge |
+   | Deck, Cards | the head, the compact title plate and the rail | the cards, with the index tabs on its edge |
    | Deck, Ideas | the head; combos | EDHREC |
    | Deck, Analysis | the head; the deck at a glance | roles |
-   | Deck, Playtest | the head; the rules check and a sample hand | game history |
    | Importer | the list goes in | it is reviewed and saved |
 
    Each page scrolls by itself. Nothing is drawn in the middle of the navigation bar either (the title would
@@ -30,7 +29,9 @@ The code calls it the **grimoire**, because `Spellbook…` already names the Com
 3. **Moving between screens turns the page.** Library to a deck or the importer is a turn forward; Done turns
    back.
 4. **A deck's chapters are index tabs** on the binder's edge (ribbon markers until October 6): Cards, Ideas,
-   Analysis, Playtest. Tapping a tab turns to it. A
+   Analysis. There is no Playtest chapter (Caleb, October 6): a game against the AI is the playtest, Validate
+   deck is in the ⋯ menu, and the game history and its match dashboards moved to the player's profile. Tapping a
+   tab turns to it. A
    sideways swipe anywhere on the page turns to the next or previous chapter; swiping back past Cards returns
    to the library (asking about unsaved changes first, like Done).
 5. **Cards are their full art.** A deck's cards (and the card search's results) are a grid of whole card
@@ -61,7 +62,9 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   binder with a stitched seam and brass corner mounts (`BinderPage`). The film still opens the book; inside, the
   pages sit in the binder.
 - **Head.** Done is a leather strap with a brass buckle, Save a brass plaque, then the tags plaque and the ⋯
-  plaque, on the leather above the page (`BinderHead` on the library and importer). There is no system bar.
+  plaque, written at the top of the page itself (`BinderHead` on the library and importer), never on the leather
+  above it (Caleb, October 6: the head is part of the paper, so facing pages are the same height and turn
+  together). There is no system bar.
 - **Chapters are index tabs** (`BinderIndexTabs`): leather tabs with an icon and the chapter's name, standing out
   of the binder's outer edge; the chosen one is red and stands further out. They replace the ribbons and never
   scroll; a chapter change still lands on the chapter's own top with the title plate scrolled away. Each tab is
@@ -83,8 +86,15 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   The card's own right and left halves still add and take away. The minus is absent at zero.
 - **All cards** (`DeckStudioBinderCatalogue`): the local catalogue through the rail's search, coins, type and
   colour, up to 120 sleeves; the plus adds a copy to the main deck. Online search stays behind Add cards.
-- **Sideways**: the left page holds the head, the title plate and the rail; the right page holds the cards with
-  Quick Add at its foot; the index tabs stand out of the right page's edge.
+- **Sideways** (Caleb, October 6: the head above the left page made the two pages mismatched, and the title plate
+  and rail were cut off): both pages run the binder's full height. The head (Done, Save, tags, ⋯) is written at
+  the top of the left page; under it a compact title plate (the commander's art beside the name, colours, gauge
+  and save state, then Play beside the quick check folded into a chip that opens on a tap) and a compact rail
+  (the shelf switch as symbols beside the search, the tools, the coins), all in one scroll so nothing is cut off.
+  The right page holds the cards; the index tabs stand out of its edge.
+- **Quick Add floats over the page** (Caleb, October 6): no leather foot. Quick Add, Main and Add cards hover over
+  the foot of the page on a fade of the page's own paper, and the cards scroll under them, upright and sideways.
+  Its notes are in ink, its toast is a leather slip with a brass Undo, its suggestions a parchment plate.
 - **Sheets are loose leaves with the binder's own head** (`binderLeaf`): the title on the parchment over an inked
   rule, with brass plaques for Cancel, Done, Save or Apply. Toggles are the tavern's brass switch
   (`BinderToggleStyle`), disclosures turn a brass chevron (`BinderDisclosureStyle`), counts use brass coins
@@ -92,7 +102,17 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   inked chips are the binder's switch (`GrimoireChoice`). Each is drawn and touched as our own part, and
   VoiceOver and the UI tests see the system control it stands for (`accessibilityRepresentation`). A nearly
   invisible system control laid over the face, as `TavernToggle` does, did not take taps inside a form's rows.
-  System alerts and context menus remain the system's.
+- **Menus and confirmations are the binder's too** (`GrimoireBinderMenu.swift`; Caleb, October 6: the filter menu
+  still had the iPhone's Liquid Glass). A host on every binder screen and loose leaf (`binderOverlayHost`, in
+  `binderScreen()` and `binderLeaf`) draws `BinderMenu`s as a parchment card in a brass edge under (or over) the
+  plaque that opened it, with rows of engraved symbols or mana symbols, checks on chosen options, small-caps
+  headings and rows that open in place for "Move to…". A long press opens the same menu at a card or deck
+  (`binderContextMenu`, in place of the system context menu and its preview). Confirmations are parchment cards
+  with brass, oxblood and quiet buttons (`binderConfirm`). Every row is a real button, so VoiceOver and the UI
+  tests find it by its title. A confirmation placed outside `binderScreen()` in a modifier chain needs its own
+  host at the outer edge (the workspace, the library and the deck details sheet add one). Android: `BoardMenu`'s
+  light path is `BinderDropdown` + `BinderMenuEntries`, and `ConfirmationDialog(light = true)` is the binder's
+  card. Only the share sheet is still the system's.
 - **Chapter swipes are watched by UIKit.** A SwiftUI drag gesture over the whole screen swallowed the first tap
   after the page had scrolled (an index tab did nothing until tapped again). `grimoireSwipe` now adds a pan
   recognizer to the window that recognizes alongside everything and never delays or cancels a touch.
@@ -131,6 +151,7 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
 | Leaf heads, switches, disclosures, steppers, menu plaques | `MagicMobile/Grimoire/GrimoireBinderControls.swift` | `studio/StudioTheme.kt`, `StudioSheetBar` |
 | Tags, coins, chips, notes, empty pages | `MagicMobile/Grimoire/GrimoireBinderControls.swift` | end of `studio/GrimoireBinder.kt` |
 | All cards shelf | `DeckStudio/Builder/DeckStudioBinderCatalogue.swift` | `binderCatalogue` in `studio/DeckStudioWorkspace.kt` |
+| Choose artwork (a deck row's printing; see "Chosen artwork") | `DeckStudio/Builder/DeckStudioArtworkPicker.swift`, `CardPrinting.swift`, `CardArtChoices.swift` | `studio/DeckStudioArtworkPicker.kt`, core `CardPrinting.kt`, `studio/DeckStudioPrintings.kt` |
 | Meshy parts (buckle, jewel, corners, index tab) | `scripts/brand/binder_parts.py`, `install_binder_parts.sh` | same images |
 | The film clips | `Resources/Grimoire/grimoire-{open,close}-{portrait,landscape}.mp4` | copied to `res/raw` by `prepareBrandAssets` |
 | The 3D book | `scripts/brand/grimoire.py` (Blender), `scripts/brand/install_grimoire.sh` (encode) | same clips |
@@ -139,9 +160,13 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   full-screen cover alike. Deck Studio is presented underneath, without its own animation, as soon as the film
   covers the screen; building its first page is hidden behind the film. Android plays it in a `TextureView`
   over the root (`GrimoireFilmLayer`).
-- **Page turns.** iOS pictures the key window (`snapshotView`) and swings that picture about the spine while
-  the real screen changes underneath. Android records Deck Studio into a `GraphicsLayer` (`GrimoirePages`) and
-  swings the bitmap. On a spread the far half of the old spread lifts and the near half of the new one lands.
+- **Page turns are a paper curl** (Caleb, October 6: "a piece of paper being folded and turned, not a stiff
+  page", and draggable). The page bends over a moving cylinder with the parchment's back on the flap, shading
+  across the bend and a shadow on the page underneath, in a Metal layer on iOS (`PageCurl.metal`,
+  `GrimoirePageCurl.swift`) and an AGSL shader on Android 13+ (`PageCurlShader.kt`; older Android keeps the swing).
+  A sideways drag curls the page under the finger (`GrimoireSwipeHub`); it finishes past 40% or on a fling and
+  otherwise falls back. Taps, Done and opening a deck play the same curl. A drag starting in the head band (the
+  top 64 points) never turns. Reduce Motion crossfades. Details, math, knobs and sources: `PAGE_CURL.md`.
 - **Paper.** One opaque tile per tone (the page and the lighter "plate" used by panels) with the tavern's
   parchment grain baked in. iOS bakes it once (`GrimoirePaperTile`); blending the grain live would cost an
   offscreen pass per surface on every scrolled frame. Nothing is drawn over the middle of a page, so card art
@@ -165,6 +190,30 @@ tabs or headers look like the iPhone's: every piece of text sits on the parchmen
   grid inside a single self-sizing list row sends UIKit into a layout loop).
 - **Type.** iOS sets `.fontDesign(.serif)` on the page and draws navigation titles itself (`grimoireTitle`).
   Android's Deck Studio files use the package's own `sf`, which defaults to the serif family.
+
+## Chosen artwork
+
+A card's long-press menu (and the list row's ⋯) has **Choose artwork**: a sheet of every printing Scryfall lists
+for the card, newest first, thumbnails from Scryfall's image host. The pick belongs to the **deck row**.
+
+- **Stored** on the row as `setCode` + `collectorNumber` (both or neither; an unreadable pair reads as no choice),
+  so it survives restarts, editing, undo, recovery drafts and the native JSON export. It never reaches the engine:
+  `OnDeviceDeckResolver` still resolves the catalogue's one compiled printing, so deck validation and saved checks
+  are unchanged. Replacing a card clears the choice; promoting a main-deck copy to commander carries it.
+- **Exported** as `1 Sol Ring (CMM) 400` (Moxfield/Archidekt style) in plain text, which the importer reads back,
+  and in native JSON as the two fields. Quick Add still ignores a typed `(set) number`.
+- **Drawn** everywhere a card is drawn by name through `CardArtChoices` (playing deck first, then saved decks by
+  recency); Deck Studio's own rows pass their exact printing. Online it asks Scryfall for that exact printing
+  (`/cards/{set}/{number}`, `face=back` for a reverse face), offline it uses the pack's image under
+  `print:set/number`, and only if that is neither saved nor reachable does the default art show.
+- **Offline pack.** Every download of cards also saves the chosen printings (the scope's decks; the full catalogue
+  and All decks include every saved deck's), queued ahead of default art, by exact set and collector number.
+- **Tokens.** Emblems (Scryfall links them as `combo_piece`, not `token`) now count as related tokens; a full
+  download fetches referenced tokens the Oracle bulk lacks; Android downloads a double-faced token's back face.
+  Token manifests from before this read as incomplete until one more download.
+- **Not covered.** Opponents' and remote players' cards use your choice only when the name matches one of your
+  decks (the wire protocol carries no printing); Quick Add, and Archidekt/Moxfield link imports do not set art.
+  An emblem on the board is drawn by the engine's name for it, which may differ from Scryfall's.
 
 ## Remaking the film
 

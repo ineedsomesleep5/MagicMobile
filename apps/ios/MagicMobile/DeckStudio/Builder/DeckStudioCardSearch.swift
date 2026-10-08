@@ -62,9 +62,6 @@ struct DeckStudioCardSearch: View {
         }.frame(maxHeight: .infinity, alignment: .top)   // the page's own paper shows through (grimoirePage)
             .onChange(of: section) { _, _ in feedback = nil; addError = nil }
     }
-    private var sourcePicker: some View {
-        Picker("Search source", selection: $source) { Text("Local catalogue").tag("Local"); Text("Scryfall — online").tag("Online") }
-    }
     /// The source as a brass plaque naming it (the book's own menu button).
     private var sourceMenu: some View {
         BinderMenuPicker(title: "Search source", selection: $source, options: [("Local", "Local catalogue"), ("Online", "Scryfall — online")])
@@ -100,9 +97,10 @@ struct DeckStudioCardSearch: View {
                             addLabel: "Add \(card.name) to \(section)", removeLabel: "Remove one \(card.name) from \(section)",
                             tapLabel: "Inspect \(card.name)",
                             add: { addOne(card) }, remove: { removeOne(card) }, tap: { inspection = card })
-                .contextMenu {
-                    Button(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspection = card }
-                } preview: { DeckStudioCardPreview(name: card.name, card: card) }
+                .binderContextMenu {
+                    BinderMenuHeading(card.name)
+                    BinderMenuButton(DeckStudioPlayText.cardDetails, systemImage: "info.circle") { inspection = card }
+                }
     }
 
     private var localSearch: some View {
@@ -116,15 +114,13 @@ struct DeckStudioCardSearch: View {
                             .accessibilityLabel("Clear collection search")
                     }
                     if embedded {
-                        Menu {
-                            sourcePicker
-                            Picker("Add to", selection: $section) {
-                                Text("Main deck").tag("deck"); Text("Commander(s)").tag("commanders")
-                                Text("Maybeboard").tag("maybeboard"); Text("Sideboard").tag("sideboard"); Text("Companion").tag("companions")
-                            }
-                            Button(showEmbeddedFilters ? "Hide filters" : "Show filters", systemImage: "line.3.horizontal.decrease") { showEmbeddedFilters.toggle() }
-                        } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
-                            .accessibilityLabel("Collection source, destination and filters")
+                        BinderMenu(accessibilityLabel: "Collection source, destination and filters") {
+                            BinderMenuPick("Search source", selection: $source, options: [("Local", "Local catalogue"), ("Online", "Scryfall — online")])
+                            BinderMenuPick("Add to", selection: $section, options: [("deck", "Main deck"), ("commanders", "Commander(s)"),
+                                ("maybeboard", "Maybeboard"), ("sideboard", "Sideboard"), ("companions", "Companion")])
+                            BinderMenuDivider()
+                            BinderMenuButton(showEmbeddedFilters ? "Hide filters" : "Show filters", systemImage: "line.3.horizontal.decrease") { showEmbeddedFilters.toggle() }
+                        } label: { BinderPlaque(square: true) { Image(systemName: "slider.horizontal.3") } }
                     }
                 }
                 if !embedded || showEmbeddedFilters {
@@ -241,12 +237,14 @@ struct DeckStudioCardSearch: View {
 struct DeckStudioCardInspector: View {
     let name: String
     let metadata: NativeDeckMetadataCatalogue.Card?
+    /// A deck row passes the printing it chose; elsewhere the player's choice for the name shows.
+    var art: CardArtSelection = .active
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    NativeCardArtworkView(name: name, variant: .inspection) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
+                    NativeCardArtworkView(name: name, variant: .inspection, art: art) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
                         .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
                     Text(name).font(.title.weight(.bold))
                     DeckStudioArtworkInvitation()

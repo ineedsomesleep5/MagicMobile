@@ -122,11 +122,14 @@ struct DeckStudioEDHRECPanel: View {
             HStack {
                 Text("EDHREC — web").font(.subheadline.weight(.semibold))
                 Spacer()
-                Menu("Commanders") {
-                    ForEach(Array(Set(commanders)).sorted(), id: \.self) { name in Button(name) { model.openCommander(name) } }
-                    Button("Browse on EDHREC") { model.open(DeckStudioEDHRECPolicy.browseURL) }
-                }.frame(minHeight: 44)
-                Button { model.clear() } label: { Image(systemName: "trash").frame(width: 44, height: 44) }.accessibilityLabel("Clear temporary browser session")
+                BinderMenu(accessibilityLabel: "Commanders") {
+                    BinderMenuHeading("Open on EDHREC")
+                    ForEach(Array(Set(commanders)).sorted(), id: \.self) { name in BinderMenuButton(name, systemImage: "crown") { model.openCommander(name) } }
+                    BinderMenuDivider()
+                    BinderMenuButton("Browse on EDHREC", systemImage: "safari") { model.open(DeckStudioEDHRECPolicy.browseURL) }
+                } label: { BinderPlaque { Label("Commanders", systemImage: "crown") } }
+                Button { model.clear() } label: { Image(systemName: "trash") }
+                    .buttonStyle(BinderCoinButtonStyle()).accessibilityLabel("Clear temporary browser session")
             }.padding(.horizontal, 20)
             if model.resolving { HStack { ProgressView("Resolving public link via Scryfall…"); Button("Cancel") { model.pause() } }.padding(.horizontal, 20) }
             if let error = model.error { Text(error).font(.caption).padding(.horizontal, 20) }
@@ -162,9 +165,10 @@ struct DeckStudioEDHRECPanel: View {
                 }
             }
         }
-        .confirmationDialog("Open external website?", isPresented: Binding(get: { model.externalURL != nil }, set: { if !$0 { model.externalURL = nil } }), titleVisibility: .visible) {
+        .binderConfirm("Open external website?", isPresented: Binding(get: { model.externalURL != nil }, set: { if !$0 { model.externalURL = nil } }),
+                       message: "You're leaving EDHREC. MagicMobile does not automatically attach your deck to this request.") {
             if let url = model.externalURL { Button("Open \(url.host ?? "website") in Safari") { model.externalURL = nil; openURL(url) } }
-        } message: { Text("You're leaving EDHREC. MagicMobile does not automatically attach your deck to this request.") }
+        }
         .onChange(of: commanders) { _, _ in copied = false; model.pause() }
         .onDisappear { model.pause() }
     }

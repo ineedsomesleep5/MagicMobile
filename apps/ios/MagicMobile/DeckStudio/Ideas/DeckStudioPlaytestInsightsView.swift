@@ -13,7 +13,10 @@ struct DeckStudioPlaytestInsightsView: View {
     @State private var generation = UUID()
     @State private var allDecks = false
     @State private var result = "All results"
-    private var layoutFixture: Bool {
+    private var layoutFixture: Bool { Self.layoutFixtureActive }
+    /// UI tests: `--deck-history-layout-ui-test` shows eighteen development games (the profile's game history
+    /// uses the same ones).
+    static var layoutFixtureActive: Bool {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("--deck-history-layout-ui-test") &&
         ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] != nil
@@ -128,7 +131,8 @@ struct DeckStudioPlaytestInsightsView: View {
         guard let data = try? encoder.encode(visible) else { return nil }
         return String(data: data, encoding: .utf8)
     }
-    private func fixtureGames() -> [DeckStudioRecordedGame] {
+    private func fixtureGames() -> [DeckStudioRecordedGame] { Self.fixtureGames(playing: signature) }
+    static func fixtureGames(playing signature: DeckStudioDeckSignature?) -> [DeckStudioRecordedGame] {
         guard let playingDeck = signature ?? (try? DeckStudioDeckSignature(rows: [
             .init(name: "Isamaru, Hound of Konda", count: 1, section: "commanders")
         ])) else { return [] }

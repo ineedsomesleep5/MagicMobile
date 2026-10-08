@@ -354,6 +354,9 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     var tokenColors: [String]? = nil
     /// Supply only an explicitly identified, visible card that the token copies.
     var tokenSourceName: String? = nil
+    /// Which printing's art to draw. By default the player's choice for this card name; a deck row
+    /// passes its own (or `.exact(nil)` for the default art) so another deck's choice never shows there.
+    var art: CardArtSelection = .active
     @ViewBuilder let placeholder: (_ loading: Bool, _ failed: Bool) -> Placeholder
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
     @State private var artwork: UIImage?
@@ -376,22 +379,38 @@ struct NativeCardArtworkView<Placeholder: View>: View {
         let tokenSourceName: String?
         let downloadRevision: Int
         let artOnly: Bool
+        /// The chosen printing this card is drawn from; nil is the card's default art.
+        let art: CardArtChoices.Selection?
 
+        /// The chosen printing in a key; empty for the card's default art.
+        private var artKey: String {
+            guard let art else { return "" }
+            return art.printing.key + (art.back ? ":back" : "")
+        }
         /// Names the decoded image in NativeArtworkMemory (everything that decides the pixels shown).
         var memoryKey: NSString {
-            [name, variant.rawValue, allowNetwork ? "n" : "l", artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
-             tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? ""]
-                .joined(separator: "\u{1F}") as NSString
+            let parts: [String] = [name, variant.rawValue, allowNetwork ? "n" : "l", artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
+                                   tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? "", artKey]
+            return parts.joined(separator: "\u{1F}") as NSString
         }
         /// Inspection images are large and seen one at a time: decoded when needed, never kept.
         var remembers: Bool { variant != .inspection }
         /// Which card and crop this is, whatever the download state: two requests with one subject
         /// show the same card.
         var subject: NSString {
-            [name, variant.rawValue, artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
-             tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? ""]
-                .joined(separator: "\u{1F}") as NSString
+            let parts: [String] = [name, variant.rawValue, artOnly ? "a" : "f", tokenTypeLine ?? "", tokenOracleText ?? "",
+                                   tokenPower ?? "", tokenToughness ?? "", (tokenColors ?? []).joined(separator: ","), tokenSourceName ?? "", artKey]
+            return parts.joined(separator: "\u{1F}") as NSString
         }
+    }
+
+    /// The printing this view draws: an exact one, else the player's choice for this card (for a token
+    /// copy, for the card it copies). Real tokens have no printing to choose.
+    private var chosenArt: CardArtChoices.Selection? {
+        if case .exact(let printing) = art, tokenTypeLine == nil { return printing.map { .init(printing: $0, back: false) } }
+        let subject = tokenTypeLine == nil ? name : tokenSourceName
+        guard let subject, NativeDeckArtwork.permitsSourceName(subject) else { return nil }
+        return CardArtChoices.shared.selection(forName: subject)
     }
 
     var body: some View {
@@ -399,7 +418,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                               allowNetwork: remoteArtwork, tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
                               tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
                               tokenSourceName: tokenSourceName,
-                              downloadRevision: downloadRevision, artOnly: artOnly)
+                              downloadRevision: downloadRevision, artOnly: artOnly, art: chosenArt)
         let permitted = NativeCardArtworkPolicy.permitsLookup(name: name)
         // A card seen before shows from memory in its first frame, before the task below runs.
         let shown: UIImage? = !permitted ? nil
@@ -421,10 +440,15 @@ struct NativeCardArtworkView<Placeholder: View>: View {
             .onReceive(NotificationCenter.default.publisher(for: NativeAssetStore.didStoreArtwork).receive(on: RunLoop.main)) { note in
                 guard let key = note.userInfo?["key"] as? String else { return }
                 if NativeAssetStore.artworkChangeAffects(key: key, storedName: note.userInfo?["name"] as? String,
-                                                       name: name, isToken: tokenTypeLine != nil, sourceName: tokenSourceName) {
+                                                       name: name, isToken: tokenTypeLine != nil, sourceName: tokenSourceName,
+                                                       printing: request.art?.printing, back: request.art?.back ?? false) {
                     NativeArtworkMemory.shared.remove(request.memoryKey)
                     downloadRevision += 1
                 }
+            }
+            // The player chose other art for this card (or cleared the choice) while it was showing.
+            .onReceive(NotificationCenter.default.publisher(for: CardArtChoices.didChange).receive(on: RunLoop.main)) { _ in
+                if case .active = art, chosenArt != request.art { downloadRevision += 1 }
             }
             .task(id: request) {
                 guard permitted else { artwork = nil; completedRequest = nil; failedRequest = nil; return }
@@ -445,7 +469,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                 // and the printed source card (whose name or stats can differ) never shows.
                 let illustration = artOnly || tokenSourceName != nil
                 // CardImageURL only supplies art an earlier build saved on this phone; it never fetches.
-                if tokenTypeLine == nil, let url = CardImageURL.image(name, variant: variant), url.isFileURL,
+                if tokenTypeLine == nil, request.art == nil, let url = CardImageURL.image(name, variant: variant), url.isFileURL,
                    let (data, image) = await NativeArtworkDecoding.localImage(at: url, variant: request.variant, illustration: illustration) {
                     guard !Task.isCancelled else { return }
                     artwork = image; completedRequest = request
@@ -455,7 +479,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                         return
                     }
                     // Keep a safe low-resolution image visible offline or if upgrade fails.
-                } else if tokenTypeLine == nil, request.variant == .inspection,
+                } else if tokenTypeLine == nil, request.art == nil, request.variant == .inspection,
                           let url = CardImageURL.image(name, variant: .board), url.isFileURL,
                           let (_, image) = await NativeArtworkDecoding.localImage(at: url, variant: .inspection, illustration: illustration) {
                     guard !Task.isCancelled else { return }
@@ -466,7 +490,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                        let cached = try await NativeDeckArtwork.shared.imageData(name: name, variant: .board, allowNetwork: false,
                                                                                 tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
                                                                                 tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
-                                                                                tokenSourceName: tokenSourceName),
+                                                                                tokenSourceName: tokenSourceName, art: request.art),
                        let image = await NativeArtworkDecoding.image(cached, variant: .inspection, illustration: illustration) {
                         try Task.checkCancellation()
                         artwork = image; completedRequest = request
@@ -475,7 +499,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
                     let data = try await NativeDeckArtwork.shared.imageData(name: name, variant: request.variant, allowNetwork: request.allowNetwork,
                                                                            tokenTypeLine: tokenTypeLine, tokenOracleText: tokenOracleText,
                                                                            tokenPower: tokenPower, tokenToughness: tokenToughness, tokenColors: tokenColors,
-                                                                           tokenSourceName: tokenSourceName)
+                                                                           tokenSourceName: tokenSourceName, art: request.art)
                     try Task.checkCancellation()
                     guard request.allowNetwork == remoteArtwork else { return }
                     if let data, let image = await NativeArtworkDecoding.image(data, variant: request.variant, illustration: illustration) {

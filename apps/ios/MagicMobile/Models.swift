@@ -1,10 +1,35 @@
 import Foundation
 
-struct DeckEntry: Codable, Identifiable, Hashable {
-    var id: String { "\(section)-\(cardName)-\(quantity)" }
+struct DeckEntry: Identifiable, Hashable {
+    var id: String { "\(section)-\(cardName)-\(quantity)" + (printing.map { "-" + $0.key } ?? "") }
     let cardName: String
     let quantity: Int
     let section: String
+    /// The printing whose artwork the player chose for this row; nil shows the card's default artwork.
+    /// It never reaches the engine: the compiled printing still decides rules and validation.
+    var printing: CardPrinting? = nil
+}
+
+/// Saved as `cardName`, `quantity`, `section` and, once art is chosen, `setCode` and `collectorNumber`
+/// (both or neither). An unreadable pair is dropped, so a damaged choice shows default art, not an error.
+extension DeckEntry: Codable {
+    private enum CodingKeys: String, CodingKey { case cardName, quantity, section, setCode, collectorNumber }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(cardName: try values.decode(String.self, forKey: .cardName),
+                  quantity: try values.decode(Int.self, forKey: .quantity),
+                  section: try values.decode(String.self, forKey: .section),
+                  printing: CardPrinting(set: try values.decodeIfPresent(String.self, forKey: .setCode) ?? "",
+                                         number: try values.decodeIfPresent(String.self, forKey: .collectorNumber) ?? ""))
+    }
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(cardName, forKey: .cardName)
+        try values.encode(quantity, forKey: .quantity)
+        try values.encode(section, forKey: .section)
+        try values.encodeIfPresent(printing?.setCode, forKey: .setCode)
+        try values.encodeIfPresent(printing?.number, forKey: .collectorNumber)
+    }
 }
 
 struct DeckList: Codable, Hashable {
@@ -56,6 +81,10 @@ struct GameSnapshot: Decodable {
     let winnerPlayerIds: [String]?
     let endReason: String?
     var viewerPlayerId: String? = nil
+    /// "day" or "night" once a daybound card has made it so; nil while it's neither.
+    var dayNight: String? = nil
+    /// Spells cast this turn, which a storm spell copies.
+    var stormCount: Int? = nil
     var selectedOpponentId: String? = nil
     /// Presentation only: who the bottom seat shows while the viewer watches after leaving the
     /// game (BoardOpponentFocus). Nil is the viewer's own seat.
@@ -543,6 +572,8 @@ struct PlayerGameState: Decodable, Identifiable {
     var hasLeft: Bool? = nil
     /// False for the engine's AI seats.
     var isHuman: Bool? = nil
+    /// Designations such as the City's Blessing.
+    var designations: [String]? = nil
 
     var hasKnownCommanderTax: Bool { commanderTaxKnown ?? true }
     var isOut: Bool { hasLeft == true }
@@ -848,6 +879,17 @@ struct PromptEnvelopeV2: Decodable, Identifiable {
     let orderedItems: [ChoicePromptOption]?
     let confirmation: XmagePromptConfirmation?
     let options: [String: JSONValue]?
+}
+
+extension PromptEnvelopeV2 {
+    /// A yes/no question asked by a card's ability ("you may put a quest counter on …"): XMage can answer it the same
+    /// way for the rest of the game. Questions with no source (keep this hand?, mana left in pool) never qualify.
+    var canRememberAnswer: Bool {
+        method == "GAME_ASK" && options?["originalId"]?.stringValue.flatMap(UUID.init(uuidString:)) != nil
+            && options?["autoAnswerMessage"]?.stringValue?.isEmpty == false
+    }
+    /// XMage's "which triggered ability goes on the stack first" question.
+    var isTriggerOrder: Bool { method == "GAME_PICK_ABILITY" }
 }
 
 struct XmageResponseCommand: Decodable {
@@ -1237,6 +1279,9 @@ struct GameCommand: Encodable {
     let blockers: [BlockDeclaration]?
     let combatComplete: Bool?
     let expectedBridgeRevision: Int?
+    /// Standing instructions sent with this answer on engines that list them (docs/PROTOCOL.md "Answer actions"):
+    /// "rememberAnswer" (don't ask this card's question again), "rememberTriggerFirst", "passUntilStackResolved".
+    var answerActions: [String]? = nil
 
     init(
         type: String,

@@ -50,6 +50,10 @@ XMage desktop Skill control. Omission preserves the prior level-1 engine behavio
 new setup control defaults to desktop level 2. The value goes directly to the upstream MAD
 constructor (search depth `max(4, skill)` and thinking budget `skill * 3` seconds per calculation).
 Higher levels allow more thinking, not different rules or access to additional private information.
+While a stack resolves, an AI that already searched and chose to pass with an opponent's ability (not a
+spell) on top passes again without a new search, as long as the turn, step and its instant-speed options
+are unchanged and the stack has only shrunk since (a run of sixteen triggers gives it priority sixteen
+times). Anything added to the stack, a spell on top, or a change of options means a fresh search.
 Human seats reject this field. Invalid values fail rather than silently becoming a different level.
 
 ### Save/resume checkpoints (solo games)
@@ -189,6 +193,29 @@ A response command has exactly:
 ```
 
 Answer kinds: `boolean`, `uuid`, `string`, `integer`, `integers`, `mana`. Mana values have `playerId` (engine UUID) and `manaType`. Integer-array constraints include element bounds and total bounds. The adapter converts multi-amount arrays to upstream **space-separated** response text.
+
+### Answer actions (standing instructions)
+
+Engines whose `capabilities` list `answerActions` accept an optional `actions` array beside `kind` and `value`.
+Each action is one of XMage desktop's own player actions, which `HumanPlayer` already implements; the
+adapter applies them on the GAME thread just before the answer itself. They change only how this seat
+answers its own later questions. None decides a rule or answers for another player.
+
+| Action | Prompt and answer it needs | What XMage does |
+| --- | --- | --- |
+| `{"type":"rememberAnswer","scope":"ability"}` | `ASK`, `boolean` | Answers this ability's same question the same way from now on (`REQUEST_AUTO_ANSWER_ID_*`). |
+| `{"type":"rememberAnswer","scope":"text"}` | `ASK`, `boolean` | Answers these exact words the same way for any source (`REQUEST_AUTO_ANSWER_TEXT_*`). |
+| `{"type":"rememberTriggerFirst"}` | `PICK_ABILITY`, `uuid` | Always puts this card's chosen trigger on the stack first (`TRIGGER_AUTO_ORDER_ABILITY_FIRST`). |
+| `{"type":"passUntilStackResolved"}` | priority `SELECT`, `boolean` pass | Keeps passing until the current stack resolves; stops when an opponent adds to it (F10). |
+| `{"type":"autoPassAfterCast","enabled":true}` | any | Passes priority right after this player casts a spell (XMage's pass-after-cast setting). |
+| `{"type":"resetRememberedAnswers"}` / `{"type":"resetTriggerOrder"}` | any | Forgets every remembered answer, or trigger order. |
+
+A remembered answer's key is never taken from the client: the engine builds it from the pending prompt's
+own `originalId` and `autoAnswerMessage` options, exactly as the desktop client sends them. Unknown or
+duplicate actions, extra fields and actions that don't fit the prompt fail with `invalid_response`.
+Resets run first. A remembered question is not asked again, so a reset rides on the next answer of any
+kind. Remembered answers, trigger order and the preference are rules-state fields of the seat and are
+kept in a save. The relay forwards answers unchanged, so guests use the same actions under the host's validation.
 
 `queued` is receipt of the command, not proof of resolution or game legality. Preserve the same request UUID and identical command when retrying an uncertain submission. A fresh prompt uses a new token. Do not replay an old answer against a new prompt.
 

@@ -117,7 +117,8 @@ struct DeckStudioComboPanel: View {
         }
         #endif
         .onDisappear { model.cancel() }
-        .confirmationDialog("Send this deck to Commander Spellbook?", isPresented: Binding(get: { approval != nil }, set: { if !$0 { approval = nil } }), titleVisibility: .visible) {
+        .binderConfirm("Send this deck to Commander Spellbook?", isPresented: Binding(get: { approval != nil }, set: { if !$0 { approval = nil } }),
+                       message: "This is an optional online lookup of the current main deck and commanders. It never changes your deck automatically.") {
             if let deck = approval {
                 Button("Send deck and find combos") {
                     approval = nil
@@ -125,9 +126,6 @@ struct DeckStudioComboPanel: View {
                     model.analyze(approvedDeck: deck)
                 }
             }
-            Button("Cancel", role: .cancel) { approval = nil }
-        } message: {
-            Text("This is an optional online lookup of the current main deck and commanders. It never changes your deck automatically.")
         }
         .sheet(item: $selected) { variant in
             DeckStudioComboDetail(variant: variant, canonicalName: { resolver?.canonicalCardName($0) ?? $0 })
@@ -174,11 +172,11 @@ struct DeckStudioComboPanel: View {
                         }.font(.caption)
                         Button("Prerequisites and steps", systemImage: "list.bullet.rectangle") { selected = variant }.frame(minHeight: 44)
                         if case .oneCardAway(let name) = assessment.readiness, !readOnly {
-                            Menu {
-                                Button("Add to main deck") { addCard(name, section: "deck", snapshot: snapshot) }
-                                Button("Save to maybeboard") { addCard(name, section: "maybeboard", snapshot: snapshot) }
-                            } label: { Label("Add \(name)", systemImage: "plus.circle").frame(minHeight: 44) }
-                            .accessibilityIdentifier("deckStudio.combos.addMissing")
+                            BinderMenu(identifier: "deckStudio.combos.addMissing") {
+                                BinderMenuHeading(name)
+                                BinderMenuButton("Add to main deck", systemImage: "plus") { addCard(name, section: "deck", snapshot: snapshot) }
+                                BinderMenuButton("Save to maybeboard", systemImage: "bookmark") { addCard(name, section: "maybeboard", snapshot: snapshot) }
+                            } label: { BinderPlaque { Label("Add \(name)", systemImage: "plus.circle").lineLimit(1).minimumScaleFactor(0.7) } }
                         }
                     }
                 }

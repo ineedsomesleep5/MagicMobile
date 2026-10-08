@@ -13,7 +13,21 @@ import kotlin.coroutines.coroutineContext
 internal data class DownloadProgress(val completed: Int, val total: Int, val status: String)
 internal data class DownloadScan(val cards:Int,val bytes:Long,val extraStored:Int,val extraTotal:Int,val coverageKnown:Boolean,
     val faceStored:Int=0,val faceTotal:Int=0,val tokenStored:Int=0,val tokenTotal:Int=0,val tokensKnown:Boolean=false,
-    val missingCards:List<String> = emptyList(),val missingTokens:List<String> = emptyList())
+    val missingCards:List<String> = emptyList(),val missingTokens:List<String> = emptyList(),
+    /** The art the player chose: how many printings are saved of how many. */
+    val printingStored:Int=0,val printingTotal:Int=0)
+
+/** The chosen printings a deck holds, one per printing, commander first, with the card each belongs to ("Sol Ring · CMM 400"). */
+data class ChosenArt(val name:String,val printing:CardPrinting) {
+    val label:String get()=if(name.isEmpty())printing.label else "$name · ${printing.label}"
+    companion object {
+        fun choices(deck:Deck):List<ChosenArt> {
+            val seen=HashSet<String>()
+            val rows=deck.entries.sortedBy{if(it.section=="commanders")0 else 1}
+            return rows.mapNotNull{entry->entry.printing?.takeIf{seen.add(it.key)}?.let{ChosenArt(entry.name,it)}}
+        }
+    }
+}
 
 /** Collection responses are a bounded list; Scryfall normally omits pagination metadata. */
 internal fun validatedArtworkCollection(response:Obj,requested:Int):List<Obj> {
@@ -46,8 +60,11 @@ internal fun tokenSearchQueries(names:List<String>):List<String> {
  */
 internal fun selectDiscoveredTokens(records:Collection<ArtworkRecord>,requests:List<TokenRules.Request>):List<ArtworkRecord> {
     // Some printings carry a bare "Token" art face with no rules.
-    val candidates=records.filter{it.token!=null&&it.token.typeLine.trim().lowercase()!="token"}.sortedBy{it.id}
+    val usable={record:ArtworkRecord->record.token!=null&&record.token.typeLine.trim().lowercase()!="token"}
+    // Fronts first, then reverse faces, each by ID (iOS sorts front faces before back faces).
+    val candidates=records.filter(usable).sortedWith(compareBy({it.id.endsWith(":back")},{it.id}))
     val result=mutableListOf<ArtworkRecord>()
+    fun add(record:ArtworkRecord){if(result.none{it.token!!.normalized()==record.token!!.normalized()})result+=record}
     for(request in requests) {
         val name=ArtworkTokenIdentity.tokenNameKey(request.name)
         val colors=request.colors?.toSet()
@@ -55,11 +72,20 @@ internal fun selectDiscoveredTokens(records:Collection<ArtworkRecord>,requests:L
             val token=record.token!!
             if(ArtworkTokenIdentity.tokenNameKey(token.name)!=name||(request.power!=null&&token.power!=request.power)||
                 (request.toughness!=null&&token.toughness!=request.toughness)||(colors!=null&&token.colors!=colors))continue
-            if(result.none{it.token!!.normalized()==token.normalized()})result+=record
+            add(record)
+            // A matched front face brings its back face: an Incubator transforms into a Phyrexian.
+            if(!record.id.endsWith(":back"))records.firstOrNull{it.id=="${record.id}:back"}?.takeIf(usable)?.let(::add)
         }
     }
     return result
 }
+
+/** The token manifest's version: 3 also holds emblems, referenced tokens the bulk lacks and double-faced token backs. */
+internal const val COVERAGE_VERSION=3L
+
+/** A double-faced card's reverse face of a chosen printing, as a record to queue; null when the printing is one picture. */
+internal fun printingBackFace(record:ArtworkRecord):ArtworkRecord? =
+    record.faces.getOrNull(1)?.takeIf{it.images.isNotEmpty()&&record.faces.first().images.isNotEmpty()}
 
 /** Wanted token keys that are stored, counting an equivalent printing saved during live play. */
 internal fun storedTokenKeys(wanted:List<String>,records:Map<String,ArtworkRecord>,stored:(String)->Boolean):Set<String> {
@@ -73,33 +99,38 @@ internal class ArtworkDownloadClient(private val context: Context) {
         val key=java.security.MessageDigest.getInstance("SHA-256").digest(names.joinToString("\n").toByteArray()).joinToString(""){"%02x".format(it)}
         return java.io.File(java.io.File(context.filesDir,"artwork-coverage").apply{mkdirs()},"$key.json")
     }
-    suspend fun scan(names: List<String>, quality: ArtworkQuality,includeTokens:Boolean,fullCatalogue:Boolean=false): DownloadScan = withContext(Dispatchers.IO) {
+    suspend fun scan(names: List<String>, quality: ArtworkQuality,includeTokens:Boolean,fullCatalogue:Boolean=false,
+        chosen:List<ChosenArt> = emptyList()): DownloadScan = withContext(Dispatchers.IO) {
         val manifest=runCatching{val file=coverageFile(names);check(file.length() in 1..4*1024*1024);Wire.decode(file.readBytes())}.getOrNull()
         val faces=manifest?.array("faces").orEmpty().filterIsInstance<String>()
         val tokens=if(includeTokens)manifest?.array("tokens").orEmpty().filterIsInstance<String>()else emptyList()
         val unavailable=if(includeTokens)manifest?.number("unavailable")?.toInt() ?: 0 else 0
-        // Deck scopes also hold the common and AI-opponent tokens; other opponents need checking.
-        val tokensKnown=manifest?.flag("includesTokens")==true&&(fullCatalogue||names.isEmpty()||
-            manifest?.text("tokenSources")==tokenSourcesKey(runCatching{opponents().ids}.getOrDefault(emptyList())))
+        // Deck scopes also hold the common and AI-opponent tokens; other opponents need checking. A manifest from a
+        // build before emblems and double-faced token backs counted reads as unchecked until one more download.
+        val tokensKnown=manifest!=null&&manifest.flag("includesTokens")==true&&manifest.number("coverage")==COVERAGE_VERSION&&(fullCatalogue||names.isEmpty()||
+            manifest.text("tokenSources")==tokenSourcesKey(runCatching{opponents().ids}.getOrDefault(emptyList())))
         // One directory listing answers every name, so a full-catalogue check stays quick.
         val files=Artwork.downloadedFileNames(context)
         fun stored(name:String)=Artwork.listedDownload(files,name,quality)
         val missingCards=names.filterNot(::stored)
         val missingFaces=faces.filterNot(::stored)
+        // The art the player chose is its own image, beside the card's default one.
+        val missingChosen=chosen.filterNot{stored(printingArtKey(it.printing))}
         val storedTokens=storedTokenKeys(tokens,Artwork.storedTokens(context),::stored)
         val missingTokens=tokens.filterNot(storedTokens::contains)
         DownloadScan(names.size-missingCards.size,Artwork.storedDownloadBytes(context),
             faces.size-missingFaces.size+tokens.size-missingTokens.size,faces.size+tokens.size+unavailable,
             manifest?.number("known")==names.size.toLong()&&(!includeTokens||tokensKnown),
             faces.size-missingFaces.size,faces.size,tokens.size-missingTokens.size,tokens.size+unavailable,
-            tokensKnown,missingCards+missingFaces,missingTokens.map{it.removePrefix("token:")})
+            tokensKnown,missingCards+missingFaces+missingChosen.map(ChosenArt::label),missingTokens.map{it.removePrefix("token:")},
+            chosen.size-missingChosen.size,chosen.size)
     }
     private fun saveCoverage(names:List<String>,faces:Set<String>,tokens:Set<String>,known:Int,includeTokens:Boolean,unavailable:Int,tokenSources:String?) {
-        val file=android.util.AtomicFile(coverageFile(names));val bytes=Wire.encode(mapOf("faces" to faces.toList(),"tokens" to tokens.toList(),"known" to known,"includesTokens" to includeTokens,"unavailable" to unavailable,"tokenSources" to tokenSources))
+        val file=android.util.AtomicFile(coverageFile(names));val bytes=Wire.encode(mapOf("faces" to faces.toList(),"tokens" to tokens.toList(),"known" to known,"includesTokens" to includeTokens,"unavailable" to unavailable,"tokenSources" to tokenSources,"coverage" to COVERAGE_VERSION))
         val output=file.startWrite();try{output.write(bytes);file.finishWrite(output)}catch(failure:Throwable){file.failWrite(output);throw failure}
     }
     suspend fun download(names: List<String>, quality: ArtworkQuality, includeTokens: Boolean,
-        fullCatalogue:Boolean, progress: suspend (DownloadProgress) -> Unit): List<String> = withContext(Dispatchers.IO) {
+        fullCatalogue:Boolean, chosen:List<ChosenArt> = emptyList(), progress: suspend (DownloadProgress) -> Unit): List<String> = withContext(Dispatchers.IO) {
         val failures=mutableListOf<String>()
         var omittedFailures=0
         fun fail(name:String,failure:Throwable) = synchronized(failures) {
@@ -120,6 +151,7 @@ internal class ArtworkDownloadClient(private val context: Context) {
             progress(DownloadProgress(0,names.size,"Checking deck artwork…"))
             collection(names.map{mapOf("name" to it)},includeTokens)
         }
+        if(fullCatalogue&&includeTokens)completeReferencedTokens(catalogue){label,failure->fail(label,failure)}
         val wantedTokens=linkedMapOf<String,ArtworkRecord?>()
         val nameSet=names.toSet()
         val faces=linkedSetOf<String>()
@@ -162,19 +194,47 @@ internal class ArtworkDownloadClient(private val context: Context) {
                 // Metadata is still needed on deck retries to discover faces and tokens.
                 val card=catalogue.card(name) ?: error("No unambiguous catalogue artwork.")
                 card.faces.filter{it.images.isNotEmpty()&&it.name !in nameSet}.forEach{faces+=it.name}
-                if(includeTokens)card.related.forEach{wantedTokens.putIfAbsent(it,catalogue.tokens[it])}
+                if(includeTokens)card.related.forEach{part->
+                    wantedTokens.putIfAbsent(part.id,catalogue.tokens[part.id])
+                    // A double-faced token brings its reverse face.
+                    catalogue.tokens["${part.id}:back"]?.let{back->wantedTokens.putIfAbsent(back.id,back)}
+                }
                 name to card
             } catch(failure:Exception){fail(name,failure);null}
         }
         // Token images go first, so an interrupted download still has them.
-        if(includeTokens)wantedTokens.entries.forEachIndexed{index,(id,known)->
-            checkActive();progress(DownloadProgress(names.size+index,names.size+wantedTokens.size,"Checking token artwork"))
-            try {
-                val record=known ?: metadata(URL("https://api.scryfall.com/cards/$id"))
-                check(record.id==id&&record.token!=null){"Token metadata is unavailable."}
-                checkActive();Artwork.saveToken(context,record)
-                enqueue(record,"token:$id")
-            } catch(failure:Exception){fail("Token $id",failure)}
+        if(includeTokens) {
+            val resolved=ArrayList<Pair<String,ArtworkRecord>>()
+            wantedTokens.entries.toList().forEachIndexed{index,(id,known)->
+                checkActive();progress(DownloadProgress(names.size+index,names.size+wantedTokens.size,"Checking token artwork"))
+                try {
+                    val record=known ?: metadata(URL("https://api.scryfall.com/cards/$id"))
+                    check(record.id==id&&record.token!=null){"Token metadata is unavailable."}
+                    resolved+=id to record
+                    // A token fetched by ID brings the reverse face it was printed with (an Incubator becomes a Phyrexian).
+                    record.back?.let{back->if(back.id !in wantedTokens)resolved+=back.id to back}
+                } catch(failure:Exception){fail("Token $id",failure)}
+            }
+            resolved.forEach{(id,record)->wantedTokens.putIfAbsent(id,record)}
+            resolved.forEach{(id,record)->
+                try{checkActive();Artwork.saveToken(context,record);enqueue(record,"token:$id")}catch(failure:Exception){fail("Token $id",failure)}
+            }
+        }
+        // The art the player chose: each printing's own image, and a double-faced card's other side. These queue
+        // ahead of the default card art, since they were asked for by name.
+        if(chosen.isNotEmpty()) {
+            progress(DownloadProgress(names.size,names.size+chosen.size,"Checking chosen artwork"))
+            var lookupFailed=false
+            val found=try{chosenRecords(chosen.map(ChosenArt::printing))}catch(failure:CancellationException){throw failure}catch(failure:Exception){lookupFailed=true;fail("Chosen artwork",failure);emptyMap()}
+            for(item in chosen) {
+                checkActive()
+                val record=found[item.printing.key]
+                if(record==null){if(!lookupFailed)fail(item.label,IllegalStateException("This printing's artwork is unavailable."));continue}
+                try {
+                    enqueue(record,printingArtKey(item.printing))
+                    printingBackFace(record)?.let{enqueue(it,printingArtKey(item.printing,true))}
+                } catch(failure:Exception){fail(item.label,failure)}
+            }
         }
         cards.forEach{(name,card)->
             checkActive()
@@ -189,6 +249,33 @@ internal class ArtworkDownloadClient(private val context: Context) {
         if(omittedFailures>0)failures+="$omittedFailures additional items are unavailable. Completed files were retained."
         failures
         } finally {images.close();persistCoverage()}
+    }
+    /**
+     * Adds the tokens and emblems cards point to which Oracle bulk lacks (ArtworkCatalogue.referencedTokensWithoutDownload),
+     * fetched by ID. A token Scryfall cannot return is reported, never dropped without a word.
+     */
+    private suspend fun completeReferencedTokens(catalogue:ArtworkCatalogue,fail:(String,Throwable)->Unit) {
+        val missing=catalogue.referencedTokensWithoutDownload()
+        if(missing.isEmpty())return
+        try{catalogue.tokens.putAll(collection(missing.map{mapOf("id" to it.id)},false).tokens)}
+        catch(failure:CancellationException){throw failure}
+        catch(failure:Exception){fail("Tokens cards point to",failure)}
+        catalogue.referencedTokensWithoutDownload().take(100).forEach{fail("Token ${it.name}",IllegalStateException("Scryfall did not return its artwork."))}
+    }
+    /** The records of the exact printings a player chose, by "set/number": 75 `set` + `collector_number` identifiers a request. */
+    private suspend fun chosenRecords(printings:List<CardPrinting>):Map<String,ArtworkRecord> {
+        val result=LinkedHashMap<String,ArtworkRecord>()
+        printings.distinct().chunked(75).forEach{batch->
+            coroutineContext.ensureActive()
+            val bytes=ArtworkTransport.bytes(context,URL("https://api.scryfall.com/cards/collection"),8*1024*1024,setOf("application/json"),
+                Wire.encode(mapOf("identifiers" to batch.map{mapOf("set" to it.setCode,"collector_number" to it.number)})))
+            val response=Wire.objectValue(io.magicmobile.core.Json.parseObject(bytes.toString(Charsets.UTF_8)))
+            validatedArtworkCollection(response,batch.size).forEach{card->
+                val printing=CardPrinting.of(card.text("set").orEmpty(),card.text("collector_number").orEmpty()) ?: return@forEach
+                ArtworkCatalogue.decode(card)?.let{result[printing.key]=it}
+            }
+        }
+        return result
     }
     private data class Opponents(val ids:List<String>,val cardNames:List<String>)
     /** The AI opponents chosen in game setup, from the included precons. */
@@ -232,7 +319,7 @@ internal class ArtworkDownloadClient(private val context: Context) {
         }
         fetch(identifiers)
         if(includeTokens){
-            val ids=identifiers.mapNotNull{it["name"]}.flatMap{result.card(it)?.related.orEmpty()}.distinct()
+            val ids=identifiers.mapNotNull{it["name"]}.flatMap{result.card(it)?.related.orEmpty().map(ArtworkPart::id)}.distinct()
             fetch(ids.map{mapOf("id" to it)})
         }
         return result

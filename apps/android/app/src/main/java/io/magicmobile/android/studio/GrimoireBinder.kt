@@ -116,7 +116,7 @@ object Binder {
     val brass: Brush get() = Brush.verticalGradient(listOf(brassLight, TavernPalette.brass, brassDeep))
     val brassPressed: Brush get() = Brush.verticalGradient(listOf(brassDeep, TavernPalette.brass, brassLight.copy(alpha = 0.8f)))
     val chapterIcons = mapOf("Cards" to "rectangle.portrait.on.rectangle.portrait.fill", "Ideas" to "lightbulb.fill",
-        "Analysis" to "chart.bar.fill", "Playtest" to "flag.2.crossed.fill")
+        "Analysis" to "chart.bar.fill")
 }
 
 private fun TextStyle.onLeather(): TextStyle = copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f))
@@ -367,21 +367,22 @@ enum class BinderShelf { DECK, ALL }
 
 /** The two shelves as a switch on the rail. */
 @Composable
-fun BinderShelfSwitch(shelf: BinderShelf, onChange: (BinderShelf) -> Unit, modifier: Modifier = Modifier) {
+fun BinderShelfSwitch(shelf: BinderShelf, onChange: (BinderShelf) -> Unit, modifier: Modifier = Modifier, compact: Boolean = false) {
     val shape = RoundedCornerShape(9.dp)
-    Row(modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.5f), shape).border(1.5.dp, Binder.brass, shape).padding(3.dp)
+    // compact: symbols only, for a short sideways page (the titles stay for TalkBack).
+    Row((if (compact) modifier else modifier.fillMaxWidth()).background(Color.Black.copy(alpha = 0.5f), shape).border(1.5.dp, Binder.brass, shape).padding(3.dp)
         .semantics { contentDescription = "Show cards" }) {
         for ((value, title, icon) in listOf(Triple(BinderShelf.DECK, "My deck", "rectangle.stack.fill"), Triple(BinderShelf.ALL, "All cards", "books.vertical.fill"))) {
             val chosen = shelf == value
             val inner = RoundedCornerShape(7.dp)
-            Row(Modifier.weight(1f).height(36.dp)
+            Row((if (compact) Modifier.width(42.dp).height(34.dp) else Modifier.weight(1f).height(36.dp))
                 .then(if (chosen) Modifier.tavernFill(TavernMaterial.EMBER, inner).border(1.dp, Binder.brassLight.copy(alpha = 0.6f), inner) else Modifier)
                 .clickable(role = Role.Tab) { onChange(value) }
                 .semantics(mergeDescendants = true) { contentDescription = title; selected = chosen },
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                 val tint = if (chosen) Binder.emberText else TavernPalette.parchment.copy(alpha = 0.7f)
                 SfImage(icon, tint, 14.dp)
-                Text(title, color = tint, style = sf(14f, SfWeight.bold, SfDesign.SERIF).onLeather(), maxLines = 1)
+                if (!compact) Text(title, color = tint, style = sf(14f, SfWeight.bold, SfDesign.SERIF).onLeather(), maxLines = 1)
             }
         }
     }
@@ -445,6 +446,7 @@ fun BinderGauge(count: Int, modifier: Modifier = Modifier, target: Int = 100, sh
 @Composable
 fun BinderSleeve(name: String, quantity: Int, card: CardInfo?, modifier: Modifier = Modifier, notes: List<String> = emptyList(), selected: Boolean? = null,
                  canEdit: Boolean = true, addLabel: String = "Add one $name", removeLabel: String = "Remove one $name", tapLabel: String = name,
+                 art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active,
                  add: () -> Unit, remove: () -> Unit, tap: () -> Unit, preview: () -> Unit = {}) {
     val editing = canEdit && selected == null
     val pocket = RoundedCornerShape(7.dp)
@@ -454,7 +456,7 @@ fun BinderSleeve(name: String, quantity: Int, card: CardInfo?, modifier: Modifie
             .border(0.8.dp, Color.White.copy(alpha = 0.4f), pocket)
             .binderCorners(16.dp, BinderCornerStyle.CARD)
             .padding(4.dp)) {
-            DeckStudioCardImage(name, card, Modifier.fillMaxWidth())
+            DeckStudioCardImage(name, card, Modifier.fillMaxWidth(), art = art)
             if (selected != null) Box(Modifier.align(Alignment.TopStart).padding(3.dp)
                 .background(if (selected) DeckStudioPalette.surfaceElevated else DeckStudioPalette.ink.copy(alpha = 0.35f), CircleShape)) {
                 SfImage(if (selected) "checkmark.circle.fill" else "circle", if (selected) DeckStudioPalette.accent else DeckStudioPalette.surfaceElevated, 20.dp)
@@ -509,11 +511,14 @@ fun <T> BinderSleeveRow(items: List<T>, columns: Int, modifier: Modifier = Modif
 @Composable
 fun BinderHead(strap: String, onStrap: () -> Unit, modifier: Modifier = Modifier, title: String? = null, strapTag: String? = null,
                strapEnabled: Boolean = true, trailing: @Composable RowScope.() -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Written at the top of the page (Caleb, 2026-10-06: the head is part of the paper, so facing pages are the same
+    // height and turn together); its title is in ink.
+    Row(modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically) {
         BinderStrapButton(strap, onStrap, if (strapTag != null) Modifier.testTag(strapTag) else Modifier, enabled = strapEnabled)
         Spacer(Modifier.weight(1f))
         title?.let {
-            Text(it, Modifier.semantics { heading() }, color = TavernPalette.parchment, style = sf(17f, SfWeight.bold, SfDesign.SERIF).onLeather(),
+            Text(it, Modifier.semantics { heading() }, color = DeckStudioPalette.ink, style = sf(18f, SfWeight.bold, SfDesign.SERIF),
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.weight(1f))
         }

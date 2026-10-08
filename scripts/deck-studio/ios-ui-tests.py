@@ -26,7 +26,8 @@ PRESETS = {
     "presentation-smoke": (
         "MagicMobileUITests/BoardPolishUITests/testPortraitLibraryChoices",
         "MagicMobileUITests/BoardPolishUITests/testLandscapeLibraryChoices",
-        "MagicMobileUITests/DeckStudioPinnedTabsUITests/testPublicHistoryDashboardScrubsAndInspectsCards",
+        # The match dashboard moved from Deck Studio's Playtest chapter to the profile (2026-10-06).
+        "MagicMobileUITests/ProfileHistoryUITests/testProfileHistoryOpensTheDashboardScrubsAndInspectsCards",
         "MagicMobileUITests/BoardPolishUITests/testPortraitModalOfferGlows",
         "MagicMobileUITests/BoardPolishUITests/testLandscapeModalOfferGlows",
     ),

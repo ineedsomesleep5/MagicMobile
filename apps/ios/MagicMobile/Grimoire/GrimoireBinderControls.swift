@@ -65,6 +65,7 @@ extension View {
         toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) { BinderLeafHead(title: title, leading: leading, trailing: trailing) }
             .binderControls()
+            .binderOverlayHost()
     }
 
     /// The binder's own switches and disclosures for every Toggle and DisclosureGroup inside.
@@ -172,8 +173,8 @@ struct BinderStepper: View {
     }
 }
 
-/// A choice from a menu, shown as a brass plaque naming the current choice (in place of the system's
-/// tinted menu button).
+/// A choice from a menu, shown as a brass plaque naming the current choice; the choices open in the
+/// binder's own menu (GrimoireBinderMenu.swift).
 struct BinderMenuPicker<Value: Hashable>: View {
     let title: String
     @Binding var selection: Value
@@ -181,10 +182,8 @@ struct BinderMenuPicker<Value: Hashable>: View {
 
     var body: some View {
         let current = options.first { $0.0 == selection }?.1 ?? title
-        Menu {
-            Picker(title, selection: $selection) {
-                ForEach(options, id: \.0) { option in Text(option.1).tag(option.0) }
-            }
+        BinderMenu {
+            BinderMenuPick(title, selection: $selection, options: options)
         } label: {
             BinderPlaque {
                 HStack(spacing: 6) {

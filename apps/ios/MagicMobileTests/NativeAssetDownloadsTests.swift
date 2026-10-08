@@ -795,6 +795,156 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertEqual(model.tokenDiscoveryRemaining, 1, "Different opponents need checking again")
     }
 
+    // MARK: Chosen art
+
+    /// The art a player chose is counted by its own key, queued by the exact image Scryfall returned for
+    /// that printing (and a double-faced card's back), ahead of the default card art, and never saved as
+    /// the card's default.
+    @MainActor func testChosenPrintingsAreCountedQueuedAheadOfDefaultArtAndStoredUnderTheirOwnKey() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        func images(_ path: String) -> [String: String] {
+            ["small": "https://cards.scryfall.io/small/\(path).jpg", "normal": "https://cards.scryfall.io/normal/\(path).jpg", "large": "https://cards.scryfall.io/large/\(path).jpg"]
+        }
+        let ring = "Chosen Ring \(UUID())"
+        let defaults: [[String: Any]] = [["id": UUID().uuidString, "name": ring, "layout": "normal", "type_line": "Artifact", "set": "cmr", "collector_number": "1", "image_uris": images("default-ring")]]
+        let fixture = directory.appendingPathComponent("deck.json")
+        try JSONSerialization.data(withJSONObject: defaults).write(to: fixture)
+        let chosen = [NativeChosenArt(name: ring, printing: CardPrinting(set: "CMM", number: "400")!),
+                      NativeChosenArt(name: "Delver", printing: CardPrinting(set: "isd", number: "51")!)]
+        let transport = ChosenPrintingTransport(cards: [
+            ["id": UUID().uuidString, "name": ring, "layout": "normal", "set": "cmm", "collector_number": "400", "image_uris": images("cmm-400")],
+            ["id": UUID().uuidString, "name": "Delver of Secrets // Insectile Aberration", "layout": "transform", "set": "isd", "collector_number": "51",
+             "card_faces": [["name": "Delver of Secrets", "image_uris": images("isd-51-front")], ["name": "Insectile Aberration", "image_uris": images("isd-51-back")]]]])
+        let bytes = try image(width: 488, height: 680)
+        DownloadImageFixtureProtocol.configure(data: bytes)
+        defer { DownloadImageFixtureProtocol.configure(data: Data()) }
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"), availableBytes: { _ in Int64.max })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DownloadImageFixtureProtocol.self]
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+                                                configuration: configuration, allowNetwork: { true })
+        let model = NativeAssetDownloads(store: store, catalogueLoader: { try NativeArtworkCatalogue.parse(file: fixture) },
+            backgroundQueue: queue, deckCatalogueLoader: { _, _ in try NativeArtworkCatalogue.parse(file: fixture) },
+            tokenSearch: { _ in NativeArtworkCatalogue() }, rulesText: { _ in [:] }, opponentDecks: { [] },
+            printingSearch: { try await NativeArtworkCatalogue.load(printings: $0, transport: transport, budget: DeckStudioScryfallBudget()) })
+        await model.scan(names: [ring], quality: .standard, chosen: chosen)
+        XCTAssertEqual(model.cardTotal, 3); XCTAssertEqual(model.cardStored, 0)
+        XCTAssertEqual(model.missingNames, [ring, "\(ring) · CMM 400", "Delver · ISD 51"])
+        model.download(names: [ring], includeTokens: false, allowNetwork: true, quality: .standard, chosen: chosen)
+        try await settle(model)
+        XCTAssertEqual(model.failures, []); XCTAssertEqual(model.completed, 4); XCTAssertEqual(model.total, 4)
+        XCTAssertEqual(try queuedKeys(directory.appendingPathComponent("queue")),
+                       ["print:cmm/400", "print:isd/51", "print:isd/51:back", NativeAssetStore.cardKey(ring)],
+                       "The chosen art and the back of a double-faced printing queue before the default art")
+        XCTAssertEqual(Set(DownloadImageFixtureProtocol.urls.map(\.lastPathComponent)), ["cmm-400.jpg", "isd-51-front.jpg", "isd-51-back.jpg", "default-ring.jpg"])
+        let identifiers = await transport.identifiers
+        XCTAssertEqual(identifiers, [["set": "cmm", "collector_number": "400"], ["set": "isd", "collector_number": "51"]],
+                       "Printings are resolved by set and collector number, never by name")
+        let printed = await store.image(key: NativeAssetStore.printingKey(chosen[0].printing), quality: .standard)
+        let back = await store.image(key: NativeAssetStore.printingKey(chosen[1].printing, back: true), quality: .standard)
+        let named = await store.image(key: NativeAssetStore.cardKey("Delver"), quality: .standard)
+        XCTAssertEqual(printed, bytes); XCTAssertEqual(back, bytes); XCTAssertNil(named, "A chosen printing is never saved as a card's default art")
+        await model.scan(names: [ring], quality: .standard, chosen: chosen)
+        XCTAssertEqual(model.cardStored, 3); XCTAssertEqual(model.missingNames, [])
+        // Repeating transfers nothing, and Compact coverage never satisfies Standard for a chosen printing either.
+        let before = DownloadImageFixtureProtocol.urls.count
+        model.download(names: [ring], includeTokens: false, allowNetwork: true, quality: .standard, chosen: chosen)
+        try await settle(model)
+        XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, before)
+        await model.scan(names: [ring], quality: .high, chosen: chosen)
+        XCTAssertEqual(model.cardStored, 0, "Standard images do not cover High")
+    }
+
+    @MainActor func testAPrintingScryfallCannotResolveIsReportedNotSilentlyReplacedByDefaultArt() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fixture = directory.appendingPathComponent("deck.json")
+        try JSONSerialization.data(withJSONObject: [[String: Any]]()).write(to: fixture)
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"), availableBytes: { _ in Int64.max })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DownloadImageFixtureProtocol.self]
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+                                                configuration: configuration, allowNetwork: { true })
+        let transport = ChosenPrintingTransport(cards: [])
+        let model = NativeAssetDownloads(store: store, backgroundQueue: queue, deckCatalogueLoader: { _, _ in try NativeArtworkCatalogue.parse(file: fixture) },
+            tokenSearch: { _ in NativeArtworkCatalogue() }, rulesText: { _ in [:] }, opponentDecks: { [] },
+            printingSearch: { try await NativeArtworkCatalogue.load(printings: $0, transport: transport, budget: DeckStudioScryfallBudget()) })
+        model.download(names: [], includeTokens: false, allowNetwork: true, quality: .standard,
+                       chosen: [NativeChosenArt(name: "Sol Ring", printing: CardPrinting(set: "zzz", number: "9")!)])
+        try await settle(model)
+        XCTAssertEqual(model.failures, ["Sol Ring · ZZZ 9: this printing's artwork is unavailable."])
+        XCTAssertEqual(DownloadImageFixtureProtocol.urls.count, 0)
+    }
+
+    /// The full catalogue download fetches the emblems and the tokens cards point to that Oracle bulk lacks,
+    /// by exact ID, and records them in the token manifest the Downloads screen counts from.
+    @MainActor func testFullCatalogueDownloadAddsTheEmblemsAndTokensCardsPointToThatTheBulkLacks() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        func images(_ path: String) -> [String: String] {
+            ["small": "https://cards.scryfall.io/small/\(path).jpg", "normal": "https://cards.scryfall.io/normal/\(path).jpg", "large": "https://cards.scryfall.io/large/\(path).jpg"]
+        }
+        let soldier = UUID(), emblem = UUID(), golem = UUID()
+        let maker = "Planeswalker Maker \(UUID())"
+        let bulk: [[String: Any]] = [
+            ["id": UUID().uuidString, "name": maker, "layout": "normal", "type_line": "Legendary Planeswalker — Test",
+             "image_uris": images("maker"),
+             "all_parts": [["id": soldier.uuidString, "name": "Soldier", "component": "token", "type_line": "Token Creature — Soldier"],
+                           ["id": emblem.uuidString, "name": "\(maker) Emblem", "component": "combo_piece", "type_line": "Emblem — Test"],
+                           ["id": golem.uuidString, "name": "Shard Golem", "component": "token", "type_line": "Token Artifact Creature — Golem"]]],
+            ["id": soldier.uuidString, "name": "Soldier", "layout": "token", "type_line": "Token Creature — Soldier", "oracle_text": "",
+             "power": "1", "toughness": "1", "colors": ["W"], "image_uris": images("soldier")]
+        ]
+        let extra: [[String: Any]] = [
+            ["id": emblem.uuidString, "name": "\(maker) Emblem", "layout": "emblem", "type_line": "Emblem — Test", "oracle_text": "You win.",
+             "colors": [String](), "image_uris": images("emblem")],
+            ["id": golem.uuidString, "name": "Shard Golem", "layout": "token", "type_line": "Token Artifact Creature — Golem", "oracle_text": "",
+             "power": "2", "toughness": "2", "colors": [String](), "image_uris": images("golem")]]
+        let bulkFile = directory.appendingPathComponent("bulk.json"), extraFile = directory.appendingPathComponent("extra.json")
+        try JSONSerialization.data(withJSONObject: bulk).write(to: bulkFile)
+        try JSONSerialization.data(withJSONObject: extra).write(to: extraFile)
+        let bytes = try image(width: 488, height: 680)
+        DownloadImageFixtureProtocol.configure(data: bytes)
+        defer { DownloadImageFixtureProtocol.configure(data: Data()) }
+        let store = NativeAssetStore(directory: directory.appendingPathComponent("images"), availableBytes: { _ in Int64.max })
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DownloadImageFixtureProtocol.self]
+        let queue = NativeArtworkBackgroundQueue(directory: directory.appendingPathComponent("queue"), store: store,
+                                                configuration: configuration, allowNetwork: { true })
+        let asked = AskedTokenIDs()
+        let model = NativeAssetDownloads(store: store, catalogueLoader: { try NativeArtworkCatalogue.parse(file: bulkFile) },
+            backgroundQueue: queue, tokenSearch: { _ in NativeArtworkCatalogue() }, rulesText: { _ in [:] }, opponentDecks: { [] },
+            tokenIDSearch: { ids in await asked.record(ids); return try NativeArtworkCatalogue.parse(file: extraFile) })
+        model.download(names: [maker], includeTokens: true, allowNetwork: true, quality: .standard, fullCatalogue: true)
+        try await settle(model)
+        XCTAssertEqual(model.failures, [])
+        let ids = await asked.ids
+        XCTAssertEqual(Set(ids), [emblem, golem], "Only the tokens the bulk lacks are fetched, by exact ID")
+        XCTAssertEqual(Set(try queuedKeys(directory.appendingPathComponent("queue")).filter { $0.hasPrefix("token:") }),
+                       [NativeAssetStore.tokenKey(soldier), NativeAssetStore.tokenKey(emblem), NativeAssetStore.tokenKey(golem)])
+        let manifest = await store.catalogueTokens()
+        XCTAssertEqual(Set(manifest?.map(\.id) ?? []), [soldier, emblem, golem])
+        let current = await store.catalogueTokenCoverageCurrent()
+        XCTAssertTrue(current)
+        let emblemData = await store.image(key: NativeAssetStore.tokenKey(emblem), quality: .standard)
+        XCTAssertEqual(emblemData, bytes)
+        await model.scan(names: [maker], quality: .standard, fullCatalogue: true)
+        XCTAssertEqual(model.tokenTotal, 3); XCTAssertEqual(model.tokenStored, 3); XCTAssertEqual(model.tokenDiscoveryRemaining, 0)
+    }
+
+    func testChosenArtInADeckListsEachPrintingOnceCommanderFirst() {
+        let a = CardPrinting(set: "cmm", number: "400")!, b = CardPrinting(set: "c21", number: "1")!
+        let deck = DeckList(name: "Art", commander: DeckEntry(cardName: "Atraxa", quantity: 1, section: "commanders", printing: b),
+                            entries: [DeckEntry(cardName: "Sol Ring", quantity: 1, section: "deck", printing: a),
+                                      DeckEntry(cardName: "Sol Ring", quantity: 1, section: "sideboard", printing: a),
+                                      DeckEntry(cardName: "Forest", quantity: 20, section: "deck")])
+        XCTAssertEqual(NativeChosenArt.choices(in: deck).map(\.label), ["Atraxa · C21 1", "Sol Ring · CMM 400"])
+    }
+
     private func queuedKeys(_ queueDirectory: URL) throws -> [String] {
         struct Job: Decodable { struct Entry: Decodable { let key: String }; let entries: [Entry] }
         return try JSONDecoder().decode(Job.self, from: Data(contentsOf: queueDirectory.appendingPathComponent("job.json"))).entries.map(\.key)
@@ -809,6 +959,25 @@ final class NativeAssetDownloadsTests: XCTestCase {
         XCTAssertTrue(CGImageDestinationFinalize(destination))
         return output as Data
     }
+}
+
+/// Scryfall's /cards/collection for chosen printings: answers each set and collector number it holds.
+private actor ChosenPrintingTransport: DeckStudioScryfallHTTP {
+    private let cards: [[String: Any]]
+    private(set) var identifiers: [[String: String]] = []
+    init(cards: [[String: Any]]) { self.cards = cards }
+    func send(_ request: URLRequest) async throws -> Data {
+        let body = try XCTUnwrap(request.httpBody)
+        let wanted = try XCTUnwrap((try JSONSerialization.jsonObject(with: body) as? [String: Any])?["identifiers"] as? [[String: String]])
+        identifiers += wanted
+        let found = wanted.compactMap { id in cards.first { $0["set"] as? String == id["set"] && $0["collector_number"] as? String == id["collector_number"] } }
+        return try JSONSerialization.data(withJSONObject: ["object": "list", "not_found": [[String: String]](), "data": found])
+    }
+}
+
+private actor AskedTokenIDs {
+    private(set) var ids: [UUID] = []
+    func record(_ value: [UUID]) { ids += value }
 }
 
 private actor SearchedNames {

@@ -711,6 +711,8 @@ fun NativeGameView(
             }
 
             // --- Phase presentation ---
+            // The classic board: day or night and the storm count under the top bar (the tavern table hangs them under its phase plate).
+            if (!isTavernBoard) TavernTableHints(board.dayNight, board.stormCount, Modifier.align(Alignment.TopCenter).padding(top = 64.dp))
             val activeId = board.activePlayerId
             AnimatedVisibility(showsTurnBanner && activeId != null && !isCardChoiceOpen && !isPromptDetailOpen, Modifier.align(Alignment.Center),
                 enter = fadeIn(), exit = scaleOut(targetScale = 0.2f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)) +
@@ -762,7 +764,7 @@ fun NativeGameView(
         if (isLogOpen) BoardSheet({ isLogOpen = false }, sound = false) {
             GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f), combatReasons)
         }
-        if (isStackSheetOpen) BoardSheet({ isStackSheetOpen = false }) { BoardStackInspector(board, selection) { isStackSheetOpen = false } }
+        if (isStackSheetOpen) BoardSheet({ isStackSheetOpen = false }) { BoardStackInspector(board, selection, runCommand) { isStackSheetOpen = false } }
         if (isPromptDetailOpen) BoardSheet({ isPromptDetailOpen = false }) {
             key("${board.promptEnvelopeV2?.id ?: ""}:${board.promptEnvelopeV2?.messageId ?: 0}") {
                 UniversalPromptActionPanel(board, selection.selectedCard?.let { GameBoardInteractionState.cardActions(it, board.legalActions ?: emptyList()) } ?: emptyList(),

@@ -86,7 +86,7 @@ struct DeckStudioRootView: View {
         HStack {
             Text("\(visible.count) decks").font(.subheadline).foregroundStyle(DeckStudioPalette.secondaryInk)
             Spacer()
-            Menu { Picker("Sort decks", selection: $query.sort) { ForEach(DeckStudioLibraryQuery.Sort.allCases) { Text($0.rawValue).tag($0) } } }
+            BinderMenu { BinderMenuPick("Sort decks", selection: $query.sort, options: DeckStudioLibraryQuery.Sort.allCases.map { ($0, $0.rawValue) }) }
                 label: { BinderPlaque { Label(query.sort.rawValue, systemImage: "arrow.up.arrow.down").font(.system(size: 14, weight: .heavy, design: .serif)) } }
             Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2") }
                 .buttonStyle(BinderPlaqueButtonStyle(square: true))
@@ -126,14 +126,13 @@ struct DeckStudioRootView: View {
             Group {
                 if spread {
                     // Each page scrolls by itself, and nothing runs across the fold (Caleb, 2026-10-05).
+                    // The head is written on the left page, so both pages are the same height (Caleb, 2026-10-06).
                     HStack(alignment: .top, spacing: 6) {
-                        VStack(spacing: 4) {
-                            libraryHead
-                            BinderPage(gutter: .trailing) {
-                                VStack(spacing: 0) {
-                                    nowPlaying
-                                    ScrollView { VStack(alignment: .leading, spacing: 20) { libraryIntro }.padding(16) }
-                                }
+                        BinderPage(gutter: .trailing) {
+                            VStack(spacing: 0) {
+                                libraryHead
+                                nowPlaying
+                                ScrollView { VStack(alignment: .leading, spacing: 20) { libraryIntro }.padding(16) }
                             }
                         }
                         BinderPage(gutter: .leading) {
@@ -141,21 +140,18 @@ struct DeckStudioRootView: View {
                         }
                     }
                 } else {
-                    VStack(spacing: 4) {
-                        libraryHead
-                        BinderPage(gutter: .leading) {
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 20) {
-                                    libraryIntro
-                                    libraryShelf
-                                }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
-                            }
-                            .safeAreaInset(edge: .top, spacing: 0) { nowPlaying }
+                    BinderPage(gutter: .leading) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 20) {
+                                libraryIntro
+                                libraryShelf
+                            }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
                         }
+                        .safeAreaInset(edge: .top, spacing: 0) { VStack(spacing: 0) { libraryHead; nowPlaying }.background(GrimoirePaper()) }
                     }
                 }
             }
-            .padding(.horizontal, 4).padding(.bottom, 2)
+            .padding(.horizontal, 4).padding(.top, 4).padding(.bottom, 2)
             .binderScreen()
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showPreferences) {
@@ -180,19 +176,20 @@ struct DeckStudioRootView: View {
                 }
                 .environment(\.grimoireClose, { turn(to: nil) })
             }
-            .confirmationDialog("Delete this local deck?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
+            .binderConfirm("Delete this local deck?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                           message: pendingDelete.map { record in "local:\(record.id)" == selectedDeckID
+                               ? DeckStudioPlayText.deletePlaying(PreconCatalog.all.first { "precon:\($0.id)" == OnDeviceSetupPreferences.defaultDeckID }?.name ?? "The default deck")
+                               : "Included decks and source websites are never changed." }) {
                 if let record = pendingDelete {
                     Button("Delete \(record.name)", role: .destructive) { delete(record) }
                 }
-            } message: {
-                if let record = pendingDelete, "local:\(record.id)" == selectedDeckID {
-                    Text(DeckStudioPlayText.deletePlaying(PreconCatalog.all.first { "precon:\($0.id)" == OnDeviceSetupPreferences.defaultDeckID }?.name ?? "The default deck"))
-                } else { Text("Included decks and source websites are never changed.") }
             }
             .deckStudioPlayFeedback(play, active: route == nil) { deckID, cards in
                 guard let deckID else { return }
                 play.requestFix(deckID: deckID, cards: cards); open(deckID)
             }
+            // The library's confirmation sits outside binderScreen(), so it gets a host of its own.
+            .binderOverlayHost()
         }
         .tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
@@ -301,11 +298,12 @@ struct DeckStudioRootView: View {
         let id = selectionID(record, included: included)
         let draft = NativeDeckDraft(deck: record.deckList)
         return VStack(alignment: .leading, spacing: 0) {
-            Button { turn(to: .deck(record, included)) } label: {
+            BinderGuardedButton { turn(to: .deck(record, included)) } label: {
                 VStack(alignment: .leading, spacing: 10) {
                     DeckStudioTileCover(height: grid ? 164 : 130) {
                         DeckStudioArtwork(name: record.commander?.cardName ?? "", hero: true,
-                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata))
+                                          colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata),
+                                          art: .exact(record.commander?.printing))
                     }
                         .overlay(alignment: .topTrailing) {
                             // The deck's Commander bracket (Ranked/CommanderBrackets.swift).
@@ -340,20 +338,21 @@ struct DeckStudioRootView: View {
                 Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star") }
                     .buttonStyle(BinderCoinButtonStyle(lit: favorites.contains(id)))
                     .accessibilityLabel(favorites.contains(id) ? "Unfavorite \(record.name)" : "Favorite \(record.name)")
-                Menu { deckActions(record, included: included) } label: { BinderCoin { Image(systemName: "ellipsis") } }
+                BinderMenu { deckActions(record, included: included) } label: { BinderCoin { Image(systemName: "ellipsis") } }
                     .accessibilityLabel("Options for \(record.name)")
             }.padding(.horizontal, 14)
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         // Each deck is a little book on the page: a plate in a brass edge with book-corner protectors.
         .binderPlate(corners: .book)
-        .contextMenu { deckActions(record, included: included) }
+        .binderContextMenu { deckActions(record, included: included) }
     }
     @ViewBuilder private func deckActions(_ record: DeckLibraryRecord, included: Bool) -> some View {
-            Button(DeckStudioPlayText.play, systemImage: "play.fill") { playFromLibrary(Entry(record: record, included: included)) }
+            BinderMenuHeading(record.name)
+            BinderMenuButton(DeckStudioPlayText.play, systemImage: "play.fill") { playFromLibrary(Entry(record: record, included: included)) }
                 .disabled(resolver == nil || play.isChecking)
-            Button("Open deck", systemImage: "pencil") { turn(to: .deck(record, included)) }
-            Button("Duplicate locally", systemImage: "doc.on.doc") {
+            BinderMenuButton("Open deck", systemImage: "pencil") { turn(to: .deck(record, included)) }
+            BinderMenuButton("Duplicate locally", systemImage: "doc.on.doc") {
                 Task {
                     do {
                         let copy = try library.duplicateLocalDurably(record, name: record.name + " — Copy")
@@ -363,14 +362,16 @@ struct DeckStudioRootView: View {
                     } catch { self.error = error.localizedDescription }
                 }
             }
+            BinderMenuDivider()
             if let data = try? OnDeviceDeckEditing(record.deckList).exportJSON(), let text = String(data: data, encoding: .utf8) {
-                ShareLink(item: text) { Label("Export native JSON", systemImage: "square.and.arrow.up") }
+                BinderMenuShare(title: "Export native JSON", systemImage: "square.and.arrow.up", item: text)
             }
             if let text = try? DeckStudioTextExport.text(record.deckList) {
-                ShareLink(item: text) { Label("Export plain text", systemImage: "doc.plaintext") }
-            } else { Text("Plain text unavailable · use JSON to preserve this draft") }
+                BinderMenuShare(title: "Export plain text", systemImage: "doc.plaintext", item: text)
+            } else { BinderMenuNote("Plain text unavailable · use JSON to preserve this draft") }
             if !included && !record.isCloudBacked {
-                Button("Delete local deck", systemImage: "trash", role: .destructive) { pendingDelete = record }
+                BinderMenuDivider()
+                BinderMenuButton("Delete local deck", systemImage: "trash", role: .destructive) { pendingDelete = record }
             }
     }
     private func delete(_ record: DeckLibraryRecord) {
@@ -466,8 +467,10 @@ struct DeckStudioArtwork: View {
     var hero = false
     /// Color identity for the cover drawn when the commander's art is not on this iPhone.
     var colors: [String]? = nil
+    /// A deck's own row passes its chosen printing here; anywhere else the player's choice for the name shows.
+    var art: CardArtSelection = .active
     var body: some View {
-        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero) { _, _ in
+        NativeCardArtworkView(name: name, variant: .board, contentMode: hero ? .fill : .fit, artOnly: hero, art: art) { _, _ in
             if hero {
                 DeckCoverPlaceholder(commander: name, colors: colors)
             } else {

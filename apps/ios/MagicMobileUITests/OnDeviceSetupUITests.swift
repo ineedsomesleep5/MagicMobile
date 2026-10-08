@@ -313,7 +313,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertEqual(play.label, "Play this deck")
         XCTAssertFalse(app.buttons["This is your playing deck"].exists, "An empty draft is never presented as playing")
         openDeckActions()
-        XCTAssertTrue(menuItem("Validate & playtest").waitForExistence(timeout: 5))
+        XCTAssertTrue(menuItem("Validate deck").waitForExistence(timeout: 5))
         XCTAssertTrue(menuItem("Play this deck").exists)
         // Deliberately do not select/start an incomplete draft.
     }

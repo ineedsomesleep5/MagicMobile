@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -224,6 +225,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var offlineArtPromptSeen by AppPreferences.boolean(OfflineArtLaunch.SEEN_KEY, false)
     var showOfflineArtPrompt by remember { mutableStateOf(false) }
     var showFriends by remember { mutableStateOf(false) }
+    var chatProfile by remember { mutableStateOf<String?>(null) }
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
     var showDecks by remember { mutableStateOf(false) }
@@ -244,6 +246,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Quick Match, Ranked and the profile (ranked/).
     val record = remember { io.magicmobile.android.ranked.PlayerRecordStore.shared(context) }
     var lobby by rememberSaveable { mutableStateOf<String?>(null) }
+    // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
+    LaunchedEffect(Unit) {
+        when (io.magicmobile.android.ranked.SocialFixtures.openScreen?.substringBefore(":")) {
+            "profile" -> lobby = "profile"
+            "friends", "public", "search" -> showFriends = true
+        }
+    }
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
     var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
     var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
@@ -267,6 +276,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var appForeground by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         record.publish = { rank, title, commander -> scope.launch { vm.account.publishRank(rank, title, commander) } }
+        // Finished games go to the profile server too: now, and again whenever the app is open and online (GameUploader).
+        val uploader = io.magicmobile.android.game.GameUploader(java.io.File(context.filesDir, "Profile/uploaded-games.json"))
+        val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
+        record.didRecord = { scope.launch { upload() } }
+        vm.account.afterRefresh = upload
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -508,7 +522,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID)
         rankChange = change
         match.rankedMatchID?.let { id -> scope.launch { matchmaker.report(id, outcome) } }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
@@ -701,6 +715,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Lifecycle: prepare once, pause input and polling in the background.
     LaunchedEffect(Unit) { setup.prepare() }
     LaunchedEffect(setup.identity, setup.localDecks) { if (!activeGame) restoreSetupPreferences() }
+    // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
+    LaunchedEffect(selectedDeckID) { io.magicmobile.android.ArtChoices.shared.select(selectedDeckID) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -856,7 +872,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalEmoteCenter provides vm.emotes,
+                        io.magicmobile.android.board.LocalBoardAnswerActions provides io.magicmobile.android.board.BoardAnswerActions(
+                            session.supportedAnswerActions, session.rememberedAnswers, session.rememberedTriggerOrders,
+                            { session.forgetRememberedAnswers() }, { session.forgetTriggerOrder() }),
                         LocalStartingRollVisible provides boardQuiet) {
+                        // Settings → Pass After Casting, sent with this seat's next answer when it changes.
+                        val autoPassAfterCast by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.board.AutoPassAfterCast.KEY, true)
+                        androidx.compose.runtime.LaunchedEffect(autoPassAfterCast) { session.setAutoPassAfterCast(autoPassAfterCast) }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
                             .then(if (boardQuiet) Modifier.clearAndSetSemantics {} else Modifier)) {
@@ -913,8 +935,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             if (setup.identity == null) setup.status else null, ::startQuickMatch, { lobby = "chooser" }, deckSlot)
                         "ranked" -> io.magicmobile.android.ranked.RankedLobbyScreen(record.file.rank, selectedDeckBracket, vm.account.rankedQueue != null,
                             mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "chooser" }, deckSlot)
-                        "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account.username ?: playerDisplayName,
-                            setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander }) { lobby = null }
+                        "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account, vm.account.username ?: playerDisplayName,
+                            setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander },
+                            loadMetadata = { runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { io.magicmobile.android.studio.NativeDeckMetadataCatalogue(setup.awaitCatalogue()) } }.getOrNull() }) { lobby = null }
                         else -> io.magicmobile.android.ranked.PlayModeChooser(record.file.rank.position, io.magicmobile.android.game.RankLadder.seasonName(record.file.rank.season),
                             quick = { lobby = "quick" }, ranked = { lobby = "ranked" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
                     }
@@ -940,16 +963,20 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 submitStartingChoiceIfNeeded()
                             }
                         } else {
-                            Column(Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp).fillMaxWidth()
-                                .background(BrandTheme.surface, RoundedCornerShape(22.dp)).padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("Who goes first?", color = BrandTheme.ink, style = SfText.title2(SfWeight.bold), textAlign = TextAlign.Center)
-                                Text(table.rollStatus, color = BrandTheme.inkSecondary, style = SfText.subheadline(), textAlign = TextAlign.Center)
-                                Text(table.hostAISeatSummary ?: "Each player rolls a D20. Highest starts; ties reroll.", color = BrandTheme.inkSecondary,
-                                    style = SfText.caption(), textAlign = TextAlign.Center)
-                                BrandButton({ runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
-                                    enabled = !table.hasRolled) {
-                                    BrandButtonText(if (table.hasRolled) "Waiting for other players…" else "Roll D20")
+                            // Until the host shares the dice: the same leather and brass the roll itself wears.
+                            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentAlignment = Alignment.Center) {
+                                Column(Modifier.padding(horizontal = 16.dp).widthIn(max = 440.dp).fillMaxWidth()
+                                    .shadow(10.dp, RoundedCornerShape(14.dp)).tavernBrassFrame(1f).padding(2.dp)
+                                    .tavernFill(io.magicmobile.android.ui.TavernMaterial.LEATHER, RoundedCornerShape(14.dp)).padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    Text("Who goes first?", color = Color(0.98f, 0.92f, 0.80f), style = sf(22f, SfWeight.heavy, SfDesign.SERIF), textAlign = TextAlign.Center)
+                                    Text(table.rollStatus, color = Color(0.84f, 0.72f, 0.52f), style = sf(15f, SfWeight.medium, SfDesign.SERIF), textAlign = TextAlign.Center)
+                                    Text(table.hostAISeatSummary ?: "Each player rolls a D20. Highest starts; ties reroll.", color = Color(0.84f, 0.72f, 0.52f),
+                                        style = sf(12f, SfWeight.regular, SfDesign.SERIF), textAlign = TextAlign.Center)
+                                    io.magicmobile.android.ui.TavernButton({ runCatching { table.rollStartingPlayer() }.onFailure { bannerError = it.message } },
+                                        enabled = !table.hasRolled, fontSize = 17f, fullWidth = true) {
+                                        io.magicmobile.android.ui.TavernButtonText(if (table.hasRolled) "Waiting for other players…" else "Roll D20")
+                                    }
                                 }
                             }
                         }
@@ -1058,7 +1085,14 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 val profileReady = vm.account.phase == PlayerAccount.Phase.READY
                 TableChatPanel(vm.emotes, session.snapshot,
                     report = if (profileReady) { line -> scope.launch { vm.account.report(line.name, line.text, "chat") } } else null,
-                    block = if (profileReady) { name -> vm.emotes.mute(name); scope.launch { vm.account.block(name) } } else null) { vm.emotes.openChat(false) }
+                    block = if (profileReady) { name -> vm.emotes.mute(name); scope.launch { vm.account.block(name) } } else null,
+                    viewProfile = if (profileReady) { name -> chatProfile = name } else null) { vm.emotes.openChat(false) }
+                // A player opened from the table chat: their public profile covers the chat.
+                chatProfile?.let { name ->
+                    androidx.compose.ui.window.Dialog({ chatProfile = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                        io.magicmobile.android.ranked.PublicProfileScreen(vm.account, name, null, null) { chatProfile = null }
+                    }
+                }
             }
             if (showBracketSheet) {
                 val deck = selectedDeck; val report = selectedBracketReport
@@ -1248,7 +1282,10 @@ private fun MenuIdentity(compact: Boolean, playerName: String, density: Int) {
         BrandTitle(if (density == 0 && compact) "Your next\ngreat game." else "Your next great game.",
             if (compact) (when (density) { 0 -> 32f; 1 -> 27f; else -> 24f }) else (if (density == 0) 30f else 26f),
             textAlign = if (compact) TextAlign.Start else TextAlign.Center)
-        if (density < 2 && playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = BrandTheme.inkSecondary, style = SfText.subheadline(),
+        // In the tavern's hand, like the title above it (no system type on the menu).
+        if (density < 2 && playerName.isNotBlank()) Text("Welcome back, ${playerName.trim()}", color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.8f),
+            style = io.magicmobile.android.ui.sf(16f, io.magicmobile.android.ui.SfWeight.regular, io.magicmobile.android.ui.SfDesign.SERIF)
+                .copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
             textAlign = if (compact) TextAlign.Start else TextAlign.Center)
     }
 }
@@ -1391,6 +1428,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             BoardAppearancePicker()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
+            io.magicmobile.android.board.AutoPassAfterCastToggle()
             BoardEffectsPicker()
         }
     }
@@ -1409,6 +1447,23 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
+                IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")
+                IosListRow("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage = "square.stack.3d.up.fill")
+                IosListRow("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage = "checkmark.square.fill")
+                IosListRow("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage = "forward.fill")
+                IosListRow("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage = "bolt.fill")
+                IosListRow("Pick any number of cards at once with Select all, and remember which of your triggers goes first.", systemImage = "rectangle.stack.fill")
+                IosListRow("The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes.", systemImage = "sparkles")
+                IosListRow("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage = "eye.fill")
+                IosListRow("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage = "sparkles")
+                IosListRow("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage = "moon.stars")
+                IosListRow("The starting roll has more table: the header sits at the top and the dice get the room below it.", systemImage = "dice")
+                IosListRow("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage = "hand.draw.fill")
+                IosListRow("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage = "dice")
+                IosListRow("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage = "chart.bar.fill")
+                IosListRow("Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private.", systemImage = "person.2.fill")
+                IosListRow("Deck Studio's menus and prompts are the binder's own, and held sideways both pages fill the binder with Add cards floating over the page.", systemImage = "list.bullet.rectangle.portrait")
                 IosListRow("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage = "book.fill")
                 IosListRow("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage = "books.vertical.fill")
                 IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")

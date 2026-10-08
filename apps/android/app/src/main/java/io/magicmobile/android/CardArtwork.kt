@@ -81,7 +81,7 @@ object Artwork {
     internal fun saveToken(context:Context,record:ArtworkRecord) = synchronized(downloadLock) {
         require(record.token!=null)
         val bytes=Wire.encode(record.json());require(bytes.size<=32768)
-        val file=AtomicFile(File(downloadDirectory(context),"${record.id}.token"));val output=file.startWrite()
+        val file=AtomicFile(File(downloadDirectory(context),"${record.id.replace(':','_')}.token"));val output=file.startWrite()
         try{output.write(bytes);file.finishWrite(output)}catch(failure:Throwable){file.failWrite(output);throw failure}
         tokenMetadata=tokens(context)+(record.id to record)
     }
@@ -154,8 +154,8 @@ object Artwork {
         return true
     }
 
-    internal fun matchesDownload(context:Context,key:String,name:String,token:Boolean,identity:ArtworkTokenIdentity?):Boolean =
-        artworkDownloadMatches(key,name,token,identity,if(token&&key.startsWith("token:"))tokens(context)[key.removePrefix("token:")]?.token else null)
+    internal fun matchesDownload(context:Context,key:String,name:String,token:Boolean,identity:ArtworkTokenIdentity?,printingKey:String?=null):Boolean =
+        artworkDownloadMatches(key,name,token,identity,if(token&&key.startsWith("token:"))tokens(context)[key.removePrefix("token:")]?.token else null,printingKey)
 
     private fun decode(bytes: ByteArray): Bitmap? = runCatching {
         val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true}
@@ -164,9 +164,16 @@ object Artwork {
     }.getOrNull()
 
     /** Returns null when artwork is unavailable; it never substitutes a different card. */
-    suspend fun load(context: Context, name: String, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, cachedReady:suspend (Bitmap)->Unit = {}): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun load(context: Context, name: String, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, art:CardArtChoices.Selection?=null,
+                     cachedReady:suspend (Bitmap)->Unit = {}): Bitmap? = withContext(Dispatchers.IO) {
         if (name.isBlank() || name.length > 512) return@withContext null
-        var lookup=if(token) {
+        if(!token) {
+            // The art the player chose, exactly that printing. The card's default art shows instead only when
+            // Scryfall has no such printing, or it is neither saved nor reachable online.
+            if(art!=null)loadImage(context,printingArtKey(art),cachedReady){fetchPrinting(context,art)}?.let{return@withContext it}
+            return@withContext loadImage(context,name,cachedReady){fetch(context,name)}
+        }
+        val lookup=run {
             val identity=tokenIdentity?.normalized() ?: return@withContext null
             val online=enabled(context)
             val stored=tokens(context).values
@@ -177,27 +184,51 @@ object Artwork {
                 ?: selectEquivalentToken(stored,identity){hasTokenDownload(context,it.id)}
                 ?: if(!online)looseEquivalentToken(stored,identity){hasTokenDownload(context,it.id)} else null
             "token:"+(matched?.id ?: return@withContext null)
-        } else name
+        }
         var cached=memory.get(lookup)
-        cached?.takeIf{token || minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}?.let{return@withContext it}
+        cached?.let{return@withContext it}
         ArtworkQuality.entries.asReversed().forEach { quality ->
             val downloaded = downloadFile(context, lookup, quality)
             if (downloaded.isFile && downloaded.length() in 1..MAX_BYTES.toLong()) {
                 decode(downloaded.readBytes())?.let { if(cached==null || it.width>cached!!.width)cached=it }
             }
         }
-        if(token)return@withContext cached
-        val file = cacheFile(context, name)
+        cached
+    }
+
+    /**
+     * A card image by key (the card's name, or a chosen printing): the best saved download, the live cache,
+     * and, with online art on, one fetch for a High image. A saved image keeps showing when the fetch fails.
+     */
+    private suspend fun loadImage(context:Context,key:String,cachedReady:suspend (Bitmap)->Unit,fetcher:suspend ()->ByteArray?):Bitmap? {
+        var cached=memory.get(key)
+        cached?.takeIf{minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}?.let{return it}
+        ArtworkQuality.entries.asReversed().forEach { quality ->
+            val downloaded = downloadFile(context, key, quality)
+            if (downloaded.isFile && downloaded.length() in 1..MAX_BYTES.toLong()) {
+                decode(downloaded.readBytes())?.let { if(cached==null || it.width>cached!!.width)cached=it }
+            }
+        }
+        val file = cacheFile(context, key)
         if (file.isFile && file.length() in 1..MAX_BYTES.toLong()) {
             decode(file.readBytes())?.let { if(cached==null || it.width>cached!!.width)cached=it }
         }
-        cached?.let { memory.put(lookup,it);cachedReady(it) }
-        if (!enabled(context) || (cached?.let{minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}==true)) return@withContext cached
-        val bytes = try {fetch(context,name)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){null} ?: return@withContext cached
+        cached?.let { memory.put(key,it);cachedReady(it) }
+        if (!enabled(context) || (cached?.let{minOf(it.width,it.height)>=ArtworkQuality.HIGH.shortEdge}==true)) return cached
+        val bytes = try {fetcher()}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){null} ?: return cached
         coroutineContext.ensureActive()
-        if(!enabled(context))return@withContext cached
+        if(!enabled(context))return cached
         runCatching { file.writeBytes(bytes) }
-        decode(bytes)?.takeIf{cached==null || it.width>=cached!!.width}?.also { memory.put(name, it) } ?: cached
+        return decode(bytes)?.takeIf{cached==null || it.width>=cached!!.width}?.also { memory.put(key, it) } ?: cached
+    }
+
+    /** Scryfall's image of exactly this printing (its reverse face for `back`); null when there is no such printing or face. */
+    private suspend fun fetchPrinting(context:Context,art:CardArtChoices.Selection): ByteArray? {
+        val metadata=try{ArtworkTransport.bytes(context,URL(art.printing.cardUrl()),4*1024*1024,setOf("application/json"))}
+            catch(failure:IllegalStateException){if(failure.message=="Scryfall returned 404.")return null else throw failure}
+        val record=ArtworkCatalogue.decode(Wire.objectValue(io.magicmobile.core.Json.parseObject(metadata.toString(Charsets.UTF_8)))) ?: return null
+        val image=printingImage(record,art.back,"large") ?: return null
+        return ArtworkTransport.bytes(context,URL(image),MAX_BYTES,ALLOWED_TYPES)
     }
 
     private suspend fun fetch(context:Context,name: String): ByteArray? {
@@ -272,14 +303,42 @@ internal fun artworkIllustrationCrop(imageWidth:Int,imageHeight:Int,targetWidth:
     return ArtworkCrop(x,y,width,height)
 }
 
+/**
+ * Which art a card view draws: the player's choice for that card name (the default everywhere cards are drawn by
+ * name), or an exact one. A deck row passes its own choice, `Exact(null)` meaning the card's default art, so
+ * another deck's choice never shows on it. CardArtSelection.swift.
+ */
+sealed interface CardArtSelection {
+    object Active : CardArtSelection
+    data class Exact(val printing: CardPrinting?) : CardArtSelection
+}
+
+/** The player's art choices, with a Compose revision that changes whenever what a card name shows does. */
+object ArtChoices {
+    var revision by mutableIntStateOf(0)
+        private set
+    val shared = CardArtChoices()
+    init { shared.addListener { revision++ } }
+
+    /** The printing a view draws: an exact one, else the player's choice for this card name. */
+    fun resolve(name: String, art: CardArtSelection, token: Boolean): CardArtChoices.Selection? = when {
+        token -> null
+        art is CardArtSelection.Exact -> art.printing?.let { CardArtChoices.Selection(it, false) }
+        else -> shared.selection(name)
+    }
+}
+
 @Composable
-fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, artOnly:Boolean=false, placeholder: @Composable () -> Unit = {}) {
+fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false, tokenIdentity:ArtworkTokenIdentity?=null, artOnly:Boolean=false,
+                art: CardArtSelection = CardArtSelection.Active, placeholder: @Composable () -> Unit = {}) {
     val context = LocalContext.current
     val consent = remember(Artwork.consentRevision){Artwork.enabled(context)}
-    var bitmap by remember(name, token, tokenIdentity) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(name, consent, token, tokenIdentity) {
-        Artwork.downloadChanges.onStart{emit("")}.filter{it.isEmpty()||Artwork.matchesDownload(context,it,name,token,tokenIdentity)}.collectLatest{
-            bitmap = try { Artwork.load(context, name, token, tokenIdentity){cached->withContext(Dispatchers.Main){bitmap=cached}} } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap}
+    val choice = remember(name, token, art, ArtChoices.revision) { ArtChoices.resolve(name, art, token) }
+    var bitmap by remember(name, token, tokenIdentity, choice) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(name, consent, token, tokenIdentity, choice) {
+        val chosenKey = choice?.let(::printingArtKey)
+        Artwork.downloadChanges.onStart{emit("")}.filter{it.isEmpty()||Artwork.matchesDownload(context,it,name,token,tokenIdentity,chosenKey)}.collectLatest{
+            bitmap = try { Artwork.load(context, name, token, tokenIdentity, choice){cached->withContext(Dispatchers.Main){bitmap=cached}} } catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){bitmap}
         }
     }
     Box(modifier.background(Color(0xFFEDE7DC)), contentAlignment = Alignment.Center) {
@@ -297,8 +356,17 @@ fun CardArtwork(name: String, modifier: Modifier = Modifier, token:Boolean=false
     }
 }
 
-internal fun artworkDownloadMatches(key:String,name:String,token:Boolean,expected:ArtworkTokenIdentity?,actual:ArtworkTokenIdentity?):Boolean =
-    if(token)key.startsWith("token:")&&expected!=null&&actual!=null&&expected.normalized()==actual.normalized() else key==name
+/** A saved download refreshes a view that draws its token, its card name, or the printing it chose (the name's default art is the fallback). */
+internal fun artworkDownloadMatches(key:String,name:String,token:Boolean,expected:ArtworkTokenIdentity?,actual:ArtworkTokenIdentity?,printingKey:String?=null):Boolean =
+    if(token)key.startsWith("token:")&&expected!=null&&actual!=null&&expected.normalized()==actual.normalized() else key==name||(printingKey!=null&&key==printingKey)
+
+/** A chosen printing's art is saved apart from the card's default art: "print:cmm/400", and ":back" for its reverse face. */
+internal fun printingArtKey(printing:CardPrinting,back:Boolean=false)="print:${printing.key}"+if(back)":back" else ""
+internal fun printingArtKey(art:CardArtChoices.Selection)=printingArtKey(art.printing,art.back)
+
+/** The picture of a printing's record: its front, or the reverse face of a double-faced card; null when it has none. */
+internal fun printingImage(record:ArtworkRecord,back:Boolean,version:String):String? =
+    if(back)record.faces.getOrNull(1)?.images?.get(version) else record.images[version]
 
 /** Duplicate printings are equivalent only when their complete public token metadata matches. */
 internal fun selectEquivalentToken(records:Collection<ArtworkRecord>,identity:ArtworkTokenIdentity,usable:(ArtworkRecord)->Boolean):ArtworkRecord? =
@@ -346,5 +414,10 @@ internal fun tokenSearchPage(root:Obj):Pair<List<ArtworkRecord>,Boolean> {
     val rows=root["data"] as? List<*> ?: error("Invalid token search data.")
     val more=root["has_more"] as? Boolean ?: error("Invalid token search pagination.")
     require(root.text("object")=="list" && rows.size<=200){"Invalid token search response."}
-    return rows.map(Wire::objectValue).filter{it.text("layout")=="token"}.mapNotNull(ArtworkCatalogue::decode) to more
+    // Double-faced tokens too (an Incubator is one), when they name both faces: each result brings its reverse face
+    // as a record of its own. A "double_faced_token" row with no faces is malformed and skipped, as before.
+    return rows.map(Wire::objectValue).filter{
+        it.text("layout")=="token" || it.text("layout")=="double_faced_token" && (it["card_faces"] as? List<*>)?.size==2
+    }.mapNotNull(ArtworkCatalogue::decode)
+        .flatMap{listOfNotNull(it,it.back)} to more
 }
