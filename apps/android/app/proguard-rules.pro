@@ -26,3 +26,7 @@
 # Filament and gltfio (the starting roll's 3D table) call back into these Java classes by name from native code.
 -keep class com.google.android.filament.** { *; }
 -keepclasseswithmembernames class * { native <methods>; }
+
+# Credential Manager finds its Play Services provider by class name (Google sign-in on the profile).
+-if class androidx.credentials.CredentialManager
+-keep class androidx.credentials.playservices.** { *; }

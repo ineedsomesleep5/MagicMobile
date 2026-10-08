@@ -89,6 +89,37 @@ The numbers are computed over all (up to 500) stored games; a draw ends a streak
   into the old "add by exact name" field with a note, public profiles say they arrive with the next server update, the privacy control is
   disabled with the same note, and game upload waits. Nothing crashes and no old behaviour is lost.
 
+## Signing in with Google or Apple (keeping a profile across phones)
+
+Every profile starts as an anonymous Supabase user. The profile screen's **Keep your profile** card lets the player sign
+in so the same profile (name, friends, rank, history) opens on any phone:
+
+- **iPhone:** Continue with Apple (`ASAuthorizationController`) and Continue with Google (`ASWebAuthenticationSession`,
+  authorization code with PKCE, iOS OAuth client, no Google SDK). Apple is required next to Google by App Store
+  guideline 4.8, and the app has the `com.apple.developer.applesignin` entitlement.
+- **Android:** Continue with Google through Credential Manager (`GetSignInWithGoogleOption`, Web client ID as the
+  server client ID). Apple on Android would need a web flow with a Services ID and a rotating secret, so it's not offered.
+- **Server call:** `POST /auth/v1/token?grant_type=id_token` with `{provider, id_token, nonce}`. The provider receives
+  the SHA-256 of a one-time nonce; Supabase gets the raw value.
+  - First sign-in adds `link_identity: true` with the anonymous session's bearer token, so the identity joins the
+    existing user and nothing moves.
+  - `identity_already_exists` means that Google or Apple account already has a profile (another phone). The phone
+    then signs in without linking and switches to that profile. The anonymous profile it leaves stays on the server.
+- **Sign out** forgets the session; the phone starts a new anonymous profile until the player signs in again.
+- Signed-in state comes from `GET /auth/v1/user` `identities`, minus `anonymous` (`LinkedIdentity` on both platforms,
+  tested against `chat-cases.json` `linkedIdentities`).
+
+Configuration (October 8, 2026):
+
+- **Google Cloud** project `magicmobile` (917754280625) has Web, iOS and Android OAuth clients. The Android client
+  carries the release signing certificate, so Google sign-in works only in release-signed builds.
+  - The consent screen stays in Testing (test users only) until Caleb publishes it.
+- **Supabase** Auth:
+  - Google enabled. "Client IDs" lists a pre-existing client first (kept, with its secret, for whatever already uses it),
+    then MagicMobile's Web, iOS and Android client IDs. Native ID-token sign-in needs no secret, and nonce checks stay on.
+  - Apple enabled with client ID `com.calebfeliciano.magicmobile`, and users without an email allowed.
+  - Manual linking and anonymous sign-ins are on.
+
 ## Files
 
 | | iOS (`apps/ios/MagicMobile`) | Android (`apps/android`) |

@@ -64,6 +64,16 @@ final class TableChatTests: XCTestCase {
         XCTAssertNotNil(rows[0].lastSeenAt)
     }
 
+    func testLinkedIdentitiesSkipTheAnonymousStart() throws {
+        let fixture = try XCTUnwrap(root["linkedIdentities"] as? [String: Any])
+        let parsed = LinkedIdentity.parse(try XCTUnwrap(fixture["user"] as? [String: Any]))
+        let expected = try XCTUnwrap(fixture["expected"] as? [[String: String]])
+        XCTAssertEqual(parsed.map(\.provider), expected.map { $0["provider"]! })
+        XCTAssertEqual(parsed.map(\.title), expected.map { $0["title"]! })
+        XCTAssertEqual(parsed.map(\.email), expected.map { $0["email"] })
+        XCTAssertEqual(LinkedIdentity.parse(["identities": [["provider": "anonymous"]]]), [])
+    }
+
     func testServerErrorCodes() {
         XCTAssertEqual(SupabaseLite.errorCode(Data(#"{"code":"P0001","details":null,"hint":null,"message":"no_username"}"#.utf8)), "no_username")
         XCTAssertEqual(SupabaseLite.errorCode(Data(#"{"code":422,"error_code":"anonymous_provider_disabled","msg":"Anonymous sign-ins are disabled"}"#.utf8)),

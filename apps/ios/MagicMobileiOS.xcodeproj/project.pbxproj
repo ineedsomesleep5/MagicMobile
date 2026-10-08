@@ -226,6 +226,7 @@
 		AAAC586BD6F179123B648653 /* BoardPromptRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414816254DDDDA03802F4719 /* BoardPromptRules.swift */; };
 		AB0937C200B4B60D2ACC8F1C /* DeckStudioValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDBB34E02563A49074BE4DE /* DeckStudioValidationService.swift */; };
 		ABF01CC5DB13800E3FF8E8D4 /* GrimoireBinderMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B854BEB232063C4338556D /* GrimoireBinderMenu.swift */; };
+		AD1F29EE4F8AACB5DB930B58 /* AccountSignInCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9613A6EF338027A5A1EAF77 /* AccountSignInCard.swift */; };
 		AD43872AD44AD78E77125654 /* d20-table-landscape.glb in Resources */ = {isa = PBXBuildFile; fileRef = E7B7BC25DD3CB109C2F1D0A2 /* d20-table-landscape.glb */; };
 		AF35E236FEE71179A81F56AD /* DeckStudioCardSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FA91A26BEAAE41F9CC7036 /* DeckStudioCardSearch.swift */; };
 		AFC034863C93994107926EE3 /* cast-red.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 0D2CD2666EF8ADE6AB9AB6FB /* cast-red.m4a */; };
@@ -644,6 +645,7 @@
 		E7F5B2A1DC98E0070A9EE52D /* OnDeviceDeckEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceDeckEditing.swift; sourceTree = "<group>"; };
 		E93A6775473574CAA20CEFA3 /* BattlefieldViewportMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldViewportMetrics.swift; sourceTree = "<group>"; };
 		E93DDA5DDE754A2653B689CA /* ProfileAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAnalytics.swift; sourceTree = "<group>"; };
+		E9613A6EF338027A5A1EAF77 /* AccountSignInCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSignInCard.swift; sourceTree = "<group>"; };
 		E9F5A56B34259B0BDEB31AF6 /* mm_graal_backend_far.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = mm_graal_backend_far.c; sourceTree = "<group>"; };
 		EAD8E45FEB2F53AE9F7E397A /* DeckStudioCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCompletionTests.swift; sourceTree = "<group>"; };
 		EB38F40A6C6EA976434A4305 /* DeckStudioPinnedTabsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPinnedTabsUITests.swift; sourceTree = "<group>"; };
@@ -1063,6 +1065,7 @@
 		D44B01402798506A0D4500F7 /* Ranked */ = {
 			isa = PBXGroup;
 			children = (
+				E9613A6EF338027A5A1EAF77 /* AccountSignInCard.swift */,
 				3572CF391B01366995DFCEF2 /* AIDeckPool.swift */,
 				12F457964FEFD80DA6348A99 /* CommanderBrackets.swift */,
 				4A8AB3E92C8E6BBBE67EFE6A /* FriendChallenges.swift */,
@@ -1422,6 +1425,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CDF4E6B6232FF4F1C78C3E59 /* AIDeckPool.swift in Sources */,
+				AD1F29EE4F8AACB5DB930B58 /* AccountSignInCard.swift in Sources */,
 				CC05AAC1B8E791F3E0B1094B /* AmbientMotion.swift in Sources */,
 				2B326E8D717AFDB4121B357A /* ArenaBoardPresentation.swift in Sources */,
 				CA5EFC25898ACFEDEA8D650C /* BattlefieldAdaptiveSizing.swift in Sources */,
@@ -1836,7 +1840,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 35;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1921,7 +1925,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 35;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;

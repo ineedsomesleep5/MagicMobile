@@ -1447,6 +1447,7 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Keep your profile: sign in with Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage = "person.crop.circle.badge.checkmark")
                 IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
                 IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")
                 IosListRow("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage = "square.stack.3d.up.fill")

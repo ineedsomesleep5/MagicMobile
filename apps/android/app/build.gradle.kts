@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026100701
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026100801
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "17")
+        buildConfigField("int", "RELEASE_BUILD", "20")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
@@ -126,6 +126,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // WebSocket client for the cross-play table relay.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Google sign-in for the profile (social/GoogleSignIn.kt): Android's Credential Manager with Google's ID token option.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     // The starting roll's 3D table: Google Filament renders the d20 and the tavern table; gltfio reads the .glb
     // models. Only the arm64 libraries ship (abiFilters above), about 3 MB.
     implementation("com.google.android.filament:filament-android:1.75.1")
