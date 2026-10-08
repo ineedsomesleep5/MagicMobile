@@ -13,10 +13,11 @@ final class SocialUITests: XCTestCase {
         app = nil
     }
 
-    private func launch(open: String? = nil) {
+    private func launch(open: String? = nil, signedIn: Bool = false) {
         app = XCUIApplication()
         UITestHarness.configure(app, extraArguments: ["-magicmobile.boardAppearance", "tavern"])
         app.launchEnvironment["MAGICMOBILE_UI_TEST_SOCIAL"] = "1"
+        if signedIn { app.launchEnvironment["MAGICMOBILE_UI_TEST_SIGNED_IN"] = "1" }
         if let open { app.launchEnvironment["MAGICMOBILE_UI_TEST_OPEN"] = open }
         app.launch()
     }
@@ -100,5 +101,24 @@ final class SocialUITests: XCTestCase {
         app.buttons["profile.privacy.private"].tap()
         XCTAssertTrue(app.buttons["profile.privacy.private"].isSelected)
         capture("Privacy setting, private")
+    }
+
+    func testAccountCardOffersAppleAndGoogleThenShowsTheAccount() {
+        launch(open: "profile")
+        let apple = element("profile.account.apple")
+        for _ in 0..<14 where !(apple.exists && apple.isHittable) { app.swipeUp() }
+        XCTAssertTrue(apple.exists)
+        XCTAssertTrue(element("profile.account.google").exists)
+        XCTAssertFalse(element("profile.account.signOut").exists)
+        capture("Account card, not signed in")
+        app.terminate()
+
+        launch(open: "profile", signedIn: true)
+        let signOut = element("profile.account.signOut")
+        for _ in 0..<14 where !(signOut.exists && signOut.isHittable) { app.swipeUp() }
+        XCTAssertTrue(signOut.exists)
+        XCTAssertFalse(element("profile.account.google").exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "player@gmail.com")).firstMatch.exists)
+        capture("Account card, signed in with Google")
     }
 }

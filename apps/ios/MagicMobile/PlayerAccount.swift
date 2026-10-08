@@ -175,6 +175,7 @@ final class PlayerAccount: ObservableObject {
         friends = SocialFixtures.startingFriends()
         friendRanks = Dictionary(uniqueKeysWithValues: friends.compactMap { friend in SocialFixtures.rank(friend.username).map { (friend.username, $0) } })
         visibilityKnown = true
+        if SocialFixtures.signedIn { linkedIdentities = [LinkedIdentity(provider: "google", email: "player@gmail.com")] }
     }
 
     /// The friend actions on the fixture: they change the local list the way the server would.

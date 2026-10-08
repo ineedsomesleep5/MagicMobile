@@ -7,12 +7,14 @@ import Foundation
 ///   MAGICMOBILE_UI_TEST_SOCIAL=1      a rich game history for the own profile, and a fixture account:
 ///                                     friends, searchable players and public profiles instead of the server
 ///   MAGICMOBILE_UI_TEST_OPEN=profile|friends|public:<name>|search:<text>   opens that screen at launch
+///   MAGICMOBILE_UI_TEST_SIGNED_IN=1   the fixture account shows as signed in with Google
 ///   --deck-history-layout-ui-test     eighteen development games with detailed records (see ProfileHistoryFixture)
 enum SocialFixtures {
     private static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
     static var isActive: Bool { environment["MAGICMOBILE_UI_TEST_SOCIAL"] != nil }
     static var openScreen: String? { isActive ? environment["MAGICMOBILE_UI_TEST_OPEN"] : nil }
+    static var signedIn: Bool { isActive && environment["MAGICMOBILE_UI_TEST_SIGNED_IN"] != nil }
 
     struct Deck {
         let id: String, name: String, commander: String, colors: [String], bracket: Int
