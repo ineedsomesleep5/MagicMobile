@@ -1,9 +1,10 @@
-import SceneKit
 import SwiftUI
 import UIKit
 
 /// A presentation of authoritative starting-roll data. The match coordinator owns
-/// the dice values, tie rounds, and winner; this view only plays them back.
+/// the dice values, tie rounds, and winner; this view only plays them back, on the tavern table:
+/// each seat's d20 is thrown onto the board's leather mat, tumbles, bounces off the rail and settles
+/// on the number the game decided (StartingRollTableView.swift, docs/STARTING_ROLL.md).
 struct MultiplayerD20View: View {
     let roll: OnDeviceStartingRoll
     let seatNames: [String: String]
@@ -32,28 +33,33 @@ struct MultiplayerD20View: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Namespace private var dieFlight
     @State private var shownRoundIndex: Int?
     @State private var activeSeatID: String?
     @State private var activeValue: Int?
     @State private var settledRolls: [String: Int] = [:]
     @State private var landed = false
-    @State private var revealFace = false
-    @State private var diePosition: CGPoint?
-    @State private var stageSize: CGSize = .zero
     @State private var edgeHitTurn: Int?
     @State private var reboundTurn: Int?
+    @State private var restTurn: Int?
     @State private var playbackFinished = false
     @State private var spinTurns = 0
     @State private var skipAnimation = false
     @State private var playedStepCount = 0
     @State private var unlockedStepCount = 0
     @State private var didAutoDismiss = false
+    // The dice on the table: the round they belong to, the ones at rest and the one in the air.
+    @State private var tableRound = 0
+    @State private var tableResting: [String: Int] = [:]
+    @State private var tableThrow: D20TableState.Throw?
+    @State private var rollRegion: CGRect = .zero
 
     private var rounds: [[String: Int]] { roll.rounds.map(\.rolls) }
     private var steps: [OnDeviceStartingRoll.Step] { roll.steps }
     private var playerIDs: [String] {
-        (rounds.first.map { Array($0.keys) } ?? Array(seatNames.keys)).sorted()
+        let ids = Set(rounds.first.map { Array($0.keys) } ?? Array(seatNames.keys))
+        // The roll's own order (the viewer first), which is also the table's lane order.
+        let ordered = roll.seatOrder.filter(ids.contains)
+        return ordered + ids.subtracting(ordered).sorted()
     }
 
     private var playbackKey: PlaybackKey {
@@ -61,106 +67,125 @@ struct MultiplayerD20View: View {
                     reduceMotion: reduceMotion, skipAnimation: skipAnimation)
     }
 
+    private var tableState: D20TableState {
+        D20TableState(seatOrder: playerIDs, round: tableRound, resting: tableResting, throwing: tableThrow,
+                      highlighted: playbackFinished ? roll.winnerSeatID : nil)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let wide = geometry.size.width > geometry.size.height && geometry.size.width >= 560
             let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : (wide ? playerIDs.count : 2)
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: max(1, columnCount))
-            ZStack {
-                if activeSeatID != nil && !landed && !reduceMotion {
-                    D20SceneView(value: revealFace ? activeValue : nil, turns: spinTurns,
-                                 spinning: !revealFace,
-                                 arenaSize: geometry.size,
-                                 onEdgeHit: { turn in
-                                     guard turn == spinTurns, edgeHitTurn != turn else { return }
-                                     edgeHitTurn = turn
-                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                 },
-                                 onRebound: { turn in
-                                     guard turn == spinTurns else { return }
-                                     reboundTurn = turn
-                                 },
-                                 onRest: { turn, point in
-                                     guard turn == spinTurns else { return }
-                                     diePosition = point
-                                 })
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .allowsHitTesting(false)
-                        .accessibilityIdentifier("multiplayerD20.physicsArena")
-                }
-                ScrollView {
-                    VStack(alignment: .leading, spacing: wide ? 12 : 22) {
-                        header
-                        if !playbackFinished {
-                            Color.clear
-                                .frame(height: wide ? min(52, max(32, geometry.size.height * 0.12))
-                                                    : min(360, max(250, geometry.size.height * 0.40)))
-                                .accessibilityElement()
-                                .accessibilityLabel("D20 roll area")
-                                .accessibilityValue(reboundTurn == spinTurns
-                                                    ? "Rebounded from screen edge"
-                                                    : edgeHitTurn == spinTurns ? "Touched screen edge" : "Rolling")
-                                .accessibilityIdentifier("multiplayerD20.rollArea")
-                        }
-                        resultAndRollControl(wide: wide)
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(playerIDs, id: \.self) { playerID in
-                                playerCard(playerID, compact: wide)
-                            }
+            let columns = Array(repeating: GridItem(.flexible(), spacing: wide ? 10 : 12), count: max(1, columnCount))
+            // Upright the roll area takes everything the header, the result and the seat plates leave, so the throw
+            // runs its full length across the table (Caleb, 2026-10-07: the dice had too little room).
+            let plateRows = CGFloat((playerIDs.count + max(1, columnCount) - 1) / max(1, columnCount))
+            let plates = plateRows * 66 + max(0, plateRows - 1) * 12
+            let uprightRoll = max(260, geometry.size.height - 128 - 64 - plates - 18 * 3 - 12)
+            ScrollView {
+                VStack(alignment: .leading, spacing: wide ? 8 : 18) {
+                    header(wide: wide)
+                    // The roll area stays, so the dice stay in view under the result; it only speaks while rolling.
+                    rollArea(height: wide ? max(120, geometry.size.height - 178) : uprightRoll)
+                    resultAndRollControl(wide: wide)
+                    LazyVGrid(columns: columns, spacing: wide ? 10 : 12) {
+                        ForEach(playerIDs, id: \.self) { playerID in
+                            seatPlate(playerID, compact: wide)
                         }
                     }
-                    .frame(maxWidth: wide ? 900 : 620)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: geometry.size.height, alignment: .center)
-                    .padding(.horizontal, wide ? 24 : 20)
                 }
-                .scrollIndicators(.hidden)
-                if landed, let seat = activeSeatID, let diePosition {
-                    D20Face(value: activeValue, spinning: false, turns: 0,
-                            emphasized: true, compact: false)
-                        .frame(width: 138, height: 138)
-                        .matchedGeometryEffect(id: "die-\(seat)", in: dieFlight)
-                        .position(diePosition)
-                        .allowsHitTesting(false)
-                }
+                .frame(maxWidth: wide ? 900 : 620)
+                .frame(maxWidth: .infinity)
+                // The header sits at the top of the screen, not floating in the middle.
+                .frame(minHeight: geometry.size.height, alignment: .top)
+                .padding(.top, wide ? 4 : 8)
+                .padding(.horizontal, wide ? 24 : 18)
             }
-            .onAppear { stageSize = geometry.size }
-            .onChange(of: geometry.size) { _, size in stageSize = size }
+            .scrollIndicators(.hidden)
         }
+        .onPreferenceChange(RollRegionKey.self) { region in
+            if region.width > 1, region.height > 1 { rollRegion = region }
+        }
+        .background { tableLayer }
         .onAppear { unlockedStepCount = min(revealedStepCount, steps.count) }
         .onChange(of: revealedStepCount) { _, count in unlockedStepCount = min(count, steps.count) }
         .task(id: playbackKey) { await playSuppliedRounds() }
+    }
+
+    /// The tavern table fills the whole screen behind the controls; its camera frames the roll area.
+    private var tableLayer: some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .global).origin
+            D20TableView(size: proxy.size, region: rollRegion.offsetBy(dx: -origin.x, dy: -origin.y),
+                         state: tableState, reduceMotion: reduceMotion,
+                         onEdgeHit: { turn in
+                             guard turn == spinTurns, edgeHitTurn != turn else { return }
+                             edgeHitTurn = turn
+                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                         },
+                         onRebound: { turn in
+                             guard turn == spinTurns else { return }
+                             reboundTurn = turn
+                         },
+                         onRest: { turn in
+                             guard turn == spinTurns else { return }
+                             restTurn = turn
+                         })
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .accessibilityIdentifier("multiplayerD20.physicsArena")
+    }
+
+    private func rollArea(height: CGFloat) -> some View {
+        Color.clear
+            .frame(height: height)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: RollRegionKey.self, value: proxy.frame(in: .global))
+            })
+            .modifier(RollAreaAccessibility(active: !playbackFinished,
+                                            value: reboundTurn == spinTurns
+                                                ? "Rebounded from screen edge"
+                                                : edgeHitTurn == spinTurns ? "Touched screen edge" : "Rolling"))
     }
 
     private func resultAndRollControl(wide: Bool) -> some View {
         ZStack {
             if landed, let activeValue {
                 Text("Rolled \(activeValue)")
-                    .font(.title.bold().monospacedDigit())
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
-                    .background(Palette.surface, in: Capsule())
+                    .font(.system(.title2, design: .serif, weight: .heavy).monospacedDigit())
+                    .foregroundStyle(Ink.brown)
+                    .padding(.horizontal, 26)
+                    .frame(minHeight: 46)
+                    .background { TavernFill(material: .parchment).clipShape(Capsule()).padding(3) }
+                    .overlay { TavernCapsuleRim() }
+                    .shadow(color: .black.opacity(0.5), radius: 5, y: 3)
+                    .fixedSize()
                     .accessibilityIdentifier("multiplayerD20.result")
                     .transition(.scale(scale: 0.72).combined(with: .opacity))
             } else if let nextSeat = nextWaitingSeatID {
                 if nextSeat == localSeatID {
                     Button(rollPending ? "Sharing your roll…" : "Tap to roll D20", action: onRollTap)
-                        .buttonStyle(CommanderActionStyle())
+                        .buttonStyle(TavernButtonStyle(kind: .primary, fontSize: 17, fullWidth: true))
                         .disabled(rollPending)
                         .accessibilityIdentifier("multiplayerD20.tapToRoll")
                 } else {
                     Text("Waiting for \(seatNames[nextSeat] ?? "the next player") to roll…")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.ink)
+                        .font(.system(.subheadline, design: .serif, weight: .bold))
+                        .foregroundStyle(Ink.brass)
                         .multilineTextAlignment(.center)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 36)
+                        .background { TavernFill(material: .leather).clipShape(Capsule()).padding(1.5) }
+                        .overlay { TavernCapsuleRim(thin: true) }
                         .accessibilityIdentifier("multiplayerD20.waiting")
                 }
             }
         }
         .frame(maxWidth: wide ? 340 : 440)
         .frame(maxWidth: .infinity)
-        .frame(height: wide ? 62 : 72)
+        .frame(height: wide ? 48 : 64)
     }
 
     private var nextWaitingSeatID: String? {
@@ -169,28 +194,65 @@ struct MultiplayerD20View: View {
         return steps[playedStepCount].seatID
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("STARTING ROLL")
-                .font(.caption.weight(.bold))
-                .tracking(1.5)
-                .foregroundStyle(Palette.accent)
-            Text(headline)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(Palette.ink)
-                .accessibilityAddTraits(.isHeader)
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(Palette.secondary)
-            if !playbackFinished && !reduceMotion {
-                Button("Skip animation") { skipAnimation = true }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Palette.accent)
-                    .padding(.top, 5)
-                    .accessibilityIdentifier("multiplayerD20.skipAnimation")
+    /// The title plate: leather in a brass frame, the skip plaque riveted at its corner. In landscape it is one
+    /// line tall so the table keeps the room.
+    private func header(wide: Bool) -> some View {
+        Group {
+            if wide {
+                HStack(alignment: .center, spacing: 12) {
+                    BinderTag(text: "STARTING ROLL", material: .ember, jewel: true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        headlineText(wide: true)
+                        detailText
+                    }
+                    Spacer(minLength: 8)
+                    skipPlaque
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .center) {
+                        BinderTag(text: "STARTING ROLL", material: .ember, jewel: true)
+                        Spacer(minLength: 8)
+                        skipPlaque
+                    }
+                    headlineText(wide: false)
+                    detailText
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, wide ? 4 : 12)
+        .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 12)).padding(2) }
+        .overlay { TavernBrassFrame(scale: 0.5) }
+        .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
+    }
+
+    private func headlineText(wide: Bool) -> some View {
+        Text(headline)
+            .font(.system(wide ? .headline : .title2, design: .serif, weight: .heavy))
+            .foregroundStyle(Ink.cream)
+            .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var detailText: some View {
+        Text(detail)
+            .font(.system(.subheadline, design: .serif, weight: .medium))
+            .foregroundStyle(Ink.muted)
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+    }
+
+    @ViewBuilder private var skipPlaque: some View {
+        if !playbackFinished && !reduceMotion {
+            Button { skipAnimation = true } label: { Text("Skip") }
+                .buttonStyle(BinderPlaqueButtonStyle())
+                .accessibilityLabel("Skip animation")
+                .accessibilityIdentifier("multiplayerD20.skipAnimation")
+        }
     }
 
     private var headline: String {
@@ -220,47 +282,42 @@ struct MultiplayerD20View: View {
         return seatNames[roll.winnerSeatID] ?? "Player"
     }
 
-    private func playerCard(_ playerID: String, compact: Bool) -> some View {
+    /// A seat's name plate: parchment, with the rolled number struck on a brass coin. The winner's
+    /// plate is ember glass; a seat that is out of the reroll goes dark.
+    private func seatPlate(_ playerID: String, compact: Bool) -> some View {
         let name = seatNames[playerID] ?? "Player"
         let value = settledRolls[playerID]
         let isRolling = activeSeatID == playerID
         let isWinner = playbackFinished && roll.winnerSeatID == playerID
         let isOut = shownRoundIndex.map { $0 > 0 && rounds[$0][playerID] == nil && value != nil } ?? false
+        let ink = isWinner ? Ink.cream : (isOut ? Ink.muted : Ink.brown)
+        let secondary = isWinner ? Ink.cream.opacity(0.85) : (isOut ? Ink.muted.opacity(0.8) : Ink.brownSoft)
 
-        return VStack(spacing: compact ? 7 : 10) {
-            Group {
-                if let value, !isRolling {
-                    D20Face(value: value, spinning: false, turns: 0,
-                            emphasized: isWinner, compact: true)
-                        .matchedGeometryEffect(id: "die-\(playerID)", in: dieFlight)
-                } else {
-                    Image(systemName: "dice")
-                        .font(.system(size: 29, weight: .light))
-                        .foregroundStyle(Palette.secondary.opacity(0.7))
-                }
+        return HStack(spacing: compact ? 8 : 12) {
+            SeatCoin(value: isRolling ? nil : value, size: compact ? 38 : 46, lit: isWinner)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(compact ? .subheadline : .body, design: .serif, weight: .heavy))
+                    .foregroundStyle(ink)
+                    .lineLimit(2)
+                Text(status(for: playerID, value: value, isRolling: isRolling, isOut: isOut, isWinner: isWinner))
+                    .font(.system(.caption, design: .serif, weight: .semibold))
+                    .foregroundStyle(secondary)
+                    .lineLimit(2)
             }
-            .frame(width: compact ? 56 : 76, height: compact ? 56 : 76)
-            .accessibilityHidden(true)
-
-            Text(name)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Palette.ink)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-            Text(status(for: playerID, value: value, isRolling: isRolling,
-                        isOut: isOut, isWinner: isWinner))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(isWinner ? Palette.accent : Palette.secondary)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, compact ? 8 : 18)
-        .padding(.horizontal, 8)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(isWinner ? Palette.accent : Palette.ink.opacity(0.12), lineWidth: isWinner ? 2 : 1))
-        .opacity(isOut ? 0.65 : 1)
+        .padding(.horizontal, compact ? 12 : 14)
+        .padding(.vertical, compact ? 5 : 10)
+        .frame(maxWidth: .infinity, minHeight: compact ? 50 : 66, alignment: .leading)
+        .background {
+            TavernFill(material: isWinner ? .ember : (isOut ? .leather : .parchment))
+                .clipShape(RoundedRectangle(cornerRadius: 10)).padding(2)
+        }
+        .overlay { TavernBrassFrame(scale: 0.5) }
+        .shadow(color: isWinner ? TavernPalette.ember.opacity(0.6) : .black.opacity(0.45), radius: isWinner ? 10 : 5, y: 3)
+        .opacity(isOut ? 0.78 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription(for: playerID, name: name,
                                                      displayedValue: value, isRolling: isRolling,
@@ -307,6 +364,8 @@ struct MultiplayerD20View: View {
             settledRolls = [:]
             playbackFinished = false
             playedStepCount = 0
+            tableResting = [:]
+            tableThrow = nil
             return
         }
         playbackFinished = false
@@ -320,46 +379,53 @@ struct MultiplayerD20View: View {
             let seat = step.seatID
             let value = step.value
             shownRoundIndex = step.roundIndex
+            // A reroll starts with a bare table: the dice come up and the tied seats throw again.
+            if step.roundIndex != tableRound {
+                tableRound = step.roundIndex
+                tableResting = [:]
+                tableThrow = nil
+                if !(reduceMotion || skipAnimation) {
+                    try? await Task.sleep(for: .milliseconds(380))
+                    guard !Task.isCancelled else { return }
+                }
+            }
             if reduceMotion || skipAnimation {
+                // No tumble: the die lies on its number and the roll moves on.
+                tableThrow = nil
+                tableResting[seat] = value
                 settledRolls[seat] = value
                 activeSeatID = nil
                 activeValue = nil
                 landed = false
-                revealFace = false
-                diePosition = nil
                 playedStepCount += 1
                 onStepPlayed()
                 continue
             }
             settledRolls.removeValue(forKey: seat)
+            tableResting.removeValue(forKey: seat)
             activeSeatID = seat
             activeValue = value
             landed = false
-            revealFace = false
-            diePosition = nil
             edgeHitTurn = nil
             reboundTurn = nil
+            restTurn = nil
             spinTurns += 1
+            tableThrow = D20TableState.Throw(seatID: seat, value: value, turn: spinTurns)
             GameAudio.shared.play(.diceRoll)
-            // Physics decides the path, never the result. Wait for a measurable
-            // reverse trip from the wall, with a bounded recovery if rendering pauses.
-            for _ in 0..<48 where reboundTurn != spinTurns {
+            // The recording decides the path, never the result. Wait for the die to come to rest, with
+            // a bounded recovery if rendering pauses (or a build has no dice assets).
+            let tableReady = D20Assets.shared != nil
+            for _ in 0..<(tableReady ? 90 : 6) where restTurn != spinTurns {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard !Task.isCancelled else { return }
             }
-            try? await Task.sleep(for: .milliseconds(450))
-            guard !Task.isCancelled else { return }
-            revealFace = true
-            try? await Task.sleep(for: .milliseconds(280))
-            guard !Task.isCancelled else { return }
-            if diePosition == nil {
-                diePosition = CGPoint(x: stageSize.width / 2, y: stageSize.height * 0.40)
-            }
+            tableResting[seat] = value
+            tableThrow = nil
             withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) { landed = true }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             GameAudio.shared.play(.diceLand)
-            // Give each player long enough to read the result before the die
-            // flies into their square, including when VoiceOver is not active.
+            // Give each player long enough to read the result before the roll moves on, including
+            // when VoiceOver is not active.
             try? await Task.sleep(for: .milliseconds(1900))
             guard !Task.isCancelled else { return }
             withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
@@ -393,433 +459,62 @@ struct MultiplayerD20View: View {
         let skipAnimation: Bool
     }
 
-    private enum Palette {
-        static let surface = Color(red: 31 / 255, green: 33 / 255, blue: 37 / 255)
-        static let ink = Color(red: 243 / 255, green: 241 / 255, blue: 236 / 255)
-        static let secondary = Color(red: 177 / 255, green: 178 / 255, blue: 182 / 255)
-        static let accent = Color(red: 1, green: 128 / 255, blue: 88 / 255)
-    }
+    private struct RollAreaAccessibility: ViewModifier {
+        let active: Bool
+        let value: String
 
-    private struct D20Face: View {
-        let value: Int?
-        let spinning: Bool
-        let turns: Int
-        let emphasized: Bool
-        let compact: Bool
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-        var body: some View {
-            Group {
-                if reduceMotion {
-                    staticFace
-                } else {
-                    D20SceneView(value: value, turns: turns, spinning: spinning)
-                }
-            }
-            .shadow(color: Palette.accent.opacity(emphasized ? 0.38 : 0.18), radius: 14, y: 8)
-        }
-
-        private var staticFace: some View {
-            ZStack {
-                DieOutline()
-                    .fill(LinearGradient(colors: [Palette.accent.opacity(0.95), Palette.accent.opacity(0.45),
-                                                  Palette.surface], startPoint: .topLeading, endPoint: .bottomTrailing))
-                DieFacets().stroke(Palette.ink.opacity(0.28), lineWidth: 1)
-                DieOutline().strokeBorder(Palette.ink.opacity(0.7), lineWidth: 1.5)
-                Text(value.map(String.init) ?? "D20")
-                    .font(.system(size: compact ? 25 : 31, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.ink)
+        func body(content: Content) -> some View {
+            if active {
+                content
+                    .accessibilityElement()
+                    .accessibilityLabel("D20 roll area")
+                    .accessibilityValue(value)
+                    .accessibilityIdentifier("multiplayerD20.rollArea")
+            } else {
+                content.accessibilityHidden(true)
             }
         }
     }
 
-    /// A real icosahedron: 12 vertices, 20 flat-shaded triangular faces, and 30 edges.
-    /// Each face is numbered. The chosen face is oriented toward the camera before
-    /// the full-turn tumble, so SceneKit never selects or changes a game result.
-    private struct D20SceneView: UIViewRepresentable {
-        let value: Int?
-        let turns: Int
-        let spinning: Bool
-        var arenaSize: CGSize? = nil
-        var onEdgeHit: ((Int) -> Void)? = nil
-        var onRebound: ((Int) -> Void)? = nil
-        var onRest: ((Int, CGPoint) -> Void)? = nil
-
-        func makeCoordinator() -> Coordinator { Coordinator() }
-
-        func makeUIView(context: Context) -> SCNView {
-            let view = SCNView(frame: .zero)
-            view.scene = context.coordinator.scene
-            view.backgroundColor = .clear
-            view.isOpaque = false
-            view.allowsCameraControl = false
-            view.isUserInteractionEnabled = false
-            view.autoenablesDefaultLighting = false
-            view.antialiasingMode = .multisampling4X
-            view.preferredFramesPerSecond = 60
-            // The traveling die needs a live physics renderer; settled dice in
-            // player squares should not keep extra 60 fps scenes running.
-            view.rendersContinuously = arenaSize != nil
-            view.isPlaying = true
-            view.delegate = context.coordinator
-            view.accessibilityElementsHidden = true
-            return view
-        }
-
-        func updateUIView(_ view: SCNView, context: Context) {
-            context.coordinator.onEdgeHit = onEdgeHit
-            context.coordinator.onRebound = onRebound
-            context.coordinator.onRest = onRest
-            if let arenaSize { context.coordinator.configureArena(size: arenaSize) }
-            context.coordinator.present(value: value, turns: turns, spinning: spinning,
-                                        arena: arenaSize != nil)
-        }
-
-        final class Coordinator: NSObject, SCNPhysicsContactDelegate, SCNSceneRendererDelegate {
-            let scene = SCNScene()
-            private let die = SCNNode()
-            private let labels = SCNNode()
-            private let camera = SCNNode()
-            private var faceOrientations: [simd_quatf] = []
-            private var lastValue: Int?
-            private var lastTurns = 0
-            private var arenaSize: CGSize = .zero
-            private var arenaScale: CGFloat = 1
-            private var arenaBounds: CGSize = .zero
-            private var travelDirection: CGFloat = 1
-            private var wallImpactX: Float?
-            private var didCorrectBounce = false
-            private var didReportRebound = false
-            var onEdgeHit: ((Int) -> Void)?
-            var onRebound: ((Int) -> Void)?
-            var onRest: ((Int, CGPoint) -> Void)?
-
-            private enum Collision {
-                static let die = 1
-                static let wall = 2
-                static let table = 4
-            }
-
-            override init() {
-                super.init()
-                buildDie()
-                scene.rootNode.addChildNode(die)
-
-                let optics = SCNCamera()
-                optics.usesOrthographicProjection = true
-                optics.orthographicScale = 2.15
-                camera.camera = optics
-                camera.position = SCNVector3(0, 0, 30)
-                scene.rootNode.addChildNode(camera)
-
-                let key = SCNNode()
-                key.light = SCNLight()
-                key.light?.type = .omni
-                key.light?.intensity = 900
-                key.position = SCNVector3(-2, 3, 4)
-                scene.rootNode.addChildNode(key)
-
-                let fill = SCNNode()
-                fill.light = SCNLight()
-                fill.light?.type = .ambient
-                fill.light?.intensity = 350
-                scene.rootNode.addChildNode(fill)
-                scene.background.contents = UIColor.clear
-            }
-
-            func configureArena(size: CGSize) {
-                guard size.width > 0, size.height > 0, size != arenaSize else { return }
-                arenaSize = size
-                // Orthographic projection keeps the die the same physical screen
-                // size in portrait and landscape, while the walls follow the view.
-                let diePoints = min(138.0, max(108.0, size.width * 0.29))
-                arenaScale = diePoints / 2
-                let halfWidth = size.width / (2 * arenaScale)
-                let halfHeight = size.height / (2 * arenaScale)
-                arenaBounds = CGSize(width: halfWidth, height: halfHeight)
-                camera.camera?.orthographicScale = Double(halfHeight)
-                scene.physicsWorld.gravity = SCNVector3(0, 0, -17)
-                scene.physicsWorld.timeStep = 1.0 / 60.0
-                scene.physicsWorld.contactDelegate = self
-                scene.rootNode.childNodes.filter { $0.name == "arenaBoundary" || $0.name == "sideWall" }
-                    .forEach { $0.removeFromParentNode() }
-
-                func boundary(name: String, width: CGFloat, height: CGFloat, depth: CGFloat,
-                              at position: SCNVector3, category: Int,
-                              restitution: CGFloat, friction: CGFloat) {
-                    let box = SCNBox(width: width, height: height, length: depth, chamferRadius: 0)
-                    let node = SCNNode()
-                    node.name = name
-                    node.position = position
-                    let body = SCNPhysicsBody(type: .static,
-                                              shape: SCNPhysicsShape(geometry: box, options: nil))
-                    body.categoryBitMask = category
-                    body.collisionBitMask = Collision.die
-                    body.contactTestBitMask = name == "sideWall" ? Collision.die : 0
-                    body.restitution = restitution
-                    body.friction = friction
-                    node.physicsBody = body
-                    scene.rootNode.addChildNode(node)
-                }
-                let w = halfWidth, h = halfHeight
-                boundary(name: "arenaBoundary", width: w * 2 + 4, height: h * 2 + 4, depth: 0.2,
-                         at: SCNVector3(0, 0, -1.12), category: Collision.table,
-                         restitution: 0.27, friction: 0.15)
-                for x in [-w - 0.12, w + 0.12] {
-                    boundary(name: "sideWall", width: 0.24, height: h * 2 + 4, depth: 8,
-                             at: SCNVector3(x, 0, 1.6), category: Collision.wall,
-                             restitution: 0.88, friction: 0.08)
-                }
-                for y in [-h - 0.12, h + 0.12] {
-                    boundary(name: "arenaBoundary", width: w * 2 + 4, height: 0.24, depth: 8,
-                             at: SCNVector3(0, y, 1.6), category: Collision.wall,
-                             restitution: 0.78, friction: 0.08)
-                }
-            }
-
-            func present(value: Int?, turns: Int, spinning: Bool, arena: Bool) {
-                labels.isHidden = value == nil
-                let resultChanged = value != lastValue
-                let newTurn = turns != lastTurns
-                guard resultChanged || newTurn else { return }
-                lastValue = value
-                lastTurns = turns
-                die.removeAction(forKey: "tumble")
-                if arena {
-                    if newTurn && spinning { launch(turn: turns) }
-                    else if let value, (1...20).contains(value) { reveal(value: value, turn: turns) }
-                    return
-                }
-                if let value, (1...20).contains(value) {
-                    die.simdOrientation = simd_inverse(faceOrientations[value - 1])
-                } else {
-                    die.simdOrientation = simd_quatf(angle: 0.55, axis: SIMD3<Float>(0, 1, 0))
-                }
-                guard newTurn && spinning else { return }
-                // Integral full turns end at the same orientation as the supplied face.
-                let tumble = SCNAction.rotateBy(x: .pi * 2, y: .pi * 4, z: .pi * 2, duration: 2.05)
-                tumble.timingMode = .easeInEaseOut
-                die.runAction(tumble, forKey: "tumble")
-            }
-
-            private func launch(turn: Int) {
-                guard let geometry = die.geometry else { return }
-                let direction: CGFloat = turn.isMultiple(of: 2) ? 1 : -1
-                travelDirection = direction
-                wallImpactX = nil
-                didCorrectBounce = false
-                didReportRebound = false
-                die.simdOrientation = simd_quatf(angle: 0.48, axis: SIMD3<Float>(1, 1, 0.2))
-                die.position = SCNVector3(-direction * (arenaBounds.width - 1.2),
-                                          min(arenaBounds.height - 1.3, 0.7), 1.35)
-                let body = SCNPhysicsBody(type: .dynamic,
-                    shape: SCNPhysicsShape(geometry: geometry,
-                                           options: [.type: SCNPhysicsShape.ShapeType.convexHull]))
-                body.mass = 1
-                body.categoryBitMask = Collision.die
-                body.collisionBitMask = Collision.wall | Collision.table
-                body.contactTestBitMask = Collision.wall
-                body.restitution = 0.68
-                body.friction = 0.16
-                body.damping = 0.05
-                body.angularDamping = 0.26
-                die.physicsBody = body
-                // Cross the available width in about a second; SceneKit handles
-                // the table impact, edge contact, bounce, and subsequent spin.
-                let travel = max(2.4, arenaBounds.width * 2 - 2.4)
-                body.velocity = SCNVector3(direction * travel / 1.05, -0.32, -0.3)
-                body.angularVelocity = SCNVector4(0.5, 0.9, 0.65, direction * 13)
-            }
-
-            private func reveal(value: Int, turn: Int) {
-                die.physicsBody?.type = .kinematic
-                let location = die.presentation.position
-                let point = CGPoint(x: arenaSize.width / 2 + CGFloat(location.x) * arenaScale,
-                                    y: arenaSize.height / 2 - CGFloat(location.y) * arenaScale)
-                SCNTransaction.begin()
-                SCNTransaction.animationDuration = 0.24
-                die.simdOrientation = simd_inverse(faceOrientations[value - 1])
-                SCNTransaction.commit()
-                let settledPoint = CGPoint(x: min(max(74, point.x), arenaSize.width - 74),
-                                           y: min(max(74, point.y), arenaSize.height - 110))
-                DispatchQueue.main.async { [weak self] in self?.onRest?(turn, settledPoint) }
-            }
-
-            func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
-                guard contact.nodeA.name == "sideWall" || contact.nodeB.name == "sideWall",
-                      wallImpactX == nil else { return }
-                wallImpactX = die.presentation.position.x
-                let turn = lastTurns
-                DispatchQueue.main.async { [weak self] in self?.onEdgeHit?(turn) }
-            }
-
-            func renderer(_ renderer: SCNSceneRenderer, didSimulatePhysicsAtTime time: TimeInterval) {
-                guard let impact = wallImpactX, let body = die.physicsBody,
-                      body.type == .dynamic else { return }
-                // A faceted die can lose almost all normal velocity when it hits
-                // wall and table at once. Preserve a modest reflected component
-                // only in that case; the rest of the path remains physics-driven.
-                if !didCorrectBounce {
-                    let velocity = body.velocity
-                    if CGFloat(velocity.x) * travelDirection > -1.8 {
-                        let reverseSpeed = max(Float(1.8), abs(velocity.x) * Float(0.65))
-                        let reverseX = Float(-travelDirection) * reverseSpeed
-                        body.velocity = SCNVector3(reverseX, velocity.y, velocity.z)
-                    }
-                    didCorrectBounce = true
-                }
-                guard !didReportRebound,
-                      CGFloat(die.presentation.position.x - impact) * travelDirection < -0.65 else { return }
-                didReportRebound = true
-                let turn = lastTurns
-                DispatchQueue.main.async { [weak self] in self?.onRebound?(turn) }
-            }
-
-            private func buildDie() {
-                let phi = Float((1 + sqrt(5.0)) / 2)
-                let raw: [SIMD3<Float>] = [
-                    [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
-                    [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
-                    [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]
-                ]
-                let vertices = raw.map(simd_normalize)
-                let faces: [[Int]] = [
-                    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-                    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-                    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-                    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
-                ]
-
-                var positions: [SCNVector3] = []
-                var normals: [SCNVector3] = []
-                for (faceIndex, face) in faces.enumerated() {
-                    let a = vertices[face[0]]
-                    var b = vertices[face[1]]
-                    var c = vertices[face[2]]
-                    var normal = simd_normalize(simd_cross(b - a, c - a))
-                    if simd_dot(normal, a + b + c) < 0 {
-                        swap(&b, &c)
-                        normal = -normal
-                    }
-                    for vertex in [a, b, c] {
-                        positions.append(SCNVector3(vertex.x, vertex.y, vertex.z))
-                        normals.append(SCNVector3(normal.x, normal.y, normal.z))
-                    }
-                    let basis = Self.faceBasis(normal)
-                    faceOrientations.append(basis)
-
-                    let text = SCNText(string: String(faceIndex + 1), extrusionDepth: 0.003)
-                    text.font = UIFont.monospacedDigitSystemFont(ofSize: 1, weight: .bold)
-                    text.flatness = 0.006
-                    let ink = SCNMaterial()
-                    ink.lightingModel = .constant
-                    ink.diffuse.contents = UIColor(red: 243 / 255, green: 241 / 255, blue: 236 / 255, alpha: 1)
-                    ink.isDoubleSided = true
-                    text.materials = [ink]
-                    let textNode = SCNNode(geometry: text)
-                    let bounds = text.boundingBox
-                    textNode.position = SCNVector3(-(bounds.min.x + bounds.max.x) * 0.18,
-                                                   -(bounds.min.y + bounds.max.y) * 0.18, 0)
-                    textNode.scale = SCNVector3(0.36, 0.36, 0.36)
-                    let faceNode = SCNNode()
-                    faceNode.simdOrientation = basis
-                    faceNode.simdPosition = (a + b + c) / 3 + normal * 0.025
-                    faceNode.addChildNode(textNode)
-                    labels.addChildNode(faceNode)
-                }
-
-                let shell = SCNGeometry(
-                    sources: [SCNGeometrySource(vertices: positions), SCNGeometrySource(normals: normals)],
-                    elements: [SCNGeometryElement(indices: (0..<positions.count).map(UInt16.init),
-                                                  primitiveType: .triangles)]
-                )
-                let enamel = SCNMaterial()
-                enamel.lightingModel = .physicallyBased
-                enamel.diffuse.contents = UIColor(red: 0.73, green: 0.31, blue: 0.13, alpha: 1)
-                enamel.metalness.contents = 0.22
-                enamel.roughness.contents = 0.35
-                shell.materials = [enamel]
-                die.geometry = shell
-
-                // Draw each physical edge once, including on the back of the die.
-                let edgeIDs = Set(faces.flatMap { face in
-                    [(face[0], face[1]), (face[1], face[2]), (face[2], face[0])].map {
-                        min($0.0, $0.1) * vertices.count + max($0.0, $0.1)
-                    }
-                })
-                let edgeIndices: [UInt16] = edgeIDs.sorted().flatMap { id in
-                    [UInt16(id / vertices.count), UInt16(id % vertices.count)]
-                }
-                let wire = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices.map {
-                    SCNVector3($0.x, $0.y, $0.z)
-                })], elements: [SCNGeometryElement(indices: edgeIndices, primitiveType: .line)])
-                let metal = SCNMaterial()
-                metal.lightingModel = .constant
-                metal.diffuse.contents = UIColor(red: 1, green: 0.78, blue: 0.46, alpha: 1)
-                wire.materials = [metal]
-                die.addChildNode(SCNNode(geometry: wire))
-                die.addChildNode(labels)
-            }
-
-            private static func faceBasis(_ normal: SIMD3<Float>) -> simd_quatf {
-                let vertical = SIMD3<Float>(0, 1, 0)
-                let fallback = SIMD3<Float>(1, 0, 0)
-                let reference = abs(simd_dot(normal, vertical)) > 0.95 ? fallback : vertical
-                let up = simd_normalize(reference - normal * simd_dot(reference, normal))
-                let right = simd_normalize(simd_cross(up, normal))
-                return simd_quatf(simd_float3x3(columns: (right, simd_cross(normal, right), normal)))
-            }
+    private struct RollRegionKey: PreferenceKey {
+        static let defaultValue: CGRect = .zero
+        static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+            let next = nextValue()
+            if next.width > 1 { value = next }
         }
     }
 
-    private struct DieOutline: InsettableShape {
-        var insetAmount: CGFloat = 0
-
-        func path(in rect: CGRect) -> Path {
-            let points: [CGPoint] = [
-                CGPoint(x: 0.5, y: 0.02), CGPoint(x: 0.91, y: 0.23),
-                CGPoint(x: 0.97, y: 0.65), CGPoint(x: 0.5, y: 0.98),
-                CGPoint(x: 0.03, y: 0.65), CGPoint(x: 0.09, y: 0.23)
-            ]
-            let bounds = rect.insetBy(dx: insetAmount, dy: insetAmount)
-            var path = Path()
-            for (index, point) in points.enumerated() {
-                let position = CGPoint(x: bounds.minX + point.x * bounds.width,
-                                       y: bounds.minY + point.y * bounds.height)
-                if index == 0 { path.move(to: position) }
-                else { path.addLine(to: position) }
-            }
-            path.closeSubpath()
-            return path
-        }
-
-        func inset(by amount: CGFloat) -> DieOutline {
-            var copy = self
-            copy.insetAmount += amount
-            return copy
-        }
+    /// The Walnut Tavern inks: cream and brass on leather, brown on parchment.
+    private enum Ink {
+        static let cream = Color(red: 0.98, green: 0.92, blue: 0.80)
+        static let muted = Color(red: 0.84, green: 0.72, blue: 0.52)
+        static let brass = Color(red: 0.98, green: 0.82, blue: 0.48)
+        static let brown = Color(red: 0.24, green: 0.12, blue: 0.05)
+        static let brownSoft = Color(red: 0.42, green: 0.27, blue: 0.14)
     }
+}
 
-    private struct DieFacets: Shape {
-        func path(in rect: CGRect) -> Path {
-            func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-                CGPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height)
+/// The number a seat rolled, struck on a brass coin; blank (a dash) before the seat has rolled.
+private struct SeatCoin: View {
+    let value: Int?
+    var size: CGFloat = 44
+    var lit = false
+
+    var body: some View {
+        ZStack {
+            if let image = UIImage(named: "tavern-ui-coin") {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                Circle().fill(TavernPalette.brass)
             }
-            var path = Path()
-            path.move(to: point(0.5, 0.02))
-            path.addLine(to: point(0.5, 0.27))
-            path.addLine(to: point(0.09, 0.23))
-            path.move(to: point(0.5, 0.27))
-            path.addLine(to: point(0.91, 0.23))
-            path.move(to: point(0.09, 0.23))
-            path.addLine(to: point(0.19, 0.7))
-            path.addLine(to: point(0.5, 0.98))
-            path.move(to: point(0.91, 0.23))
-            path.addLine(to: point(0.81, 0.7))
-            path.addLine(to: point(0.5, 0.98))
-            return path
+            Text(value.map(String.init) ?? "–")
+                .font(.system(size: size * (value.map { $0 >= 10 } ?? false ? 0.46 : 0.54), weight: .black, design: .serif))
+                .monospacedDigit()
+                .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04).opacity(value == nil ? 0.45 : 1))
+                .shadow(color: .white.opacity(0.35), radius: 0, y: 1)
         }
+        .frame(width: size, height: size)
+        .shadow(color: lit ? TavernPalette.ember.opacity(0.9) : .clear, radius: 6)
     }
 }
 
@@ -840,8 +535,9 @@ extension EnvironmentValues {
 /// The starting roll's full-screen cover: the board's opaque canvas, so nothing behind it
 /// (such as "Select a starting player") shows through, and a modal for VoiceOver.
 struct StartingRollCover<Content: View>: View {
-    /// NativeGameView's board canvas (MagicPalette.boardBackdrop on Android).
-    static var canvas: Color { Color(red: 0.055, green: 0.085, blue: 0.10) }
+    /// Dark walnut, the room around the tavern table the roll draws over it (it also keeps the board
+    /// behind from showing through while the table loads).
+    static var canvas: Color { Color(red: 0.09, green: 0.05, blue: 0.03) }
     @ViewBuilder let content: Content
 
     var body: some View {

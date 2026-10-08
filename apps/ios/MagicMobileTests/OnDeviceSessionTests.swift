@@ -720,6 +720,24 @@ final class OnDeviceSessionTests: XCTestCase {
                                      sinceAction: 1, sinceLastPoll: 1, spacing: 0.3), .awaitNotice(timeout: Schedule.heartbeat - 1))
     }
 
+    func testLocalPollScheduleSlowsOnlyWhileTheEngineWaitsOnThePlayer() {
+        typealias Schedule = OnDeviceLocalPollSchedule
+        // A fresh change, or an answer on its way: the short timer.
+        XCTAssertEqual(Schedule.interval(idlePolls: 0, awaitingPlayer: false), Schedule.active)
+        XCTAssertEqual(Schedule.interval(idlePolls: 2, awaitingPlayer: true), Schedule.active)
+        // Unchanged for a few polls (the AI is thinking): the idle timer, however long it takes.
+        XCTAssertEqual(Schedule.interval(idlePolls: Schedule.idleAfter, awaitingPlayer: false), Schedule.idle)
+        XCTAssertEqual(Schedule.interval(idlePolls: 500, awaitingPlayer: false), Schedule.idle)
+        // Waiting on the player: still prompt at first, then only a safety-net poll.
+        XCTAssertEqual(Schedule.interval(idlePolls: Schedule.awaitingAfter - 1, awaitingPlayer: true), Schedule.idle)
+        XCTAssertEqual(Schedule.interval(idlePolls: Schedule.awaitingAfter, awaitingPlayer: true), Schedule.awaitingPlayer)
+        XCTAssertGreaterThan(Schedule.awaitingPlayer, Schedule.idle)
+        // A stack resolving right after an answer polls faster, but only while it keeps changing.
+        XCTAssertEqual(Schedule.interval(idlePolls: 0, awaitingPlayer: false, stackChain: true), Schedule.chain)
+        XCTAssertLessThan(Schedule.chain, Schedule.active)
+        XCTAssertEqual(Schedule.interval(idlePolls: Schedule.idleAfter, awaitingPlayer: false, stackChain: true), Schedule.idle)
+    }
+
     func testHostRetryPolicyRetriesOnlyLostHostAnswersAFewTimes() {
         var policy = OnDeviceHostRetryPolicy()
         XCTAssertNil(policy.delay(after: EngineError.invalidMessage("The host is busy. Retry the same action.")))

@@ -13,7 +13,10 @@ struct DeckStudioPlaytestInsightsView: View {
     @State private var generation = UUID()
     @State private var allDecks = false
     @State private var result = "All results"
-    private var layoutFixture: Bool {
+    private var layoutFixture: Bool { Self.layoutFixtureActive }
+    /// UI tests: `--deck-history-layout-ui-test` shows eighteen development games (the profile's game history
+    /// uses the same ones).
+    static var layoutFixtureActive: Bool {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("--deck-history-layout-ui-test") &&
         ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] != nil
@@ -81,14 +84,10 @@ struct DeckStudioPlaytestInsightsView: View {
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                 }
                 HStack {
-                    Picker("Deck history", selection: $allDecks) {
-                        Text("This exact deck").tag(false)
-                        Text("All decks").tag(true)
-                    }.disabled(signature == nil)
-                    Picker("Game result", selection: $result) {
-                        ForEach(results, id: \.self) { Text($0).tag($0) }
-                    }
-                }.pickerStyle(.menu)
+                    BinderMenuPicker(title: "Deck history", selection: $allDecks, options: [(false, "This exact deck"), (true, "All decks")])
+                        .disabled(signature == nil)
+                    BinderMenuPicker(title: "Game result", selection: $result, options: results.map { ($0, $0) })
+                }
                 if games.isEmpty {
                     Text(enabled ? "No saved matches yet." : "No saved matches. Enable summaries in History settings for future AI games.")
                         .font(.subheadline)
@@ -132,7 +131,8 @@ struct DeckStudioPlaytestInsightsView: View {
         guard let data = try? encoder.encode(visible) else { return nil }
         return String(data: data, encoding: .utf8)
     }
-    private func fixtureGames() -> [DeckStudioRecordedGame] {
+    private func fixtureGames() -> [DeckStudioRecordedGame] { Self.fixtureGames(playing: signature) }
+    static func fixtureGames(playing signature: DeckStudioDeckSignature?) -> [DeckStudioRecordedGame] {
         guard let playingDeck = signature ?? (try? DeckStudioDeckSignature(rows: [
             .init(name: "Isamaru, Hound of Konda", count: 1, section: "commanders")
         ])) else { return [] }
@@ -210,7 +210,7 @@ private struct MatchHistoryRow: View {
             HStack(alignment: .top, spacing: 12) {
                 if opponentCommanders.isEmpty {
                     Image(systemName: "person.crop.rectangle.stack").font(.title2)
-                        .frame(width: 52, height: 70).background(DeckStudioPalette.background)
+                        .frame(width: 52, height: 70).background(GrimoirePaper())
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .accessibilityHidden(true)
                 } else {
@@ -350,17 +350,8 @@ struct MatchHistoryDashboard: View {
                 .frame(maxWidth: .infinity)
             }
             .accessibilityIdentifier("deckHistory.dashboard.scroll")
-            .background(DeckStudioPalette.background)
-            .navigationTitle("Match history")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Label("Back to history", systemImage: "chevron.left")
-                    }
-                    .accessibilityIdentifier("deckHistory.dashboard.close")
-                }
-            }
+            .background(GrimoirePaper())
+            .binderLeaf("Match history", leading: BinderLeafAction(title: "Back", identifier: "deckHistory.dashboard.close") { dismiss() })
         }
         .onAppear {
             guard !didSelectLatestSample else { return }
@@ -415,7 +406,7 @@ struct MatchHistoryDashboard: View {
                     Image(systemName: "person.crop.rectangle.stack")
                         .font(.title3)
                         .frame(width: 50, height: 70)
-                        .background(DeckStudioPalette.background)
+                        .background(GrimoirePaper())
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .accessibilityHidden(true)
                 } else {

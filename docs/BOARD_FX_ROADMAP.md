@@ -552,3 +552,14 @@ single MIT file with its license header when that is enough.
   game-over `GameResultBackdrop` now reads its clock inside the Canvas (`rememberAnimationClock`), so each
   frame redraws instead of recomposing. Effects, timings and the Android board-breath steps are unchanged.
   Not yet felt on a phone.
+- 2026-10-05 (Claude): Battery pass. iOS board glows (playable cards, the commander-ready ring, lit mana
+  gems) now breathe through `BoardBreath` (AmbientMotion.swift): 30 steps a second on the wall clock
+  instead of a repeating animation at the display's rate. The menu mark's glint and `ShineSweep` draw only
+  while they show (`BurstTimelineSchedule`). Looks and timings are unchanged; rules are in
+  docs/PERFORMANCE_TARGETS.md. Not yet felt on a phone.
+- 2026-10-06 (Claude): The starting roll moved onto the tavern table with a real 3D D20 (docs/STARTING_ROLL.md). The
+  die, tables and recorded throws are built by `scripts/brand/d20.py` (Blender) and read by both apps as glTF and
+  JSON; there is no physics in the apps, a recorded throw is turned by an icosahedral symmetry so it ends on the game's
+  number. iOS stays on SceneKit for this small scene (poses are driven by a `CADisplayLink`, not SceneKit's own loop,
+  which dropped frames when toggled); Android uses Filament 1.75.1 (1.76+ needs compileSdk 37). The D20 RealityKit
+  migration above is still deferred and would only touch `StartingRollTableView.swift`. Phone feel pending Caleb.

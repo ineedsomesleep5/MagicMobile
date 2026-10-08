@@ -58,8 +58,9 @@ struct BrandMark: View {
 
     var body: some View {
         let still = reduceMotion || !glint || !ambient
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { timeline in
-            let t = still ? 0 : timeline.date.timeIntervalSince(start)
+        // Frames only during the glint itself (0.6 s of every 4.5 s).
+        TimelineView(BurstTimelineSchedule(start: start, cycle: 4.5, active: 0.6, paused: still)) { timeline in
+            let t = still ? 0 : max(0, timeline.date.timeIntervalSince(start))
             // A glint every 4.5 s: a quick swell, then settle.
             let phase = t.truncatingRemainder(dividingBy: 4.5)
             let flash = phase < 0.6 ? sin(.pi * phase / 0.6) : 0
@@ -419,10 +420,11 @@ struct ShineSweep: View {
     @State private var start = Date()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let cycle = 3.6
+        let cycle = 3.6
+        // Frames only while the band crosses (0.9 s of every 3.6 s); it is off the button otherwise.
+        TimelineView(BurstTimelineSchedule(start: start, cycle: cycle, active: 0.9)) { timeline in
             // The band travels from just before the leading edge to just past the trailing one.
-            let p = timeline.date.timeIntervalSince(start).truncatingRemainder(dividingBy: cycle) / 0.9 * 1.4 - 0.2
+            let p = max(0, timeline.date.timeIntervalSince(start)).truncatingRemainder(dividingBy: cycle) / 0.9 * 1.4 - 0.2
             let band = 0.14
             LinearGradient(stops: [
                 .init(color: .clear, location: min(1, max(0, p - band))),

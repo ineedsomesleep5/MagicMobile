@@ -58,6 +58,10 @@ data class GameSnapshot(
     val winnerPlayerIds: List<String>? = null,
     val endReason: String? = null,
     val viewerPlayerId: String? = null,
+    /** "day" or "night" once the game has it (XMage's helper emblem); null before either. */
+    val dayNight: String? = null,
+    /** Spells cast this turn, while a storm card is in the game. */
+    val stormCount: Int? = null,
     val selectedOpponentId: String? = null,
     /** Presentation only: who the bottom seat shows while the viewer watches after leaving the game (BoardOpponentFocus). Null is the viewer's own seat. */
     val seatPlayerId: String? = null,
@@ -328,6 +332,8 @@ data class PlayerGameState(
     val hasLeft: Boolean? = null,
     /** False for the engine's AI seats. */
     val isHuman: Boolean? = null,
+    /** XMage designations such as City's Blessing. */
+    val designations: List<String>? = null,
 ) {
     val hasKnownCommanderTax: Boolean get() = commanderTaxKnown ?: true
     val isOut: Boolean get() = hasLeft == true
@@ -592,7 +598,16 @@ data class PromptEnvelopeV2(
     val orderedItems: List<ChoicePromptOption>? = null,
     val confirmation: XmagePromptConfirmation? = null,
     val options: Map<String, JsonElement>? = null,
-)
+) {
+    /**
+     * A yes/no question asked by a card's ability ("you may put a quest counter on …"): XMage can answer it the same way for
+     * the rest of the game. Questions with no source (keep this hand?, mana left in pool) never qualify.
+     */
+    val canRememberAnswer: Boolean get() = method == "GAME_ASK" && options?.get("originalId").string?.let(::isUuid) == true &&
+        !options?.get("autoAnswerMessage").string.isNullOrEmpty()
+    /** XMage's "which triggered ability goes on the stack first" question. */
+    val isTriggerOrder: Boolean get() = method == "GAME_PICK_ABILITY"
+}
 
 @Serializable
 data class XmageResponseCommand(val type: String? = null, val promptId: String? = null, val messageId: Int? = null,
@@ -749,6 +764,11 @@ data class GameCommand(
     val blockers: List<BlockDeclaration>? = null,
     val combatComplete: Boolean? = null,
     val expectedBridgeRevision: Int? = null,
+    /**
+     * Standing instructions sent with this answer on engines that list them (docs/PROTOCOL.md "Answer actions"):
+     * "rememberAnswer" (don't ask this card's question again), "rememberTriggerFirst", "passUntilStackResolved".
+     */
+    val answerActions: List<String>? = null,
 )
 
 @Serializable

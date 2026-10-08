@@ -221,6 +221,9 @@ class PlayerStatusSummary(player: PlayerGameState, snapshot: GameSnapshot?) {
         }.toMutableList()
         if (player.monarch == true) list += Badge("monarch", Icon.Symbol("crown.fill"), Tint(1.0, 0.8, 0.4), null, "Monarch")
         if (player.initiative == true) list += Badge("initiative", Icon.Symbol("flag.fill"), Tint(0.95, 0.55, 0.35), null, "Has the initiative")
+        for (designation in player.designations ?: emptyList()) {
+            if (designation.isNotEmpty()) list += Badge("designation-$designation", Icon.Symbol("building.columns.fill"), Tint(0.95, 0.85, 0.55), null, designation)
+        }
         if (snapshot != null) {
             // Each opposing commander that has hit this player, with its art when it is visible.
             for (owner in snapshot.players) {

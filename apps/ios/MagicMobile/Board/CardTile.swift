@@ -230,9 +230,8 @@ struct PlayableGlowPulse: ViewModifier {
 
     func body(content: Content) -> some View {
         if active && BoardFXLevel(rawValue: level) == .full && !reduceMotion {
-            content.phaseAnimator([0.5, 1.0]) { glow, value in
-                glow.opacity(value)
-            } animation: { _ in .easeInOut(duration: 1.2) }
+            // Thirty steps a second on the shared clock, not the display's full rate (BoardBreath).
+            BoardBreath(period: 1.2, low: 0.5, high: 1) { content.opacity($0) }
         } else {
             content
         }

@@ -110,8 +110,10 @@ final class FriendChallengeCoordinator: ObservableObject {
     /// Challenges waiting for this player, newest first.
     @Published private(set) var incoming: [FriendChallenge] = []
     var service: FriendChallengeService?
-    /// How often the menu checks for challenges.
+    /// How often the menu checks for challenges while a friend is online, and while none is (a
+    /// friend who has just come online can still challenge before the friends list catches up).
     static let watchSeconds: Double = 5
+    static let quietWatchSeconds: Double = 20
     private let sleep: (Double) async throws -> Void
     private var cancelRequested = false
     private var answered: Set<UUID> = []
@@ -158,18 +160,21 @@ final class FriendChallengeCoordinator: ObservableObject {
     /// Withdraws the challenge being waited on.
     func cancelOutgoing() { cancelRequested = true }
 
-    /// Checks for challenges until cancelled (run while the menu is showing).
-    func watch() async {
+    /// Checks for challenges until cancelled (run while the menu is showing). `friendOnline` picks
+    /// the pace: each check wakes the phone's radio, so it is slower when nobody could challenge.
+    func watch(friendOnline: @MainActor () -> Bool = { true }) async {
         while !Task.isCancelled {
             await refreshIncoming()
-            do { try await sleep(Self.watchSeconds) } catch { return }
+            do { try await sleep(friendOnline() ? Self.watchSeconds : Self.quietWatchSeconds) } catch { return }
         }
     }
 
     func refreshIncoming() async {
-        guard let service else { incoming = []; return }
+        guard let service else { if !incoming.isEmpty { incoming = [] }; return }
         guard let list = try? await service.incoming() else { return }
-        incoming = list.filter { $0.isPending && !answered.contains($0.id) }
+        let next = list.filter { $0.isPending && !answered.contains($0.id) }
+        // Assigned only on a change: every assignment redraws the menu.
+        if next != incoming { incoming = next }
     }
 
     /// Accepts: the challenge with its table code (and the ranked match for ranked).

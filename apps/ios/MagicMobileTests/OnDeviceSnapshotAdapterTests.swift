@@ -502,6 +502,47 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
         XCTAssertEqual(redacted.card.oracleText, "")
     }
 
+    /// A revealed top card (Conspicuous Snoop, Future Sight, Courser of Kruphix) arrives as the player's `topCard`:
+    /// it is the library's one visible card, and a cast offered for it resolves (it used to be dropped as unknown).
+    /// The helper emblems' day or night and storm count, and a designation, reach the snapshot too.
+    func testRevealedTopCardIsVisibleAndCastableWithTableHints() throws {
+        let original = try fixture("2p-priority")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        let viewer = try XCTUnwrap(view["myPlayerId"]?.string)
+        var template = try XCTUnwrap(view["myHand"]?.object?.values.first?.object)
+        let topID = UUID().uuidString, abilityID = UUID().uuidString
+        template["id"] = .string(topID)
+        var players = try XCTUnwrap(view["players"]?.array)
+        let seat = try XCTUnwrap(players.firstIndex { $0["playerId"]?.string == viewer })
+        var player = try XCTUnwrap(players[seat].object)
+        player["topCard"] = .object(template)
+        player["designationNames"] = .array([.string("City's Blessing")])
+        players[seat] = .object(player)
+        view["players"] = .array(players)
+        var objects = view["canPlayObjects"]?["objects"]?.object ?? [:]
+        objects[topID] = .object(["basicCastAbilities": .array([.object(["id": .string(abilityID), "value": .string("Cast from the top"),
+                                                                         "manaAbility": .bool(false), "spellAbility": .bool(true)])])])
+        view["canPlayObjects"] = .object(["objects": .object(objects)])
+        view["myHelperEmblems"] = .object([
+            UUID().uuidString: .object(["rules": .array([.string("Day or night."), .string("<br/><hintstart/>"),
+                .string("It's currently night, active player has cast 0 spells this turn. It will  become day next turn.")])]),
+            UUID().uuidString: .object(["rules": .array([.string("Storm counter."), .string("<br/><hintstart/>"), .string("Spells cast this turn: 3")])])])
+        root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+        let me = try XCTUnwrap(snapshot.players.first { $0.playerId == viewer })
+        XCTAssertEqual(me.zones.library.map(\.instanceId), [topID], "the revealed top card is the library's visible card")
+        let casts = snapshot.legalActions?.filter { $0.sourceInstanceId == topID && $0.type == "cast_spell" } ?? []
+        XCTAssertEqual(casts.compactMap(\.abilityId), [abilityID], "casting from the top of the library is offered")
+        XCTAssertEqual(casts.first?.sourceZone, "library")
+        XCTAssertEqual(snapshot.dayNight, "night")
+        XCTAssertEqual(snapshot.stormCount, 3)
+        XCTAssertEqual(me.designations, ["City's Blessing"])
+        let others = snapshot.players.filter { $0.playerId != viewer }
+        XCTAssertTrue(others.allSatisfy { $0.zones.library.isEmpty }, "no other library shows a card")
+    }
+
     private func fixture(_ name: String) throws -> MatchPoll {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module

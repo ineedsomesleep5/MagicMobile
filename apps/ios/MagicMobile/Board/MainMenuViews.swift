@@ -131,9 +131,11 @@ struct TavernMainMenu: View {
                 .multilineTextAlignment(compact ? .leading : .center)
                 .fixedSize(horizontal: false, vertical: true)
             if density < 2, !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // In the tavern's hand, like the title above it (no system type on the menu).
                 Text("Welcome back, \(playerName)")
-                    .font(.subheadline)
-                    .foregroundStyle(BrandTheme.inkSecondary)
+                    .font(.system(size: 16, weight: .regular, design: .serif).italic())
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.8))
+                    .shadow(color: .black.opacity(0.6), radius: 0.5, y: 1)
                     .multilineTextAlignment(compact ? .leading : .center)
             }
         }
@@ -390,6 +392,7 @@ struct AppearanceSettingsView: View {
                     BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
+                    AutoPassAfterCastToggle()
                     BoardEffectsPicker()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
@@ -416,6 +419,21 @@ struct FollowTurnsToggle: View {
     var body: some View {
         TavernToggle(title: "Follow Turns", isOn: $isOn, identifier: "settings.followTurns",
                      subtitle: "Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
+            .modifier(TavernSettingsPanel())
+    }
+}
+
+/// After you cast a spell, priority passes so it resolves without another tap (opponents can still respond). On by default.
+enum AutoPassAfterCast {
+    static let key = "magicmobile.autoPassAfterCast"
+}
+
+struct AutoPassAfterCastToggle: View {
+    @AppStorage(AutoPassAfterCast.key) private var isOn = true
+
+    var body: some View {
+        TavernToggle(title: "Pass After Casting", isOn: $isOn, identifier: "settings.autoPassAfterCast",
+                     subtitle: "Your spell resolves without another tap. Opponents can still respond.")
             .modifier(TavernSettingsPanel())
     }
 }

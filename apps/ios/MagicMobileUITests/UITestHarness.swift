@@ -14,6 +14,8 @@ enum UITestHarness {
             + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
             // Classic board unless a test asks for another (Walnut Tavern is the default).
             + (extraArguments.contains("-magicmobile.boardAppearance") ? [] : ["-magicmobile.boardAppearance", "arena"])
+            // The deck's cards as a list unless a test asks for the grid (the full-art grid is the default).
+            + (extraArguments.contains("-deckStudio.cards.layout.v1") ? [] : ["-deckStudio.cards.layout.v1", "List"])
             + extraArguments
     }
 

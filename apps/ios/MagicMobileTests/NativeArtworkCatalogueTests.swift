@@ -287,6 +287,9 @@ final class NativeArtworkCatalogueTests: XCTestCase {
         let names = try NativeDeckMetadataCatalogue.bundled().artworkCardNames
         let unresolved = names.filter { catalogue.imageURL(name: $0, size: "normal") == nil }
         print("ARTWORK_CATALOGUE_AUDIT cards=\(names.count) unresolved=\(unresolved.count) names=\(unresolved)")
+        // The audit of what a full download would still miss: tokens and emblems cards point to that this bulk lacks.
+        let uncovered = catalogue.referencedTokensWithoutDownload
+        print("TOKEN_COVERAGE_AUDIT tokens=\(catalogue.allTokens.count) referencedWithoutDownload=\(uncovered.count) names=\(uncovered.prefix(40).map(\.name))")
         XCTAssertTrue(catalogue.allTokens.contains { $0.face == "back" })
         XCTAssertTrue(catalogue.allTokens.allSatisfy { catalogue.imageURL(id: $0.id, size: "normal", face: $0.face) != nil })
         XCTAssertTrue(catalogue.allTokens.allSatisfy(\.hasMatchingMetadata))

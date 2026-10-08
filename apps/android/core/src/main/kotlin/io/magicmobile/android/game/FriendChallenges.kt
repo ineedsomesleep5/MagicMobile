@@ -126,11 +126,14 @@ class FriendChallengeCoordinator(var service: FriendChallengeService?, private v
     /** Withdraws the challenge being waited on. */
     fun cancelOutgoing() { cancelRequested = true }
 
-    /** Checks for challenges until cancelled (run while the menu is showing). */
-    suspend fun watch() {
+    /**
+     * Checks for challenges until cancelled (run while the menu is showing). `friendOnline` picks the pace: each check
+     * wakes the phone's radio, so it is slower when nobody could challenge.
+     */
+    suspend fun watch(friendOnline: () -> Boolean = { true }) {
         while (true) {
             refreshIncoming()
-            sleep(WATCH_MILLIS)
+            sleep(if (friendOnline()) WATCH_MILLIS else QUIET_WATCH_MILLIS)
         }
     }
 
@@ -155,7 +158,11 @@ class FriendChallengeCoordinator(var service: FriendChallengeService?, private v
     }
 
     companion object {
-        /** How often the menu checks for challenges. */
+        /**
+         * How often the menu checks for challenges while a friend is online, and while none is (a friend who has just
+         * come online can still challenge before the friends list catches up).
+         */
         const val WATCH_MILLIS = 5_000L
+        const val QUIET_WATCH_MILLIS = 20_000L
     }
 }

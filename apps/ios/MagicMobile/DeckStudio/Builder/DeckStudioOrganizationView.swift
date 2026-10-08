@@ -3,10 +3,16 @@ import SwiftUI
 struct DeckStudioOrganizationButton: View {
     let recordID: String?
     let title: String
+    /// On the binder's head: a square brass plaque.
+    var binder = false
     @State private var presented = false
     var body: some View {
-        Button { presented = true } label: {
-            Image(systemName: "tag").frame(width: 44, height: 44)
+        Group {
+            if binder {
+                Button { presented = true } label: { Image(systemName: "tag.fill") }.buttonStyle(BinderPlaqueButtonStyle(square: true))
+            } else {
+                Button { presented = true } label: { Image(systemName: "tag").frame(width: 44, height: 44) }
+            }
         }
         .disabled(recordID == nil)
         .accessibilityLabel("Deck tags, notes and import receipt")
@@ -30,7 +36,7 @@ private struct DeckStudioOrganizationSheet: View {
     private var isDirty: Bool { history?.isDirty ?? false }
     var body: some View {
         NavigationStack {
-            Form {
+            GrimoireForm {
                 if let error { Section { Text(error).foregroundStyle(DeckStudioPalette.danger) } }
                 if let history {
                     Section {
@@ -86,18 +92,18 @@ private struct DeckStudioOrganizationSheet: View {
                 } else if busy { ProgressView("Loading local details…") }
             }
             .disabled(busy)
-            .scrollContentBackground(.hidden).background(DeckStudioPalette.background)
-            .navigationTitle(title.isEmpty ? "Deck details" : title).navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { if isDirty { discardConfirmation = true } else { dismiss() } }.disabled(busy) }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { Task { await save() } }.disabled(history == nil || busy) }
-            }
+            .scrollContentBackground(.hidden).background(GrimoirePaper())
+            .binderLeaf(title.isEmpty ? "Deck details" : title,
+                        leading: BinderLeafAction(title: "Close", disabled: busy) { if isDirty { discardConfirmation = true } else { dismiss() } },
+                        trailing: BinderLeafAction(title: "Save", disabled: history == nil || busy) { Task { await save() } })
             .task { await load() }
             .interactiveDismissDisabled(isDirty || busy)
-            .confirmationDialog("Discard unsaved deck details?", isPresented: $discardConfirmation, titleVisibility: .visible) {
+            .binderConfirm("Discard unsaved deck details?", isPresented: $discardConfirmation,
+                           message: "Previously saved notes, tags, import receipts and deck cards are unchanged.") {
                 Button("Discard changes", role: .destructive) { dismiss() }
-            } message: { Text("Previously saved notes, tags, import receipts and deck cards are unchanged.") }
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+            }
+            .binderOverlayHost()
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
     }
     private func edit(_ mutate: (inout DeckStudioOrganization) -> Void) {
         guard !busy, var history else { return }

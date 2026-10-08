@@ -10,6 +10,8 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.playerDisplayName") private var playerDisplayName = ""
     @ObservedObject private var account = PlayerAccount.shared
     @State private var showFriends = false
+    /// A player opened from the table chat: their public profile covers the chat.
+    @State private var chatProfile: ChatProfileTarget?
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -33,6 +35,7 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSetupPreferences.humanCountKey) private var playerCount = 2
     @AppStorage("magicmobile.gamecenter.aiOpponentCount") private var gameCenterAIStoredCount = 0
     @AppStorage(OnDeviceSetupPreferences.friendsKey) private var playWithFriends = false
+    @AppStorage(AutoPassAfterCast.key) private var autoPassAfterCast = true
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
@@ -174,7 +177,8 @@ struct OnDeviceRootView: View {
                                                   applicationSupport: support)
         let resume = GameResumeCoordinator(store: GameResumeStore(directory: directory, protectsFiles: true))
         // Lower the chance that iOS ends the app in the background; everything reloads lazily.
-        resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() }]
+        resume.backgroundPurges = [{ GameAudio.shared.unloadBuffers() }, { NativeDeckArtwork.purgeMemoryCaches() },
+                                   { NativeArtworkMemory.shared.purge() }, { NativeDeckMetadataCatalogue.purgeShared() }]
         resume.runBackgroundTask = { name, body in ResumeBackgroundTask.run(name, body) }
         resume.backgroundTimeRemaining = { UIApplication.shared.backgroundTimeRemaining }
         return resume
@@ -333,7 +337,7 @@ struct OnDeviceRootView: View {
                         .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 } else {
                     TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
-                                   play: { lobby = .chooser }, decks: { showImport = true },
+                                   play: { lobby = .chooser }, decks: openDecks,
                                    settings: { showAppearance = true }, news: { showUpdates = true },
                                    commanderName: selectedDeck?.commander?.cardName,
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
@@ -443,7 +447,7 @@ struct OnDeviceRootView: View {
             DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID,
                                isGameLive: { [setup = self.setup] in setup.needsLeave || setup.isBusy }, focus: studioFocus, preparePlay: {
                 showImport = false; showSetup = true
-            })
+            }, close: closeDecks)
         }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
@@ -458,6 +462,18 @@ struct OnDeviceRootView: View {
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
+    }
+
+    /// Decks is a spell book (Caleb, 2026-10-05): the book opens on the tavern table, then Deck Studio is
+    /// its first page; Done closes it again (GrimoireStage).
+    private func openDecks() {
+        guard !showImport else { return }
+        GameAudio.shared.play(.uiOpen)
+        GrimoireStage.shared.open { showImport = true }
+    }
+
+    private func closeDecks() {
+        GrimoireStage.shared.close { showImport = false }
     }
 
     /// A join link: open the online table setup with its code and join right away with the
@@ -526,6 +542,8 @@ struct OnDeviceRootView: View {
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
+        // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
+        .onChange(of: selectedDeckID, initial: true) { _, id in CardArtChoices.shared.select(deckID: id) }
         .onChange(of: portraitModeEnabled) { _, enabled in
             MagicMobileOrientationController.shared.setPortraitModeEnabled(enabled)
         }
@@ -538,6 +556,16 @@ struct OnDeviceRootView: View {
             account.setForeground(phase == .active)
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
+        #if DEBUG
+        // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
+        .task {
+            switch SocialFixtures.openScreen?.split(separator: ":").first.map(String.init) {
+            case "profile": lobby = .profile
+            case "friends", "public", "search": showFriends = true
+            default: break
+            }
+        }
+        #endif
         // The profile name is the name at every table.
         .onChange(of: account.username) { _, name in if let name { playerDisplayName = name } }
         // Friends see the table this phone hosts while it has open seats.
@@ -555,7 +583,7 @@ struct OnDeviceRootView: View {
         .task(id: watchesChallenges) {
             guard watchesChallenges else { return }
             challenges.service = account.challenges
-            await challenges.watch()
+            await challenges.watch(friendOnline: { [account] in account.onlineFriendCount > 0 })
         }
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
@@ -614,6 +642,12 @@ struct OnDeviceRootView: View {
             profileRecord.publish = { [account] rank, stats, title, commander in
                 Task { await account.publishRank(rank, stats: stats, title: title, commander: commander) }
             }
+            // Finished games go to the profile server too: now, and again whenever the app is open and online.
+            let upload: () async -> Void = { [account, profileRecord] in
+                await GameUploader.shared.flush(matches: profileRecord.matches) { await account.recordGame($0) }
+            }
+            profileRecord.didRecord = { _ in Task { await upload() } }
+            account.afterRefresh = upload
         }
         .onChange(of: setup.isBusy) { _, busy in
             if !busy { submitStartingChoiceIfNeeded() }
@@ -699,27 +733,32 @@ struct OnDeviceRootView: View {
                     submitStartingChoiceIfNeeded()
                 }
             } else {
-                VStack(spacing: 16) {
+                // Until the host shares the dice: the same leather and brass the roll itself wears.
+                VStack(spacing: 14) {
                     Text("Who goes first?")
-                        .font(.title2.bold())
+                        .font(.system(.title2, design: .serif, weight: .heavy))
+                        .foregroundStyle(Color(red: 0.98, green: 0.92, blue: 0.80))
+                        .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
                     Text(multiplayer.rollStatus)
-                        .font(.subheadline).multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .font(.system(.subheadline, design: .serif, weight: .medium)).multilineTextAlignment(.center)
+                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
                     Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
-                        .font(.caption).multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                        .font(.system(.caption, design: .serif)).multilineTextAlignment(.center)
+                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
                     Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
                         do { try multiplayer.rollStartingPlayer() }
                         catch { bannerError = error.localizedDescription }
                     }
-                    .buttonStyle(CommanderActionStyle())
+                    .buttonStyle(TavernButtonStyle(kind: .primary, fontSize: 17, fullWidth: true))
                     .disabled(multiplayer.hasRolled)
                     .accessibilityIdentifier("ondevice.multiplayer.roll")
                 }
-                .foregroundStyle(CommanderPresentation.ink)
                 .padding(24)
                 .frame(maxWidth: 440)
-                .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 22))
+                .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 14)).padding(2) }
+                .overlay { TavernBrassFrame() }
+                .shadow(color: .black.opacity(0.5), radius: 10, y: 5)
+                .padding(.horizontal, 16)
             }
         } else if let roll = aiStartingRoll {
             MultiplayerD20View(roll: roll, seatNames: aiRollSeatNames,
@@ -867,6 +906,11 @@ struct OnDeviceRootView: View {
                      : activeMatch?.mode == .quick ? String(localized: "Play Again")
                      : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch")
         .environment(\.gameRankChange, rankChange)
+        .environment(\.boardAnswerActions, BoardAnswerActions(
+            supported: session.supportedAnswerActions, rememberedAnswers: session.rememberedAnswers,
+            rememberedTriggerOrders: session.rememberedTriggerOrders,
+            forgetAnswers: { session.forgetRememberedAnswers() }, forgetTriggerOrder: { session.forgetTriggerOrder() }))
+        .onChange(of: autoPassAfterCast) { _, enabled in session.setAutoPassAfterCast(enabled) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
         .sheet(isPresented: $emotes.isChatOpen) {
@@ -877,7 +921,11 @@ struct OnDeviceRootView: View {
                            block: account.phase == .ready ? { name in
                                emotes.mute(name)
                                Task { await account.block(name) }
-                           } : nil)
+                           } : nil,
+                           viewProfile: account.phase == .ready ? { name in chatProfile = ChatProfileTarget(name: name) } : nil)
+                .fullScreenCover(item: $chatProfile) { target in
+                    PublicProfileView(account: account, username: target.name) { chatProfile = nil }
+                }
                 .presentationDetents([.medium, .large])
         }
         .onAppear { connectEmotes() }
@@ -987,7 +1035,7 @@ struct OnDeviceRootView: View {
                             mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
                             profile: { lobby = .profile }, back: { lobby = .chooser }) { playDeckSlot }
         case .profile:
-            PlayerProfileView(record: profileRecord, playerName: account.username ?? playerDisplayName,
+            PlayerProfileView(record: profileRecord, account: account, playerName: account.username ?? playerDisplayName,
                               deckCommanders: library.decks.compactMap { $0.deckList.commander?.cardName } + AIDeckPool.all.map(\.commander),
                               back: { lobby = nil })
         }
@@ -996,7 +1044,7 @@ struct OnDeviceRootView: View {
     private var playDeckSlot: some View {
         PlayDeckSection(deckName: selectedDeck?.name, commander: selectedDeck?.commander?.cardName, bracket: selectedDeckBracket,
                         canDeclare: selectedDeckID.hasPrefix("local:"), deckID: $selectedDeckID, sections: deckPickerSections,
-                        editDecks: { showImport = true }, explainBracket: { showBracketSheet = true })
+                        editDecks: openDecks, explainBracket: { showBracketSheet = true })
             .disabled(setup.isBusy || matchmaker.isSearching)
     }
 
@@ -1089,9 +1137,11 @@ struct OnDeviceRootView: View {
         String((setup.relayIdentity.map { "\($0.upstreamCommit)/\($0.catalogueHash)/\($0.adapterVersion)" } ?? "offline").prefix(200))
     }
 
-    /// Challenges check for incoming challenges while the app is open on the menu or a lobby.
+    /// Challenges check for incoming challenges while the app is open on the menu or a lobby, and
+    /// only for a player with friends: nobody else can send one.
     private var watchesChallenges: Bool {
         scenePhase == .active && account.phase == .ready && account.username != nil && !activeGame && !setup.needsLeave
+            && account.friends.contains(where: \.isFriend)
     }
 
     /// The deck for a game against a person, or why there is none. Ranked also needs a deck your tier allows.
@@ -1244,7 +1294,8 @@ struct OnDeviceRootView: View {
         let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
         let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
                                    aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
-                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID)
+                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
+                                   engineMatchID: session.matchID)
         rankChange = change
         if let id = match.rankedMatchID { Task { await matchmaker.report(match: id, outcome: outcome) } }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
@@ -1307,7 +1358,7 @@ struct OnDeviceRootView: View {
                     }
                     TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
                     TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: deckPickerSections)
-                    Button { showImport = true } label: { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
+                    Button(action: openDecks) { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
                         .buttonStyle(CommanderActionStyle(primary: false))
                     NativeArtworkPreferenceView()
                 }
@@ -1448,7 +1499,7 @@ struct OnDeviceRootView: View {
                 Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
                 OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
                                          startIssues: setup.startIssues) { cards in
-                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); showImport = true
+                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); openDecks()
                 }.disabled(setup.isBusy)
             }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
             VStack(alignment: .center, spacing: 10) {
@@ -1638,6 +1689,14 @@ private final class OnDeviceSetupModel: ObservableObject {
     private let session: OnDeviceSession
     private let resume: GameResumeCoordinator
     private let runtime = OnDeviceRuntimeManager()
+    /// The answer actions this phone's engine accepts (docs/PROTOCOL.md); empty on an older engine.
+    private var engineAnswerActions: Set<String> {
+        Set(runtime.capabilities?["answerActions"]?.array?.compactMap(\.string) ?? [])
+    }
+    /// Settings → Pass After Casting (on by default).
+    private var autoPassAfterCastSetting: Bool {
+        UserDefaults.standard.object(forKey: AutoPassAfterCast.key) as? Bool ?? true
+    }
     private var resolver: OnDeviceDeckResolver?
     private var multiplayerObservation: AnyCancellable?
     private var resumeObservations: [AnyCancellable] = []
@@ -1690,6 +1749,8 @@ private final class OnDeviceSetupModel: ObservableObject {
         return name
     }
 
+    /// Reads the deck resolver before the first screen is usable, so every screen can count on the
+    /// build identity. The decoded catalogue is shared (OnDeviceDeckResolver.bundled), not read again.
     func prepare() {
         guard identity == nil else { return }
         do {
@@ -1738,7 +1799,8 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode,
                 mode: mode?.rawValue, deckBracket: deckBracket), playerDeckName: deck.name)
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
+            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true,
+                                     answerActions: engineAnswerActions, autoPassAfterCast: autoPassAfterCastSetting, close: { [self] in try await closeAI() })
             status = "Game started"
             // XMage checked every deck when it created the game: the player's deck passed.
             recordStartPass(deckID: deckID, deck: deck)
@@ -1771,7 +1833,8 @@ private final class OnDeviceSetupModel: ObservableObject {
             aiMatchID = restored.matchID
             updateSessionForeground()
             try await session.attach(client: client, matchID: restored.matchID, seatID: record.setup.seatID,
-                                     allowsSeatScopedAutoYield: true, close: { [self] in try await closeAI() })
+                                     allowsSeatScopedAutoYield: true, answerActions: engineAnswerActions,
+                                     autoPassAfterCast: autoPassAfterCastSetting, close: { [self] in try await closeAI() })
             status = "Game resumed"
             return true
         } catch {
@@ -1856,8 +1919,10 @@ private final class OnDeviceSetupModel: ObservableObject {
         defer { isBusy = false }
         do {
             updateSessionForeground()
+            // A table seats only phones with this exact build, so this phone's engine speaks for the host's.
             try await session.attach(client: endpoint.client, matchID: endpoint.matchID, seatID: endpoint.seatID,
                                      allowsSeatScopedAutoYield: true, table: endpoint.table,
+                                     answerActions: engineAnswerActions, autoPassAfterCast: autoPassAfterCastSetting,
                                      close: { try await multiplayer.leave() })
             resume.tableGameStarted()
             // Only the host's engine created this game, so only the host's deck check is local.
@@ -2261,4 +2326,10 @@ private enum ResumeBackgroundTask {
             identifier = .invalid
         }
     }
+}
+
+/// A player whose profile is open over the table chat.
+private struct ChatProfileTarget: Identifiable {
+    let name: String
+    var id: String { name }
 }

@@ -66,7 +66,10 @@ class CardChoicePlanTest {
         assertEquals(0, CardChoicePlan.selectionBounds("Select targets (selected 0 of 3)")?.first)
         assertEquals(3, CardChoicePlan.selectionBounds("Select targets (selected 2 of 6, min 3)")?.first)
         assertNull(CardChoicePlan.selectionBounds("Select up to one target"))
-        assertNull(CardChoicePlan.selectionBounds("Select targets (selected 2, min 1)"))
+        // "Any number" targets omit "of <max>" (Goblin Recruiter): no upper bound, so they can be picked all at once.
+        assertEquals(1 to Int.MAX_VALUE, CardChoicePlan.selectionBounds("Select targets (selected 2, min 1)"))
+        assertEquals(0 to Int.MAX_VALUE, CardChoicePlan.selectionBounds("Select Goblin cards (selected 1)"))
+        assertTrue(CardChoicePlan.isUnbounded(CardChoicePlan.selectionBounds("Select Goblin cards (selected 1)")!!))
         assertEquals(listOf(ids[1]), CardChoicePlan.toggled(listOf(ids[0], ids[1]), ids[0]))
         assertEquals(listOf(ids[1], ids[0]), CardChoicePlan.toggled(listOf(ids[1]), ids[0]))
     }

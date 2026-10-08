@@ -239,9 +239,24 @@ fun BoardCardChoiceView(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendin
                 orderRows(topIDs, "Keep top · top first", true)
             } else {
                 Text("Tap cards in order. Tap a numbered card again to remove it.", color = MagicPalette.parchment, style = SfText.caption())
-                CardChoicePlan.selectionBounds(prompt.message)?.let { (min, max) ->
-                    Text(if (min == max) "${draftIDs.size} of $max selected" else "${draftIDs.size} selected · choose $min–$max",
+                CardChoicePlan.selectionBounds(prompt.message)?.let { bounds ->
+                    val (min, max) = bounds
+                    Text(if (CardChoicePlan.isUnbounded(bounds)) "${draftIDs.size} selected · any number"
+                        else if (min == max) "${draftIDs.size} of $max selected" else "${draftIDs.size} selected · choose $min–$max",
                         color = MagicPalette.parchment, style = SfText.caption(SfWeight.semibold))
+                    // Every legal card at once, when the choice allows that many (Goblin Recruiter, "any number").
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (max >= selectableIDs.size && draftIDs.size < selectableIDs.size) {
+                            PanelActionButton({ draftIDs = selectableIDs }, Modifier.semantics { contentDescription = "board.choice.selectAll" }) {
+                                Text("Select all", style = SfText.caption(SfWeight.semibold))
+                            }
+                        }
+                        if (draftIDs.isNotEmpty()) {
+                            PanelActionButton({ draftIDs = emptyList() }, Modifier.semantics { contentDescription = "board.choice.clearSelection" }) {
+                                Text("Clear", style = SfText.caption(SfWeight.semibold))
+                            }
+                        }
+                    }
                 }
                 orderRows(draftIDs, "Choice order", false)
             }

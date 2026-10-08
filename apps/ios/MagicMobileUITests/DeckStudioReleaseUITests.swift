@@ -7,7 +7,7 @@ final class DeckStudioReleaseUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
@@ -32,7 +32,7 @@ final class DeckStudioReleaseUITests: XCTestCase {
         let app = XCUIApplication()
         continueAfterFailure = false
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate(); XCUIDevice.shared.orientation = .portrait }
@@ -72,11 +72,15 @@ final class DeckStudioReleaseUITests: XCTestCase {
             XCTAssertTrue(app.buttons["Remove one \(name) from deck"].waitForExistence(timeout: 5))
         }
         app.buttons["deckStudio.search.close"].tap()
-        XCTAssertTrue(app.buttons["deckStudio.addCards"].isHittable)
+        // The sheet slides away before the page beneath can be touched again.
+        let addCards = app.buttons["deckStudio.addCards"]
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: addCards)], timeout: 5), .completed)
         XCUIDevice.shared.orientation = .landscapeLeft
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        // Sideways the binder's left page holds the rail: the shelves (the deck, or every card to add),
+        // the search and the tools; the right page is the deck's cards.
+        XCTAssertTrue(app.buttons["All cards"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.textFields["deckStudio.cards.search"].isHittable)
-        XCTAssertTrue(app.buttons["deckStudio.cards.options"].isHittable)
+        XCTAssertTrue(app.buttons["deckStudio.cards.filter"].isHittable)
         let cardList = app.scrollViews["deckStudio.cards.list"]
         XCTAssertGreaterThan(cardList.frame.height, app.frame.height * 0.55)
         let visibleCards = cardList.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Inspect ")).allElementsBoundByIndex.filter(\.isHittable)

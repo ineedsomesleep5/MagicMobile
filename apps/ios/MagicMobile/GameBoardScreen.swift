@@ -32,6 +32,8 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case lifeChange = "life-change"
     case largeText = "large-text"
     case stackTray = "stack-tray"
+    /// A card's "you may" trigger question over a pile of its triggers (Quest for the Goblin Lord): "Don't ask again".
+    case mayTriggerPrompt = "may-trigger-prompt"
     case victory = "victory"
     case spectating = "spectating"
     case fourPlayerSpectating = "four-player-spectating"

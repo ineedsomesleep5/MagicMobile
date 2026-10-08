@@ -49,7 +49,7 @@ struct DeckStudioAnalysisContent: View {
                             metric("Other sections", "\(draft.rows.filter { !["deck", "commanders"].contains(DeckStudioDraftPresentation.section($0)) }.reduce(0) { $0 + $1.quantity })")
                             metric("Lands in main", "\(statistics.landCount)")
                             metric("Average nonland mana value", statistics.averageManaValue.map { String(format: "%.2f", $0) } ?? "Unavailable")
-                            Text("Deck statistics · check legality in Playtest.")
+                            Text("Deck statistics · check legality with Validate deck in the ⋯ menu.")
                                 .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                         }
                     }
@@ -83,7 +83,7 @@ struct DeckStudioAnalysisContent: View {
                                 Button { inspect(row.cardName) } label: {
                                     HStack(spacing: 10) {
                                         if !dynamicType.isAccessibilitySize {
-                                            DeckStudioArtwork(name: row.cardName).frame(width: 36, height: 50)
+                                            DeckStudioArtwork(name: row.cardName, art: .exact(row.printing)).frame(width: 36, height: 50)
                                                 .clipShape(RoundedRectangle(cornerRadius: 5))
                                         }
                                         metric(row.cardName, "×\(row.quantity)")
@@ -134,8 +134,8 @@ struct DeckStudioAnalysisContent: View {
                     DeckStudioPanel {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Opening hands & land draws").font(.headline)
-                            Stepper("At least \(requiredLands) lands", value: $requiredLands, in: 1...7)
-                            Stepper("Cards seen: \(cardsSeen)", value: $cardsSeen, in: 7...30)
+                            BinderStepper("At least \(requiredLands) lands", value: $requiredLands, in: 1...7)
+                            BinderStepper("Cards seen: \(cardsSeen)", value: $cardsSeen, in: 7...30)
                             if statistics.cardCount >= cardsSeen, statistics.unknownTypeCount == 0,
                                let value = try? DeckStudioProbability.atLeast(requiredLands, successes: statistics.landCount, population: statistics.cardCount, draws: cardsSeen) {
                                 Text(value, format: .percent.precision(.fractionLength(1))).font(.system(.largeTitle, design: .rounded).weight(.semibold))

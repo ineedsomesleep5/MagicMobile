@@ -124,6 +124,13 @@ final class DeckStudioEditorModel: ObservableObject {
         }
     }
     func remove(id: UUID) { change { $0.rows.removeAll { $0.id == id } } }
+    /// Chooses the printing whose art this row shows (nil returns it to the card's default art). One undo step.
+    @discardableResult func setPrinting(id: UUID, _ printing: CardPrinting?) -> Bool {
+        change { value in
+            guard let index = value.rows.firstIndex(where: { $0.id == id }) else { throw OnDeviceDeckEditing.Error.missingEntry }
+            value.rows[index].printing = printing
+        }
+    }
     func replace(rowID: UUID, name: String) -> Bool { change { try DeckStudioEditorOperations.replaceCard(in: &$0, rowID: rowID, name: name) } }
     func commander(_ name: String, keepOld: Bool) -> Bool { change { try DeckStudioEditorOperations.replacePrimaryCommander(in: &$0, name: name, keepOld: keepOld) } }
     func basics(_ values: [String: Int], expected: NativeDeckDraft) -> Bool {
@@ -180,6 +187,8 @@ enum DeckStudioDraftPresentation {
     }
     static func section(_ row: NativeDeckRow) -> String { row.isPrimaryCommander ? "commanders" : normalizedSection(row.section) }
     static func commanders(_ draft: NativeDeckDraft) -> [String] { draft.rows.filter { section($0) == "commanders" }.map(\.cardName) }
+    /// The art chosen for the first commander, which the deck's cover draws.
+    static func commanderPrinting(_ draft: NativeDeckDraft) -> CardPrinting? { draft.rows.first { section($0) == "commanders" }?.printing }
     static func gameCount(_ draft: NativeDeckDraft) -> Int { draft.rows.filter { ["deck", "commanders"].contains(section($0)) }.reduce(0) { $0 + $1.quantity } }
     static func colors(_ draft: NativeDeckDraft, metadata: NativeDeckMetadataCatalogue?) -> [String]? {
         let commanders = commanders(draft)

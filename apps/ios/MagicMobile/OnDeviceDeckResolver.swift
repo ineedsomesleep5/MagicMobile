@@ -45,7 +45,7 @@ struct OnDeviceDeckResolver {
             guard let name = canonicalCardName(value.cardName) else {
                 throw ResolutionError("No compiled printing for '\(value.cardName)'. Use the exact card name from this app's catalogue or update the app.")
             }
-            return DeckEntry(cardName: name, quantity: value.quantity, section: value.section)
+            return DeckEntry(cardName: name, quantity: value.quantity, section: value.section, printing: value.printing)
         }
         return try DeckList(name: deck.name, commander: deck.commander.map(entry), entries: deck.entries.map(entry))
     }
@@ -58,17 +58,25 @@ struct OnDeviceDeckResolver {
         }.sorted().prefix(min(limit, 2000)))
     }
 
+    private static let shared = BundledResourceCache<OnDeviceDeckResolver>()
+
+    /// The app's own printings, decoded once and shared (the setup model keeps a copy for the whole
+    /// session anyway; an explicit bundle always decodes afresh).
     static func bundled(bundle explicitBundle: Bundle? = nil) throws -> OnDeviceDeckResolver {
+        guard let explicitBundle else { return try shared.value { try decoded(from: nil) } }
+        return try decoded(from: explicitBundle)
+    }
+
+    private static func decoded(from explicitBundle: Bundle?) throws -> OnDeviceDeckResolver {
         #if SWIFT_PACKAGE
         let bundle = explicitBundle ?? .module
         #else
         let bundle = explicitBundle ?? .main
         #endif
-        guard let url = bundle.url(forResource: "ondevice-catalogue", withExtension: "json")
-                ?? bundle.url(forResource: "ondevice-catalogue", withExtension: "json", subdirectory: "Resources") else {
+        guard let data = try BundledCatalogueData.load(from: bundle) else {
             throw ResolutionError("Missing ondevice-catalogue.json. Include the generated catalogue in the app's resources and rebuild.")
         }
-        return try OnDeviceDeckResolver(catalogueData: Data(contentsOf: url))
+        return try OnDeviceDeckResolver(catalogueData: data)
     }
 
     init(catalogueData: Data) throws {

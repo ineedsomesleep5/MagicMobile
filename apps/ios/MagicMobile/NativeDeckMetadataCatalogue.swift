@@ -1,5 +1,45 @@
 import Foundation
 
+/// A decoded bundle resource kept for reuse. Decoding the card catalogue takes a few tenths of a second
+/// and tens of megabytes, and it used to happen again on every Deck Studio visit, Downloads visit and
+/// game-log lookup. One decode runs at a time; `purge` drops the value and the next caller decodes again.
+final class BundledResourceCache<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value?
+
+    func value(orLoad load: () throws -> Value) rethrows -> Value {
+        lock.lock(); defer { lock.unlock() }
+        if let value { return value }
+        let loaded = try load()
+        value = loaded
+        return loaded
+    }
+
+    func purge() {
+        lock.lock(); value = nil; lock.unlock()
+    }
+}
+
+/// The bundled card catalogue's bytes. The app ships it LZFSE-compressed (13 MB of JSON as about 2 MB:
+/// a build step compresses Resources/ondevice-catalogue.json, see project.yml); the Swift package and
+/// its tests ship the JSON itself.
+enum BundledCatalogueData {
+    static func url(in bundle: Bundle) -> (url: URL, compressed: Bool)? {
+        if let url = bundle.url(forResource: "ondevice-catalogue", withExtension: "json")
+            ?? bundle.url(forResource: "ondevice-catalogue", withExtension: "json", subdirectory: "Resources") {
+            return (url, false)
+        }
+        return bundle.url(forResource: "ondevice-catalogue.json", withExtension: "lzfse").map { ($0, true) }
+    }
+
+    /// nil when the bundle has no catalogue.
+    static func load(from bundle: Bundle) throws -> Data? {
+        guard let found = url(in: bundle) else { return nil }
+        let data = try Data(contentsOf: found.url, options: .mappedIfSafe)
+        return found.compressed ? try (data as NSData).decompressed(using: .lzfse) as Data : data
+    }
+}
+
 /// Resolves only reverse faces attested by the bundled, selected-printing aliases.
 enum NativeDeckCanonicalNames {
 
@@ -87,17 +127,27 @@ struct NativeDeckMetadataCatalogue {
     private let aliases: [String: String]
     private let reverseFaces: [String: String]
 
+    private static let shared = BundledResourceCache<NativeDeckMetadataCatalogue>()
+
+    /// The app's own catalogue, decoded once and shared (an explicit bundle always decodes afresh).
     static func bundled(bundle explicitBundle: Bundle? = nil) throws -> Self {
+        guard let explicitBundle else { return try shared.value { try decoded(from: nil) } }
+        return try decoded(from: explicitBundle)
+    }
+
+    /// Drops the shared copy (in the background, where memory decides whether iOS keeps the app).
+    static func purgeShared() { shared.purge() }
+
+    private static func decoded(from explicitBundle: Bundle?) throws -> Self {
         #if SWIFT_PACKAGE
         let bundle = explicitBundle ?? .module
         #else
         let bundle = explicitBundle ?? .main
         #endif
-        guard let url = bundle.url(forResource: "ondevice-catalogue", withExtension: "json")
-            ?? bundle.url(forResource: "ondevice-catalogue", withExtension: "json", subdirectory: "Resources") else {
+        guard let data = try BundledCatalogueData.load(from: bundle) else {
             throw CatalogueError("Missing bundled card metadata.")
         }
-        return try Self(catalogueData: Data(contentsOf: url))
+        return try Self(catalogueData: data)
     }
 
     init(catalogueData: Data) throws {
@@ -180,6 +230,11 @@ struct NativeDeckMetadataCatalogue {
     func card(named name: String) -> Card? {
         index[name] ?? aliases[name].flatMap { index[$0] } ?? reverseFaces[name].flatMap { index[$0] }
     }
+
+    /// The front face of a double-faced card, named by its reverse face; nil for any other name.
+    func frontFace(ofReverse name: String) -> String? { reverseFaces[name] }
+    /// Every reverse face and the front face it belongs to.
+    var reverseFaceFronts: [String: String] { reverseFaces }
 
     /// All names supported by this installed engine catalogue, without the UI search limit.
     var artworkCardNames: [String] { cards.map(\.name) }

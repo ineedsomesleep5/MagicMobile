@@ -117,6 +117,13 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** The Commander bracket card lists (commander-brackets.json). */
     var bracketRules by mutableStateOf(io.magicmobile.android.game.BracketRules.EMPTY); private set
     var localDecks by mutableStateOf<List<SavedDeck>>(emptyList()); private set
+    /** Every saved deck's chosen art is what cards drawn by name show (CardArtChoices). */
+    private fun publishLocalDecks(saved: List<SavedDeck>) {
+        localDecks = saved
+        io.magicmobile.android.ArtChoices.shared.setLibrary(saved.map {
+            io.magicmobile.android.core.CardArtChoices.SavedDeck("local:${it.id}", io.magicmobile.android.studio.DeckList.fromStored(it.deck), it.modifiedAtMillis)
+        })
+    }
     var isBusy by mutableStateOf(false); private set
     var usingMultiplayer by mutableStateOf(false); private set
     var closeFailed by mutableStateOf(false); private set
@@ -130,6 +137,13 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** Save/resume for solo games: the launch prompt, the live game's sidecar and the in-progress marker. */
     val resume = GameResumeController(resumeStore(context), BuildConfig.VERSION_CODE.toString(), resumeIO)
     private val runtime = OnDeviceRuntimeManager()
+    /** The answer actions this phone's engine accepts (docs/PROTOCOL.md); empty on an older engine. */
+    private val engineAnswerActions: Set<String>
+        get() = (runtime.capabilities as? kotlinx.serialization.json.JsonObject)?.get("answerActions")
+            .let { it as? kotlinx.serialization.json.JsonArray }?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }?.toSet() ?: emptySet()
+    /** Settings → Pass After Casting (on by default). */
+    private val autoPassAfterCastSetting: Boolean
+        get() = io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.board.AutoPassAfterCast.KEY, true).value
     private var aiClient: EngineClient? = null
     private var aiMatchID: String? = null
     private var sceneActive = true
@@ -175,7 +189,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                     runCatching { io.magicmobile.android.game.AIDeckPool.parse(context.assets.open("ai-decks.json").use { it.readBytes().decodeToString() }) } to
                         runCatching { io.magicmobile.android.game.BracketRules.parse(context.assets.open("commander-brackets.json").use { it.readBytes().decodeToString() }) }
                 }.let { (aiDecks, rules) -> aiDecks.onSuccess { bracketDecks = it }; rules.onSuccess { bracketRules = it } }
-                decks.second.onSuccess { localDecks = it }.onFailure { errorMessage = "Saved decks could not be read: ${it.message}" }
+                decks.second.onSuccess { publishLocalDecks(it) }.onFailure { errorMessage = "Saved decks could not be read: ${it.message}" }
                 // The compact printing index names the build and resolves decks; the full catalogue
                 // (rules text and metadata for 30,000 cards) loads only for screens that need it.
                 val started = System.nanoTime()
@@ -183,6 +197,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 android.util.Log.i("MagicMobile", "Printing index loaded in ${(System.nanoTime() - started) / 1_000_000} ms")
                 printings = index
                 deckResolver = withContext(Dispatchers.Default) { OnDeviceDeckResolver(index) }
+                // A double-faced card's other face shows its own side of the chosen printing.
+                deckResolver?.let { io.magicmobile.android.ArtChoices.shared.setReverseFaces(it.reverseFaceFronts) }
                 val built = BuildIdentity(index.upstreamCommit, index.catalogueHash,
                     "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1")
                 identity = built
@@ -200,7 +216,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
 
     /** Deck Studio's library store: saved decks stay in this model's deck store. */
     val library: io.magicmobile.android.studio.DeckLibraryStore by lazy {
-        io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> localDecks = saved }
+        io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> publishLocalDecks(saved) }
     }
 
     /** The full catalogue, loading it on first use. */
@@ -211,7 +227,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     }
 
     fun reloadLocalDecks() {
-        scope.launch { runCatching { withContext(Dispatchers.IO) { store.all() } }.onSuccess { localDecks = it } }
+        scope.launch { runCatching { withContext(Dispatchers.IO) { store.all() } }.onSuccess { publishLocalDecks(it) } }
     }
 
     /**
@@ -261,7 +277,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             aiMatchID = matchID
             resume.gameStarted(base, checkpoint, capabilities, "player1", deck.name, settings)
             updateSessionForeground()
-            session.attach(client, matchID, "player1", allowsSeatScopedAutoYield = true, observe = resume::observe, close = { closeAI() })
+            session.attach(client, matchID, "player1", allowsSeatScopedAutoYield = true, observe = resume::observe,
+                answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, close = { closeAI() })
             status = "Game started"
             if (deckID != null) recordStartCheck(deckID, resolvedDeck, null)
         } catch (error: Throwable) {
@@ -307,8 +324,10 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             // Tables never checkpoint; the marker explains a game lost when the app closed.
             resume.tableStarted()
             updateSessionForeground()
+            // A table seats only phones with this exact build, so this phone's engine speaks for the host's.
             session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, table = endpoint.table,
-                observe = resume::observe, close = { table.leave() })
+                observe = resume::observe, answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting,
+                close = { table.leave() })
             status = "Match connected"
             // Only the host's engine created this game, so only the host's deck check is local.
             if (endpoint.isHost && deckID != null && deck != null) runCatching { recordStartCheck(deckID, resolve(deck), null) }
@@ -463,7 +482,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             override suspend fun attach(client: EngineClient, matchID: String, seatID: String) {
                 aiMatchID = matchID
                 updateSessionForeground()
-                session.attach(client, matchID, seatID, allowsSeatScopedAutoYield = true, observe = resume::observe, close = { closeAI() })
+                session.attach(client, matchID, seatID, allowsSeatScopedAutoYield = true, observe = resume::observe,
+                    answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, close = { closeAI() })
             }
             override suspend fun cleanup() {
                 try { if (session.matchID != null) session.close() else if (runtime.isOpen) closeAI() }

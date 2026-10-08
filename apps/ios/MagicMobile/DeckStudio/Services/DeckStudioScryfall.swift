@@ -83,6 +83,44 @@ struct DeckStudioScryfallCard: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// One printing of a card in Scryfall's search results, for choosing its artwork.
+struct DeckStudioScryfallPrinting: Decodable, Equatable, Identifiable, Sendable {
+    struct Face: Decodable, Equatable, Sendable {
+        let imageURIs: [String: String]?
+        enum CodingKeys: String, CodingKey { case imageURIs = "image_uris" }
+    }
+    let id: UUID
+    let name: String
+    let set: String
+    let setName: String
+    let collectorNumber: String
+    let releasedAt: String?
+    let imageURIs: [String: String]?
+    let faces: [Face]?
+    enum CodingKeys: String, CodingKey {
+        case id, name, set, faces = "card_faces"
+        case setName = "set_name", collectorNumber = "collector_number", releasedAt = "released_at", imageURIs = "image_uris"
+    }
+    /// nil when the set code or collector number is not one the app can ask Scryfall for exactly.
+    var printing: CardPrinting? { CardPrinting(set: set, number: collectorNumber) }
+    /// The small picture, always on Scryfall's image host; a double-faced card's front face when the card has none.
+    var thumbnailURL: URL? {
+        guard let raw = (imageURIs ?? faces?.first?.imageURIs)?["small"], let url = URL(string: raw),
+              url.scheme == "https", url.host?.lowercased() == "cards.scryfall.io", url.user == nil, url.port == nil else { return nil }
+        return url
+    }
+    /// "Commander Masters · 2023".
+    var caption: String {
+        [setName, releasedAt.map { String($0.prefix(4)) }].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+struct DeckStudioScryfallPrintingsPage: Sendable {
+    let printings: [DeckStudioScryfallPrinting]
+    let hasMore: Bool
+    let page: Int
+}
+
 struct DeckStudioScryfallPage: Sendable {
     let cards: [DeckStudioScryfallCard]
     let hasMore: Bool
@@ -141,6 +179,43 @@ actor DeckStudioScryfallClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpShouldHandleCookies = false
         return request
+    }
+    /// Every printing of exactly this card, newest first, one page (up to 175) at a time. Only the card
+    /// name goes to Scryfall. A name with a quote or backslash cannot be searched exactly and has none.
+    /// A name safe to quote in an exact Scryfall search (the rule NativeArtworkCatalogue.safeTokenSearchName uses; kept here
+    /// so Deck Studio's services still build on their own).
+    static func safeExactName(_ name: String) -> Bool {
+        !name.isEmpty && name.utf8.count <= 120 && !name.contains("\"") && !name.contains("\\") &&
+            !name.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+    }
+
+    static func printingsRequest(name: String, page: Int) throws -> URLRequest {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard safeExactName(name), (1...10).contains(page) else { throw DeckStudioScryfallError.invalidInput }
+        var parts = URLComponents(string: "https://api.scryfall.com/cards/search")!
+        parts.queryItems = [.init(name: "q", value: "!\"\(name)\""), .init(name: "unique", value: "prints"),
+                            .init(name: "order", value: "released"), .init(name: "dir", value: "desc"), .init(name: "page", value: String(page))]
+        var request = URLRequest(url: parts.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        request.setValue("MagicMobile-DeckStudio/2.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpShouldHandleCookies = false
+        return request
+    }
+    func printings(of name: String, page: Int = 1, allowNetwork: Bool) async throws -> DeckStudioScryfallPrintingsPage? {
+        let request = try Self.printingsRequest(name: name, page: page)
+        guard let entry = try await data(request, allowNetwork: allowNetwork, refresh: false) else { return nil }
+        struct List: Decodable {
+            let object: String
+            let data: [DeckStudioScryfallPrinting]
+            let hasMore: Bool
+            enum CodingKeys: String, CodingKey { case object, data, hasMore = "has_more" }
+        }
+        do {
+            let list = try JSONDecoder().decode(List.self, from: entry.0.data)
+            guard list.object == "list", list.data.count <= 200,
+                  list.data.allSatisfy({ $0.name.utf8.count <= 1024 && $0.setName.utf8.count <= 256 }) else { throw DeckStudioScryfallError.invalidResponse }
+            return DeckStudioScryfallPrintingsPage(printings: list.data, hasMore: list.hasMore, page: page)
+        } catch { throw DeckStudioScryfallError.invalidResponse }
     }
     func named(_ name: String, allowNetwork: Bool, refresh: Bool = false) async throws -> CachedCard? {
         let request = try Self.request(name)

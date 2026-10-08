@@ -183,7 +183,8 @@ fun DrawScope.drawStretched(image: ImageBitmap, topLeft: Offset = Offset.Zero, s
  * the middle stretch, or with `tileX` repeat horizontally. Caps shrink together when the space is smaller.
  * `sourceCaps` are the image's insets in pixels (left, top, right, bottom).
  */
-fun DrawScope.drawNineSlice(image: ImageBitmap, sourceCaps: IntArray, capsDp: FloatArray, tileX: Boolean = false, alpha: Float = 1f) {
+fun DrawScope.drawNineSlice(image: ImageBitmap, sourceCaps: IntArray, capsDp: FloatArray, tileX: Boolean = false, alpha: Float = 1f,
+                            colorFilter: androidx.compose.ui.graphics.ColorFilter? = null) {
     val w = size.width; val h = size.height
     if (w <= 0f || h <= 0f) return
     var l = capsDp[0] * density; var t = capsDp[1] * density; var r = capsDp[2] * density; var b = capsDp[3] * density
@@ -208,11 +209,11 @@ fun DrawScope.drawNineSlice(image: ImageBitmap, sourceCaps: IntArray, capsDp: Fl
                 val remaining = minOf(stepW, dstX + dstW - x)
                 val srcPart = (srcW * remaining / stepW).roundToInt().coerceIn(1, srcW)
                 drawImage(image, IntOffset(sx[col], sy[row]), IntSize(srcPart, srcH), IntOffset(x.roundToInt(), dstY.roundToInt()),
-                    IntSize(ceil(remaining).toInt().coerceAtLeast(1), ceil(dstH).toInt().coerceAtLeast(1)), alpha = alpha, filterQuality = FilterQuality.High)
+                    IntSize(ceil(remaining).toInt().coerceAtLeast(1), ceil(dstH).toInt().coerceAtLeast(1)), alpha = alpha, colorFilter = colorFilter, filterQuality = FilterQuality.High)
             }
         } else {
             drawImage(image, IntOffset(sx[col], sy[row]), IntSize(srcW, srcH), IntOffset(dstX.roundToInt(), dstY.roundToInt()),
-                IntSize(ceil(dstW).toInt().coerceAtLeast(1), ceil(dstH).toInt().coerceAtLeast(1)), alpha = alpha, filterQuality = FilterQuality.High)
+                IntSize(ceil(dstW).toInt().coerceAtLeast(1), ceil(dstH).toInt().coerceAtLeast(1)), alpha = alpha, colorFilter = colorFilter, filterQuality = FilterQuality.High)
         }
     }
 }
