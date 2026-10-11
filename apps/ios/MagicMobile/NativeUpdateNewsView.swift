@@ -79,11 +79,94 @@ struct NativeUpdateNewsView: View {
                     Text("Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.")
                         .accessibilityIdentifier("updates.fanContentNotice")
                 }
+                Section {
+                    Link(destination: SupportProject.url) {
+                        Label(SupportProject.action, systemImage: "heart.fill")
+                    }
+                    .accessibilityIdentifier("updates.support")
+                } header: {
+                    Text("Support MagicMobile")
+                } footer: {
+                    Text(SupportProject.note)
+                }
             }
             .tavernList()
             .navigationTitle("Updates")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// The tip jar. Every support link opens this one address in the browser (never an in-app purchase).
+/// The download site's `/support` redirect (apps/site/vercel.json) sends it on to the donation page,
+/// so changing the provider never needs an app update.
+enum SupportProject {
+    static let url = URL(string: "https://magicmobile-downloads.vercel.app/support")!
+    static let dismissedKey = "magicmobile.supportBanner.dismissed"
+    static let pitch = "Enjoying MagicMobile? Help cover server costs."
+    static let action = "Help cover server costs"
+    static let note = "MagicMobile is free with no ads. Tips help pay for the servers and open in your browser. Unofficial fan app, not affiliated with Wizards of the Coast."
+}
+
+/// A small strip at the foot of the main menu. Its x hides it for good; Settings and Updates keep the link.
+struct SupportBanner: View {
+    @AppStorage(SupportProject.dismissedKey) private var dismissed = false
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        if !dismissed {
+            HStack(spacing: 0) {
+                Button { openURL(SupportProject.url) } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "heart.fill").foregroundStyle(TavernPalette.ember)
+                        Text(SupportProject.pitch).lineLimit(1).minimumScaleFactor(0.7)
+                        Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .heavy))
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.85))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("menu.support")
+                Button { dismissed = true } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(TavernPalette.parchment.opacity(0.6))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide support banner")
+                .accessibilityIdentifier("menu.support.dismiss")
+            }
+            .padding(.leading, 14)
+            .background(Capsule().fill(Color.black.opacity(0.35)))
+            .overlay(Capsule().strokeBorder(TavernPalette.brass.opacity(0.35), lineWidth: 1))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 6)
+        }
+    }
+}
+
+/// The always-on support panel at the foot of Settings.
+struct SupportSettingsPanel: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TavernPanelTitle(text: "Support MagicMobile")
+            Text(SupportProject.note)
+                .font(.system(size: 12, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
+            Button { openURL(SupportProject.url) } label: {
+                Label(SupportProject.action, systemImage: "heart.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+            .accessibilityIdentifier("settings.support")
+        }
+        .modifier(TavernSettingsPanel())
     }
 }
