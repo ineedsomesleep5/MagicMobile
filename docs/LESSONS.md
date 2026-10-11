@@ -83,6 +83,12 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-11 (Claude): the iOS CI `swift` job fails when any expression under `apps/ios/MagicMobile/Board/`
+  takes over 200 ms to type-check, even after the build and tests pass. Wrapping a view in a Button inside
+  the tavern bar's big ZStack, or a long settings body with ternaries, is enough to trip it. Cloud threads
+  can't download the job's artifact that names the slow lines. **Rule:** keep new Board views small,
+  as separate structs or helper functions with explicit types, rather than adding to a large closure.
+
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
   includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
