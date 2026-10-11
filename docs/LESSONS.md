@@ -35,6 +35,12 @@ contradicting one.
   in, with widths fitted by `AppleFontMetrics`. Small wrap differences against iOS are expected; a
   layout that only fits with SF metrics isn't.
 
+- 2026-10-11 (Claude): the held card inspector can't take taps: `inspectionTouchPassthrough()` turns hit
+  testing off while a finger holds the card, so a button on it only works when the inspector was opened
+  explicitly. **Rule:** anything a held inspector must show without a tap happens by itself (the double-faced
+  flip turns after 1.4 s); give opened inspectors a real button as well. Where: `Board/CardInspector.swift`,
+  `board/InspectorViews.kt`.
+
 ## Performance
 
 - 2026-10-03 (Claude): a quiet Android tavern board used about 105% CPU on the emulator because
@@ -52,6 +58,11 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-11 (Claude): the cloud container can't reach Google's Maven (`dl.google.com` is blocked), so the
+  Android build fails at the AGP plugin, and there is no Swift toolchain. **Fix:** run the JVM `:core` tests from a
+  scratch Gradle root that includes only `apps/android/core` with the Kotlin JVM plugin 2.0.21 and
+  `jvmToolchain(21)` (only JDK 21 is installed); leave app and iOS compilation to PR CI or the Mac. Maven Central
+  can answer 429 for a minute: wait and retry.
 - 2026-10-11 (Claude): cloud threads ignore `defaultMode: bypassPermissions` / `dontAsk` in settings
   files, and run in auto mode. Commands every thread may run without a prompt go in
   `permissions.allow` in `.claude/settings.json`; cloud threads apply it only while the project has

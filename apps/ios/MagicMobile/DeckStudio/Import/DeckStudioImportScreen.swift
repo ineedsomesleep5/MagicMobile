@@ -31,6 +31,11 @@ struct DeckStudioImportScreen: View {
     @State private var scanNotice: String?
     @State private var receiptURL: URL?
     @State private var saved: DeckLibraryRecord?
+    /// Commander first: the card the player picks leads the import even when the list doesn't mark it.
+    @State private var commander: String?
+    @State private var commanderQuery = ""
+    @State private var commanderSuggestions: [NativeDeckMetadataCatalogue.Card] = []
+    @State private var metadata: NativeDeckMetadataCatalogue?
 
     var body: some View {
         NavigationStack {
@@ -98,6 +103,9 @@ struct DeckStudioImportScreen: View {
             .onChange(of: link) { _, _ in invalidate() }
             .onChange(of: method) { _, _ in invalidate() }
             .onChange(of: excludeSideboards) { _, _ in invalidate() }
+            .onChange(of: commander) { _, _ in invalidate() }
+            .task { metadata = await Task.detached(priority: .userInitiated) { try? NativeDeckMetadataCatalogue.bundled() }.value }
+            .task(id: commanderQuery) { await suggestCommanders() }
             .onChange(of: photo) { _, item in if let item { beginScan(item) } }
             .onDisappear { task?.cancel(); validation.cancelPending() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
@@ -119,6 +127,7 @@ struct DeckStudioImportScreen: View {
         Text("Paste, link, or scan a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
         GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Scan", "Scan image")], selection: $method)
             .disabled(busy || saved != nil)
+        commanderPanel
         inputPanel
         if let scanNotice { DeckStudioNotice(title: "Check recognized text", message: scanNotice) }
         if let error { DeckStudioNotice(title: "Import needs attention", message: error, icon: "exclamationmark.triangle") }
@@ -145,6 +154,69 @@ struct DeckStudioImportScreen: View {
                 .background(GrimoirePaper()).disabled(busy)
                 .accessibilityIdentifier("deckStudio.import.confirm")
         }
+    }
+    /// Type a commander's name and pick it from the suggestions, as on Archidekt.
+    private var commanderPanel: some View {
+        DeckStudioPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Commander").font(.headline)
+                if let commander {
+                    HStack(spacing: 12) {
+                        if !dynamicType.isAccessibilitySize {
+                            DeckStudioArtwork(name: commander).frame(width: 40, height: 56).clipShape(RoundedRectangle(cornerRadius: 5))
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(commander).font(.subheadline.weight(.semibold))
+                            Text("Leads the deck, even if the list marks another card or none.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        }
+                        Spacer(minLength: 0)
+                        Button("Change") { self.commander = nil; commanderQuery = "" }
+                            .frame(minWidth: 44, minHeight: 44).accessibilityIdentifier("deckStudio.import.commander.change")
+                    }.accessibilityElement(children: .combine)
+                } else {
+                    Text("Optional. Pick it first and the import treats it as your commander, even when the list doesn't say so.")
+                        .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    TextField("Type a commander's name", text: $commanderQuery).textFieldStyle(GrimoireFieldStyle())
+                        .autocorrectionDisabled().textInputAutocapitalization(.never).submitLabel(.done)
+                        .onSubmit { if let first = commanderSuggestions.first { chooseCommander(first.name) } }
+                        .accessibilityIdentifier("deckStudio.import.commander.search")
+                    if metadata == nil, !commanderQuery.isEmpty {
+                        Text("The card catalogue is still loading.").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    } else if commanderSuggestions.isEmpty, !commanderQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("No legendary creature or commander matches \"\(commanderQuery)\".").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    }
+                    ForEach(commanderSuggestions) { card in
+                        Button { chooseCommander(card.name) } label: {
+                            HStack(spacing: 12) {
+                                if !dynamicType.isAccessibilitySize {
+                                    DeckStudioArtwork(name: card.name).frame(width: 32, height: 44).clipShape(RoundedRectangle(cornerRadius: 4))
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(card.name).font(.subheadline.weight(.medium))
+                                    Text(card.typeLine ?? "Type unavailable").font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                DeckStudioColorIdentity(colors: card.colorIdentity)
+                            }.frame(minHeight: 44).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("Choose \(card.name) as commander")
+                    }
+                }
+            }.disabled(busy || saved != nil)
+        }
+    }
+    private func chooseCommander(_ name: String) {
+        commander = name; commanderQuery = ""; commanderSuggestions = []
+    }
+    private func suggestCommanders() async {
+        let query = commanderQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let metadata, !query.isEmpty else { commanderSuggestions = []; return }
+        do { try await Task.sleep(for: .milliseconds(120)) } catch { return }
+        let found = await Task.detached(priority: .userInitiated) {
+            DeckStudioCatalogueSearch.commanders(in: metadata, query: query, limit: 6)
+        }.value
+        guard !Task.isCancelled, query == commanderQuery.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        commanderSuggestions = found
     }
     private var inputPanel: some View {
         DeckStudioPanel {
@@ -206,15 +278,16 @@ struct DeckStudioImportScreen: View {
     private func beginPreview() {
         guard let resolver else { return }
         invalidate(); error = nil; busy = true
-        let token = generation, input = text, title = name, url = link, fromLink = method == "Link", exclude = excludeSideboards
+        let token = generation, input = text, title = name, url = link, fromLink = method == "Link", exclude = excludeSideboards, lead = commander
         task = Task { @MainActor in
             defer { if generation == token { busy = false } }
             do {
                 let importer = OnDeviceDeckLinkImporter(resolver: resolver)
-                let result: OnDeviceDeckLinkImporter.Preview
+                var result: OnDeviceDeckLinkImporter.Preview
                 if fromLink { result = try importer.preview(await importer.importDeck(url: url, excludeSideboards: exclude, reviewOnly: true)) }
                 else if input.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") { result = try importer.preview(OnDeviceDeckEditing.importJSON(Data(input.utf8)).deckList) }
                 else { result = try importer.preview(text: input, name: title) }
+                if let lead { result = try importer.preview(result, commander: lead) }
                 try Task.checkCancellation()
                 guard generation == token else { return }
                 preview = result; sourceURL = fromLink ? url : nil

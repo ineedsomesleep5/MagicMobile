@@ -15,6 +15,35 @@ final class OnDeviceDeckLinkImporterTests: XCTestCase {
         }
     }
 
+    func testChosenCommanderLeadsTheImportWhetherOrNotTheListMarkedOne() throws {
+        let importer = OnDeviceDeckLinkImporter(resolver: try resolver())
+        // Unmarked: the one main-deck copy is promoted, keeping its printing.
+        let unmarked = try importer.preview(text: "1 Leader (SET) 7\n3 Forest", name: "Plain list")
+        XCTAssertNil(unmarked.deck.commander)
+        let led = try importer.preview(unmarked, commander: "Leader")
+        XCTAssertEqual(led.deck.commander?.cardName, "Leader")
+        XCTAssertEqual(led.deck.commander?.printing, unmarked.deck.entries.first?.printing)
+        XCTAssertEqual(led.deck.entries.map(\.cardName), ["Forest"])
+        XCTAssertEqual(led.deck.totalCards, unmarked.deck.totalCards)
+        // A different marked commander joins the main deck; nothing is lost.
+        let marked = try importer.preview(text: "Commander\n1 Forest\nDeck\n1 Leader", name: "Marked")
+        let swapped = try importer.preview(marked, commander: "Leader")
+        XCTAssertEqual(swapped.deck.commander?.cardName, "Leader")
+        XCTAssertEqual(swapped.deck.entries.map(\.cardName), ["Forest"])
+        XCTAssertEqual(swapped.deck.entries.first?.section, "deck")
+        XCTAssertEqual(swapped.deck.totalCards, 2)
+        // Absent from the list: it is added. Already the commander: unchanged.
+        XCTAssertEqual(try importer.preview(text: "2 Forest", name: "Short").deck.totalCards + 1,
+                       try importer.preview(importer.preview(text: "2 Forest", name: "Short"), commander: "Leader").deck.totalCards)
+        XCTAssertEqual(OnDeviceDeckLinkImporter.choosingCommander("Forest", in: marked.deck), marked.deck)
+        // A partner already in the command zone takes the lead and the old lead stays beside it.
+        let partners = DeckList(name: "Partners", commander: DeckEntry(cardName: "Leader", quantity: 1, section: "commanders"),
+                                entries: [DeckEntry(cardName: "Forest", quantity: 1, section: "commanders")])
+        let flipped = OnDeviceDeckLinkImporter.choosingCommander("Forest", in: partners)
+        XCTAssertEqual(flipped.commander?.cardName, "Forest")
+        XCTAssertEqual(flipped.entries, [DeckEntry(cardName: "Leader", quantity: 1, section: "commanders")])
+    }
+
     func testProviderTextExportPreviewPreservesQuantitiesRolesAndAnnotations() throws {
         let importer = OnDeviceDeckLinkImporter(resolver: try resolver())
         let archidekt = try importer.preview(text: "1x Leader (SET) [Commander{top}]\n3x Forest (SET) 12 *F* [Land]\n1x Missing [Maybeboard]", name: "Archidekt paste")

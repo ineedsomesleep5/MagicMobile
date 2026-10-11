@@ -198,7 +198,10 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 printings = index
                 deckResolver = withContext(Dispatchers.Default) { OnDeviceDeckResolver(index) }
                 // A double-faced card's other face shows its own side of the chosen printing.
-                deckResolver?.let { io.magicmobile.android.ArtChoices.shared.setReverseFaces(it.reverseFaceFronts) }
+                deckResolver?.let {
+                    io.magicmobile.android.ArtChoices.shared.setReverseFaces(it.reverseFaceFronts)
+                    io.magicmobile.android.core.DoubleFacedCards.shared.setReverseFaces(it.reverseFaceFronts)
+                }
                 val built = BuildIdentity(index.upstreamCommit, index.catalogueHash,
                     "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1")
                 identity = built

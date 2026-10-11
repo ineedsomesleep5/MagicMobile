@@ -338,7 +338,7 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
                 is StudioRoute.Deck -> DeckStudioWorkspaceScreen(library, current.record, current.included, metadata, catalogue?.resolver,
                     play = play, close = { turn(null); reloadTags() }, fix = pendingFix, consumeFix = { pendingFix = null })
                 // A new import opens in its workspace, where Play is one tap away; the playing deck is unchanged.
-                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, didImport = { saved -> reloadTags(); turn(StudioRoute.Deck(saved, false)) },
+                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, metadata = metadata, didImport = { saved -> reloadTags(); turn(StudioRoute.Deck(saved, false)) },
                     close = { turn(null); reloadTags() })
                 null -> {}
             }

@@ -1,6 +1,7 @@
 package io.magicmobile.android.studio
 
 import io.magicmobile.android.core.CardInfo
+import io.magicmobile.android.core.CardPrinting
 import io.magicmobile.android.core.Catalogue
 import io.magicmobile.android.core.PrintingIndex
 import io.magicmobile.android.game.EngineJson
@@ -297,6 +298,7 @@ class DeckStudioPlayProjection(val original: DeckList) {
  * remote card-name resolution. The phone fetches; this decodes and checks.
  */
 class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
+
     data class Preview(val deck: DeckList, val unresolvedNames: List<String>, val annotations: List<OnDeviceDeckEditing.TextAnnotation> = emptyList())
     enum class Provider { MOXFIELD, ARCHIDEKT }
     data class Source(val provider: Provider, val id: String, val endpoint: String)
@@ -318,6 +320,14 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
         val imported = OnDeviceDeckEditing.importText(text, name)
         return preview(imported.deck).copy(annotations = imported.annotations)
     }
+
+    /**
+     * The commander the player picked before importing leads the reviewed deck, whether or not the list marked one.
+     * One main-deck copy is promoted (keeping its printing); a card the list marked as commander instead joins the main
+     * deck, except a partner already in the command zone, which stays beside it. OnDeviceDeckLinkImporter.swift.
+     */
+    fun preview(preview: Preview, commander: String): Preview =
+        preview(choosingCommander(resolver.canonicalCardName(commander) ?: commander, preview.deck)).copy(annotations = preview.annotations)
 
     fun decode(text: String, source: Source, excludeSideboards: Boolean = false, reviewOnly: Boolean = false): DeckList {
         if (text.utf8Size > maximumBytes) throw ImportError("Provider response exceeds 2 MiB.")
@@ -416,6 +426,27 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
 
     companion object {
         const val maximumBytes = 2 * 1024 * 1024
+
+        fun choosingCommander(name: String, deck: DeckList): DeckList {
+            fun board(entry: DeckEntry) = entry.section.trim().lowercase()
+            if (deck.commander?.cardName == name) return deck
+            val entries = deck.entries.toMutableList()
+            var printing: CardPrinting? = null
+            var demotedSection = "deck"
+            val zone = entries.indexOfFirst { it.cardName == name && board(it) in setOf("commander", "commanders") }
+            val main = entries.indexOfFirst { it.cardName == name && board(it) in setOf("main", "mainboard", "deck") }
+            if (zone >= 0) {
+                // A partner already in the command zone takes the lead; the old lead stays there too.
+                printing = entries.removeAt(zone).printing
+                demotedSection = "commanders"
+            } else if (main >= 0) {
+                val row = entries[main]
+                printing = row.printing
+                if (row.quantity > 1) entries[main] = row.copy(quantity = row.quantity - 1) else entries.removeAt(main)
+            }
+            deck.commander?.let { entries.add(0, it.copy(section = demotedSection)) }
+            return DeckList(deck.name, DeckEntry(name, 1, "commanders", printing), entries)
+        }
 
         fun source(text: String): Source {
             val value = text.trim()

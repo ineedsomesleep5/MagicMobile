@@ -181,13 +181,33 @@ fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
     val reminder = CardRulesReminder.text(card)
     val hasFooter = rulesVisible || liveState.isNotEmpty() || attachments.isNotEmpty() || reminder != null
     val shape = RoundedCornerShape(10.dp)
+    // A double-faced card's other face, and whether it is turned up. A held card turns over by itself after a moment
+    // (a finger holding it can't tap); an opened one turns with its flip button.
+    val otherFace = remember(card.card.name) {
+        if (NativeCardArtworkPolicy.permitsLookup(card) && card.card.isToken != true) io.magicmobile.android.core.DoubleFacedCards.shared.otherFace(card.card.name) else null
+    }
+    var turned by remember(card.card.name) { mutableStateOf(false) }
+    val hold = LocalHoldCardInspection.current
+    LaunchedEffect(card.card.name, otherFace) {
+        if (otherFace == null) return@LaunchedEffect
+        var wait = 1400L
+        while (true) {
+            kotlinx.coroutines.delay(wait)
+            if (hold?.isActive == true) { turned = !turned; wait = 2600L }
+        }
+    }
 
     @Composable
     fun cardFace(width: Float, height: Float) {
-        CompositionLocalProvider(LocalCardArtPlaceholderShown provides { shown -> artMissing = shown }) {
-            androidx.compose.runtime.key(card.instanceId) {
-                CardTile(card, false, Modifier.inspectionFoil(), zoneName = "Inspector", width = width.dp, height = height.dp, ignoreTappedRotation = true)
-            }
+        Box(Modifier.size(width.dp, height.dp)) {
+            io.magicmobile.android.CardFlip(turned && otherFace != null, Modifier.fillMaxSize(), front = {
+                CompositionLocalProvider(LocalCardArtPlaceholderShown provides { shown -> artMissing = shown }) {
+                    androidx.compose.runtime.key(card.instanceId) {
+                        CardTile(card, false, Modifier.inspectionFoil(), zoneName = "Inspector", width = width.dp, height = height.dp, ignoreTappedRotation = true)
+                    }
+                }
+            }, back = { otherFace?.let { InspectorOtherFace(it, card.card.name, width) } })
+            if (otherFace != null) InspectorFlipButton(turned, otherFace, card.card.name, Modifier.align(Alignment.BottomEnd)) { turned = !turned }
         }
     }
 
@@ -239,6 +259,38 @@ fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
             face.forEach { it.place(cardX, 0) }
             val footerX = if (fit.horizontal) ((fit.cardSize.width + CardInspectorFit.COLUMN_SPACING) * density).roundToInt() else 0
             footer.forEach { it.place(footerX, (footerTop * density).roundToInt()) }
+        }
+    }
+}
+
+/** The other face is a picture of the card, without the live state the table puts on this one. */
+@Composable
+private fun InspectorOtherFace(face: io.magicmobile.android.core.DoubleFacedCards.Face, cardName: String, width: Float) {
+    val corner = RoundedCornerShape((width * 0.045f).dp)
+    io.magicmobile.android.CardArtwork(face.name, Modifier.fillMaxSize().clip(corner).semantics {
+        contentDescription = "${face.name}, ${if (face.isBack) "back" else "front"} face of $cardName"
+    }) {
+        Column(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.06f), corner).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+            SfImage("arrow.triangle.2.circlepath", MagicPalette.parchment, 22.dp)
+            Text(face.name, color = MagicPalette.parchment, style = sf(17f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(if (face.isBack) "Back face" else "Front face", color = MagicPalette.parchment, style = sf(12f))
+        }
+    }
+}
+
+/** Turns the card over. While a finger holds the card it turns by itself instead. */
+@Composable
+private fun InspectorFlipButton(turned: Boolean, face: io.magicmobile.android.core.DoubleFacedCards.Face, cardName: String, modifier: Modifier, flip: () -> Unit) {
+    val tavern = io.magicmobile.android.ui.LocalTavernBoard.current
+    Box(modifier.padding(4.dp).size(44.dp).clickable(onClick = flip).semantics {
+        contentDescription = if (turned) "Show $cardName" else "Turn over to ${face.name}"
+    }, contentAlignment = Alignment.Center) {
+        val ring = if (tavern) Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.LEATHER, CircleShape).border(1.5.dp, io.magicmobile.android.ui.TavernPalette.goldText, CircleShape)
+            else Modifier.background(MagicPalette.iron.copy(alpha = 0.92f), CircleShape).border(1.5.dp, MagicPalette.antiqueGold.copy(alpha = 0.6f), CircleShape)
+        Box(Modifier.size(38.dp).then(ring), contentAlignment = Alignment.Center) {
+            SfImage("arrow.triangle.2.circlepath", if (tavern) io.magicmobile.android.ui.TavernPalette.label else MagicPalette.parchment, 18.dp)
         }
     }
 }

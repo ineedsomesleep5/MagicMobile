@@ -36,6 +36,39 @@ struct OnDeviceDeckLinkImporter {
         return result
     }
 
+    /// The commander the player picked before importing leads the reviewed deck, whether or not the list
+    /// marked one. One main-deck copy is promoted (keeping its printing); a card the list marked as commander
+    /// instead joins the main deck, except a partner already in the command zone, which stays beside it.
+    func preview(_ preview: Preview, commander name: String) throws -> Preview {
+        var result = try self.preview(Self.choosingCommander(resolver.canonicalCardName(name) ?? name, in: preview.deck))
+        result.annotations = preview.annotations
+        return result
+    }
+
+    static func choosingCommander(_ name: String, in deck: DeckList) -> DeckList {
+        func board(_ entry: DeckEntry) -> String { entry.section.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        if deck.commander?.cardName == name { return deck }
+        var entries = deck.entries
+        var printing: CardPrinting?
+        var demotedSection = "deck"
+        if let index = entries.firstIndex(where: { $0.cardName == name && ["commander", "commanders"].contains(board($0)) }) {
+            // A partner already in the command zone takes the lead; the old lead stays there too.
+            printing = entries[index].printing
+            entries.remove(at: index)
+            demotedSection = "commanders"
+        } else if let index = entries.firstIndex(where: { $0.cardName == name && ["main", "mainboard", "deck"].contains(board($0)) }) {
+            let row = entries[index]
+            printing = row.printing
+            if row.quantity > 1 {
+                entries[index] = DeckEntry(cardName: row.cardName, quantity: row.quantity - 1, section: row.section, printing: row.printing)
+            } else { entries.remove(at: index) }
+        }
+        if let old = deck.commander {
+            entries.insert(DeckEntry(cardName: old.cardName, quantity: old.quantity, section: demotedSection, printing: old.printing), at: 0)
+        }
+        return DeckList(name: deck.name, commander: DeckEntry(cardName: name, quantity: 1, section: "commanders", printing: printing), entries: entries)
+    }
+
     static func importDeck(url: URL, resolver: OnDeviceDeckResolver, excludeSideboards: Bool = false) async throws -> DeckList {
         try await Self(resolver: resolver).importDeck(url: url.absoluteString, excludeSideboards: excludeSideboards)
     }

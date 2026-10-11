@@ -5,6 +5,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,7 +85,8 @@ private object DeckStudioImportReceipt {
  * [didImport] takes over after a save (the studio opens the new deck); [close] is Cancel.
  */
 @Composable
-fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckResolver?, didImport: (DeckLibraryRecord) -> Unit, close: () -> Unit) {
+fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckResolver?, metadata: NativeDeckMetadataCatalogue? = null,
+                          didImport: (DeckLibraryRecord) -> Unit, close: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val validation = remember { DeckStudioValidationState(scope) }
@@ -99,13 +105,25 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     var scanNotice by remember { mutableStateOf<String?>(null) }
     var receipt by remember { mutableStateOf<File?>(null) }
     var saved by remember { mutableStateOf<DeckLibraryRecord?>(null) }
+    // Commander first: the card the player picks leads the import even when the list doesn't mark it.
+    var commander by remember { mutableStateOf<String?>(null) }
+    var commanderQuery by remember { mutableStateOf("") }
+    var commanderSuggestions by remember { mutableStateOf<List<io.magicmobile.android.core.CardInfo>>(emptyList()) }
 
     fun invalidate() {
         if (saved != null) return
         generation = UUID.randomUUID(); job?.cancel(); busy = false; preview = null; receipt = null; validation.prepare(null)
     }
     fun cancel() { if (saving) return; job?.cancel(); validation.cancelPending(); close() }
-    LaunchedEffect(text, name, link, method, excludeSideboards) { invalidate() }
+    LaunchedEffect(text, name, link, method, excludeSideboards, commander) { invalidate() }
+    LaunchedEffect(commanderQuery, metadata) {
+        val query = commanderQuery.trim()
+        val catalogue = metadata
+        if (catalogue == null || query.isEmpty()) { commanderSuggestions = emptyList(); return@LaunchedEffect }
+        kotlinx.coroutines.delay(120)
+        commanderSuggestions = withContext(Dispatchers.Default) { DeckStudioBuilderSearch.commanders(catalogue, query, 6) }
+    }
+    fun chooseCommander(card: String) { commander = card; commanderQuery = ""; commanderSuggestions = emptyList() }
     BackHandler { cancel() }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -145,15 +163,16 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     fun beginPreview() {
         val resolver = resolver ?: return
         invalidate(); error = null; busy = true
-        val token = generation; val input = text; val title = name; val url = link; val fromLink = method == "Link"; val exclude = excludeSideboards
+        val token = generation; val input = text; val title = name; val url = link; val fromLink = method == "Link"; val exclude = excludeSideboards; val lead = commander
         job = scope.launch {
             try {
                 val importer = OnDeviceDeckLinkImporter(resolver)
-                val result = when {
+                val parsed = when {
                     fromLink -> importer.preview(importer.importDeck(url, exclude, reviewOnly = true))
                     input.trim().startsWith("{") -> importer.preview(OnDeviceDeckEditing.importJSON(input))
                     else -> withContext(Dispatchers.Default) { importer.preview(input, title) }
                 }
+                val result = if (lead != null) importer.preview(parsed, lead) else parsed
                 if (generation != token) return@launch
                 preview = result; sourceURL = if (fromLink) url else null
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -189,6 +208,44 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
         Text("Bring your deck.", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
         Text("Paste, link, or scan a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
         StudioSegmented(listOf("Paste", "Link", "Scan"), method, { method = it }, { if (it == "Scan") "Scan image" else it }, enabled = !busy && saved == null)
+        // Type a commander's name and pick it from the suggestions, as on Archidekt.
+        StudioPanel(spacing = 10.dp) {
+            val locked = busy || saved != null
+            Text("Commander", color = DeckStudioPalette.ink, style = StudioText.headline)
+            val chosen = commander
+            if (chosen != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(40.dp, 56.dp).clip(RoundedCornerShape(5.dp))) { DeckStudioArtwork(chosen, Modifier.fillMaxSize()) }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(chosen, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.semibold))
+                        Text("Leads the deck, even if the list marks another card or none.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                    }
+                    StudioPlainButton("Change", { commander = null; commanderQuery = "" },
+                        Modifier.semantics { contentDescription = "deckStudio.import.commander.change" }, enabled = !locked)
+                }
+            } else {
+                Text("Optional. Pick it first and the import treats it as your commander, even when the list doesn't say so.",
+                    color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                StudioRoundedField(commanderQuery, { commanderQuery = it }, "Type a commander's name",
+                    Modifier.fillMaxWidth().testTag("deckStudio.import.commander.search"), enabled = !locked,
+                    onSubmit = { commanderSuggestions.firstOrNull()?.let { chooseCommander(it.name) } })
+                if (metadata == null && commanderQuery.isNotBlank()) Text("The card catalogue is still loading.", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                else if (commanderSuggestions.isEmpty() && commanderQuery.isNotBlank())
+                    Text("No legendary creature or commander matches \"${commanderQuery.trim()}\".", color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                for (card in commanderSuggestions) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !locked) { chooseCommander(card.name) }.defaultMinSize(minHeight = 44.dp)
+                        .clearAndSetSemantics { contentDescription = "Choose ${card.name} as commander" },
+                        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(32.dp, 44.dp).clip(RoundedCornerShape(4.dp))) { DeckStudioArtwork(card.name, Modifier.fillMaxSize()) }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(card.name, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
+                            Text(card.typeLine ?: "Type unavailable", color = DeckStudioPalette.secondaryInk, style = StudioText.caption, maxLines = 1)
+                        }
+                        DeckStudioColorIdentity(card.colorIdentity)
+                    }
+                }
+            }
+        }
         StudioPanel(spacing = 14.dp) {
             val locked = busy || saved != null
             when (method) {

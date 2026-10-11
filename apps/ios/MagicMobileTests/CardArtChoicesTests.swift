@@ -263,3 +263,14 @@ private final class PrintingFixtureProtocol: URLProtocol {
     }
     override func stopLoading() {}
 }
+
+final class DoubleFacedCardsTests: XCTestCase {
+    func testEitherFaceNamesTheOther() async {
+        let faces = DoubleFacedCards(loader: { ["Valakut Stoneforge": "Valakut Awakening", "Insectile Aberration": "Delver of Secrets"] })
+        XCTAssertNil(faces.otherFace(of: "Valakut Awakening"), "Nothing is known before the catalogue is read")
+        let back = await faces.loadedOtherFace(of: "Valakut Awakening")
+        XCTAssertEqual(back, DoubleFacedCards.Face(name: "Valakut Stoneforge", isBack: true))
+        XCTAssertEqual(faces.otherFace(of: "Insectile Aberration"), DoubleFacedCards.Face(name: "Delver of Secrets", isBack: false))
+        XCTAssertNil(faces.otherFace(of: "Sol Ring"))
+    }
+}
