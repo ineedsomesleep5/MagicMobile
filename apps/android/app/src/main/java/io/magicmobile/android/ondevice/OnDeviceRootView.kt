@@ -884,6 +884,14 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         // Settings → Pass After Casting, sent with this seat's next answer when it changes.
                         val autoPassAfterCast by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.board.AutoPassAfterCast.KEY, true)
                         androidx.compose.runtime.LaunchedEffect(autoPassAfterCast) { session.setAutoPassAfterCast(autoPassAfterCast) }
+                        // Settings → Smart Auto-Pass and its phase stops, from the next prompt.
+                        val smartAutoPass by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.ENABLED_KEY, true)
+                        val phaseStops by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
+                            io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops))
+                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops) {
+                            session.setSmartPass(io.magicmobile.android.game.OnDeviceSmartPass.Settings(smartAutoPass,
+                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops)))
+                        }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
                             .then(if (boardQuiet) Modifier.clearAndSetSemantics {} else Modifier)) {
@@ -1438,6 +1446,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
             io.magicmobile.android.board.AutoPassAfterCastToggle()
+            io.magicmobile.android.board.SmartAutoPassToggle()
             BoardEffectsPicker()
         }
     }

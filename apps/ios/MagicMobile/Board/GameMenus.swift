@@ -337,6 +337,7 @@ struct GameManagementMenu: View {
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
+                    SmartAutoPassToggle()
                     BoardEffectsPicker()
 
                     Button(action: openPromptInspector) {

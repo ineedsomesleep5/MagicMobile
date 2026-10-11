@@ -47,6 +47,17 @@ contradicting one.
   flip turns after 1.4 s); give opened inspectors a real button as well. Where: `Board/CardInspector.swift`,
   `board/InspectorViews.kt`.
 
+## Gameplay
+
+- 2026-10-11 (Claude): Arena-style smart auto-pass and phase stops needed no engine change. The poll
+  already carries XMage's own playable list (`gameView.canPlayObjects`, with `manaAbility` marks) and
+  the step, so the session sends the same `pass_priority` a tap sends. **Rule:** client-side pass
+  scheduling belongs in `OnDeviceSmartPass` (iOS `OnDeviceYieldPolicy.swift`, Android core
+  `game/OnDeviceSmartPass.kt`); an engine edit means a native rebuild on both platforms.
+- 2026-10-11 (Claude): the Android app CI job runs `:core:contractChecks` but never the `:core:test`
+  JUnit task, so a new core JUnit class only compiles there. **Rule:** call new core checks from
+  `ContractChecks.kt`'s `main` so CI executes them.
+
 ## Performance
 
 - 2026-10-03 (Claude): a quiet Android tavern board used about 105% CPU on the emulator because

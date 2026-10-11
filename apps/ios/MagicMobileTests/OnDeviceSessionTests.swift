@@ -255,6 +255,42 @@ final class OnDeviceSessionTests: XCTestCase {
         try await session.close()
     }
 
+    /// Smart auto-pass: a main phase with lands to play stops at the default stop; without the
+    /// stop, or with nothing to play, the seat passes that exact prompt once.
+    @MainActor
+    func testSmartPassStopsAtPhaseStopsAndPassesRoutinePriorityOnce() async throws {
+        let poll = try fixture("2p-priority")
+        var bare = poll.raw.object!
+        var root = bare["snapshot"]!.object!; var view = root["gameView"]!.object!
+        view["canPlayObjects"] = .object(["objects": .object([:])])
+        root["gameView"] = .object(view); bare["snapshot"] = .object(root)
+        let cases: [(MagicMobileOnDevice.JSONValue, OnDeviceSmartPass.Settings?, Int)] = [
+            (poll.raw, nil, 0),
+            (.object(bare), .init(enabled: false), 0),
+            (poll.raw, .init(), 0),
+            (poll.raw, .init(enabled: true, stops: []), 1),
+            (.object(bare), .init(), 1)
+        ]
+        for (raw, settings, expected) in cases {
+            let transport = SessionFixtureTransport(poll: raw)
+            let session = OnDeviceSession()
+            try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+                                     seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true,
+                                     smartPass: settings, close: {})
+            if expected > 0 { try await waitForResponses(expected, transport: transport) }
+            try await Task.sleep(for: .milliseconds(200))
+            try await session.refresh()
+            try await waitUntilIdle(session)
+            let sent = await transport.responses()
+            XCTAssertEqual(sent.count, expected, "\(String(describing: settings))")
+            if expected > 0 {
+                XCTAssertEqual(sent[0]["command"]?["promptId"]?.string, poll.prompt?.id)
+                XCTAssertEqual(sent[0]["command"]?["answer"], EnginePrompt.answer("boolean", .bool(true)))
+            }
+            try await session.close()
+        }
+    }
+
     /// Regression: Skip tapped while a poll is in flight used to be disabled for that
     /// instant and silently ignored. It now arms and passes once the poll finishes.
     @MainActor

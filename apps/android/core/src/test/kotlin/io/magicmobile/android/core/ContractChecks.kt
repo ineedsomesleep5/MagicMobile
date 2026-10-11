@@ -8,6 +8,10 @@ private fun verify(value:Boolean,label:String){checks++;check(value){label}}
 private fun rejects(label:String,block:()->Unit){checks++;try{block()}catch(_:Exception){return};error("Expected rejection: $label")}
 fun main(args:Array<String>){
     autoYieldChecks()
+    // CI runs these checks, not the JUnit task: smart auto-pass rides here too.
+    io.magicmobile.android.game.OnDeviceSmartPassTest().run {
+        passesWithNothingToPlayAndStopsWhereMarked(); neverAnswersAChoiceFloatingManaOrWhenOff(); readsPlayablesManaAndStoredStops()
+    }
     val id=UUID.randomUUID().toString()
     val base=mapOf("promptId" to "p", "revision" to 9007199254740993L,"kind" to "ASK","payload" to mapOf("message" to "Keep hand?"),"responseTypes" to listOf("boolean"),"min" to 0,"max" to 1)
     val d=Decision.parse(Wire.decode(Wire.encode(base)))
