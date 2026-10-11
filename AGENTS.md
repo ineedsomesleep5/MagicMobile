@@ -12,6 +12,7 @@
 
 - Use the smallest applicable workflow. Routine behavior fixes are not requests for visual redesign, a design interview, a PRD, issue-tracker setup or a new task.
 - For an approved implementation, skill planning steps may use the already-approved interface and behavior; do not ask for the same approval again. Ask about genuinely unresolved product decisions.
+- At the start of a task, read `docs/LESSONS.md`; before handing back, add an entry for any non-obvious fix or trap. Before building or porting a screen on either platform, read `docs/TAVERN_STYLE.md`.
 - Read domain/context docs when terminology matters, architecture/ADRs when changing component boundaries, and deployment docs when preparing a release. Do not load a document stack before every edit or reread unchanged references within the same task.
 - Prefer an available graph indexed for this checkout for semantic discovery. If unavailable, stale or insufficient, use rg immediately. Index repair is not a prerequisite for ordinary work.
 - Use systematic debugging for non-obvious failures. For straightforward errors, use a focused diagnosis/fix/regression loop. When reproduction is expensive or unavailable, investigate existing logs and source, label hypotheses, and keep runtime confirmation explicitly pending.
