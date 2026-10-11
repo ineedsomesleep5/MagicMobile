@@ -72,12 +72,6 @@ contradicting one.
 
 ## Agent environment
 
-- 2026-10-11 (Claude): the cloud container can't reach Google's Maven (`dl.google.com` is blocked), so the
-  Android build fails at the AGP plugin, and there is no Swift toolchain. **Fix:** run the JVM `:core` tests from a
-  scratch Gradle root that includes only `apps/android/core` with the Kotlin JVM plugin 2.0.21 and
-  `jvmToolchain(21)` (only JDK 21 is installed); leave app and iOS compilation to PR CI or the Mac. Maven Central
-  can answer 429 for a minute: wait and retry.
-
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
   includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
