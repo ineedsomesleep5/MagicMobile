@@ -418,6 +418,28 @@ function App() {
               </p>
             </details>
           </div>
+          <div id="support" className="support-card">
+            <p className="eyebrow">
+              <Sparkle />
+              Keep the tavern lit
+            </p>
+            <h3>Help cover server costs.</h3>
+            <p>
+              MagicMobile is free, with no ads and nothing to buy in the app.
+              Online tables, friends and ranked games run on servers that cost
+              money every month. If you enjoy the game, a small tip helps keep
+              them running.
+            </p>
+            {/* The support page holds the one donation link; the apps open it too. */}
+            <a className="plaque plaque-ember" href="/support/">
+              Support MagicMobile
+              <ArrowUpRight size={20} />
+            </a>
+            <small>
+              Tips are optional and unlock nothing in the game. Unofficial fan
+              project, not affiliated with Wizards of the Coast.
+            </small>
+          </div>
           <footer>
             <a className="footer-brand" href="#cards">
               <img src="/tavern/mark-96.webp" alt="" width="44" height="44" />
@@ -426,6 +448,10 @@ function App() {
             </a>
             <a href="https://github.com/ineedsomesleep5/MagicMobile">
               Follow the project
+              <ArrowUpRight size={16} />
+            </a>
+            <a href="/support/">
+              Support the project
               <ArrowUpRight size={16} />
             </a>
             <a href="/privacy/">

@@ -39,6 +39,7 @@ struct TavernMainMenu: View {
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared || reduceMotion ? 0 : 14)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { SupportBanner() }
         .background(BrandBackdrop().ignoresSafeArea())
         .preferredColorScheme(.dark)
         .onAppear {
@@ -320,6 +321,7 @@ struct AppearanceSettingsView: View {
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
                     BoardEffectsPicker()
+                    SupportSettingsPanel()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
             .background { TavernSheetBackground() }
