@@ -164,11 +164,13 @@ struct PortraitOpponentStatusBar: View {
                         }
                         .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.phasePlate, canvas: canvas, origin: origin)
-                    // Counters, commander damage and attached cards are in the medallion's
-                    // pop-over; poison and the worst commander damage show here too.
-                    TavernStatusGlance(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot))
-                        .scaleEffect(canvas.tavernControlScale)
-                        .tavernPosition(sockets.opponentGlance, canvas: canvas, origin: origin)
+                    // Commander damage, poison and the rest curve around the medallion, under its
+                    // pop-over's full list (drawn first so a revealed top card leans over them).
+                    let medallionCenter = canvas.tavernPoint(center)
+                    TavernEffectOrbitBadges(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot),
+                                            center: CGPoint(x: medallionCenter.x - origin.x, y: medallionCenter.y - origin.y),
+                                            radius: canvas.tavernLength(TavernEffectOrbit.radius(holeRadius: sockets.opponentHoleRadius)),
+                                            bearingDegrees: sockets.opponentEffectsBearing, limit: sockets.opponentEffectsLimit)
                     opponentMedallion(diameter: canvas.tavernLength(sockets.opponentHoleRadius * 2))
                         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.top: $0] }
                         .tavernPosition(center, canvas: canvas, origin: origin)
