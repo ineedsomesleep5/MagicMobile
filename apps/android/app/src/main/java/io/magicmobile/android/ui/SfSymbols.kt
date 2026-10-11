@@ -136,6 +136,7 @@ object SfSymbols {
         "square.and.arrow.down" -> Icons.Filled.SaveAlt
         "square.and.arrow.down.fill" -> Icons.Filled.Download
         "sparkles" -> Icons.Filled.AutoAwesome
+        "graduationcap.fill" -> Icons.Filled.School
         "sparkle" -> Sparkle
         "wand.and.stars" -> Icons.Filled.AutoFixHigh
         "rectangle.stack", "rectangle.stack.fill" -> Icons.Filled.Style

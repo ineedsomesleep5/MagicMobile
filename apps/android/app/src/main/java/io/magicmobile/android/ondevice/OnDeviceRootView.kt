@@ -115,6 +115,10 @@ import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.GameCommand
 import io.magicmobile.android.game.GameSnapshot
 import io.magicmobile.android.game.GameResumeSettings
+import io.magicmobile.android.game.GuidedGameCoach
+import io.magicmobile.android.game.GuidedGameLaunch
+import io.magicmobile.android.game.GuidedGameSetup
+import io.magicmobile.android.game.GuidedGameTip
 import io.magicmobile.android.game.HowToPlayLaunch
 import io.magicmobile.android.game.OfflineArtLaunch
 import io.magicmobile.android.game.TableJoinLink
@@ -135,6 +139,8 @@ import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.GameMusic
 import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.HeroCommanderCard
+import io.magicmobile.android.ui.GuidedGameCoachCard
+import io.magicmobile.android.ui.GuidedGameWelcomeView
 import io.magicmobile.android.ui.HowToPlayView
 import io.magicmobile.android.ui.IosListRow
 import io.magicmobile.android.ui.IosListSection
@@ -224,6 +230,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var howToPlaySeenVersion by AppPreferences.int(HowToPlayLaunch.SEEN_VERSION_KEY, 0)
     var offlineArtPromptSeen by AppPreferences.boolean(OfflineArtLaunch.SEEN_KEY, false)
     var showOfflineArtPrompt by remember { mutableStateOf(false) }
+    // The guided first game (GuidedGame.kt): the first launch's welcome, and the coach on the table.
+    var showGuidedWelcome by remember { mutableStateOf(false) }
+    var guidedWelcomeSeen by AppPreferences.boolean(GuidedGameLaunch.WELCOME_SEEN_KEY, false)
+    var guidedActive by AppPreferences.boolean(GuidedGameLaunch.ACTIVE_KEY, false)
+    var guidedShownTips by AppPreferences.string(GuidedGameLaunch.SHOWN_TIPS_KEY, "")
+    var guidedGame by rememberSaveable { mutableStateOf(false) }
+    var guidedTipID by rememberSaveable { mutableStateOf<String?>(null) }
     var showFriends by remember { mutableStateOf(false) }
     var chatProfile by remember { mutableStateOf<String?>(null) }
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
@@ -379,6 +392,39 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID)
             if (session.matchID == null) activeMatch = null
         }
+    }
+
+    // MARK: Guided first game (OnDeviceRootView.swift)
+
+    fun endGuidedTips() { guidedTipID = null; guidedGame = false; guidedActive = false }
+
+    /** Token Triumph against Grave Danger at skill 1, casual, with the coach on; the player's own deck and settings stay as they are. */
+    fun startGuidedGame() {
+        val deck = setup.deck(GuidedGameSetup.PLAYER_DECK_ID) ?: return
+        val opponent = aiPool.firstOrNull { it.id == GuidedGameSetup.OPPONENT_DECK_ID } ?: return
+        val colors = aiPool.firstOrNull { it.id == GuidedGameSetup.PLAYER_PRECON_ID }?.colors?.map { it.toString() } ?: emptyList()
+        val name = runCatching { OnDeviceSetupModel.playerName(playerDisplayName) }.getOrNull() ?: "You"
+        guidedShownTips = ""; guidedActive = true; guidedWelcomeSeen = true
+        howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
+        guidedGame = true; guidedTipID = null
+        lobby = null; showSetup = false
+        val core = io.magicmobile.android.game.CommanderBracket.CORE
+        activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.CASUAL, GuidedGameSetup.PLAYER_DECK_ID, deck.name, deck.commanderName, colors,
+            core.level, listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level,
+            GuidedGameSetup.AI_SKILL, opponent.id)
+        rankChange = null
+        val settings = GameResumeSettings(GuidedGameSetup.PLAYER_DECK_ID, listOf(opponent.id), GuidedGameSetup.AI_SKILL, aiStartingPlayerMode,
+            io.magicmobile.android.game.PlayMode.CASUAL.raw, core.level)
+        scope.launch {
+            setup.startAI(name, deck, listOf(opponent.deck), GuidedGameSetup.AI_SKILL, settings, deckID = GuidedGameSetup.PLAYER_DECK_ID)
+            if (session.matchID == null) { activeMatch = null; endGuidedTips() }
+        }
+    }
+
+    fun answerGuidedWelcome() {
+        guidedWelcomeSeen = true
+        howToPlaySeenVersion = HowToPlayLaunch.seenVersionAfterClosing(howToPlaySeenVersion)
+        showGuidedWelcome = false
     }
 
     fun startQuickMatch() {
@@ -562,6 +608,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         recordAbandonedRankedGame()
         scope.launch {
             if (setup.leave()) {
+                if (guidedGame) endGuidedTips()
                 selection.selectedCard = null; selection.inspectedCard = null
                 activeMatch = null; rankChange = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
             }
@@ -586,7 +633,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     /** Resume puts the saved game's setup back, so the menu and Rematch match the restored board. */
     fun resumeSavedGame() {
-        setup.resume.offer?.sidecar?.settings?.let { saved ->
+        // A guided game picks its coach up again and keeps the player's own deck and settings.
+        val guided = setup.resume.offer?.sidecar?.settings?.deckID == GuidedGameSetup.PLAYER_DECK_ID && guidedActive
+        guidedGame = guided; guidedTipID = null
+        if (!guided) setup.resume.offer?.sidecar?.settings?.let { saved ->
             if (saved.deckID in setup.deckIDs) selectedDeckID = saved.deckID
             val ids = saved.aiDeckIDs.filter { id -> aiPool.any { it.id == id } }
             val mode = saved.mode?.let { raw -> io.magicmobile.android.game.PlayMode.entries.firstOrNull { it.raw == raw } }
@@ -612,8 +662,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun rematchOrLeave() {
         if (session.snapshot?.isCompleted != true || setup.usingMultiplayer) return requestLeave()
         val mode = activeMatch?.mode
+        val guided = guidedGame
         scope.launch {
             if (!setup.close()) return@launch
+            if (guided) return@launch startGuidedGame()
             selection.selectedCard = null; selection.inspectedCard = null
             activeMatch = null; rankChange = null
             // Quick Match deals a new opponent; Ranked looks for the next match.
@@ -834,7 +886,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     // The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     val menuIsFree = !activeGame && !showSetup && !setup.needsLeave && setup.resume.offer == null && !startingRollVisible &&
-        !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay)
+        !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome)
     // Friends' challenges arrive while the menu or a lobby is open (never during a game), and only for a player with
     // friends: nobody else can send one.
     val watchesChallenges = appForeground && vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY &&
@@ -848,7 +900,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(menuIsFree) {
         if (!menuIsFree) return@LaunchedEffect
         delay(700)
-        if (HowToPlayLaunch.shouldShowAutomatically(howToPlaySeenVersion, LaunchEnvironment.values)) { howToPlayOpensTable = true; showHowToPlay = true }
+        if (GuidedGameLaunch.shouldShowWelcome(guidedWelcomeSeen, howToPlaySeenVersion, LaunchEnvironment.values)) showGuidedWelcome = true
+        else if (HowToPlayLaunch.shouldShowAutomatically(howToPlaySeenVersion, LaunchEnvironment.values)) { howToPlayOpensTable = true; showHowToPlay = true }
         else if (OfflineArtLaunch.shouldShowAutomatically(howToPlaySeenVersion, offlineArtPromptSeen, LaunchEnvironment.values)) showOfflineArtPrompt = true
     }
     fun closeHowToPlay() {
@@ -857,7 +910,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     }
 
     MaterialTheme(colorScheme = darkColorScheme()) {
-        CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay),
+        CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome),
             LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
@@ -900,6 +953,21 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 refreshGame = ::refresh, reconnectGame = ::refresh, checkBridgeHealth = { setup.localHealth() },
                                 newGame = ::rematchOrLeave, quitGame = ::leaveFinishedOrAsk,
                                 portraitModeEnabled = portraitModeEnabled, setPortraitModeEnabled = { portraitModeEnabled = it })
+                            // Each snapshot may bring the guided game's next note, or retire the one on screen.
+                            LaunchedEffect(session.snapshot, guidedGame) {
+                                val snapshot = session.snapshot
+                                if (!guidedGame || snapshot == null) return@LaunchedEffect
+                                val step = GuidedGameCoach.advance(guidedTipID?.let(GuidedGameTip::fromId), snapshot,
+                                    GuidedGameLaunch.shownTips(guidedShownTips))
+                                step.newlyShown?.let { guidedShownTips = GuidedGameLaunch.remember(it, guidedShownTips) }
+                                guidedTipID = step.current?.id
+                                if (snapshot.isCompleted) guidedActive = false
+                            }
+                            val tip = guidedTipID?.let(GuidedGameTip::fromId)
+                            androidx.compose.animation.AnimatedVisibility(guidedGame && tip != null && !boardQuiet,
+                                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 6.dp)) {
+                                if (tip != null) GuidedGameCoachCard(tip, dismiss = { guidedTipID = null }, turnOff = ::endGuidedTips)
+                            }
                         }
                     }
                 } else if (showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true)) {
@@ -1063,7 +1131,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             if (showUpdates) BoardSheet({ showUpdates = false }) { UpdatesSheet(setup.identity?.upstreamCommit) { showUpdates = false } }
             if (showHowToPlay) BoardSheet(::closeHowToPlay, background = BrandTheme.canvas, skipPartiallyExpanded = true) {
                 // The first visit opens straight into the table's tutorial; the menu offers both.
-                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null)
+                HowToPlayView(::closeHowToPlay, Modifier.fillMaxWidth().fillMaxHeight(0.94f), tutorialID = if (howToPlayOpensTable) HowToPlayText.tutorials[0].id else null,
+                    playGuided = if (howToPlayOpensTable) null else ::startGuidedGame)
+            }
+            if (showGuidedWelcome) BoardSheet(::answerGuidedWelcome, background = BrandTheme.canvas) {
+                GuidedGameWelcomeView(playGuided = { answerGuidedWelcome(); startGuidedGame() },
+                    readHowToPlay = {
+                        answerGuidedWelcome()
+                        scope.launch { delay(450); howToPlayOpensTable = true; showHowToPlay = true }
+                    }, skip = ::answerGuidedWelcome, modifier = Modifier.fillMaxWidth())
             }
             // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
             io.magicmobile.android.studio.StudioCover(showDecks, animated = false) {

@@ -52,6 +52,11 @@ struct OnDeviceRootView: View {
     @State private var bannerError: String?
     @State private var didDismissStartingRoll = false
     @State private var showOfflineArtPrompt = false
+    /// The first launch's welcome: a guided game, How to Play, or straight to the menu.
+    @State private var showGuidedWelcome = false
+    /// The game on the table is the guided first game: its coach shows notes (GuidedGame.swift).
+    @State private var guidedGame = false
+    @State private var guidedTip: GuidedGameTip?
     /// The table code typed or opened from a join link; a link that arrives before the
     /// catalogue is ready waits in `pendingJoinCode`.
     @State private var relayJoinCode = ""
@@ -195,7 +200,11 @@ struct OnDeviceRootView: View {
 
     private func resumeSavedGame() {
         guard let record = resume.acceptOffer() else { return }
-        applyResumeSetup(record.setup)
+        // A guided game picks its coach up again and keeps the player's own deck and settings.
+        guidedGame = record.setup.deckID == GuidedGameSetup.playerDeckID
+            && MagicMobilePreferences.current.bool(forKey: GuidedGameLaunch.activeKey)
+        guidedTip = nil
+        if !guidedGame { applyResumeSetup(record.setup) }
         activeMatch = resumedMatch(record.setup, deckName: record.playerDeckName)
         rankChange = nil
         showSetup = false
@@ -355,12 +364,22 @@ struct OnDeviceRootView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: lobby)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
-        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay))
+        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome))
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
         .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current); howToPlayOpensTable = false }) {
             // The first visit opens straight into the table's tutorial; the menu offers both.
-            HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil)
+            HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil,
+                          playGuided: howToPlayOpensTable ? nil : startGuidedGame)
+        }
+        .sheet(isPresented: $showGuidedWelcome) {
+            GuidedGameWelcomeView(playGuided: {
+                answerGuidedWelcome()
+                startGuidedGame()
+            }, readHowToPlay: {
+                answerGuidedWelcome()
+                Task { try? await Task.sleep(for: .milliseconds(450)); howToPlayOpensTable = true; showHowToPlay = true }
+            }, skip: answerGuidedWelcome)
         }
         .sheet(isPresented: $showFriends) {
             FriendsView(account: account, join: { code in
@@ -495,14 +514,16 @@ struct OnDeviceRootView: View {
     /// The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     private var menuIsFree: Bool {
         !activeGame && !showSetup && !setup.needsLeave && resume.offer == nil && !startingRollVisible
-            && !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay)
+            && !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome)
     }
 
     /// First visit to the menu after this update: the walkthrough opens once by itself.
     private func showHowToPlayIfFirstLaunch() async {
         do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
         guard menuIsFree else { return }
-        if HowToPlayLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
+        if GuidedGameLaunch.shouldShowWelcome(defaults: MagicMobilePreferences.current) {
+            showGuidedWelcome = true
+        } else if HowToPlayLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
             howToPlayOpensTable = true
             showHowToPlay = true
         } else if OfflineArtLaunch.shouldShowAutomatically(defaults: MagicMobilePreferences.current) {
@@ -900,6 +921,15 @@ struct OnDeviceRootView: View {
             viewZone: { title, cards in zone = InspectedZone(title: title, cards: cards) }
         )
         .overlay { zoneOverlay }
+        .overlay(alignment: .top) {
+            if guidedGame, let guidedTip {
+                GuidedGameCoachCard(tip: guidedTip, dismiss: { self.guidedTip = nil }, turnOff: endGuidedTips)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: guidedTip)
+        .onReceive(session.$snapshot) { snapshot in advanceGuidedTip(snapshot) }
         .environment(\.inspectorBattlefield, session.snapshot?.visibleBattlefield ?? [])
         .disabled(setup.isBusy)
         .environment(\.gameRematchTitle, setup.usingMultiplayer ? nil
@@ -965,8 +995,10 @@ struct OnDeviceRootView: View {
     private func rematchOrLeave() {
         guard session.snapshot?.isCompleted == true, !setup.usingMultiplayer else { return requestLeave() }
         let mode = activeMatch?.mode
+        let guided = guidedGame
         Task {
             guard await setup.close() else { return }
+            if guided { return startGuidedGame() }
             selectedCard = nil; inspectedCard = nil; zone = nil
             activeMatch = nil; rankChange = nil
             // Quick Match deals a new opponent; Ranked looks for the next match.
@@ -1240,6 +1272,62 @@ struct OnDeviceRootView: View {
         _ = await setup.close()
         activeMatch = nil
         if let message { bannerError = message }
+    }
+
+    // MARK: Guided first game
+
+    /// The guided first game: Token Triumph against Grave Danger at skill 1, casual, with the
+    /// coach on. It uses its own decks, so the player's chosen deck and settings stay as they are.
+    private func startGuidedGame() {
+        guard let precon = PreconCatalog.all.first(where: { $0.id == GuidedGameSetup.playerPreconID }),
+              let opponent = AIDeckPool.deck(id: GuidedGameSetup.opponentDeckID) else { return }
+        diagnostics.beginAttempt()
+        let name = (try? OnDeviceSetupModel.playerName(playerDisplayName)) ?? String(localized: "You")
+        GuidedGameLaunch.begin(in: MagicMobilePreferences.current)
+        HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current)
+        guidedGame = true; guidedTip = nil
+        lobby = nil; showSetup = false
+        activeMatch = ActiveMatch(mode: .casual, deckID: GuidedGameSetup.playerDeckID, deckName: precon.name,
+                                  commander: precon.commander, colors: precon.colors.map(String.init),
+                                  deckBracket: CommanderBracket.core.rawValue,
+                                  opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
+                                  opponentBracket: opponent.bracket.rawValue, aiSkill: GuidedGameSetup.aiSkill, aiDeckID: opponent.id)
+        rankChange = nil
+        Task {
+            await setup.startAI(name: name, deck: precon.deckList, aiDecks: [opponent.deckList], aiSkill: GuidedGameSetup.aiSkill,
+                                deckID: GuidedGameSetup.playerDeckID, aiDeckIDs: [opponent.id],
+                                startingPlayerMode: aiStartingPlayerMode, mode: .casual,
+                                deckBracket: CommanderBracket.core.rawValue)
+            if session.matchID == nil { activeMatch = nil; endGuidedGame() }
+        }
+    }
+
+    /// Each snapshot may bring the next note, or retire the one on screen.
+    private func advanceGuidedTip(_ snapshot: GameSnapshot?) {
+        guard guidedGame, let snapshot else { return }
+        let defaults = MagicMobilePreferences.current
+        let step = GuidedGameCoach.advance(current: guidedTip, snapshot: snapshot, shown: GuidedGameLaunch.shownTips(in: defaults))
+        if let shown = step.newlyShown { GuidedGameLaunch.remember(shown, in: defaults) }
+        if step.current != guidedTip { guidedTip = step.current }
+        if snapshot.isCompleted { GuidedGameLaunch.end(in: defaults) }
+    }
+
+    /// Turn off tips: the game plays on without the coach.
+    private func endGuidedTips() {
+        guidedTip = nil
+        guidedGame = false
+        GuidedGameLaunch.end(in: MagicMobilePreferences.current)
+    }
+
+    private func endGuidedGame() {
+        guard guidedGame else { return }
+        endGuidedTips()
+    }
+
+    private func answerGuidedWelcome() {
+        GuidedGameLaunch.markWelcomeSeen(in: MagicMobilePreferences.current)
+        HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current)
+        showGuidedWelcome = false
     }
 
     private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int) {
@@ -1661,6 +1749,7 @@ struct OnDeviceRootView: View {
         recordAbandonedRankedGame()
         Task {
             if await setup.close() {
+                endGuidedGame()
                 selectedCard = nil; inspectedCard = nil; zone = nil
                 activeMatch = nil; rankChange = nil; ceremony = nil
                 matchmaker.finish(); rankedConnectTask?.cancel()

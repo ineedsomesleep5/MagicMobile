@@ -21,6 +21,11 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-11 (Claude): the guided first game's coach (`GuidedGame.swift` / `GuidedGame.kt`) reads only
+  the snapshot (prompt envelope, legal action types, stack, turn), not the board's interaction
+  state, so it stays inside the SwiftPM package and the JVM core and both run the same
+  `guided-game-cases.json`. **Rule:** a new coach note gets a case there first; a snapshot case is a
+  patch over `base`.
 - 2026-10-11 (Claude): Android screens drift back to plain Material, `IosAlert` or `IosListRow`
   when a port reaches for whatever control is handy. **Rule:** follow `docs/TAVERN_STYLE.md` and use
   the `Tavern*` counterpart of the iOS piece; port the piece into `ui/TavernKit.kt` first if it is
@@ -52,6 +57,14 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-11 (Claude): in cloud threads Google's Maven is blocked, so `gradle -p apps/android :core:test`
+  fails resolving the Android Gradle plugin, and the core asks for a JDK 17 toolchain the container
+  lacks. **Fix:** run the core tests from a throwaway root two levels under the repo (the parity tests
+  read `../..`), e.g. `apps/zz-coreonly/settings.gradle.kts` with `include(":core")` and
+  `project(":core").projectDir = file("../android/core")`, a root `build.gradle.kts` applying only the
+  Kotlin JVM and serialization plugins 2.0.21, and `subprojects { afterEvaluate { ... jvmToolchain(21) } }`.
+  Delete the folder afterwards. The Compose app still only compiles in CI. Maven Central may answer
+  429 at first; retry after a short wait.
 - 2026-10-11 (Claude): cloud threads ignore `defaultMode: bypassPermissions` / `dontAsk` in settings
   files, and run in auto mode. Commands every thread may run without a prompt go in
   `permissions.allow` in `.claude/settings.json`; cloud threads apply it only while the project has
