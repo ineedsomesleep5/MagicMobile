@@ -300,84 +300,11 @@ private struct FitsHeightKey: PreferenceKey {
 /// to the real default.
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
-    /// Walnut Tavern is the default board (2026-10-02); a saved choice is kept.
+    /// Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
+    /// the other backdrops stay for UI tests that pin one with a launch argument.
     static let defaultValue = "tavern"
     static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
-}
-
-struct BoardAppearancePicker: View {
-    @AppStorage(BoardAppearancePreference.key) private var appearance = BoardAppearancePreference.defaultValue
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TavernPanelTitle(text: "Battlefield")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                ForEach(BattlefieldBackdrop.allCases) { theme in
-                    choice(theme.title, value: theme.rawValue)
-                }
-            }
-            Text("Works in portrait and landscape.")
-                .font(.system(size: 12, design: .serif)).foregroundStyle(TavernPalette.parchment.opacity(0.65))
-        }
-    }
-    private func choice(_ title: String, value: String) -> some View {
-        Button { appearance = value } label: {
-            AppearanceSwatch(title: title, selected: appearance == value) {
-                BoardAppearanceArt(value: value)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title + " battlefield")
-        .accessibilityAddTraits(appearance == value ? .isSelected : [])
-    }
-}
-
-struct AppearanceSwatch<Art: View>: View {
-    let title: String
-    let selected: Bool
-    @ViewBuilder let art: Art
-    var body: some View {
-        // Each swatch takes an equal share of the row. Aspect-filled artwork otherwise
-        // claimed width from its neighbours, squeezing the gradient option to a sliver
-        // and truncating the labels beside it.
-        VStack(spacing: 8) {
-            // A resizable image still reports a large ideal width, which wins the HStack's
-            // space. Letting an empty container own the size and drawing the art inside it
-            // keeps every swatch identical regardless of what it shows.
-            Color.clear
-                .frame(maxWidth: .infinity).frame(height: 68)
-                .overlay { art }
-                .clipped().clipShape(RoundedRectangle(cornerRadius: GameBoardDesignTokens.current.radius.panel))
-            HStack(spacing: 4) {
-                Text(title).font(.system(size: 13, weight: .semibold, design: .serif)).lineLimit(1).minimumScaleFactor(0.7)
-                Spacer(minLength: 0)
-                Image(systemName: selected ? "checkmark.seal.fill" : "circle")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(selected ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(TavernPalette.parchment.opacity(0.5)))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(8)
-        .background {
-            TavernFill(material: .leather)
-                .overlay(Color.black.opacity(0.25))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? AnyShapeStyle(BrandTheme.brassGradient)
-                                                                         : AnyShapeStyle(TavernPalette.brass.opacity(0.3)),
-                                                                  lineWidth: selected ? 2 : 1))
-        .shadow(color: selected ? TavernPalette.ember.opacity(0.5) : .clear, radius: 6)
-        .foregroundStyle(TavernPalette.parchment)
-        .contentShape(RoundedRectangle(cornerRadius: 10))  // the whole swatch takes the tap
-    }
-}
-
-/// Swatches render the same art the surfaces do, so a preview cannot drift from reality.
-struct BoardAppearanceArt: View {
-    let value: String
-    var body: some View {
-        BattlefieldBackdropArt(theme: .resolved(value))
-    }
 }
 
 struct AppearanceSettingsView: View {
@@ -389,7 +316,6 @@ struct AppearanceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
-                    BoardAppearancePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()

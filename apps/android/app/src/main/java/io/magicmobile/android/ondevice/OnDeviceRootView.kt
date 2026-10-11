@@ -85,7 +85,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewModelScope
 import io.magicmobile.android.Artwork
 import io.magicmobile.android.BuildConfig
-import io.magicmobile.android.board.BoardAppearancePicker
 import io.magicmobile.android.board.BoardEffectsPicker
 import io.magicmobile.android.board.FollowTurnsToggle
 import io.magicmobile.android.board.BoardSelection
@@ -1436,7 +1435,6 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
         IosSheetHeader("Settings", done)
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (inGame) ArtworkPreferenceToggle()
-            BoardAppearancePicker()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
             io.magicmobile.android.board.AutoPassAfterCastToggle()

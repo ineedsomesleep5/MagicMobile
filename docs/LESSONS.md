@@ -21,6 +21,12 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-11 (Claude): the battlefield picker is gone; Walnut Tavern is the only table. At launch both
+  apps delete the saved `magicmobile.boardAppearance`, so players stuck on an old skin return to the
+  tavern. **Rule:** UI tests that need another board still pin it with the
+  `-magicmobile.boardAppearance arena` launch argument (iOS argument domain, untouched by the reset)
+  or `MAGICMOBILE_UI_TEST_BOARD_APPEARANCE` (set after the reset). Where: `MagicMobileApp.swift`,
+  Android `MainActivity.kt`.
 - 2026-10-11 (Claude): Android screens drift back to plain Material, `IosAlert` or `IosListRow`
   when a port reaches for whatever control is handy. **Rule:** follow `docs/TAVERN_STYLE.md` and use
   the `Tavern*` counterpart of the iOS piece; port the piece into `ui/TavernKit.kt` first if it is
