@@ -57,7 +57,11 @@ fun BoardSize.tavernRect(rect: BoardRect): BoardRect {
  */
 data class TavernSockets(
     val canvas: BoardSize, val opponentMedallion: BoardPoint, val opponentHoleRadius: Float, val opponentNameplate: BoardPoint,
-    val opponentHand: BoardPoint, val phasePlate: BoardPoint, val opponentGlance: BoardPoint, val lifeMedallion: BoardPoint,
+    val opponentHand: BoardPoint, val phasePlate: BoardPoint,
+    /** Which way from the opponent's medallion their status badges curve (TavernEffectOrbit), in degrees, 90 = down. */
+    val opponentEffectsBearing: Float,
+    /** How many badges fit on that curve before the last becomes a "+N" marker. */
+    val opponentEffectsLimit: Int, val lifeMedallion: BoardPoint,
     val lifeHoleRadius: Float, val chat: BoardPoint, val passButton: BoardPoint, val skip: BoardPoint, val menu: BoardPoint,
     val stackTray: BoardPoint, val manaSocketXs: List<Float>, val manaSocketY: Float,
     /** The leather mat; in landscape the battlefield column is laid on it down to `handBottom`. */
@@ -72,7 +76,9 @@ data class TavernSockets(
             TavernSockets(
                 canvas = TavernDesign.canvas, opponentMedallion = center, opponentHoleRadius = TavernDesign.opponentHoleRadius,
                 opponentNameplate = BoardPoint(center.x - 110, center.y + 8), opponentHand = BoardPoint(center.x, center.y - 40),
-                phasePlate = BoardPoint(center.x + 110, center.y + 8), opponentGlance = BoardPoint(center.x + 110, center.y + 46),
+                phasePlate = BoardPoint(center.x + 110, center.y + 8),
+                // Under the medallion, between the nameplate and the phase plate.
+                opponentEffectsBearing = 90f, opponentEffectsLimit = 5,
                 lifeMedallion = TavernDesign.lifeMedallion, lifeHoleRadius = TavernDesign.lifeHoleRadius,
                 chat = BoardPoint(TavernDesign.lifeMedallion.x + 42, TavernDesign.lifeMedallion.y + 52),
                 passButton = pass, skip = BoardPoint(pass.x - 71, pass.y + 10), menu = BoardPoint(pass.x - 51, pass.y + 51),
@@ -92,7 +98,9 @@ data class TavernSockets(
             TavernSockets(
                 canvas = BoardSize(956f, 440f), opponentMedallion = BoardPoint(118f, 76f), opponentHoleRadius = 30f,
                 opponentNameplate = BoardPoint(118f, 144f), opponentHand = BoardPoint(118f, 34f),
-                phasePlate = BoardPoint(840f, 42f), opponentGlance = BoardPoint(118f, 188f),
+                phasePlate = BoardPoint(840f, 42f),
+                // Toward the mat: the hand above and the nameplate below leave room for three.
+                opponentEffectsBearing = 0f, opponentEffectsLimit = 3,
                 lifeMedallion = BoardPoint(118f, 344f), lifeHoleRadius = 34f,
                 chat = BoardPoint(160f, 404f),
                 passButton = pass, skip = BoardPoint(pass.x - 40, pass.y - 60), menu = BoardPoint(pass.x + 20, pass.y - 70),
@@ -102,6 +110,36 @@ data class TavernSockets(
         }
 
         fun current(canvas: BoardSize?): TavernSockets = if (canvas != null && canvas.width > canvas.height) landscape else portrait
+    }
+}
+
+/**
+ * The opponent's status badges curve around their medallion (Caleb, 2026-10-11: the old glance beside the
+ * phase plate covered the storm count). The first badge sits straight out along the socket's bearing, right
+ * under the portrait in portrait; the rest alternate either side of it, `STEP_DEGREES` apart.
+ */
+object TavernEffectOrbit {
+    const val STEP_DEGREES = 25.0
+    /** Clear of the medallion's brass ring and life badge, in design points past the portrait's hole. */
+    const val RING_GAP = 21f
+    /** A badge's diameter as a share of the orbit's radius: 22 pt on the portrait plate, neighbours just touching. */
+    const val BADGE_SHARE = 0.42f
+
+    fun radius(holeRadius: Float): Float = holeRadius + RING_GAP
+
+    /** Each slot's centre relative to the medallion's, in the units of `radius`, y down. */
+    fun offsets(count: Int, radius: Float, bearingDegrees: Float): List<BoardPoint> = (0 until count).map { index ->
+        val side = if (index % 2 == 1) 1 else -1
+        val angle = Math.toRadians(bearingDegrees + side * ((index + 1) / 2) * STEP_DEGREES)
+        BoardPoint((radius * kotlin.math.cos(angle)).toFloat(), (radius * kotlin.math.sin(angle)).toFloat())
+    }
+
+    /** The badges shown on an orbit of `limit` slots, and how many more there are (shown as "+N" in the last slot). */
+    fun shown(summary: PlayerStatusSummary, limit: Int): Pair<List<PlayerStatusSummary.Badge>, Int> {
+        val orbit = summary.orbit
+        if (orbit.size <= limit) return orbit to 0
+        val kept = orbit.take(limit - 1)
+        return kept to orbit.size - kept.size
     }
 }
 
@@ -206,6 +244,14 @@ class PlayerStatusSummary(player: PlayerGameState, snapshot: GameSnapshot?) {
     val attachments: List<ZoneCard>
     val isEmpty: Boolean get() = badges.isEmpty() && attachments.isEmpty()
 
+    /** The pop-over's line of plain facts under the name (Caleb, 2026-10-11: tapping the portrait shows more). */
+    val facts: List<String> = buildList {
+        if (player.isOut) add("Out of the game") else add("${player.life} life")
+        add("${player.zones.visibleHandCount} in hand")
+        add("${player.zones.visibleLibraryCount} in library")
+        if (player.hasKnownCommanderTax && player.commanderTax > 0) add("Tax ${player.commanderTax}")
+    }
+
     init {
         val list = BoardPlayerStatus.counters(player).map { (counterName, count) ->
             val name = counterName.lowercase()
@@ -245,6 +291,16 @@ class PlayerStatusSummary(player: PlayerGameState, snapshot: GameSnapshot?) {
     }
 
     val accessibilityText: String get() = (badges.map { it.label } + attachments.map { "${it.card.name} attached" }).joinToString(", ")
+
+    /**
+     * The badges in the order they take a medallion's orbit (TavernEffectOrbit): commander damage first,
+     * the worst on top, so it sits right under the portrait; then poison; then the rest as listed.
+     */
+    val orbit: List<Badge> get() {
+        val commanders = badges.filter { it.icon is Icon.Commander }.sortedByDescending { it.count ?: 0 }
+        val poison = badges.filter { it.icon is Icon.Poison }
+        return commanders + poison + badges.filter { it.icon !is Icon.Commander && it.icon !is Icon.Poison }
+    }
 
     /** The most pressing badges beside a medallion: poison and the worst commander damage. */
     val glance: List<Badge> get() {

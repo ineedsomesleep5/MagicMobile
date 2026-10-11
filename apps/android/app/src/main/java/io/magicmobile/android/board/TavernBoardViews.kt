@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -63,6 +64,7 @@ import io.magicmobile.android.game.BoardSize
 import io.magicmobile.android.game.PlayerGameState
 import io.magicmobile.android.game.PlayerStatusSummary
 import io.magicmobile.android.game.TavernDesign
+import io.magicmobile.android.game.TavernEffectOrbit
 import io.magicmobile.android.game.TavernPhaseTrack
 import io.magicmobile.android.game.TavernSockets
 import io.magicmobile.android.game.ZoneCard
@@ -310,18 +312,27 @@ fun TavernStatusBadge(badge: PlayerStatusSummary.Badge, size: Dp = 40.dp) {
     }
 }
 
-/** The top of a player's zones pop-over: their name, status badges and the cards attached to them (tap one to inspect it). */
+/**
+ * The top of a player's zones pop-over: their name, a line of plain facts (life, hand, library, commander tax), each
+ * status badge with what it means in words, and the cards attached to them (tap one to inspect it).
+ */
 @Composable
 fun TavernPlayerStatusPanel(name: String, summary: PlayerStatusSummary, inspect: ((String, List<ZoneCard>) -> Unit)?) {
     val select = io.magicmobile.android.ui.LocalTavernMenuSelect.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FitText(name.uppercase(), sf(13f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f).copy(brush = TavernPalette.goldText),
             Modifier.fillMaxWidth(), minimumScale = 0.7f, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(summary.facts.joinToString(" · "), Modifier.fillMaxWidth().semantics { contentDescription = "board.zones.facts" },
+            color = TavernPalette.parchment.copy(alpha = 0.85f), style = sf(12f, SfWeight.semibold, SfDesign.SERIF),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (summary.badges.isNotEmpty()) {
-            Column(Modifier.semantics { contentDescription = "board.zones.status" }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (row in summary.badges.chunked(5)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (badge in row) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { TavernStatusBadge(badge) }
+            Column(Modifier.semantics { contentDescription = "board.zones.status" }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (badge in summary.orbit) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) { TavernStatusBadge(badge, 30.dp) }
+                        Text(badge.label, Modifier.weight(1f), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            color = if (badge.nearLethal) rgb(1.0, 0.62, 0.52) else TavernPalette.parchment,
+                            style = sf(13f, SfWeight.semibold, SfDesign.SERIF))
                     }
                 }
             }
@@ -339,7 +350,7 @@ fun TavernPlayerStatusPanel(name: String, summary: PlayerStatusSummary, inspect:
                 }
             }
         }
-        if (!summary.isEmpty) TavernMenuDivider()
+        TavernMenuDivider()
     }
 }
 
@@ -373,6 +384,32 @@ fun TavernStatusGlance(summary: PlayerStatusSummary, modifier: Modifier = Modifi
     if (shown.isEmpty()) return
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (badge in shown) TavernStatusBadge(badge, 22.dp)
+    }
+}
+
+/**
+ * The opponent's status badges curved around their medallion (TavernEffectOrbit): commander damage right under the
+ * portrait, the rest either side of it, and a "+N" coin when they run out of room. Taps pass through to the table; the
+ * medallion's pop-over lists every badge in words. Emits its badges straight into the full-board Box it is called in.
+ */
+@Composable
+fun TavernEffectOrbitBadges(frame: TavernFrame, summary: PlayerStatusSummary) {
+    val sockets = frame.sockets
+    val (shown, more) = TavernEffectOrbit.shown(summary, sockets.opponentEffectsLimit)
+    if (shown.isEmpty()) return
+    val radius = frame.length(TavernEffectOrbit.radius(sockets.opponentHoleRadius))
+    val size = (radius * TavernEffectOrbit.BADGE_SHARE).dp
+    val center = frame.point(sockets.opponentMedallion)
+    val slots = TavernEffectOrbit.offsets(shown.size + if (more > 0) 1 else 0, radius, sockets.opponentEffectsBearing)
+    shown.forEachIndexed { index, badge ->
+        Box(Modifier.centerAt(center.x + slots[index].x, center.y + slots[index].y).clearAndSetSemantics {}) { TavernStatusBadge(badge, size) }
+    }
+    if (more > 0) {
+        val slot = slots.last()
+        Box(Modifier.centerAt(center.x + slot.x, center.y + slot.y).requiredSize(size * 0.8f).tavernCoinBack().clearAndSetSemantics {},
+            contentAlignment = Alignment.Center) {
+            Text("+$more", color = TavernPalette.parchment, style = sf(size.value * 0.4f, SfWeight.black, SfDesign.SERIF))
+        }
     }
 }
 

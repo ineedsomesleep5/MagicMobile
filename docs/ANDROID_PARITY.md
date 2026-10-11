@@ -103,7 +103,10 @@ remaining `IosAlert` dialogs. The steps as planned, for reference against iOS pr
    (`TavernTileGlow`), brass coin badges, keyword icons stay icons in combat, attachments as parchment
    ribbons above a full-size creature (`BattlefieldRow.attachmentGroupTile`, `AttachmentNameTab`).
 6. **Player status pop-over:** `PlayerStatusSummary`, `TavernStatusBadge` (Phyrexian glyph for poison,
-   icons, no words), `TavernPlayerStatusPanel`, `TavernOpponentSwap`, `TavernStatusGlance`.
+   icons, no words on the board), `TavernPlayerStatusPanel` (a facts line, then each badge with its label in
+   words), `TavernOpponentSwap`, `TavernStatusGlance` (your own medallion), and `TavernEffectOrbit` /
+   `TavernEffectOrbitBadges`: the opponent's badges curve around their medallion, commander damage first,
+   right under the portrait (2026-10-11).
 7. **Combat:** blockers stay selectable to take a block back — `OnDevicePromptAdapter.swift` adds the
    viewer's blocking creatures to the blockers SELECT targets (port to core `OnDevicePromptAdapter.kt` and
    add a parity case; test `testDeclaredBlockerRemainsSelectableSoTheBlockCanBeTakenBack`), and the

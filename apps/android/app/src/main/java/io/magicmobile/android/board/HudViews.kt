@@ -443,8 +443,9 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
             // Day or night and the storm count hang under the plate when they matter, without moving it.
             TavernTableHints(snapshot.dayNight, snapshot.stormCount, Modifier.align(Alignment.BottomCenter).hangBelow(5.dp))
         }
-        // Counters, commander damage and attached cards are in the medallion's pop-over; poison and the worst commander damage show here too.
-        TavernStatusGlance(PlayerStatusSummary(opponent, snapshot), Modifier.tavernPosition(frame, sockets.opponentGlance))
+        // Commander damage, poison and the rest curve around the medallion, under its pop-over's full list
+        // (drawn first so a revealed top card leans over them).
+        TavernEffectOrbitBadges(frame, PlayerStatusSummary(opponent, snapshot))
         Box(Modifier.tavernPosition(frame, sockets.opponentMedallion).cardBounds(TavernSeatAnchor.top)) {
             TavernOpponentMedallion(frame.length(sockets.opponentHoleRadius * 2).dp, snapshot, opponentName, opponent, combatTargetable, combatTargetAction,
                 viewZone, selectOpponent)

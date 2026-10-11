@@ -69,7 +69,8 @@ contradicting one.
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
   includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
-  JDK 21, not 17). Maven Central answers 429 in bursts; retry with `--max-workers=1`.
+  JDK 21, not 17). Maven Central answers 429 in bursts; retry with `--max-workers=1`. The app module
+  only compiles in the `magicmobile-android-app.yml` PR check (or on Caleb's Mac).
 - 2026-10-11 (Claude): cloud threads ignore `defaultMode: bypassPermissions` / `dontAsk` in settings
   files, and run in auto mode. Commands every thread may run without a prompt go in
   `permissions.allow` in `.claude/settings.json`; cloud threads apply it only while the project has
