@@ -3,6 +3,7 @@ package io.magicmobile.android.ondevice
 import androidx.compose.material3.LocalContentColor
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.glow
+import io.magicmobile.android.ui.tavernPanelChrome
 import io.magicmobile.android.ui.engraved
 import io.magicmobile.android.ui.tavernBrassFrame
 import io.magicmobile.android.ui.tavernFill
@@ -84,7 +85,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewModelScope
 import io.magicmobile.android.Artwork
 import io.magicmobile.android.BuildConfig
-import io.magicmobile.android.board.BoardAppearancePicker
 import io.magicmobile.android.board.BoardEffectsPicker
 import io.magicmobile.android.board.FollowTurnsToggle
 import io.magicmobile.android.board.BoardSelection
@@ -235,6 +235,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
     var bannerError by remember { mutableStateOf<String?>(null) }
+    /** The session error the player closed; a different error shows again. */
+    var dismissedSessionError by remember { mutableStateOf<String?>(null) }
     var didDismissStartingRoll by remember { mutableStateOf(false) }
     var attemptedStartingPromptID by remember { mutableStateOf<String?>(null) }
     var startingChoiceFailedPromptID by remember { mutableStateOf<String?>(null) }
@@ -386,13 +388,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val bracket = selectedDeckBracket ?: return
         val opponentBracket = if (quickBracket == 0) minOf(4, bracket.level) else quickBracket
         val opponent = quickDeckID.takeIf { it.isNotEmpty() }?.let { id -> aiPool.firstOrNull { it.id == id } }
-            ?: io.magicmobile.android.game.AIDeckPool.pick(opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool) ?: return
+            // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
+            ?: io.magicmobile.android.game.AIDeckPool.pick(opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
+                preconsOnly = quickBracket == 0 && opponentBracket <= 2) ?: return
         startSolo(io.magicmobile.android.game.PlayMode.QUICK, deck, bracket, opponent, quickSkill.coerceIn(1, 10))
     }
 
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
-        val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool) ?: return
+        val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
+            preconsOnly = position.tier.preconOpponentsOnly) ?: return
         startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
     }
 
@@ -992,35 +997,41 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 }
 
                 // Recovery banner. On the starting roll's cover only a roll error shows, still readable and dismissible.
+                // A session error stays up until updates resume or it is dismissed: polling has stopped, and a
+                // board that only says "waiting" reads as frozen.
+                val sessionError = session.errorMessage?.takeIf { activeGame && it != dismissedSessionError }
+                val message = bannerError ?: sessionError
                 if ((!startingRollVisible || bannerError != null) &&
-                    (setup.isBusy || bannerError != null || (activeGame && (session.snapshot == null || !setup.canUseSession)))) {
+                    (setup.isBusy || message != null || (activeGame && (session.snapshot == null || !setup.canUseSession)))) {
+                    val bannerText = sf(15f, SfWeight.semibold, SfDesign.SERIF)
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp).padding(bottom = 8.dp)
-                        .magicPanel(MagicPanelMaterial.IRON, MagicPanelProminence.ELEVATED, cornerRadius = 12.dp, padding = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        .glow(Color.Black.copy(alpha = 0.45f), 6.dp, 12.dp)
+                        .tavernPanelChrome(true).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (setup.isBusy) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(18.dp), color = MagicPalette.parchment, strokeWidth = 2.dp)
-                            Text(setup.status, color = MagicPalette.parchment, style = SfText.body())
+                            CircularProgressIndicator(Modifier.size(18.dp), color = TavernPalette.parchment, strokeWidth = 2.dp)
+                            Text(setup.status, color = TavernPalette.parchment, style = bannerText)
                         }
-                        val message = bannerError
                         if (message != null) {
                             Row(verticalAlignment = Alignment.Top) {
-                                Text(message, Modifier.weight(1f), color = MagicPalette.parchment, style = SfText.caption(SfWeight.semibold), maxLines = 3)
-                                Box(Modifier.size(44.dp).clickable { bannerError = null }.semantics { contentDescription = "Dismiss notification" },
-                                    contentAlignment = Alignment.Center) { SfImage("xmark", MagicPalette.parchment, 14.dp) }
+                                Text(message, Modifier.weight(1f), color = TavernPalette.parchment, style = bannerText, maxLines = 3)
+                                io.magicmobile.android.ui.TavernSealButton({ if (message == session.errorMessage) dismissedSessionError = message; bannerError = null },
+                                    contentDescription = "Dismiss notification")
                             }
                         } else if (activeGame && !setup.canUseSession) {
-                            Text(setup.liveStatus, color = MagicPalette.parchment, style = SfText.caption(SfWeight.semibold))
+                            Text(setup.liveStatus, color = TavernPalette.parchment, style = bannerText)
                         } else if (activeGame && session.snapshot == null) {
-                            Text("Waiting for the first game update.", color = MagicPalette.parchment, style = SfText.caption(SfWeight.semibold))
+                            Text("Waiting for the first game update.", color = TavernPalette.parchment, style = bannerText)
                         }
                         if (activeGame) {
                             val enabled = !setup.isBusy && !session.isWorking
-                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.alpha(if (enabled) 1f else 0.45f)) {
-                                BannerButton("Refresh", enabled && setup.canUseSession) { refresh() }
-                                if (session.pendingActionID != null) BannerButton("Retry response", enabled && setup.canUseSession) {
-                                    scope.launch { setup.perform { session.retryPending() } }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                BannerButton("Refresh", io.magicmobile.android.ui.TavernButtonKind.PRIMARY, enabled && setup.canUseSession) { refresh() }
+                                if (session.pendingActionID != null) BannerButton("Retry response", io.magicmobile.android.ui.TavernButtonKind.SECONDARY,
+                                    enabled && setup.canUseSession) { scope.launch { setup.perform { session.retryPending() } } }
+                                BannerButton(if (setup.closeFailed) "Retry closing" else "Leave", io.magicmobile.android.ui.TavernButtonKind.DANGER, enabled) {
+                                    if (setup.closeFailed) closeGame() else confirmLeave = true
                                 }
-                                BannerButton(if (setup.closeFailed) "Retry closing" else "Leave", enabled) { if (setup.closeFailed) closeGame() else confirmLeave = true }
                             }
                         }
                     }
@@ -1125,9 +1136,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 }
 
 @Composable
-private fun BannerButton(title: String, enabled: Boolean, action: () -> Unit) {
-    Text(title, Modifier.heightIn(min = 44.dp).wrapContentSize(Alignment.CenterStart).clickable(enabled = enabled, onClick = action),
-        color = if (enabled) BrandTheme.ember else BrandTheme.ember.copy(alpha = 0.45f), style = SfText.body())
+private fun BannerButton(title: String, kind: io.magicmobile.android.ui.TavernButtonKind, enabled: Boolean, action: () -> Unit) {
+    io.magicmobile.android.ui.TavernButton(action, kind = kind, compact = true, enabled = enabled) { io.magicmobile.android.ui.TavernButtonText(title) }
 }
 
 /** Port of TavernMainMenu (Board/MainMenuViews.swift). */
@@ -1425,7 +1435,6 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
         IosSheetHeader("Settings", done)
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (inGame) ArtworkPreferenceToggle()
-            BoardAppearancePicker()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
             io.magicmobile.android.board.AutoPassAfterCastToggle()

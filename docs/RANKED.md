@@ -38,18 +38,25 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 | Tier | Opponent decks | Your deck up to | AI skill |
 |---|---|---|---|
-| Bronze | Bracket 1–2 | 2 | 2 |
-| Silver | 2 | 2 | 3 |
-| Gold | 2–3 | 3 | 4 |
-| Platinum | 3 | 3 | 5 |
-| Diamond | 3–4 | 4 | 6 |
-| Mythic | 4 | 4 | 7 |
+| Bronze | Official precons only (Core) | 2 | 1 |
+| Silver | 2 | 2 | 2 |
+| Gold | 2–3 | 3 | 3 |
+| Platinum | 3 | 3 | 4 |
+| Diamond | 3–4 | 4 | 5 |
+| Mythic | 4 | 4 | 6 |
 
 In tiers with two opponent brackets, divisions IV–III face the lower one and II–I the upper.
 
+Why this curve (2026-10-11): the XMage AI searches `max(4, skill)` moves deep and thinks `skill × 3` s,
+so skills 1–4 differ only in thinking time and depth grows from Diamond. Ranked never asks for Bracket 1:
+the Exhibition AI decks are tuned tribal lists (the bracket check only screens Game Changers, land
+denial, extra turns and combos), so Bronze faces the precons instead. Skill 7 would mean 21 s AI turns
+on a phone, so Mythic stops at 6.
+
 ## Play modes
 
-- **Quick Match**: one AI. Defaults to an AI deck at your deck's bracket and skill 3; the player can set the
+- **Quick Match**: one AI. Defaults to an AI deck at your deck's bracket (a precon when that is Core or
+  below) and skill 3; the player can set the
   opponent's bracket, pick the exact deck and set the skill (1–10). No rank change.
 - **Ranked**: searches the queue for a person within one tier and one bracket for 40 s, then an AI from your
   tier's pool takes the seat ("Play the AI now" skips the wait). Leaving a ranked game early is a loss.

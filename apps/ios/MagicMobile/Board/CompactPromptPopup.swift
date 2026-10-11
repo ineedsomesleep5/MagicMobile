@@ -68,11 +68,18 @@ struct CompactPromptPopup: View {
             } else if pendingActionId != nil {
                 HStack(spacing: 6) {
                     ProgressView()
-                        .tint(MagicPalette.arcaneBlue)
+                        .tint(tavernKit ? TavernPalette.parchment : MagicPalette.arcaneBlue)
                         .scaleEffect(0.66)
-                    Text("Waiting for XMage")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(MagicPalette.arcaneBlue)
+                    if tavernKit {
+                        Text("Waiting for the table…")
+                            .font(.system(size: 13, weight: .medium, design: .serif))
+                            .italic()
+                            .foregroundStyle(TavernPalette.parchment.opacity(0.75))
+                    } else {
+                        Text("Waiting for XMage")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(MagicPalette.arcaneBlue)
+                    }
                 }
             } else if let prompt = promptV2 {
                 compactPromptControls(prompt)

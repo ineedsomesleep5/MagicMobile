@@ -158,6 +158,19 @@ final class AIDeckPoolTests: XCTestCase {
         // Everything faced lately: still a deck.
         XCTAssertNotNil(AIDeckPool.pick(bracket: 3, avoidingCommander: nil, recent: pool.map(\.id), roll: { _ in 0 }))
     }
+
+    /// Bronze (and Quick Match at Core or below) meets only the official precons, whatever the bracket asked.
+    func testPreconsOnlyPicksAPrecon() throws {
+        XCTAssertTrue(RankTier.bronze.preconOpponentsOnly)
+        XCTAssertFalse(RankTier.silver.preconOpponentsOnly)
+        for bracket in 1...2 {
+            for roll in 0..<11 {
+                let pick = try XCTUnwrap(AIDeckPool.pick(bracket: bracket, avoidingCommander: nil, recent: [], preconsOnly: true, roll: { _ in roll }))
+                XCTAssertTrue(pick.isPrecon, pick.id)
+                XCTAssertTrue(PreconCatalog.all.contains { $0.id == pick.id }, pick.id)
+            }
+        }
+    }
 }
 
 @MainActor

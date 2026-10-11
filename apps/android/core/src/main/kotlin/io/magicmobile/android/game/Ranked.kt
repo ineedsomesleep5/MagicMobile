@@ -119,9 +119,17 @@ object DeckBracketPreference {
 
 // MARK: - Ladder (RankLadder.swift)
 
+/**
+ * Bracket 1 is never asked for: the Exhibition AI decks are tribal lists no weaker than Core, so Bronze plays
+ * precons instead. The AI searches max(4, skill) moves deep and thinks skill × 3 s, so skills 1–4 differ only in
+ * thinking time; depth grows from Diamond. Mythic stops at 6: skill 7 means 21 s turns on a phone.
+ */
 enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSkill: Int) {
-    BRONZE("Bronze", 1..2, 2), SILVER("Silver", 2..2, 3), GOLD("Gold", 2..3, 4),
-    PLATINUM("Platinum", 3..3, 5), DIAMOND("Diamond", 3..4, 6), MYTHIC("Mythic", 4..4, 7);
+    BRONZE("Bronze", 2..2, 1), SILVER("Silver", 2..2, 2), GOLD("Gold", 2..3, 3),
+    PLATINUM("Platinum", 3..3, 4), DIAMOND("Diamond", 3..4, 5), MYTHIC("Mythic", 4..4, 6);
+
+    /** Bronze AI opponents play only the official precons, the gentlest decks in the pool. */
+    val preconOpponentsOnly: Boolean get() = this == BRONZE
 
     val key: String get() = name.lowercase()
     /** The strongest deck you may queue with here. */
@@ -245,6 +253,8 @@ data class AIDeck(val id: String, val name: String, val subtitle: String, val co
                   val bracket: CommanderBracket, val deck: Deck) {
     /** The setup screen's deck ID when a player picks one of these decks for themselves. */
     val playerDeckID: String get() = "included:$id"
+    /** An official precon; ai-decks.json IDs all start with "ai-". */
+    val isPrecon: Boolean get() = !id.startsWith("ai-")
 }
 
 object AIDeckPool {
@@ -271,9 +281,11 @@ object AIDeckPool {
         return decks
     }
 
-    fun pick(bracket: Int, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>,
+    /** `preconsOnly` keeps to the official precons. */
+    fun pick(bracket: Int, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>, preconsOnly: Boolean = false,
              roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
-        var candidates = pool(bracket, decks)
+        val precons = decks.filter { it.isPrecon }
+        var candidates = pool(bracket, if (preconsOnly && precons.isNotEmpty()) precons else decks)
         if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
         val fresh = candidates.filter { it.id !in recent }
         if (fresh.isNotEmpty()) candidates = fresh

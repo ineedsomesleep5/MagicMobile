@@ -96,6 +96,9 @@ import io.magicmobile.android.ui.rememberAnimationSeconds
 import io.magicmobile.android.ui.rgb
 import io.magicmobile.android.R
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.ui.TavernPalette
+import io.magicmobile.android.ui.engraved
+import androidx.compose.ui.semantics.heading
 import io.magicmobile.android.ui.tavernPanelChrome
 import io.magicmobile.android.ui.LocalTavernBoard
 import io.magicmobile.android.ui.TavernMaterial
@@ -474,7 +477,7 @@ fun LoadingGameView(status: String? = null, message: String? = null, error: Stri
     }
 }
 
-/** The in-game menu: appearance, effects, concede, start new, quit and prompt debug. */
+/** The in-game menu: concede, start new and quit on top, then how to play and the options. */
 @Composable
 fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runAction: (LegalAction) -> Unit, portraitModeEnabled: Boolean,
                        setPortraitModeEnabled: (Boolean) -> Unit, openPromptInspector: () -> Unit, confirmStartNew: () -> Unit, confirmQuit: () -> Unit,
@@ -483,45 +486,44 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
     var confirmingConcede by remember { mutableStateOf(false) }
     var showHowToPlay by rememberSaveable { mutableStateOf(false) }
     val canConcede = !snapshot.isCompleted && snapshot.human?.isOut != true && (gameConcede != null || concedeAction != null)
-    Box(Modifier.fillMaxWidth()) {
-        BattlefieldSurface(Modifier.matchParentSize())
-        Column {
-            Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                io.magicmobile.android.ui.TavernPanelTitle("Game Menu", Modifier.weight(1f, fill = false))
-                Spacer(Modifier.weight(1f))
-                io.magicmobile.android.ui.TavernPlaqueButton("Done", dismiss, Modifier.semantics { contentDescription = "board.menu.done" },
-                    kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY)
+    // BoardSheet supplies the tavern leather; the table plate behind a menu read as clutter.
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            io.magicmobile.android.ui.TavernPanelTitle("Game Menu", Modifier.weight(1f, fill = false))
+            Spacer(Modifier.weight(1f))
+            io.magicmobile.android.ui.TavernPlaqueButton("Done", dismiss, Modifier.semantics { contentDescription = "board.menu.done" },
+                kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY)
+        }
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp).semantics { contentDescription = "board.menu.scroll" },
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // The game itself first (Caleb, 2026-10-11): concede, start over or leave without scrolling.
+            if (snapshot.isSpectating) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SfImage("eye.fill", TavernPalette.parchment.copy(alpha = 0.8f), 12.dp)
+                Text("You’re out of this game and watching the others play. Quit when you’re done.", color = TavernPalette.parchment.copy(alpha = 0.8f),
+                    style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
             }
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp).semantics { contentDescription = "board.menu.scroll" },
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                BoardAppearancePicker()
-                PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
-                FollowTurnsToggle()
-                AutoPassAfterCastToggle()
-                BoardEffectsPicker()
-                RememberedChoicesPanel()
-                CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
-                    SfImage("questionmark.circle", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CompactActionButton({ confirmingConcede = true }, Modifier.weight(1f).semantics { contentDescription = "board.menu.concede" }, isDanger = true, enabled = canConcede) {
+                    SfImage("flag.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Concede")
                 }
-                if (snapshot.isSpectating) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SfImage("eye.fill", MagicPalette.parchment.copy(alpha = 0.8f), 12.dp)
-                    Text("You’re out of this game and watching the others play. Quit when you’re done.", color = MagicPalette.parchment.copy(alpha = 0.8f),
-                        style = SfText.caption(SfWeight.bold))
+                CompactActionButton(confirmStartNew, Modifier.weight(1f), isPrimary = true) {
+                    SfImage("arrow.clockwise", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Start New", true)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CompactActionButton({ confirmingConcede = true }, Modifier.weight(1f).semantics { contentDescription = "board.menu.concede" }, isDanger = true, enabled = canConcede) {
-                        SfImage("flag.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Concede")
-                    }
-                    CompactActionButton(confirmStartNew, Modifier.weight(1f), isPrimary = true) {
-                        SfImage("arrow.clockwise", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Start New", true)
-                    }
-                    CompactActionButton(confirmQuit, Modifier.weight(1f).semantics { contentDescription = "board.menu.quit" }) {
-                        SfImage("rectangle.portrait.and.arrow.right", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Quit")
-                    }
+                CompactActionButton(confirmQuit, Modifier.weight(1f).semantics { contentDescription = "board.menu.quit" }) {
+                    SfImage("rectangle.portrait.and.arrow.right", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Quit")
                 }
-                CompactActionButton(openPromptInspector, Modifier.fillMaxWidth()) {
-                    SfImage("ladybug.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")
-                }
+            }
+            CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
+                SfImage("questionmark.circle", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
+            }
+            RememberedChoicesPanel()
+            GameMenuSectionLabel("Options")
+            PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
+            FollowTurnsToggle()
+            AutoPassAfterCastToggle()
+            BoardEffectsPicker()
+            CompactActionButton(openPromptInspector, Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                SfImage("ladybug.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")
             }
         }
     }
@@ -535,6 +537,13 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
             if (gameConcede != null) gameConcede.concede() else concedeAction?.let(runAction)
         }), cancelTitle = "Keep Playing") { confirmingConcede = false }
     }
+}
+
+/** A small engraved heading between groups of the game menu (GameMenuSectionLabel). */
+@Composable
+private fun GameMenuSectionLabel(text: String) {
+    Text(text.uppercase(), Modifier.padding(top = 6.dp).semantics { contentDescription = text; heading() }, color = TavernPalette.label,
+        style = sf(12f, SfWeight.heavy, SfDesign.SERIF, tracking = 1f).engraved())
 }
 
 /** XMage prompt and bridge state, for diagnosing a stuck decision. */

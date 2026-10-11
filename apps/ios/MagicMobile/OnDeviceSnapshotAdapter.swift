@@ -107,10 +107,14 @@ enum OnDeviceSnapshotAdapter {
             }
             return .object(fields)
         }
-        let combat: [J] = try (view["combat"]?.array ?? []).map { group in
-            guard let defender = group["defenderId"]?.string else { throw EngineError.invalidMessage("Missing combat defender") }
-            let kind: J = ids.contains(defender) ? .string("player") : .null
-            return .object(["defenderId": .string(defender), "defenderName": group["defenderName"] ?? .string(defender),
+        let combat: [J] = try (view["combat"]?.array ?? []).enumerated().map { index, group in
+            // An attacked planeswalker or battle that leaves combat (dies, phases out, changes
+            // control) leaves its attackers attacking nothing: XMage then sends no defenderId.
+            let missing = group["defenderId"]?.string == nil
+            let defender = group["defenderId"]?.string ?? "no-defender-\(index)"
+            let kind: J = missing ? .string("none") : ids.contains(defender) ? .string("player") : .null
+            let name: J = missing ? .string("No defender") : group["defenderName"] ?? .string(defender)
+            return .object(["defenderId": .string(defender), "defenderName": name,
                             "defenderKind": kind, "blocked": group["isBlocked"] ?? .bool(false),
                             "attackers": .array(combatCards(try cards(group["attackers"]), groups: view["combat"])),
                             "blockers": .array(combatCards(try cards(group["blockers"]), groups: view["combat"]))])

@@ -394,7 +394,9 @@ struct RankedLobbyView<DeckSlot: View>: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "AT \(tier.name.uppercased())")).font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.4)
                     .foregroundStyle(BrandTheme.brassGradient)
-                rule("person.2.fill", String(localized: "Opponents play Bracket \(bracketText(tier.opponentBrackets)) decks. AI opponents play at skill \(tier.aiSkill)."))
+                rule("person.2.fill", tier.preconOpponentsOnly
+                     ? String(localized: "AI opponents play official precon decks at skill \(tier.aiSkill).")
+                     : String(localized: "Opponents play Bracket \(bracketText(tier.opponentBrackets)) decks. AI opponents play at skill \(tier.aiSkill)."))
                 rule("checkmark.seal.fill", String(localized: "Your deck may be up to Bracket \(tier.maxDeckBracket). A lower bracket earns +1 pip for each win."))
                 rule("arrow.up.arrow.down", String(localized: "Each win fills a pip and each loss empties one. Four pips win a division; with none left a loss drops you a division."))
                 if tier < .gold { rule("flame.fill", String(localized: "Three wins in a row below Gold earn an extra pip.")) }

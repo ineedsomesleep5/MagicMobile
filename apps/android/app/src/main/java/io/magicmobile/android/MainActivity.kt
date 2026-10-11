@@ -15,6 +15,8 @@ class MainActivity: ComponentActivity() {
         io.magicmobile.android.ui.LaunchEnvironment.load(this,extras)
         // UI previews and tests use their own preferences, like iOS's MAGICMOBILE_UI_TEST_PREFERENCES suite.
         io.magicmobile.android.ui.AppPreferences.init(this,extras["MAGICMOBILE_UI_TEST_PREFERENCES"]?.let{"magicmobile.preferences.$it"} ?: "magicmobile.preferences")
+        // Walnut Tavern is the only table (Caleb, 2026-10-11): a board saved from the retired picker goes back to it.
+        io.magicmobile.android.ui.AppPreferences.remove(io.magicmobile.android.board.BoardAppearancePreference.key)
         io.magicmobile.android.ui.GameAudio.init(this)
         // Local crash and ANR summaries for the report sheet (background thread); nothing is uploaded.
         if (savedInstanceState==null) io.magicmobile.android.ondevice.OnDeviceSystemReports.recordAtStartup(this)

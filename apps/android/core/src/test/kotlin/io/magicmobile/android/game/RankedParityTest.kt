@@ -143,6 +143,18 @@ class RankedParityTest {
         assertEquals(three[0].id, fresh.id)
     }
 
+    /** Bronze (and Quick Match at Core or below) meets only the official precons, whatever the bracket asked. */
+    @Test fun preconsOnlyPicksAPrecon() {
+        assertTrue(RankTier.BRONZE.preconOpponentsOnly)
+        assertFalse(RankTier.SILVER.preconOpponentsOnly)
+        val precons = pool.filter { !it.id.startsWith("ai-") }.map { it.id }.toSet()
+        assertEquals(5, precons.size)
+        for (bracket in 1..2) for (roll in 0 until 11) {
+            val pick = AIDeckPool.pick(bracket, null, emptyList(), pool, preconsOnly = true) { roll }!!
+            assertTrue(pick.id, pick.isPrecon && pick.id in precons)
+        }
+    }
+
     @Test fun recordStoreRanksAndRollsOver() {
         val october = 1_791_000_000_000L; val december = 1_797_292_800_000L
         var file = PlayerRecordFile(RankState.fresh(RankLadder.season(october)))

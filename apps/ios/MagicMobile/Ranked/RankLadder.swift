@@ -22,10 +22,11 @@ enum RankTier: Int, CaseIterable, Codable, Comparable, Sendable {
     /// The badge art (Assets.xcassets; Android gets the same files as tavern_rank_*).
     var assetName: String { "tavern-rank-\(String(describing: self))" }
 
-    /// Brackets your opponents' decks come from at this tier.
+    /// Brackets your opponents' decks come from at this tier. Bracket 1 is never asked for: the
+    /// Exhibition AI decks are tribal lists no weaker than Core, so Bronze plays precons instead.
     var opponentBrackets: ClosedRange<Int> {
         switch self {
-        case .bronze: return 1...2
+        case .bronze: return 2...2
         case .silver: return 2...2
         case .gold: return 2...3
         case .platinum: return 3...3
@@ -37,15 +38,20 @@ enum RankTier: Int, CaseIterable, Codable, Comparable, Sendable {
     /// The strongest deck you may queue with here. A weaker deck is allowed and earns an extra pip per win.
     var maxDeckBracket: Int { opponentBrackets.upperBound }
 
-    /// XMage AI skill for AI opponents at this tier.
+    /// Bronze AI opponents play only the official precons, the gentlest decks in the pool.
+    var preconOpponentsOnly: Bool { self == .bronze }
+
+    /// XMage AI skill for AI opponents at this tier. The AI searches max(4, skill) moves deep and
+    /// thinks skill × 3 s, so skills 1–4 differ only in thinking time; depth grows from Diamond.
+    /// Mythic stops at 6: skill 7 means 21 s turns on a phone.
     var aiSkill: Int {
         switch self {
-        case .bronze: return 2
-        case .silver: return 3
-        case .gold: return 4
-        case .platinum: return 5
-        case .diamond: return 6
-        case .mythic: return 7
+        case .bronze: return 1
+        case .silver: return 2
+        case .gold: return 3
+        case .platinum: return 4
+        case .diamond: return 5
+        case .mythic: return 6
         }
     }
 }
