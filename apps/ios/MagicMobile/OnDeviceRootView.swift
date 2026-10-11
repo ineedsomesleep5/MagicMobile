@@ -901,6 +901,10 @@ struct OnDeviceRootView: View {
             portraitModeEnabled: $portraitModeEnabled,
             viewZone: { title, cards in zone = InspectedZone(title: title, cards: cards) }
         )
+        .overlay {
+            // The online turn timer's rope; solo games have no clock.
+            if setup.usingMultiplayer, let multiplayer = setup.multiplayer { TurnRopeOverlay(multiplayer: multiplayer) }
+        }
         .overlay { zoneOverlay }
         .environment(\.inspectorBattlefield, session.snapshot?.visibleBattlefield ?? [])
         .disabled(setup.isBusy)
@@ -1789,7 +1793,7 @@ private final class OnDeviceSetupModel: ObservableObject {
                 throw EngineError.invalidMessage("This app is missing its build identity. Install a complete app build.")
             }
             let identity = BuildIdentity(upstreamCommit: resolver.upstreamCommit, catalogueHash: resolver.catalogueHash,
-                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2/room-1/concede-1/emote-1")
+                                         adapterVersion: "ondevice-0.1/app-\(version)/build-\(build)/rollstep-2/room-1/concede-1/emote-1/clock-1")
             let multiplayer = OnDeviceMultiplayer(identity: identity,
                 makeHostEngine: { [runtime] in try await runtime.makeClient(identity: identity) },
                 closeHostEngine: { [runtime] _ in try await runtime.close() })
@@ -1894,7 +1898,7 @@ private final class OnDeviceSetupModel: ObservableObject {
     /// registry and table features. App build numbers differ between the platforms, so they are left out.
     var relayIdentity: BuildIdentity? {
         identity.map { BuildIdentity(upstreamCommit: $0.upstreamCommit, catalogueHash: $0.catalogueHash,
-                                     adapterVersion: "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1/chat-1") }
+                                     adapterVersion: "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1/chat-1/clock-1") }
     }
 
     /// Opens a cross-play table this phone hosts: `playerCount` people plus any AI seats.

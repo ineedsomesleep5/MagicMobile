@@ -8,6 +8,11 @@ import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.TableChatText
+import io.magicmobile.android.game.EnginePrompt
+import io.magicmobile.android.game.TurnClock
+import io.magicmobile.android.game.TurnClockBoard
+import io.magicmobile.android.game.TurnClockTimeout
+import io.magicmobile.android.game.TurnClockWire
 import io.magicmobile.android.game.EngineJson
 import io.magicmobile.android.game.EngineTransport
 import io.magicmobile.android.game.HostRouter
@@ -567,6 +572,11 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         return code to minOf(3, seatsWanted - seatsTaken)
     }
     var isFailed by mutableStateOf(false); private set
+    /**
+     * The online turn timer's clocks as this phone shows them (iOS turnClock). The host runs them
+     * ([TurnClock]) and sends each change to the guests in a `clock` packet.
+     */
+    var turnClock by mutableStateOf(TurnClockBoard()); private set
     /** A player's quick-chat line: their table name and a fixed emote, never free text. */
     var onEmote: ((String, GameEmote) -> Unit)? = null
     /** A player's typed chat line: their table name and the checked text. */
@@ -587,6 +597,11 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
     private var hostDispatcher: OnDeviceHostRequestDispatcher? = null
     private var lobbyTimer: Job? = null
     private var rollTimer: Job? = null
+    /** Host only: every human seat's decision clock, the job that runs it, and each seat's latest read. */
+    private var hostClock = TurnClock()
+    private var clockJob: Job? = null
+    private val clockReads = HashMap<String, Pair<Long, Double>>()
+    private var clockDirty = false
     private val suspendedPeers = HashSet<String>()
     /** Players whose connection to the relay dropped; they may still resume their seat. */
     private val relayAwayPeers = HashSet<String>()
@@ -802,6 +817,11 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 rollRevealedCount = progress.revealedCount
                 hasRolled = false
                 updateRollStatus()
+            }
+            "clock" -> {
+                if (peer != lobby.hostID || lobby.localPeerID == lobby.hostID) throw EngineError.UnboundPeer
+                val (paused, entries) = TurnClockWire.parse(value)
+                turnClock = TurnClockBoard.from(paused, entries, uptime())
             }
             "ready" -> { reportedReady = lobby.acceptReadyPacket(value, peer); updateRoom() }
             "presence" -> {
@@ -1025,6 +1045,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
                 room = null
                 isConnected = true
                 updateRollStatus()
+                beginHostClock(engine, matchID, lobby.peerIDs.size, token)
                 lobbyTimer?.cancel(); status = "Connected as host. Every player must keep the app in the foreground."
             } catch (cancel: CancellationException) { throw cancel }
             catch (error: Throwable) { fail(error.message ?: "Could not start the match.") }
@@ -1101,9 +1122,83 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         val lobby = lobby ?: return
         val epoch = epoch ?: return
         if (generation != token || isFailed || closing || lobby.localPeerID != lobby.hostID) return
+        clockDirty = true
         val notice = OnDeviceRevisionNotice.packet(epoch, revision)
         debugLog("host notice revision $revision")
         for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers) runCatching { send(notice, peer) }
+    }
+
+    private fun uptime(): Double = android.os.SystemClock.elapsedRealtime() / 1000.0
+
+    /**
+     * Runs the turn timer on the host for every human seat ([TurnClock], iOS beginHostClock). A seat
+     * is read again when the game moved on, when its clock ran out, and every few seconds regardless.
+     */
+    private fun beginHostClock(engine: EngineClient, matchID: String, humans: Int, token: UUID) {
+        stopClock()
+        val seats = (1..maxOf(1, humans)).map { "player$it" }
+        clockJob = scope.launch {
+            while (true) {
+                delay(1000)
+                if (generation != token || isFailed || closing) return@launch
+                if (!tickHostClock(engine, matchID, seats, token)) return@launch
+            }
+        }
+    }
+
+    /** One second of the host's clock. False once the game is over. */
+    private suspend fun tickHostClock(engine: EngineClient, matchID: String, seats: List<String>, token: UUID): Boolean {
+        var changed = hostClock.setPaused(isSuspended || (startingRoll != null && !rollShown), uptime())
+        val due = hostClock.expired(uptime()).map { it.first }.toSet()
+        val prompts = HashMap<String, EnginePrompt?>()
+        for (seat in seats) {
+            val last = clockReads[seat]
+            if (!clockDirty && seat !in due && last != null && uptime() - last.second < 5) continue
+            val poll = try { engine.poll(matchID, seat, last?.first ?: 0L) }
+                catch (cancel: CancellationException) { throw cancel } catch (error: Throwable) { continue }
+            if (generation != token || isFailed || closing) return false
+            clockReads[seat] = poll.revision to uptime()
+            if (poll.phase in setOf("ended", "failed", "closed")) { hostClock.clear(); publishHostClock(); return false }
+            if (hostClock.observe(seat, TurnClock.prompt(poll), uptime())) changed = true
+            prompts[seat] = poll.prompt
+        }
+        clockDirty = false
+        for ((seat, expired) in hostClock.expired(uptime())) {
+            // Act only on the question this tick just read for that seat.
+            val prompt = prompts[seat]?.takeIf { it.id == expired.id && it.revision == expired.revision } ?: continue
+            val answer = TurnClock.defaultAnswer(prompt)
+            val outcome = hostClock.timeout(seat, expired, answer != null, uptime()) ?: continue
+            changed = true
+            when (outcome) {
+                TurnClockTimeout.ANSWER -> try { engine.respond(matchID, seat, prompt, answer!!) }
+                    catch (cancel: CancellationException) { throw cancel }
+                    catch (error: Throwable) { hostClock.answerFailed(seat, expired, uptime()) }
+                TurnClockTimeout.FORFEIT -> try { engine.concede(matchID, seat) }
+                    catch (cancel: CancellationException) { throw cancel } catch (error: Throwable) { }
+                TurnClockTimeout.GRACE -> Unit
+            }
+            if (generation != token || isFailed || closing) return false
+        }
+        if (changed) publishHostClock()
+        return true
+    }
+
+    /** Shows the host's clocks here and sends them to every connected guest. Best effort, like revision notices. */
+    private fun publishHostClock() {
+        val now = uptime()
+        val entries = hostClock.entries(now)
+        turnClock = TurnClockBoard.from(hostClock.paused, entries, now)
+        val lobby = lobby ?: return
+        val epoch = epoch ?: return
+        if (lobby.localPeerID != lobby.hostID) return
+        val packet = TurnClockWire.packet(epoch.wire, hostClock.paused, entries)
+        for (peer in lobby.peerIDs) if (peer != lobby.hostID && peer !in relayAwayPeers) runCatching { send(packet, peer) }
+    }
+
+    private fun stopClock() {
+        clockJob?.cancel(); clockJob = null
+        hostClock = TurnClock(); clockReads.clear(); clockDirty = false
+        turnClock = TurnClockBoard()
     }
 
     /** Debug builds only: lets a cross-play check count table traffic (`adb logcat -s MagicMobileTable`). */
@@ -1141,6 +1236,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
             }
             generation = UUID.randomUUID(); hostEngine = null; needsCleanup = false; endpoint = null; hostAISeatSummary = null; seatNames = emptyMap()
             rollTimer?.cancel(); rollTimer = null
+            stopClock()
             startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""; tableSeats = emptyList()
             remote = null; tableLink = null; router = null; hostDispatcher = null; relay = null; lobby = null; epoch = null; submission = null; requestedAISeats = emptyList()
             suspendedPeers.clear(); relayAwayPeers.clear(); peerPresenceSequences.clear(); presenceSequence = 0; suspensionRevision = 0
@@ -1154,6 +1250,7 @@ class RelayTable(private val identity: BuildIdentity, private val scope: Corouti
         if (isFailed) return
         isFailed = true; isConnected = false; status = message; seatNames = emptyMap(); room = null; waitingSeats = emptyList()
         rollTimer?.cancel(); rollTimer = null
+        stopClock()
         startingRoll = null; rollProgress = null; rollRevealedCount = 0; hasRolled = false; rollStatus = ""; tableSeats = emptyList()
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close(); hostDispatcher?.cancel()
         epoch?.let { runCatching { broadcast(obj("type" to text("end"), "epoch" to text(it.wire))) } }

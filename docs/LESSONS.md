@@ -66,6 +66,15 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-11 (Claude): cloud containers can't reach Google's Maven (403), so the Android build won't
+  even configure there, and JDK 17 isn't installed. **Fix:** run `:core` tests from a scratch Gradle
+  project whose settings include `:core` with `projectDir` pointed at `apps/android/core`, declare only
+  the Kotlin JVM and serialization plugins, and force `jvmToolchain(21)`. The `:app` module compiles
+  only in CI (`magicmobile-android-app.yml`).
+- 2026-10-11 (Claude): a new iOS source file needs three registrations: `apps/ios/Package.swift`
+  (`sources` of the target or test target, unless its folder is excluded, like `Board/`) and four
+  entries in the committed `MagicMobileiOS.xcodeproj/project.pbxproj` (build file, file reference,
+  group child, Sources phase). Copy a neighbour's entries with fresh 24-hex IDs.
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
   includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
