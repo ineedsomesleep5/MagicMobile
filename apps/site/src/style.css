@@ -912,6 +912,38 @@ svg {
   padding-bottom: 26px;
   color: var(--parchment-soft);
 }
+.support-card {
+  max-width: 780px;
+  margin: 0 0 70px;
+  padding: 34px 38px 32px;
+  border-radius: 12px;
+  background: var(--parchment-fill);
+  color: var(--ink);
+  box-shadow:
+    0 22px 46px rgba(5, 2, 0, 0.5),
+    inset 0 0 40px rgba(110, 64, 18, 0.28);
+}
+.support-card .eyebrow {
+  color: var(--ink-soft);
+}
+.support-card h3 {
+  margin: 10px 0 12px;
+  color: var(--ink);
+  text-shadow: none;
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.1;
+}
+.support-card > p:not(.eyebrow) {
+  max-width: 62ch;
+  font-size: 17px;
+  margin-bottom: 22px;
+}
+.support-card small {
+  display: block;
+  margin-top: 18px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
 .download footer {
   border-top: 1px solid var(--hairline);
   padding-top: 34px;
@@ -1356,6 +1388,13 @@ footer p a {
   }
   .faq {
     margin: 56px 0 50px;
+  }
+  .support-card {
+    margin-bottom: 50px;
+    padding: 26px 22px 24px;
+  }
+  .support-card > p:not(.eyebrow) {
+    font-size: 15px;
   }
   .faq summary {
     font-size: 16px;
