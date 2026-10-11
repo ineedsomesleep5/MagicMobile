@@ -363,6 +363,26 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
         XCTAssertEqual(group.attackers.first?.card.name, "Isamaru, Hound of Konda")
     }
 
+    /// An attacked planeswalker that dies to trample damage leaves its attackers attacking nothing:
+    /// XMage drops the group's defenderId. That is a legal state, not a corrupt update (it froze the board).
+    func testCombatGroupWithoutDefenderStillAdapts() throws {
+        let original = try fixture("2p-combat")
+        var raw = try XCTUnwrap(original.raw.object)
+        var root = try XCTUnwrap(original.snapshot?.object)
+        var view = try XCTUnwrap(root["gameView"]?.object)
+        var group = try XCTUnwrap(view["combat"]?.array?.first?.object)
+        group["defenderId"] = nil; group["defenderName"] = .string("")
+        view["combat"] = .array([.object(group)])
+        root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+        let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+        let adapted = try XCTUnwrap(snapshot.xmage?.combat.first)
+        XCTAssertEqual(adapted.defenderKind, "none")
+        XCTAssertEqual(adapted.defenderName, "No defender")
+        XCTAssertFalse(snapshot.players.contains { $0.playerId == adapted.defenderId })
+        XCTAssertEqual(adapted.attackers.first?.card.name, "Isamaru, Hound of Konda")
+        XCTAssertEqual(adapted.attackers.first?.isAttacking, true)
+    }
+
     func testCardActionsComeOnlyFromCurrentEnginePlayability() throws {
         let poll = try fixture("2p-priority")
         let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)

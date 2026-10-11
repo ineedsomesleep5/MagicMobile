@@ -244,12 +244,11 @@ final class BoardPolishUITests: XCTestCase {
         }
     }
 
-    func testSettingsOffersEveryBattlefieldBackground() {
+    /// Walnut Tavern is the only table (2026-10-11): Settings no longer offers other battlefields.
+    func testSettingsHasNoBattlefieldPicker() {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        // A launch-argument appearance pins the argument domain, so a tap could never change it.
-        application.launchEnvironment["MAGICMOBILE_UI_TEST_BOARD_APPEARANCE"] = "arena"
         application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
@@ -260,17 +259,9 @@ final class BoardPolishUITests: XCTestCase {
         application.buttons["menu.settings"].press(forDuration: 0.15)
         XCTAssertTrue(application.navigationBars["Settings"].waitForExistence(timeout: 10))
         for title in ["Stone Arena", "Midnight", "Classic Wood", "Moss Sanctuary", "Obsidian Ember", "Tidal Slate", "Walnut Tavern"] {
-            let choice = application.buttons[title + " battlefield"]
-            for _ in 0..<3 {
-                if choice.isHittable { break }
-                application.swipeUp()
-            }
-            visible(choice, in: application)
-            choice.tap()
-            let selected = NSPredicate(format: "selected == true")
-            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: selected, object: choice)], timeout: 5), .completed)
+            XCTAssertFalse(application.buttons[title + " battlefield"].exists, "\(title) should not be offered")
         }
-        currentCapture = "settings-six-battlefield-backgrounds"
+        currentCapture = "settings-without-battlefield-picker"
         capture(application, name: currentCapture)
     }
     func testPortraitOffscreenCombatInspection() { runMatrix(portrait: true, selectedFixtures: ["combat-arrows"]) }

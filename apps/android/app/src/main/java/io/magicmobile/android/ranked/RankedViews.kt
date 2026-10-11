@@ -492,7 +492,8 @@ fun RankedLobbyScreen(rank: RankState, deckBracket: CommanderBracket?, canSearch
             SectionLabel("At ${tier.label}")
             val range = tier.opponentBrackets
             val brackets = if (range.first == range.last) "${range.first}" else "${range.first}–${range.last}"
-            Rule("person.2.fill", "Opponents play Bracket $brackets decks. AI opponents play at skill ${tier.aiSkill}.")
+            Rule("person.2.fill", if (tier.preconOpponentsOnly) "AI opponents play official precon decks at skill ${tier.aiSkill}."
+                else "Opponents play Bracket $brackets decks. AI opponents play at skill ${tier.aiSkill}.")
             Rule("checkmark.seal.fill", "Your deck may be up to Bracket ${tier.maxDeckBracket}. A lower bracket earns +1 pip for each win.")
             Rule("arrow.up.arrow.down", "Each win fills a pip and each loss empties one. Four pips win a division; with none left a loss drops you a division.")
             if (tier < RankTier.GOLD) Rule("flame.fill", "Three wins in a row below Gold earn an extra pip.")

@@ -282,73 +282,79 @@ struct GameManagementMenu: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-            TavernPanelTitle(text: "Game Menu")
-            Spacer()
-            Button("Done") { dismiss() }
-                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
-                .accessibilityIdentifier("board.menu.done")
+                TavernPanelTitle(text: "Game Menu")
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                    .accessibilityIdentifier("board.menu.done")
             }
             .padding(.horizontal, 18)
             .padding(.top, 12)
             ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-            BoardAppearancePicker()
-            PortraitModeToggle(isOn: $portraitModeEnabled)
-            FollowTurnsToggle()
-            AutoPassAfterCastToggle()
-            BoardEffectsPicker()
-            RememberedChoicesPanel()
+                VStack(alignment: .leading, spacing: 12) {
+                    // The game itself first (Caleb, 2026-10-11): concede, start over or leave without scrolling.
+                    if snapshot.isSpectating {
+                        Label("You’re out of this game and watching the others play. Quit when you’re done.", systemImage: "eye.fill")
+                            .font(.system(size: 12, weight: .semibold, design: .serif))
+                            .foregroundStyle(TavernPalette.parchment.opacity(0.8))
+                            .accessibilityIdentifier("board.menu.spectating")
+                    }
+                    HStack(spacing: 10) {
+                        Button {
+                            confirmingConcede = true
+                        } label: {
+                            Label("Concede", systemImage: "flag.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isDanger: true, isPrimary: false))
+                        .disabled(!canConcede)
+                        .accessibilityIdentifier("board.menu.concede")
 
-            Button { showHowToPlay = true } label: {
-                Label(HowToPlayText.title, systemImage: "questionmark.circle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(CompactActionButtonStyle(isPrimary: false))
-            .accessibilityIdentifier("board.menu.howToPlay")
+                        Button(action: confirmStartNew) {
+                            Label("Start New", systemImage: "arrow.clockwise")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: true))
 
-            if snapshot.isSpectating {
-                Label("You’re out of this game and watching the others play. Quit when you’re done.", systemImage: "eye.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(MagicPalette.parchment.opacity(0.8))
-                    .accessibilityIdentifier("board.menu.spectating")
-            }
-            HStack(spacing: 10) {
-                Button {
-                    confirmingConcede = true
-                } label: {
-                    Label("Concede", systemImage: "flag.fill")
-                        .frame(maxWidth: .infinity)
+                        Button(action: confirmQuit) {
+                            Label("Quit", systemImage: "rectangle.portrait.and.arrow.right")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                        .accessibilityIdentifier("board.menu.quit")
+                    }
+
+                    Button { showHowToPlay = true } label: {
+                        Label(HowToPlayText.title, systemImage: "questionmark.circle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                    .accessibilityIdentifier("board.menu.howToPlay")
+
+                    RememberedChoicesPanel()
+
+                    GameMenuSectionLabel(text: "Options")
+                    PortraitModeToggle(isOn: $portraitModeEnabled)
+                    FollowTurnsToggle()
+                    AutoPassAfterCastToggle()
+                    BoardEffectsPicker()
+
+                    Button(action: openPromptInspector) {
+                        Label("Prompt Debug", systemImage: "ladybug.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                    .padding(.top, 8)
                 }
-                .buttonStyle(CompactActionButtonStyle(isDanger: true, isPrimary: false))
-                .disabled(!canConcede)
-                .accessibilityIdentifier("board.menu.concede")
-
-                Button(action: confirmStartNew) {
-                    Label("Start New", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(CompactActionButtonStyle(isPrimary: true))
-
-                Button(action: confirmQuit) {
-                    Label("Quit", systemImage: "rectangle.portrait.and.arrow.right")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(CompactActionButtonStyle(isPrimary: false))
-                .accessibilityIdentifier("board.menu.quit")
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-
-            Button(action: openPromptInspector) {
-                Label("Prompt Debug", systemImage: "ladybug.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+            .accessibilityIdentifier("board.menu.scroll")
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background {
+            // The leather sheet backing on the tavern (`.tavernSheet`); the table plate behind a menu read as clutter.
+            if tavern && TavernUIKit.available { Color.clear } else { BattlefieldSurface().ignoresSafeArea() }
         }
-        .accessibilityIdentifier("board.menu.scroll")
-        }
-        .background(BattlefieldSurface().ignoresSafeArea())
         .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
         .tavernConfirmation(
             active: tavern,
@@ -368,6 +374,21 @@ struct GameManagementMenu: View {
     /// Engine concede on device; XMage's own action on hosted games. Never after you're out.
     private var canConcede: Bool {
         !snapshot.isCompleted && snapshot.human?.isOut != true && (gameConcede != nil || concedeAction != nil)
+    }
+}
+
+/// A small engraved heading between groups of the game menu.
+private struct GameMenuSectionLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 12, weight: .heavy, design: .serif))
+            .tracking(1)
+            .foregroundStyle(TavernPalette.label)
+            .padding(.top, 6)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityLabel(text)
     }
 }
 

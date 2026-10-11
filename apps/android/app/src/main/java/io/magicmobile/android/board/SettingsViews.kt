@@ -80,75 +80,8 @@ import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.tavernPanelChrome
 
-/** The swatch frame shared by the battlefield and menu pickers: dark leather, a brass edge and a brass seal when chosen. */
-@Composable
-private fun AppearanceSwatch(title: String, selected: Boolean, modifier: Modifier = Modifier, art: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
-    Column(modifier.glow(if (selected) TavernPalette.ember.copy(alpha = 0.5f) else Color.Transparent, 6.dp, 10.dp)
-        .tavernFill(TavernMaterial.LEATHER, shape, overlay = Color.Black.copy(alpha = 0.25f))
-        .border(if (selected) 2.dp else 1.dp, if (selected) BrandTheme.brassGradient else androidx.compose.ui.graphics.SolidColor(TavernPalette.brass.copy(alpha = 0.3f)), shape)
-        .padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(GameBoardDesignTokens.Radius.panel))) { art() }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            FitText(title, sf(13f, SfWeight.semibold, SfDesign.SERIF), Modifier.weight(1f), color = TavernPalette.parchment, minimumScale = 0.7f)
-            if (selected) SfImage("checkmark.seal.fill", BrandTheme.brass, 13.dp)
-            else SfImage("circle", TavernPalette.parchment.copy(alpha = 0.5f), 13.dp)
-        }
-    }
-}
-
 /** One group of settings: a leather panel in brass trim with parchment text (TavernSettingsPanel). */
 fun Modifier.tavernSettingsPanel(): Modifier = this.fillMaxWidth().tavernPanelChrome(true, 10.dp).padding(horizontal = 14.dp, vertical = 10.dp)
-
-@Composable
-fun BoardAppearancePicker() {
-    var appearance by AppPreferences.string(BoardAppearancePreference.key, BoardAppearancePreference.defaultValue)
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        TavernPanelTitle("Battlefield")
-        BoxWithConstraints {
-            val columns = maxOf(1, ((maxWidth.value + 12) / (140 + 12)).toInt())
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                BattlefieldBackdrop.entries.chunked(columns).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { theme ->
-                            AppearanceSwatch(theme.title, appearance == theme.rawValue, Modifier.weight(1f).clickable { appearance = theme.rawValue }
-                                .semantics { contentDescription = "${theme.title} battlefield" }) {
-                                BattlefieldBackdropArt(theme, Modifier.fillMaxSize())
-                            }
-                        }
-                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
-        }
-        Text("Works in portrait and landscape.", color = TavernPalette.parchment.copy(alpha = 0.65f), style = sf(12f, design = SfDesign.SERIF))
-    }
-}
-
-@Composable
-fun MenuAppearanceArt(value: String, modifier: Modifier = Modifier) {
-    when (value) {
-        "arena" -> Image(painterResource(R.drawable.commander_stone_arena), null, modifier, contentScale = ContentScale.Crop)
-        "midnight" -> Box(modifier.background(midnightGradient))
-        else -> Image(painterResource(R.drawable.mage_mobile_menu_background), null, modifier, contentScale = ContentScale.Crop)
-    }
-}
-
-/** The menu background picker, independent of the battlefield's. */
-@Composable
-fun MenuAppearancePicker() {
-    var appearance by AppPreferences.string(MenuAppearancePreference.key, MenuAppearancePreference.defaultValue)
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        TavernPanelTitle("Menu")
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            for ((title, value) in listOf("Tavern" to "tavern", "Stone Arena" to "arena", "Midnight" to "midnight")) {
-                AppearanceSwatch(title, appearance == value, Modifier.weight(1f).clickable { appearance = value }
-                    .semantics { contentDescription = "$title menu background" }) { MenuAppearanceArt(value, Modifier.fillMaxSize()) }
-            }
-        }
-        Text("Saved on this device. The battlefield keeps its own setting.", color = TavernPalette.parchment.copy(alpha = 0.65f), style = sf(12f, design = SfDesign.SERIF))
-    }
-}
 
 object PortraitModePreference { const val key = "magicmobile.portraitModeEnabled" }
 

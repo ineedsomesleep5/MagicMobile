@@ -298,21 +298,21 @@
    "step": 0,
    "title": "Bronze IV",
    "pips": 0,
-   "opponentBracket": 1
+   "opponentBracket": 2
   },
   {
    "points": 3,
    "step": 0,
    "title": "Bronze IV",
    "pips": 3,
-   "opponentBracket": 1
+   "opponentBracket": 2
   },
   {
    "points": 4,
    "step": 1,
    "title": "Bronze III",
    "pips": 0,
-   "opponentBracket": 1
+   "opponentBracket": 2
   },
   {
    "points": 11,
@@ -396,11 +396,11 @@
   {
    "tier": "bronze",
    "opponentBrackets": [
-    1,
+    2,
     2
    ],
    "maxDeckBracket": 2,
-   "aiSkill": 2
+   "aiSkill": 1
   },
   {
    "tier": "silver",
@@ -409,7 +409,7 @@
     2
    ],
    "maxDeckBracket": 2,
-   "aiSkill": 3
+   "aiSkill": 2
   },
   {
    "tier": "gold",
@@ -418,7 +418,7 @@
     3
    ],
    "maxDeckBracket": 3,
-   "aiSkill": 4
+   "aiSkill": 3
   },
   {
    "tier": "platinum",
@@ -427,7 +427,7 @@
     3
    ],
    "maxDeckBracket": 3,
-   "aiSkill": 5
+   "aiSkill": 4
   },
   {
    "tier": "diamond",
@@ -436,7 +436,7 @@
     4
    ],
    "maxDeckBracket": 4,
-   "aiSkill": 6
+   "aiSkill": 5
   },
   {
    "tier": "mythic",
@@ -445,7 +445,7 @@
     4
    ],
    "maxDeckBracket": 4,
-   "aiSkill": 7
+   "aiSkill": 6
   }
  ],
  "rollover": [
