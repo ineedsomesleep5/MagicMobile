@@ -424,8 +424,43 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
         return deck
     }
 
+    /**
+     * One public deck in an Archidekt user's list. Private and unlisted decks never appear: the list is read without
+     * signing in, and the deck import accepts only public decks. OnDeviceDeckLinkImporter.swift.
+     */
+    data class ArchidektDeckSummary(val id: Long, val name: String, val size: Int?, val updatedAt: String?) {
+        val link: String get() = "https://archidekt.com/decks/$id"
+        /** The day it was last changed, from Archidekt's ISO timestamp. */
+        val updatedDay: String? get() = updatedAt?.take(10)
+    }
+    data class ArchidektDeckPage(val decks: List<ArchidektDeckSummary>, val hasMore: Boolean)
+
     companion object {
         const val maximumBytes = 2 * 1024 * 1024
+
+        /**
+         * Archidekt's public deck list for a username. Archidekt staff allow use of this API
+         * (https://archidekt.com/forum/thread/2832338); it runs only when the player asks, one page at a time.
+         */
+        fun archidektDeckListEndpoint(username: String, page: Int): String {
+            val name = username.trim()
+            if (!Regex("^[A-Za-z0-9_.-]{1,64}$").matches(name)) throw ResolutionError("Enter an Archidekt username: letters, numbers, dots, dashes or underscores.")
+            if (page !in 1..40) throw ResolutionError("That's as many decks as one list can show.")
+            return "https://archidekt.com/api/decks/v3/?ownerUsername=$name&pageSize=50&page=$page"
+        }
+
+        fun decodeArchidektDeckPage(text: String): ArchidektDeckPage {
+            val value = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) }.getOrNull()
+            val results = value["results"].array?.takeIf { it.size <= 200 }
+                ?: throw ResolutionError("Archidekt returned a deck list this app can't read.")
+            val decks = results.mapNotNull { row ->
+                val id = row["id"].integer ?: throw ResolutionError("Archidekt returned a deck list this app can't read.")
+                val name = row["name"].string ?: throw ResolutionError("Archidekt returned a deck list this app can't read.")
+                if (row["private"].bool == true || row["unlisted"].bool == true || name.isEmpty() || name.utf8Size > 512) null
+                else ArchidektDeckSummary(id, name, row["size"].integer?.toInt(), row["updatedAt"].string)
+            }
+            return ArchidektDeckPage(decks, value["next"].string != null)
+        }
 
         fun choosingCommander(name: String, deck: DeckList): DeckList {
             fun board(entry: DeckEntry) = entry.section.trim().lowercase()

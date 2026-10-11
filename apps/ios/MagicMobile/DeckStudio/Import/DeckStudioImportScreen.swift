@@ -36,6 +36,21 @@ struct DeckStudioImportScreen: View {
     @State private var commanderQuery = ""
     @State private var commanderSuggestions: [NativeDeckMetadataCatalogue.Card] = []
     @State private var metadata: NativeDeckMetadataCatalogue?
+    /// Archidekt account: a username's public decks, picked with checkmarks.
+    @State private var archidektUser = ""
+    @State private var archidektDecks: [OnDeviceDeckLinkImporter.ArchidektDeckSummary] = []
+    @State private var archidektPage = 0
+    @State private var archidektHasMore = false
+    @State private var archidektSearched = false
+    @State private var listing = false
+    @State private var listTask: Task<Void, Never>?
+    @State private var picked: Set<Int> = []
+    /// Several picked decks are saved one by one: each deck's outcome, in order.
+    @State private var batch: [(name: String, outcome: BatchOutcome)] = []
+    private enum BatchOutcome { case waiting, saved, failed(String) }
+    @State private var batchDone = false
+    private var pickedDecks: [OnDeviceDeckLinkImporter.ArchidektDeckSummary] { archidektDecks.filter { picked.contains($0.id) } }
+    private var isBatch: Bool { method == "Account" && picked.count > 1 }
 
     var body: some View {
         NavigationStack {
@@ -101,13 +116,18 @@ struct DeckStudioImportScreen: View {
             .onChange(of: text) { _, _ in invalidate() }
             .onChange(of: name) { _, _ in invalidate() }
             .onChange(of: link) { _, _ in invalidate() }
-            .onChange(of: method) { _, _ in invalidate() }
+            .onChange(of: method) { _, value in
+                invalidate()
+                // Most Archidekt decks keep a maybeboard; a whole account would otherwise stop at each one.
+                if value == "Account" { excludeSideboards = true }
+            }
             .onChange(of: excludeSideboards) { _, _ in invalidate() }
             .onChange(of: commander) { _, _ in invalidate() }
+            .onChange(of: picked) { _, _ in invalidate() }
             .task { metadata = await Task.detached(priority: .userInitiated) { try? NativeDeckMetadataCatalogue.bundled() }.value }
             .task(id: commanderQuery) { await suggestCommanders() }
             .onChange(of: photo) { _, item in if let item { beginScan(item) } }
-            .onDisappear { task?.cancel(); validation.cancelPending() }
+            .onDisappear { task?.cancel(); listTask?.cancel(); validation.cancelPending() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
     }
@@ -125,14 +145,24 @@ struct DeckStudioImportScreen: View {
     @ViewBuilder private var entry: some View {
         Text("Bring your deck.").font(.largeTitle.weight(.bold)).tracking(-1)
         Text("Paste, link, or scan a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
-        GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Scan", "Scan image")], selection: $method)
-            .disabled(busy || saved != nil)
-        commanderPanel
+        GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Account", "Archidekt"), ("Scan", "Scan image")], selection: $method)
+            .disabled(busy || saved != nil || !batch.isEmpty)
+        if !isBatch && batch.isEmpty { commanderPanel }
         inputPanel
+        if !batch.isEmpty { batchPanel }
         if let scanNotice { DeckStudioNotice(title: "Check recognized text", message: scanNotice) }
         if let error { DeckStudioNotice(title: "Import needs attention", message: error, icon: "exclamationmark.triangle") }
         if busy { ProgressView(saving ? "Saving deck and import details…" : (method == "Scan" ? "Reading image on this device…" : "Preparing review…")) }
-        if method != "Scan" {
+        if method == "Account" {
+            if batchDone {
+                Button("Done", action: leave).buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.import.batchDone")
+            } else if !picked.isEmpty {
+                Button(isBatch ? "Import \(picked.count) decks" : "Review deck", action: isBatch ? importPicked : beginPreview)
+                    .buttonStyle(DeckStudioButtonStyle())
+                    .disabled(busy || resolver == nil || saved != nil || !batch.isEmpty)
+                    .accessibilityIdentifier("deckStudio.import.review")
+            }
+        } else if method != "Scan" {
             Button("Review decklist", action: beginPreview).buttonStyle(DeckStudioButtonStyle())
                 .disabled(busy || resolver == nil || saved != nil || (method == "Link" ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("deckStudio.import.review")
@@ -205,6 +235,116 @@ struct DeckStudioImportScreen: View {
             }.disabled(busy || saved != nil)
         }
     }
+    /// An Archidekt username's public decks. Pick one to review it, or several to save them all as drafts.
+    @ViewBuilder private var archidektPicker: some View {
+        HStack(spacing: 10) {
+            TextField("Archidekt username", text: $archidektUser).textFieldStyle(GrimoireFieldStyle())
+                .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search)
+                .onSubmit { findArchidektDecks(more: false) }
+                .accessibilityIdentifier("deckStudio.import.archidekt.username")
+            Button("Find decks") { findArchidektDecks(more: false) }
+                .buttonStyle(BinderPlaqueButtonStyle())
+                .disabled(busy || listing || archidektUser.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityIdentifier("deckStudio.import.archidekt.find")
+        }
+        Toggle("Exclude sideboard / maybeboard", isOn: $excludeSideboards)
+        Text("Lists the public decks on that Archidekt account. No sign-in: private and unlisted decks don't appear, so make them public or paste their text export. This contacts Archidekt.")
+            .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+        if listing { ProgressView("Asking Archidekt…") }
+        if archidektSearched && archidektDecks.isEmpty && !listing {
+            Text("No public decks found for \"\(archidektUser.trimmingCharacters(in: .whitespaces))\".").font(.callout)
+        }
+        if !archidektDecks.isEmpty {
+            HStack {
+                Text("\(archidektDecks.count) public decks · \(picked.count) picked").font(.subheadline.weight(.semibold))
+                Spacer()
+                Button(picked.count == archidektDecks.count ? "Clear" : "Pick all") {
+                    picked = picked.count == archidektDecks.count ? [] : Set(archidektDecks.map(\.id))
+                }.frame(minHeight: 44)
+            }
+            ForEach(archidektDecks) { deck in
+                Button { if picked.contains(deck.id) { picked.remove(deck.id) } else { picked.insert(deck.id) } } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: picked.contains(deck.id) ? "checkmark.circle.fill" : "circle").font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(deck.name).font(.subheadline.weight(.medium)).multilineTextAlignment(.leading)
+                            Text([deck.size.map { "\($0) cards" }, deck.updatedDay.map { "updated \($0)" }].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        }
+                        Spacer(minLength: 0)
+                    }.frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(picked.contains(deck.id) ? [.isSelected] : [])
+                    .accessibilityIdentifier("deckStudio.import.archidekt.deck.\(deck.id)")
+            }
+            if archidektHasMore {
+                Button("Show more decks") { findArchidektDecks(more: true) }.frame(minHeight: 44).disabled(busy || listing)
+            }
+            if isBatch {
+                Text("Several decks are saved as drafts straight away. Open each one in your library to review it and pick its commander.")
+                    .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+            }
+        }
+    }
+    private var batchPanel: some View {
+        DeckStudioPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(batchDone ? "Import finished" : "Importing decks…").font(.headline)
+                ForEach(Array(batch.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        switch item.outcome {
+                        case .waiting: Image(systemName: "clock")
+                        case .saved: Image(systemName: "checkmark.circle")
+                        case .failed: Image(systemName: "exclamationmark.triangle")
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name).font(.subheadline)
+                            if case .failed(let reason) = item.outcome { Text(reason).font(.caption).foregroundStyle(DeckStudioPalette.warning) }
+                        }
+                    }.accessibilityElement(children: .combine)
+                }
+            }
+        }
+    }
+    private func findArchidektDecks(more: Bool) {
+        guard let resolver, !busy, !listing else { return }
+        let user = archidektUser, page = more ? archidektPage + 1 : 1
+        error = nil; listing = true
+        if !more { archidektDecks = []; picked = []; archidektSearched = false }
+        listTask = Task { @MainActor in
+            defer { listing = false }
+            do {
+                let found = try await OnDeviceDeckLinkImporter(resolver: resolver).archidektDecks(username: user, page: page)
+                let known = Set(archidektDecks.map(\.id))
+                archidektDecks += found.decks.filter { !known.contains($0.id) }
+                archidektPage = page; archidektHasMore = found.hasMore; archidektSearched = true
+            } catch is CancellationError { } catch { self.error = error.localizedDescription }
+        }
+    }
+    /// Saves each picked deck as a draft, one at a time, and lists what happened to each.
+    private func importPicked() {
+        guard let resolver, !busy else { return }
+        let decks = pickedDecks, exclude = excludeSideboards
+        invalidate(); error = nil; busy = true; saving = true
+        batch = decks.map { ($0.name, .waiting) }
+        task = Task { @MainActor in
+            defer { busy = false; saving = false; batchDone = true }
+            let importer = OnDeviceDeckLinkImporter(resolver: resolver)
+            for (index, deck) in decks.enumerated() {
+                do {
+                    try Task.checkCancellation()
+                    let preview = try importer.preview(await importer.importDeck(url: deck.link, excludeSideboards: exclude, reviewOnly: true))
+                    let receipt = try DeckStudioImportReceipt.store(preview, sourceURL: deck.link)
+                    let record = try library.addLocalDurably(preview.deck, sourceURL: deck.link)
+                    try await DeckStudioOrganizationStore.shared.retainImport(recordID: record.id, annotations: [], source: deck.link,
+                                                                              receiptFile: receipt.lastPathComponent)
+                    batch[index].outcome = .saved
+                } catch is CancellationError { return } catch {
+                    batch[index].outcome = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
     private func chooseCommander(_ name: String) {
         commander = name; commanderQuery = ""; commanderSuggestions = []
     }
@@ -235,6 +375,8 @@ struct DeckStudioImportScreen: View {
                     Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Switch to pasted export") { method = "Paste" }.frame(minHeight: 44)
+                } else if method == "Account" {
+                    archidektPicker
                 } else {
                     PhotosPicker(selection: $photo, matching: .images) { Label("Choose decklist photo or screenshot", systemImage: "text.viewfinder").frame(maxWidth: .infinity) }
                         .buttonStyle(BinderPlaqueButtonStyle())
@@ -278,7 +420,8 @@ struct DeckStudioImportScreen: View {
     private func beginPreview() {
         guard let resolver else { return }
         invalidate(); error = nil; busy = true
-        let token = generation, input = text, title = name, url = link, fromLink = method == "Link", exclude = excludeSideboards, lead = commander
+        let token = generation, input = text, title = name, fromLink = method == "Link" || method == "Account", exclude = excludeSideboards, lead = commander
+        let url = method == "Account" ? pickedDecks.first?.link ?? "" : link
         task = Task { @MainActor in
             defer { if generation == token { busy = false } }
             do {

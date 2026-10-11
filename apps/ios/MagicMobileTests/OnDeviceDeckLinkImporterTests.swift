@@ -44,6 +44,26 @@ final class OnDeviceDeckLinkImporterTests: XCTestCase {
         XCTAssertEqual(flipped.entries, [DeckEntry(cardName: "Leader", quantity: 1, section: "commanders")])
     }
 
+    func testArchidektUsernameListKeepsOnlyPublicDecksAndPages() throws {
+        let url = try OnDeviceDeckLinkImporter.archidektDeckListEndpoint(username: " Caleb_F.1 ", page: 2)
+        XCTAssertEqual(url.absoluteString, "https://archidekt.com/api/decks/v3/?ownerUsername=Caleb_F.1&pageSize=50&page=2")
+        for bad in ["", "a b", "x/../y", "name?x=1", String(repeating: "a", count: 65)] {
+            XCTAssertThrowsError(try OnDeviceDeckLinkImporter.archidektDeckListEndpoint(username: bad, page: 1))
+        }
+        XCTAssertThrowsError(try OnDeviceDeckLinkImporter.archidektDeckListEndpoint(username: "caleb", page: 0))
+        let json: [String: Any] = ["count": 3, "next": "https://archidekt.com/api/decks/v3/?page=2", "results": [
+            ["id": 1, "name": "Edgar", "size": 100, "updatedAt": "2026-10-01T12:00:00Z", "private": false, "unlisted": false, "deckFormat": 3],
+            ["id": 2, "name": "Secret", "private": true],
+            ["id": 3, "name": "Hidden", "unlisted": true]]]
+        let page = try OnDeviceDeckLinkImporter.decodeArchidektDeckPage(data(json))
+        XCTAssertEqual(page.decks.map(\.id), [1])
+        XCTAssertEqual(page.decks.first?.updatedDay, "2026-10-01")
+        XCTAssertEqual(page.decks.first?.link, "https://archidekt.com/decks/1")
+        XCTAssertTrue(page.hasMore)
+        XCTAssertFalse(try OnDeviceDeckLinkImporter.decodeArchidektDeckPage(data(["next": NSNull(), "results": []])).hasMore)
+        XCTAssertThrowsError(try OnDeviceDeckLinkImporter.decodeArchidektDeckPage(Data("<html>".utf8)))
+    }
+
     func testProviderTextExportPreviewPreservesQuantitiesRolesAndAnnotations() throws {
         let importer = OnDeviceDeckLinkImporter(resolver: try resolver())
         let archidekt = try importer.preview(text: "1x Leader (SET) [Commander{top}]\n3x Forest (SET) 12 *F* [Land]\n1x Missing [Maybeboard]", name: "Archidekt paste")

@@ -462,6 +462,16 @@ suspend fun OnDeviceDeckLinkImporter.importDeck(url: String, excludeSideboards: 
     return decode(text, source, excludeSideboards, reviewOnly)
 }
 
+/** An Archidekt username's public decks, one page at a time, on the same terms as the deck import. */
+suspend fun OnDeviceDeckLinkImporter.archidektDecks(username: String, page: Int = 1): OnDeviceDeckLinkImporter.ArchidektDeckPage {
+    val endpoint = OnDeviceDeckLinkImporter.archidektDeckListEndpoint(username, page)
+    val text = try { StudioHTTP.request(endpoint, OnDeviceDeckLinkImporter.maximumBytes, userAgent = "MagicMobile-DeckImport/1.0") }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (failure: StudioHTTP.HttpFailure) { throw OnDeviceDeckLinkImporter.ImportError("Archidekt unavailable (HTTP ${failure.status}).") }
+    catch (failure: Exception) { throw OnDeviceDeckLinkImporter.ImportError("Archidekt unavailable, timed out, or returned an unsupported response.") }
+    return OnDeviceDeckLinkImporter.decodeArchidektDeckPage(text)
+}
+
 /** On-device text recognition for a decklist photo. The image never leaves the phone. */
 object DeckStudioOCR {
     suspend fun recognize(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {

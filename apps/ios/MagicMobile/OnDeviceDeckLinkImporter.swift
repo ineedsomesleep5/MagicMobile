@@ -120,6 +120,12 @@ struct OnDeviceDeckLinkImporter {
 
     func importDeck(url: String, excludeSideboards: Bool = false, reviewOnly: Bool = false) async throws -> DeckList {
         let source = try Self.source(for: url)
+        let data = try await fetchJSON(source.endpoint)
+        return try decode(data: data, source: source, excludeSideboards: excludeSideboards, reviewOnly: reviewOnly)
+    }
+
+    /// One provider request: no cookies, credentials, cache or redirects, at most 2 MiB of JSON.
+    private func fetchJSON(_ endpoint: URL) async throws -> Data {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -129,20 +135,20 @@ struct OnDeviceDeckLinkImporter {
         configuration.timeoutIntervalForResource = 25
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
-        var request = URLRequest(url: source.endpoint)
+        var request = URLRequest(url: endpoint)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("MagicMobile-DeckImport/1.0", forHTTPHeaderField: "User-Agent")
         do {
             let (bytes, response) = try await session.bytes(for: request, delegate: NoRedirects())
             guard let http = response as? HTTPURLResponse else { throw ImportError(message: "Provider returned no HTTP response.") }
-            try Self.validate(response: http, source: source)
+            try Self.validate(response: http, endpoint: endpoint)
             var data = Data()
             for try await byte in bytes {
                 try Task.checkCancellation()
                 guard data.count < Self.maximumBytes else { throw ImportError(message: "Provider response exceeds 2 MiB.") }
                 data.append(byte)
             }
-            return try decode(data: data, source: source, excludeSideboards: excludeSideboards, reviewOnly: reviewOnly)
+            return data
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as ImportError {
@@ -156,7 +162,11 @@ struct OnDeviceDeckLinkImporter {
     }
 
     static func validate(response: HTTPURLResponse, source: Source) throws {
-        guard response.url == source.endpoint, response.statusCode == 200 else {
+        try validate(response: response, endpoint: source.endpoint)
+    }
+
+    static func validate(response: HTTPURLResponse, endpoint: URL) throws {
+        guard response.url == endpoint, response.statusCode == 200 else {
             throw ImportError(message: "Provider unavailable (HTTP \(response.statusCode)); private decks, authentication, redirects and bot checks are not supported.")
         }
         guard response.expectedContentLength <= Int64(maximumBytes),
@@ -250,6 +260,52 @@ struct OnDeviceDeckLinkImporter {
         let deck = try resolver.canonicalized(raw)
         _ = try resolver.resolve(deck)
         return deck
+    }
+
+    /// One public deck in an Archidekt user's list. Private and unlisted decks never appear: the list is
+    /// read without signing in, and the deck import accepts only public decks.
+    struct ArchidektDeckSummary: Identifiable, Hashable, Decodable {
+        let id: Int
+        let name: String
+        let size: Int?
+        let updatedAt: String?
+        let isPrivate: Bool?
+        let unlisted: Bool?
+        enum CodingKeys: String, CodingKey { case id, name, size, updatedAt, isPrivate = "private", unlisted }
+        var link: String { "https://archidekt.com/decks/\(id)" }
+        /// The day it was last changed, from Archidekt's ISO timestamp.
+        var updatedDay: String? { updatedAt.map { String($0.prefix(10)) } }
+    }
+    struct ArchidektDeckPage: Equatable {
+        let decks: [ArchidektDeckSummary]
+        let hasMore: Bool
+    }
+
+    /// Archidekt's public deck list for a username. Archidekt staff allow use of this API
+    /// (https://archidekt.com/forum/thread/2832338); it runs only when the player asks, one page at a time.
+    static func archidektDeckListEndpoint(username: String, page: Int) throws -> URL {
+        let name = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name.range(of: "^[A-Za-z0-9_.-]{1,64}$", options: .regularExpression) != nil else {
+            throw OnDeviceDeckResolver.ResolutionError("Enter an Archidekt username: letters, numbers, dots, dashes or underscores.")
+        }
+        guard (1...40).contains(page) else { throw OnDeviceDeckResolver.ResolutionError("That's as many decks as one list can show.") }
+        var components = URLComponents(string: "https://archidekt.com/api/decks/v3/")!
+        components.queryItems = [URLQueryItem(name: "ownerUsername", value: name), URLQueryItem(name: "pageSize", value: "50"), URLQueryItem(name: "page", value: String(page))]
+        return components.url!
+    }
+
+    func archidektDecks(username: String, page: Int = 1) async throws -> ArchidektDeckPage {
+        let data = try await fetchJSON(Self.archidektDeckListEndpoint(username: username, page: page))
+        return try Self.decodeArchidektDeckPage(data)
+    }
+
+    static func decodeArchidektDeckPage(_ data: Data) throws -> ArchidektDeckPage {
+        struct Page: Decodable { let next: String?; let results: [ArchidektDeckSummary] }
+        guard let page = try? JSONDecoder().decode(Page.self, from: data), page.results.count <= 200 else {
+            throw OnDeviceDeckResolver.ResolutionError("Archidekt returned a deck list this app can't read.")
+        }
+        let decks = page.results.filter { $0.isPrivate != true && $0.unlisted != true && !$0.name.isEmpty && $0.name.utf8.count <= 512 }
+        return ArchidektDeckPage(decks: decks, hasMore: page.next != nil)
     }
 
     private final class NoRedirects: NSObject, URLSessionTaskDelegate {

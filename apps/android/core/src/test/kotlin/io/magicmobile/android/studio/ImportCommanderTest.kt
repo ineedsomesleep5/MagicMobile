@@ -37,6 +37,24 @@ class ImportCommanderTest {
         assertEquals(listOf(DeckEntry("Kardur, Doomscourge", 1, "commanders")), flipped.entries)
     }
 
+    @Test fun archidektUsernameListKeepsOnlyPublicDecksAndPages() {
+        assertEquals("https://archidekt.com/api/decks/v3/?ownerUsername=Caleb_F.1&pageSize=50&page=2",
+            OnDeviceDeckLinkImporter.archidektDeckListEndpoint(" Caleb_F.1 ", 2))
+        for (bad in listOf("", "a b", "x/../y", "name?x=1", "a".repeat(65))) {
+            org.junit.Assert.assertThrows(ResolutionError::class.java) { OnDeviceDeckLinkImporter.archidektDeckListEndpoint(bad, 1) }
+        }
+        org.junit.Assert.assertThrows(ResolutionError::class.java) { OnDeviceDeckLinkImporter.archidektDeckListEndpoint("caleb", 0) }
+        val page = OnDeviceDeckLinkImporter.decodeArchidektDeckPage("""{"count":3,"next":"https://archidekt.com/api/decks/v3/?page=2","results":[
+            {"id":1,"name":"Edgar","size":100,"updatedAt":"2026-10-01T12:00:00Z","private":false,"unlisted":false,"deckFormat":3},
+            {"id":2,"name":"Secret","private":true},{"id":3,"name":"Hidden","unlisted":true}]}""")
+        assertEquals(listOf(1L), page.decks.map { it.id })
+        assertEquals("2026-10-01", page.decks.first().updatedDay)
+        assertEquals("https://archidekt.com/decks/1", page.decks.first().link)
+        assertEquals(true, page.hasMore)
+        assertEquals(false, OnDeviceDeckLinkImporter.decodeArchidektDeckPage("""{"next":null,"results":[]}""").hasMore)
+        org.junit.Assert.assertThrows(ResolutionError::class.java) { OnDeviceDeckLinkImporter.decodeArchidektDeckPage("<html>") }
+    }
+
     @Test fun eitherFaceNamesTheOther() {
         val faces = DoubleFacedCards()
         assertNull(faces.otherFace("Valakut Awakening"))

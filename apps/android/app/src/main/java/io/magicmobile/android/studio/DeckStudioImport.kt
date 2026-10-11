@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.core.readBounded
@@ -109,13 +110,47 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     var commander by remember { mutableStateOf<String?>(null) }
     var commanderQuery by remember { mutableStateOf("") }
     var commanderSuggestions by remember { mutableStateOf<List<io.magicmobile.android.core.CardInfo>>(emptyList()) }
+    // Archidekt account: a username's public decks, picked with checkmarks.
+    var archidektUser by remember { mutableStateOf("") }
+    var archidektDecks by remember { mutableStateOf<List<OnDeviceDeckLinkImporter.ArchidektDeckSummary>>(emptyList()) }
+    var archidektPage by remember { mutableStateOf(0) }
+    var archidektHasMore by remember { mutableStateOf(false) }
+    var archidektSearched by remember { mutableStateOf(false) }
+    var listing by remember { mutableStateOf(false) }
+    var listJob by remember { mutableStateOf<Job?>(null) }
+    var picked by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    // Several picked decks are saved one by one: each deck's outcome, in order (null while waiting, "" when saved).
+    var batch by remember { mutableStateOf<List<Pair<String, String?>>>(emptyList()) }
+    var batchDone by remember { mutableStateOf(false) }
+    val pickedDecks = archidektDecks.filter { it.id in picked }
+    val isBatch = method == "Account" && picked.size > 1
 
     fun invalidate() {
         if (saved != null) return
         generation = UUID.randomUUID(); job?.cancel(); busy = false; preview = null; receipt = null; validation.prepare(null)
     }
     fun cancel() { if (saving) return; job?.cancel(); validation.cancelPending(); close() }
-    LaunchedEffect(text, name, link, method, excludeSideboards, commander) { invalidate() }
+    LaunchedEffect(text, name, link, method, excludeSideboards, commander, picked) { invalidate() }
+    // Most Archidekt decks keep a maybeboard; a whole account would otherwise stop at each one.
+    LaunchedEffect(method) { if (method == "Account") excludeSideboards = true }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { listJob?.cancel() } }
+    fun findArchidektDecks(more: Boolean) {
+        val resolver = resolver ?: return
+        if (busy || listing) return
+        val user = archidektUser; val page = if (more) archidektPage + 1 else 1
+        error = null; listing = true
+        if (!more) { archidektDecks = emptyList(); picked = emptySet(); archidektSearched = false }
+        listJob = scope.launch {
+            try {
+                val found = OnDeviceDeckLinkImporter(resolver).archidektDecks(user, page)
+                val known = archidektDecks.map { it.id }.toSet()
+                archidektDecks = archidektDecks + found.decks.filter { it.id !in known }
+                archidektPage = page; archidektHasMore = found.hasMore; archidektSearched = true
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { error = failure.message }
+            finally { listing = false }
+        }
+    }
     LaunchedEffect(commanderQuery, metadata) {
         val query = commanderQuery.trim()
         val catalogue = metadata
@@ -163,7 +198,8 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     fun beginPreview() {
         val resolver = resolver ?: return
         invalidate(); error = null; busy = true
-        val token = generation; val input = text; val title = name; val url = link; val fromLink = method == "Link"; val exclude = excludeSideboards; val lead = commander
+        val token = generation; val input = text; val title = name; val fromLink = method == "Link" || method == "Account"; val exclude = excludeSideboards; val lead = commander
+        val url = if (method == "Account") pickedDecks.firstOrNull()?.link ?: "" else link
         job = scope.launch {
             try {
                 val importer = OnDeviceDeckLinkImporter(resolver)
@@ -178,6 +214,30 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { if (generation == token) error = failure.message }
             finally { if (generation == token) busy = false }
+        }
+    }
+    /** Saves each picked deck as a draft, one at a time, and lists what happened to each. */
+    fun importPicked() {
+        val resolver = resolver ?: return
+        if (busy) return
+        val decks = pickedDecks; val exclude = excludeSideboards
+        invalidate(); error = null; busy = true; saving = true
+        batch = decks.map { it.name to null }
+        job = scope.launch {
+            val importer = OnDeviceDeckLinkImporter(resolver)
+            try {
+                decks.forEachIndexed { index, deck ->
+                    val outcome = try {
+                        val value = importer.preview(importer.importDeck(deck.link, exclude, reviewOnly = true))
+                        val file = withContext(Dispatchers.IO) { DeckStudioImportReceipt.store(value, deck.link) }
+                        val record = library.addLocalDurably(value.deck, deck.link)
+                        withContext(Dispatchers.IO) { DeckStudioServices.organization.retainImport(record.id, emptyList(), deck.link, file.name) }
+                        ""
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (failure: Exception) { failure.message ?: "This deck could not be imported." }
+                    batch = batch.toMutableList().also { it[index] = deck.name to outcome }
+                }
+            } finally { busy = false; saving = false; batchDone = true }
         }
     }
     fun save(value: OnDeviceDeckLinkImporter.Preview) {
@@ -207,9 +267,10 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     val entry: @Composable () -> Unit = {
         Text("Bring your deck.", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
         Text("Paste, link, or scan a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
-        StudioSegmented(listOf("Paste", "Link", "Scan"), method, { method = it }, { if (it == "Scan") "Scan image" else it }, enabled = !busy && saved == null)
+        StudioSegmented(listOf("Paste", "Link", "Account", "Scan"), method, { method = it },
+            { when (it) { "Scan" -> "Scan image"; "Account" -> "Archidekt"; else -> it } }, enabled = !busy && saved == null && batch.isEmpty())
         // Type a commander's name and pick it from the suggestions, as on Archidekt.
-        StudioPanel(spacing = 10.dp) {
+        if (!isBatch && batch.isEmpty()) StudioPanel(spacing = 10.dp) {
             val locked = busy || saved != null
             Text("Commander", color = DeckStudioPalette.ink, style = StudioText.headline)
             val chosen = commander
@@ -265,6 +326,47 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                         color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                     StudioPlainButton("Switch to pasted export", { method = "Paste" }, enabled = !locked)
                 }
+                "Account" -> {
+                    // An Archidekt username's public decks. Pick one to review it, or several to save them all as drafts.
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        StudioRoundedField(archidektUser, { archidektUser = it }, "Archidekt username",
+                            Modifier.weight(1f).testTag("deckStudio.import.archidekt.username"), enabled = !locked, onSubmit = { findArchidektDecks(false) })
+                        StudioButton("Find decks", { findArchidektDecks(false) }, primary = false,
+                            enabled = !locked && !listing && archidektUser.isNotBlank(), compactText = true)
+                    }
+                    StudioToggle("Exclude sideboard / maybeboard", excludeSideboards, { excludeSideboards = it }, enabled = !locked)
+                    Text("Lists the public decks on that Archidekt account. No sign-in: private and unlisted decks don't appear, so make them public or paste their text export. This contacts Archidekt.",
+                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                    if (listing) StudioProgress("Asking Archidekt…")
+                    if (archidektSearched && archidektDecks.isEmpty() && !listing)
+                        Text("No public decks found for \"${archidektUser.trim()}\".", color = DeckStudioPalette.ink, style = StudioText.callout)
+                    if (archidektDecks.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${archidektDecks.size} public decks · ${picked.size} picked", Modifier.weight(1f), color = DeckStudioPalette.ink,
+                                style = StudioText.subheadline.weight(SfWeight.semibold))
+                            StudioPlainButton(if (picked.size == archidektDecks.size) "Clear" else "Pick all", {
+                                picked = if (picked.size == archidektDecks.size) emptySet() else archidektDecks.map { it.id }.toSet()
+                            }, enabled = !locked)
+                        }
+                        for (deck in archidektDecks) {
+                            val on = deck.id in picked
+                            Row(Modifier.fillMaxWidth().clickable(enabled = !locked) { picked = if (on) picked - deck.id else picked + deck.id }
+                                .defaultMinSize(minHeight = 44.dp).semantics(mergeDescendants = true) { selected = on }
+                                .testTag("deckStudio.import.archidekt.deck.${deck.id}"),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                SfImage(if (on) "checkmark.circle.fill" else "circle", DeckStudioPalette.ink, 22.dp)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(deck.name, color = DeckStudioPalette.ink, style = StudioText.subheadline.weight(SfWeight.medium))
+                                    Text(listOfNotNull(deck.size?.let { "$it cards" }, deck.updatedDay?.let { "updated $it" }).joinToString(" · "),
+                                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                                }
+                            }
+                        }
+                        if (archidektHasMore) StudioPlainButton("Show more decks", { findArchidektDecks(true) }, enabled = !locked && !listing)
+                        if (isBatch) Text("Several decks are saved as drafts straight away. Open each one in your library to review it and pick its commander.",
+                            color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
+                    }
+                }
                 else -> {
                     StudioPlainButton("Choose decklist photo or screenshot", { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                         Modifier.defaultMinSize(minHeight = 60.dp), icon = "text.viewfinder", enabled = !locked)
@@ -276,7 +378,23 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
         scanNotice?.let { DeckStudioNotice("Check recognized text", it) }
         error?.let { DeckStudioNotice("Import needs attention", it, "exclamationmark.triangle") }
         if (busy) StudioProgress(if (saving) "Saving deck and import details…" else if (method == "Scan") "Reading image on this device…" else "Preparing review…")
-        if (method != "Scan") StudioButton("Review decklist", ::beginPreview, Modifier.semantics { contentDescription = "deckStudio.import.review" },
+        if (batch.isNotEmpty()) StudioPanel(spacing = 8.dp) {
+            Text(if (batchDone) "Import finished" else "Importing decks…", color = DeckStudioPalette.ink, style = StudioText.headline)
+            for ((deckName, outcome) in batch) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                    SfImage(when { outcome == null -> "clock"; outcome.isEmpty() -> "checkmark.circle"; else -> "exclamationmark.triangle" }, DeckStudioPalette.ink, 17.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(deckName, color = DeckStudioPalette.ink, style = StudioText.subheadline)
+                        if (!outcome.isNullOrEmpty()) Text(outcome, color = DeckStudioPalette.warning, style = StudioText.caption)
+                    }
+                }
+            }
+        }
+        if (method == "Account") {
+            if (batchDone) StudioButton("Done", ::cancel, Modifier.semantics { contentDescription = "deckStudio.import.batchDone" })
+            else if (picked.isNotEmpty()) StudioButton(if (isBatch) "Import ${picked.size} decks" else "Review deck", if (isBatch) ::importPicked else ::beginPreview,
+                Modifier.semantics { contentDescription = "deckStudio.import.review" }, enabled = !busy && resolver != null && saved == null && batch.isEmpty())
+        } else if (method != "Scan") StudioButton("Review decklist", ::beginPreview, Modifier.semantics { contentDescription = "deckStudio.import.review" },
             enabled = !busy && resolver != null && saved == null && (if (method == "Link") link else text).isNotBlank())
     }
     val reviewed: @Composable () -> Unit = {
