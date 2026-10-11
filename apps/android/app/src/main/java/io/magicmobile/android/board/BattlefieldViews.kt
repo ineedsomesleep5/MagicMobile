@@ -117,7 +117,8 @@ enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
 
 object BoardAppearancePreference {
     const val key = "magicmobile.boardAppearance"
-    /** Walnut Tavern is the default board (iOS build 24); a saved choice is kept. */
+    /** Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
+     *  the other backdrops stay for previews and tests. */
     const val defaultValue = "tavern"
     fun normalized(value: String): String = if (BattlefieldBackdrop.entries.any { it.rawValue == value }) value else defaultValue
 }

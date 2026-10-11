@@ -858,6 +858,8 @@ enum TavernPalette {
     static let enamel = Color(red: 0.42, green: 0.07, blue: 0.05)
     static let ember = Color(red: 1.0, green: 0.50, blue: 0.34)
     static let parchment = Color(red: 0.95, green: 0.88, blue: 0.74)
+    /// Section labels and stack-tray captions (Android `TavernPalette.label`).
+    static let label = Color(red: 0.96, green: 0.80, blue: 0.48)
 }
 
 /// A rendered sprite from the tavern asset set, or a drawn stand-in while it is missing.

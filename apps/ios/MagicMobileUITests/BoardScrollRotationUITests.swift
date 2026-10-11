@@ -62,29 +62,20 @@ final class BoardScrollRotationUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: horizontally ? -distance : 0, dy: horizontally ? 0 : -distance)))
     }
 
-    func testMenuThemeChangeReopenCanReachQuit() {
+    /// Concede, Start New and Quit sit at the top of the game menu (2026-10-11), so Quit shows
+    /// without scrolling, every time the menu opens.
+    func testMenuReopenShowsQuitWithoutScrolling() {
         launch("crowded-battlefield", portrait: false)
         for _ in 0..<2 {
             app.buttons["Game controls"].press(forDuration: 0.15)
             XCTAssertTrue(app.buttons["Game Settings"].waitForExistence(timeout: 5))
             app.buttons["Game Settings"].press(forDuration: 0.15)
             XCTAssertTrue(app.staticTexts["Game Menu"].waitForExistence(timeout: 5))
-            let menu = app.scrollViews["board.menu.scroll"]
-            let theme = app.buttons["Classic Wood battlefield"]
-            for _ in 0..<4 {
-                if theme.isHittable { break }
-                menu.swipeUp()
-            }
-            XCTAssertTrue(theme.isHittable)
-            theme.press(forDuration: 0.15)
-            XCTAssertTrue(theme.isSelected)
-            let quit = app.buttons["Quit"]
-            for _ in 0..<5 {
-                if quit.isHittable && app.frame.contains(quit.frame) { break }
-                menu.swipeUp()
-            }
+            let quit = app.buttons["board.menu.quit"]
+            XCTAssertTrue(quit.waitForExistence(timeout: 5))
             XCTAssertTrue(quit.isHittable)
-            XCTAssertTrue(app.frame.contains(quit.frame), "Quit must be fully visible after changing theme")
+            XCTAssertTrue(app.frame.contains(quit.frame), "Quit must be fully visible when the menu opens")
+            XCTAssertTrue(app.buttons["board.menu.concede"].isHittable)
             let done = app.buttons["board.menu.done"]
             XCTAssertTrue(done.isHittable, "Done must remain pinned while settings scroll")
             done.press(forDuration: 0.15)

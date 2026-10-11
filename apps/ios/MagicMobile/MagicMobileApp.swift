@@ -131,6 +131,9 @@ struct MagicMobileApp: App {
     @UIApplicationDelegateAdaptor(MagicMobileAppDelegate.self) private var appDelegate
 
     init() {
+        // Walnut Tavern is the only table (Caleb, 2026-10-11), so a board saved from the retired picker goes back
+        // to it. Launch arguments live in the argument domain, so UI tests that pin a board keep theirs.
+        UserDefaults.standard.removeObject(forKey: BoardAppearancePreference.key)
         #if DEBUG
         // UI tests that change the board pick a starting board here: a launch argument would
         // pin it in the argument domain, so the in-app choice could never take effect.
