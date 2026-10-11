@@ -41,12 +41,12 @@ import io.magicmobile.android.ui.TavernPanelTitle
 import io.magicmobile.android.ui.sf
 
 /**
- * The tip jar (SupportProject in NativeUpdateNewsView.swift). Every support link opens this one address in the
- * browser, never an in-app purchase. The download site's `/support` redirect (apps/site/vercel.json) sends it on to
- * the donation page, so changing the provider never needs an app update.
+ * The tip jar (SupportProject in NativeUpdateNewsView.swift). Every support link opens the download site's support
+ * page in the browser, never an in-app purchase or a payment page. That page (apps/site/public/support) holds the
+ * donation link, so changing the provider never needs an app update.
  */
 object SupportProject {
-    const val URL = "https://magicmobile-downloads.vercel.app/support"
+    const val URL = "https://magicmobile-downloads.vercel.app/support/"
     const val DISMISSED_KEY = "magicmobile.supportBanner.dismissed"
     const val PITCH = "Enjoying MagicMobile? Help cover server costs."
     const val ACTION = "Help cover server costs"

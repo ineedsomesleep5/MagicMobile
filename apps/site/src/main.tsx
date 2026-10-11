@@ -430,9 +430,9 @@ function App() {
               money every month. If you enjoy the game, a small tip helps keep
               them running.
             </p>
-            {/* /support is a redirect in vercel.json: the one place the donation link lives, shared with the apps. */}
-            <a className="plaque plaque-ember" href="/support">
-              Leave a tip
+            {/* The support page holds the one donation link; the apps open it too. */}
+            <a className="plaque plaque-ember" href="/support/">
+              Support MagicMobile
               <ArrowUpRight size={20} />
             </a>
             <small>
@@ -450,7 +450,7 @@ function App() {
               Follow the project
               <ArrowUpRight size={16} />
             </a>
-            <a href="#support">
+            <a href="/support/">
               Support the project
               <ArrowUpRight size={16} />
             </a>

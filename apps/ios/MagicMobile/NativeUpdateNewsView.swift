@@ -98,11 +98,11 @@ struct NativeUpdateNewsView: View {
     }
 }
 
-/// The tip jar. Every support link opens this one address in the browser (never an in-app purchase).
-/// The download site's `/support` redirect (apps/site/vercel.json) sends it on to the donation page,
+/// The tip jar. Every support link opens the download site's support page in the browser (never an
+/// in-app purchase or a payment page). That page (apps/site/public/support) holds the donation link,
 /// so changing the provider never needs an app update.
 enum SupportProject {
-    static let url = URL(string: "https://magicmobile-downloads.vercel.app/support")!
+    static let url = URL(string: "https://magicmobile-downloads.vercel.app/support/")!
     static let dismissedKey = "magicmobile.supportBanner.dismissed"
     static let pitch = "Enjoying MagicMobile? Help cover server costs."
     static let action = "Help cover server costs"

@@ -57,12 +57,12 @@ contradicting one.
 
 ## Website
 
-- 2026-10-11 (Claude): the donation link lives in one place, the `/support` redirect in
-  `apps/site/vercel.json`. The site's tip button and both apps' support banners (main menu, Settings,
-  Updates) open `https://magicmobile-downloads.vercel.app/support`, so swapping the provider is a
-  one-line site change that needs no app build. **Rule:** don't hard-code a donation URL in the apps;
-  `/support` only redirects on Vercel, not under `vite preview`. Where: `NativeUpdateNewsView.swift`
-  (`SupportProject`), Android `ondevice/SupportViews.kt`.
+- 2026-10-11 (Claude): the donation link lives in one place, the tip button on the site's support page
+  (`apps/site/public/support/index.html`). Both apps' support links (main menu, Settings, Updates) and
+  the home page open `https://magicmobile-downloads.vercel.app/support/`, so swapping the provider is a
+  one-line site change that needs no app build. **Rule:** never link the apps straight to a payment or
+  donation provider (Caleb, 2026-10-11, to keep iOS review safe); link our support page. Where:
+  `NativeUpdateNewsView.swift` (`SupportProject`), Android `ondevice/SupportViews.kt`.
 - 2026-10-11 (Claude): `pkill -f "vite preview"` inside a Bash call also matches that call's own shell
   and kills it (exit 144). **Rule:** stop a preview server by port or PID, or just start the next one on
   a new port.

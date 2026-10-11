@@ -41,13 +41,6 @@
       ]
     }
   ],
-  "redirects": [
-    {
-      "source": "/support",
-      "destination": "https://ko-fi.com/REPLACE_WITH_CALEBS_PAGE",
-      "permanent": false
-    }
-  ],
   "rewrites": [
     {
       "source": "/join/:code",

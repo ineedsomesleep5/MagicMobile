@@ -14,7 +14,7 @@ Production: https://magicmobile-downloads.vercel.app, project `magicmobile-downl
 
 ## Donation link
 
-The tip button and the apps' support banners all open `/support`, a redirect in `vercel.json`. Its `destination` is the only place the donation URL lives; change it there and redeploy. No app build is needed.
+The apps' support banners and the home page's support card open `/support/` (`public/support/index.html`), our own page about supporting the project. Its "Leave a tip" button is the only place the donation URL lives; change it there and redeploy. No app build is needed. The apps never link straight to the donation provider, which keeps the iOS link an information page rather than a payment link.
 
 ## Updating downloads
 
