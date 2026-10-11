@@ -1,6 +1,7 @@
 package io.magicmobile.android.studio
 
 import io.magicmobile.android.core.CardInfo
+import io.magicmobile.android.core.CardPrinting
 import io.magicmobile.android.core.Catalogue
 import io.magicmobile.android.core.PrintingIndex
 import io.magicmobile.android.game.EngineJson
@@ -297,6 +298,7 @@ class DeckStudioPlayProjection(val original: DeckList) {
  * remote card-name resolution. The phone fetches; this decodes and checks.
  */
 class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
+
     data class Preview(val deck: DeckList, val unresolvedNames: List<String>, val annotations: List<OnDeviceDeckEditing.TextAnnotation> = emptyList())
     enum class Provider { MOXFIELD, ARCHIDEKT }
     data class Source(val provider: Provider, val id: String, val endpoint: String)
@@ -318,6 +320,14 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
         val imported = OnDeviceDeckEditing.importText(text, name)
         return preview(imported.deck).copy(annotations = imported.annotations)
     }
+
+    /**
+     * The commander the player picked before importing leads the reviewed deck, whether or not the list marked one.
+     * One main-deck copy is promoted (keeping its printing); a card the list marked as commander instead joins the main
+     * deck, except a partner already in the command zone, which stays beside it. OnDeviceDeckLinkImporter.swift.
+     */
+    fun preview(preview: Preview, commander: String): Preview =
+        preview(choosingCommander(resolver.canonicalCardName(commander) ?: commander, preview.deck)).copy(annotations = preview.annotations)
 
     fun decode(text: String, source: Source, excludeSideboards: Boolean = false, reviewOnly: Boolean = false): DeckList {
         if (text.utf8Size > maximumBytes) throw ImportError("Provider response exceeds 2 MiB.")
@@ -414,8 +424,64 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
         return deck
     }
 
+    /**
+     * One public deck in an Archidekt user's list. Private and unlisted decks never appear: the list is read without
+     * signing in, and the deck import accepts only public decks. OnDeviceDeckLinkImporter.swift.
+     */
+    data class ArchidektDeckSummary(val id: Long, val name: String, val size: Int?, val updatedAt: String?) {
+        val link: String get() = "https://archidekt.com/decks/$id"
+        /** The day it was last changed, from Archidekt's ISO timestamp. */
+        val updatedDay: String? get() = updatedAt?.take(10)
+    }
+    data class ArchidektDeckPage(val decks: List<ArchidektDeckSummary>, val hasMore: Boolean)
+
     companion object {
         const val maximumBytes = 2 * 1024 * 1024
+
+        /**
+         * Archidekt's public deck list for a username. Archidekt staff allow use of this API
+         * (https://archidekt.com/forum/thread/2832338); it runs only when the player asks, one page at a time.
+         */
+        fun archidektDeckListEndpoint(username: String, page: Int): String {
+            val name = username.trim()
+            if (!Regex("^[A-Za-z0-9_.-]{1,64}$").matches(name)) throw ResolutionError("Enter an Archidekt username: letters, numbers, dots, dashes or underscores.")
+            if (page !in 1..40) throw ResolutionError("That's as many decks as one list can show.")
+            return "https://archidekt.com/api/decks/v3/?ownerUsername=$name&pageSize=50&page=$page"
+        }
+
+        fun decodeArchidektDeckPage(text: String): ArchidektDeckPage {
+            val value = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) }.getOrNull()
+            val results = value["results"].array?.takeIf { it.size <= 200 }
+                ?: throw ResolutionError("Archidekt returned a deck list this app can't read.")
+            val decks = results.mapNotNull { row ->
+                val id = row["id"].integer ?: throw ResolutionError("Archidekt returned a deck list this app can't read.")
+                val name = row["name"].string ?: throw ResolutionError("Archidekt returned a deck list this app can't read.")
+                if (row["private"].bool == true || row["unlisted"].bool == true || name.isEmpty() || name.utf8Size > 512) null
+                else ArchidektDeckSummary(id, name, row["size"].integer?.toInt(), row["updatedAt"].string)
+            }
+            return ArchidektDeckPage(decks, value["next"].string != null)
+        }
+
+        fun choosingCommander(name: String, deck: DeckList): DeckList {
+            fun board(entry: DeckEntry) = entry.section.trim().lowercase()
+            if (deck.commander?.cardName == name) return deck
+            val entries = deck.entries.toMutableList()
+            var printing: CardPrinting? = null
+            var demotedSection = "deck"
+            val zone = entries.indexOfFirst { it.cardName == name && board(it) in setOf("commander", "commanders") }
+            val main = entries.indexOfFirst { it.cardName == name && board(it) in setOf("main", "mainboard", "deck") }
+            if (zone >= 0) {
+                // A partner already in the command zone takes the lead; the old lead stays there too.
+                printing = entries.removeAt(zone).printing
+                demotedSection = "commanders"
+            } else if (main >= 0) {
+                val row = entries[main]
+                printing = row.printing
+                if (row.quantity > 1) entries[main] = row.copy(quantity = row.quantity - 1) else entries.removeAt(main)
+            }
+            deck.commander?.let { entries.add(0, it.copy(section = demotedSection)) }
+            return DeckList(deck.name, DeckEntry(name, 1, "commanders", printing), entries)
+        }
 
         fun source(text: String): Source {
             val value = text.trim()

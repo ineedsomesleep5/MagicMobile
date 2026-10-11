@@ -240,13 +240,40 @@ struct DeckStudioCardInspector: View {
     /// A deck row passes the printing it chose; elsewhere the player's choice for the name shows.
     var art: CardArtSelection = .active
     @Environment(\.dismiss) private var dismiss
+    /// A double-faced card's other face, and whether it is the one showing.
+    @State private var otherFace: DoubleFacedCards.Face?
+    @State private var turned = false
+    /// The art for the other face: the reverse of the row's chosen printing, or the card's default art.
+    private var otherArt: CardArtSelection {
+        switch art {
+        case .exact(let printing?) where otherFace?.isBack == true: return .exactBack(printing)
+        case .exact, .exactBack: return .exact(nil)
+        case .active: return .active
+        }
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    NativeCardArtworkView(name: name, variant: .inspection, art: art) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
-                        .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
-                    Text(name).font(.title.weight(.bold))
+                    CardFlipView(flipped: turned && otherFace != nil) {
+                        artwork(name, art: art)
+                    } back: {
+                        if let otherFace { artwork(otherFace.name, art: otherArt) }
+                    }
+                    .frame(maxWidth: 340, minHeight: 120, maxHeight: 420).frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { if otherFace != nil { turned.toggle() } }
+                    if let otherFace {
+                        Button(turned ? "Show front face" : (otherFace.isBack ? "Turn over to the back face" : "Turn over to the front face"),
+                               systemImage: "arrow.triangle.2.circlepath") { turned.toggle() }
+                            .buttonStyle(BinderPlaqueButtonStyle()).frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("deckStudio.inspector.flip")
+                    }
+                    Text(turned ? otherFace?.name ?? name : name).font(.title.weight(.bold))
+                    if turned, let otherFace {
+                        Text(otherFace.isBack ? "Back face of \(name). Its rules are printed on the card above." : "Front face of \(name).")
+                            .font(.callout).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    }
                     DeckStudioArtworkInvitation()
                     Text(metadata?.typeLine ?? "Type not in the loaded catalogue").font(.headline)
                     if let cost = metadata?.manaCost { NativeDeckManaCost(cost: cost) }
@@ -257,5 +284,9 @@ struct DeckStudioCardInspector: View {
             }
                 .binderLeaf("Card details", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.inspector.close") { dismiss() })
         }.foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        .task(id: name) { otherFace = await DoubleFacedCards.shared.loadedOtherFace(of: name) }
+    }
+    private func artwork(_ name: String, art: CardArtSelection) -> some View {
+        NativeCardArtworkView(name: name, variant: .inspection, art: art) { _, _ in DeckStudioNotice(title: name, message: "Artwork is optional. Card text remains available offline.", icon: "rectangle.portrait") }
     }
 }

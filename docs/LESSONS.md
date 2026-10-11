@@ -41,6 +41,12 @@ contradicting one.
   in, with widths fitted by `AppleFontMetrics`. Small wrap differences against iOS are expected; a
   layout that only fits with SF metrics isn't.
 
+- 2026-10-11 (Claude): the held card inspector can't take taps: `inspectionTouchPassthrough()` turns hit
+  testing off while a finger holds the card, so a button on it only works when the inspector was opened
+  explicitly. **Rule:** anything a held inspector must show without a tap happens by itself (the double-faced
+  flip turns after 1.4 s); give opened inspectors a real button as well. Where: `Board/CardInspector.swift`,
+  `board/InspectorViews.kt`.
+
 ## Performance
 
 - 2026-10-03 (Claude): a quiet Android tavern board used about 105% CPU on the emulator because

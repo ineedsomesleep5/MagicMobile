@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -347,16 +348,37 @@ fun formatDateTime(millis: Long): String =
 @Composable
 fun DeckStudioCardInspector(name: String, metadata: CardInfo?, art: io.magicmobile.android.CardArtSelection = io.magicmobile.android.CardArtSelection.Active,
                             dismiss: () -> Unit) {
+    // A double-faced card's other face, and whether it is the one showing.
+    val otherFace = remember(name) { io.magicmobile.android.core.DoubleFacedCards.shared.otherFace(name) }
+    var turned by remember(name) { mutableStateOf(false) }
+    // The art for the other face: the reverse of the row's chosen printing, or the card's default art.
+    val otherArt = when {
+        art is io.magicmobile.android.CardArtSelection.Exact && art.printing != null && otherFace?.isBack == true ->
+            io.magicmobile.android.CardArtSelection.ExactBack(art.printing)
+        art is io.magicmobile.android.CardArtSelection.Active -> art
+        else -> io.magicmobile.android.CardArtSelection.Exact(null)
+    }
     Column(Modifier.fillMaxWidth().height(largeSheetHeight())) {
         StudioSheetBar("", done = dismiss)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                io.magicmobile.android.CardArtwork(name, Modifier.widthIn(max = 340.dp).fillMaxWidth().heightIn(min = 120.dp, max = 420.dp)
-                    .clip(RoundedCornerShape(14.dp)), art = art) {
-                    DeckStudioNotice(name, "Artwork is optional. Card text remains available offline.", "rectangle.portrait", Modifier.padding(12.dp))
+            @Composable
+            fun artwork(face: String, faceArt: io.magicmobile.android.CardArtSelection) =
+                io.magicmobile.android.CardArtwork(face, Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)), art = faceArt) {
+                    DeckStudioNotice(face, "Artwork is optional. Card text remains available offline.", "rectangle.portrait", Modifier.padding(12.dp))
                 }
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                io.magicmobile.android.CardFlip(turned && otherFace != null, Modifier.widthIn(max = 340.dp).fillMaxWidth().heightIn(min = 120.dp, max = 420.dp)
+                    .aspectRatio(0.716f).clickable(enabled = otherFace != null) { turned = !turned },
+                    front = { artwork(name, art) }, back = { otherFace?.let { artwork(it.name, otherArt) } })
             }
-            Text(name, color = DeckStudioPalette.ink, style = sf(28f, SfWeight.bold))
+            if (otherFace != null) {
+                StudioPlainButton(if (turned) "Show front face" else if (otherFace.isBack) "Turn over to the back face" else "Turn over to the front face",
+                    { turned = !turned }, Modifier.align(Alignment.CenterHorizontally).semantics { contentDescription = "deckStudio.inspector.flip" },
+                    icon = "arrow.triangle.2.circlepath")
+            }
+            Text(if (turned) otherFace?.name ?: name else name, color = DeckStudioPalette.ink, style = sf(28f, SfWeight.bold))
+            if (turned && otherFace != null) Text(if (otherFace.isBack) "Back face of $name. Its rules are printed on the card above." else "Front face of $name.",
+                color = DeckStudioPalette.secondaryInk, style = StudioText.callout)
             DeckStudioArtworkInvitation()
             Text(metadata?.typeLine ?: "Type not in the loaded catalogue", color = DeckStudioPalette.ink, style = StudioText.headline)
             metadata?.manaCost?.let { NativeDeckManaCost(it) }

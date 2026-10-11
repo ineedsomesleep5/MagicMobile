@@ -29,7 +29,12 @@ extension GameSnapshot {
 struct CardInspector: View {
     let card: ZoneCard
     @Environment(\.inspectorBattlefield) private var battlefield
+    @Environment(\.holdCardInspection) private var hold
     @State private var artMissing = false
+    /// A double-faced card's other face, and whether it is turned up. A held card turns over by itself
+    /// after a moment (a finger holding it can't tap); an opened one turns with its Flip button.
+    @State private var otherFace: DoubleFacedCards.Face?
+    @State private var turned = false
 
     /// Inspection is held with a finger, so the attachment list reads, never scrolls or taps.
     private var shown: ZoneCard { card }
@@ -91,7 +96,7 @@ struct CardInspector: View {
         let reminder = CardRulesReminder.text(for: card)
         // Rules get their room first; CardInspectorFit shrinks the card, then the text.
         CardInspectorLayout {
-            InspectorCardFace(card: card)
+            InspectorCardFace(card: card, otherFace: otherFace, turned: turned) { turned.toggle() }
             if rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
                 ViewThatFits(in: .vertical) {
                     ForEach(CardInspectorFit.textScales, id: \.self) { scale in
@@ -106,6 +111,21 @@ struct CardInspector: View {
         .padding(9)
         .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
         .modifier(InspectorChrome(tavern: tavern))
+        .task(id: card.card.name) {
+            turned = false
+            otherFace = nil
+            guard NativeCardArtworkPolicy.permitsLookup(card: card), card.card.isToken != true else { return }
+            otherFace = await DoubleFacedCards.shared.loadedOtherFace(of: card.card.name)
+            guard otherFace != nil else { return }
+            // Held: show the other face after a moment, then keep turning while the finger stays down.
+            var wait = Duration.milliseconds(1400)
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: wait) } catch { return }
+                guard hold?.isActive == true else { continue }
+                turned.toggle()
+                wait = .milliseconds(2600)
+            }
+        }
     }
 
     private func footer(scale: CGFloat, card: ZoneCard, rules: String?, state: [String], reminder: String?,
@@ -142,17 +162,67 @@ struct CardInspector: View {
 /// The inspected card, as large as its slot allows.
 struct InspectorCardFace: View {
     let card: ZoneCard
+    var otherFace: DoubleFacedCards.Face? = nil
+    var turned = false
+    var flip: () -> Void = {}
+    @Environment(\.tavernBoard) private var tavern
 
     var body: some View {
         GeometryReader { proxy in
             let height = max(1, min(proxy.size.height, proxy.size.width * BattlefieldLayoutMetrics.magicCardHeightToWidth))
             let width = height / BattlefieldLayoutMetrics.magicCardHeightToWidth
-            CardTile(card: card, selected: false, zoneName: "Inspector", width: width, height: height,
-                     ignoreTappedRotation: true, imageVariant: .inspection)
-                .modifier(InspectionFoil(size: CGSize(width: width, height: height)))
-                .id(card.instanceId)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+            CardFlipView(flipped: turned && otherFace != nil) {
+                CardTile(card: card, selected: false, zoneName: "Inspector", width: width, height: height,
+                         ignoreTappedRotation: true, imageVariant: .inspection)
+                    .modifier(InspectionFoil(size: CGSize(width: width, height: height)))
+                    .id(card.instanceId)
+            } back: {
+                if let otherFace { otherSide(otherFace, width: width, height: height) }
+            }
+            .frame(width: width, height: height)
+            .overlay(alignment: .bottomTrailing) { if let otherFace { flipButton(otherFace) } }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
+    }
+
+    /// The other face is a picture of the card, without the live state the table puts on this one.
+    private func otherSide(_ face: DoubleFacedCards.Face, width: CGFloat, height: CGFloat) -> some View {
+        NativeCardArtworkView(name: face.name, variant: .inspection, contentMode: .fit) { _, _ in
+            VStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath").font(.title2)
+                Text(face.name).font(.system(size: 17, weight: .bold, design: .serif)).multilineTextAlignment(.center)
+                Text(face.isBack ? "Back face" : "Front face").font(.caption)
+            }.padding(12).frame(width: width, height: height)
+                .foregroundStyle(MagicPalette.parchment)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: width * 0.045))
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: width * 0.045))
+        // The other face's missing art must not read as this card's: its rules text would be the wrong face's.
+        .transformPreference(CardArtPlaceholderShownKey.self) { $0 = false }
+        .accessibilityLabel("\(face.name), \(face.isBack ? "back" : "front") face of \(card.card.name)")
+    }
+
+    /// Turns the card over. While a finger holds the card it turns by itself instead.
+    private func flipButton(_ face: DoubleFacedCards.Face) -> some View {
+        Button(action: flip) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(tavern ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(MagicPalette.parchment))
+                .frame(width: 38, height: 38)
+                .background {
+                    if tavern { TavernFill(material: .leather).clipShape(Circle()) }
+                    else { Circle().fill(MagicPalette.iron.opacity(0.92)) }
+                }
+                .overlay(Circle().stroke(tavern ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(MagicPalette.antiqueGold.opacity(0.6)), lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(4)
+        .accessibilityLabel(turned ? "Show \(card.card.name)" : "Turn over to \(face.name)")
+        .accessibilityIdentifier("inspector.flip")
     }
 }
 

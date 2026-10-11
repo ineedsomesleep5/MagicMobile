@@ -408,6 +408,7 @@ struct NativeCardArtworkView<Placeholder: View>: View {
     /// copy, for the card it copies). Real tokens have no printing to choose.
     private var chosenArt: CardArtChoices.Selection? {
         if case .exact(let printing) = art, tokenTypeLine == nil { return printing.map { .init(printing: $0, back: false) } }
+        if case .exactBack(let printing) = art, tokenTypeLine == nil { return .init(printing: printing, back: true) }
         let subject = tokenTypeLine == nil ? name : tokenSourceName
         guard let subject, NativeDeckArtwork.permitsSourceName(subject) else { return nil }
         return CardArtChoices.shared.selection(forName: subject)
@@ -581,5 +582,28 @@ extension NativeCardArtworkView {
                   tokenColors: token ? (card.card.tokenArtwork?.colors ?? card.card.tokenColors) : nil,
                   tokenSourceName: token ? card.card.copySourceArtworkName : nil,
                   placeholder: placeholder)
+    }
+}
+
+/// A double-faced card turning over: the front until the turn passes edge-on, then the back.
+/// With Reduce Motion the faces cross-fade instead.
+struct CardFlipView<Front: View, Back: View>: View {
+    let flipped: Bool
+    @ViewBuilder let front: () -> Front
+    @ViewBuilder let back: () -> Back
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            front()
+                .opacity(flipped ? 0 : 1)
+                .rotation3DEffect(.degrees(reduceMotion || !flipped ? 0 : -180), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
+                .accessibilityHidden(flipped)
+            back()
+                .opacity(flipped ? 1 : 0)
+                .rotation3DEffect(.degrees(reduceMotion || flipped ? 0 : 180), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
+                .accessibilityHidden(!flipped)
+        }
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.82), value: flipped)
     }
 }

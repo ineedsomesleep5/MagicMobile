@@ -6,6 +6,8 @@ import Foundation
 enum CardArtSelection: Hashable {
     case active
     case exact(CardPrinting?)
+    /// The reverse face of exactly this printing, for a deck row's card turned over.
+    case exactBack(CardPrinting)
 }
 
 /// Which printing's art a card shows. The player picks it per deck row in Deck Studio; everywhere a
@@ -114,4 +116,52 @@ final class CardArtChoices: @unchecked Sendable {
         if Thread.isMainThread { NotificationCenter.default.post(name: didChange, object: nil) }
         else { DispatchQueue.main.async { NotificationCenter.default.post(name: didChange, object: nil) } }
     }
+}
+
+/// The two faces of double-faced cards by name, so a card can be turned over to show its other face
+/// (Deck Studio's card details and the in-game inspector). Built from the bundled catalogue's reverse
+/// faces on first use. Android's DoubleFacedCards (core/CardPrinting.kt) matches.
+final class DoubleFacedCards: @unchecked Sendable {
+    static let shared = DoubleFacedCards(loader: { (try? NativeDeckMetadataCatalogue.bundled())?.reverseFaceFronts })
+
+    /// A card's other face: its name, and whether it is the back.
+    struct Face: Hashable, Sendable {
+        let name: String
+        let isBack: Bool
+    }
+
+    private let lock = NSLock()
+    private var frontOfBack: [String: String]?
+    private var backOfFront: [String: String] = [:]
+    private let loader: (@Sendable () -> [String: String]?)?
+
+    init(reverseFaces: [String: String]? = nil, loader: (@Sendable () -> [String: String]?)? = nil) {
+        self.loader = loader
+        if let reverseFaces { setReverseFaces(reverseFaces) }
+    }
+
+    /// Reverse face name to its front face's name.
+    func setReverseFaces(_ faces: [String: String]) {
+        // A front with several attested backs keeps the first by name, so the pairing is stable.
+        let backs = Dictionary(faces.map { ($0.value, $0.key) }, uniquingKeysWith: { min($0, $1) })
+        lock.lock(); frontOfBack = faces; backOfFront = backs; lock.unlock()
+    }
+
+    /// The other face, once the faces are known; nil for a single-faced card.
+    func otherFace(of name: String) -> Face? {
+        lock.lock(); defer { lock.unlock() }
+        if let back = backOfFront[name] { return Face(name: back, isBack: true) }
+        if let front = frontOfBack?[name] { return Face(name: front, isBack: false) }
+        return nil
+    }
+
+    /// The other face, reading the bundled catalogue off the main thread the first time.
+    func loadedOtherFace(of name: String) async -> Face? {
+        if !isLoaded, let loader {
+            let faces = await Task.detached(priority: .userInitiated) { loader() }.value
+            if !isLoaded { setReverseFaces(faces ?? [:]) }
+        }
+        return otherFace(of: name)
+    }
+    private var isLoaded: Bool { lock.lock(); defer { lock.unlock() }; return frontOfBack != nil }
 }

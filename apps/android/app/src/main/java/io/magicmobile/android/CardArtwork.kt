@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
@@ -311,6 +312,8 @@ internal fun artworkIllustrationCrop(imageWidth:Int,imageHeight:Int,targetWidth:
 sealed interface CardArtSelection {
     object Active : CardArtSelection
     data class Exact(val printing: CardPrinting?) : CardArtSelection
+    /** The reverse face of exactly this printing, for a deck row's card turned over. */
+    data class ExactBack(val printing: CardPrinting) : CardArtSelection
 }
 
 /** The player's art choices, with a Compose revision that changes whenever what a card name shows does. */
@@ -324,6 +327,7 @@ object ArtChoices {
     fun resolve(name: String, art: CardArtSelection, token: Boolean): CardArtChoices.Selection? = when {
         token -> null
         art is CardArtSelection.Exact -> art.printing?.let { CardArtChoices.Selection(it, false) }
+        art is CardArtSelection.ExactBack -> CardArtChoices.Selection(art.printing, true)
         else -> shared.selection(name)
     }
 }
@@ -420,4 +424,28 @@ internal fun tokenSearchPage(root:Obj):Pair<List<ArtworkRecord>,Boolean> {
         it.text("layout")=="token" || it.text("layout")=="double_faced_token" && (it["card_faces"] as? List<*>)?.size==2
     }.mapNotNull(ArtworkCatalogue::decode)
         .flatMap{listOfNotNull(it,it.back)} to more
+}
+
+/**
+ * A double-faced card turning over: the front until the turn passes edge-on, then the back. With reduced motion the
+ * faces cross-fade instead. CardFlipView in NativeDeckComponents.swift.
+ */
+@Composable
+fun CardFlip(flipped: Boolean, modifier: Modifier = Modifier, front: @Composable () -> Unit, back: @Composable () -> Unit) {
+    val reduce = io.magicmobile.android.ui.LaunchEnvironment.reduceMotion
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (flipped) 1f else 0f,
+        if (reduce) androidx.compose.animation.core.tween(200) else androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 260f), label = "cardFlip")
+    Box(modifier) {
+        val showsBack = turn > 0.5f
+        Box(Modifier.fillMaxSize().graphicsLayer {
+            if (reduce) alpha = 1f - turn
+            else { rotationY = turn * 180f - (if (showsBack) 180f else 0f); cameraDistance = 12f * density }
+            if (!reduce && showsBack) alpha = 0f
+        }) { front() }
+        Box(Modifier.fillMaxSize().graphicsLayer {
+            if (reduce) alpha = turn
+            else { rotationY = turn * 180f - (if (showsBack) 180f else 0f); cameraDistance = 12f * density }
+            if (!reduce && !showsBack) alpha = 0f
+        }) { back() }
+    }
 }

@@ -149,3 +149,29 @@ class CardArtChoices(private val reverseFaceLoader: (() -> Map<String, String>?)
         fun key(name: String) = name.trim().lowercase()
     }
 }
+
+/**
+ * The two faces of double-faced cards by name, so a card can be turned over to show its other face (Deck Studio's
+ * card details and the in-game inspector). Filled from the deck resolver's reverse faces once setup loads it.
+ * DoubleFacedCards in CardArtChoices.swift.
+ */
+class DoubleFacedCards {
+    /** A card's other face: its name, and whether it is the back. */
+    data class Face(val name: String, val isBack: Boolean)
+
+    @Volatile private var frontOfBack: Map<String, String> = emptyMap()
+    @Volatile private var backOfFront: Map<String, String> = emptyMap()
+
+    /** Reverse face name to its front face's name. A front with several attested backs keeps the first by name. */
+    fun setReverseFaces(faces: Map<String, String>) {
+        val backs = HashMap<String, String>()
+        for ((back, front) in faces) backs.merge(front, back) { a, b -> minOf(a, b) }
+        backOfFront = backs; frontOfBack = faces
+    }
+
+    /** The other face; null for a single-faced card or before the faces are known. */
+    fun otherFace(name: String): Face? =
+        backOfFront[name]?.let { Face(it, true) } ?: frontOfBack[name]?.let { Face(it, false) }
+
+    companion object { val shared = DoubleFacedCards() }
+}
