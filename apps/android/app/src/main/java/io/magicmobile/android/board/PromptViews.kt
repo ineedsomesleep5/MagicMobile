@@ -511,8 +511,10 @@ fun CompactPromptPopupView(snapshot: GameSnapshot, pendingActionId: String?, run
         when {
             paymentPrompt != null -> ManaPaymentTray(snapshot, paymentPrompt, pendingActionId, runAction, runCommand)
             pendingActionId != null -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(14.dp), color = MagicPalette.arcaneBlue, strokeWidth = 2.dp)
-                Text("Waiting for XMage", color = MagicPalette.arcaneBlue, style = sf(10f, SfWeight.black))
+                CircularProgressIndicator(Modifier.size(14.dp), color = if (tavern) TavernPalette.parchment else MagicPalette.arcaneBlue, strokeWidth = 2.dp)
+                if (tavern) Text("Waiting for the table…", color = TavernPalette.parchment.copy(alpha = 0.75f),
+                    style = sf(13f, SfWeight.medium, SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+                else Text("Waiting for XMage", color = MagicPalette.arcaneBlue, style = sf(10f, SfWeight.black))
             }
             promptV2 != null -> promptControls(promptV2)
             snapshot.choicePrompt != null -> choicePromptControls(snapshot.choicePrompt!!)

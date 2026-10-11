@@ -50,6 +50,8 @@ struct OnDeviceRootView: View {
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
     @State private var bannerError: String?
+    /// The session error the player closed; a different error shows again.
+    @State private var dismissedSessionError: String?
     @State private var didDismissStartingRoll = false
     @State private var showOfflineArtPrompt = false
     /// The table code typed or opened from a join link; a link that arrives before the
@@ -1072,8 +1074,10 @@ struct OnDeviceRootView: View {
         guard let deck = selectedDeck, let bracket = selectedDeckBracket else { return }
         let opponentBracket = quickBracket == 0 ? min(4, bracket.rawValue) : quickBracket
         let chosen = quickDeckID.isEmpty ? nil : AIDeckPool.deck(id: quickDeckID)
+        // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
         guard let opponent = chosen ?? AIDeckPool.pick(bracket: opponentBracket, avoidingCommander: deck.commander?.cardName,
-                                                       recent: profileRecord.recentAIDecks) else { return }
+                                                       recent: profileRecord.recentAIDecks,
+                                                       preconsOnly: quickBracket == 0 && opponentBracket <= 2) else { return }
         startSolo(mode: .quick, deck: deck, deckBracket: bracket, opponent: opponent, skill: min(10, max(1, quickSkill)))
     }
 
@@ -1099,7 +1103,8 @@ struct OnDeviceRootView: View {
     private func startRankedAI(deck: DeckList, bracket: CommanderBracket) {
         let position = profileRecord.rank.position
         guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
-                                             recent: profileRecord.recentAIDecks) else { return }
+                                             recent: profileRecord.recentAIDecks,
+                                             preconsOnly: position.tier.preconOpponentsOnly) else { return }
         startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
     }
 
@@ -1531,47 +1536,70 @@ struct OnDeviceRootView: View {
         .accessibilityLabel("Selected decks")
     }
 
+    /// A session error stays up until updates resume or it is dismissed: polling has stopped, and a
+    /// board that only says "waiting" reads as frozen.
+    private var stickySessionError: String? {
+        guard activeGame, let message = session.errorMessage, message != dismissedSessionError else { return nil }
+        return message
+    }
+
     @ViewBuilder
     private var recoveryBanner: some View {
-        if setup.isBusy || bannerError != nil ||
+        let message = bannerError ?? stickySessionError
+        if setup.isBusy || message != nil ||
             (activeGame && (session.snapshot == nil || !setup.canUseSession)) {
-            VStack(alignment: .leading, spacing: 8) {
-                if setup.isBusy { ProgressView(setup.status) }
-                if let message = bannerError {
+            VStack(alignment: .leading, spacing: 10) {
+                if setup.isBusy {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(TavernPalette.parchment)
+                        Text(setup.status)
+                    }
+                }
+                if let message {
                     HStack(alignment: .top) {
-                        Text(message).font(.caption.weight(.semibold)).lineLimit(3)
+                        Text(message).lineLimit(3)
                         Spacer(minLength: 8)
-                        Button { bannerError = nil } label: {
-                            Image(systemName: "xmark").frame(width: 44, height: 44)
-                        }
+                        Button {
+                            if message == session.errorMessage { dismissedSessionError = message }
+                            bannerError = nil
+                        } label: { TavernSealLabel() }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Dismiss notification")
                         .accessibilityIdentifier("ondevice.dismissNotification")
                     }
                 } else if activeGame && !setup.canUseSession {
-                    Text(setup.liveStatus).font(.caption.weight(.semibold))
+                    Text(setup.liveStatus)
                 } else if activeGame && session.snapshot == nil {
-                    Text("Waiting for the first game update.").font(.caption.weight(.semibold))
+                    Text("Waiting for the first game update.")
                 }
                 if activeGame {
-                    HStack {
+                    HStack(spacing: 8) {
                         Button("Refresh", action: refresh).disabled(!setup.canUseSession)
+                            .buttonStyle(TavernButtonStyle(kind: .primary, compact: true))
                         if session.pendingActionID != nil {
                             Button("Retry response") { Task { await setup.perform { try await session.retryPending() } } }
                                 .disabled(!setup.canUseSession)
+                                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                         }
                         Button(setup.closeFailed ? "Retry closing" : "Leave") {
                             if setup.closeFailed { closeGame() } else { confirmLeave = true }
                         }
+                        .buttonStyle(TavernButtonStyle(kind: .danger, compact: true))
                     }
                     .disabled(setup.isBusy || session.isWorking)
                 }
-                if bannerError != nil && diagnostics.report != nil {
+                if message != nil && diagnostics.report != nil {
                     Button("Review engine error report") { showDiagnostics = true }
+                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                         .accessibilityIdentifier("ondevice.failureReport")
                 }
             }
-            .foregroundStyle(MagicPalette.parchment)
-            .magicPanel(.iron, prominence: .elevated, cornerRadius: 12, padding: 12)
+            .font(.system(size: 15, weight: .semibold, design: .serif))
+            .foregroundStyle(TavernPalette.parchment)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(TavernPanelChrome(tavern: true))
+            .shadow(color: .black.opacity(0.45), radius: 6, y: 3)
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
