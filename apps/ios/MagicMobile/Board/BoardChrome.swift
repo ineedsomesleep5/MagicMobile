@@ -1143,7 +1143,10 @@ struct TavernSockets {
     let opponentNameplate: CGPoint
     let opponentHand: CGPoint
     let phasePlate: CGPoint
-    let opponentGlance: CGPoint
+    /// Which way from the opponent's medallion their status badges curve (TavernEffectOrbit), in degrees, 90 = down.
+    let opponentEffectsBearing: Double
+    /// How many badges fit on that curve before the last becomes a "+N" marker.
+    let opponentEffectsLimit: Int
     let lifeMedallion: CGPoint
     let lifeHoleRadius: CGFloat
     let chat: CGPoint
@@ -1163,7 +1166,9 @@ struct TavernSockets {
         return TavernSockets(
             canvas: TavernDesign.canvas, opponentMedallion: center, opponentHoleRadius: TavernDesign.opponentHoleRadius,
             opponentNameplate: CGPoint(x: center.x - 110, y: center.y + 8), opponentHand: CGPoint(x: center.x, y: center.y - 40),
-            phasePlate: CGPoint(x: center.x + 110, y: center.y + 8), opponentGlance: CGPoint(x: center.x + 110, y: center.y + 46),
+            phasePlate: CGPoint(x: center.x + 110, y: center.y + 8),
+            // Under the medallion, between the nameplate and the phase plate.
+            opponentEffectsBearing: 90, opponentEffectsLimit: 5,
             lifeMedallion: TavernDesign.lifeMedallion, lifeHoleRadius: TavernDesign.lifeHoleRadius,
             chat: CGPoint(x: TavernDesign.lifeMedallion.x + 42, y: TavernDesign.lifeMedallion.y + 52),
             passButton: pass, skip: CGPoint(x: pass.x - 71, y: pass.y + 10), menu: CGPoint(x: pass.x - 51, y: pass.y + 51),
@@ -1185,7 +1190,9 @@ struct TavernSockets {
         return TavernSockets(
             canvas: CGSize(width: 956, height: 440), opponentMedallion: CGPoint(x: 118, y: 76), opponentHoleRadius: 30,
             opponentNameplate: CGPoint(x: 118, y: 144), opponentHand: CGPoint(x: 118, y: 34),
-            phasePlate: CGPoint(x: 840, y: 42), opponentGlance: CGPoint(x: 118, y: 188),
+            phasePlate: CGPoint(x: 840, y: 42),
+            // Toward the mat: the hand above and the nameplate below leave room for three.
+            opponentEffectsBearing: 0, opponentEffectsLimit: 3,
             lifeMedallion: CGPoint(x: 118, y: 344), lifeHoleRadius: 34,
             chat: CGPoint(x: 160, y: 404),
             passButton: pass, skip: CGPoint(x: pass.x - 40, y: pass.y - 60), menu: CGPoint(x: pass.x + 20, y: pass.y - 70),
@@ -1202,7 +1209,9 @@ struct TavernSockets {
         return TavernSockets(
             canvas: CGSize(width: 1180, height: 860), opponentMedallion: CGPoint(x: 136, y: 150), opponentHoleRadius: 44,
             opponentNameplate: CGPoint(x: 136, y: 266), opponentHand: CGPoint(x: 136, y: 84),
-            phasePlate: CGPoint(x: 1050, y: 60), opponentGlance: CGPoint(x: 136, y: 330),
+            phasePlate: CGPoint(x: 1050, y: 60),
+            // Toward the mat; the iPad's wider column leaves room for five.
+            opponentEffectsBearing: 0, opponentEffectsLimit: 5,
             lifeMedallion: CGPoint(x: 136, y: 690), lifeHoleRadius: 50,
             chat: CGPoint(x: 194, y: 772),
             passButton: pass, skip: CGPoint(x: pass.x - 56, y: pass.y - 88), menu: CGPoint(x: pass.x + 30, y: pass.y - 102),
@@ -2179,10 +2188,25 @@ struct PlayerStatusSummary {
 
     let badges: [Badge]
     let attachments: [ZoneCard]
+    /// The pop-over's line of plain facts under the name (Caleb, 2026-10-11: tapping the portrait shows more).
+    let facts: [String]
 
     var isEmpty: Bool { badges.isEmpty && attachments.isEmpty }
 
+    /// The badges in the order they take a medallion's orbit (TavernEffectOrbit): commander damage first, the
+    /// worst on top, so it sits right under the portrait; then poison; then the rest as listed.
+    var orbit: [Badge] {
+        func isCommander(_ badge: Badge) -> Bool { if case .commander = badge.icon { return true } else { return false } }
+        func isPoison(_ badge: Badge) -> Bool { if case .poison = badge.icon { return true } else { return false } }
+        let commanders = badges.filter(isCommander).sorted { ($0.count ?? 0) > ($1.count ?? 0) }
+        return commanders + badges.filter(isPoison) + badges.filter { !isCommander($0) && !isPoison($0) }
+    }
+
     init(player: PlayerGameState, snapshot: GameSnapshot?) {
+        var facts = [player.isOut ? "Out of the game" : "\(player.life) life", "\(player.zones.visibleHandCount) in hand",
+                     "\(player.zones.visibleLibraryCount) in library"]
+        if player.hasKnownCommanderTax, player.commanderTax > 0 { facts.append("Tax \(player.commanderTax)") }
+        self.facts = facts
         var badges: [Badge] = BoardPlayerStatus.counters(player).map { counter in
             let name = counter.name.lowercased()
             let (icon, tint): (Badge.Icon, Color) = switch name {
@@ -2291,8 +2315,9 @@ struct TavernStatusBadge: View {
     }
 }
 
-/// The top of a player's zones pop-over: their name, their status badges and the cards
-/// attached to them (tap one to inspect it).
+/// The top of a player's zones pop-over: their name, a line of plain facts (life, hand, library,
+/// commander tax), each status badge with what it means in words, and the cards attached to them
+/// (tap one to inspect it).
 struct TavernPlayerStatusPanel: View {
     let name: String
     let summary: PlayerStatusSummary
@@ -2308,11 +2333,28 @@ struct TavernPlayerStatusPanel: View {
                 .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
                                                 startPoint: .top, endPoint: .bottom))
                 .frame(maxWidth: .infinity)
+            Text(summary.facts.joined(separator: " · "))
+                .font(.system(size: 12, weight: .semibold, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.85))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("board.zones.facts")
             if !summary.badges.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(44), spacing: 8), count: 5), alignment: .leading, spacing: 8) {
-                    ForEach(summary.badges) { TavernStatusBadge(badge: $0) }
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(summary.orbit) { badge in
+                        HStack(spacing: 10) {
+                            TavernStatusBadge(badge: badge, size: 30)
+                                .frame(width: 34, height: 34)
+                                .accessibilityHidden(true)
+                            Text(badge.label)
+                                .font(.system(size: 13, weight: .semibold, design: .serif))
+                                .foregroundStyle(badge.nearLethal ? Color(red: 1, green: 0.62, blue: 0.52) : TavernPalette.parchment)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
                 }
-                .padding(.trailing, 6)
                 .accessibilityIdentifier("board.zones.status")
             }
             if !summary.attachments.isEmpty {
@@ -2335,7 +2377,7 @@ struct TavernPlayerStatusPanel: View {
                     }
                 }
             }
-            if !summary.isEmpty { TavernMenuDivider() }
+            TavernMenuDivider()
         }
     }
 }
@@ -2393,6 +2435,70 @@ struct TavernStatusGlance: View {
         let shown = pressing.filter { if case .poison = $0.icon { return true } else { return false } } + (worstCommander.map { [$0] } ?? [])
         HStack(spacing: 6) {
             ForEach(shown) { TavernStatusBadge(badge: $0, size: 22) }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The opponent's status badges curve around their medallion (Caleb, 2026-10-11: the old glance beside the
+/// phase plate covered the storm count). The first badge sits straight out along the socket's bearing, right
+/// under the portrait in portrait; the rest alternate either side of it, `stepDegrees` apart.
+enum TavernEffectOrbit {
+    static let stepDegrees = 25.0
+    /// Clear of the medallion's brass ring and life badge, in design points past the portrait's hole.
+    static let ringGap: CGFloat = 21
+    /// A badge's diameter as a share of the orbit's radius: 22 pt on the portrait plate, neighbours just touching.
+    static let badgeShare: CGFloat = 0.42
+
+    static func radius(holeRadius: CGFloat) -> CGFloat { holeRadius + ringGap }
+
+    /// Each slot's centre relative to the medallion's, in the units of `radius`, y down.
+    static func offsets(count: Int, radius: CGFloat, bearingDegrees: Double) -> [CGPoint] {
+        (0..<max(count, 0)).map { index in
+            let side: Double = index % 2 == 1 ? 1 : -1
+            let angle = (bearingDegrees + side * Double((index + 1) / 2) * stepDegrees) * .pi / 180
+            return CGPoint(x: radius * cos(angle), y: radius * sin(angle))
+        }
+    }
+
+    /// The badges shown on an orbit of `limit` slots, and how many more there are (shown as "+N" in the last slot).
+    static func shown(_ summary: PlayerStatusSummary, limit: Int) -> (badges: [PlayerStatusSummary.Badge], more: Int) {
+        let orbit = summary.orbit
+        guard orbit.count > limit else { return (orbit, 0) }
+        let kept = Array(orbit.prefix(limit - 1))
+        return (kept, orbit.count - kept.count)
+    }
+}
+
+/// The opponent's status badges curved around their medallion (TavernEffectOrbit): commander damage right
+/// under the portrait, the rest either side of it, and a "+N" coin when they run out of room. Taps pass
+/// through to the table; the medallion's pop-over lists every badge in words. `center` is the medallion's
+/// centre in the parent's coordinates.
+struct TavernEffectOrbitBadges: View {
+    let summary: PlayerStatusSummary
+    let center: CGPoint
+    let radius: CGFloat
+    let bearingDegrees: Double
+    let limit: Int
+
+    var body: some View {
+        let shown = TavernEffectOrbit.shown(summary, limit: limit)
+        let size = radius * TavernEffectOrbit.badgeShare
+        let slots = TavernEffectOrbit.offsets(count: shown.badges.count + (shown.more > 0 ? 1 : 0), radius: radius, bearingDegrees: bearingDegrees)
+        ZStack {
+            ForEach(Array(shown.badges.enumerated()), id: \.element.id) { index, badge in
+                TavernStatusBadge(badge: badge, size: size)
+                    .position(x: center.x + slots[index].x, y: center.y + slots[index].y)
+            }
+            if shown.more > 0, let slot = slots.last {
+                Text("+\(shown.more)")
+                    .font(.system(size: size * 0.4, weight: .black, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment)
+                    .frame(width: size * 0.8, height: size * 0.8)
+                    .background(TavernCoinBack())
+                    .position(x: center.x + slot.x, y: center.y + slot.y)
+            }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)

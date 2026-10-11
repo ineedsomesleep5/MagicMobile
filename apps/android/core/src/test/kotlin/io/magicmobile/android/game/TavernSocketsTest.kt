@@ -102,4 +102,38 @@ class TavernSocketsTest {
         assertFalse(TavernFrameKind.LAND.showsRibbon(card("Basic Land — Forest")))
         assertTrue(TavernFrameKind.LAND.showsRibbon(card("Land")))
     }
+
+    @Test fun effectsCurveAroundTheOpponentMedallionStartingUnderIt() {
+        val radius = TavernEffectOrbit.radius(TavernSockets.portrait.opponentHoleRadius)
+        val slots = TavernEffectOrbit.offsets(5, radius, TavernSockets.portrait.opponentEffectsBearing)
+        // First straight under the portrait, then alternating either side.
+        assertPoint(BoardPoint(0f, radius), slots[0])
+        assertEquals(-slots[1].x, slots[2].x, 0.001f)
+        assertEquals(slots[1].y, slots[2].y, 0.001f)
+        assertTrue(slots[3].y < slots[1].y)
+        // Every badge stays between the nameplate and the phase plate (each 118 wide, 110 either side of the medallion).
+        val badge = radius * TavernEffectOrbit.BADGE_SHARE
+        for (slot in slots) assertTrue(kotlin.math.abs(slot.x) + badge / 2 <= 110 - 59)
+        // Neighbours do not overlap.
+        for (index in 2 until slots.size) {
+            val a = slots[index]; val b = slots[index - 2]
+            assertTrue(kotlin.math.hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()) >= badge - 0.5)
+        }
+    }
+
+    @Test fun commanderDamageLeadsTheOrbitAndOverflowBecomesAMarker() {
+        val opponent = PlayerGameState("p2", "AI 1", 29, 0, 2, zones = PlayerZones(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
+            counters = mapOf("poison" to 3, "energy" to 2, "experience" to 1), monarch = true, initiative = true)
+        val me = PlayerGameState("p1", "You", 40, 0, 0, zones = opponent.zones,
+            commanders = listOf(CommanderPublicState("c1", "Gishath", "p1", damageToPlayers = mapOf("p2" to 9))))
+        val snapshot = GameSnapshot(id = "g", phase = "combat", turn = 14, players = listOf(me, opponent), log = emptyList())
+        val summary = PlayerStatusSummary(opponent, snapshot)
+        assertTrue(summary.orbit.first().icon is PlayerStatusSummary.Icon.Commander)
+        assertTrue(summary.orbit[1].icon is PlayerStatusSummary.Icon.Poison)
+        assertEquals(listOf("29 life", "0 in hand", "0 in library", "Tax 2"), summary.facts)
+        val (shown, more) = TavernEffectOrbit.shown(summary, 5)
+        assertEquals(4, shown.size)
+        assertEquals(summary.badges.size - 4, more)
+        assertEquals(summary.badges.size to 0, TavernEffectOrbit.shown(summary, 99).let { it.first.size to it.second })
+    }
 }

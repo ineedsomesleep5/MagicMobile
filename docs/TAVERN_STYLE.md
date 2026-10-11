@@ -162,7 +162,12 @@ The table plate and every socket come from `scripts/brand/tavern_layout.json`: p
 `TavernSockets` and Android core `game/TavernSockets.kt` (checked by `TavernSocketsTest`) carry the
 same numbers; change all three together, and re-render the plate with `scripts/brand/tavern_table.py`.
 Controls are table objects in the plate's sockets: medallions (life in an enamel badge), mana gems,
-the flipping pass disc, the stack tray, the phase plate. See `docs/ANDROID_PARITY.md` for the
+the flipping pass disc, the stack tray, the phase plate. The opponent's status badges (commander damage,
+poison, counters, monarch) curve around their medallion (`TavernEffectOrbit`): the worst commander damage
+straight out along the socket's bearing (under the portrait in portrait, toward the mat sideways), the rest
+alternating either side 25° apart, 22pt at radius hole + 21, with a "+N" coin past the socket's limit. Taps
+pass through; the medallion's pop-over lists each badge in words. Table-wide hints (storm, day or night)
+stay under the phase plate. See `docs/ANDROID_PARITY.md` for the
 piece-by-piece port and `docs/BOARD_FX_ROADMAP.md` for effects.
 
 ## Known Android gaps (still plain or system-styled)

@@ -52,6 +52,11 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-11 (Claude): Gradle can't build the Android project in a cloud thread: `dl.google.com`
+  (Android Gradle plugin) is refused by the proxy with 403 and Maven Central answers 429, so even
+  `:core:test` fails at plugin resolution. **Rule:** don't spend time on it; push and let the
+  `magicmobile-android-app.yml` PR check compile and test, or run Gradle on Caleb's Mac.
+
 - 2026-10-11 (Claude): cloud threads ignore `defaultMode: bypassPermissions` / `dontAsk` in settings
   files, and run in auto mode. Commands every thread may run without a prompt go in
   `permissions.allow` in `.claude/settings.json`; cloud threads apply it only while the project has
