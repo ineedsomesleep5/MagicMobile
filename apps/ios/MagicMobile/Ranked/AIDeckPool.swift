@@ -13,6 +13,8 @@ struct AIDeck: Identifiable, Hashable, Sendable {
 
     /// The setup screen's deck ID when a player picks one of these decks for themselves.
     var playerDeckID: String { "included:\(id)" }
+    /// An official precon; ai-decks.json IDs all start with "ai-".
+    var isPrecon: Bool { !id.hasPrefix("ai-") }
 }
 
 enum AIDeckPool {
@@ -78,10 +80,12 @@ enum AIDeckPool {
     }
 
     /// An AI deck for this bracket: never your own commander, and not one of the last few you faced
-    /// while others remain. `roll` picks among what is left (injectable for tests).
-    static func pick(bracket: Int, avoidingCommander commander: String?, recent: [String],
+    /// while others remain. `preconsOnly` keeps to the official precons. `roll` picks among what is
+    /// left (injectable for tests).
+    static func pick(bracket: Int, avoidingCommander commander: String?, recent: [String], preconsOnly: Bool = false,
                      in decks: [AIDeck] = all, roll: (Int) -> Int = { Int.random(in: 0..<$0) }) -> AIDeck? {
-        var candidates = pool(for: bracket, in: decks)
+        let precons = decks.filter(\.isPrecon)
+        var candidates = pool(for: bracket, in: preconsOnly && !precons.isEmpty ? precons : decks)
         if let commander, candidates.contains(where: { $0.commander != commander }) {
             candidates.removeAll { $0.commander == commander }
         }

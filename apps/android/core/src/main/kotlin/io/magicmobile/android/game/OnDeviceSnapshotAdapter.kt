@@ -113,10 +113,14 @@ object OnDeviceSnapshotAdapter {
             }
             JsonObject(fields) as J
         }
-        val combat = (view["combat"].array ?: emptyList()).map { group ->
-            val defender = group["defenderId"].string ?: throw EngineError.InvalidMessage("Missing combat defender")
-            val kind: J = if (ids.contains(defender)) s("player") else JsonNull
-            jsonObject("defenderId" to s(defender), "defenderName" to (group["defenderName"] ?: s(defender)),
+        val combat = (view["combat"].array ?: emptyList()).mapIndexed { index, group ->
+            // An attacked planeswalker or battle that leaves combat (dies, phases out, changes
+            // control) leaves its attackers attacking nothing: XMage then sends no defenderId.
+            val missing = group["defenderId"].string == null
+            val defender = group["defenderId"].string ?: "no-defender-$index"
+            val kind: J = if (missing) s("none") else if (ids.contains(defender)) s("player") else JsonNull
+            val name: J = if (missing) s("No defender") else group["defenderName"] ?: s(defender)
+            jsonObject("defenderId" to s(defender), "defenderName" to name,
                 "defenderKind" to kind, "blocked" to (group["isBlocked"] ?: b(false)),
                 "attackers" to JsonArray(combatCards(cards(group["attackers"]), view["combat"])),
                 "blockers" to JsonArray(combatCards(cards(group["blockers"]), view["combat"]))) as J

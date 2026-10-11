@@ -45,6 +45,14 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-11 (Claude): a game froze at combat damage when trample killed the planeswalker being
+  attacked. XMage then keeps the attackers in combat with a null `defenderId` (rule 506.4,
+  `PlayerImpl.removeFromBattlefield` → `Combat.removeDefendingPermanentFromCombat`; phasing out and
+  control changes do the same), and both snapshot adapters threw "Missing combat defender" on every
+  poll. **Rule:** a missing field the rules allow is state, not corruption; the adapters now emit
+  `defenderKind: "none"`. Before rejecting engine data, check upstream for when it can be null.
+- 2026-10-11 (Claude): XMage AI skill sets search depth `max(4, skill)` and think time `skill × 3` s,
+  so skills 1–4 play at the same depth. Tune difficulty with decks first (docs/RANKED.md).
 - 2026-09-27 (Claude): `verify_native.py` compares the whole engine package, including the iOS-only
   Swift wrapper, so Android build 10 had to ship with the package restored to the native library's
   source commit (`2c32482`). **Rule:** when the Android native library and the package source
@@ -52,6 +60,10 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
+  fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
+  includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
+  JDK 21, not 17). Maven Central answers 429 in bursts; retry with `--max-workers=1`.
 - 2026-10-11 (Claude): cloud threads ignore `defaultMode: bypassPermissions` / `dontAsk` in settings
   files, and run in auto mode. Commands every thread may run without a prompt go in
   `permissions.allow` in `.claude/settings.json`; cloud threads apply it only while the project has
