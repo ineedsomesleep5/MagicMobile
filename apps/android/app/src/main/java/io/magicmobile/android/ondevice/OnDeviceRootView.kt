@@ -1153,100 +1153,103 @@ fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks
     val offset by animateFloatAsState(if (appeared || reduceMotion) 0f else 14f, tween(if (reduceMotion) 0 else 450), label = "menuOffset")
     Box(Modifier.fillMaxSize()) {
         BrandBackdrop(Modifier.fillMaxSize())
-        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            val horizontal = maxWidth > maxHeight
-            val cardWidth = if (horizontal) minOf(150.dp, maxHeight * 0.36f) else minOf(160.dp, maxWidth * 0.38f, maxHeight * 0.19f)
-            val height = maxHeight
-            // No scrolling in either orientation (Caleb, 2026-10-02 landscape, 2026-10-04 portrait): short screens
-            // tighten the brand block; anything still too tall scales to fit.
-            val density = if (!horizontal) (if (height < 700.dp) 1 else 0) else if (height < 400.dp) 2 else if (height < 470.dp) 1 else 0
-            // The deck and commander beside (landscape) or above (portrait) the actions; landscape gives each half the width.
-            val deckPart: @Composable (Modifier) -> Unit = { partModifier ->
-                Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (!horizontal) MenuIdentity(compact = false, playerName, density)
-                    HeroCommanderCard(commanderName, cardWidth)
-                    MenuDeckTile(deckName, commanderName)
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), horizontalAlignment = Alignment.CenterHorizontally) {
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                val horizontal = maxWidth > maxHeight
+                val cardWidth = if (horizontal) minOf(150.dp, maxHeight * 0.36f) else minOf(160.dp, maxWidth * 0.38f, maxHeight * 0.19f)
+                val height = maxHeight
+                // No scrolling in either orientation (Caleb, 2026-10-02 landscape, 2026-10-04 portrait): short screens
+                // tighten the brand block; anything still too tall scales to fit.
+                val density = if (!horizontal) (if (height < 700.dp) 1 else 0) else if (height < 400.dp) 2 else if (height < 470.dp) 1 else 0
+                // The deck and commander beside (landscape) or above (portrait) the actions; landscape gives each half the width.
+                val deckPart: @Composable (Modifier) -> Unit = { partModifier ->
+                    Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (!horizontal) MenuIdentity(compact = false, playerName, density)
+                        HeroCommanderCard(commanderName, cardWidth)
+                        MenuDeckTile(deckName, commanderName)
+                    }
                 }
-            }
-            val actionsPart: @Composable (Modifier) -> Unit = { partModifier ->
-                Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(when (density) { 0 -> 14.dp; 1 -> 10.dp; else -> 8.dp })) {
-                    if (horizontal) Box(Modifier.padding(bottom = if (density == 0) 8.dp else 2.dp)) { MenuIdentity(compact = true, playerName, density) }
-                    BrandButton({ GameAudio.play(GameSound.MENU_PLAY); play() }, Modifier.semantics { contentDescription = "Play Commander" }) {
-                        SfImage("flame.fill", LocalContentColor.current, 19.dp)
-                        Text("Play Commander", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
-                            style = sf(19f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                        SfImage("chevron.right", LocalContentColor.current, 15.dp)
-                    }
-                    BrandButton({ GameAudio.play(GameSound.UI_OPEN); decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
-                        SfImage("rectangle.stack.fill", LocalContentColor.current, 17.dp)
-                        Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
-                            style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                        SfImage("chevron.right", LocalContentColor.current, 14.dp)
-                    }
-                    // Friends and Profile share a row (Caleb, 2026-10-04) so the menu fits without scrolling.
-                    val social: @Composable (Modifier) -> Unit = { itemModifier ->
-                        friends?.let { openFriends ->
-                            BrandButton({ GameAudio.play(GameSound.UI_OPEN); openFriends() }, itemModifier.semantics {
-                                contentDescription = if (friendsBadge > 0) "Friends, $friendsBadge online or waiting" else "Friends"
-                            }, kind = BrandButtonKind.SECONDARY) {
-                                SfImage("person.2.fill", LocalContentColor.current, 17.dp)
-                                Text("Friends", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current, maxLines = 1,
-                                    style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
-                                if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
-                                    color = Color.White, style = sf(13f, SfWeight.black))
+                val actionsPart: @Composable (Modifier) -> Unit = { partModifier ->
+                    Column(partModifier.widthIn(max = 400.dp).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(when (density) { 0 -> 14.dp; 1 -> 10.dp; else -> 8.dp })) {
+                        if (horizontal) Box(Modifier.padding(bottom = if (density == 0) 8.dp else 2.dp)) { MenuIdentity(compact = true, playerName, density) }
+                        BrandButton({ GameAudio.play(GameSound.MENU_PLAY); play() }, Modifier.semantics { contentDescription = "Play Commander" }) {
+                            SfImage("flame.fill", LocalContentColor.current, 19.dp)
+                            Text("Play Commander", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
+                                style = sf(19f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                            SfImage("chevron.right", LocalContentColor.current, 15.dp)
+                        }
+                        BrandButton({ GameAudio.play(GameSound.UI_OPEN); decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
+                            SfImage("rectangle.stack.fill", LocalContentColor.current, 17.dp)
+                            Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
+                                style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                            SfImage("chevron.right", LocalContentColor.current, 14.dp)
+                        }
+                        // Friends and Profile share a row (Caleb, 2026-10-04) so the menu fits without scrolling.
+                        val social: @Composable (Modifier) -> Unit = { itemModifier ->
+                            friends?.let { openFriends ->
+                                BrandButton({ GameAudio.play(GameSound.UI_OPEN); openFriends() }, itemModifier.semantics {
+                                    contentDescription = if (friendsBadge > 0) "Friends, $friendsBadge online or waiting" else "Friends"
+                                }, kind = BrandButtonKind.SECONDARY) {
+                                    SfImage("person.2.fill", LocalContentColor.current, 17.dp)
+                                    Text("Friends", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current, maxLines = 1,
+                                        style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                                    if (friendsBadge > 0) Text("$friendsBadge", Modifier.background(BrandTheme.ember, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
+                                        color = Color.White, style = sf(13f, SfWeight.black))
+                                }
+                            }
+                            profile?.let { openProfile ->
+                                BrandButton({ GameAudio.play(GameSound.UI_OPEN); openProfile() }, itemModifier.testTag("menu.profile").semantics {
+                                    contentDescription = rank?.let { "Profile, ${it.title}" } ?: "Profile"
+                                }, kind = BrandButtonKind.SECONDARY) {
+                                    rank?.let { io.magicmobile.android.ranked.RankEmblem(it.tier, 26.dp) }
+                                        ?: SfImage("person.crop.circle.fill", LocalContentColor.current, 17.dp)
+                                    Text("Profile", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current, maxLines = 1,
+                                        style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                                }
                             }
                         }
-                        profile?.let { openProfile ->
-                            BrandButton({ GameAudio.play(GameSound.UI_OPEN); openProfile() }, itemModifier.testTag("menu.profile").semantics {
-                                contentDescription = rank?.let { "Profile, ${it.title}" } ?: "Profile"
-                            }, kind = BrandButtonKind.SECONDARY) {
-                                rank?.let { io.magicmobile.android.ranked.RankEmblem(it.tier, 26.dp) }
-                                    ?: SfImage("person.crop.circle.fill", LocalContentColor.current, 17.dp)
-                                Text("Profile", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current, maxLines = 1,
-                                    style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
+                        if (friends != null || profile != null) {
+                            if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { social(Modifier.fillMaxWidth()) }
+                            else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) { social(Modifier.weight(1f)) }
+                        }
+                        // iOS ViewThatFits: one row with the widest gap that fits, else a column.
+                        BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                            val count = 1 + listOfNotNull(news, downloads, howToPlay).size
+                            val gap = listOf(20.dp, 8.dp, 0.dp).firstOrNull { 72.dp * count + it * (count - 1) <= maxWidth }
+                            val utilities: @Composable () -> Unit = {
+                                BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
+                                news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
+                                downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
+                                howToPlay?.let {
+                                    BrandIconButton(HowToPlayText.TITLE, "questionmark.circle", { GameAudio.play(GameSound.PAGE_FLIP); it() },
+                                        Modifier.testTag("menu.howToPlay"))
+                                }
                             }
+                            if (gap != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally)) { utilities() }
+                            else Column { utilities() }
                         }
                     }
-                    if (friends != null || profile != null) {
-                        if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { social(Modifier.fillMaxWidth()) }
-                        else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) { social(Modifier.weight(1f)) }
-                    }
-                    // iOS ViewThatFits: one row with the widest gap that fits, else a column.
-                    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                        val count = 1 + listOfNotNull(news, downloads, howToPlay).size
-                        val gap = listOf(20.dp, 8.dp, 0.dp).firstOrNull { 72.dp * count + it * (count - 1) <= maxWidth }
-                        val utilities: @Composable () -> Unit = {
-                            BrandIconButton("Settings", "gearshape.fill", { GameAudio.play(GameSound.UI_OPEN); settings() })
-                            news?.let { BrandIconButton("Updates", "scroll.fill", { GameAudio.play(GameSound.PAGE_FLIP); it() }) }
-                            downloads?.let { BrandIconButton("Downloads", "arrow.down.to.line.circle.fill", { GameAudio.play(GameSound.UI_OPEN); it() }) }
-                            howToPlay?.let {
-                                BrandIconButton(HowToPlayText.TITLE, "questionmark.circle", { GameAudio.play(GameSound.PAGE_FLIP); it() },
-                                    Modifier.testTag("menu.howToPlay"))
-                            }
+                }
+                if (horizontal) {
+                    // A fixed screen that never scrolls: laid out at its natural height and scaled down only if taller.
+                    FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
+                        Row(Modifier.widthIn(max = 960.dp).fillMaxWidth().padding(horizontal = 36.dp, vertical = if (density == 0) 16.dp else 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
+                            deckPart(Modifier.weight(1f)); actionsPart(Modifier.weight(1f))
                         }
-                        if (gap != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally)) { utilities() }
-                        else Column { utilities() }
+                    }
+                } else {
+                    FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = if (density == 0) 16.dp else 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (density == 0) 14.dp else 10.dp)) {
+                            deckPart(Modifier); actionsPart(Modifier)
+                        }
                     }
                 }
             }
-            if (horizontal) {
-                // A fixed screen that never scrolls: laid out at its natural height and scaled down only if taller.
-                FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
-                    Row(Modifier.widthIn(max = 960.dp).fillMaxWidth().padding(horizontal = 36.dp, vertical = if (density == 0) 16.dp else 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                        deckPart(Modifier.weight(1f)); actionsPart(Modifier.weight(1f))
-                    }
-                }
-            } else {
-                FitsHeight(Modifier.fillMaxSize().alpha(alpha).offset(y = offset.dp)) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = if (density == 0) 16.dp else 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (density == 0) 14.dp else 10.dp)) {
-                        deckPart(Modifier); actionsPart(Modifier)
-                    }
-                }
-            }
+            SupportBanner()
         }
     }
 }
@@ -1439,6 +1442,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             FollowTurnsToggle()
             io.magicmobile.android.board.AutoPassAfterCastToggle()
             BoardEffectsPicker()
+            SupportSettingsPanel()
         }
     }
 }
@@ -1502,6 +1506,9 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
             IosListSection("About", footer = "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.") {
                 IosListRow("Card images", value = "Scryfall")
                 IosListRow("Privacy", systemImage = "arrow.up.right.square") { open("https://magicmobile-downloads.vercel.app/privacy/") }
+            }
+            IosListSection("Support MagicMobile", footer = SupportProject.NOTE) {
+                IosListRow(SupportProject.ACTION, systemImage = "heart.fill") { open(SupportProject.URL) }
             }
         }
     }
