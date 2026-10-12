@@ -26,6 +26,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextAlign
+import io.magicmobile.android.game.OnDeviceSmartPass
+import io.magicmobile.android.ui.TavernMaterial
+import io.magicmobile.android.ui.TavernPanelTitle
+import io.magicmobile.android.ui.TavernSealButton
+import io.magicmobile.android.ui.tavernCapsuleRim
+import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
@@ -92,6 +106,85 @@ fun AutoPassAfterCastToggle() {
     Box(Modifier.tavernSettingsPanel().semantics { contentDescription = "settings.autoPassAfterCast" }) {
         TavernToggle("Pass After Casting", isOn, { isOn = it }, subtitle = "Your spell resolves without another tap. Opponents can still respond.",
             color = TavernPalette.parchment)
+    }
+}
+
+/** Settings: smart auto-pass (OnDeviceSmartPass, on by default) and the button to its phase stops. SmartAutoPassToggle on iOS. */
+@Composable
+fun SmartAutoPassToggle() {
+    var isOn by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
+    var showStops by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.tavernSettingsPanel().semantics { contentDescription = "settings.smartAutoPass" }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TavernToggle("Smart Auto-Pass", isOn, { isOn = it },
+            subtitle = "Passes for you when you have nothing to play, and skips steps you don\u2019t stop at.", color = TavernPalette.parchment)
+        TavernButton({ showStops = true }, Modifier.fillMaxWidth().semantics { contentDescription = "settings.phaseStops" },
+            kind = TavernButtonKind.SECONDARY, compact = true, enabled = isOn) {
+            SfImage("hand.raised.fill", TavernPalette.parchment, 13.dp); TavernButtonText("Phase Stops")
+        }
+    }
+    if (showStops) PhaseStopsSheet { showStops = false }
+}
+
+/** The phase stops on a tavern sheet; also opened by tapping the phase plate in a game. PhaseStopsSheet on iOS. */
+@Composable
+fun PhaseStopsSheet(dismiss: () -> Unit) {
+    BoardSheet(dismiss) {
+        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 10.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            TavernPanelTitle("Phase Stops", Modifier.weight(1f, fill = false))
+            Spacer(Modifier.weight(1f))
+            TavernSealButton(dismiss, Modifier.semantics { contentDescription = "phaseStops.close" })
+        }
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp)) { PhaseStopsGrid() }
+    }
+}
+
+/**
+ * Where smart auto-pass stops when you have something to play: one row per step, a stop for your turn and one for your
+ * opponents' turns. Stored under the same key and words as iOS.
+ */
+@Composable
+fun PhaseStopsGrid() {
+    val enabled by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
+    var raw by AppPreferences.string(OnDeviceSmartPass.STOPS_KEY, OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops))
+    val stops = OnDeviceSmartPass.Settings.decode(raw)
+    Column(Modifier.fillMaxWidth()) {
+        Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It always stops when you can answer a spell on the stack."
+             else "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops.",
+            Modifier.padding(bottom = 12.dp), color = TavernPalette.parchment.copy(alpha = 0.75f), style = sf(13f, design = SfDesign.SERIF))
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.weight(1f))
+            for (title in listOf("YOUR TURN", "THEIRS")) {
+                Text(title, Modifier.width(76.dp), style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 0.8f).copy(brush = TavernPalette.goldText),
+                    textAlign = TextAlign.Center, maxLines = 1)
+            }
+        }
+        for (step in OnDeviceSmartPass.Step.entries) {
+            Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(step.title, Modifier.weight(1f), color = TavernPalette.parchment, style = sf(15f, SfWeight.semibold, SfDesign.SERIF), maxLines = 1)
+                for (myTurn in listOf(true, false)) {
+                    val key = OnDeviceSmartPass.stopKey(step, myTurn)
+                    val on = key in stops
+                    Box(Modifier.width(76.dp).height(44.dp).clickable {
+                        raw = OnDeviceSmartPass.Settings.encode(if (on) stops - key else stops + key)
+                    }.semantics {
+                        contentDescription = "${step.title}, ${if (myTurn) "your turn" else "opponents\u2019 turns"}"
+                        stateDescription = if (on) "Stop" else "Pass"; role = Role.Checkbox
+                    }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().height(36.dp).padding(1.5.dp)
+                            .tavernFill(if (on) TavernMaterial.EMBER else TavernMaterial.LEATHER, CircleShape).tavernCapsuleRim(thin = true),
+                            contentAlignment = Alignment.Center) {
+                            SfImage(if (on) "hand.raised.fill" else "circle.dotted",
+                                if (on) Color(0xFFFFE8A8) else TavernPalette.brass.copy(alpha = 0.6f), 15.dp)
+                        }
+                    }
+                }
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.35f)))
+        }
+        TavernButton({ raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops) },
+            Modifier.align(Alignment.CenterHorizontally).padding(top = 14.dp).semantics { contentDescription = "phaseStops.reset" },
+            kind = TavernButtonKind.SECONDARY, compact = true) { TavernButtonText("Reset Stops") }
     }
 }
 

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.filled.Link
@@ -223,6 +224,8 @@ object SfSymbols {
         "heart.fill" -> Icons.Filled.Favorite
         "hand.thumbsup.fill" -> Icons.Filled.ThumbUp
         "hand.raised" -> Icons.Outlined.PanTool
+        "hand.raised.fill" -> Icons.Filled.PanTool
+        "circle.dotted" -> Icons.Outlined.RadioButtonUnchecked
         "hand.wave.fill" -> Icons.Filled.WavingHand
         "hands.clap.fill" -> Icons.Filled.Celebration
         "globe" -> Icons.Filled.Language

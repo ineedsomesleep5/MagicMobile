@@ -91,7 +91,7 @@ class OnDeviceYieldPolicy {
             return ordinaryPriority(prompt, value.viewerID)
         }
 
-        private fun ordinaryPriority(prompt: Prompt, viewer: String): Boolean =
+        fun ordinaryPriority(prompt: Prompt, viewer: String): Boolean =
             prompt.id.isNotEmpty() && prompt.revision >= 0 && prompt.kind == "SELECT" && prompt.selectMode == "priority" &&
                 prompt.allowsBoolean && prompt.manaPlayerID == viewer
     }

@@ -210,15 +210,23 @@ final class OnDeviceSession: ObservableObject {
     /// unpublished so the question never flashes on screen. Published if answering fails.
     private var heldAbilitySnapshot: (promptID: String, snapshot: GameSnapshot)?
     private var abilityAutoAnswer: Task<Void, Never>?
+    /// Smart auto-pass (OnDeviceSmartPass); nil leaves every priority to the player.
+    private var smartPass: OnDeviceSmartPass.Settings?
+    private var smartPassTask: Task<Void, Never>?
+    private var smartPassGeneration = UUID()
+    /// The last prompt smart pass answered: each prompt is passed at most once, never retried.
+    private var smartPassedPromptID: String?
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
                 allowsSeatScopedAutoYield: Bool = false, table: OnDeviceTableLink? = nil,
                 answerActions: Set<String> = [], autoPassAfterCast: Bool? = nil,
+                smartPass: OnDeviceSmartPass.Settings? = nil,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
+        self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         self.table = table; lastActionAt = nil
@@ -327,7 +335,58 @@ final class OnDeviceSession: ObservableObject {
                 }
             } else { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message) }
         }
+        scheduleSmartPass()
         beginPolling()
+    }
+
+    /// Smart auto-pass settings changed (Settings or the phase stops sheet); applies from the next prompt.
+    func setSmartPass(_ settings: OnDeviceSmartPass.Settings) {
+        guard smartPass != nil else { return }
+        smartPass = settings
+        scheduleSmartPass()
+    }
+
+    private var smartPassSituation: OnDeviceSmartPass.Situation? {
+        guard let context = yieldContext, let root = poll?.snapshot, let view = root["gameView"],
+              let owner = view["players"]?.array?.first(where: { $0["playerId"]?.string == context.viewerID }) else { return nil }
+        let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
+        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating)
+    }
+
+    /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.
+    /// The same pass a tap sends, once per prompt; a failure is left to the player, never retried.
+    private func scheduleSmartPass() {
+        guard let settings = smartPass, smartPassTask == nil, !isAutoPassing, pending == nil, pendingActionID == nil,
+              errorMessage == nil, heldAbilitySnapshot == nil, abilityAutoAnswer == nil, !isClosing,
+              let situation = smartPassSituation,
+              let prompt = OnDeviceSmartPass.passPrompt(situation, settings: settings),
+              prompt.id != smartPassedPromptID else { return }
+        let token = epoch, generation = UUID()
+        smartPassGeneration = generation
+        smartPassTask = Task { [weak self] in
+            guard let self else { return }
+            // The response lane frees right after the answer that led here.
+            for _ in 0..<150 where self.isWorking || self.activeRefreshes > 0 { try? await Task.sleep(for: .milliseconds(20)) }
+            // Re-check against the poll applied meanwhile: the same prompt, still a pass.
+            guard !Task.isCancelled, self.epoch == token, !self.isWorking, let settings = self.smartPass,
+                  self.pending == nil, self.pendingActionID == nil, !self.isAutoPassing,
+                  let situation = self.smartPassSituation,
+                  let current = OnDeviceSmartPass.passPrompt(situation, settings: settings),
+                  current.id == prompt.id, current.revision == prompt.revision,
+                  current.id != self.smartPassedPromptID, let snapshot = self.snapshot else {
+                if self.smartPassGeneration == generation { self.smartPassTask = nil }
+                return
+            }
+            self.smartPassedPromptID = current.id
+            let command = GameCommand(type: "pass_priority", gameId: situation.context.matchID,
+                                      playerId: situation.context.viewerID, promptId: current.id,
+                                      messageId: Int(current.revision), expectedBridgeRevision: snapshot.bridgeRevision)
+            let sent = (try? await self.submit(command, label: String(localized: "Pass priority"), actionID: "smart-pass-\(current.id)")) != nil
+            guard self.smartPassGeneration == generation else { return }
+            self.smartPassTask = nil
+            // The answer's own refresh may already show the next routine priority.
+            if sent { self.scheduleSmartPass() }
+        }
     }
 
     var canEndTurn: Bool {
@@ -640,6 +699,7 @@ final class OnDeviceSession: ObservableObject {
             throw EngineError.invalidMessage("This game is already over.")
         }
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
+        smartPassTask?.cancel(); smartPassTask = nil
         chosenAbility = nil; heldAbilitySnapshot = nil
         noteAction()
         try await client.concede(matchID: matchID, seatID: seatID)
@@ -652,6 +712,7 @@ final class OnDeviceSession: ObservableObject {
 
     func close() async throws {
         stopAutoPass()
+        smartPassTask?.cancel(); smartPassTask = nil
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
         chosenAbility = nil; heldAbilitySnapshot = nil
         guard !isWorking else { throw EngineError.invalidMessage("Wait for the current operation before closing") }
@@ -676,7 +737,7 @@ final class OnDeviceSession: ObservableObject {
 
     func setForeground(_ value: Bool) {
         if isForeground != value { visibilityEpoch = UUID() }
-        if !value { stopAutoPass() }
+        if !value { stopAutoPass(); smartPassTask?.cancel(); smartPassTask = nil }
         isForeground = value
         if value { beginPolling() }
         else {

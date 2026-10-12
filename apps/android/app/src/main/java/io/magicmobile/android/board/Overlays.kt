@@ -521,6 +521,7 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
             AutoPassAfterCastToggle()
+            SmartAutoPassToggle()
             BoardEffectsPicker()
             CompactActionButton(openPromptInspector, Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 SfImage("ladybug.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Prompt Debug")

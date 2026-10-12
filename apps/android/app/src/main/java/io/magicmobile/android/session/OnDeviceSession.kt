@@ -14,6 +14,7 @@ import io.magicmobile.android.game.LegalAction
 import io.magicmobile.android.game.MatchPoll
 import io.magicmobile.android.game.OnDeviceMessageLog
 import io.magicmobile.android.game.OnDevicePromptAdapter
+import io.magicmobile.android.game.OnDeviceSmartPass
 import io.magicmobile.android.game.OnDeviceSnapshotAdapter
 import io.magicmobile.android.game.OnDeviceYieldPolicy
 import io.magicmobile.android.game.array
@@ -220,6 +221,12 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     /** A follow-up ability prompt answered automatically: its snapshot stays unpublished. */
     private var heldAbilitySnapshot: Pair<String, GameSnapshot>? = null
     private var abilityAutoAnswer: Job? = null
+    /** Smart auto-pass (OnDeviceSmartPass); null leaves every priority to the player. */
+    private var smartPass: OnDeviceSmartPass.Settings? = null
+    private var smartPassJob: Job? = null
+    private var smartPassGeneration = UUID.randomUUID()
+    /** The last prompt smart pass answered: each prompt is passed at most once, never retried. */
+    private var smartPassedPromptID: String? = null
 
     /** The stack is resolving shortly after this seat's own answer (OnDeviceLocalPollSchedule.CHAIN_MILLIS). */
     private val inStackChain: Boolean get() {
@@ -234,11 +241,13 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     suspend fun attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Boolean = true,
                        allowsSeatScopedAutoYield: Boolean = false, reconnectsAutomatically: Boolean = false,
                        table: OnDeviceTableLink? = null, observe: ((MatchPoll) -> Unit)? = null,
-                       answerActions: Set<String> = emptySet(), autoPassAfterCast: Boolean? = null, close: suspend () -> Unit) {
+                       answerActions: Set<String> = emptySet(), autoPassAfterCast: Boolean? = null,
+                       smartPass: OnDeviceSmartPass.Settings? = null, close: suspend () -> Unit) {
         if (this.client != null || isWorking) throw EngineError.InvalidMessage("Close the active game first")
         this.client = client; this.matchID = matchID; this.seatID = seatID; observer = observe
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = emptyMap()
         autoPassAfterCast?.let(::setAutoPassAfterCast)
+        this.smartPass = smartPass; smartPassJob?.cancel(); smartPassJob = null; smartPassedPromptID = null
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
         this.table = table; lastActionAt = null
@@ -342,10 +351,70 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                     if (decision is OnDeviceYieldPolicy.Decision.Stop) stopAutoPass(decision.reason.message)
                 } else stopAutoPass(OnDeviceYieldPolicy.StopReason.INTERRUPTED.message)
             }
+            scheduleSmartPass()
             beginPolling()
         } finally {
             activeRefreshes -= 1
         }
+    }
+
+    /** Smart auto-pass settings changed (Settings or the phase stops sheet); applies from the next prompt. */
+    fun setSmartPass(settings: OnDeviceSmartPass.Settings) {
+        if (smartPass == null) return
+        smartPass = settings
+        scheduleSmartPass()
+    }
+
+    private val smartPassSituation: OnDeviceSmartPass.Situation? get() {
+        val context = yieldContext ?: return null
+        val view = poll?.snapshot?.get("gameView") ?: return null
+        val owner = view["players"].array?.firstOrNull { it["playerId"].string == context.viewerID } ?: return null
+        return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner))
+    }
+
+    private fun smartPassPrompt(): OnDeviceYieldPolicy.Prompt? {
+        val settings = smartPass ?: return null
+        val situation = smartPassSituation ?: return null
+        return OnDeviceSmartPass.passPrompt(situation, settings)?.takeIf { it.id != smartPassedPromptID }
+    }
+
+    /**
+     * Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.
+     * The same pass a tap sends, once per prompt; a failure is left to the player, never retried.
+     */
+    private fun scheduleSmartPass() {
+        if (smartPassJob != null || isAutoPassing || pending != null || pendingActionID != null || errorMessage != null ||
+            heldAbilitySnapshot != null || abilityAutoAnswer != null || isClosing) return
+        val prompt = smartPassPrompt() ?: return
+        val token = epoch
+        val generation = UUID.randomUUID()
+        smartPassGeneration = generation
+        // The main dispatcher may run this to completion at once: register it before it starts.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            var sent = false
+            try {
+                // The response lane frees right after the answer that led here.
+                repeat(150) { if (isWorking || activeRefreshes != 0) delay(20) }
+                // Re-check against the poll applied meanwhile: the same prompt, still a pass.
+                val current = smartPassPrompt()
+                val shown = snapshot
+                val situation = smartPassSituation
+                if (epoch != token || isWorking || pending != null || pendingActionID != null || isAutoPassing ||
+                    current == null || current.id != prompt.id || current.revision != prompt.revision || shown == null || situation == null) return@launch
+                smartPassedPromptID = current.id
+                val command = GameCommand(type = "pass_priority", gameId = situation.context.matchID, playerId = situation.context.viewerID,
+                    promptId = current.id, messageId = current.revision.toInt(), expectedBridgeRevision = shown.bridgeRevision)
+                try { submit(command, "Pass priority", "smart-pass-${current.id}"); sent = true }
+                catch (error: CancellationException) { throw error }
+                catch (_: Exception) { }
+            } finally {
+                if (smartPassGeneration == generation) smartPassJob = null
+            }
+            // The answer's own refresh may already show the next routine priority.
+            if (sent && smartPassGeneration == generation) scheduleSmartPass()
+        }
+        smartPassJob = job
+        job.start()
     }
 
     val canEndTurn: Boolean get() = canStartYield(OnDeviceYieldPolicy.Mode.SAFE_END_TURN)
@@ -643,6 +712,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             throw EngineError.InvalidMessage("This game is already over.")
         }
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = null
+        smartPassJob?.cancel(); smartPassJob = null
         chosenAbility = null; heldAbilitySnapshot = null
         noteAction()
         client.concede(matchID, seatID)
@@ -655,6 +725,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
 
     suspend fun close() {
         stopAutoPass()
+        smartPassJob?.cancel(); smartPassJob = null
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = null
         chosenAbility = null; heldAbilitySnapshot = null
         if (isWorking) throw EngineError.InvalidMessage("Wait for the current operation before closing")
@@ -681,7 +752,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
 
     fun setForeground(value: Boolean) {
         if (isForeground != value) visibilityEpoch = UUID.randomUUID()
-        if (!value) stopAutoPass()
+        if (!value) { stopAutoPass(); smartPassJob?.cancel(); smartPassJob = null }
         isForeground = value
         if (value) beginPolling() else {
             pollingJob?.cancel(); pollingJob = null

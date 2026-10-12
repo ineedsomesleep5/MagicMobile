@@ -1,4 +1,5 @@
 import Foundation
+import MagicMobileOnDevice
 
 /// Local scheduling only. Every pass still requires an ordinary engine prompt.
 /// No F-key/skip commands, inferred choices, network authority, or rules simulation.
@@ -118,8 +119,112 @@ struct OnDeviceYieldPolicy {
         attempted.insert(prompt.id); latestRevision = max(latestRevision, prompt.revision)
     }
 
-    private static func ordinaryPriority(_ prompt: Prompt, viewer: String) -> Bool {
+    static func ordinaryPriority(_ prompt: Prompt, viewer: String) -> Bool {
         !prompt.id.isEmpty && prompt.revision >= 0 && prompt.kind == "SELECT" &&
         prompt.selectMode == "priority" && prompt.allowsBoolean && prompt.manaPlayerID == viewer
+    }
+}
+
+/// Arena-style smart pass (Caleb, 2026-10-11): when this seat has priority and nothing it could
+/// do, or nothing it asked to stop for, the session passes on its behalf. Local scheduling of the
+/// same ordinary pass a tap sends; XMage stays the authority for what is playable.
+enum OnDeviceSmartPass {
+    /// The steps where a player can receive priority, in turn order.
+    enum Step: String, CaseIterable, Identifiable {
+        case upkeep, draw, main1, beginCombat, declareAttackers, declareBlockers, combatDamage, endCombat, main2, end
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .upkeep: return String(localized: "Upkeep")
+            case .draw: return String(localized: "Draw")
+            case .main1: return String(localized: "Main 1")
+            case .beginCombat: return String(localized: "Beginning of combat")
+            case .declareAttackers: return String(localized: "Declare attackers")
+            case .declareBlockers: return String(localized: "Declare blockers")
+            case .combatDamage: return String(localized: "Combat damage")
+            case .endCombat: return String(localized: "End of combat")
+            case .main2: return String(localized: "Main 2")
+            case .end: return String(localized: "End step")
+            }
+        }
+
+        /// The engine's step name (`PRECOMBAT_MAIN`, `precombat-main`, …); nil for a step that is unknown.
+        init?(engine raw: String?) {
+            guard let raw else { return nil }
+            switch raw.lowercased().replacingOccurrences(of: "_", with: "-") {
+            case "upkeep": self = .upkeep
+            case "draw": self = .draw
+            case "precombat-main", "main1": self = .main1
+            case "begin-combat", "combat": self = .beginCombat
+            case "declare-attackers": self = .declareAttackers
+            case "declare-blockers": self = .declareBlockers
+            case "first-combat-damage", "first-strike-damage", "combat-damage": self = .combatDamage
+            case "end-combat": self = .endCombat
+            case "postcombat-main", "main2": self = .main2
+            case "end-turn", "end", "ending", "cleanup": self = .end
+            default: return nil
+            }
+        }
+    }
+
+    /// A stop on one step of your turns or of your opponents' turns, stored as "mine.main1" / "theirs.end".
+    static func stopKey(_ step: Step, myTurn: Bool) -> String { (myTurn ? "mine." : "theirs.") + step.rawValue }
+
+    static let enabledKey = "magicmobile.smartAutoPass"
+    static let stopsKey = "magicmobile.phaseStops"
+    /// Your main phases, and your opponents' attacks and end step: where instants usually matter.
+    static let defaultStops: Set<String> = [stopKey(.main1, myTurn: true), stopKey(.main2, myTurn: true),
+                                            stopKey(.declareAttackers, myTurn: false), stopKey(.end, myTurn: false)]
+
+    struct Settings: Equatable {
+        var enabled = true
+        var stops = OnDeviceSmartPass.defaultStops
+
+        static func encode(_ stops: Set<String>) -> String { stops.sorted().joined(separator: ",") }
+        static func decode(_ raw: String?) -> Set<String> {
+            guard let raw else { return OnDeviceSmartPass.defaultStops }
+            return Set(raw.split(separator: ",").map(String.init).filter { !$0.isEmpty })
+        }
+        static func load(_ defaults: UserDefaults = .standard) -> Settings {
+            Settings(enabled: defaults.object(forKey: OnDeviceSmartPass.enabledKey) as? Bool ?? true,
+                     stops: decode(defaults.string(forKey: OnDeviceSmartPass.stopsKey)))
+        }
+    }
+
+    /// What the latest poll says beyond the yield context.
+    struct Situation {
+        var context: OnDeviceYieldPolicy.Context
+        var step: String?
+        /// A land, spell or non-mana ability XMage offers this seat right now.
+        var hasPlay: Bool
+        /// Mana floating in this seat's pool: passing would empty it, so the player decides.
+        var manaFloating: Bool
+    }
+
+    /// The prompt to pass, or nil when the player should decide.
+    static func passPrompt(_ value: Situation, settings: Settings) -> OnDeviceYieldPolicy.Prompt? {
+        let context = value.context
+        guard settings.enabled, context.localHumanEnabled, context.foreground, context.phase == "running",
+              context.turn > 0, context.selfAuthority, !context.resyncRequired,
+              let active = context.activePlayerID, !active.isEmpty,
+              let prompt = context.prompt, !prompt.submitted,
+              OnDeviceYieldPolicy.ordinaryPriority(prompt, viewer: context.viewerID), !value.manaFloating else { return nil }
+        if !value.hasPlay { return prompt }
+        // Something to play: stop while a spell or ability waits on the stack, or at a stop.
+        guard context.emptyStack, let step = Step(engine: value.step) else { return nil }
+        return settings.stops.contains(stopKey(step, myTurn: active == context.viewerID)) ? nil : prompt
+    }
+
+    /// Reads the engine's own playable list: lands, spells and non-mana abilities count, mana abilities don't.
+    static func hasPlay(_ gameView: MagicMobileOnDevice.JSONValue?) -> Bool {
+        let objects = gameView?["canPlayObjects"]?["objects"]?.object ?? [:]
+        for stats in objects.values {
+            for (category, rows) in stats.object ?? [:] {
+                for row in rows.array ?? [] where !(row["manaAbility"]?.bool ?? (category == "basicManaAbilities")) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }

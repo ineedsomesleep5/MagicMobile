@@ -320,6 +320,7 @@ struct AppearanceSettingsView: View {
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
+                    SmartAutoPassToggle()
                     BoardEffectsPicker()
                     SupportSettingsPanel()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
@@ -363,6 +364,166 @@ struct AutoPassAfterCastToggle: View {
         TavernToggle(title: "Pass After Casting", isOn: $isOn, identifier: "settings.autoPassAfterCast",
                      subtitle: "Your spell resolves without another tap. Opponents can still respond.")
             .modifier(TavernSettingsPanel())
+    }
+}
+
+/// Smart auto-pass (OnDeviceSmartPass, on by default) and the button to its phase stops.
+struct SmartAutoPassToggle: View {
+    @AppStorage(OnDeviceSmartPass.enabledKey) private var isOn = true
+    @State private var showStops = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TavernToggle(title: "Smart Auto-Pass", isOn: $isOn, identifier: "settings.smartAutoPass",
+                         subtitle: "Passes for you when you have nothing to play, and skips steps you don’t stop at.")
+            Button { showStops = true } label: {
+                Label("Phase Stops", systemImage: "hand.raised.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+            .disabled(!isOn)
+            .accessibilityIdentifier("settings.phaseStops")
+        }
+        .modifier(TavernSettingsPanel())
+        .sheet(isPresented: $showStops) { PhaseStopsSheet() }
+    }
+}
+
+/// The phase stops on a tavern sheet; also opened by tapping the phase plate in a game.
+struct PhaseStopsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                TavernPanelTitle(text: "Phase Stops")
+                Spacer()
+                Button { dismiss() } label: { TavernSealLabel() }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Close")
+                    .accessibilityIdentifier("phaseStops.close")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 12)
+            ScrollView { PhaseStopsGrid().padding(18) }
+        }
+        .background { TavernSheetBackground() }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+    }
+}
+
+/// Where smart auto-pass stops when you have something to play: one row per step, a stop for
+/// your turn and one for your opponents' turns.
+struct PhaseStopsGrid: View {
+    @AppStorage(OnDeviceSmartPass.enabledKey) private var enabled = true
+    @AppStorage(OnDeviceSmartPass.stopsKey) private var raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
+
+    private var explanation: String {
+        enabled ? "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It always stops when you can answer a spell on the stack."
+                : "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops."
+    }
+
+    var body: some View {
+        let stops: Set<String> = OnDeviceSmartPass.Settings.decode(raw)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(explanation)
+                .font(.system(size: 13, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 12)
+            header
+            ForEach(OnDeviceSmartPass.Step.allCases) { step in
+                PhaseStopRow(step: step, stops: stops, toggle: toggle)
+            }
+            Button("Reset Stops") { raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops) }
+                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                .frame(maxWidth: .infinity)
+                .padding(.top, 14)
+                .accessibilityIdentifier("phaseStops.reset")
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            PhaseStopColumnTitle(text: "YOUR TURN")
+            PhaseStopColumnTitle(text: "THEIRS")
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func toggle(_ key: String) {
+        var next: Set<String> = OnDeviceSmartPass.Settings.decode(raw)
+        if next.contains(key) { next.remove(key) } else { next.insert(key) }
+        raw = OnDeviceSmartPass.Settings.encode(next)
+    }
+}
+
+private struct PhaseStopColumnTitle: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
+            .foregroundStyle(BrandTheme.brassGradient)
+            .frame(width: 76)
+    }
+}
+
+/// One step: its name, then the stop for your turn and the stop for your opponents' turns.
+private struct PhaseStopRow: View {
+    let step: OnDeviceSmartPass.Step
+    let stops: Set<String>
+    let toggle: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(step.title)
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Spacer(minLength: 8)
+                PhaseStopButton(step: step, myTurn: true, isOn: stops.contains(OnDeviceSmartPass.stopKey(step, myTurn: true)), toggle: toggle)
+                PhaseStopButton(step: step, myTurn: false, isOn: stops.contains(OnDeviceSmartPass.stopKey(step, myTurn: false)), toggle: toggle)
+            }
+            .frame(minHeight: 48)
+            Rectangle().fill(TavernPalette.brass.opacity(0.35)).frame(height: 1)
+        }
+    }
+}
+
+/// A stop: ember glass with a raised hand when set, dark leather when the step passes.
+private struct PhaseStopButton: View {
+    let step: OnDeviceSmartPass.Step
+    let myTurn: Bool
+    let isOn: Bool
+    let toggle: (String) -> Void
+
+    private var key: String { OnDeviceSmartPass.stopKey(step, myTurn: myTurn) }
+    private var tint: Color { isOn ? Color(red: 1, green: 0.91, blue: 0.66) : TavernPalette.brass.opacity(0.6) }
+    private var material: TavernFill.Material { isOn ? .ember : .leather }
+    private var label: String {
+        let side: String = myTurn ? String(localized: "your turn") : String(localized: "opponents’ turns")
+        return "\(step.title), \(side)"
+    }
+
+    var body: some View {
+        Button { toggle(key) } label: {
+            Image(systemName: isOn ? "hand.raised.fill" : "circle.dotted")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 76, height: 36)
+                .background { TavernFill(material: material).clipShape(Capsule()).padding(1.5) }
+                .overlay { TavernCapsuleRim(thin: true) }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .accessibilityLabel(label)
+        .accessibilityValue(isOn ? String(localized: "Stop") : String(localized: "Pass"))
+        .accessibilityAddTraits(isOn ? AccessibilityTraits.isSelected : [])
+        .accessibilityIdentifier("phaseStops.\(key)")
     }
 }
 

@@ -18,6 +18,7 @@ struct PortraitOpponentStatusBar: View {
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
     @State private var pulse = false
+    @State private var showPhaseStops = false
 
     var body: some View {
         if tavern { tavernBar } else { classicBar }
@@ -154,14 +155,8 @@ struct PortraitOpponentStatusBar: View {
                         .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.opponentHand, canvas: canvas, origin: origin)
                     // The step of the turn mirrors the nameplate; the log is in the controls menu.
-                    TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn,
-                                     width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118))
-                        // Day or night and the storm count hang under the plate when they matter.
-                        .overlay(alignment: .bottom) {
-                            TavernTableHints(dayNight: snapshot.dayNight, stormCount: snapshot.stormCount)
-                                .fixedSize()
-                                .offset(y: 16)
-                        }
+                    // A tap opens the phase stops, as Arena's phase bar does.
+                    phasePlate(width: canvas.tavernLength(sockets.canvas.width > sockets.canvas.height ? 106 : 118))
                         .scaleEffect(canvas.tavernControlScale)
                         .tavernPosition(sockets.phasePlate, canvas: canvas, origin: origin)
                     // Commander damage, poison and the rest curve around the medallion, under its
@@ -178,6 +173,7 @@ struct PortraitOpponentStatusBar: View {
             }
         }
         .foregroundStyle(TavernPalette.parchment)
+        .sheet(isPresented: $showPhaseStops) { PhaseStopsSheet() }
         .overlay(alignment: .bottomLeading) {
             if let emoteCenter {
                 OpponentEmoteSlot(center: emoteCenter, snapshot: snapshot, focusedID: opponent.playerId)
@@ -193,6 +189,16 @@ struct PortraitOpponentStatusBar: View {
                 withAnimation(.easeOut(duration: 0.4)) { pulse = false }
             }
         }
+    }
+
+    /// The step of the turn; a tap opens the phase stops. Day or night and the storm count hang under it when they matter.
+    private func phasePlate(width: CGFloat) -> some View {
+        let plate = TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn, width: width)
+        let hints = TavernTableHints(dayNight: snapshot.dayNight, stormCount: snapshot.stormCount)
+        return Button { showPhaseStops = true } label: { plate }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens phase stops")
+            .overlay(alignment: .bottom) { hints.fixedSize().offset(y: 16) }
     }
 
     @ViewBuilder

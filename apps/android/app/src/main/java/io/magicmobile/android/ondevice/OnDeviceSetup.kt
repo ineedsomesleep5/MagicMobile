@@ -144,6 +144,13 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** Settings → Pass After Casting (on by default). */
     private val autoPassAfterCastSetting: Boolean
         get() = io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.board.AutoPassAfterCast.KEY, true).value
+    /** Settings → Smart Auto-Pass and its phase stops (on by default, the iOS default stops). */
+    private val smartPassSetting: io.magicmobile.android.game.OnDeviceSmartPass.Settings
+        get() = io.magicmobile.android.game.OnDeviceSmartPass.Settings(
+            io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.ENABLED_KEY, true).value,
+            io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(io.magicmobile.android.ui.AppPreferences.string(
+                io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
+                io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops)).value))
     private var aiClient: EngineClient? = null
     private var aiMatchID: String? = null
     private var sceneActive = true
@@ -281,7 +288,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             resume.gameStarted(base, checkpoint, capabilities, "player1", deck.name, settings)
             updateSessionForeground()
             session.attach(client, matchID, "player1", allowsSeatScopedAutoYield = true, observe = resume::observe,
-                answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, close = { closeAI() })
+                answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, smartPass = smartPassSetting, close = { closeAI() })
             status = "Game started"
             if (deckID != null) recordStartCheck(deckID, resolvedDeck, null)
         } catch (error: Throwable) {
@@ -329,7 +336,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             updateSessionForeground()
             // A table seats only phones with this exact build, so this phone's engine speaks for the host's.
             session.attach(endpoint.client, endpoint.matchID, endpoint.seatID, allowsSeatScopedAutoYield = true, table = endpoint.table,
-                observe = resume::observe, answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting,
+                observe = resume::observe, answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, smartPass = smartPassSetting,
                 close = { table.leave() })
             status = "Match connected"
             // Only the host's engine created this game, so only the host's deck check is local.
@@ -486,7 +493,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                 aiMatchID = matchID
                 updateSessionForeground()
                 session.attach(client, matchID, seatID, allowsSeatScopedAutoYield = true, observe = resume::observe,
-                    answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, close = { closeAI() })
+                    answerActions = engineAnswerActions, autoPassAfterCast = autoPassAfterCastSetting, smartPass = smartPassSetting, close = { closeAI() })
             }
             override suspend fun cleanup() {
                 try { if (session.matchID != null) session.close() else if (runtime.isOpen) closeAI() }

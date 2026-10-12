@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -422,6 +423,8 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
     LaunchedEffect(hudPulse) {
         if (hudPulse != lastPulse) { lastPulse = hudPulse; pulse = true; delay(450); pulse = false }
     }
+    var showPhaseStops by remember { mutableStateOf(false) }
+    if (showPhaseStops) PhaseStopsSheet { showPhaseStops = false }
     val (owner, turnColor) = turnOwner(snapshot)
     val animatedTurnColor by animateColorAsState(turnColor, tween(350), label = "tavernTurnColor")
     val pulseScale by animateFloatAsState(if (pulse) 1.06f else 1f, if (pulse) spring(0.55f, 630f) else tween(400), label = "tavernPulse")
@@ -437,9 +440,10 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
             OpponentTurnColumn(snapshot, animatedTurnColor, owner, pulseScale, pulseAlpha, BoardResponseCue.make(snapshot))
         }
         TavernCardBackFan(opponent.zones.visibleHandCount, Modifier.tavernPosition(frame, sockets.opponentHand))
-        // The step of the turn mirrors the nameplate; the log is in the controls menu.
+        // The step of the turn mirrors the nameplate; the log is in the controls menu. A tap opens the phase stops, as Arena's phase bar does.
         Box(Modifier.tavernPosition(frame, sockets.phasePlate)) {
-            TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.turn, width = plateWidth)
+            TavernPhasePlate(snapshot.step ?: snapshot.phase, snapshot.turn,
+                Modifier.clickable(onClickLabel = "Opens phase stops") { showPhaseStops = true }, width = plateWidth)
             // Day or night and the storm count hang under the plate when they matter, without moving it.
             TavernTableHints(snapshot.dayNight, snapshot.stormCount, Modifier.align(Alignment.BottomCenter).hangBelow(5.dp))
         }

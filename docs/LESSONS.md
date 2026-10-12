@@ -47,6 +47,17 @@ contradicting one.
   flip turns after 1.4 s); give opened inspectors a real button as well. Where: `Board/CardInspector.swift`,
   `board/InspectorViews.kt`.
 
+## Gameplay
+
+- 2026-10-11 (Claude): Arena-style smart auto-pass and phase stops needed no engine change. The poll
+  already carries XMage's own playable list (`gameView.canPlayObjects`, with `manaAbility` marks) and
+  the step, so the session sends the same `pass_priority` a tap sends. **Rule:** client-side pass
+  scheduling belongs in `OnDeviceSmartPass` (iOS `OnDeviceYieldPolicy.swift`, Android core
+  `game/OnDeviceSmartPass.kt`); an engine edit means a native rebuild on both platforms.
+- 2026-10-11 (Claude): the Android app CI job runs `:core:contractChecks` but never the `:core:test`
+  JUnit task, so a new core JUnit class only compiles there. **Rule:** call new core checks from
+  `ContractChecks.kt`'s `main` so CI executes them.
+
 ## Performance
 
 - 2026-10-03 (Claude): a quiet Android tavern board used about 105% CPU on the emulator because
@@ -83,6 +94,12 @@ contradicting one.
   disagree, restore the package to the library's commit rather than rebuilding.
 
 ## Agent environment
+
+- 2026-10-11 (Claude): the iOS CI `swift` job fails when any expression under `apps/ios/MagicMobile/Board/`
+  takes over 200 ms to type-check, even after the build and tests pass. Wrapping a view in a Button inside
+  the tavern bar's big ZStack, or a long settings body with ternaries, is enough to trip it. Cloud threads
+  can't download the job's artifact that names the slow lines. **Rule:** keep new Board views small,
+  as separate structs or helper functions with explicit types, rather than adding to a large closure.
 
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that

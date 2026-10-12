@@ -1,4 +1,5 @@
 import XCTest
+import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class OnDeviceYieldPolicyTests: XCTestCase {
@@ -164,5 +165,71 @@ final class OnDeviceYieldPolicyTests: XCTestCase {
         XCTAssertTrue(policy.start(context(), now: 0, mode: .endTurnSkippingResponses))
         var value = context(); value.turn += 1; value.activePlayerID = "opponent"
         XCTAssertEqual(policy.evaluate(value, now: 1), .stop(.turnChanged))
+    }
+
+    private func situation(hasPlay: Bool, step: String? = "PRECOMBAT_MAIN", myTurn: Bool = true,
+                           emptyStack: Bool = true) -> OnDeviceSmartPass.Situation {
+        var value = context()
+        value.activePlayerID = myTurn ? "viewer" : "other"; value.emptyStack = emptyStack
+        return .init(context: value, step: step, hasPlay: hasPlay, manaFloating: false)
+    }
+
+    func testSmartPassPassesWithNothingToPlayAndStopsWhereMarked() {
+        let settings = OnDeviceSmartPass.Settings()
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: false), settings: settings))
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: false, emptyStack: false), settings: settings))
+        // Default stops: your main phases, their attacks and end step.
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true), settings: settings))
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "POSTCOMBAT_MAIN"), settings: settings))
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "END_TURN", myTurn: false), settings: settings))
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "DECLARE_ATTACKERS", myTurn: false), settings: settings))
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "UPKEEP"), settings: settings))
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "PRECOMBAT_MAIN", myTurn: false), settings: settings))
+        // Something to answer on the stack always stops; an unknown step never passes a playable.
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "UPKEEP", emptyStack: false), settings: settings))
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "mystery"), settings: settings))
+        var custom = settings; custom.stops = [OnDeviceSmartPass.stopKey(.upkeep, myTurn: true)]
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true, step: "UPKEEP"), settings: custom))
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true), settings: custom))
+    }
+
+    func testSmartPassNeverAnswersAChoiceFloatingManaOrWhenOff() {
+        let settings = OnDeviceSmartPass.Settings()
+        var value = situation(hasPlay: false)
+        value.manaFloating = true
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(value, settings: settings))
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: false), settings: .init(enabled: false)))
+        let changes: [(inout OnDeviceYieldPolicy.Context) -> Void] = [
+            { $0.prompt?.kind = "ASK" }, { $0.prompt?.selectMode = "attackers" }, { $0.prompt?.selectMode = "blockers" },
+            { $0.prompt?.submitted = true }, { $0.prompt?.manaPlayerID = "other" }, { $0.prompt = nil },
+            { $0.selfAuthority = false }, { $0.resyncRequired = true }, { $0.foreground = false },
+            { $0.localHumanEnabled = false }, { $0.phase = "ended" }
+        ]
+        for change in changes {
+            var value = situation(hasPlay: false)
+            change(&value.context)
+            XCTAssertNil(OnDeviceSmartPass.passPrompt(value, settings: settings))
+        }
+    }
+
+    func testSmartPassReadsPlayablesAndStoredStops() {
+        typealias J = MagicMobileOnDevice.JSONValue
+        func view(_ category: String, _ row: [String: J]) -> J {
+            .object(["canPlayObjects": .object(["objects": .object(["card": .object([category: .array([.object(row)])])])])])
+        }
+        XCTAssertFalse(OnDeviceSmartPass.hasPlay(nil))
+        XCTAssertFalse(OnDeviceSmartPass.hasPlay(view("basicManaAbilities", ["id": .string("a")])))
+        XCTAssertFalse(OnDeviceSmartPass.hasPlay(view("other", ["id": .string("a"), "manaAbility": .bool(true)])))
+        XCTAssertTrue(OnDeviceSmartPass.hasPlay(view("other", ["id": .string("a")])))
+        XCTAssertTrue(OnDeviceSmartPass.hasPlay(view("basicPlayAbilities", ["id": .string("a")])))
+        XCTAssertEqual(OnDeviceSmartPass.Settings.decode(nil), OnDeviceSmartPass.defaultStops)
+        XCTAssertEqual(OnDeviceSmartPass.Settings.decode(""), [])
+        XCTAssertEqual(OnDeviceSmartPass.Settings.decode(OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)),
+                       OnDeviceSmartPass.defaultStops)
+        for (raw, step) in [("UPKEEP", OnDeviceSmartPass.Step.upkeep), ("precombat-main", .main1), ("BEGIN_COMBAT", .beginCombat),
+                            ("FIRST_COMBAT_DAMAGE", .combatDamage), ("END_TURN", .end), ("POSTCOMBAT_MAIN", .main2)] {
+            XCTAssertEqual(OnDeviceSmartPass.Step(engine: raw), step, raw)
+        }
+        XCTAssertNil(OnDeviceSmartPass.Step(engine: "UNTAP"))
     }
 }
