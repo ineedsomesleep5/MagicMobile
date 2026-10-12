@@ -383,12 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 20 lets you keep your profile: sign in with
-                Google on the Profile screen and your name, friends and rank
-                follow you to any phone. It keeps everything from build 19:
-                the updated XMage with 78 new cards, “Don’t ask again”,
-                Resolve all, your choice of card artwork and every token in
-                the offline download. Android is an early alpha;
+                Android build 21 flips double-faced cards in Deck Studio and
+                the card inspector, lets you pick your commander before
+                importing and imports public decks from an Archidekt username.
+                The opponent’s status badges curve around their portrait,
+                Concede, Start New and Quit sit at the top of the game menu,
+                and a combat freeze is fixed. Android is an early alpha;
                 physical-phone acceptance is still pending.
               </p>
             </details>
@@ -398,12 +398,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 35 lets you keep your profile: sign in with Apple or
-                Google on the Profile screen and your name, friends and rank
-                follow you to any phone. It keeps everything from build 34:
-                the updated XMage with 78 new cards, “Don’t ask again”,
-                Resolve all, your choice of card artwork and every token in
-                the offline download. It runs on iPhone and iPad. Apple has
+                Build 36 flips double-faced cards in Deck Studio and the card
+                inspector, lets you pick your commander before importing and
+                imports public decks from an Archidekt username. The
+                opponent’s status badges curve around their portrait, Concede,
+                Start New and Quit sit at the top of the game menu, and a
+                combat freeze is fixed. It runs on iPhone and iPad. Apple has
                 approved this build for Internal and External TestFlight.
               </p>
             </details>
