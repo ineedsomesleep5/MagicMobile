@@ -383,12 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 20 lets you keep your profile: sign in with
-                Google on the Profile screen and your name, friends and rank
-                follow you to any phone. It keeps everything from build 19:
-                the updated XMage with 78 new cards, “Don’t ask again”,
-                Resolve all, your choice of card artwork and every token in
-                the offline download. Android is an early alpha;
+                Android build 21 flips double-faced cards in Deck Studio and
+                the card inspector, lets you pick your commander before
+                importing and imports public decks from an Archidekt username.
+                The opponent’s status badges curve around their portrait,
+                Concede, Start New and Quit sit at the top of the game menu,
+                and a combat freeze is fixed. Android is an early alpha;
                 physical-phone acceptance is still pending.
               </p>
             </details>
@@ -398,12 +398,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 35 lets you keep your profile: sign in with Apple or
-                Google on the Profile screen and your name, friends and rank
-                follow you to any phone. It keeps everything from build 34:
-                the updated XMage with 78 new cards, “Don’t ask again”,
-                Resolve all, your choice of card artwork and every token in
-                the offline download. It runs on iPhone and iPad. Apple has
+                Build 36 flips double-faced cards in Deck Studio and the card
+                inspector, lets you pick your commander before importing and
+                imports public decks from an Archidekt username. The
+                opponent’s status badges curve around their portrait, Concede,
+                Start New and Quit sit at the top of the game menu, and a
+                combat freeze is fixed. It runs on iPhone and iPad. Apple has
                 approved this build for Internal and External TestFlight.
               </p>
             </details>
@@ -418,6 +418,28 @@ function App() {
               </p>
             </details>
           </div>
+          <div id="support" className="support-card">
+            <p className="eyebrow">
+              <Sparkle />
+              Keep the tavern lit
+            </p>
+            <h3>Help cover server costs.</h3>
+            <p>
+              MagicMobile is free, with no ads and nothing to buy in the app.
+              Online tables, friends and ranked games run on servers that cost
+              money every month. If you enjoy the game, a small tip helps keep
+              them running.
+            </p>
+            {/* The support page holds the one donation link; the apps open it too. */}
+            <a className="plaque plaque-ember" href="/support/">
+              Support MagicMobile
+              <ArrowUpRight size={20} />
+            </a>
+            <small>
+              Tips are optional and unlock nothing in the game. Unofficial fan
+              project, not affiliated with Wizards of the Coast.
+            </small>
+          </div>
           <footer>
             <a className="footer-brand" href="#cards">
               <img src="/tavern/mark-96.webp" alt="" width="44" height="44" />
@@ -426,6 +448,10 @@ function App() {
             </a>
             <a href="https://github.com/ineedsomesleep5/MagicMobile">
               Follow the project
+              <ArrowUpRight size={16} />
+            </a>
+            <a href="/support/">
+              Support the project
               <ArrowUpRight size={16} />
             </a>
             <a href="/privacy/">
