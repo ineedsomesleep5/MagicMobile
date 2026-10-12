@@ -195,6 +195,61 @@ class ParityGoldenTest {
         }
     }
 
+    /** guided-game-cases.json: the guided first game's words, match and coach notes (iOS testGuidedGameCasesOnBothPlatforms). */
+    @Test fun guidedGameCasesOnBothPlatforms() {
+        val root = Json.parseToJsonElement(File(parity, "guided-game-cases.json").readText())
+        assertEquals(root["title"].string, GuidedGameText.TITLE)
+        assertEquals(root["subtitle"].string, GuidedGameText.SUBTITLE)
+        assertEquals(root["start"].string, GuidedGameText.START)
+        assertEquals(root["gotIt"].string, GuidedGameText.GOT_IT)
+        assertEquals(root["turnOff"].string, GuidedGameText.TURN_OFF)
+        assertEquals(mapOf("title" to GuidedGameText.WELCOME_TITLE, "body" to GuidedGameText.WELCOME_BODY,
+            "readHowToPlay" to GuidedGameText.READ_HOW_TO_PLAY, "skip" to GuidedGameText.SKIP),
+            root["welcome"].obj!!.mapValues { it.value.string })
+        val tips = root["tips"].array!!
+        assertEquals(tips.map { it["id"].string }, GuidedGameTip.entries.map { it.id })
+        for ((expected, tip) in tips.zip(GuidedGameTip.entries)) {
+            assertEquals(tip.id, expected["title"].string, GuidedGameText.title(tip))
+            assertEquals(tip.id, expected["body"].string, GuidedGameText.body(tip))
+            assertEquals(tip.id, expected["actionable"].bool, tip.isActionable)
+        }
+        assertEquals(root["core"].array!!.map { it.string }, GuidedGameCoach.core.map { it.id })
+        val setup = root["setup"]!!
+        assertEquals(setup["playerDeckID"].string, GuidedGameSetup.PLAYER_DECK_ID)
+        assertEquals(setup["playerPreconID"].string, GuidedGameSetup.PLAYER_PRECON_ID)
+        assertEquals(setup["opponentDeckID"].string, GuidedGameSetup.OPPONENT_DECK_ID)
+        assertEquals(setup["aiSkill"].integer, GuidedGameSetup.AI_SKILL.toLong())
+        assertEquals(setup["startingPlayerMode"].string, GuidedGameSetup.STARTING_PLAYER_MODE)
+        assertEquals(mapOf("shownTipsKey" to GuidedGameLaunch.SHOWN_TIPS_KEY, "activeKey" to GuidedGameLaunch.ACTIVE_KEY,
+            "welcomeSeenKey" to GuidedGameLaunch.WELCOME_SEEN_KEY), root["launch"].obj!!.mapValues { it.value.string })
+
+        val base = root["base"] as JsonObject
+        val cases = root["cases"].array!!
+        check(cases.isNotEmpty())
+        for (item in cases) {
+            val name = "guided · ${item["name"].string}"
+            val patch = item["snapshot"] as JsonObject
+            val json = base.toMutableMap()
+            for ((key, value) in patch) if (key != "opponentStack") json[key] = value
+            if (patch["opponentStack"].bool == true) {
+                val players = (json["players"] as JsonArray).toMutableList()
+                val opponent = (players[1] as JsonObject).toMutableMap()
+                val zones = (opponent["zones"] as JsonObject).toMutableMap()
+                zones["stack"] = Json.parseToJsonElement("""[{"instanceId":"p2-stack-1","card":{"name":"Raise Dead","typeLine":"Sorcery"}}]""")
+                opponent["zones"] = JsonObject(zones)
+                players[1] = JsonObject(opponent)
+                json["players"] = JsonArray(players)
+            }
+            val snapshot = EngineJson.format.decodeFromJsonElement(GameSnapshot.serializer(), JsonObject(json))
+            val shown = item["shown"].array!!.mapNotNull { GuidedGameTip.fromId(it.string!!) }.toSet()
+            val current = item["current"].string?.let(GuidedGameTip::fromId)
+            val step = GuidedGameCoach.advance(current, snapshot, shown)
+            val expect = item["expect"]!!
+            assertEquals(name, expect["current"].string, step.current?.id)
+            assertEquals(name, expect["newlyShown"].string, step.newlyShown?.id)
+        }
+    }
+
     @Test fun priorityStatusCasesOnBothPlatforms() {
         val root = Json.parseToJsonElement(File(parity, "focus-cases.json").readText())
         val base = root["base"] as JsonObject

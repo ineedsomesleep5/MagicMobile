@@ -331,6 +331,62 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// guided-game-cases.json: the guided first game's words, match and coach notes.
+    /// ParityGoldenTest.kt checks Android's GuidedGame.kt against the same file.
+    func testGuidedGameCasesOnBothPlatforms() throws {
+        let root = try caseFile("guided-game-cases.json")
+        XCTAssertEqual(root["title"] as? String, GuidedGameText.title)
+        XCTAssertEqual(root["subtitle"] as? String, GuidedGameText.subtitle)
+        XCTAssertEqual(root["start"] as? String, GuidedGameText.start)
+        XCTAssertEqual(root["gotIt"] as? String, GuidedGameText.gotIt)
+        XCTAssertEqual(root["turnOff"] as? String, GuidedGameText.turnOff)
+        XCTAssertEqual(root["welcome"] as? [String: String],
+                       ["title": GuidedGameText.welcomeTitle, "body": GuidedGameText.welcomeBody,
+                        "readHowToPlay": GuidedGameText.readHowToPlay, "skip": GuidedGameText.skip])
+        let tips = try XCTUnwrap(root["tips"] as? [[String: Any]])
+        XCTAssertEqual(tips.map { $0["id"] as? String }, GuidedGameTip.allCases.map(\.rawValue))
+        for (expected, tip) in zip(tips, GuidedGameTip.allCases) {
+            XCTAssertEqual(expected["title"] as? String, GuidedGameText.title(tip), tip.rawValue)
+            XCTAssertEqual(expected["body"] as? String, GuidedGameText.body(tip), tip.rawValue)
+            XCTAssertEqual(expected["actionable"] as? Bool, tip.isActionable, tip.rawValue)
+        }
+        XCTAssertEqual(root["core"] as? [String], GuidedGameCoach.core.map(\.rawValue))
+        let setup = try XCTUnwrap(root["setup"] as? [String: Any])
+        XCTAssertEqual(setup["playerDeckID"] as? String, GuidedGameSetup.playerDeckID)
+        XCTAssertEqual(setup["playerPreconID"] as? String, GuidedGameSetup.playerPreconID)
+        XCTAssertEqual(setup["opponentDeckID"] as? String, GuidedGameSetup.opponentDeckID)
+        XCTAssertEqual(setup["aiSkill"] as? Int, GuidedGameSetup.aiSkill)
+        XCTAssertEqual(setup["startingPlayerMode"] as? String, GuidedGameSetup.startingPlayerMode)
+        XCTAssertNotNil(PreconCatalog.all.first { $0.id == GuidedGameSetup.playerPreconID })
+        XCTAssertNotNil(AIDeckPool.deck(id: GuidedGameSetup.opponentDeckID))
+        XCTAssertEqual(root["launch"] as? [String: String],
+                       ["shownTipsKey": GuidedGameLaunch.shownTipsKey, "activeKey": GuidedGameLaunch.activeKey,
+                        "welcomeSeenKey": GuidedGameLaunch.welcomeSeenKey])
+
+        let base = try XCTUnwrap(root["base"] as? [String: Any])
+        let cases = try XCTUnwrap(root["cases"] as? [[String: Any]])
+        XCTAssertFalse(cases.isEmpty)
+        for item in cases {
+            let name = "guided · \(item["name"] ?? "")"
+            var json = base
+            for (key, value) in try XCTUnwrap(item["snapshot"] as? [String: Any]) where key != "opponentStack" { json[key] = value }
+            if (item["snapshot"] as? [String: Any])?["opponentStack"] as? Bool == true {
+                var players = try XCTUnwrap(json["players"] as? [[String: Any]])
+                var zones = try XCTUnwrap(players[1]["zones"] as? [String: Any])
+                zones["stack"] = [["instanceId": "p2-stack-1", "card": ["name": "Raise Dead", "typeLine": "Sorcery"]]]
+                players[1]["zones"] = zones
+                json["players"] = players
+            }
+            let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+            let shown = Set(try XCTUnwrap(item["shown"] as? [String]).compactMap(GuidedGameTip.init(rawValue:)))
+            let current = (item["current"] as? String).flatMap(GuidedGameTip.init(rawValue:))
+            let step = GuidedGameCoach.advance(current: current, snapshot: snapshot, shown: shown)
+            let expect = try XCTUnwrap(item["expect"] as? [String: Any])
+            XCTAssertEqual(step.current?.rawValue, expect["current"] as? String, name)
+            XCTAssertEqual(step.newlyShown?.rawValue, expect["newlyShown"] as? String, name)
+        }
+    }
+
     private func caseFile(_ name: String) throws -> [String: Any] {
         let data = try Data(contentsOf: parityDirectory.appendingPathComponent(name))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

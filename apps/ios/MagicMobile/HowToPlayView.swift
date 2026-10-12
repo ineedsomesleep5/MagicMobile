@@ -6,12 +6,15 @@ import SwiftUI
 /// opens straight into one tutorial, which is how the first-launch walkthrough opens.
 struct HowToPlayView: View {
     private let startID: String?
+    /// Starts the guided first game (GuidedGame.swift); the chooser offers it when set.
+    private let playGuided: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tutorial: HowToPlayTutorial?
 
-    init(tutorialID: String? = nil) {
+    init(tutorialID: String? = nil, playGuided: (() -> Void)? = nil) {
         startID = tutorialID
+        self.playGuided = playGuided
         _tutorial = State(initialValue: HowToPlayText.tutorials.first { $0.id == tutorialID })
     }
 
@@ -22,7 +25,7 @@ struct HowToPlayView: View {
                 HowToPlayBook(tutorial: tutorial, backToChooser: startID == nil ? { open(nil) } : nil, close: close)
                     .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             } else {
-                HowToPlayChooser(choose: { open($0) }, close: close)
+                HowToPlayChooser(choose: { open($0) }, playGuided: playGuided.map { play in { close(); play() } }, close: close)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
             }
         }
@@ -43,9 +46,11 @@ struct HowToPlayView: View {
 
 // MARK: - Chooser
 
-/// Two books on the leather: the short one on the table, the longer one on the format.
+/// Two books on the leather: the short one on the table, the longer one on the format, and
+/// the guided first game when the menu offers it.
 private struct HowToPlayChooser: View {
     let choose: (HowToPlayTutorial) -> Void
+    let playGuided: (() -> Void)?
     let close: () -> Void
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -67,7 +72,15 @@ private struct HowToPlayChooser: View {
                 let wide = verticalSizeClass == .compact
                 let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(spacing: 16))
                 layout {
-                    ForEach(HowToPlayText.tutorials) { tutorial in book(tutorial) }
+                    if let playGuided {
+                        book(id: "guided", title: GuidedGameText.title, subtitle: GuidedGameText.subtitle, icon: "graduationcap.fill",
+                             action: GuidedGameText.start, choose: playGuided)
+                    }
+                    ForEach(HowToPlayText.tutorials) { tutorial in
+                        book(id: tutorial.id, title: tutorial.title, subtitle: tutorial.subtitle,
+                             icon: tutorial.id == "commander" ? "crown.fill" : "table.furniture",
+                             action: HowToPlayText.begin) { choose(tutorial) }
+                    }
                 }
                 .padding(20)
                 .frame(maxWidth: 760)
@@ -77,20 +90,21 @@ private struct HowToPlayChooser: View {
         }
     }
 
-    private func book(_ tutorial: HowToPlayTutorial) -> some View {
-        Button { choose(tutorial) } label: {
+    private func book(id: String, title: String, subtitle: String, icon: String, action: String,
+                      choose: @escaping () -> Void) -> some View {
+        Button(action: choose) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: tutorial.id == "commander" ? "crown.fill" : "table.furniture")
+                    Image(systemName: icon)
                         .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(BrandTheme.brassGradient)
                         .frame(width: 52, height: 52)
                         .background(TavernCoinBack())
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(tutorial.title)
+                        Text(title)
                             .font(.system(size: 21, weight: .black, design: .serif))
                             .foregroundStyle(TavernPalette.ink)
-                        Text(tutorial.subtitle)
+                        Text(subtitle)
                             .font(.system(size: 14, weight: .medium, design: .serif))
                             .foregroundStyle(TavernPalette.ink.opacity(0.75))
                             .fixedSize(horizontal: false, vertical: true)
@@ -99,7 +113,7 @@ private struct HowToPlayChooser: View {
                 }
                 HStack {
                     Spacer(minLength: 0)
-                    HowToPlayPlaque(text: HowToPlayText.begin, icon: "chevron.right")
+                    HowToPlayPlaque(text: action, icon: "chevron.right")
                 }
             }
             .multilineTextAlignment(.leading)
@@ -115,8 +129,8 @@ private struct HowToPlayChooser: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(tutorial.title). \(tutorial.subtitle)")
-        .accessibilityIdentifier("howToPlay.tutorial.\(tutorial.id)")
+        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityIdentifier("howToPlay.tutorial.\(id)")
     }
 }
 

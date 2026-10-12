@@ -74,6 +74,7 @@ import io.magicmobile.android.board.tavernFrameDrawable
 import io.magicmobile.android.board.tavernTileGlow
 import io.magicmobile.android.game.GameResumeText
 import io.magicmobile.android.game.HowToPlayPage
+import io.magicmobile.android.game.GuidedGameText
 import io.magicmobile.android.game.HowToPlayText
 import io.magicmobile.android.game.HowToPlayTutorial
 import io.magicmobile.android.game.TavernCardParts
@@ -92,7 +93,7 @@ import kotlin.math.sin
  * [tutorialID] opens straight into one tutorial, which is how the first-launch walkthrough opens.
  */
 @Composable
-fun HowToPlayView(close: () -> Unit, modifier: Modifier = Modifier, tutorialID: String? = null) {
+fun HowToPlayView(close: () -> Unit, modifier: Modifier = Modifier, tutorialID: String? = null, playGuided: (() -> Unit)? = null) {
     var tutorial by remember { mutableStateOf(HowToPlayText.tutorials.firstOrNull { it.id == tutorialID }) }
     fun finish() { GameAudio.play(GameSound.UI_CLOSE); close() }
     fun open(next: HowToPlayTutorial?) { GameAudio.play(GameSound.PAGE_FLIP); tutorial = next }
@@ -100,16 +101,16 @@ fun HowToPlayView(close: () -> Unit, modifier: Modifier = Modifier, tutorialID: 
         Box(modifier) {
             val book = tutorial
             if (book != null) HowToPlayBook(book, backToChooser = if (tutorialID == null) ({ open(null) }) else null, close = ::finish)
-            else HowToPlayChooser(choose = { open(it) }, close = ::finish)
+            else HowToPlayChooser(choose = { open(it) }, playGuided = playGuided?.let { play -> { finish(); play() } }, close = ::finish)
         }
     }
 }
 
 // --- Chooser --------------------------------------------------------------------------------------
 
-/** Two books on the leather: the short one on the table, the longer one on the format. */
+/** Two books on the leather: the short one on the table, the longer one on the format, and the guided first game when the menu offers it. */
 @Composable
-private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, close: () -> Unit) {
+private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: (() -> Unit)?, close: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth > maxHeight
         Column(Modifier.fillMaxSize()) {
@@ -118,7 +119,13 @@ private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, close: () -> U
                 TavernPanelTitle(HowToPlayText.TITLE, Modifier.weight(1f).semantics { heading() })
                 TavernSealButton(close, Modifier.testTag("howToPlay.close"), contentDescription = HowToPlayText.DONE)
             }
-            val books: @Composable () -> Unit = { for (tutorial in HowToPlayText.tutorials) Book(tutorial, wide) { choose(tutorial) } }
+            val books: @Composable () -> Unit = {
+                if (playGuided != null) Book("guided", GuidedGameText.TITLE, GuidedGameText.SUBTITLE, "graduationcap.fill", GuidedGameText.START, wide, playGuided)
+                for (tutorial in HowToPlayText.tutorials) {
+                    Book(tutorial.id, tutorial.title, tutorial.subtitle, if (tutorial.id == "commander") "crown.fill" else "square.grid.2x2",
+                        HowToPlayText.BEGIN, wide) { choose(tutorial) }
+                }
+            }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.widthIn(max = 760.dp)) {
                     if (wide) Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) { books() }
@@ -130,24 +137,24 @@ private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, close: () -> U
 }
 
 @Composable
-private fun Book(tutorial: HowToPlayTutorial, wide: Boolean, choose: () -> Unit) {
+private fun Book(id: String, title: String, subtitle: String, icon: String, action: String, wide: Boolean, choose: () -> Unit) {
     Column(Modifier.then(if (wide) Modifier.width(360.dp) else Modifier.fillMaxWidth())
         .glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp)
         .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(12.dp), overlay = Color.Black.copy(alpha = 0.06f)).tavernBrassFrame(1f)
         .clickable(role = Role.Button) { choose() }
-        .semantics { contentDescription = "${tutorial.title}. ${tutorial.subtitle}" }.testTag("howToPlay.tutorial.${tutorial.id}")
+        .semantics { contentDescription = "$title. $subtitle" }.testTag("howToPlay.tutorial.$id")
         .padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
             Box(Modifier.size(52.dp).tavernFill(TavernMaterial.LEATHER, CircleShape).border(1.2.dp, BrandTheme.brassGradient, CircleShape),
                 contentAlignment = Alignment.Center) {
-                SfImage(if (tutorial.id == "commander") "crown.fill" else "square.grid.2x2", TavernPalette.brass, 22.dp)
+                SfImage(icon, TavernPalette.brass, 22.dp)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(tutorial.title, color = TavernPalette.ink, style = sf(21f, SfWeight.black, SfDesign.SERIF))
-                Text(tutorial.subtitle, color = TavernPalette.ink.copy(alpha = 0.75f), style = sf(14f, SfWeight.medium, SfDesign.SERIF))
+                Text(title, color = TavernPalette.ink, style = sf(21f, SfWeight.black, SfDesign.SERIF))
+                Text(subtitle, color = TavernPalette.ink.copy(alpha = 0.75f), style = sf(14f, SfWeight.medium, SfDesign.SERIF))
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Plaque(HowToPlayText.BEGIN, icon = "chevron.right") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Plaque(action, icon = "chevron.right") }
     }
 }
 
