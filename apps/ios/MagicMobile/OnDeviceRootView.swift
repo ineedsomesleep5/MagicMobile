@@ -338,7 +338,8 @@ struct OnDeviceRootView: View {
     }
 
     private var presentedContent: some View {
-        ZStack {
+        // Split in three so the compiler can type-check the long modifier chain in reasonable time.
+        let menu = ZStack {
             if activeGame {
                 game
             } else {
@@ -368,23 +369,10 @@ struct OnDeviceRootView: View {
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: lobby)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
-        .environment(\.brandAmbientMotion, !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome))
+        .environment(\.brandAmbientMotion, !menuSheetOpen)
+        let social = learningSheets(menu)
         .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
         .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
-        .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current); howToPlayOpensTable = false }) {
-            // The first visit opens straight into the table's tutorial; the menu offers both.
-            HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil,
-                          playGuided: howToPlayOpensTable ? nil : startGuidedGame)
-        }
-        .sheet(isPresented: $showGuidedWelcome) {
-            GuidedGameWelcomeView(playGuided: {
-                answerGuidedWelcome()
-                startGuidedGame()
-            }, readHowToPlay: {
-                answerGuidedWelcome()
-                Task { try? await Task.sleep(for: .milliseconds(450)); howToPlayOpensTable = true; showHowToPlay = true }
-            }, skip: answerGuidedWelcome)
-        }
         .sheet(isPresented: $showFriends) {
             FriendsView(account: account, join: { code in
                 // After the sheet closes, so the table setup can open.
@@ -435,6 +423,7 @@ struct OnDeviceRootView: View {
         .animation(.easeOut(duration: 0.25), value: matchmaker.isSearching)
         .animation(.easeOut(duration: 0.3), value: ceremony)
         .sheet(isPresented: $showBracketSheet) { bracketSheet }
+        return social
         .overlay(alignment: .bottom) { if !startingRollVisible { recoveryBanner } }
         .overlay { startingRollOverlay }
         // The versus intro plays first, over the opaque starting roll that follows it.
@@ -515,10 +504,34 @@ struct OnDeviceRootView: View {
         }
     }
 
+    /// A sheet or cover is open over the menu (its ambience pauses).
+    private var menuSheetOpen: Bool {
+        showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome
+    }
+
+    /// How to Play and the first launch's welcome, which can start the guided first game.
+    private func learningSheets<Content: View>(_ content: Content) -> some View {
+        content
+            .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current); howToPlayOpensTable = false }) {
+                // The first visit opens straight into the table's tutorial; the menu offers both.
+                HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil,
+                              playGuided: howToPlayOpensTable ? nil : startGuidedGame)
+            }
+            .sheet(isPresented: $showGuidedWelcome) {
+                GuidedGameWelcomeView(playGuided: {
+                    answerGuidedWelcome()
+                    startGuidedGame()
+                }, readHowToPlay: {
+                    answerGuidedWelcome()
+                    Task { try? await Task.sleep(for: .milliseconds(450)); howToPlayOpensTable = true; showHowToPlay = true }
+                }, skip: answerGuidedWelcome)
+            }
+    }
+
     /// The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
     private var menuIsFree: Bool {
         !activeGame && !showSetup && !setup.needsLeave && resume.offer == nil && !startingRollVisible
-            && !(showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome)
+            && !menuSheetOpen
     }
 
     /// First visit to the menu after this update: the walkthrough opens once by itself.

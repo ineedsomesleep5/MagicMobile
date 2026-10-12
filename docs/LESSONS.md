@@ -100,6 +100,11 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-12 (Claude): `OnDeviceRootView.presentedContent` is one very long SwiftUI modifier chain; adding
+  two sheets tipped Xcode 27 into "unable to type-check this expression in reasonable time" (reported
+  at an unrelated line near the end). **Fix:** the chain is split into `let` stages, and long `||`
+  conditions live in computed properties (`menuSheetOpen`). Add new sheets in a helper such as
+  `learningSheets(_:)` rather than lengthening the chain.
 - 2026-10-11 (Claude): the iOS CI `swift` job fails when any expression under `apps/ios/MagicMobile/Board/`
   takes over 200 ms to type-check, even after the build and tests pass. Wrapping a view in a Button inside
   the tavern bar's big ZStack, or a long settings body with ternaries, is enough to trip it. Cloud threads
