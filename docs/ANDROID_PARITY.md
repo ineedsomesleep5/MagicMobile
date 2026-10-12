@@ -66,6 +66,7 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | TavernDesign, TavernSockets, TavernFrameKind, TavernCardParts, BattlefieldTokenStack, PlayerStatusSummary | core `game/TavernSockets.kt` (new) | Ported, same numbers as `scripts/brand/tavern_layout.json` |
 | PortraitBoardViews.swift and GameplayActionDock.swift tavern pieces (medallions, phase plate, card-back fan, mana gems, pass disc, rings, stack tray, status pop-over) | app `board/TavernBoardViews.kt` (new), `board/HudViews.kt`, `board/CommandBar.kt` | Ported |
 | NativeGameView.tavernLandscapeContent | app `board/LandscapeBoard.kt` (`LandscapeCenterColumn`) | Ported |
+| GuidedGame.swift, GuidedGameViews.swift (the guided first game: coach notes, first-launch welcome) | core `game/GuidedGame.kt`, app `ui/GuidedGameViews.kt` | Ported; rules and words checked by `guided-game-cases.json` |
 
 ## Walnut Tavern (iOS builds 23–26)
 

@@ -21,6 +21,11 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-11 (Claude): the guided first game's coach (`GuidedGame.swift` / `GuidedGame.kt`) reads only
+  the snapshot (prompt envelope, legal action types, stack, turn), not the board's interaction
+  state, so it stays inside the SwiftPM package and the JVM core and both run the same
+  `guided-game-cases.json`. **Rule:** a new coach note gets a case there first; a snapshot case is a
+  patch over `base`.
 - 2026-10-11 (Claude): the battlefield picker is gone; Walnut Tavern is the only table. At launch both
   apps delete the saved `magicmobile.boardAppearance`, so players stuck on an old skin return to the
   tavern. **Rule:** UI tests that need another board still pin it with the
@@ -105,8 +110,8 @@ contradicting one.
   entries in the committed `MagicMobileiOS.xcodeproj/project.pbxproj` (build file, file reference,
   group child, Sources phase). Copy a neighbour's entries with fresh 24-hex IDs.
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
-  fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
-  includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
+  fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root two levels under the repo (the
+  parity tests read `../..`, e.g. `apps/zz-coreonly/`) that includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
   JDK 21, not 17). Maven Central answers 429 in bursts; retry with `--max-workers=1`. The app module
   only compiles in the `magicmobile-android-app.yml` PR check (or on Caleb's Mac).
 - 2026-10-11 (Claude): cloud threads ignore `defaultMode: bypassPermissions` / `dontAsk` in settings

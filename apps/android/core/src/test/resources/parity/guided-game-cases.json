@@ -1,0 +1,694 @@
+{
+  "about": "The guided first game: its words, its match and when each coach note shows. iOS ParityGoldenTests.testGuidedGameCasesOnBothPlatforms checks GuidedGameText, GuidedGameSetup, GuidedGameLaunch and GuidedGameCoach (GuidedGame.swift), and Android ParityGoldenTest.guidedGameCasesOnBothPlatforms checks the same names in core GuidedGame.kt. tips are in GuidedGameTip order. Each case lays its top-level keys over base (opponentStack: true puts one card on p2's stack), then runs GuidedGameCoach.advance with the note on screen (current) and the notes already shown; expect is the note shown after it and the one shown for the first time.",
+  "title": "Guided first game",
+  "subtitle": "A real game against an easy AI, with tips as each moment comes up.",
+  "start": "Play a guided game",
+  "gotIt": "Got it",
+  "turnOff": "Turn off tips",
+  "welcome": {
+    "title": "Welcome to the tavern",
+    "body": "New to Magic or to MagicMobile? Play a guided game against an easy AI and learn as you go.",
+    "readHowToPlay": "Read How to Play",
+    "skip": "I know Magic"
+  },
+  "tips": [
+    {
+      "id": "firstPlayer",
+      "title": "Who goes first",
+      "body": "Welcome to your guided game. I'll explain each moment the first time it comes up. Choose yourself to take the first turn.",
+      "actionable": true
+    },
+    {
+      "id": "mulligan",
+      "title": "Your opening hand",
+      "body": "These are your first seven cards. A good hand has two to five lands. Tap Keep, or Mulligan for a fresh seven.",
+      "actionable": true
+    },
+    {
+      "id": "attack",
+      "title": "Attack",
+      "body": "Tap each creature you want to send into combat, then Done Attacking. Creatures that arrived this turn can't attack yet.",
+      "actionable": true
+    },
+    {
+      "id": "block",
+      "title": "Block",
+      "body": "You're being attacked. Tap your creature, then the attacker it should block, and tap Done Blocking. Unblocked attackers hit you.",
+      "actionable": true
+    },
+    {
+      "id": "pay",
+      "title": "Pay the cost",
+      "body": "Tap your lands to pay for the spell. The tray shows how much mana is still owed.",
+      "actionable": true
+    },
+    {
+      "id": "target",
+      "title": "Choose a target",
+      "body": "This needs a target. Anything glowing red can be chosen: tap it.",
+      "actionable": true
+    },
+    {
+      "id": "opponentSpell",
+      "title": "A spell on the stack",
+      "body": "Your opponent's spell waits on the stack until everyone passes. You could answer with an instant; for now, tap the hourglass to let it resolve.",
+      "actionable": true
+    },
+    {
+      "id": "commander",
+      "title": "Cast your commander",
+      "body": "Your commander is ready in the command zone, and its medallion glows. Tap the medallion to cast it.",
+      "actionable": true
+    },
+    {
+      "id": "land",
+      "title": "Play a land",
+      "body": "Lands make the mana you cast spells with. Drag a land from your hand up onto the mat. You can play one each turn.",
+      "actionable": true
+    },
+    {
+      "id": "cast",
+      "title": "Cast a spell",
+      "body": "A green glow means a card can be played now. Drag it from your hand onto the mat to cast it.",
+      "actionable": true
+    },
+    {
+      "id": "pass",
+      "title": "Pass with the hourglass",
+      "body": "Nothing left to play? Tap the hourglass to move on. Skip jumps to your next turn and still stops when you're needed.",
+      "actionable": true
+    },
+    {
+      "id": "inspect",
+      "title": "Read a card",
+      "body": "Press and hold any card, yours or your opponent's, to read its full rules text.",
+      "actionable": false
+    },
+    {
+      "id": "basics",
+      "title": "You know the basics",
+      "body": "That's everything you need. Bring your opponent from 40 life to 0 to win, or leave from the game menu any time.",
+      "actionable": false
+    }
+  ],
+  "core": [
+    "mulligan",
+    "land",
+    "cast",
+    "pass",
+    "attack",
+    "inspect"
+  ],
+  "setup": {
+    "playerDeckID": "precon:token-triumph",
+    "playerPreconID": "token-triumph",
+    "opponentDeckID": "grave-danger",
+    "aiSkill": 1,
+    "startingPlayerMode": "choose"
+  },
+  "launch": {
+    "shownTipsKey": "magicmobile.guidedGame.shownTips",
+    "activeKey": "magicmobile.guidedGame.active",
+    "welcomeSeenKey": "magicmobile.guidedGame.welcomeSeen"
+  },
+  "base": {
+    "id": "guided-game",
+    "phase": "main",
+    "step": "precombat-main",
+    "turn": 3,
+    "log": [],
+    "viewerPlayerId": "p1",
+    "activePlayerId": "p1",
+    "priorityPlayerId": "p1",
+    "players": [
+      {
+        "playerId": "p1",
+        "displayName": "You",
+        "life": 40,
+        "poison": 0,
+        "commanderTax": 0,
+        "zones": {
+          "library": [],
+          "hand": [],
+          "battlefield": [],
+          "graveyard": [],
+          "exile": [],
+          "command": [],
+          "stack": [],
+          "handCount": 5,
+          "libraryCount": 88
+        }
+      },
+      {
+        "playerId": "p2",
+        "displayName": "Grave Danger",
+        "life": 40,
+        "poison": 0,
+        "commanderTax": 0,
+        "zones": {
+          "library": [],
+          "hand": [],
+          "battlefield": [],
+          "graveyard": [],
+          "exile": [],
+          "command": [],
+          "stack": [],
+          "handCount": 6,
+          "libraryCount": 88
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "the opening hand comes first",
+      "snapshot": {
+        "priorityPlayerId": null,
+        "turn": 1,
+        "promptEnvelopeV2": {
+          "id": "prompt-1",
+          "method": "GAME_ASK",
+          "messageId": 1,
+          "playerId": "p1",
+          "responseKind": "boolean",
+          "message": "Mulligan to 6 cards?",
+          "confirmation": {
+            "yesLabel": "Mulligan",
+            "noLabel": "Keep"
+          }
+        }
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "mulligan",
+        "newlyShown": "mulligan"
+      }
+    },
+    {
+      "name": "the starting player is not a target",
+      "snapshot": {
+        "priorityPlayerId": null,
+        "turn": 1,
+        "promptEnvelopeV2": {
+          "id": "prompt-1",
+          "method": "GAME_PICK_TARGET",
+          "messageId": 1,
+          "playerId": "p1",
+          "responseKind": "target",
+          "message": "Select a starting player",
+          "responseCommand": {
+            "type": "choose_target",
+            "promptId": "prompt-1",
+            "messageId": 1
+          }
+        }
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "firstPlayer",
+        "newlyShown": "firstPlayer"
+      }
+    },
+    {
+      "name": "a land before a spell",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "play_land-hand",
+            "type": "play_land",
+            "playerId": "p1",
+            "label": "play_land",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "cast_spell-hand",
+            "type": "cast_spell",
+            "playerId": "p1",
+            "label": "cast_spell",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "land",
+        "newlyShown": "land"
+      }
+    },
+    {
+      "name": "a spell once the land was shown",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "play_land-hand",
+            "type": "play_land",
+            "playerId": "p1",
+            "label": "play_land",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "cast_spell-hand",
+            "type": "cast_spell",
+            "playerId": "p1",
+            "label": "cast_spell",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "land"
+      ],
+      "current": null,
+      "expect": {
+        "current": "cast",
+        "newlyShown": "cast"
+      }
+    },
+    {
+      "name": "the commander before other spells",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "cast_spell-command",
+            "type": "cast_spell",
+            "playerId": "p1",
+            "label": "cast_spell",
+            "sourceZone": "command"
+          },
+          {
+            "id": "cast_spell-hand",
+            "type": "cast_spell",
+            "playerId": "p1",
+            "label": "cast_spell",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "land"
+      ],
+      "current": null,
+      "expect": {
+        "current": "commander",
+        "newlyShown": "commander"
+      }
+    },
+    {
+      "name": "the hourglass when nothing is left to play",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "pass",
+        "newlyShown": "pass"
+      }
+    },
+    {
+      "name": "no hourglass note outside a main phase",
+      "snapshot": {
+        "phase": "beginning",
+        "step": "upkeep",
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "inspect"
+      ],
+      "current": null,
+      "expect": {
+        "current": null,
+        "newlyShown": null
+      }
+    },
+    {
+      "name": "attackers",
+      "snapshot": {
+        "step": "declare-attackers",
+        "phase": "combat",
+        "legalActions": [
+          {
+            "id": "declare_attackers-x",
+            "type": "declare_attackers",
+            "playerId": "p1",
+            "label": "declare_attackers"
+          }
+        ]
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "attack",
+        "newlyShown": "attack"
+      }
+    },
+    {
+      "name": "blockers on the opponent's turn",
+      "snapshot": {
+        "activePlayerId": "p2",
+        "step": "declare-blockers",
+        "phase": "combat",
+        "legalActions": [
+          {
+            "id": "declare_blockers-x",
+            "type": "declare_blockers",
+            "playerId": "p1",
+            "label": "declare_blockers"
+          }
+        ]
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "block",
+        "newlyShown": "block"
+      }
+    },
+    {
+      "name": "paying a cost",
+      "snapshot": {
+        "promptEnvelopeV2": {
+          "id": "prompt-1",
+          "method": "GAME_PLAY_MANA",
+          "messageId": 1,
+          "playerId": "p1",
+          "responseKind": "mana",
+          "message": "Pay {2}{G}",
+          "responseCommand": {
+            "type": "play_mana",
+            "promptId": "prompt-1",
+            "messageId": 1
+          }
+        }
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "pay",
+        "newlyShown": "pay"
+      }
+    },
+    {
+      "name": "choosing a target",
+      "snapshot": {
+        "promptEnvelopeV2": {
+          "id": "prompt-1",
+          "method": "GAME_PICK_TARGET",
+          "messageId": 1,
+          "playerId": "p1",
+          "responseKind": "target",
+          "message": "Select target creature",
+          "responseCommand": {
+            "type": "choose_target",
+            "promptId": "prompt-1",
+            "messageId": 1
+          }
+        }
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "target",
+        "newlyShown": "target"
+      }
+    },
+    {
+      "name": "an opponent's spell on the stack",
+      "snapshot": {
+        "activePlayerId": "p2",
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ],
+        "opponentStack": true
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": "opponentSpell",
+        "newlyShown": "opponentSpell"
+      }
+    },
+    {
+      "name": "another player's question is not ours",
+      "snapshot": {
+        "priorityPlayerId": null,
+        "turn": 1,
+        "promptEnvelopeV2": {
+          "id": "prompt-1",
+          "method": "GAME_ASK",
+          "messageId": 1,
+          "playerId": "p2",
+          "responseKind": "boolean",
+          "message": "Mulligan to 6 cards?",
+          "confirmation": {
+            "yesLabel": "Mulligan",
+            "noLabel": "Keep"
+          }
+        }
+      },
+      "shown": [],
+      "current": null,
+      "expect": {
+        "current": null,
+        "newlyShown": null
+      }
+    },
+    {
+      "name": "no card-reading note before turn 3",
+      "snapshot": {
+        "turn": 2,
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "pass"
+      ],
+      "current": null,
+      "expect": {
+        "current": null,
+        "newlyShown": null
+      }
+    },
+    {
+      "name": "a note stays while it still applies",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "play_land-hand",
+            "type": "play_land",
+            "playerId": "p1",
+            "label": "play_land",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "land"
+      ],
+      "current": "land",
+      "expect": {
+        "current": "land",
+        "newlyShown": null
+      }
+    },
+    {
+      "name": "a note leaves once it is done",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "land"
+      ],
+      "current": "land",
+      "expect": {
+        "current": "pass",
+        "newlyShown": "pass"
+      }
+    },
+    {
+      "name": "a note that asks nothing gives way to one that does",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "cast_spell-hand",
+            "type": "cast_spell",
+            "playerId": "p1",
+            "label": "cast_spell",
+            "sourceZone": "hand"
+          },
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "land",
+        "inspect"
+      ],
+      "current": "inspect",
+      "expect": {
+        "current": "cast",
+        "newlyShown": "cast"
+      }
+    },
+    {
+      "name": "a note that asks nothing stays otherwise",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "mulligan",
+        "land",
+        "cast",
+        "pass",
+        "attack",
+        "inspect"
+      ],
+      "current": "inspect",
+      "expect": {
+        "current": "inspect",
+        "newlyShown": null
+      }
+    },
+    {
+      "name": "the basics once every core note was shown",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "mulligan",
+        "land",
+        "cast",
+        "pass",
+        "attack",
+        "inspect"
+      ],
+      "current": null,
+      "expect": {
+        "current": "basics",
+        "newlyShown": "basics"
+      }
+    },
+    {
+      "name": "no basics before the core notes",
+      "snapshot": {
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [
+        "mulligan",
+        "land",
+        "cast",
+        "pass",
+        "inspect"
+      ],
+      "current": null,
+      "expect": {
+        "current": null,
+        "newlyShown": null
+      }
+    },
+    {
+      "name": "a finished game shows nothing",
+      "snapshot": {
+        "gameStatus": "completed",
+        "legalActions": [
+          {
+            "id": "pass_priority-x",
+            "type": "pass_priority",
+            "playerId": "p1",
+            "label": "pass_priority"
+          }
+        ]
+      },
+      "shown": [],
+      "current": "land",
+      "expect": {
+        "current": null,
+        "newlyShown": null
+      }
+    }
+  ]
+}
