@@ -89,6 +89,9 @@ Two are social and never reach the engine:
   a profile report a message or block the player (Supabase `mm_report` / `mm_block`).
   `apps/android/core/src/test/resources/parity/chat-cases.json` holds the shared cases.
 
+The host's turn timer also sends a `clock` packet to each guest when a player's decision clock
+starts, changes or stops (PROTOCOL.md, Turn timer). The relay passes it on like any other packet.
+
 Invite links are `https://magicmobile-downloads.vercel.app/join/<CODE>` (the site's join page,
 a universal link / verified app link when the app is installed) and `magicmobile://join/<CODE>`.
 

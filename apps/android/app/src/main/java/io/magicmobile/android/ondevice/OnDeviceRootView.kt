@@ -913,6 +913,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 refreshGame = ::refresh, reconnectGame = ::refresh, checkBridgeHealth = { setup.localHealth() },
                                 newGame = ::rematchOrLeave, quitGame = ::leaveFinishedOrAsk,
                                 portraitModeEnabled = portraitModeEnabled, setPortraitModeEnabled = { portraitModeEnabled = it })
+                            // The online turn timer's rope; solo games have no clock.
+                            if (setup.usingMultiplayer && table != null) {
+                                io.magicmobile.android.board.TurnRopeOverlay(table.turnClock, table.localSeatID, table.seatNames)
+                            }
                         }
                     }
                 } else if (showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true)) {

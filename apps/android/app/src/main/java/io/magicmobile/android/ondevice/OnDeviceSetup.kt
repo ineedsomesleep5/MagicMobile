@@ -88,7 +88,7 @@ object OnDeviceSetupPreferences {
 }
 
 /** The table features every cross-play phone must share (see RelayTable). */
-const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1/chat-1"
+const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/concede-1/emote-1/chat-1/clock-1"
 
 /** Port of OnDeviceAppConfiguration.aiGameSeats. */
 object OnDeviceAppConfiguration {
@@ -210,7 +210,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
                     io.magicmobile.android.core.DoubleFacedCards.shared.setReverseFaces(it.reverseFaceFronts)
                 }
                 val built = BuildIdentity(index.upstreamCommit, index.catalogueHash,
-                    "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1")
+                    "ondevice-0.1/app-${BuildConfig.VERSION_NAME}/build-${BuildConfig.RELEASE_BUILD}/rollstep-2/room-1/concede-1/emote-1/clock-1")
                 identity = built
                 status = "Choose your deck and players."
                 // A saved game is offered (or explained) once the build it must match is known.

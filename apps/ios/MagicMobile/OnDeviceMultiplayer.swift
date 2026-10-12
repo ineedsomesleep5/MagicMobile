@@ -630,6 +630,9 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         return (tableCode, min(3, seatsWanted - seatsTaken))
     }
     @Published private(set) var isFailed = false
+    /// The online turn timer's clocks as this phone shows them. The host runs them (`TurnClock`)
+    /// and sends each change to the guests in a `clock` packet.
+    @Published private(set) var turnClock = TurnClockBoard()
     /// A player's quick-chat line: their table name and a fixed emote, never free text.
     var onEmote: ((String, GameEmote) -> Void)?
     private var lastEmoteFrom: [String: Date] = [:]
@@ -664,6 +667,11 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var requestedPlayerCount = 2
     private var requestedAISeats: [AISeatDescriptor] = []
     private var rollTimer: Task<Void, Never>?
+    /// Host only: every human seat's decision clock, the task that runs it, and each seat's latest read.
+    private var hostClock = TurnClock()
+    private var clockTask: Task<Void, Never>?
+    private var clockReads: [String: (revision: Int64, at: TimeInterval)] = [:]
+    private var clockDirty = false
     private var closing = false
     private var failed = false
     private var generation = UUID()
@@ -1095,6 +1103,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             rollProgress = progress
             hasRolled = false
             updateRollStatus()
+        case "clock":
+            guard peer == lobby.hostID, lobby.localPeerID != lobby.hostID else { throw EngineError.unboundPeer }
+            let clock = try TurnClockWire.parse(value)
+            turnClock = .from(paused: clock.paused, entries: clock.entries, now: ProcessInfo.processInfo.systemUptime)
         case "ready":
             reportedReady = try lobby.acceptReadyPacket(value, from: peer)
             updateRoom()
@@ -1271,6 +1283,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
                 self.room = nil
                 self.isConnected = true
                 self.updateRollStatus()
+                self.beginHostClock(engine: engine, matchID: matchID, humans: lobby.peerIDs.count, token: token)
                 self.lobbyTimer?.cancel(); self.status = "Connected as host. Every player must keep the app in the foreground."
             } catch is CancellationError { }
             catch { self.fail(error.localizedDescription) }
@@ -1352,10 +1365,85 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     /// notice polls on its heartbeat, so a failed send never ends the match.
     private func announceRevision(_ revision: Int64, token: UUID) {
         guard generation == token, !failed, !closing, let lobby, let epoch, lobby.localPeerID == lobby.hostID else { return }
+        clockDirty = true
         let notice = OnDeviceRevisionNotice.packet(epoch: epoch, revision: revision)
         for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) {
             try? send(notice, to: peer)
         }
+    }
+
+    /// Runs the turn timer on the host for every human seat (`TurnClock`). A seat is read again
+    /// when the game moved on, when its clock ran out, and every few seconds regardless.
+    private func beginHostClock(engine: EngineClient, matchID: String, humans: Int, token: UUID) {
+        stopClock()
+        let seats = (1...max(1, humans)).map { "player\($0)" }
+        clockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.generation == token, !self.failed, !self.closing, !Task.isCancelled else { return }
+                guard await self.tickHostClock(engine: engine, matchID: matchID, seats: seats, token: token) else { return }
+            }
+        }
+    }
+
+    /// One second of the host's clock. False once the game is over.
+    private func tickHostClock(engine: EngineClient, matchID: String, seats: [String], token: UUID) async -> Bool {
+        var changed = hostClock.setPaused(isSuspended || rollProgress?.isComplete == false,
+                                          now: ProcessInfo.processInfo.systemUptime)
+        let due = Set(hostClock.expired(now: ProcessInfo.processInfo.systemUptime).map(\.seat))
+        var prompts: [String: MagicMobileOnDevice.EnginePrompt] = [:]
+        for seat in seats {
+            let now = ProcessInfo.processInfo.systemUptime
+            let last = clockReads[seat]
+            guard clockDirty || due.contains(seat) || last == nil || now - (last?.at ?? 0) >= 5 else { continue }
+            guard let poll = try? await engine.poll(matchID: matchID, seatID: seat, after: last?.revision ?? 0) else { continue }
+            guard generation == token, !failed, !closing else { return false }
+            clockReads[seat] = (poll.revision, ProcessInfo.processInfo.systemUptime)
+            if ["ended", "failed", "closed"].contains(poll.phase) {
+                hostClock.clear(); publishHostClock(); return false
+            }
+            if hostClock.observe(seat: seat, prompt: TurnClock.prompt(poll), now: ProcessInfo.processInfo.systemUptime) { changed = true }
+            prompts[seat] = poll.prompt
+        }
+        clockDirty = false
+        for (seat, expired) in hostClock.expired(now: ProcessInfo.processInfo.systemUptime) {
+            // Act only on the question this tick just read for that seat.
+            guard let prompt = prompts[seat], prompt.id == expired.id, prompt.revision == expired.revision else { continue }
+            let answer = TurnClock.defaultAnswer(prompt)
+            guard let outcome = hostClock.timeout(seat: seat, prompt: expired, hasDefault: answer != nil,
+                                                  now: ProcessInfo.processInfo.systemUptime) else { continue }
+            changed = true
+            switch outcome {
+            case .answer:
+                do { _ = try await engine.respond(matchID: matchID, seatID: seat, prompt: prompt, answer: answer ?? .null) }
+                catch { hostClock.answerFailed(seat: seat, prompt: expired, now: ProcessInfo.processInfo.systemUptime) }
+            case .forfeit:
+                try? await engine.concede(matchID: matchID, seatID: seat)
+            case .grace:
+                break
+            }
+            guard generation == token, !failed, !closing else { return false }
+        }
+        if changed { publishHostClock() }
+        return true
+    }
+
+    /// Shows the host's clocks here and sends them to every connected guest. Best effort, like revision notices.
+    private func publishHostClock() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let entries = hostClock.entries(now: now)
+        turnClock = .from(paused: hostClock.paused, entries: entries, now: now)
+        guard let lobby, let epoch, lobby.localPeerID == lobby.hostID else { return }
+        let packet = TurnClockWire.packet(epoch: epoch.uuidString, paused: hostClock.paused, entries: entries)
+        for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) {
+            try? send(packet, to: peer)
+        }
+    }
+
+    private func stopClock() {
+        clockTask?.cancel(); clockTask = nil
+        hostClock = TurnClock(); clockReads = [:]; clockDirty = false
+        turnClock = TurnClockBoard()
     }
 
     private func sendPresence(_ suspended: Bool, to peer: String) {
@@ -1390,6 +1478,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         }
         generation = UUID(); hostEngine = nil; needsCleanup = false; endpoint = nil; hostAISeatSummary = nil; seatNames = [:]
         rollTimer?.cancel(); rollTimer = nil
+        stopClock()
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""; tableSeats = []
         remote = nil; tableLink = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); relayAwayPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
@@ -1404,6 +1493,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         guard !failed else { return }
         failed = true; isFailed = true; isConnected = false; status = message; seatNames = [:]; room = nil; waitingSeats = []
         rollTimer?.cancel(); rollTimer = nil
+        stopClock()
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""; tableSeats = []
         lobbyTimer?.cancel(); startup?.cancel(); remote?.close()
         hostDispatcher?.cancel()
