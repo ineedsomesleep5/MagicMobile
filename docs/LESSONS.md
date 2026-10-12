@@ -100,7 +100,6 @@ contradicting one.
   the tavern bar's big ZStack, or a long settings body with ternaries, is enough to trip it. Cloud threads
   can't download the job's artifact that names the slow lines. **Rule:** keep new Board views small,
   as separate structs or helper functions with explicit types, rather than adding to a large closure.
-
 - 2026-10-11 (Claude): a new iOS source file needs three registrations: `apps/ios/Package.swift`
   (`sources` of the target or test target, unless its folder is excluded, like `Board/`) and four
   entries in the committed `MagicMobileiOS.xcodeproj/project.pbxproj` (build file, file reference,
