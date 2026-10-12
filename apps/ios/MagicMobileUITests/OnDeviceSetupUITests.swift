@@ -592,6 +592,8 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         replaceText(field, with: name)
         let editor = app.textViews["Decklist text"]
+        // The optional commander panel (2026-10-11) sits above the decklist and can push it below the fold.
+        revealOutsideEditor(editor)
         tapDiagnosed(editor)
         editor.typeText(text)
         let review = app.buttons["deckStudio.import.review"]
