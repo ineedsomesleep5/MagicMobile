@@ -1,0 +1,107 @@
+{
+  "rules": {"decision": 60, "rope": 20, "grace": 20, "strikesToForfeit": 3, "resumeFloor": 10},
+  "scenarios": [
+    {
+      "name": "a pass-like decision is answered at 60 s and the player's own answer clears the strike",
+      "steps": [
+        {"at": 0, "observe": {"seat": "player2", "prompt": "a"}, "changed": true},
+        {"at": 1, "observe": {"seat": "player2", "prompt": "a"}, "changed": false},
+        {"at": 30, "entries": [{"seat": "player2", "remaining": 30, "limit": 60, "strikes": 0}]},
+        {"at": 59.9, "expired": []},
+        {"at": 60, "expired": ["player2"]},
+        {"at": 60, "timeout": {"seat": "player2", "prompt": "a", "hasDefault": true}, "result": "answer"},
+        {"at": 60, "expired": [], "entries": []},
+        {"at": 60, "timeout": {"seat": "player2", "prompt": "a", "hasDefault": true}, "result": null},
+        {"at": 61, "observe": {"seat": "player2", "prompt": "b"}, "changed": true, "strikes": {"player2": 1}},
+        {"at": 70, "observe": {"seat": "player2", "prompt": null}, "changed": true, "strikes": {"player2": 0}},
+        {"at": 70, "entries": []}
+      ]
+    },
+    {
+      "name": "three straight timeouts forfeit the seat",
+      "steps": [
+        {"at": 0, "observe": {"seat": "player1", "prompt": "a"}},
+        {"at": 60, "timeout": {"seat": "player1", "prompt": "a", "hasDefault": true}, "result": "answer"},
+        {"at": 61, "observe": {"seat": "player1", "prompt": "b"}},
+        {"at": 121, "timeout": {"seat": "player1", "prompt": "b", "hasDefault": true}, "result": "answer"},
+        {"at": 122, "observe": {"seat": "player1", "prompt": "c"}, "strikes": {"player1": 2}},
+        {"at": 182, "expired": ["player1"]},
+        {"at": 182, "timeout": {"seat": "player1", "prompt": "c", "hasDefault": true}, "result": "forfeit"},
+        {"at": 182, "expired": [], "entries": [], "strikes": {"player1": 3}}
+      ]
+    },
+    {
+      "name": "a question with no pass-like answer gets 20 s of grace per strike",
+      "steps": [
+        {"at": 0, "observe": {"seat": "player2", "prompt": "mulligan"}},
+        {"at": 60, "timeout": {"seat": "player2", "prompt": "mulligan", "hasDefault": false}, "result": "grace"},
+        {"at": 60, "expired": [], "entries": [{"seat": "player2", "remaining": 20, "limit": 20, "strikes": 1}]},
+        {"at": 80, "expired": ["player2"]},
+        {"at": 80, "timeout": {"seat": "player2", "prompt": "mulligan", "hasDefault": false}, "result": "grace"},
+        {"at": 100, "timeout": {"seat": "player2", "prompt": "mulligan", "hasDefault": false}, "result": "forfeit"}
+      ]
+    },
+    {
+      "name": "a refused answer falls back to grace",
+      "steps": [
+        {"at": 0, "observe": {"seat": "player2", "prompt": "a"}},
+        {"at": 60, "timeout": {"seat": "player2", "prompt": "a", "hasDefault": true}, "result": "answer"},
+        {"at": 60, "answerFailed": {"seat": "player2", "prompt": "a"}},
+        {"at": 60, "entries": [{"seat": "player2", "remaining": 20, "limit": 20, "strikes": 1}]},
+        {"at": 70, "observe": {"seat": "player2", "prompt": null}, "strikes": {"player2": 0}}
+      ]
+    },
+    {
+      "name": "a pause freezes every clock and returns at least 10 s",
+      "steps": [
+        {"at": 0, "observe": {"seat": "player1", "prompt": "a"}},
+        {"at": 0, "observe": {"seat": "player2", "prompt": "x"}},
+        {"at": 55, "pause": true, "changed": true},
+        {"at": 55, "pause": true, "changed": false},
+        {"at": 500, "expired": [], "entries": [{"seat": "player1", "remaining": 5, "limit": 60, "strikes": 0}, {"seat": "player2", "remaining": 5, "limit": 60, "strikes": 0}]},
+        {"at": 500, "observe": {"seat": "player2", "prompt": "y"}},
+        {"at": 600, "entries": [{"seat": "player1", "remaining": 5, "limit": 60, "strikes": 0}, {"seat": "player2", "remaining": 60, "limit": 60, "strikes": 0}]},
+        {"at": 600, "pause": false, "changed": true},
+        {"at": 609.5, "expired": []},
+        {"at": 610, "expired": ["player1"], "entries": [{"seat": "player1", "remaining": 0, "limit": 60, "strikes": 0}, {"seat": "player2", "remaining": 50, "limit": 60, "strikes": 0}]}
+      ]
+    }
+  ],
+  "defaultAnswers": [
+    {"name": "pass priority", "prompt": {"kind": "SELECT", "payload": {"selectMode": "priority"}, "responseTypes": ["boolean", "uuid"]}, "answer": {"kind": "boolean", "value": true}},
+    {"name": "finish attacking", "prompt": {"kind": "SELECT", "payload": {"selectMode": "attackers"}, "responseTypes": ["boolean", "uuid"]}, "answer": {"kind": "boolean", "value": true}},
+    {"name": "finish blocking", "prompt": {"kind": "SELECT", "payload": {"selectMode": "blockers"}, "responseTypes": ["boolean", "uuid"]}, "answer": {"kind": "boolean", "value": true}},
+    {"name": "unknown select mode", "prompt": {"kind": "SELECT", "payload": {"selectMode": "other"}, "responseTypes": ["boolean"]}, "answer": null},
+    {"name": "priority without a boolean", "prompt": {"kind": "SELECT", "payload": {"selectMode": "priority"}, "responseTypes": ["uuid"]}, "answer": null},
+    {"name": "cancel a payment", "prompt": {"kind": "PLAY_MANA", "payload": {}, "responseTypes": ["mana", "boolean"]}, "answer": {"kind": "boolean", "value": false}},
+    {"name": "skip an optional target", "prompt": {"kind": "PICK_TARGET", "payload": {"required": false}, "responseTypes": ["uuid", "boolean"]}, "answer": {"kind": "boolean", "value": false}},
+    {"name": "a required target has none", "prompt": {"kind": "PICK_TARGET", "payload": {"required": true}, "responseTypes": ["uuid", "boolean"]}, "answer": null},
+    {"name": "an optional ability", "prompt": {"kind": "PICK_ABILITY", "payload": {"required": false}, "responseTypes": ["uuid", "boolean"]}, "answer": {"kind": "boolean", "value": false}},
+    {"name": "a yes or no question has none", "prompt": {"kind": "ASK", "payload": {}, "responseTypes": ["boolean"]}, "answer": null},
+    {"name": "X mana has none", "prompt": {"kind": "PLAY_X_MANA", "payload": {}, "responseTypes": ["mana", "boolean"]}, "answer": null}
+  ],
+  "wire": {
+    "valid": [
+      {"name": "two clocks", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player1", "remainingMillis": 12500, "limitMillis": 60000, "strikes": 0}, {"seat": "player2", "remainingMillis": 0, "limitMillis": 20000, "strikes": 2}]}},
+      {"name": "nobody deciding", "packet": {"type": "clock", "epoch": "E", "paused": true, "clocks": []}}
+    ],
+    "invalid": [
+      {"name": "extra key", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [], "extra": 1}},
+      {"name": "missing paused", "packet": {"type": "clock", "epoch": "E", "clocks": []}},
+      {"name": "unknown seat", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player5", "remainingMillis": 1, "limitMillis": 60000, "strikes": 0}]}},
+      {"name": "remaining over limit", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player1", "remainingMillis": 60001, "limitMillis": 60000, "strikes": 0}]}},
+      {"name": "limit too long", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player1", "remainingMillis": 1, "limitMillis": 120001, "strikes": 0}]}},
+      {"name": "too many strikes", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player1", "remainingMillis": 1, "limitMillis": 60000, "strikes": 4}]}},
+      {"name": "a seat twice", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player1", "remainingMillis": 1, "limitMillis": 60000, "strikes": 0}, {"seat": "player1", "remainingMillis": 2, "limitMillis": 60000, "strikes": 0}]}},
+      {"name": "text for a number", "packet": {"type": "clock", "epoch": "E", "paused": false, "clocks": [{"seat": "player1", "remainingMillis": "1", "limitMillis": 60000, "strikes": 0}]}}
+    ]
+  },
+  "ropes": [
+    {"name": "my own rope comes first", "board": {"paused": false, "clocks": [{"seat": "player1", "deadline": 115, "limit": 60, "strikes": 0}, {"seat": "player2", "deadline": 105, "limit": 60, "strikes": 1}]}, "local": "player1", "now": 100, "rope": {"seat": "player1", "isLocal": true, "remaining": 15, "fraction": 0.75, "strikes": 0}, "untilRope": 0},
+    {"name": "not yet burning", "board": {"paused": false, "clocks": [{"seat": "player2", "deadline": 130, "limit": 60, "strikes": 0}]}, "local": "player1", "now": 100, "rope": null, "untilRope": 10},
+    {"name": "an opponent's rope", "board": {"paused": false, "clocks": [{"seat": "player2", "deadline": 105, "limit": 60, "strikes": 2}]}, "local": "player1", "now": 100, "rope": {"seat": "player2", "isLocal": false, "remaining": 5, "fraction": 0.25, "strikes": 2}, "untilRope": 0},
+    {"name": "a grace period burns from the start", "board": {"paused": false, "clocks": [{"seat": "player2", "deadline": 120, "limit": 20, "strikes": 1}]}, "local": "player1", "now": 100, "rope": {"seat": "player2", "isLocal": false, "remaining": 20, "fraction": 1, "strikes": 1}, "untilRope": 0},
+    {"name": "paused", "board": {"paused": true, "clocks": [{"seat": "player2", "deadline": 105, "limit": 60, "strikes": 0}]}, "local": "player1", "now": 100, "rope": null, "untilRope": null},
+    {"name": "burnt out", "board": {"paused": false, "clocks": [{"seat": "player2", "deadline": 100, "limit": 60, "strikes": 0}]}, "local": "player1", "now": 100, "rope": null, "untilRope": null}
+  ]
+}

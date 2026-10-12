@@ -101,6 +101,10 @@ contradicting one.
   can't download the job's artifact that names the slow lines. **Rule:** keep new Board views small,
   as separate structs or helper functions with explicit types, rather than adding to a large closure.
 
+- 2026-10-11 (Claude): a new iOS source file needs three registrations: `apps/ios/Package.swift`
+  (`sources` of the target or test target, unless its folder is excluded, like `Board/`) and four
+  entries in the committed `MagicMobileiOS.xcodeproj/project.pbxproj` (build file, file reference,
+  group child, Sources phase). Copy a neighbour's entries with fresh 24-hex IDs.
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root that
   includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
