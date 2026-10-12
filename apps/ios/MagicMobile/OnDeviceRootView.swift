@@ -512,20 +512,25 @@ struct OnDeviceRootView: View {
     /// How to Play and the first launch's welcome, which can start the guided first game.
     private func learningSheets<Content: View>(_ content: Content) -> some View {
         content
-            .sheet(isPresented: $showHowToPlay, onDismiss: { HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current); howToPlayOpensTable = false }) {
-                // The first visit opens straight into the table's tutorial; the menu offers both.
-                HowToPlayView(tutorialID: howToPlayOpensTable ? HowToPlayText.tutorials[0].id : nil,
-                              playGuided: howToPlayOpensTable ? nil : startGuidedGame)
-            }
+            .sheet(isPresented: $showHowToPlay, onDismiss: closeHowToPlay) { howToPlaySheet }
             .sheet(isPresented: $showGuidedWelcome) {
-                GuidedGameWelcomeView(playGuided: {
-                    answerGuidedWelcome()
-                    startGuidedGame()
-                }, readHowToPlay: {
-                    answerGuidedWelcome()
-                    Task { try? await Task.sleep(for: .milliseconds(450)); howToPlayOpensTable = true; showHowToPlay = true }
-                }, skip: answerGuidedWelcome)
+                GuidedGameWelcomeView(playGuided: { playGuidedFromWelcome() },
+                                      readHowToPlay: { readHowToPlayFromWelcome() },
+                                      skip: { answerGuidedWelcome() })
             }
+    }
+
+    /// The first visit opens straight into the table's tutorial; the menu offers both.
+    private var howToPlaySheet: HowToPlayView {
+        if howToPlayOpensTable {
+            return HowToPlayView(tutorialID: HowToPlayText.tutorials[0].id, playGuided: nil)
+        }
+        return HowToPlayView(tutorialID: nil, playGuided: { startGuidedGame() })
+    }
+
+    private func closeHowToPlay() {
+        HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current)
+        howToPlayOpensTable = false
     }
 
     /// The main menu is showing with nothing over it (no game, setup, saved-game offer or sheet).
@@ -944,7 +949,7 @@ struct OnDeviceRootView: View {
         .overlay { zoneOverlay }
         .overlay(alignment: .top) {
             if guidedGame, let guidedTip {
-                GuidedGameCoachCard(tip: guidedTip, dismiss: { self.guidedTip = nil }, turnOff: endGuidedTips)
+                GuidedGameCoachCard(tip: guidedTip, dismiss: { self.guidedTip = nil }, turnOff: { endGuidedTips() })
                     .padding(.top, 6)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -1354,6 +1359,21 @@ struct OnDeviceRootView: View {
         GuidedGameLaunch.markWelcomeSeen(in: MagicMobilePreferences.current)
         HowToPlayLaunch.markSeen(in: MagicMobilePreferences.current)
         showGuidedWelcome = false
+    }
+
+    private func playGuidedFromWelcome() {
+        answerGuidedWelcome()
+        startGuidedGame()
+    }
+
+    /// The slideshow opens once the welcome has slid away, straight into the table's tutorial.
+    private func readHowToPlayFromWelcome() {
+        answerGuidedWelcome()
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            howToPlayOpensTable = true
+            showHowToPlay = true
+        }
     }
 
     private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int) {

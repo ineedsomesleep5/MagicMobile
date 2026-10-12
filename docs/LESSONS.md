@@ -104,7 +104,12 @@ contradicting one.
   two sheets tipped Xcode 27 into "unable to type-check this expression in reasonable time" (reported
   at an unrelated line near the end). **Fix:** the chain is split into `let` stages, and long `||`
   conditions live in computed properties (`menuSheetOpen`). Add new sheets in a helper such as
-  `learningSheets(_:)` rather than lengthening the chain.
+  `learningSheets(_:)` rather than lengthening the chain. After the split, the same sheets failed with
+  "failed to produce diagnostic for expression" (a compiler crash, so it names no cause). Inside a sheet,
+  pass plain closures that call named methods, and build the sheet's view in a typed computed property.
+  Don't use multi-statement closures, `Task` blocks, ternaries that mix `nil` with a method reference, or
+  bare method references (`skip: someMethod`). No Swift toolchain is installed in the cloud container,
+  so CI is the only check.
 - 2026-10-11 (Claude): the iOS CI `swift` job fails when any expression under `apps/ios/MagicMobile/Board/`
   takes over 200 ms to type-check, even after the build and tests pass. Wrapping a view in a Button inside
   the tavern bar's big ZStack, or a long settings body with ternaries, is enough to trip it. Cloud threads
