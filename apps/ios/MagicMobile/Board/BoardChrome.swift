@@ -902,9 +902,10 @@ struct TavernMedallion<Portrait: View>: View {
             }
             .frame(width: diameter * 1.35, height: diameter * 1.35)
             .allowsHitTesting(false)
-            // On the frame's brass rim, under the life badge.
+            // Traces the table socket's outer brass ring (about 1.35 portrait radii out on the
+            // plate), under the life badge.
             if let turnClockFeed, let clockPlayerName {
-                TurnClockRing(feed: turnClockFeed, playerName: clockPlayerName, diameter: diameter * 1.28)
+                TurnClockRing(feed: turnClockFeed, playerName: clockPlayerName, diameter: diameter * 1.42)
             }
             if let life {
                 BoardLifeTotal(life: life)
@@ -2456,8 +2457,9 @@ struct TavernStatusGlance: View {
 enum TavernEffectOrbit {
     static let stepDegrees = 25.0
     /// Clear of the medallion's brass ring and life badge, in design points past the portrait's hole.
-    static let ringGap: CGFloat = 21
-    /// A badge's diameter as a share of the orbit's radius: 22 pt on the portrait plate, neighbours just touching.
+    /// 25 keeps them off the opponent's turn ring on that brass ring (TurnClockRing).
+    static let ringGap: CGFloat = 25
+    /// A badge's diameter as a share of the orbit's radius: about 23 pt on the portrait plate, neighbours just touching.
     static let badgeShare: CGFloat = 0.42
 
     static func radius(holeRadius: CGFloat) -> CGFloat { holeRadius + ringGap }
