@@ -902,10 +902,12 @@ struct TavernMedallion<Portrait: View>: View {
             }
             .frame(width: diameter * 1.35, height: diameter * 1.35)
             .allowsHitTesting(false)
-            // Traces the table socket's outer brass ring (about 1.35 portrait radii out on the
-            // plate), under the life badge.
+            // Traces the table socket's outer brass ring, under the life badge. Measured on the
+            // iPhone 17 Pro plate: the band's centre line is 1.46 portrait radii out and its
+            // centre sits 0.08 diameters below the portrait's (the 3D ring's lower lip is deeper).
             if let turnClockFeed, let clockPlayerName {
-                TurnClockRing(feed: turnClockFeed, playerName: clockPlayerName, diameter: diameter * 1.42)
+                TurnClockRing(feed: turnClockFeed, playerName: clockPlayerName, diameter: diameter * 1.55)
+                    .offset(y: diameter * 0.08)
             }
             if let life {
                 BoardLifeTotal(life: life)

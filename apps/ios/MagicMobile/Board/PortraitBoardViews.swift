@@ -218,7 +218,7 @@ struct PortraitOpponentStatusBar: View {
                 TopOfLibraryCard(card: top, owner: "\(opponentName)'s", height: diameter * 0.66) {
                     viewZone("Top of \(opponentName)'s library", [top])
                 }
-                .offset(x: diameter * 0.55, y: diameter * 0.55)
+                .offset(x: diameter * 0.8, y: diameter * 0.74)
             }
         }
         let label = opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life"
