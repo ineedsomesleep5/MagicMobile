@@ -369,15 +369,15 @@ private struct DesignPreviewFixtureScreen: View {
         }
         .environment(\.turnClockFeed, previewClockFeed)
         .task {
-            // MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike: the turn timer's ring round the pass
-            // button, replaying a decision's last 22 seconds so it lights, burns out and loops.
+            // MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike: the turn timer ring (yours round the pass
+            // button, the opponent's round their medallion), replaying a decision's last 22 seconds on a loop.
             guard let previewClockFeed, let scenario = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] else { return }
             let seat = scenario == "you" ? "player1" : "player2"
             while !Task.isCancelled {
                 let deadline = ProcessInfo.processInfo.systemUptime + TurnClockRules.online.rope + 2
                 previewClockFeed.update(board: TurnClockBoard(clocks: [.init(seat: seat, deadline: deadline, limit: TurnClockRules.online.decision,
                                                                              strikes: scenario == "strike" ? 1 : 0)]),
-                                        localSeat: "player1", seatNames: ["player2": "Mira"])
+                                        localSeat: "player1", seatNames: ["player1": "You", "player2": "Aurelia"])
                 do { try await Task.sleep(for: .seconds(TurnClockRules.online.rope + 4)) } catch { return }
             }
         }

@@ -204,7 +204,8 @@ struct PortraitOpponentStatusBar: View {
     @ViewBuilder
     private func opponentMedallion(diameter: CGFloat) -> some View {
         let medallion = TavernMedallion(diameter: diameter, life: opponent.isOut ? nil : opponent.life,
-                                        active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable) {
+                                        active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable,
+                                        clockPlayerName: opponent.displayName) {
             PlayerPortrait(player: opponent, size: diameter, active: false,
                            thinking: snapshot.thinkingPlayerID == opponent.playerId)
         }

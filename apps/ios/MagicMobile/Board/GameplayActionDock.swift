@@ -542,12 +542,15 @@ struct PortraitBottomCommandBar: View {
         )
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
         // The revealed top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix…) beside your portrait.
+        // In portrait it sits under the mana rail's left end, clear of the gems and the stack tray (Caleb, 2026-10-13).
         .overlay(alignment: .topTrailing) {
             if let top = human.zones.library.first {
-                TopOfLibraryCard(card: top, playable: castable.contains(.library), owner: "your", height: diameter * 0.72) {
+                let portrait = canvas.height > canvas.width
+                TopOfLibraryCard(card: top, playable: castable.contains(.library), owner: "your",
+                                 height: diameter * (portrait ? 0.66 : 0.72)) {
                     viewZone("Top of your library", [top])
                 }
-                .offset(x: diameter * 0.62, y: -diameter * 0.05)
+                .offset(x: diameter * (portrait ? 0.53 : 0.62), y: diameter * (portrait ? 0.30 : -0.05))
             }
         }
         .overlay(alignment: .top) {

@@ -884,7 +884,10 @@ struct TavernMedallion<Portrait: View>: View {
     var targetable = false
     /// Your commander can be cast: its own breathing glow and a crown spark.
     var commanderReady = false
+    /// An opponent's table name: their online turn timer rings the medallion (TurnClockRing).
+    var clockPlayerName: String? = nil
     @ViewBuilder let portrait: Portrait
+    @Environment(\.turnClockFeed) private var turnClockFeed
 
     var body: some View {
         ZStack {
@@ -899,6 +902,10 @@ struct TavernMedallion<Portrait: View>: View {
             }
             .frame(width: diameter * 1.35, height: diameter * 1.35)
             .allowsHitTesting(false)
+            // On the frame's brass rim, under the life badge.
+            if let turnClockFeed, let seat = turnClockFeed.seat(named: clockPlayerName) {
+                TurnClockRing(feed: turnClockFeed, seat: seat, diameter: diameter * 1.28)
+            }
             if let life {
                 BoardLifeTotal(life: life)
                     .font(.system(size: diameter * 0.30, weight: .heavy, design: .serif))

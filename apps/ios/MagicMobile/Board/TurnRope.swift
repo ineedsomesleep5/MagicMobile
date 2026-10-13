@@ -14,6 +14,12 @@ final class TurnClockFeed: ObservableObject {
         if self.localSeat != localSeat { self.localSeat = localSeat }
         if self.seatNames != seatNames { self.seatNames = seatNames }
     }
+
+    /// The seat a board player sits in: seat names are unique and are the engine's player names.
+    func seat(named name: String?) -> String? {
+        guard let name else { return nil }
+        return seatNames.first { $0.value == name }?.key
+    }
 }
 
 private struct TurnClockFeedKey: EnvironmentKey {
@@ -28,24 +34,29 @@ extension EnvironmentValues {
     }
 }
 
-/// The online turn timer's ring around the pass button (it replaced the burning rope, 2026-10-13).
-/// For the last `TurnClockRules.rope` seconds of a decision an ember runs clockwise round the brass
-/// ring, eating the glowing arc behind it; the arc turns ember red for the last 5 seconds.
-/// Android: `TurnRope.kt`.
+/// The online turn timer (it replaced the burning rope, 2026-10-13): for the last
+/// `TurnClockRules.rope` seconds of a seat's decision an ember runs clockwise round a brass ring,
+/// eating the glowing arc behind it; the arc turns ember red for the last 5 seconds. Your own clock
+/// rings the pass button and an opponent's rings their medallion, so whose time it is needs no
+/// words. Timeouts show as studs at twelve o'clock. Android: `TurnRope.kt`.
 struct TurnClockRing: View {
     @ObservedObject var feed: TurnClockFeed
+    /// Whose clock this ring shows; nil is this phone's own seat.
+    var seat: String? = nil
     let diameter: CGFloat
     @State private var burning = false
 
     var body: some View {
-        let board = feed.board
-        let local = feed.localSeat
+        let seat = seat ?? feed.localSeat
+        // Only this seat's clock; the board's own pick prefers yours and then the soonest.
+        let board = TurnClockBoard(paused: feed.board.paused, clocks: feed.board.clocks.filter { $0.seat == seat })
+        let isLocal = seat != nil && seat == feed.localSeat
         ZStack {
-            if burning {
+            if burning, let seat {
                 // Redrawn at 30 Hz only while the ring burns; nothing ticks before that.
                 TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-                    if let rope = board.rope(localSeat: local, now: ProcessInfo.processInfo.systemUptime) {
-                        TurnClockRingFace(rope: rope, name: feed.seatNames[rope.seat], diameter: diameter,
+                    if let rope = board.rope(localSeat: seat, now: ProcessInfo.processInfo.systemUptime) {
+                        TurnClockRingFace(rope: rope, isLocal: isLocal, name: feed.seatNames[seat], diameter: diameter,
                                           time: context.date.timeIntervalSinceReferenceDate)
                             .transition(.opacity)
                     }
@@ -54,41 +65,42 @@ struct TurnClockRing: View {
         }
         .frame(width: diameter, height: diameter)
         .allowsHitTesting(false)
-        .task(id: RingWatch(board: board, local: local)) { await watch(board, local: local) }
+        .task(id: RingWatch(board: board, seat: seat)) { await watch(board, seat: seat, isLocal: isLocal) }
     }
 
-    private struct RingWatch: Equatable { let board: TurnClockBoard; let local: String? }
+    private struct RingWatch: Equatable { let board: TurnClockBoard; let seat: String? }
 
     /// Sleeps until the ring should light, then until it burns out.
-    private func watch(_ board: TurnClockBoard, local: String?) async {
+    private func watch(_ board: TurnClockBoard, seat: String?, isLocal: Bool) async {
         while !Task.isCancelled {
             let now = ProcessInfo.processInfo.systemUptime
-            guard let wait = board.secondsUntilRope(localSeat: local, now: now) else { burning = false; return }
+            guard let seat, let wait = board.secondsUntilRope(localSeat: seat, now: now) else { burning = false; return }
             if wait > 0 {
                 burning = false
                 try? await Task.sleep(for: .seconds(wait))
             } else {
-                if !burning, board.rope(localSeat: local, now: now)?.isLocal == true { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+                if !burning, isLocal { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
                 burning = true
-                try? await Task.sleep(for: .seconds((board.rope(localSeat: local, now: now)?.remaining ?? 0) + 0.25))
+                try? await Task.sleep(for: .seconds((board.rope(localSeat: seat, now: now)?.remaining ?? 0) + 0.25))
             }
         }
     }
 }
 
 /// The ring itself: a dark groove, the arc of time left from the ember back to twelve o'clock,
-/// the ember, and (for an opponent's clock or after a timeout) a tag above the button.
+/// the ember, and one stud per timeout in a row.
 private struct TurnClockRingFace: View {
     let rope: TurnClockBoard.Rope
+    let isLocal: Bool
     let name: String?
     let diameter: CGFloat
     let time: TimeInterval
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var label: String {
-        var text = rope.isLocal ? String(localized: "Your time") : String(localized: "\(name ?? String(localized: "Opponent"))’s time")
-        if rope.strikes > 0 { text += " · " + String(localized: "timeout \(rope.strikes) of \(TurnClockRules.online.strikesToForfeit)") }
-        return text.uppercased()
+        var text = isLocal ? String(localized: "Your time") : String(localized: "\(name ?? String(localized: "Opponent"))’s time")
+        if rope.strikes > 0 { text += ", " + String(localized: "timeout \(rope.strikes) of \(TurnClockRules.online.strikesToForfeit)") }
+        return text
     }
 
     var body: some View {
@@ -115,7 +127,18 @@ private struct TurnClockRingFace: View {
                 .rotationEffect(.degrees(-90))
                 .padding(lineWidth / 2)
                 .shadow(color: (urgent ? TavernPalette.ember : TavernPalette.brass).opacity(0.55 + 0.35 * pulse), radius: 4 + 4 * pulse)
-                .opacity(rope.isLocal ? 1 : 0.8)
+            // Timeouts in a row: studs on the groove at twelve o'clock, lit for each one.
+            if rope.strikes > 0 {
+                ForEach(0..<TurnClockRules.online.strikesToForfeit, id: \.self) { index in
+                    let stud = Angle.degrees(-90 + Double(index - 1) * 11)
+                    Circle()
+                        .fill(index < rope.strikes ? TavernPalette.ember : TavernPalette.brassDark)
+                        .overlay(Circle().strokeBorder(TavernPalette.brass, lineWidth: 1))
+                        .frame(width: lineWidth * 1.5, height: lineWidth * 1.5)
+                        .shadow(color: index < rope.strikes ? TavernPalette.ember : .clear, radius: 3)
+                        .offset(x: radius * cos(stud.radians), y: radius * sin(stud.radians))
+                }
+            }
             Circle()
                 .fill(RadialGradient(colors: [.white.opacity(0.95), TavernPalette.ember, TavernPalette.enamel.opacity(0)],
                                      center: .center, startRadius: 0, endRadius: lineWidth * 1.4))
@@ -125,13 +148,6 @@ private struct TurnClockRingFace: View {
                 .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
         }
         .frame(width: diameter, height: diameter)
-        .overlay(alignment: .topTrailing) {
-            // Right-aligned with the ring: the button sits near the screen's right edge.
-            if !rope.isLocal || rope.strikes > 0 {
-                TavernTag(text: label, leather: true, accent: urgent ? TavernPalette.ember : TavernPalette.brass)
-                    .offset(y: -26)
-            }
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue(String(localized: "\(Int(rope.remaining.rounded(.up))) seconds left"))
