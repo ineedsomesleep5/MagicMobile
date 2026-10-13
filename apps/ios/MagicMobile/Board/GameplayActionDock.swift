@@ -550,7 +550,7 @@ struct PortraitBottomCommandBar: View {
                                  height: diameter * (portrait ? 0.66 : 0.72)) {
                     viewZone("Top of your library", [top])
                 }
-                .offset(x: diameter * (portrait ? 0.53 : 0.62), y: diameter * (portrait ? 0.30 : -0.05))
+                .offset(x: diameter * (portrait ? 0.66 : 0.62), y: diameter * (portrait ? 0.30 : -0.05))
             }
         }
         .overlay(alignment: .top) {

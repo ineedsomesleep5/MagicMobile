@@ -211,13 +211,14 @@ struct PortraitOpponentStatusBar: View {
         }
         .opacity(opponent.isOut ? 0.45 : 1)
         .frame(width: diameter + 8, height: diameter + 8)
-        // An opponent's revealed top card leans beside their portrait.
+        // An opponent's revealed top card leans below their portrait's right side, clear of
+        // the turn ring on the frame and the phase plate (Caleb, 2026-10-13).
         .overlay(alignment: .bottomTrailing) {
             if let top = opponent.zones.library.first, let viewZone {
                 TopOfLibraryCard(card: top, owner: "\(opponentName)'s", height: diameter * 0.66) {
                     viewZone("Top of \(opponentName)'s library", [top])
                 }
-                .offset(x: diameter * 0.55, y: diameter * 0.1)
+                .offset(x: diameter * 0.55, y: diameter * 0.55)
             }
         }
         let label = opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life"
