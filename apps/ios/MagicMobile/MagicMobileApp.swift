@@ -326,6 +326,7 @@ private struct DesignPreviewFixtureScreen: View {
     @State private var status = ""
     @State private var errorMessage: String?
     @State private var boardFXPreviewStep = 0
+    @State private var previewClockFeed = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] == nil ? nil : TurnClockFeed()
 
     init(fixture: String) {
         self.fixture = fixture
@@ -366,8 +367,19 @@ private struct DesignPreviewFixtureScreen: View {
             .environment(\.boardAnswerActions, BoardAnswerActions(supported: ["rememberAnswer", "rememberTriggerFirst",
                 "passUntilStackResolved", "resetRememberedAnswers", "resetTriggerOrder", "autoPassAfterCast"]))
         }
-        .overlay {
-            if let seat = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] { PreviewTurnRope(scenario: seat) }
+        .environment(\.turnClockFeed, previewClockFeed)
+        .task {
+            // MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike: the turn timer's ring round the pass
+            // button, replaying a decision's last 22 seconds so it lights, burns out and loops.
+            guard let previewClockFeed, let scenario = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] else { return }
+            let seat = scenario == "you" ? "player1" : "player2"
+            while !Task.isCancelled {
+                let deadline = ProcessInfo.processInfo.systemUptime + TurnClockRules.online.rope + 2
+                previewClockFeed.update(board: TurnClockBoard(clocks: [.init(seat: seat, deadline: deadline, limit: TurnClockRules.online.decision,
+                                                                             strikes: scenario == "strike" ? 1 : 0)]),
+                                        localSeat: "player1", seatNames: ["player2": "Mira"])
+                do { try await Task.sleep(for: .seconds(TurnClockRules.online.rope + 4)) } catch { return }
+            }
         }
         .overlay(alignment: .top) {
             if status.hasPrefix("Development fixture: captured") {
@@ -458,29 +470,6 @@ private struct DesignPreviewFixtureScreen: View {
     private func advanceBoardFX() {
         boardFXPreviewStep = (boardFXPreviewStep + 1) % GameBoardPreviewFixtures.boardFXStepCount
         snapshot = GameBoardPreviewFixtures.boardFXStep(boardFXPreviewStep)
-    }
-}
-
-/// `MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike` on a design preview: the online turn timer's
-/// rope over the fixture board, replaying a decision's last 22 seconds so it lights, burns out and loops.
-private struct PreviewTurnRope: View {
-    let scenario: String
-    @State private var start = ProcessInfo.processInfo.systemUptime
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
-            let now = ProcessInfo.processInfo.systemUptime
-            let cycle = TurnClockRules.online.rope + 4
-            let deadline = now + (cycle - 2) - (now - start).truncatingRemainder(dividingBy: cycle)
-            let seat = scenario == "you" ? "player1" : "player2"
-            let board = TurnClockBoard(clocks: [.init(seat: seat, deadline: deadline, limit: TurnClockRules.online.decision,
-                                                      strikes: scenario == "strike" ? 1 : 0)])
-            if let rope = board.rope(localSeat: "player1", now: now) {
-                TurnRope(rope: rope, name: "Mira", time: context.date.timeIntervalSinceReferenceDate)
-                    .transition(.opacity)
-            }
-        }
-        .allowsHitTesting(false)
     }
 }
 #endif

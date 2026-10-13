@@ -13,6 +13,8 @@ enum LandscapeActionDockLayout {
 struct GameplayActionDock: View {
     @Environment(\.nativeTurnControl) private var nativeTurnControl
     @Environment(\.startingRollVisible) private var startingRollVisible
+    @Environment(\.turnClockFeed) private var turnClockFeed
+    @Environment(\.tavernCanvas) private var tavernCanvas
     let snapshot: GameSnapshot
     let passAction: LegalAction?
     let yieldActions: [LegalAction]
@@ -54,10 +56,17 @@ struct GameplayActionDock: View {
             case .skip: secondaryControl.frame(width: 44, height: 44)
             case .menu: controlsMenu
             case .primary:
-                if TavernPassAssets.flips {
-                    TavernPassStage(enabled: model.isPrimaryEnabled, turnsOnTap: model.primaryAction != nil) { primaryButton }
-                } else {
-                    primaryButton
+                Group {
+                    if TavernPassAssets.flips {
+                        TavernPassStage(enabled: model.isPrimaryEnabled, turnsOnTap: model.primaryAction != nil) { primaryButton }
+                    } else {
+                        primaryButton
+                    }
+                }
+                .overlay {
+                    if let turnClockFeed {
+                        TurnClockRing(feed: turnClockFeed, diameter: TavernDesign.passDiameter(in: tavernCanvas) * 1.12)
+                    }
                 }
             }
         } else if horizontal {
