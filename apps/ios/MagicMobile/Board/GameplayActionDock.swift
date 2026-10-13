@@ -377,6 +377,7 @@ struct PortraitBottomCommandBar: View {
     @Environment(\.emoteCenter) private var emoteCenter
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
+    @Environment(\.turnClockFeed) private var turnClockFeed
     @Environment(\.boardAnswerActions) private var answerActions
 
     /// "Resolve all": one tap passes until the stack you're looking at has resolved (XMage's F10). It stops by itself if an
@@ -586,6 +587,10 @@ struct PortraitBottomCommandBar: View {
                                            lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
             .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
             .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
+            // The other battlefields' turn timer: on the orb's gold rim (the tavern's rings the pass button).
+            .overlay {
+                if let turnClockFeed { TurnClockRing(feed: turnClockFeed, diameter: 52) }
+            }
         }
         .buttonStyle(.plain)
         .overlay(alignment: .bottomLeading) {

@@ -31,6 +31,11 @@ struct PortraitOpponentStatusBar: View {
                 HStack(spacing: 6) {
                     PlayerPortrait(player: opponent, size: 40, active: snapshot.activePlayerId == opponent.playerId,
                                    thinking: snapshot.thinkingPlayerID == opponent.playerId)
+                        .overlay {
+                            if let turnClockFeed, let name = opponent.displayName {
+                                TurnClockRing(feed: turnClockFeed, playerName: name, diameter: 48)
+                            }
+                        }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(opponentName).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
                         if opponent.isOut {
