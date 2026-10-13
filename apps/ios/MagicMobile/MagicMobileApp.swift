@@ -366,6 +366,9 @@ private struct DesignPreviewFixtureScreen: View {
             .environment(\.boardAnswerActions, BoardAnswerActions(supported: ["rememberAnswer", "rememberTriggerFirst",
                 "passUntilStackResolved", "resetRememberedAnswers", "resetTriggerOrder", "autoPassAfterCast"]))
         }
+        .overlay {
+            if let seat = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] { PreviewTurnRope(scenario: seat) }
+        }
         .overlay(alignment: .top) {
             if status.hasPrefix("Development fixture: captured") {
                 Text(status).font(.caption2).padding(4).background(.black)
@@ -455,6 +458,29 @@ private struct DesignPreviewFixtureScreen: View {
     private func advanceBoardFX() {
         boardFXPreviewStep = (boardFXPreviewStep + 1) % GameBoardPreviewFixtures.boardFXStepCount
         snapshot = GameBoardPreviewFixtures.boardFXStep(boardFXPreviewStep)
+    }
+}
+
+/// `MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike` on a design preview: the online turn timer's
+/// rope over the fixture board, replaying a decision's last 22 seconds so it lights, burns out and loops.
+private struct PreviewTurnRope: View {
+    let scenario: String
+    @State private var start = ProcessInfo.processInfo.systemUptime
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
+            let now = ProcessInfo.processInfo.systemUptime
+            let cycle = TurnClockRules.online.rope + 4
+            let deadline = now + (cycle - 2) - (now - start).truncatingRemainder(dividingBy: cycle)
+            let seat = scenario == "you" ? "player1" : "player2"
+            let board = TurnClockBoard(clocks: [.init(seat: seat, deadline: deadline, limit: TurnClockRules.online.decision,
+                                                      strikes: scenario == "strike" ? 1 : 0)])
+            if let rope = board.rope(localSeat: "player1", now: now) {
+                TurnRope(rope: rope, name: "Mira", time: context.date.timeIntervalSinceReferenceDate)
+                    .transition(.opacity)
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 #endif
