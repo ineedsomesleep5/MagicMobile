@@ -128,3 +128,9 @@ contradicting one.
   files, and run in auto mode. Commands every thread may run without a prompt go in
   `permissions.allow` in `.claude/settings.json`; cloud threads apply it only while the project has
   a single repository.
+- 2026-10-13 (Claude): to see the online turn rope on a real board without an online match, launch a
+  Debug simulator build with `SIMCTL_CHILD_MAGICMOBILE_DESIGN_PREVIEW=normal-battlefield
+  SIMCTL_CHILD_MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike` (loops a 24 s cycle). Recording it
+  showed `TurnRopeOverlay` centres on the whole screen, which in portrait lands on the bottom
+  player's creature row and covers card names. Cloud containers can't reach Scryfall, so real card
+  art only shows in a simulator or device run.
