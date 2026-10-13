@@ -169,13 +169,16 @@ struct PortraitOpponentStatusBar: View {
                     // pop-over's full list (drawn first so a revealed top card leans over them).
                     let medallionCenter = canvas.tavernPoint(center)
                     // Their online turn timer traces the socket's outer brass ring, under the badges
-                    // and the medallion. Measured on the iPhone 17 Pro plate: the band's centre line is
-                    // 1.46 portrait radii out and its centre sits 0.08 diameters below the portrait's
-                    // (the 3D ring's lower lip is deeper).
+                    // and the medallion. Measured on the iPhone 17 Pro plates: in portrait the band is
+                    // 1.55 portrait diameters across and sits 0.08 diameters low (the 3D ring's lower
+                    // lip is deeper); the landscape socket's braided edge is 1.37 across, 0.02 left.
                     if let turnClockFeed, let name = opponent.displayName {
                         let hole = canvas.tavernLength(sockets.opponentHoleRadius * 2)
-                        TurnClockRing(feed: turnClockFeed, playerName: name, diameter: hole * 1.55)
-                            .tavernPosition(CGPoint(x: center.x, y: center.y + sockets.opponentHoleRadius * 2 * 0.08),
+                        let landscape = sockets.canvas.width > sockets.canvas.height
+                        let holeDesign = sockets.opponentHoleRadius * 2
+                        TurnClockRing(feed: turnClockFeed, playerName: name, diameter: hole * (landscape ? 1.37 : 1.55))
+                            .tavernPosition(CGPoint(x: center.x - holeDesign * (landscape ? 0.02 : 0),
+                                                    y: center.y + holeDesign * (landscape ? 0 : 0.08)),
                                             canvas: canvas, origin: origin)
                     }
                     TavernEffectOrbitBadges(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot),

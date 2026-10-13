@@ -452,11 +452,14 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
             TavernTableHints(snapshot.dayNight, snapshot.stormCount, Modifier.align(Alignment.BottomCenter).hangBelow(5.dp))
         }
         // Their online turn timer traces the socket's outer brass ring, under the badges and the
-        // medallion (measured on the iPhone 17 Pro plate: 1.55 hole diameters, 0.08 below centre).
+        // medallion (measured on the iPhone 17 Pro plates: in portrait 1.55 hole diameters across and
+        // 0.08 below centre; the landscape socket's braided edge is 1.37 across, 0.02 left).
         LocalTurnClock.current?.let { clock ->
             val hole = frame.length(sockets.opponentHoleRadius * 2)
-            Box(Modifier.tavernPosition(frame, sockets.opponentMedallion).offset(y = (hole * 0.08f).dp)) {
-                TurnClockRing(clock, opponent.displayName, (hole * 1.55f).dp)
+            val landscape = frame.isLandscape
+            Box(Modifier.tavernPosition(frame, sockets.opponentMedallion)
+                .offset(x = (hole * if (landscape) -0.02f else 0f).dp, y = (hole * if (landscape) 0f else 0.08f).dp)) {
+                TurnClockRing(clock, opponent.displayName, (hole * if (landscape) 1.37f else 1.55f).dp)
             }
         }
         // Commander damage, poison and the rest curve around the medallion, under its pop-over's full list
