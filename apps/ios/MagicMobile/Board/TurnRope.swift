@@ -38,16 +38,17 @@ extension EnvironmentValues {
 /// `TurnClockRules.rope` seconds of a seat's decision an ember runs clockwise round a brass ring,
 /// eating the glowing arc behind it; the arc turns ember red for the last 5 seconds. Your own clock
 /// rings the pass button and an opponent's rings their medallion, so whose time it is needs no
-/// words. Timeouts show as studs at twelve o'clock. Android: `TurnRope.kt`.
+/// words. Timeouts show as studs at three o'clock. Android: `TurnRope.kt`.
 struct TurnClockRing: View {
     @ObservedObject var feed: TurnClockFeed
-    /// Whose clock this ring shows; nil is this phone's own seat.
-    var seat: String? = nil
+    /// Whose clock this ring shows, by table name; nil is this phone's own seat. Resolved here,
+    /// where the feed is observed, so a ring drawn before the seat names arrive still lights.
+    var playerName: String? = nil
     let diameter: CGFloat
     @State private var burning = false
 
     var body: some View {
-        let seat = seat ?? feed.localSeat
+        let seat = playerName.map { feed.seat(named: $0) } ?? feed.localSeat
         // Only this seat's clock; the board's own pick prefers yours and then the soonest.
         let board = TurnClockBoard(paused: feed.board.paused, clocks: feed.board.clocks.filter { $0.seat == seat })
         let isLocal = seat != nil && seat == feed.localSeat
@@ -96,6 +97,7 @@ private struct TurnClockRingFace: View {
     let diameter: CGFloat
     let time: TimeInterval
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let frost = Color(red: 0.45, green: 0.72, blue: 1)
 
     private var label: String {
         var text = isLocal ? String(localized: "Your time") : String(localized: "\(name ?? String(localized: "Opponent"))’s time")
@@ -111,9 +113,12 @@ private struct TurnClockRingFace: View {
         let pulse = urgent && !reduceMotion ? 0.5 + 0.5 * sin(time * 9) : 0
         // The ember leads clockwise from twelve o'clock; the arc behind it is the time left.
         let angle = Angle.degrees(-90 + (1 - rope.fraction) * 360)
-        // Hottest next to the ember, cooling toward twelve o'clock.
+        // Hottest next to the ember, cooling toward twelve o'clock. An opponent's burns cold blue
+        // until the last 5 seconds, so it stands off their brass frame (and off your own ring).
         let arcColors = urgent ? [Color(red: 1, green: 0.78, blue: 0.55), TavernPalette.ember, TavernPalette.enamel]
-            : [TavernPalette.parchment, TavernPalette.brass, TavernPalette.brassDark]
+            : isLocal ? [TavernPalette.parchment, TavernPalette.brass, TavernPalette.brassDark]
+            : [Color(red: 0.88, green: 0.95, blue: 1), Self.frost, Color(red: 0.12, green: 0.26, blue: 0.52)]
+        let spark = urgent || isLocal ? TavernPalette.ember : Self.frost
         ZStack {
             Circle()
                 .stroke(Color.black.opacity(0.55), lineWidth: lineWidth + 2)
@@ -126,11 +131,12 @@ private struct TurnClockRingFace: View {
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .padding(lineWidth / 2)
-                .shadow(color: (urgent ? TavernPalette.ember : TavernPalette.brass).opacity(0.55 + 0.35 * pulse), radius: 4 + 4 * pulse)
-            // Timeouts in a row: studs on the groove at twelve o'clock, lit for each one.
+                .shadow(color: (urgent ? TavernPalette.ember : isLocal ? TavernPalette.brass : Self.frost).opacity(0.55 + 0.35 * pulse), radius: 4 + 4 * pulse)
+            // Timeouts in a row: studs on the groove at three o'clock (twelve sits under the camera
+            // on the opponent's medallion), lit for each one.
             if rope.strikes > 0 {
                 ForEach(0..<TurnClockRules.online.strikesToForfeit, id: \.self) { index in
-                    let stud = Angle.degrees(-90 + Double(index - 1) * 11)
+                    let stud = Angle.degrees(Double(index - 1) * 11)
                     Circle()
                         .fill(index < rope.strikes ? TavernPalette.ember : TavernPalette.brassDark)
                         .overlay(Circle().strokeBorder(TavernPalette.brass, lineWidth: 1))
@@ -140,11 +146,11 @@ private struct TurnClockRingFace: View {
                 }
             }
             Circle()
-                .fill(RadialGradient(colors: [.white.opacity(0.95), TavernPalette.ember, TavernPalette.enamel.opacity(0)],
+                .fill(RadialGradient(colors: [.white.opacity(0.95), spark, spark.opacity(0)],
                                      center: .center, startRadius: 0, endRadius: lineWidth * 1.4))
                 .frame(width: lineWidth * 2.8, height: lineWidth * 2.8)
                 .scaleEffect(flicker)
-                .shadow(color: TavernPalette.ember.opacity(0.9), radius: 8)
+                .shadow(color: spark.opacity(0.9), radius: 8)
                 .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
         }
         .frame(width: diameter, height: diameter)

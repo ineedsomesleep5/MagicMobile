@@ -903,8 +903,8 @@ struct TavernMedallion<Portrait: View>: View {
             .frame(width: diameter * 1.35, height: diameter * 1.35)
             .allowsHitTesting(false)
             // On the frame's brass rim, under the life badge.
-            if let turnClockFeed, let seat = turnClockFeed.seat(named: clockPlayerName) {
-                TurnClockRing(feed: turnClockFeed, seat: seat, diameter: diameter * 1.28)
+            if let turnClockFeed, let clockPlayerName {
+                TurnClockRing(feed: turnClockFeed, playerName: clockPlayerName, diameter: diameter * 1.28)
             }
             if let life {
                 BoardLifeTotal(life: life)
