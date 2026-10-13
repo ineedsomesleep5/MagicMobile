@@ -136,3 +136,6 @@ contradicting one.
   `ObservableObject` it doesn't observe (TavernMedallion looking up the seat in `TurnClockFeed`)
   never refreshes when that object changes; resolve such lookups inside the observing view.
   Cloud containers can't reach Scryfall, so real card art only shows in a simulator or device run.
+  On Android the ring's `LocalTurnClock` holds lambdas that read the table's state, not the values,
+  so a clock tick recomposes only the rings instead of the whole board under the provider. Cloud
+  containers have no Android SDK; the PR's Android app CI job is the compile check.

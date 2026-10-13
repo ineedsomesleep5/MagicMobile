@@ -361,7 +361,11 @@ fun PortraitOpponentStatusBar(snapshot: GameSnapshot, opponentName: String, oppo
                 .border(2.dp, if (combatTargetable) Color.Red else Color.Transparent, RoundedCornerShape(8.dp))
                 .semantics { contentDescription = if (opponent.isOut) "$opponentName, out of the game" else "$opponentName, ${opponent.life} life" }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlayerPortrait(opponent, 40.dp, snapshot.activePlayerId == opponent.playerId, snapshot.thinkingPlayerID == opponent.playerId)
+                    Box(contentAlignment = Alignment.Center) {
+                        PlayerPortrait(opponent, 40.dp, snapshot.activePlayerId == opponent.playerId, snapshot.thinkingPlayerID == opponent.playerId)
+                        // Their online turn timer rings their portrait.
+                        LocalTurnClock.current?.let { TurnClockRing(it, opponent.displayName, 48.dp) }
+                    }
                     Column(Modifier.width(if (largeText) 96.dp else 70.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         FitText(opponentName, SfText.caption2(SfWeight.bold), color = MagicPalette.parchment, minimumScale = 0.7f)
                         if (opponent.isOut) Text("Out", color = Color.Gray, style = SfText.title3(SfWeight.bold))
@@ -447,6 +451,14 @@ fun TavernOpponentBar(frame: TavernFrame, snapshot: GameSnapshot, opponentName: 
             // Day or night and the storm count hang under the plate when they matter, without moving it.
             TavernTableHints(snapshot.dayNight, snapshot.stormCount, Modifier.align(Alignment.BottomCenter).hangBelow(5.dp))
         }
+        // Their online turn timer traces the socket's outer brass ring, under the badges and the
+        // medallion (measured on the iPhone 17 Pro plate: 1.55 hole diameters, 0.08 below centre).
+        LocalTurnClock.current?.let { clock ->
+            val hole = frame.length(sockets.opponentHoleRadius * 2)
+            Box(Modifier.tavernPosition(frame, sockets.opponentMedallion).offset(y = (hole * 0.08f).dp)) {
+                TurnClockRing(clock, opponent.displayName, (hole * 1.55f).dp)
+            }
+        }
         // Commander damage, poison and the rest curve around the medallion, under its pop-over's full list
         // (drawn first so a revealed top card leans over them).
         TavernEffectOrbitBadges(frame, PlayerStatusSummary(opponent, snapshot))
@@ -481,10 +493,11 @@ private fun TavernOpponentMedallion(diameter: Dp, snapshot: GameSnapshot, oppone
             TavernPlayerZoneMenu(opponent, viewZone, statusSnapshot = snapshot, edge = TavernMenuEdge.BELOW,
                 swapOpponents = BoardOpponentFocus.opponents(snapshot), swap = selectOpponent, contentDescription = label) { medallion() }
         }
-        // An opponent's revealed top card leans beside their portrait.
+        // An opponent's revealed top card leans below their portrait's right side, clear of
+        // the turn ring on the frame and the phase plate (Caleb, 2026-10-13).
         val top = opponent.zones.library.firstOrNull()
         if (top != null && viewZone != null) {
-            TopOfLibraryCard(top, "$opponentName's", Modifier.align(Alignment.BottomEnd).offset(diameter * 0.55f, diameter * 0.1f)
+            TopOfLibraryCard(top, "$opponentName's", Modifier.align(Alignment.BottomEnd).offset(diameter * 0.8f, diameter * 0.74f)
                 .wrapContentSize(unbounded = true), height = diameter * 0.66f) { viewZone("Top of $opponentName's library", listOf(top)) }
         }
     }
