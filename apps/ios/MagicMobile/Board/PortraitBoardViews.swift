@@ -17,6 +17,7 @@ struct PortraitOpponentStatusBar: View {
     @Environment(\.emoteCenter) private var emoteCenter
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
+    @Environment(\.turnClockFeed) private var turnClockFeed
     @State private var pulse = false
     @State private var showPhaseStops = false
 
@@ -162,6 +163,16 @@ struct PortraitOpponentStatusBar: View {
                     // Commander damage, poison and the rest curve around the medallion, under its
                     // pop-over's full list (drawn first so a revealed top card leans over them).
                     let medallionCenter = canvas.tavernPoint(center)
+                    // Their online turn timer traces the socket's outer brass ring, under the badges
+                    // and the medallion. Measured on the iPhone 17 Pro plate: the band's centre line is
+                    // 1.46 portrait radii out and its centre sits 0.08 diameters below the portrait's
+                    // (the 3D ring's lower lip is deeper).
+                    if let turnClockFeed, let name = opponent.displayName {
+                        let hole = canvas.tavernLength(sockets.opponentHoleRadius * 2)
+                        TurnClockRing(feed: turnClockFeed, playerName: name, diameter: hole * 1.55)
+                            .tavernPosition(CGPoint(x: center.x, y: center.y + sockets.opponentHoleRadius * 2 * 0.08),
+                                            canvas: canvas, origin: origin)
+                    }
                     TavernEffectOrbitBadges(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot),
                                             center: CGPoint(x: medallionCenter.x - origin.x, y: medallionCenter.y - origin.y),
                                             radius: canvas.tavernLength(TavernEffectOrbit.radius(holeRadius: sockets.opponentHoleRadius)),
@@ -204,8 +215,7 @@ struct PortraitOpponentStatusBar: View {
     @ViewBuilder
     private func opponentMedallion(diameter: CGFloat) -> some View {
         let medallion = TavernMedallion(diameter: diameter, life: opponent.isOut ? nil : opponent.life,
-                                        active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable,
-                                        clockPlayerName: opponent.displayName) {
+                                        active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable) {
             PlayerPortrait(player: opponent, size: diameter, active: false,
                            thinking: snapshot.thinkingPlayerID == opponent.playerId)
         }

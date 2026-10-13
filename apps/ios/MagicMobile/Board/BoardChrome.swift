@@ -884,10 +884,7 @@ struct TavernMedallion<Portrait: View>: View {
     var targetable = false
     /// Your commander can be cast: its own breathing glow and a crown spark.
     var commanderReady = false
-    /// An opponent's table name: their online turn timer rings the medallion (TurnClockRing).
-    var clockPlayerName: String? = nil
     @ViewBuilder let portrait: Portrait
-    @Environment(\.turnClockFeed) private var turnClockFeed
 
     var body: some View {
         ZStack {
@@ -902,13 +899,6 @@ struct TavernMedallion<Portrait: View>: View {
             }
             .frame(width: diameter * 1.35, height: diameter * 1.35)
             .allowsHitTesting(false)
-            // Traces the table socket's outer brass ring, under the life badge. Measured on the
-            // iPhone 17 Pro plate: the band's centre line is 1.46 portrait radii out and its
-            // centre sits 0.08 diameters below the portrait's (the 3D ring's lower lip is deeper).
-            if let turnClockFeed, let clockPlayerName {
-                TurnClockRing(feed: turnClockFeed, playerName: clockPlayerName, diameter: diameter * 1.55)
-                    .offset(y: diameter * 0.08)
-            }
             if let life {
                 BoardLifeTotal(life: life)
                     .font(.system(size: diameter * 0.30, weight: .heavy, design: .serif))
@@ -2459,9 +2449,8 @@ struct TavernStatusGlance: View {
 enum TavernEffectOrbit {
     static let stepDegrees = 25.0
     /// Clear of the medallion's brass ring and life badge, in design points past the portrait's hole.
-    /// 25 keeps them off the opponent's turn ring on that brass ring (TurnClockRing).
-    static let ringGap: CGFloat = 25
-    /// A badge's diameter as a share of the orbit's radius: about 23 pt on the portrait plate, neighbours just touching.
+    static let ringGap: CGFloat = 21
+    /// A badge's diameter as a share of the orbit's radius: 22 pt on the portrait plate, neighbours just touching.
     static let badgeShare: CGFloat = 0.42
 
     static func radius(holeRadius: CGFloat) -> CGFloat { holeRadius + ringGap }
