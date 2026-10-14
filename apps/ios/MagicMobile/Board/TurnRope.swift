@@ -1,121 +1,161 @@
 import SwiftUI
 import UIKit
 
-/// The online turn timer's burning rope, laid across the middle of the table for the last
-/// `TurnClockRules.rope` seconds of a decision (Hearthstone's rope). Android: `TurnRope.kt`.
-/// It only reads `OnDeviceMultiplayer.turnClock`; the host's `TurnClock` decides what a timeout does.
-struct TurnRopeOverlay: View {
-    @ObservedObject var multiplayer: OnDeviceMultiplayer
+/// What the online turn timer shows, fed by `OnDeviceMultiplayer` (the host's `TurnClock` decides
+/// what a timeout does). The board reads it from the environment, so only the ring redraws.
+@MainActor
+final class TurnClockFeed: ObservableObject {
+    @Published private(set) var board = TurnClockBoard()
+    @Published private(set) var localSeat: String?
+    @Published private(set) var seatNames: [String: String] = [:]
+
+    func update(board: TurnClockBoard, localSeat: String?, seatNames: [String: String]) {
+        if self.board != board { self.board = board }
+        if self.localSeat != localSeat { self.localSeat = localSeat }
+        if self.seatNames != seatNames { self.seatNames = seatNames }
+    }
+
+    /// The seat a board player sits in: seat names are unique and are the engine's player names.
+    func seat(named name: String?) -> String? {
+        guard let name else { return nil }
+        return seatNames.first { $0.value == name }?.key
+    }
+}
+
+private struct TurnClockFeedKey: EnvironmentKey {
+    static let defaultValue: TurnClockFeed? = nil
+}
+
+extension EnvironmentValues {
+    /// The online table's turn clocks; nil in solo games, which have no clock.
+    var turnClockFeed: TurnClockFeed? {
+        get { self[TurnClockFeedKey.self] }
+        set { self[TurnClockFeedKey.self] = newValue }
+    }
+}
+
+/// The online turn timer (it replaced the burning rope, 2026-10-13): for the last
+/// `TurnClockRules.rope` seconds of a seat's decision an ember runs clockwise round a brass ring,
+/// eating the glowing arc behind it; the arc turns ember red for the last 5 seconds. Your own clock
+/// rings the pass button and an opponent's rings their medallion, so whose time it is needs no
+/// words. Timeouts show as studs at three o'clock. Android: `TurnRope.kt`.
+struct TurnClockRing: View {
+    @ObservedObject var feed: TurnClockFeed
+    /// Whose clock this ring shows, by table name; nil is this phone's own seat. Resolved here,
+    /// where the feed is observed, so a ring drawn before the seat names arrive still lights.
+    var playerName: String? = nil
+    let diameter: CGFloat
     @State private var burning = false
 
     var body: some View {
-        let board = multiplayer.turnClock
-        let local = multiplayer.endpoint?.seatID
+        let seat = playerName.map { feed.seat(named: $0) } ?? feed.localSeat
+        // Only this seat's clock; the board's own pick prefers yours and then the soonest.
+        let board = TurnClockBoard(paused: feed.board.paused, clocks: feed.board.clocks.filter { $0.seat == seat })
+        let isLocal = seat != nil && seat == feed.localSeat
         ZStack {
-            if burning {
-                // Redrawn at 20 Hz only while a rope burns; nothing ticks before that.
-                TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
-                    if let rope = board.rope(localSeat: local, now: ProcessInfo.processInfo.systemUptime) {
-                        TurnRope(rope: rope, name: multiplayer.seatNames[rope.seat], time: context.date.timeIntervalSinceReferenceDate)
+            if burning, let seat {
+                // Redrawn at 30 Hz only while the ring burns; nothing ticks before that.
+                TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                    if let rope = board.rope(localSeat: seat, now: ProcessInfo.processInfo.systemUptime) {
+                        TurnClockRingFace(rope: rope, isLocal: isLocal, name: feed.seatNames[seat], diameter: diameter,
+                                          time: context.date.timeIntervalSinceReferenceDate)
                             .transition(.opacity)
                     }
                 }
             }
         }
+        .frame(width: diameter, height: diameter)
         .allowsHitTesting(false)
-        .task(id: RopeWatch(board: board, local: local)) { await watch(board, local: local) }
+        .task(id: RingWatch(board: board, seat: seat)) { await watch(board, seat: seat, isLocal: isLocal) }
     }
 
-    private struct RopeWatch: Equatable { let board: TurnClockBoard; let local: String? }
+    private struct RingWatch: Equatable { let board: TurnClockBoard; let seat: String? }
 
-    /// Sleeps until the rope should light, then until it burns out.
-    private func watch(_ board: TurnClockBoard, local: String?) async {
+    /// Sleeps until the ring should light, then until it burns out.
+    private func watch(_ board: TurnClockBoard, seat: String?, isLocal: Bool) async {
         while !Task.isCancelled {
             let now = ProcessInfo.processInfo.systemUptime
-            guard let wait = board.secondsUntilRope(localSeat: local, now: now) else { burning = false; return }
+            guard let seat, let wait = board.secondsUntilRope(localSeat: seat, now: now) else { burning = false; return }
             if wait > 0 {
                 burning = false
                 try? await Task.sleep(for: .seconds(wait))
             } else {
-                if !burning, board.rope(localSeat: local, now: now)?.isLocal == true { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+                if !burning, isLocal { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
                 burning = true
-                try? await Task.sleep(for: .seconds((board.rope(localSeat: local, now: now)?.remaining ?? 0) + 0.25))
+                try? await Task.sleep(for: .seconds((board.rope(localSeat: seat, now: now)?.remaining ?? 0) + 0.25))
             }
         }
     }
 }
 
-/// A twisted hemp rope in brass trim, burning from the left toward the pass disc's side,
-/// with an ember at the burning end and a tag naming whose time it is.
-struct TurnRope: View {
+/// The ring itself: a dark groove, the arc of time left from the ember back to twelve o'clock,
+/// the ember, and one stud per timeout in a row.
+private struct TurnClockRingFace: View {
     let rope: TurnClockBoard.Rope
+    let isLocal: Bool
     let name: String?
+    let diameter: CGFloat
     let time: TimeInterval
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private static let frost = Color(red: 0.45, green: 0.72, blue: 1)
 
     private var label: String {
-        var text = rope.isLocal ? String(localized: "Your time") : String(localized: "\(name ?? String(localized: "Opponent"))’s time")
-        if rope.strikes > 0 { text += " · " + String(localized: "timeout \(rope.strikes) of \(TurnClockRules.online.strikesToForfeit)") }
-        return text.uppercased()
+        var text = isLocal ? String(localized: "Your time") : String(localized: "\(name ?? String(localized: "Opponent"))’s time")
+        if rope.strikes > 0 { text += ", " + String(localized: "timeout \(rope.strikes) of \(TurnClockRules.online.strikesToForfeit)") }
+        return text
     }
 
     var body: some View {
-        VStack(spacing: 6) {
-            TavernTag(text: label, leather: true, accent: rope.remaining <= 5 ? TavernPalette.ember : TavernPalette.brass)
-            GeometryReader { proxy in
-                let width = proxy.size.width
-                let burnX = width * (1 - rope.fraction)
-                let flicker = reduceMotion ? 1 : 1 + 0.18 * sin(time * 23) * cos(time * 7)
-                ZStack(alignment: .leading) {
-                    // The burnt-out stretch: a scorched line.
-                    Capsule().fill(Color.black.opacity(0.45))
-                        .frame(width: max(0, burnX), height: 3)
-                    // What is left of the rope.
-                    RopeStrand()
-                        .frame(width: max(0, width - burnX), height: 9)
-                        .offset(x: burnX)
-                    // The ember at the burning end.
+        let urgent = rope.remaining <= 5
+        let lineWidth = max(4, diameter * 0.055)
+        let radius = diameter / 2 - lineWidth / 2
+        let flicker = reduceMotion ? 1 : 1 + 0.18 * sin(time * 23) * cos(time * 7)
+        let pulse = urgent && !reduceMotion ? 0.5 + 0.5 * sin(time * 9) : 0
+        // The ember leads clockwise from twelve o'clock; the arc behind it is the time left.
+        let angle = Angle.degrees(-90 + (1 - rope.fraction) * 360)
+        // Hottest next to the ember, cooling toward twelve o'clock. An opponent's burns cold blue
+        // until the last 5 seconds, so it stands off their brass frame (and off your own ring).
+        let arcColors = urgent ? [Color(red: 1, green: 0.78, blue: 0.55), TavernPalette.ember, TavernPalette.enamel]
+            : isLocal ? [TavernPalette.parchment, TavernPalette.brass, TavernPalette.brassDark]
+            : [Color(red: 0.88, green: 0.95, blue: 1), Self.frost, Color(red: 0.12, green: 0.26, blue: 0.52)]
+        let spark = urgent || isLocal ? TavernPalette.ember : Self.frost
+        ZStack {
+            Circle()
+                .stroke(Color.black.opacity(0.55), lineWidth: lineWidth + 2)
+                .padding(lineWidth / 2)
+            Circle()
+                .trim(from: 1 - rope.fraction, to: 1)
+                // Drawn before the quarter turn, so the gradient's angles are the trim's own.
+                .stroke(AngularGradient(colors: arcColors, center: .center,
+                                        startAngle: .degrees((1 - rope.fraction) * 360), endAngle: .degrees(360)),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(lineWidth / 2)
+                .shadow(color: (urgent ? TavernPalette.ember : isLocal ? TavernPalette.brass : Self.frost).opacity(0.55 + 0.35 * pulse), radius: 4 + 4 * pulse)
+            // Timeouts in a row: studs on the groove at three o'clock (twelve sits under the camera
+            // on the opponent's medallion), lit for each one.
+            if rope.strikes > 0 {
+                ForEach(0..<TurnClockRules.online.strikesToForfeit, id: \.self) { index in
+                    let stud = Angle.degrees(Double(index - 1) * 11)
                     Circle()
-                        .fill(RadialGradient(colors: [.white.opacity(0.95), TavernPalette.ember, TavernPalette.enamel.opacity(0)],
-                                             center: .center, startRadius: 0, endRadius: 11))
-                        .frame(width: 22, height: 22)
-                        .scaleEffect(flicker)
-                        .shadow(color: TavernPalette.ember.opacity(0.9), radius: 8)
-                        .offset(x: burnX - 11)
+                        .fill(index < rope.strikes ? TavernPalette.ember : TavernPalette.brassDark)
+                        .overlay(Circle().strokeBorder(TavernPalette.brass, lineWidth: 1))
+                        .frame(width: lineWidth * 1.5, height: lineWidth * 1.5)
+                        .shadow(color: index < rope.strikes ? TavernPalette.ember : .clear, radius: 3)
+                        .offset(x: radius * cos(stud.radians), y: radius * sin(stud.radians))
                 }
-                .frame(height: 22)
-                .frame(maxHeight: .infinity, alignment: .center)
             }
-            .frame(height: 22)
+            Circle()
+                .fill(RadialGradient(colors: [.white.opacity(0.95), spark, spark.opacity(0)],
+                                     center: .center, startRadius: 0, endRadius: lineWidth * 1.4))
+                .frame(width: lineWidth * 2.8, height: lineWidth * 2.8)
+                .scaleEffect(flicker)
+                .shadow(color: spark.opacity(0.9), radius: 8)
+                .offset(x: radius * cos(angle.radians), y: radius * sin(angle.radians))
         }
-        .padding(.horizontal, 28)
+        .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue(String(localized: "\(Int(rope.remaining.rounded(.up))) seconds left"))
-    }
-}
-
-/// A rope drawn as a brass-and-hemp capsule with diagonal twists.
-private struct RopeStrand: View {
-    var body: some View {
-        Canvas { context, size in
-            let rect = CGRect(origin: .zero, size: size)
-            let capsule = Path(roundedRect: rect, cornerRadius: size.height / 2)
-            context.fill(capsule, with: .linearGradient(
-                Gradient(colors: [TavernPalette.parchment, TavernPalette.brass, TavernPalette.brassDark]),
-                startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: size.height)))
-            context.clip(to: capsule)
-            var twists = Path()
-            let step: CGFloat = 7
-            var x: CGFloat = -size.height
-            while x < size.width + size.height {
-                twists.move(to: CGPoint(x: x, y: size.height))
-                twists.addLine(to: CGPoint(x: x + size.height, y: 0))
-                x += step
-            }
-            context.stroke(twists, with: .color(TavernPalette.brassDark.opacity(0.55)), lineWidth: 1.6)
-            context.stroke(capsule, with: .color(Color.black.opacity(0.5)), lineWidth: 0.8)
-        }
-        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
     }
 }

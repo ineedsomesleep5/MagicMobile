@@ -326,6 +326,7 @@ private struct DesignPreviewFixtureScreen: View {
     @State private var status = ""
     @State private var errorMessage: String?
     @State private var boardFXPreviewStep = 0
+    @State private var previewClockFeed = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] == nil ? nil : TurnClockFeed()
 
     init(fixture: String) {
         self.fixture = fixture
@@ -365,6 +366,20 @@ private struct DesignPreviewFixtureScreen: View {
             // Fixtures have no engine: offer every answer action so the remember controls and "Resolve all" show.
             .environment(\.boardAnswerActions, BoardAnswerActions(supported: ["rememberAnswer", "rememberTriggerFirst",
                 "passUntilStackResolved", "resetRememberedAnswers", "resetTriggerOrder", "autoPassAfterCast"]))
+        }
+        .environment(\.turnClockFeed, previewClockFeed)
+        .task {
+            // MAGICMOBILE_PREVIEW_TURN_ROPE=you|opponent|strike: the turn timer ring (yours round the pass
+            // button, the opponent's round their medallion), replaying a decision's last 22 seconds on a loop.
+            guard let previewClockFeed, let scenario = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_TURN_ROPE"] else { return }
+            let seat = scenario == "you" ? "player1" : "player2"
+            while !Task.isCancelled {
+                let deadline = ProcessInfo.processInfo.systemUptime + TurnClockRules.online.rope + 2
+                previewClockFeed.update(board: TurnClockBoard(clocks: [.init(seat: seat, deadline: deadline, limit: TurnClockRules.online.decision,
+                                                                             strikes: scenario == "strike" ? 1 : 0)]),
+                                        localSeat: "player1", seatNames: ["player1": "You", "player2": "Aurelia"])
+                do { try await Task.sleep(for: .seconds(TurnClockRules.online.rope + 4)) } catch { return }
+            }
         }
         .overlay(alignment: .top) {
             if status.hasPrefix("Development fixture: captured") {

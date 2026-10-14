@@ -598,14 +598,14 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     typealias AISeatDescriptor = OnDeviceMultiplayerAISeatDescriptor
     @Published private(set) var authenticationController: UIViewController?
     @Published private(set) var matchmakerController: GKMatchmakerViewController?
-    @Published private(set) var endpoint: OnDeviceMultiplayerEndpoint?
+    @Published private(set) var endpoint: OnDeviceMultiplayerEndpoint? { didSet { syncClockFeed() } }
     @Published private(set) var status = "Sign in to Game Center to play with friends."
     @Published private(set) var isAuthenticated = false
     @Published private(set) var isConnected = false
     @Published private(set) var isSuspended = false
     @Published private(set) var needsCleanup = false
     @Published private(set) var hostAISeatSummary: String?
-    @Published private(set) var seatNames: [String: String] = [:]
+    @Published private(set) var seatNames: [String: String] = [:] { didSet { syncClockFeed() } }
     @Published private(set) var startingRoll: OnDeviceStartingRoll?
     @Published private(set) var rollProgress: OnDeviceStartingRollProgress?
     @Published private(set) var hasRolled = false
@@ -632,7 +632,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     @Published private(set) var isFailed = false
     /// The online turn timer's clocks as this phone shows them. The host runs them (`TurnClock`)
     /// and sends each change to the guests in a `clock` packet.
-    @Published private(set) var turnClock = TurnClockBoard()
+    @Published private(set) var turnClock = TurnClockBoard() { didSet { syncClockFeed() } }
+    /// The same clocks for the board's pass-button ring, which observes only this.
+    let clockFeed = TurnClockFeed()
+    private func syncClockFeed() { clockFeed.update(board: turnClock, localSeat: endpoint?.seatID, seatNames: seatNames) }
     /// A player's quick-chat line: their table name and a fixed emote, never free text.
     var onEmote: ((String, GameEmote) -> Void)?
     private var lastEmoteFrom: [String: Date] = [:]

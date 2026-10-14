@@ -437,7 +437,11 @@ private fun LandscapePlayerSummary(name: String, player: PlayerGameState, active
             Text(name, color = MagicPalette.parchment, style = sf(11f, SfWeight.bold), maxLines = 1)
             // The portrait stands in for the heart; the column is narrow.
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlayerPortrait(player, 24.dp, active, thinking)
+                Box(contentAlignment = Alignment.Center) {
+                    PlayerPortrait(player, 24.dp, active, thinking)
+                    // This player's online turn timer rings their portrait.
+                    LocalTurnClock.current?.let { TurnClockRing(it, player.displayName, 32.dp) }
+                }
                 BoardLifeTotal(summary.life, sf(22f, SfWeight.bold, SfDesign.ROUNDED), Modifier.semantics { contentDescription = "${summary.life} life" })
             }
             Text("Hand ${summary.handCount} · Lib ${summary.libraryCount}", color = MagicPalette.parchment, style = sf(9f, SfWeight.semibold), maxLines = 1)

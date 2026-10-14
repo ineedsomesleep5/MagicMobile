@@ -13,6 +13,8 @@ enum LandscapeActionDockLayout {
 struct GameplayActionDock: View {
     @Environment(\.nativeTurnControl) private var nativeTurnControl
     @Environment(\.startingRollVisible) private var startingRollVisible
+    @Environment(\.turnClockFeed) private var turnClockFeed
+    @Environment(\.tavernCanvas) private var tavernCanvas
     let snapshot: GameSnapshot
     let passAction: LegalAction?
     let yieldActions: [LegalAction]
@@ -54,10 +56,17 @@ struct GameplayActionDock: View {
             case .skip: secondaryControl.frame(width: 44, height: 44)
             case .menu: controlsMenu
             case .primary:
-                if TavernPassAssets.flips {
-                    TavernPassStage(enabled: model.isPrimaryEnabled, turnsOnTap: model.primaryAction != nil) { primaryButton }
-                } else {
-                    primaryButton
+                Group {
+                    if TavernPassAssets.flips {
+                        TavernPassStage(enabled: model.isPrimaryEnabled, turnsOnTap: model.primaryAction != nil) { primaryButton }
+                    } else {
+                        primaryButton
+                    }
+                }
+                .overlay {
+                    if let turnClockFeed {
+                        TurnClockRing(feed: turnClockFeed, diameter: TavernDesign.passDiameter(in: tavernCanvas) * 1.12)
+                    }
                 }
             }
         } else if horizontal {
@@ -368,6 +377,7 @@ struct PortraitBottomCommandBar: View {
     @Environment(\.emoteCenter) private var emoteCenter
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
+    @Environment(\.turnClockFeed) private var turnClockFeed
     @Environment(\.boardAnswerActions) private var answerActions
 
     /// "Resolve all": one tap passes until the stack you're looking at has resolved (XMage's F10). It stops by itself if an
@@ -533,12 +543,15 @@ struct PortraitBottomCommandBar: View {
         )
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [TavernSeatAnchor.bottom: $0] }
         // The revealed top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix…) beside your portrait.
+        // In portrait it sits under the mana rail's left end, clear of the gems and the stack tray (Caleb, 2026-10-13).
         .overlay(alignment: .topTrailing) {
             if let top = human.zones.library.first {
-                TopOfLibraryCard(card: top, playable: castable.contains(.library), owner: "your", height: diameter * 0.72) {
+                let portrait = canvas.height > canvas.width
+                TopOfLibraryCard(card: top, playable: castable.contains(.library), owner: "your",
+                                 height: diameter * (portrait ? 0.66 : 0.72)) {
                     viewZone("Top of your library", [top])
                 }
-                .offset(x: diameter * 0.62, y: -diameter * 0.05)
+                .offset(x: diameter * (portrait ? 0.66 : 0.62), y: diameter * (portrait ? 0.30 : -0.05))
             }
         }
         .overlay(alignment: .top) {
@@ -574,6 +587,10 @@ struct PortraitBottomCommandBar: View {
                                            lineWidth: snapshot.isViewer(snapshot.activePlayerId) ? 3 : 2))
             .shadow(color: MagicPalette.antiqueGold.opacity(snapshot.isViewer(snapshot.activePlayerId) ? 0.7 : 0), radius: 10)
             .animation(.easeInOut(duration: 0.35), value: snapshot.activePlayerId)
+            // The other battlefields' turn timer: on the orb's gold rim (the tavern's rings the pass button).
+            .overlay {
+                if let turnClockFeed { TurnClockRing(feed: turnClockFeed, diameter: 52) }
+            }
         }
         .buttonStyle(.plain)
         .overlay(alignment: .bottomLeading) {

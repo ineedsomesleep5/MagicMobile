@@ -17,6 +17,7 @@ struct PortraitOpponentStatusBar: View {
     @Environment(\.emoteCenter) private var emoteCenter
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.tavernCanvas) private var tavernCanvas
+    @Environment(\.turnClockFeed) private var turnClockFeed
     @State private var pulse = false
     @State private var showPhaseStops = false
 
@@ -30,6 +31,11 @@ struct PortraitOpponentStatusBar: View {
                 HStack(spacing: 6) {
                     PlayerPortrait(player: opponent, size: 40, active: snapshot.activePlayerId == opponent.playerId,
                                    thinking: snapshot.thinkingPlayerID == opponent.playerId)
+                        .overlay {
+                            if let turnClockFeed, let name = opponent.displayName {
+                                TurnClockRing(feed: turnClockFeed, playerName: name, diameter: 48)
+                            }
+                        }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(opponentName).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
                         if opponent.isOut {
@@ -162,6 +168,19 @@ struct PortraitOpponentStatusBar: View {
                     // Commander damage, poison and the rest curve around the medallion, under its
                     // pop-over's full list (drawn first so a revealed top card leans over them).
                     let medallionCenter = canvas.tavernPoint(center)
+                    // Their online turn timer traces the socket's outer brass ring, under the badges
+                    // and the medallion. Measured on the iPhone 17 Pro plates: in portrait the band is
+                    // 1.55 portrait diameters across and sits 0.08 diameters low (the 3D ring's lower
+                    // lip is deeper); the landscape socket's braided edge is 1.37 across, 0.02 left.
+                    if let turnClockFeed, let name = opponent.displayName {
+                        let hole = canvas.tavernLength(sockets.opponentHoleRadius * 2)
+                        let landscape = sockets.canvas.width > sockets.canvas.height
+                        let holeDesign = sockets.opponentHoleRadius * 2
+                        TurnClockRing(feed: turnClockFeed, playerName: name, diameter: hole * (landscape ? 1.37 : 1.55))
+                            .tavernPosition(CGPoint(x: center.x - holeDesign * (landscape ? 0.02 : 0),
+                                                    y: center.y + holeDesign * (landscape ? 0 : 0.08)),
+                                            canvas: canvas, origin: origin)
+                    }
                     TavernEffectOrbitBadges(summary: PlayerStatusSummary(player: opponent, snapshot: snapshot),
                                             center: CGPoint(x: medallionCenter.x - origin.x, y: medallionCenter.y - origin.y),
                                             radius: canvas.tavernLength(TavernEffectOrbit.radius(holeRadius: sockets.opponentHoleRadius)),
@@ -210,13 +229,14 @@ struct PortraitOpponentStatusBar: View {
         }
         .opacity(opponent.isOut ? 0.45 : 1)
         .frame(width: diameter + 8, height: diameter + 8)
-        // An opponent's revealed top card leans beside their portrait.
+        // An opponent's revealed top card leans below their portrait's right side, clear of
+        // the turn ring on the frame and the phase plate (Caleb, 2026-10-13).
         .overlay(alignment: .bottomTrailing) {
             if let top = opponent.zones.library.first, let viewZone {
                 TopOfLibraryCard(card: top, owner: "\(opponentName)'s", height: diameter * 0.66) {
                     viewZone("Top of \(opponentName)'s library", [top])
                 }
-                .offset(x: diameter * 0.55, y: diameter * 0.1)
+                .offset(x: diameter * 0.8, y: diameter * 0.74)
             }
         }
         let label = opponent.isOut ? "\(opponentName), out of the game" : "\(opponentName), \(opponent.life) life"
