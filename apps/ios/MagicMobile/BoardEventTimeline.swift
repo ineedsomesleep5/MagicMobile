@@ -483,6 +483,18 @@ struct ScheduledBoardFX: Equatable, Identifiable {
         default: return false
         }
     }
+
+    /// Smart auto-pass waits for this effect before the game moves on (Caleb, 2026-10-14): a spell read at
+    /// the centre, a showcase arrival, a card leaving play, a combat hit. Abilities and triggers, life, damage
+    /// and counters never wait, so a stack of repeated triggers still resolves at full speed.
+    var holdsSmartPass: Bool {
+        switch event {
+        case let .spellCast(_, _, _, _, weight): return weight != .ability
+        case let .enteredBattlefield(_, _, _, _, entrance): return entrance != .plain
+        case .leftBattlefield, .combatStrike, .firstStrikeBeat: return true
+        default: return false
+        }
+    }
 }
 
 enum BoardFXScheduler {
@@ -677,6 +689,11 @@ struct BoardFXDirector: Equatable {
         active.filter { $0.scheduled.isSequential }.map(\.endDate).max()
     }
 
+    /// Until when smart auto-pass waits, so the board finishes what it is showing first.
+    var smartPassHoldUntil: Date? {
+        active.filter { $0.scheduled.holdsSmartPass }.map(\.endDate).max()
+    }
+
     mutating func prune(now: Date) {
         active.removeAll { $0.endDate <= now }
         let live = Set(active.map(\.scheduled.event.subjectID))
@@ -714,6 +731,26 @@ struct BoardFXDirector: Equatable {
     }
 
     var latestEnd: Date? { active.map(\.endDate).max() }
+}
+
+/// What the board is still showing, for smart auto-pass to wait on (OnDeviceSession). The board view
+/// records each snapshot it takes in; the session only reads. Presentation only: XMage never waits on it
+/// except through the pass the session holds back.
+@MainActor
+final class BoardPresentationHold {
+    static let shared = BoardPresentationHold()
+    /// Smart pass never waits longer than this for one prompt, so the board can't stall the game.
+    static let maximumWait: TimeInterval = 4
+    /// How long smart pass gives the board to take in a newly published snapshot.
+    static let ingestWait: TimeInterval = 0.15
+
+    private(set) var ingested: BoardFXRevisionKey?
+    private(set) var until: Date?
+
+    func record(_ key: BoardFXRevisionKey?, until: Date?) {
+        ingested = key
+        self.until = until
+    }
 }
 
 struct BoardFXCardMotion: Equatable {

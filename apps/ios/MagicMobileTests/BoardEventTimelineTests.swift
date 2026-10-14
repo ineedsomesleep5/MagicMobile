@@ -165,6 +165,37 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(later.addingTimeInterval(second[0].delay).timeIntervalSince1970, landed.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    /// Smart pass waits for spells read at the centre and for removal, never for ability resolutions or
+    /// life changes, so a stack of repeated triggers still resolves at full speed.
+    func testSmartPassHoldsForSpellsAndRemovalButNotTriggers() {
+        let held: [BoardFXEvent] = [
+            .spellCast(stackID: "s", name: "Path to Exile", controllerID: "b", tint: .white, weight: .spell),
+            .leftBattlefield(cardID: "bear", playerID: "a", to: .exile, tint: .green),
+            .enteredBattlefield(cardID: "angel", playerID: "b", from: .hand, tint: .white, entrance: .showcase),
+        ]
+        let quick: [BoardFXEvent] = [
+            .spellCast(stackID: "t", name: "Soul Warden", controllerID: "b", tint: .white, weight: .ability),
+            .lifeChanged(playerID: "b", delta: 1),
+            .enteredBattlefield(cardID: "land", playerID: "a", from: .hand, tint: .colorless, entrance: .plain),
+        ]
+        for level in [BoardFXLevel.full, .reduced] {
+            XCTAssertTrue(BoardFXScheduler.schedule(held, level: level).allSatisfy(\.holdsSmartPass), "\(level)")
+            XCTAssertFalse(BoardFXScheduler.schedule(quick, level: level).contains(where: \.holdsSmartPass), "\(level)")
+        }
+
+        let start = Date(timeIntervalSince1970: 7_000)
+        var director = BoardFXDirector()
+        let bear = card("bear")
+        director.ingest(snapshot([player("a", battlefield: [bear]), player("b")]), level: .full, now: start)
+        XCTAssertNil(director.smartPassHoldUntil)
+        let exiled = director.ingest(snapshot([player("a", exile: [bear]), player("b")], revision: 2), level: .full, now: start)
+        let departure = try? XCTUnwrap(exiled.first { if case .leftBattlefield = $0.event { return true }; return false })
+        XCTAssertEqual(director.smartPassHoldUntil, departure.map { start.addingTimeInterval($0.end) })
+        director.ingest(snapshot([player("a", life: 41, exile: [bear]), player("b")], revision: 3), level: .full,
+                        now: start.addingTimeInterval(5))
+        XCTAssertNil(director.smartPassHoldUntil, "a life change alone holds nothing")
+    }
+
     func testCombatDamageStrikesTheBlockerThenDamageLandsOnImpact() {
         let blockers = state(step: "declare-blockers", cards: [
             fxCard("atk", "a", attacking: true), fxCard("blk", "b", blocking: ["atk"]),

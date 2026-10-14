@@ -291,6 +291,34 @@ final class OnDeviceSessionTests: XCTestCase {
         }
     }
 
+    /// Smart pass lets the board finish an effect it is showing (an opponent's removal spell) before
+    /// passing, and passes that same prompt once the effect is over.
+    @MainActor
+    func testSmartPassWaitsForTheBoardToFinishShowingAnEffect() async throws {
+        let poll = try fixture("2p-priority")
+        var bare = poll.raw.object!
+        var root = bare["snapshot"]!.object!; var view = root["gameView"]!.object!
+        view["canPlayObjects"] = .object(["objects": .object([:])])
+        root["gameView"] = .object(view); bare["snapshot"] = .object(root)
+        let transport = SessionFixtureTransport(poll: .object(bare))
+        let session = OnDeviceSession()
+        let hold = BoardPresentationHold()
+        session.presentationHold = hold
+        hold.record(nil, until: Date().addingTimeInterval(0.8))
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true,
+                                 smartPass: .init(), close: {})
+        try await Task.sleep(for: .milliseconds(400))
+        let early = await transport.responses()
+        XCTAssertTrue(early.isEmpty, "no pass while the board is still showing the effect")
+        try await waitForResponses(1, transport: transport)
+        try await waitUntilIdle(session)
+        let sent = await transport.responses()
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?["command"]?["promptId"]?.string, poll.prompt?.id)
+        try await session.close()
+    }
+
     /// Regression: Skip tapped while a poll is in flight used to be disabled for that
     /// instant and silently ignored. It now arms and passes once the poll finishes.
     @MainActor

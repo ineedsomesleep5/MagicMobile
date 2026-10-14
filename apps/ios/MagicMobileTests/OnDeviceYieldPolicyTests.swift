@@ -232,4 +232,13 @@ final class OnDeviceYieldPolicyTests: XCTestCase {
         }
         XCTAssertNil(OnDeviceSmartPass.Step(engine: "UNTAP"))
     }
+
+    /// Passes the session sends for the player show no waiting pop-up; anything the player tapped still does.
+    func testOnlyPassesSentForThePlayerCountAsAutomatic() {
+        XCTAssertTrue(OnDeviceYieldPolicy.isAutomaticPass(actionID: OnDeviceYieldPolicy.smartPassActionPrefix + "p1"))
+        XCTAssertTrue(OnDeviceYieldPolicy.isAutomaticPass(actionID: OnDeviceYieldPolicy.yieldPassActionPrefix + "p1"))
+        for tapped in [nil, "pass_priority-p1", "cast-spell-42", "auto-ability-7", "starting-roll-p1"] {
+            XCTAssertFalse(OnDeviceYieldPolicy.isAutomaticPass(actionID: tapped), String(describing: tapped))
+        }
+    }
 }

@@ -329,6 +329,18 @@ data class ScheduledBoardFX(val id: Int, val event: BoardFXEvent, val delay: Dou
             else -> false
         }
     }
+
+    /**
+     * Smart auto-pass waits for this effect before the game moves on (Caleb, 2026-10-14): a spell read at
+     * the centre, a showcase arrival, a card leaving play, a combat hit. Abilities and triggers, life, damage
+     * and counters never wait, so a stack of repeated triggers still resolves at full speed.
+     */
+    val holdsSmartPass: Boolean get() = when (event) {
+        is BoardFXEvent.SpellCast -> event.weight != BoardFXSpellWeight.ABILITY
+        is BoardFXEvent.EnteredBattlefield -> event.entrance != BoardFXEntrance.PLAIN
+        is BoardFXEvent.LeftBattlefield, is BoardFXEvent.CombatStrike, BoardFXEvent.FirstStrikeBeat -> true
+        else -> false
+    }
 }
 
 object BoardFXScheduler {
@@ -464,6 +476,9 @@ class BoardFXDirector {
     /** Until when a showcase holds the centre of the board, so the turn banner waits its turn. */
     val centreBusyUntil: Long? get() = active.filter { it.scheduled.isSequential }.maxOfOrNull { it.endDate }
 
+    /** Until when smart auto-pass waits, so the board finishes what it is showing first. */
+    val smartPassHoldUntil: Long? get() = active.filter { it.scheduled.holdsSmartPass }.maxOfOrNull { it.endDate }
+
     /**
      * Returns only the newly scheduled effects, for haptics and sound. `holdUntil`: the centre of the board
      * is taken (the turn banner) until then, so showcases wait.
@@ -545,4 +560,27 @@ class BoardFXDirector {
     val latestEnd: Long? get() = active.maxOfOrNull { it.endDate }
 
     companion object { const val renderGrace = 2.0 }
+}
+
+/**
+ * What the board is still showing, for smart auto-pass to wait on (Swift `BoardPresentationHold`). The board
+ * records each snapshot it takes in; the session only reads. Both run on the main thread.
+ */
+class BoardPresentationHold {
+    /** The last snapshot the board took in, and until when (epoch ms) its held effects play. */
+    @Volatile var ingested: BoardFXRevisionKey? = null; private set
+    @Volatile var until: Long? = null; private set
+
+    fun record(key: BoardFXRevisionKey?, until: Long?) {
+        ingested = key
+        this.until = until
+    }
+
+    companion object {
+        val shared = BoardPresentationHold()
+        /** Smart pass never waits longer than this for one prompt, so the board can't stall the game. */
+        const val MAXIMUM_WAIT_MS = 4_000L
+        /** How long smart pass gives the board to take in a newly published snapshot. */
+        const val INGEST_WAIT_MS = 150L
+    }
 }

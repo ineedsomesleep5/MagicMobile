@@ -123,6 +123,17 @@ struct OnDeviceYieldPolicy {
         !prompt.id.isEmpty && prompt.revision >= 0 && prompt.kind == "SELECT" &&
         prompt.selectMode == "priority" && prompt.allowsBoolean && prompt.manaPlayerID == viewer
     }
+
+    /// Action IDs of the passes the session sends on the player's behalf: smart pass, and the End Turn / Skip yields.
+    static let smartPassActionPrefix = "smart-pass-"
+    static let yieldPassActionPrefix = "auto-pass-"
+
+    /// A pass the player didn't tap. It answers only ordinary priority, which asks nothing, so the board shows
+    /// no "Waiting for the table" pop-up for it (Caleb, 2026-10-14: it flashed on every smart pass).
+    static func isAutomaticPass(actionID: String?) -> Bool {
+        guard let actionID else { return false }
+        return actionID.hasPrefix(smartPassActionPrefix) || actionID.hasPrefix(yieldPassActionPrefix)
+    }
 }
 
 /// Arena-style smart pass (Caleb, 2026-10-11): when this seat has priority and nothing it could

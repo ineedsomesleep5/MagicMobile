@@ -98,7 +98,8 @@ struct CompactPromptPopup: View {
         if InlinePaymentPromptState.isActive(in: snapshot) {
             return false
         }
-        if pendingActionId != nil {
+        // An automatic pass answers a prompt that asked nothing, so it shows no waiting pop-up.
+        if pendingActionId != nil && !OnDeviceYieldPolicy.isAutomaticPass(actionID: pendingActionId) {
             return true
         }
 
