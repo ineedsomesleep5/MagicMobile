@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.magicmobile.android.game.BoardFXRevisionKey
+import io.magicmobile.android.game.BoardPresentationHold
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EnginePrompt
@@ -227,6 +229,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var smartPassGeneration = UUID.randomUUID()
     /** The last prompt smart pass answered: each prompt is passed at most once, never retried. */
     private var smartPassedPromptID: String? = null
+    /** What the board is still showing; smart pass lets it finish before passing. */
+    var presentationHold: BoardPresentationHold = BoardPresentationHold.shared
 
     /** The stack is resolving shortly after this seat's own answer (OnDeviceLocalPollSchedule.CHAIN_MILLIS). */
     private val inStackChain: Boolean get() {
@@ -395,6 +399,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             try {
                 // The response lane frees right after the answer that led here.
                 repeat(150) { if (isWorking || activeRefreshes != 0) delay(20) }
+                waitForBoardPresentation()
                 // Re-check against the poll applied meanwhile: the same prompt, still a pass.
                 val current = smartPassPrompt()
                 val shown = snapshot
@@ -415,6 +420,23 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         }
         smartPassJob = job
         job.start()
+    }
+
+    /**
+     * Lets the board finish what it is showing (an opponent's removal spell read at the centre, the creature
+     * it exiles) before smart pass moves the game on: first the board takes in the published snapshot, then
+     * its held effects play out, never longer than [BoardPresentationHold.MAXIMUM_WAIT_MS].
+     */
+    private suspend fun waitForBoardPresentation() {
+        val key = BoardFXRevisionKey(snapshot ?: return)
+        val start = System.currentTimeMillis()
+        fun elapsed() = System.currentTimeMillis() - start
+        while (presentationHold.ingested != key && elapsed() < BoardPresentationHold.INGEST_WAIT_MS) delay(20)
+        while (elapsed() < BoardPresentationHold.MAXIMUM_WAIT_MS) {
+            val left = (presentationHold.until ?: return) - System.currentTimeMillis()
+            if (left <= 0) return
+            delay(minOf(left, 100L))
+        }
     }
 
     val canEndTurn: Boolean get() = canStartYield(OnDeviceYieldPolicy.Mode.SAFE_END_TURN)

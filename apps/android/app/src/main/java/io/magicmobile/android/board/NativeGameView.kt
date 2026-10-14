@@ -72,6 +72,7 @@ import io.magicmobile.android.game.AIWaitRecoveryPolicy
 import io.magicmobile.android.game.BattlefieldAttachments
 import io.magicmobile.android.game.BoardDecisionPresentation
 import io.magicmobile.android.game.BoardFXDirector
+import io.magicmobile.android.game.BoardPresentationHold
 import io.magicmobile.android.game.BoardFXEntrance
 import io.magicmobile.android.game.BoardFXEvent
 import io.magicmobile.android.game.BoardFXLevel
@@ -441,6 +442,7 @@ fun NativeGameView(
     fun ingestBoardFX(snap: GameSnapshot) {
         val level = BoardFXLevel.resolved(boardFXLevel, BoardMotion.reduceMotion)
         val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis(), turnBannerEndsAt)
+        BoardPresentationHold.shared.record(BoardFXRevisionKey(snap), boardFX.smartPassHoldUntil)
         fxVersion += 1
         if (scheduled.isEmpty()) return
         playBoardFXHaptics(scope, view, scheduled, snap.viewerID)

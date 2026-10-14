@@ -216,6 +216,8 @@ final class OnDeviceSession: ObservableObject {
     private var smartPassGeneration = UUID()
     /// The last prompt smart pass answered: each prompt is passed at most once, never retried.
     private var smartPassedPromptID: String?
+    /// What the board is still showing; smart pass lets it finish before passing.
+    lazy var presentationHold: BoardPresentationHold = .shared
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
                 allowsSeatScopedAutoYield: Bool = false, table: OnDeviceTableLink? = nil,
@@ -367,6 +369,7 @@ final class OnDeviceSession: ObservableObject {
             guard let self else { return }
             // The response lane frees right after the answer that led here.
             for _ in 0..<150 where self.isWorking || self.activeRefreshes > 0 { try? await Task.sleep(for: .milliseconds(20)) }
+            await self.waitForBoardPresentation()
             // Re-check against the poll applied meanwhile: the same prompt, still a pass.
             guard !Task.isCancelled, self.epoch == token, !self.isWorking, let settings = self.smartPass,
                   self.pending == nil, self.pendingActionID == nil, !self.isAutoPassing,
@@ -386,6 +389,23 @@ final class OnDeviceSession: ObservableObject {
             self.smartPassTask = nil
             // The answer's own refresh may already show the next routine priority.
             if sent { self.scheduleSmartPass() }
+        }
+    }
+
+    /// Lets the board finish what it is showing (an opponent's removal spell read at the centre, the
+    /// creature it exiles) before smart pass moves the game on: first the board takes in the published
+    /// snapshot, then its held effects play out, never longer than BoardPresentationHold.maximumWait.
+    private func waitForBoardPresentation() async {
+        guard let snapshot else { return }
+        let key = BoardFXRevisionKey(snapshot: snapshot)
+        let start = ProcessInfo.processInfo.systemUptime
+        func elapsed() -> TimeInterval { ProcessInfo.processInfo.systemUptime - start }
+        while presentationHold.ingested != key, elapsed() < BoardPresentationHold.ingestWait, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        while let until = presentationHold.until, until.timeIntervalSinceNow > 0,
+              elapsed() < BoardPresentationHold.maximumWait, !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(min(until.timeIntervalSinceNow, 0.1)))
         }
     }
 

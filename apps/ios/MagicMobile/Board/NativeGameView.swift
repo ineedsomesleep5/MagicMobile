@@ -1075,6 +1075,7 @@ struct NativeGameView: View {
     private func ingestBoardFX(_ snapshot: GameSnapshot) {
         let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
         let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt)
+        BoardPresentationHold.shared.record(BoardFXRevisionKey(snapshot: snapshot), until: boardFX.smartPassHoldUntil)
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
         if boardSoundsEnabled {

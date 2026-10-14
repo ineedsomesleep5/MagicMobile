@@ -1,6 +1,8 @@
 package io.magicmobile.android.game
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Mirrors BoardEventTimelineTests.swift testCommanderCastAndEntranceAreCeremonial (iOS build 26). */
@@ -23,5 +25,21 @@ class BoardEventTimelineTest {
         // Put straight onto the battlefield (no cast seen), it gets the ceremony on arrival.
         assertEquals(BoardFXEvent.EnteredBattlefield("cmd-2", "a", null, BoardFXTint.GREEN, BoardFXEntrance.COMMANDER),
             BoardEventDiffer.events(inCommand, entered, setOf("Atraxa")).last())
+    }
+
+    /** Mirrors testSmartPassHoldsForSpellsAndRemovalButNotTriggers. */
+    @Test fun smartPassHoldsForSpellsAndRemovalButNotTriggers() {
+        val held = listOf(
+            BoardFXEvent.SpellCast("s", "Path to Exile", "b", BoardFXTint.WHITE, BoardFXSpellWeight.SPELL),
+            BoardFXEvent.LeftBattlefield("bear", "a", BoardFXZone.EXILE, BoardFXTint.GREEN),
+            BoardFXEvent.EnteredBattlefield("angel", "b", BoardFXZone.HAND, BoardFXTint.WHITE, BoardFXEntrance.SHOWCASE))
+        val quick = listOf(
+            BoardFXEvent.SpellCast("t", "Soul Warden", "b", BoardFXTint.WHITE, BoardFXSpellWeight.ABILITY),
+            BoardFXEvent.LifeChanged("b", 1),
+            BoardFXEvent.EnteredBattlefield("land", "a", BoardFXZone.HAND, BoardFXTint.COLORLESS, BoardFXEntrance.PLAIN))
+        for (level in listOf(BoardFXLevel.FULL, BoardFXLevel.REDUCED)) {
+            assertTrue("$level", BoardFXScheduler.schedule(held, level).all { it.holdsSmartPass })
+            assertFalse("$level", BoardFXScheduler.schedule(quick, level).any { it.holdsSmartPass })
+        }
     }
 }
