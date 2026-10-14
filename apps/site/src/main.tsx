@@ -8,6 +8,7 @@ import {
   Plus,
 } from "@phosphor-icons/react";
 import "@fontsource-variable/source-serif-4/opsz.css";
+import "@fontsource/cormorant-sc/latin-700.css";
 import "./style.css";
 import { cards } from "./cards";
 import { obtainium, releases } from "./releases";
