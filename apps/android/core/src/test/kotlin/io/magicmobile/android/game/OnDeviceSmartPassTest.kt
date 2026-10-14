@@ -70,4 +70,13 @@ class OnDeviceSmartPassTest {
         // The stored keys are the iOS raw values, so both apps read the same words.
         assertEquals("mine.declareAttackers", OnDeviceSmartPass.stopKey(OnDeviceSmartPass.Step.DECLARE_ATTACKERS, true))
     }
+
+    /** Mirrors testOnlyPassesSentForThePlayerCountAsAutomatic: passes sent for the player show no waiting pop-up. */
+    @Test fun onlyPassesSentForThePlayerCountAsAutomatic() {
+        assertTrue(OnDeviceYieldPolicy.isAutomaticPass(OnDeviceYieldPolicy.SMART_PASS_ACTION_PREFIX + "p1"))
+        assertTrue(OnDeviceYieldPolicy.isAutomaticPass(OnDeviceYieldPolicy.YIELD_PASS_ACTION_PREFIX + "p1"))
+        for (tapped in listOf(null, "pass_priority-p1", "cast-spell-42", "auto-ability-7", "starting-roll-p1")) {
+            assertFalse("$tapped", OnDeviceYieldPolicy.isAutomaticPass(tapped))
+        }
+    }
 }

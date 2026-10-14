@@ -409,7 +409,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                 smartPassedPromptID = current.id
                 val command = GameCommand(type = "pass_priority", gameId = situation.context.matchID, playerId = situation.context.viewerID,
                     promptId = current.id, messageId = current.revision.toInt(), expectedBridgeRevision = shown.bridgeRevision)
-                try { submit(command, "Pass priority", "smart-pass-${current.id}"); sent = true }
+                try { submit(command, "Pass priority", OnDeviceYieldPolicy.SMART_PASS_ACTION_PREFIX + current.id); sent = true }
                 catch (error: CancellationException) { throw error }
                 catch (_: Exception) { }
             } finally {
@@ -487,7 +487,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                             yieldPolicy.recordPass(decision.prompt)
                             val command = GameCommand(type = "pass_priority", gameId = current.matchID, playerId = current.viewerID,
                                 promptId = prompt.id, messageId = prompt.revision.toInt(), expectedBridgeRevision = shown.bridgeRevision)
-                            submit(command, "Pass priority", "auto-pass-${prompt.id}")
+                            submit(command, "Pass priority", OnDeviceYieldPolicy.YIELD_PASS_ACTION_PREFIX + prompt.id)
                         }
                     }
                 }

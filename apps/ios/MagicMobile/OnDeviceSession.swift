@@ -384,7 +384,7 @@ final class OnDeviceSession: ObservableObject {
             let command = GameCommand(type: "pass_priority", gameId: situation.context.matchID,
                                       playerId: situation.context.viewerID, promptId: current.id,
                                       messageId: Int(current.revision), expectedBridgeRevision: snapshot.bridgeRevision)
-            let sent = (try? await self.submit(command, label: String(localized: "Pass priority"), actionID: "smart-pass-\(current.id)")) != nil
+            let sent = (try? await self.submit(command, label: String(localized: "Pass priority"), actionID: OnDeviceYieldPolicy.smartPassActionPrefix + current.id)) != nil
             guard self.smartPassGeneration == generation else { return }
             self.smartPassTask = nil
             // The answer's own refresh may already show the next routine priority.
@@ -469,7 +469,7 @@ final class OnDeviceSession: ObservableObject {
                         let command = GameCommand(type: "pass_priority", gameId: context.matchID,
                                                   playerId: context.viewerID, promptId: prompt.id,
                                                   messageId: Int(prompt.revision), expectedBridgeRevision: snapshot.bridgeRevision)
-                        try await self.submit(command, label: String(localized: "Pass priority"), actionID: "auto-pass-\(prompt.id)")
+                        try await self.submit(command, label: String(localized: "Pass priority"), actionID: OnDeviceYieldPolicy.yieldPassActionPrefix + prompt.id)
                     }
                 }
             } catch {
