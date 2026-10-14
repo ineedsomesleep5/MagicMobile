@@ -125,6 +125,11 @@ contradicting one.
   (`sources` of the target or test target, unless its folder is excluded, like `Board/`) and four
   entries in the committed `MagicMobileiOS.xcodeproj/project.pbxproj` (build file, file reference,
   group child, Sources phase). Copy a neighbour's entries with fresh 24-hex IDs.
+  Corrected 2026-10-14 (Claude): hand-added entries build, but release preflight's `generated-project`
+  check compares the pbxproj with XcodeGen output, and build 37's preflight failed on the entries from
+  #138–#145. On a Mac, run `xcodegen generate --spec native-engine.yml --project . --project-root .
+  --no-env --quiet` in `apps/ios` and commit the result. From the cloud (no xcodegen), hand-add the
+  entries and expect the release to regenerate the project.
 - 2026-10-11 (Claude): cloud containers can't reach dl.google.com, so `gradle` in `apps/android`
   fails on the Android plugin. The JVM-only `:core` tests still run from a throwaway root two levels under the repo (the
   parity tests read `../..`, e.g. `apps/zz-coreonly/`) that includes only `../android/core` with the Kotlin plugins and `jvmToolchain(21)` (the container has
