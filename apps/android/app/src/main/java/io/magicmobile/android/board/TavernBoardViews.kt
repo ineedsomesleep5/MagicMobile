@@ -532,6 +532,8 @@ fun TavernPassStage(enabled: Boolean, turnsOnTap: Boolean, title: String, showsT
                 onClick()
             }.semantics { this.contentDescription = contentDescription })
         }
+        // Your online turn timer burns round the pass button's brass ring.
+        LocalTurnClock.current?.let { TurnClockRing(it, null, diameter * 1.12f, Modifier.align(Alignment.Center)) }
     }
 }
 

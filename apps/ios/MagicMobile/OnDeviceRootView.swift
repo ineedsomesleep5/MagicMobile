@@ -942,10 +942,8 @@ struct OnDeviceRootView: View {
             portraitModeEnabled: $portraitModeEnabled,
             viewZone: { title, cards in zone = InspectedZone(title: title, cards: cards) }
         )
-        .overlay {
-            // The online turn timer's rope; solo games have no clock.
-            if setup.usingMultiplayer, let multiplayer = setup.multiplayer { TurnRopeOverlay(multiplayer: multiplayer) }
-        }
+        // The online turn timer's ring around the pass button; solo games have no clock.
+        .environment(\.turnClockFeed, setup.usingMultiplayer ? setup.multiplayer?.clockFeed : nil)
         .overlay { zoneOverlay }
         .overlay(alignment: .top) {
             if guidedGame, let guidedTip {

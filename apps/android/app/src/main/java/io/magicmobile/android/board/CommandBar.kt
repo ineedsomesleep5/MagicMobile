@@ -330,6 +330,8 @@ fun PortraitBottomCommandBar(humanName: String, human: PlayerGameState, opponent
                         key(human.playerId) { BoardLifeTotal(human.life, sf(23f, SfWeight.bold, SfDesign.SERIF)) }
                     }
                 }
+                // Your online turn timer rings the life orb on the classic battlefields.
+                LocalTurnClock.current?.let { TurnClockRing(it, null, 52.dp, Modifier.align(Alignment.Center)) }
                 if (emoteCenter != null) {
                     EmoteBubbleSlot(emoteCenter, human.playerId, modifier = Modifier.align(Alignment.BottomStart).offset(y = (-62).dp).wrapContentSize(unbounded = true).zIndex(5f))
                     if (isEmotePickerOpen) {
@@ -381,8 +383,11 @@ private fun TavernCommandBar(frame: TavernFrame, human: PlayerGameState, manaPoo
             }
             // The revealed top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix…) beside your portrait.
             human.zones.library.firstOrNull()?.let { top ->
-                TopOfLibraryCard(top, "your", Modifier.align(Alignment.TopEnd).offset(diameter * 0.62f, -diameter * 0.05f).wrapContentSize(unbounded = true),
-                    playable = BoardZoneReference.PlayerZone.LIBRARY in castable, height = diameter * 0.72f) { viewZone("Top of your library", listOf(top)) }
+                // In portrait it sits under the mana rail's left end, clear of the gems and the stack tray (Caleb, 2026-10-13).
+                val portrait = !frame.isLandscape
+                TopOfLibraryCard(top, "your", Modifier.align(Alignment.TopEnd)
+                    .offset(diameter * (if (portrait) 0.66f else 0.62f), diameter * (if (portrait) 0.30f else -0.05f)).wrapContentSize(unbounded = true),
+                    playable = BoardZoneReference.PlayerZone.LIBRARY in castable, height = diameter * (if (portrait) 0.66f else 0.72f)) { viewZone("Top of your library", listOf(top)) }
             }
             if (emoteCenter != null) {
                 EmoteBubbleSlot(emoteCenter, human.playerId, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-56).dp)

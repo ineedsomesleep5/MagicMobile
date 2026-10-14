@@ -660,6 +660,7 @@ struct LandscapePlayerSummary: View {
     /// Your own summary opens quick chat when on-device games provide it.
     var chatSnapshot: GameSnapshot? = nil
     @Environment(\.emoteCenter) private var emoteCenter
+    @Environment(\.turnClockFeed) private var turnClockFeed
     @State private var chatOpen = false
 
     var body: some View {
@@ -669,6 +670,12 @@ struct LandscapePlayerSummary: View {
             // The portrait stands in for the heart; the column is narrow.
             HStack(spacing: 5) {
                 PlayerPortrait(player: player, size: 24, active: active, thinking: thinking)
+                    // The online turn timer: seat names are the players' table names, yours included.
+                    .overlay {
+                        if let turnClockFeed, let name = player.displayName {
+                            TurnClockRing(feed: turnClockFeed, playerName: name, diameter: 32)
+                        }
+                    }
                 BoardLifeTotal(life: summary.life).id(player.playerId)
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .lineLimit(1)

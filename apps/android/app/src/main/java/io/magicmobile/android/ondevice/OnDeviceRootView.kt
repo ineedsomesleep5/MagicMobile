@@ -826,6 +826,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         prepareAIRollIfNeeded()
     }
     val table = setup.multiplayer as? RelayTable
+    val turnClockFeed = remember(table, setup.usingMultiplayer) {
+        table?.takeIf { setup.usingMultiplayer }?.let { io.magicmobile.android.board.TurnClockFeed({ it.turnClock }, { it.localSeatID }, { it.seatNames }) }
+    }
     LaunchedEffect(table?.startingRoll) { didDismissStartingRoll = false; attemptedStartingPromptID = null; startingChoiceFailedPromptID = null }
     LaunchedEffect(table?.rollShown) { submitStartingChoiceIfNeeded() }
     // A ranked or challenge table is for that one player only, never shown to friends.
@@ -933,7 +936,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         io.magicmobile.android.board.LocalBoardAnswerActions provides io.magicmobile.android.board.BoardAnswerActions(
                             session.supportedAnswerActions, session.rememberedAnswers, session.rememberedTriggerOrders,
                             { session.forgetRememberedAnswers() }, { session.forgetTriggerOrder() }),
-                        LocalStartingRollVisible provides boardQuiet) {
+                        LocalStartingRollVisible provides boardQuiet,
+                        // The online turn timer's rings; solo games have no clock.
+                        io.magicmobile.android.board.LocalTurnClock provides turnClockFeed) {
                         // Settings → Pass After Casting, sent with this seat's next answer when it changes.
                         val autoPassAfterCast by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.board.AutoPassAfterCast.KEY, true)
                         androidx.compose.runtime.LaunchedEffect(autoPassAfterCast) { session.setAutoPassAfterCast(autoPassAfterCast) }
@@ -966,10 +971,6 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 refreshGame = ::refresh, reconnectGame = ::refresh, checkBridgeHealth = { setup.localHealth() },
                                 newGame = ::rematchOrLeave, quitGame = ::leaveFinishedOrAsk,
                                 portraitModeEnabled = portraitModeEnabled, setPortraitModeEnabled = { portraitModeEnabled = it })
-                            // The online turn timer's rope; solo games have no clock.
-                            if (setup.usingMultiplayer && table != null) {
-                                io.magicmobile.android.board.TurnRopeOverlay(table.turnClock, table.localSeatID, table.seatNames)
-                            }
                             // Each snapshot may bring the guided game's next note, or retire the one on screen.
                             LaunchedEffect(session.snapshot, guidedGame) {
                                 val snapshot = session.snapshot

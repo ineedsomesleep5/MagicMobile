@@ -224,7 +224,7 @@ final class PlayerRecordStoreTests: XCTestCase {
         let store = PlayerRecordStore(directory: directory(), now: { now })
         for color in ["W", "U", "B", "R", "G"] { _ = play(store, .quick, .win, colors: [color], commander: "C-\(color)") }
         _ = play(store, .ranked, .loss)
-        _ = play(store, .ranked, .win, deckBracket: 1, human: true) // Bronze opponents start at bracket 1: no underdog
+        _ = play(store, .ranked, .win, deckBracket: 2, human: true) // Bronze opponents play bracket 2: no underdog
         let stats = store.stats
         XCTAssertEqual(stats.games, 7)
         XCTAssertEqual(stats.wins, 6)
