@@ -220,8 +220,8 @@ private fun DrawScope.drawFan(t: Double) {
     drawPath(BrandMarkPaths.sparkle(Rect(left, top, left + unit, top + unit)), BrandTheme.ember.copy(alpha = (0.1 + 0.06 * glow).toFloat()))
 }
 
-/** Heavy serif display type (`.brandTitle(size)`). */
-fun brandTitleStyle(size: Float): TextStyle = sf(size, SfWeight.heavy, SfDesign.SERIF, tracking = -0.3f).copy(color = BrandTheme.ink,
+/** Display type (`.brandTitle(size)`). */
+fun brandTitleStyle(size: Float): TextStyle = tavernDisplay(size, tracking = -0.3f).copy(color = BrandTheme.ink,
     shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 4f), 10f))
 
 @Composable
@@ -288,10 +288,10 @@ fun BrandButton(onClick: () -> Unit, modifier: Modifier = Modifier, kind: BrandB
     }
 }
 
-/** Text in the brand button face's type: heavy serif, engraved. */
+/** Text in the brand button face's type: the tavern display face, engraved. */
 @Composable
 fun BrandButtonText(text: String, kind: BrandButtonKind = BrandButtonKind.PRIMARY) {
-    Text(text, color = LocalContentColor.current, style = sf(if (kind == BrandButtonKind.PRIMARY) 19f else 17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f),
+    Text(text, color = LocalContentColor.current, style = tavernDisplay(if (kind == BrandButtonKind.PRIMARY) 19f else 17f).engraved(0.75f),
         maxLines = 2, textAlign = TextAlign.Center)
 }
 

@@ -100,6 +100,12 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-14 (Claude): Cormorant's old-style figures are on by default in both the SC and Garamond
+  files, so "1v1" reads "ivi" unless `lnum` is set (`UIFontDescriptor` feature settings on iOS,
+  `fontFeatureSettings = "lnum"` in Compose). Its x-height is 0.386 em against about 0.475 for New
+  York and Source Serif, which is why it is display-only. Bundled fonts in `Resources/Fonts` need a
+  `UIAppFonts` entry in `Info.plist` plus pbxproj entries (CI and the TestFlight script regenerate the
+  project with xcodegen, which picks the folder up anyway).
 - 2026-10-12 (Claude): `OnDeviceRootView.presentedContent` is one very long SwiftUI modifier chain; adding
   two sheets tipped Xcode 27 into "unable to type-check this expression in reasonable time" (reported
   at an unrelated line near the end). **Fix:** the chain is split into `let` stages, and long `||`

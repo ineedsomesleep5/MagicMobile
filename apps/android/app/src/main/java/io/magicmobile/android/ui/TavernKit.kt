@@ -322,7 +322,7 @@ fun TextStyle.engraved(alpha: Float = 0.7f, y: Float = 1f): TextStyle = copy(sha
 /** TavernPanelTitle: a panel title engraved in gold capitals (read in normal case by accessibility services). */
 @Composable
 fun TavernPanelTitle(text: String, modifier: Modifier = Modifier, size: Float = 16f) {
-    FitText(text.uppercase(), sf(size, SfWeight.heavy, SfDesign.SERIF, tracking = 1.2f).copy(brush = TavernPalette.goldText).engraved(),
+    FitText(text.uppercase(), tavernDisplay(size, tracking = 1.2f).copy(brush = TavernPalette.goldText).engraved(),
         modifier.semantics { contentDescription = text }, minimumScale = 0.7f)
 }
 

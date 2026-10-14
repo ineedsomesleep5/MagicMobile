@@ -100,16 +100,22 @@ insets are in points.
 
 Serif everywhere on the tavern; system sans only for dense numbers that are not on a tavern piece.
 
+**Display face (since 2026-10-14):** Cormorant SC Bold (`TavernDisplayFont` on iOS, `tavernDisplay()` on
+Android) for the brand title, panel titles, the menu deck name, brand plaques and the large navigation
+title. Everything else stays in the system serif: Cormorant's x-height is about 20% shorter, so it reads
+small at body sizes and has no heavier weight or italic. Pass the old serif size; the helper sets it 10%
+larger and turns on lining figures (`lnum`). Don't use it below 16pt.
+
 | Piece | Size / weight | Extras |
 | --- | --- | --- |
 | Button (`TavernButtonStyle`) | 14 heavy serif, 12 compact | 1pt black 0.75 shadow, 2 lines, min scale 0.75 |
-| Brand button (menu plaques) | 19 heavy primary, 17 secondary | |
-| Panel title (`TavernPanelTitle`) | 16 heavy serif, UPPERCASE | tracking 1.2, gold gradient, accessibility label in normal case |
+| Brand button (menu plaques) | 19 primary, 17 secondary, display face | |
+| Panel title (`TavernPanelTitle`) | 16 display face, UPPERCASE | tracking 1.2, gold gradient, accessibility label in normal case |
 | Tag (`TavernTag`) | 10 heavy serif | tracking 0.8, 1 line, min scale 0.7 |
 | Toggle title / subtitle | 16 semibold / 12 regular serif | subtitle at 0.65 opacity, 2 lines |
 | Text field | 15 medium serif, `ink` | |
 | Coin numeral | 0.52 × coin size, black serif, monospaced digits | white 0.35 shadow 1pt down |
-| Navigation title / large | 17 semibold / 32 bold serif | (`TavernAppearance`) |
+| Navigation title / large | 17 semibold serif / 32 display face | (`TavernAppearance`) |
 
 Android fonts: Source Serif 4 stands in for New York (`SfDesign.SERIF`), Inter for SF Pro, Nunito
 for SF Rounded; `sf(size, weight, design)` fits widths to CoreText. Use `TextStyle.engraved()` for

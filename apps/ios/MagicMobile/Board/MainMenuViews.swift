@@ -153,7 +153,7 @@ struct TavernMainMenu: View {
                 .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.2)
                 .foregroundStyle(DeckStudioPalette.accent)
             Text(deckName)
-                .font(.system(size: 21, weight: .heavy, design: .serif))
+                .font(TavernDisplayFont.font(21))
                 .foregroundStyle(TavernPalette.ink)
             if let commanderName, !commanderName.isEmpty {
                 Text(commanderName)

@@ -138,6 +138,8 @@ object AppFonts {
     val sans: FontFamily by lazy { family(R.font.inter) }
     val serif: FontFamily by lazy { family(R.font.source_serif) }
     val rounded: FontFamily by lazy { family(R.font.nunito) }
+    /** Cormorant SC Bold, the tavern's display face (iOS `TavernDisplayFont`). */
+    val display: FontFamily by lazy { FontFamily(Font(R.font.cormorant_sc_bold, FontWeight.Bold)) }
 
     fun family(design: SfDesign): FontFamily = when (design) {
         SfDesign.DEFAULT -> sans
@@ -145,6 +147,17 @@ object AppFonts {
         SfDesign.ROUNDED -> rounded
         SfDesign.MONOSPACED -> FontFamily.Monospace
     }
+}
+
+/**
+ * The tavern's display type (iOS `TavernDisplayFont`, Caleb 2026-10-14): Cormorant SC Bold for titles,
+ * panel titles, the deck name and brand plaques only. [size] is the old serif size; the face is set 10%
+ * larger to match its cap height, with lining figures so "1v1" never reads "ivi".
+ */
+fun tavernDisplay(size: Float, tracking: Float = 0f): TextStyle {
+    val scaled = size * 1.1f
+    return TextStyle(fontFamily = AppFonts.display, fontWeight = FontWeight.Bold, fontSize = scaled.sp,
+        letterSpacing = (if (scaled > 0f) tracking / scaled else 0f).em, fontFeatureSettings = "lnum")
 }
 
 /** SwiftUI weights: ultraLight…black. */
