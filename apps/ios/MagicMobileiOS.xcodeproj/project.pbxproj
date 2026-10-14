@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CDCC8A1A611B1A660A409E11 /* Cormorant-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 65E0C64AB01DED13AE782BCE /* Cormorant-OFL.txt */; };
+		797FAB1EAF48599A7271EC71 /* CormorantSC-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4BDB1D86624039388D53A69A /* CormorantSC-Bold.ttf */; };
 		001AB64DF90EFF56F60B5E95 /* dice-roll.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6CA8A5960041348B8C01CB67 /* dice-roll.m4a */; };
 		008C07BFF86B3AEE7F3679A2 /* tavern-room.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A7B83AA1C40365E550FA5E3 /* tavern-room.json */; };
 		00D040BACBE56F8EE6F1A08A /* CompactPromptPopup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD247A43254B7430E9FF79C /* CompactPromptPopup.swift */; };
@@ -352,6 +354,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		65E0C64AB01DED13AE782BCE /* Cormorant-OFL.txt */ = {isa = PBXFileReference; path = "Cormorant-OFL.txt"; sourceTree = "<group>"; };
+		4BDB1D86624039388D53A69A /* CormorantSC-Bold.ttf */ = {isa = PBXFileReference; path = "CormorantSC-Bold.ttf"; sourceTree = "<group>"; };
 		0011D51DDEED2576ED425898 /* commander-brackets.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "commander-brackets.json"; sourceTree = "<group>"; };
 		0043C407D959D328AAEC061B /* d20-table-portrait.glb */ = {isa = PBXFileReference; path = "d20-table-portrait.glb"; sourceTree = "<group>"; };
 		01185AEE490D6677672B1123 /* TableChatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableChatTests.swift; sourceTree = "<group>"; };
@@ -697,6 +701,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		DDEBA12E9D1971AB39BC8E40 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				4BDB1D86624039388D53A69A /* CormorantSC-Bold.ttf */,
+				65E0C64AB01DED13AE782BCE /* Cormorant-OFL.txt */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
 		09EF22A111DC9C0AFA20E754 /* Import */ = {
 			isa = PBXGroup;
 			children = (
@@ -1059,6 +1072,7 @@
 				1A7B83AA1C40365E550FA5E3 /* tavern-room.json */,
 				D5489907D7F10C930B3E85E6 /* Audio */,
 				309CF75897E7F2808F88BDDF /* D20 */,
+				DDEBA12E9D1971AB39BC8E40 /* Fonts */,
 				F89BC1DD96EE61F6BE70DB87 /* Grimoire */,
 			);
 			path = Resources;
@@ -1310,6 +1324,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1511A400C8C25B7D7B72191 /* Assets.xcassets in Resources */,
+				CDCC8A1A611B1A660A409E11 /* Cormorant-OFL.txt in Resources */,
+				797FAB1EAF48599A7271EC71 /* CormorantSC-Bold.ttf in Resources */,
 				5A4CE129DBDCBF0BCF867A1F /* CREDITS.txt in Resources */,
 				073A3C37624E019DB68DAA84 /* PrivacyInfo.xcprivacy in Resources */,
 				EF969496B7B06B93615E320C /* ability.caf in Resources */,

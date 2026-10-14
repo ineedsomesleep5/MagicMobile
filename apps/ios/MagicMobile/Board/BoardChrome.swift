@@ -1591,7 +1591,7 @@ struct TavernPanelTitle: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 16, weight: .heavy, design: .serif))
+            .font(TavernDisplayFont.font(16))
             .tracking(1.2)
             .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
                                             startPoint: .top, endPoint: .bottom))

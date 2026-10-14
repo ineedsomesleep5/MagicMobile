@@ -1365,7 +1365,7 @@ private fun MenuDeckTile(deckName: String, commanderName: String?) {
         .semantics(mergeDescendants = true) { contentDescription = commanderName?.let { "Your deck: $deckName, commander $it" } ?: "Your deck: $deckName" },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("YOUR DECK", color = io.magicmobile.android.studio.DeckStudioPalette.accent, style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.2f))
-        Text(deckName, color = TavernPalette.ink, style = sf(21f, SfWeight.heavy, SfDesign.SERIF), textAlign = TextAlign.Center)
+        Text(deckName, color = TavernPalette.ink, style = io.magicmobile.android.ui.tavernDisplay(21f), textAlign = TextAlign.Center)
         if (!commanderName.isNullOrEmpty()) Text(commanderName, color = io.magicmobile.android.studio.DeckStudioPalette.secondaryInk,
             style = sf(13f, design = SfDesign.SERIF).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), textAlign = TextAlign.Center)
     }

@@ -37,6 +37,10 @@
 	<string>$(MM_ENGINE_MODE)</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose an image to use as your MagicMobile player icon.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>CormorantSC-Bold.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

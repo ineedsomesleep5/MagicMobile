@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 import UIKit
 
@@ -227,10 +228,30 @@ struct BrandBackdrop: View {
 
 // MARK: - Typography and surfaces
 
+/// The tavern's display face, Cormorant SC Bold (Caleb, 2026-10-14): titles, panel titles, the
+/// deck name and brand plaques only. Everything else stays in the system serif, because
+/// Cormorant's short lowercase reads small at body sizes. `size` is the old serif size; the face
+/// is set 10% larger to match its cap height, with lining figures so "1v1" never reads "ivi".
+enum TavernDisplayFont {
+    static let postScriptName = "CormorantSC-Bold"
+    static let scale: CGFloat = 1.1
+
+    static func uiFont(_ size: CGFloat) -> UIFont {
+        guard let base = UIFont(name: postScriptName, size: size * scale) else {
+            let system = UIFont.systemFont(ofSize: size, weight: .heavy)
+            return system.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? system
+        }
+        let lining: [UIFontDescriptor.FeatureKey: Int] = [.type: kNumberCaseType, .selector: kUpperCaseNumbersSelector]
+        return UIFont(descriptor: base.fontDescriptor.addingAttributes([.featureSettings: [lining]]), size: base.pointSize)
+    }
+
+    static func font(_ size: CGFloat) -> Font { Font(uiFont(size)) }
+}
+
 extension View {
-    /// Heavy display type, as on the download site.
+    /// Display type, as on the download site.
     func brandTitle(_ size: CGFloat) -> some View {
-        font(.system(size: size, weight: .heavy, design: .serif))
+        font(TavernDisplayFont.font(size))
             .tracking(-0.3)
             .foregroundStyle(BrandTheme.ink)
             .shadow(color: .black.opacity(0.6), radius: 10, y: 4)
@@ -341,7 +362,7 @@ private struct BrandButtonFace<Label: View>: View {
         let shape = RoundedRectangle(cornerRadius: 21, style: .continuous)
         return label
             .pressSound(primary ? .uiConfirm : nil, isPressed: pressed)
-            .font(.system(size: primary ? 19 : 17, weight: .heavy, design: .serif))
+            .font(TavernDisplayFont.font(primary ? 19 : 17))
             .foregroundStyle(primary ? Color(red: 1, green: 0.91, blue: 0.66)
                              : kind == .destructive ? Color(red: 1, green: 0.8, blue: 0.72) : TavernPalette.parchment)
             .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
@@ -652,7 +673,7 @@ enum TavernAppearance {
         stepper.setIncrementImage(ring("plus"), for: .normal)
         stepper.setDecrementImage(ring("minus"), for: .normal)
         UINavigationBar.appearance().titleTextAttributes = [.font: serif(17, .semibold)]
-        UINavigationBar.appearance().largeTitleTextAttributes = [.font: serif(32, .bold)]
+        UINavigationBar.appearance().largeTitleTextAttributes = [.font: TavernDisplayFont.uiFont(32)]
     }
 
     private static func serif(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
