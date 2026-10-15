@@ -12,11 +12,6 @@ on:
       artifact:
         description: 'Artifact name (android-native-symbols-<sha>)'
         required: true
-  push:
-    branches: [cloud/c4-engine-size-ai]
-    paths:
-      - .github/workflows/magicmobile-native-code-sizes.yml
-      - packages/ondevice-engine/scripts/native_code_sizes.py
 
 permissions:
   contents: read
