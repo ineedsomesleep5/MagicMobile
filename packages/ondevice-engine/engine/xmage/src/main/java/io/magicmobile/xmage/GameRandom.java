@@ -1,6 +1,11 @@
 package io.magicmobile.xmage;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -27,5 +32,15 @@ final class GameRandom extends Random {
         GameRecorder r=recorder;
         if(Thread.currentThread()==owner && (r==null || !r.inAI())) return super.next(bits);
         return ThreadLocalRandom.current().nextInt()>>>(32-bits);
+    }
+
+    /**
+     * A random order from XMage's generator. Upstream's "in a random order" library placement uses
+     * Collections.shuffle's own generator, which no seed reaches; both seat classes use this instead.
+     */
+    static List<UUID> randomOrder(Collection<UUID> ids) {
+        List<UUID> order=new ArrayList<>(ids);
+        Collections.shuffle(order,mage.util.RandomUtil.getRandom());
+        return order;
     }
 }

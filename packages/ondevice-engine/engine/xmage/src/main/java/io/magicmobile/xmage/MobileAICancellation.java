@@ -598,6 +598,17 @@ final class MobileAICancellation {
                 return castable.get(index);
             });
         }
+        // "In a random order" from the game's seeded generator (GameRandom.randomOrder), one card at a time as upstream does.
+        @Override public boolean putCardsOnBottomOfLibrary(mage.cards.Cards cards,Game game,mage.abilities.Ability source,boolean anyOrder) {
+            if(anyOrder || cards==null || cards.size()<2) return super.putCardsOnBottomOfLibrary(cards,game,source,anyOrder);
+            for(UUID id:GameRandom.randomOrder(cards)) { mage.cards.Cards one=new mage.cards.CardsImpl();one.add(id);super.putCardsOnBottomOfLibrary(one,game,source,false); }
+            return true;
+        }
+        @Override public boolean putCardsOnTopOfLibrary(mage.cards.Cards cards,Game game,mage.abilities.Ability source,boolean anyOrder) {
+            if(anyOrder || cards==null || cards.size()<2) return super.putCardsOnTopOfLibrary(cards,game,source,anyOrder);
+            for(UUID id:GameRandom.randomOrder(cards)) { mage.cards.Cards one=new mage.cards.CardsImpl();one.add(id);super.putCardsOnTopOfLibrary(one,game,source,false); }
+            return true;
+        }
         private List<SpellAbility> castable(Card card,Game game,boolean noMana) {
             return new ArrayList<>(PlayerImpl.getCastableSpellAbilities(game,playerId,card,game.getState().getZone(card.getId()),noMana).values());
         }

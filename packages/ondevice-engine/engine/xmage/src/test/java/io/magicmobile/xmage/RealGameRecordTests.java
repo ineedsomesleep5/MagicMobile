@@ -39,6 +39,8 @@ public final class RealGameRecordTests {
         if(only.isEmpty() || only.equals("human-vs-ai")) humanGame("human-vs-ai",tokens,List.of(chaos),303L,160,true);
         // Four seats, recorded mid-game while the human's question waits: the replay stops at that question.
         if(only.isEmpty() || only.equals("human-vs-3ai")) humanGame("human-vs-3ai",flight,List.of(isamaru,yargle,adeline),404L,90,false);
+        // Two human seats (an online table) and an AI: both humans answer through the API, then concede in turn.
+        if(only.isEmpty() || only.equals("two-humans")) twoHumans(tokens,flight,chaos,505L);
         if(only.isEmpty()) tamper(isamaru,yargle);
         // -Dmagicmobile.recordSoak=<games>: more seeds and deck pairings, alternating AI-only and human games.
         int soak=Integer.getInteger("magicmobile.recordSoak",0);
@@ -133,6 +135,50 @@ public final class RealGameRecordTests {
             engine.destroy(id);
         } finally { engine.close(); }
         replayMatches(name,record,digests,finish);
+    }
+
+    private static void twoHumans(Map<String,Object> first,Map<String,Object> second,Map<String,Object> ai,long seed) throws Exception {
+        String name="two-humans";
+        List<Object> seats=List.of(seat("human","Human",first,null),seat("human2","Human 2",second,null),seat("ai1","AI 1",ai,1));
+        XmageEngine engine=new XmageEngine("jvm-record-"+name);
+        Map<String,Object> record;List<String> digests;
+        try {
+            String id=Json.requiredString(engine.create(config(seats,seed)),"matchId");
+            Game game=game(engine,id);
+            List<RealCheckpointTests.Driver> drivers=List.of(new RealCheckpointTests.Driver(engine,id,true,0,"human"),
+                new RealCheckpointTests.Driver(engine,id,true,0,"human2"));
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(600);
+            int answered=0;
+            String phase="running";
+            // Whichever seat XMage is asking answers; neither ever waits on the other.
+            while(answered<240 && "running".equals(phase)) {
+                check(System.nanoTime()<deadline,name+": stalled after "+answered+" answers");
+                boolean any=false;
+                for(RealCheckpointTests.Driver driver:drivers) {
+                    Map<String,Object> state=driver.poll();
+                    phase=String.valueOf(state.get("phase"));
+                    if(!"running".equals(phase)) break;
+                    Map<String,Object> prompt=state.get("prompt")==null?null:Json.object(state.get("prompt"));
+                    if(prompt==null || Boolean.TRUE.equals(prompt.get("submitted")) || driver.seen.contains((String)prompt.get("promptId"))) continue;
+                    driver.answer(state);answered++;any=true;
+                }
+                if(!any) Thread.sleep(2);
+            }
+            if("running".equals(phase)) {
+                engine.concede(id,"human2");
+                Thread.sleep(300);
+                if(!"ended".equals(drivers.get(0).poll().get("phase"))) engine.concede(id,"human");
+            }
+            Map<String,Object> last=drivers.get(0).untilFinished(300);
+            check("ended".equals(last.get("phase")),name+": game ended: "+last.get("failure"));
+            record=engine.record(id);
+            digests=new ArrayList<>(recorder(engine,id).digests);
+            System.out.println("PLAYED "+name+" turns="+game.getTurnNum()+" humanAnswers="+answered);
+            engine.destroy(id);
+        } finally { engine.close(); }
+        long concedes=strings(record.get("entries")).stream().filter(e->e.length()>1 && e.charAt(1)=='c').count();
+        check(concedes>=1,name+": the record holds the human concedes");
+        replayMatches(name,record,digests,true);
     }
 
     private static void replayMatches(String name,Map<String,Object> record,List<String> digests,boolean ended) throws Exception {

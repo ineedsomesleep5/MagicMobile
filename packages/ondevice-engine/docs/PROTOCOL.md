@@ -13,6 +13,7 @@ One UTF-8 JSON request per native call. Maximum input/output 4 MiB, bounded nest
 {"protocol":1,"op":"poll","matchId":"...","viewerId":"player-1","after":0}
 {"protocol":1,"op":"respond","matchId":"...","viewerId":"player-1","command":{...}}
 {"protocol":1,"op":"concede","matchId":"...","viewerId":"player-1"}
+{"protocol":1,"op":"record","matchId":"..."}
 {"protocol":1,"op":"destroy","matchId":"..."}
 {"protocol":1,"op":"shutdown"}
 {"protocol":1,"op":"diagnostics"}
@@ -28,8 +29,9 @@ It is never included in polls, events, regular failure replies, or guest RPC.
 `clearDiagnostics` releases that in-memory report. The diagnostic iOS build
 persists only the latest report plus app/OS/time/status metadata, capped at
 64 KiB, protected on iOS and excluded from backup. The user reviews, shares or
-deletes it explicitly; no automatic upload is added. No game state or action
-payload recorder is enabled. Temporary capture is tagged `[DEBUG-native-failure]`.
+deletes it explicitly; no automatic upload is added. Diagnostics hold no game state
+or action payload; the separate game record ("Game record" below) is the only record of
+a game's decisions. Temporary capture is tagged `[DEBUG-native-failure]`.
 
 `concede` concedes the authenticated human seat (`unauthorized_seat` for AI or unknown
 seats; `match_unavailable` once the match ended). The request is queued on the match and
@@ -68,8 +70,10 @@ life). The rolls come from a SplitMix64 generator per seat, saved with a checkpo
 
 For calibration, AI seats also accept optional overrides: `aiSearchDepth` (1–10), `aiMistakePercent`
 (0–100) and `aiSeed` (any 64-bit integer; omitted means a random seed drawn outside XMage's own
-random generator, so shuffles are unaffected). A seed makes the mistake rolls repeatable, not the
-whole game: XMage's shuffles and AI tie-breaks are not seeded. The apps send only `aiSkill`. Any of
+random generator, so shuffles are unaffected). `aiSeed` makes only the mistake rolls repeatable; the
+match `seed` ("Game record") seeds the shuffles and every other rules-code draw. AI search choices
+still depend on time, so two games with the same seeds can differ; a game record replays one exactly.
+The apps send only `aiSkill`. Any of
 these on a human seat, or out of range, fails with `invalid_ai_skill`.
 Higher levels allow more thinking, not different rules or access to additional private information.
 While a stack resolves, an AI that already searched and chose to pass with an opponent's ability (not a
@@ -285,6 +289,34 @@ cannot match to an offered ability) is `true` while something is pending. Only t
 priority it is gets `canPlayObjects`, so only that seat sees the flag. Older engines omit the field;
 clients must then treat every non-mana play as a possible response (today's behaviour).
 
+### Game record
+
+Every match keeps a compact record of its decisions: the seed, seats and decks, every human answer,
+every AI choice, concedes and save/resume points (format, names, sizes and server checks:
+`docs/cloud/game-record.md` at the repository root). Engines with it advertise `"gameRecord": 1` in
+`capabilities` (the record format version); older engines answer `unknown_operation` to `record`.
+
+- **Seed.** `create`'s `configuration` accepts an optional `"seed"`: any 64-bit JSON integer (anything
+  else fails with `invalid_configuration`). Omitted, the engine draws one. XMage's process-wide
+  generator becomes this match's seeded generator; only rules code on the match's GAME thread draws
+  from it (shuffles, coin flips, dice, random choices, the opening player), and libraries start in
+  deck order before the opening shuffle. AI reasoning draws from a separate, unseeded source. So the
+  same seed and seats deal the same opening hands. For ranked AI games the app should pass the seed
+  the server issued with the game's ticket.
+- **`record`.** Returns the record as JSON: `format` (`"magicmobile-game-record"`), `version` (1),
+  `setup` and `end` (JSON strings), `entries` and `marks` (string arrays), `head` (SHA-256 hash chain,
+  lowercase hex), and `broken` only when recording had to stop (the game itself is unaffected). It
+  works during the game (`end.state` `"running"`, a best-effort snapshot) and after it ends
+  (`"ended"`, complete), until `destroy`. Fetch it after the `ended` phase and before `destroy`.
+  A typical game is 0.5–6 k entries, 6–66 KB of JSON and 1–8 KB gzipped; store it gzipped.
+- **Privacy.** The record and its seed reveal every hand and library order. It is local-only like
+  `diagnostics`: `HostRouter` refuses it for guests, and it must never reach the other side of a
+  running online game. The app may keep it with the finished game and upload it with a ranked AI
+  result.
+- **Checkpoints.** A checkpoint holds the record so far (a few KB more per file). A restored game keeps
+  recording and marks the restore point, so a resumed game's record still replays.
+- **Replay** runs on the JVM only (`GameReplay`, see the doc above); there is no replay op.
+
 ### Stack controllers
 
 Each per-seat snapshot carries `stackControllers`, an object from stack object ID (the same keys as
@@ -307,7 +339,7 @@ costs remain absent, not guessed as zero. Split halves remain separate.
 
 ## Untrusted multiplayer boundary
 
-The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence; every other operation, including `validateDeck`, `restore`, `checkpoint` and `cancelCheckpoint`, is refused before it reaches the engine. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
+The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence; every other operation, including `validateDeck`, `restore`, `checkpoint`, `cancelCheckpoint` and `record`, is refused before it reaches the engine. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
 
 Build identity includes protocol version, upstream commit, catalogue fingerprint and adapter version. It must match before player input. The fingerprint covers constructor/set inventory, so commit+adapter identity must also match; do not treat the catalogue hash alone as all-code equivalence.
 

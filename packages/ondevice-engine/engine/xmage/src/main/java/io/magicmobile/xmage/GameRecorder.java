@@ -391,12 +391,12 @@ final class GameRecorder {
         if(ability.getManaCosts().containsX()) text.append(";x").append(ability.getManaCostsToPay().getText().replace(' ','_'));
         return text.length()==0?".":text.toString();
     }
+    /** Sorted: upstream's option generator lists a target's combinations in hash order, so only the set is compared. */
     private void targets(StringBuilder text,Target target,Game game) {
-        for(UUID id:target.getTargets()) {
-            text.append(name(id,game));
-            if(target instanceof TargetAmount) text.append('*').append(target.getTargetAmount(id));
-            text.append(',');
-        }
+        List<String> items=new ArrayList<>();
+        for(UUID id:target.getTargets()) items.add(name(id,game)+(target instanceof TargetAmount?"*"+target.getTargetAmount(id):""));
+        Collections.sort(items);
+        for(String item:items) text.append(item).append(',');
         if(target.isSkipChoice()) text.append('k');
     }
 

@@ -85,6 +85,16 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-15 (Claude, C5): a seeded `RandomUtil` alone does not make an XMage game repeat. Libraries are
+  filled from `Deck.getMaindeckCards()` (a `HashSet` in identity-hash order) before the opening shuffle;
+  "in a random order" library placement uses `Collections.shuffle`'s own generator; AI reasoning draws
+  from the same generator on the GAME thread; and a commander cast from the command zone uses the
+  command object's copy of the spell ability (same ID as the card's, but with commander tax). Name
+  checks also hide instance differences: test decks of 99 identical basics compare equal by name.
+  **Rule:** compare card instances (the record's `c<n>` names), not names; when a replay diverges, run
+  `RealGameRecordTests` with `-Dmagicmobile.recordOnly=<scenario>` and diff the per-entry traces it
+  writes. Where: `GameRandom.java`, `GameRecorder.java`, `XmageEngine.build`, docs/cloud/game-record.md.
+
 - 2026-10-15 (Claude, C2): RELR packing needs Android API 28 only with lld's
   `--use-android-relr-tags` (`android+relr`); `-z pack-relative-relocs` uses the official tags and needs
   API 30. Packing only shrinks the table: bionic still applies all 4.5 M `libmmengine.so` relocations.

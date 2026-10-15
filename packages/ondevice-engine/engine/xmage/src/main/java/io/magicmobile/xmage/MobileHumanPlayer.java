@@ -191,6 +191,17 @@ public final class MobileHumanPlayer extends HumanPlayer {
             }
         }
     }
+    // "In a random order" from the game's seeded generator (GameRandom.randomOrder), one card at a time as upstream does.
+    @Override public boolean putCardsOnBottomOfLibrary(mage.cards.Cards cards,Game game,mage.abilities.Ability source,boolean anyOrder) {
+        if(anyOrder || cards==null || cards.size()<2) return super.putCardsOnBottomOfLibrary(cards,game,source,anyOrder);
+        for(UUID id:GameRandom.randomOrder(cards)) { mage.cards.Cards one=new mage.cards.CardsImpl();one.add(id);super.putCardsOnBottomOfLibrary(one,game,source,false); }
+        return true;
+    }
+    @Override public boolean putCardsOnTopOfLibrary(mage.cards.Cards cards,Game game,mage.abilities.Ability source,boolean anyOrder) {
+        if(anyOrder || cards==null || cards.size()<2) return super.putCardsOnTopOfLibrary(cards,game,source,anyOrder);
+        for(UUID id:GameRandom.randomOrder(cards)) { mage.cards.Cards one=new mage.cards.CardsImpl();one.add(id);super.putCardsOnTopOfLibrary(one,game,source,false); }
+        return true;
+    }
     @Override public Player prepareControllableProxy(Player playerUnderControl) {
         if(playerUnderControl==null || !getId().equals(playerUnderControl.getTurnControlledBy()))
             throw new IllegalArgumentException("Controllable proxy must be controlled by "+getId());

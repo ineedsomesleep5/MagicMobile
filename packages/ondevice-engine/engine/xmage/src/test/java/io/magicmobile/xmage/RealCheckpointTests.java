@@ -692,11 +692,14 @@ public final class RealCheckpointTests {
             return "\n recent prompts:\n  "+String.join("\n  ",recent)+"\n GAME thread:\n    "+stack;
         }
         Driver(XmageEngine engine,String match,boolean active) { this(engine,match,active,0); }
-        Driver(XmageEngine engine,String match,boolean active,long restoredSequence) {
-            this.engine=engine;this.match=match;this.active=active;lastSequence=restoredSequence;
+        Driver(XmageEngine engine,String match,boolean active,long restoredSequence) { this(engine,match,active,restoredSequence,HUMAN); }
+        /** The seat this driver answers for (RealGameRecordTests drives two human seats). */
+        final String seat;
+        Driver(XmageEngine engine,String match,boolean active,long restoredSequence,String seat) {
+            this.engine=engine;this.match=match;this.active=active;lastSequence=restoredSequence;this.seat=seat;
         }
         Map<String,Object> poll() {
-            Map<String,Object> state=engine.poll(match,HUMAN,0);
+            Map<String,Object> state=engine.poll(match,seat,0);
             if(state.containsKey("checkpointFailure")) failures++;
             if(state.get("checkpoint")!=null) observe(Json.object(state.get("checkpoint")));
             if("failed".equals(state.get("phase")) && !Json.write(state.get("failure")).contains("engine_stopped"))
@@ -836,7 +839,7 @@ public final class RealCheckpointTests {
             actions.merge("reasks",1,Integer::sum);
         }
         private void respond(Map<String,Object> prompt,Map<String,Object> answer) {
-            engine.respond(match,HUMAN,Json.map("requestId",UUID.randomUUID().toString(),"promptId",prompt.get("promptId"),
+            engine.respond(match,seat,Json.map("requestId",UUID.randomUUID().toString(),"promptId",prompt.get("promptId"),
                 "promptRevision",prompt.get("revision"),"answer",answer));
         }
         private Map<String,Object> choose(Map<String,Object> state,Map<String,Object> prompt) {
