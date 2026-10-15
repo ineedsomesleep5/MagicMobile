@@ -230,6 +230,35 @@ enum RankLadder {
     }
 }
 
+/// The ladder as the server keeps it (mm_ranked_standing, Caleb 2026-10-14). Once the player has a profile the
+/// server decides rank: the phone shows its own result at once, then takes this.
+struct RankedStanding: Decodable, Equatable, Sendable {
+    struct Season: Decodable, Equatable, Sendable {
+        let season: String
+        let finalPoints: Int
+        let peakPoints: Int
+        let wins: Int
+        let losses: Int
+    }
+
+    /// False only for a new server standing that has never counted a result: the phone may seed it once.
+    let seeded: Bool
+    /// Matches this player reported that the other side hasn't yet.
+    let unsettled: Int
+    let season: String
+    let points: Int
+    let peakPoints: Int
+    let wins: Int
+    let losses: Int
+    let draws: Int
+    let winStreak: Int
+    let history: [Season]?
+    /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned.
+    let settlement: String?
+
+    static func parse(_ data: Data) throws -> RankedStanding { try JSONDecoder().decode(RankedStanding.self, from: data) }
+}
+
 extension RankPosition {
     /// A standing as the profile server keeps it: the ladder step and pips.
     static func published(step: Int, pips: Int) -> RankPosition {

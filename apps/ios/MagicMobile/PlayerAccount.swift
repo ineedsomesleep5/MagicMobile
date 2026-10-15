@@ -300,7 +300,42 @@ final class PlayerAccount: ObservableObject {
     /// Friend challenges, once the player has a profile name.
     var challenges: FriendChallengeService? { phase == .ready && username != nil ? SupabaseFriendChallenges(api: api) : nil }
 
-    /// Shares this season's standing with friends. Quiet on failure: ranks still count on the phone.
+    /// Starts a ranked game against the AI on the server (mm_ranked_ai_start), so its result counts there.
+    /// Nil offline or without a profile name: that game then counts on this phone only.
+    func startRankedAIGame(deckBracket: Int) async -> UUID? {
+        guard phase == .ready, username != nil,
+              let data = try? await api.rpc("mm_ranked_ai_start", ["p_deck_bracket": deckBracket]),
+              let text = try? JSONDecoder().decode(String.self, from: data) else { return nil }
+        return UUID(uuidString: text)
+    }
+
+    /// Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the
+    /// server has none yet). Quiet on failure: the phone's own count stands until the next try.
+    func syncRank(_ record: PlayerRecordStore) async {
+        guard phase == .ready, username != nil else { return }
+        for pending in record.pendingRankedResults {
+            do {
+                let data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
+                record.resolvePendingRankedResult(pending.ticket)
+                if let standing = try? RankedStanding.parse(data) { record.adopt(standing) }
+            } catch {
+                // A ticket the server doesn't know never will be; anything else waits for the next sync.
+                if SupabaseLite.code(of: error) == "not_found" { record.resolvePendingRankedResult(pending.ticket) }
+            }
+        }
+        guard let data = try? await api.rpc("mm_ranked_standing"), var standing = try? RankedStanding.parse(data) else { return }
+        let local = record.rank
+        if !standing.seeded, local.position > .start || local.wins + local.losses > 0,
+           let seeded = try? await api.rpc("mm_ranked_seed", ["p_points": local.position.points, "p_peak_points": local.peak.points,
+                                                             "p_wins": local.wins, "p_losses": local.losses]),
+           let parsed = try? RankedStanding.parse(seeded) {
+            standing = parsed
+        }
+        record.adopt(standing)
+    }
+
+    /// Shares the title and favourite commander with friends. The server keeps the rank itself and ignores the
+    /// rank numbers sent here (they stay for older servers). Quiet on failure.
     func publishRank(_ rank: RankState, stats: PlayerStats, title: Achievement?, commander: String?) async {
         guard phase == .ready, username != nil else { return }
         _ = try? await api.rpc("mm_ranked_publish", [

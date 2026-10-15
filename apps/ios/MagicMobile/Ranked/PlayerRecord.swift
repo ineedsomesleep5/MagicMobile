@@ -196,11 +196,18 @@ enum Achievement: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
-/// The player's profile on this phone: ranked standing, match history and chosen title. Ranked
-/// standing is also published to the profile server (when signed in) so friends see it.
+/// The player's profile on this phone: ranked standing, match history and chosen title. With a profile name the
+/// server keeps the ranked standing (RankedStanding): the phone counts each result at once, then adopts the server's.
 @MainActor
 final class PlayerRecordStore: ObservableObject {
     static let maxMatches = 300
+
+    /// A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result).
+    struct PendingRankedResult: Codable, Equatable {
+        let ticket: UUID
+        let outcome: RankOutcome
+        let date: Date
+    }
 
     private struct File: Codable {
         var rank: RankState
@@ -208,6 +215,8 @@ final class PlayerRecordStore: ObservableObject {
         var title: Achievement?
         var favoriteCommander: String?
         var recentAIDecks: [String]?
+        var rankedTicket: UUID?
+        var pendingRankedResults: [PendingRankedResult]?
     }
 
     @Published private(set) var rank: RankState
@@ -216,6 +225,10 @@ final class PlayerRecordStore: ObservableObject {
     @Published var favoriteCommander: String? { didSet { if favoriteCommander != oldValue { save() } } }
     /// The last AI decks faced, so the next pick is a different one.
     private(set) var recentAIDecks: [String] = []
+    /// The server's ticket for the ranked AI game being played (mm_ranked_ai_start); kept across a resume.
+    private(set) var rankedTicket: UUID?
+    /// Finished ranked AI games still to send, oldest first.
+    private(set) var pendingRankedResults: [PendingRankedResult] = []
     /// Set by the app to share rank changes with friends; nil in tests.
     var publish: ((RankState, PlayerStats, Achievement?, String?) -> Void)?
     /// Set by the app to send each finished game to the profile server; nil in tests.
@@ -237,6 +250,8 @@ final class PlayerRecordStore: ObservableObject {
         title = loaded.title
         favoriteCommander = loaded.favoriteCommander
         recentAIDecks = loaded.recentAIDecks ?? []
+        rankedTicket = loaded.rankedTicket
+        pendingRankedResults = loaded.pendingRankedResults ?? []
         if rank != loaded.rank { save() }
     }
 
@@ -288,6 +303,10 @@ final class PlayerRecordStore: ObservableObject {
         matches.insert(match, at: 0)
         if matches.count > Self.maxMatches { matches.removeLast(matches.count - Self.maxMatches) }
         if let aiDeckID { recentAIDecks = Array(([aiDeckID] + recentAIDecks.filter { $0 != aiDeckID }).prefix(4)) }
+        if mode == .ranked, opponents.allSatisfy(\.isAI), let ticket = rankedTicket {
+            pendingRankedResults = Array((pendingRankedResults + [PendingRankedResult(ticket: ticket, outcome: outcome, date: now())]).suffix(20))
+            rankedTicket = nil
+        }
         save()
         if mode == .ranked { publish?(rank, stats, title, shownCommander) }
         // The finished game goes to the profile server too (when there is a profile): never blocks play.
@@ -297,9 +316,48 @@ final class PlayerRecordStore: ObservableObject {
 
     func publishNow() { publish?(rank, stats, title, shownCommander) }
 
+    /// A ranked AI game began; `ticket` is the server's (nil offline: that game counts on this phone only).
+    func beginRankedAIGame(ticket: UUID?) {
+        guard rankedTicket != ticket else { return }
+        rankedTicket = ticket
+        save()
+    }
+
+    /// The server answered for this ticket (or never will).
+    func resolvePendingRankedResult(_ ticket: UUID) {
+        guard pendingRankedResults.contains(where: { $0.ticket == ticket }) else { return }
+        pendingRankedResults.removeAll { $0.ticket == ticket }
+        save()
+    }
+
+    /// Takes the server's standing. Kept back while a result is still on its way (a friend match the other side
+    /// hasn't reported, or an AI result not sent yet), so a pip just earned never flickers away.
+    func adopt(_ standing: RankedStanding) {
+        guard standing.unsettled == 0, pendingRankedResults.isEmpty, standing.season >= rank.season else { return }
+        var next = standing.season == rank.season ? rank : RankLadder.rollover(rank, to: standing.season)
+        next.position = RankPosition(points: standing.points)
+        next.peak = max(RankPosition(points: standing.peakPoints), next.position)
+        next.wins = standing.wins
+        next.losses = standing.losses
+        next.draws = standing.draws
+        next.winStreak = standing.winStreak
+        // The server's past seasons replace the phone's for the same month.
+        for record in standing.history ?? [] {
+            let season = SeasonRecord(season: record.season, final: RankPosition(points: record.finalPoints),
+                                      peak: RankPosition(points: record.peakPoints), wins: record.wins, losses: record.losses)
+            if let index = next.history.firstIndex(where: { $0.season == record.season }) { next.history[index] = season }
+            else { next.history.append(season) }
+        }
+        next.history = Array(next.history.sorted { $0.season > $1.season }.prefix(24))
+        guard next != rank else { return }
+        rank = next
+        save()
+    }
+
     private func save() {
         guard let fileURL else { return }
-        let file = File(rank: rank, matches: matches, title: title, favoriteCommander: favoriteCommander, recentAIDecks: recentAIDecks)
+        let file = File(rank: rank, matches: matches, title: title, favoriteCommander: favoriteCommander, recentAIDecks: recentAIDecks,
+                        rankedTicket: rankedTicket, pendingRankedResults: pendingRankedResults)
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder.record.encode(file).write(to: fileURL, options: .atomic)

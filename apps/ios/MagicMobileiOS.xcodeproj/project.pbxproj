@@ -108,6 +108,7 @@
 		4DD90B3927D94DAA5A04BD9C /* DeckStudioImportScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511505348524C12C4E7EC72C /* DeckStudioImportScreen.swift */; };
 		4DDC3E8EBCED049E85292D37 /* DeckStudioAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF6412CDA51E55EFA3FAE3AF /* DeckStudioAnalysisView.swift */; };
 		4ECDD5B8F8EE1E7E80B4D517 /* ui-toggle.caf in Resources */ = {isa = PBXBuildFile; fileRef = 96E2ED36108D267B1AF8DFD1 /* ui-toggle.caf */; };
+		4ED5D0592E24486B49C573F8 /* RankedStandingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1ED1A69CE6E4F9B7C2D7F7E /* RankedStandingTests.swift */; };
 		4F8861C50469EA0D9B0B1A02 /* DeckStudioRecordingTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39CD7AD491EA8ECBCEC2998A /* DeckStudioRecordingTransport.swift */; };
 		4FD4CAA9B9A87F614A91BE25 /* NativeArtworkCatalogue.swift in Sources */ = {isa = PBXBuildFile; fileRef = B64E4990A09A1C8707EEEEAB /* NativeArtworkCatalogue.swift */; };
 		5071C1B04ED998C6A26FE479 /* NativeDeckEDHREC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65450701680391D2656331EA /* NativeDeckEDHREC.swift */; };
@@ -674,6 +675,7 @@
 		F185ACCBE88DF75640B75CE8 /* DeckStudioRecordedGame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRecordedGame.swift; sourceTree = "<group>"; };
 		F1BDC7AC2D90B1AEF0297E6A /* Cormorant-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Cormorant-OFL.txt"; sourceTree = "<group>"; };
 		F1D2EE9C5145A605159B46EA /* turn-you.m4a */ = {isa = PBXFileReference; path = "turn-you.m4a"; sourceTree = "<group>"; };
+		F1ED1A69CE6E4F9B7C2D7F7E /* RankedStandingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankedStandingTests.swift; sourceTree = "<group>"; };
 		F675833239E93937C36ABD7C /* BattlefieldAdaptiveSizingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldAdaptiveSizingTests.swift; sourceTree = "<group>"; };
 		F820BC26CBDF3740830EFC95 /* RankLadder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankLadder.swift; sourceTree = "<group>"; };
 		F9AD099BE0D0997A027D58EE /* response-alert.m4a */ = {isa = PBXFileReference; path = "response-alert.m4a"; sourceTree = "<group>"; };
@@ -999,6 +1001,7 @@
 				860E2CBE7896CA937E309ED2 /* PortraitPolishTests.swift */,
 				79AEE33A42096E2A875A9C73 /* ProfileAnalyticsTests.swift */,
 				A58F68D10D8378ECA84A2BA1 /* RankedParityTests.swift */,
+				F1ED1A69CE6E4F9B7C2D7F7E /* RankedStandingTests.swift */,
 				0EF6CD8A8D52867D12A119B9 /* StartingRollDiceTests.swift */,
 				01185AEE490D6677672B1123 /* TableChatTests.swift */,
 				6FAAF062D54C6CA4FDE0C963 /* TokenDownloadCoverageTests.swift */,
@@ -1693,6 +1696,7 @@
 				A31A4E6160F42888F3DD8A0E /* PortraitPolishTests.swift in Sources */,
 				A0D58893AC1BD35CE5E90594 /* ProfileAnalyticsTests.swift in Sources */,
 				56F37B5CD12752F12D64FA56 /* RankedParityTests.swift in Sources */,
+				4ED5D0592E24486B49C573F8 /* RankedStandingTests.swift in Sources */,
 				FD7A1D30D14248E57CB88A2B /* StartingRollDiceTests.swift in Sources */,
 				64774CA4AF3BEF13421C84F9 /* TableChatTests.swift in Sources */,
 				C78D720EBB02247B84EA11C0 /* TokenDownloadCoverageTests.swift in Sources */,

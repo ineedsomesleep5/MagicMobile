@@ -152,6 +152,36 @@ ones and anonymous callers none (a signed-out REST call gets `permission denied`
 on with no grants, and the security advisor shows only the same RPC-only notices as the social tables. No
 test accounts were made on the live project. A live two-phone ranked match has not been played.
 
+### The server keeps score (2026-10-14)
+
+`supabase/migrations/20261015120000_ranked_referee.sql`. Before it, each phone computed its own rank and
+`mm_ranked_publish` stored whatever it was sent, so a modified app (or a direct REST call with the app's public key)
+could publish any rank. Now the server is the referee, using the existing database (no new server, no game simulation):
+
+- `ranked_standings` is the source of truth (points = step × 4 + pips, Mythic past 80), with the same ladder rules
+  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, monthly rollover into `ranked_season_history`.
+  `ranked_results` records every change and why. `ranked_profiles` stays the public card; the server writes its
+  rank fields and `mm_ranked_publish` now only sets the title and favourite commander (older builds keep working).
+- **Person vs person:** `mm_ranked_report` settles a match when both sides agree (win/loss or draw/draw).
+  Disagreements change nothing. A lone report settles after an hour (the side that never reported left: a loss). The
+  same two players count at most three matches a day (win trading with spare accounts).
+- **Against the AI** (the phone runs the game, so the server can only bound it): `mm_ranked_ai_start` hands out a
+  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A win needs four minutes since the
+  ticket, at most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a loss.
+- `mm_ranked_standing` returns the caller's standing (settling anything stale first) plus `unsettled`, the matches
+  they reported that the other side hasn't yet. `mm_ranked_seed` lets a player with no server standing bring their
+  phone's earlier progress once, capped at Gold IV. Standings published before the migration carried over as they were.
+- **Apps:** the phone still counts each result at once (result screen, ceremony), sends AI results with their
+  ticket (queued and retried, `PlayerRecordStore.pendingRankedResults`), then adopts the server's standing
+  (`RankedStanding`, `PlayerRecordStore.adopt` / `PlayerRecordFile.adopting`). While a result is still on its way
+  the phone keeps its own number, so a pip never flickers away. Without a profile name, ranked stays on the phone.
+- **Limits:** a modified app can still claim AI wins within the caps, and two colluding accounts can trade wins
+  within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
+- Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
+  functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
+- **Status: not applied to the live project.** Apply only with Caleb's go-ahead, then check grants with
+  `has_function_privilege` (internal helpers revoked from `authenticated`) and the security advisor.
+
 ## Tests
 
 - Shared: `ranked-cases.json` (ladder, positions, tiers, seasons, rollovers, brackets, pools, colors) via

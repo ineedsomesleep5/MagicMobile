@@ -295,7 +295,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val uploader = io.magicmobile.android.game.GameUploader(java.io.File(context.filesDir, "Profile/uploaded-games.json"))
         val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
         record.didRecord = { scope.launch { upload() } }
-        vm.account.afterRefresh = upload
+        vm.account.afterRefresh = { upload(); vm.account.syncRank(record) }
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -389,6 +389,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
         rankChange = null
+        if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
+            // The server's ticket for this game, so its result counts there too.
+            record.beginRankedAIGame(null)
+            scope.launch { record.beginRankedAIGame(vm.account.startRankedAIGame(deckBracket.level)) }
+        }
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, aiStartingPlayerMode, mode.raw, deckBracket.level)
         scope.launch {
             setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID)
@@ -575,7 +580,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
             match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID)
         rankChange = change
-        match.rankedMatchID?.let { id -> scope.launch { matchmaker.report(id, outcome) } }
+        scope.launch {
+            match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile).
+            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.syncRank(record)
+        }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
 
