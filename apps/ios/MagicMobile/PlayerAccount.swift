@@ -300,13 +300,35 @@ final class PlayerAccount: ObservableObject {
     /// Friend challenges, once the player has a profile name.
     var challenges: FriendChallengeService? { phase == .ready && username != nil ? SupabaseFriendChallenges(api: api) : nil }
 
-    /// Starts a ranked game against the AI on the server (mm_ranked_ai_start), so its result counts there.
-    /// Nil offline or without a profile name: that game then counts on this phone only.
-    func startRankedAIGame(deckBracket: Int) async -> UUID? {
-        guard phase == .ready, username != nil,
-              let data = try? await api.rpc("mm_ranked_ai_start", ["p_deck_bracket": deckBracket]),
-              let text = try? JSONDecoder().decode(String.self, from: data) else { return nil }
-        return UUID(uuidString: text)
+    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2).
+    struct RankedAITicket: Equatable {
+        let id: UUID
+        let seed: Int64
+    }
+
+    /// Starts a ranked game against the AI on the server, so its result counts there. Nil offline or without a
+    /// profile name: that game then counts on this phone only. Waits at most `timeout`, since the game waits for it.
+    func startRankedAIGame(deckBracket: Int, timeout: Duration = .seconds(4)) async -> RankedAITicket? {
+        guard phase == .ready, username != nil else { return nil }
+        let api = api
+        return await withTaskGroup(of: RankedAITicket?.self) { group in
+            group.addTask {
+                guard let data = try? await api.rpc("mm_ranked_ai_start2", ["p_deck_bracket": deckBracket]) else { return nil }
+                return Self.rankedAITicket(data)
+            }
+            group.addTask { try? await Task.sleep(for: timeout); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53).
+    nonisolated static func rankedAITicket(_ data: Data) -> RankedAITicket? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
+              let seed = (object["seed"] as? String).flatMap(Int64.init) else { return nil }
+        return RankedAITicket(id: id, seed: seed)
     }
 
     /// Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the
@@ -315,7 +337,15 @@ final class PlayerAccount: ObservableObject {
         guard phase == .ready, username != nil else { return }
         for pending in record.pendingRankedResults {
             do {
-                let data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
+                let data: Data
+                if pending.seeded == true {
+                    // The game record backs the result; without one a win settles as unverified.
+                    let record = pending.recordFile.flatMap(record.gameRecord(named:)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
+                    data = try await api.rpc("mm_ranked_ai_result2", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue,
+                                                                     "p_record": record ?? NSNull()])
+                } else {
+                    data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
+                }
                 record.resolvePendingRankedResult(pending.ticket)
                 if let standing = try? RankedStanding.parse(data) { record.adopt(standing) }
             } catch {

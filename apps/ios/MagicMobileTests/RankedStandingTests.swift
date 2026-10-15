@@ -116,4 +116,50 @@ final class RankedStandingTests: XCTestCase {
                                        onlyPrecons: ["no-such-precon"], in: precons) { _ in 4 }
         XCTAssertNotNil(fallback)
     }
+
+    /// Phase 5: a seeded ticket's result goes with the game record kept on the phone, and survives a relaunch.
+    func testSeededTicketKeepsTheGameRecordWithTheResult() throws {
+        let folder = directory()
+        let store = PlayerRecordStore(directory: folder, now: { self.october })
+        let ticket = UUID()
+        store.beginRankedAIGame(ticket: ticket, seeded: true)
+        let file = try XCTUnwrap(store.keepGameRecord(Data(#"{"format":"magicmobile-game-record"}"#.utf8)))
+        _ = store.record(mode: .ranked, outcome: .win, opponents: [.init(name: "Foe", commander: nil, isAI: true)],
+                         opponentBracket: 2, aiSkill: 1, deckID: "precon:x", deckName: "Goblins", commander: nil,
+                         colors: ["R"], deckBracket: 2, turns: 9, gameRecordFile: file)
+        let reloaded = PlayerRecordStore(directory: folder, now: { self.october })
+        let pending = try XCTUnwrap(reloaded.pendingRankedResults.first)
+        XCTAssertEqual(pending.ticket, ticket)
+        XCTAssertEqual(pending.seeded, true)
+        XCTAssertEqual(pending.recordFile, file)
+        XCTAssertEqual(reloaded.gameRecord(named: file), Data(#"{"format":"magicmobile-game-record"}"#.utf8))
+        XCTAssertNil(reloaded.gameRecord(named: "../player-record.json"))
+        // The next ticket starts unseeded until the server says otherwise.
+        XCTAssertNil(reloaded.rankedTicket)
+        reloaded.beginRankedAIGame(ticket: UUID())
+        play(reloaded, .loss)
+        XCTAssertEqual(reloaded.pendingRankedResults.last?.seeded, false)
+    }
+
+    func testKeepsTheLastFiftyGameRecordsNewestFirst() throws {
+        var clock = october
+        let store = PlayerRecordStore(directory: directory(), now: { clock })
+        var names: [String] = []
+        for game in 0..<(PlayerRecordStore.maxGameRecords + 3) {
+            clock = october.addingTimeInterval(Double(game))
+            names.append(try XCTUnwrap(store.keepGameRecord(Data("{\"game\":\(game)}".utf8))))
+        }
+        let kept = store.gameRecordFiles().map(\.lastPathComponent)
+        XCTAssertEqual(kept.count, PlayerRecordStore.maxGameRecords)
+        XCTAssertEqual(kept.first, names.last)
+        XCTAssertFalse(kept.contains(names[0]))
+    }
+
+    func testParsesTheSeededTicket() {
+        let id = UUID()
+        XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"-4123456789012345678","aiSkill":1}"#.utf8)),
+                       PlayerAccount.RankedAITicket(id: id, seed: -4_123_456_789_012_345_678))
+        XCTAssertNil(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":4.5}"#.utf8)))
+        XCTAssertNil(PlayerAccount.rankedAITicket(Data(#""\#(id.uuidString)""#.utf8)))
+    }
 }
