@@ -277,25 +277,3 @@ directly to the other devices. `emote` is one of a fixed set (`hello`, `wellPlay
 the host router, carries no seat claim (the receiver maps the authenticated GameKit peer to
 its seat's table name), and at most one line per peer per 1.5 s is shown; extra lines are
 dropped, not errors. The adapter identity includes `concede-1/emote-1`.
-
-### Turn timer
-
-Phone-hosted tables (Game Center and the relay) have a turn timer so an idle player cannot stall
-the others. The host runs it in the app (`TurnClock.swift`, `TurnClock.kt`); the engine and the relay
-are unchanged. Each decision a human seat is asked gets 60 seconds, and every phone shows a burning
-rope for the last 20. When a decision runs out, the host answers it through the trusted API as passing
-would: `boolean true` for a `SELECT` in `priority`, `attackers` or `blockers` mode, `boolean false` to
-cancel a `PLAY_MANA` payment or to skip a `PICK_TARGET`, `CHOOSE_ABILITY` or `PICK_ABILITY` question
-whose payload says `required: false`. A question with no such answer (a mulligan, a required target,
-a choice) gets 20 seconds of grace instead. Each timeout is a strike, a decision the player answers
-themselves clears the strikes, and the third straight timeout concedes the seat (`concede`). The clock
-pauses while the table is suspended or a phone is away, and until the starting D20 roll has been shown;
-it comes back with at least 10 seconds.
-
-The host reads each human seat's prompt with its own `poll` after every revision it announces, when a
-clock runs out, and every 5 seconds otherwise, and sends each change to the guests:
-`{"type":"clock","epoch":"...","paused":bool,"clocks":[{"seat":"player2","remainingMillis":n,"limitMillis":n,"strikes":k}]}`
-(exactly those keys, at most four seats, `limitMillis` up to 120000, `strikes` 0 to 3). Remaining time
-travels instead of a deadline, so phones' clocks never need to agree. Only the host may send it.
-`apps/android/core/src/test/resources/parity/turn-clock-cases.json` holds the shared cases. The adapter
-identity includes `clock-1`.
