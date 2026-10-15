@@ -209,13 +209,19 @@ final class CombatPlanner {
     static final class Board {
         final List<Unit> attackers,blockers,theirTeam,ourHome;
         final boolean[][] canBlock,canBlockBack;
-        final int ourLife,theirLife;
+        final int ourLife,theirLife,startingLife;
         /** canBlockBack[i][j]: our creature j can block their creature i; ourHome are ours that cannot attack. */
         Board(List<Unit> attackers,List<Unit> blockers,boolean[][] canBlock,List<Unit> theirTeam,List<Unit> ourHome,
               boolean[][] canBlockBack,int ourLife,int theirLife) {
+            this(attackers,blockers,canBlock,theirTeam,ourHome,canBlockBack,ourLife,theirLife,COMMANDER_LIFE);
+        }
+        Board(List<Unit> attackers,List<Unit> blockers,boolean[][] canBlock,List<Unit> theirTeam,List<Unit> ourHome,
+              boolean[][] canBlockBack,int ourLife,int theirLife,int startingLife) {
             this.attackers=attackers;this.blockers=blockers;this.canBlock=canBlock;this.theirTeam=theirTeam;
             this.ourHome=ourHome;this.canBlockBack=canBlockBack;this.ourLife=ourLife;this.theirLife=theirLife;
+            this.startingLife=startingLife;
         }
+        private int life(int life) { return lifeValue(life,startingLife); }
     }
 
     /** The score of attacking with the chosen attackers (bit i = attackers[i]). Higher is better for us. */
@@ -227,8 +233,8 @@ final class CombatPlanner {
         Outcome out=predict(attacking,board.blockers,canBlock,board.theirLife);
         int ourLife=board.ourLife+out.attackerGain,theirLife=board.theirLife-out.damage+out.defenderGain;
         if(theirLife<=0) return GameStateEvaluator2.WIN_GAME_SCORE-attacking.size();
-        long score=life(ourLife)-life(board.ourLife);
-        score+=(long)(life(board.theirLife)-life(theirLife))*AGGRESSION_PERCENT/100;
+        long score=board.life(ourLife)-board.life(board.ourLife);
+        score+=(long)(board.life(board.theirLife)-board.life(theirLife))*AGGRESSION_PERCENT/100;
         for(Unit b:board.blockers) if(out.blockersDead.contains(b.id)) score+=b.value;
         for(Unit a:attacking) if(out.attackersDead.contains(a.id)) score-=a.value;
         // Crack-back: their survivors swing at whatever of ours can still block.
@@ -249,10 +255,23 @@ final class CombatPlanner {
         for(int i=0;i<theirs.size();i++) for(int j=0;j<home.size();j++) back[i][j]=board.canBlockBack[theirRows.get(i)][homeCols.get(j)];
         int crack=crackBack(theirs,home,back);
         if(crack>=ourLife) score+=LETHAL_FOR_US;
-        else score-=(long)(life(ourLife)-life(ourLife-crack))*CRACK_BACK_PERCENT/100;
+        else score-=(long)(board.life(ourLife)-board.life(ourLife-crack))*CRACK_BACK_PERCENT/100;
         return score;
     }
-    private static int life(int life) { return ArtificialScoringSystem.getLifeScore(life); }
+    static final int COMMANDER_LIFE=40;
+    /**
+     * Upstream's life score on the game's own scale. ArtificialScoringSystem values a point at 1000 near
+     * zero and 100 above 20 life, tuned for 20-life formats: at Commander's 40 the AI treats 25 damage from
+     * 40 as cheap and bleeds out. Scaling life by 20 / starting life keeps the curve's shape for any format
+     * (identical at 20), interpolating between whole points.
+     */
+    static int lifeValue(int life,int startingLife) {
+        if(life<=0) return 0;
+        double scaled=life*20.0/Math.max(20,startingLife);
+        int low=(int)Math.floor(scaled);
+        int a=ArtificialScoringSystem.getLifeScore(low),b=ArtificialScoringSystem.getLifeScore(low+1);
+        return (int)Math.round(a+(b-a)*(scaled-low));
+    }
 
     /** The best attack: every subset for small boards, else hill-climbing from none, all and each alone. */
     static long choose(Board board) {
@@ -319,7 +338,8 @@ final class CombatPlanner {
         boolean[][] back=new boolean[theirTeam.size()][ours.size()];
         for(int i=0;i<theirTeam.size();i++) for(int j=0;j<ours.size();j++)
             back[i][j]=ours.get(j).permanent.canBlock(theirTeam.get(i).id,game);
-        long chosen=choose(new Board(attackers,blockers,canBlock,theirTeam,ourHome,back,me.getLife(),defender.getLife()));
+        long chosen=choose(new Board(attackers,blockers,canBlock,theirTeam,ourHome,back,me.getLife(),defender.getLife(),
+            game.getStartingLife()));
         List<UUID> ids=new ArrayList<>();
         for(int i=0;i<attackers.size();i++) if((chosen>>>i&1)!=0) ids.add(attackers.get(i).id);
         return new Plan(defenderId,ids);
@@ -430,5 +450,115 @@ final class CombatPlanner {
         }
         if(pairs>0) game.getPlayers().resetPassed();
         return pairs;
+    }
+
+    /** One attacker against all its blockers: who dies, damage that tramples over, life the blockers gain. */
+    record Melee(boolean attackerDies,Set<UUID> blockersDie,int trampleOver,int blockerGain) {}
+
+    /**
+     * An attacker against one or more blockers. First-strike damage comes first; the attacker assigns its
+     * damage to kill its most valuable blockers it can, and tramples over only once every blocker has lethal.
+     */
+    static Melee melee(Unit a,List<Unit> blockers) {
+        int early=0;boolean earlyTouch=false;
+        for(Unit b:blockers) if(b.firstStrike || b.doubleStrike) { early+=b.power;earlyTouch|=b.deathtouch && b.power>0; }
+        boolean aEarly=a.firstStrike || a.doubleStrike;
+        boolean diesEarly=!aEarly && !a.indestructible && early>0 && (early>=a.toughness || earlyTouch);
+        int damage=diesEarly?0:a.power*a.hits();
+        List<Unit> byValue=new ArrayList<>(blockers);byValue.sort(Comparator.comparingInt((Unit u)->-u.value));
+        Set<UUID> dead=new HashSet<>();boolean allLethal=true;
+        for(Unit b:byValue) {
+            int need=a.deathtouch?1:Math.max(1,b.toughness);
+            if(!b.indestructible && need<=damage) { damage-=need;dead.add(b.id); }
+            else { allLethal=false; }
+        }
+        int over=a.trample && allLethal?damage:0;
+        int back=0,gain=0;boolean touched=false;
+        for(Unit b:blockers) {
+            boolean bEarly=b.firstStrike || b.doubleStrike;
+            // Killed by first strike before it deals regular damage.
+            boolean silenced=aEarly && !bEarly && dead.contains(b.id);
+            int dealt=silenced?0:b.power*b.hits();
+            if(dealt>0) { back+=dealt;touched|=b.deathtouch;if(b.lifelink) gain+=dealt; }
+        }
+        boolean dies=!a.indestructible && back>0 && (back>=a.toughness || touched);
+        return new Melee(dies,dead,over,gain);
+    }
+
+    /**
+     * The score of one block assignment (blocker j blocks attacker assign[j], or -1), for us as the defender:
+     * attackers killed less blockers lost, plus the change in our life score on the game's scale. A lethal
+     * result scores far below any other; a menace attacker with a single blocker is illegal.
+     */
+    static long blockScore(List<Unit> attackers,List<Unit> blockers,int[] assign,int life,int startingLife) {
+        long score=0;int damage=0,gain=0;
+        for(int i=0;i<attackers.size();i++) {
+            Unit a=attackers.get(i);List<Unit> on=new ArrayList<>();
+            for(int j=0;j<blockers.size();j++) if(assign[j]==i) on.add(blockers.get(j));
+            if(on.isEmpty()) { damage+=a.power*a.hits();continue; }
+            if(a.menace && on.size()<2) return Long.MIN_VALUE;
+            Melee m=melee(a,on);
+            if(m.attackerDies()) score+=a.value;
+            for(Unit b:on) if(m.blockersDie().contains(b.id)) score-=b.value;
+            damage+=m.trampleOver();gain+=m.blockerGain();
+        }
+        int after=life-damage+gain;
+        if(after<=0) return LETHAL_FOR_US*100L-damage;
+        return score+lifeValue(after,startingLife)-lifeValue(life,startingLife);
+    }
+
+    /**
+     * The best blocks by hill-climbing from no blocks: each step takes the single best move of one blocker
+     * (to another attacker it can block, or home) or a pair of free blockers onto one attacker (double blocks
+     * and menace), until nothing improves. Returns assign[j] = attacker index or -1.
+     */
+    static int[] chooseBlocks(List<Unit> attackers,List<Unit> blockers,boolean[][] canBlock,int life,int startingLife) {
+        int[] assign=new int[blockers.size()];java.util.Arrays.fill(assign,-1);
+        long score=blockScore(attackers,blockers,assign,life,startingLife);
+        for(int round=0;round<4*blockers.size()+4;round++) {
+            int[] best=null;long bestScore=score;
+            for(int j=0;j<blockers.size();j++) for(int i=-1;i<attackers.size();i++) {
+                if(i==assign[j] || (i>=0 && !canBlock[i][j])) continue;
+                int[] next=assign.clone();next[j]=i;
+                long s=blockScore(attackers,blockers,next,life,startingLife);
+                if(s>bestScore) { bestScore=s;best=next; }
+            }
+            for(int i=0;i<attackers.size();i++) for(int j=0;j<blockers.size();j++) for(int k=j+1;k<blockers.size();k++) {
+                if(assign[j]!=-1 || assign[k]!=-1 || !canBlock[i][j] || !canBlock[i][k]) continue;
+                int[] next=assign.clone();next[j]=i;next[k]=i;
+                long s=blockScore(attackers,blockers,next,life,startingLife);
+                if(s>bestScore) { bestScore=s;best=next; }
+            }
+            if(best==null) break;
+            assign=best;score=bestScore;
+        }
+        return assign;
+    }
+
+    /** The blocks the optimizer chose: blockers[j] blocks attackers[assign[j]], or stays home at -1. */
+    record Blocks(List<Unit> attackers,List<Unit> blockers,int[] assign) {}
+
+    /**
+     * The expert blocks, or null where upstream should block: an attack on a planeswalker or battle, infect,
+     * or a player who can't lose life.
+     */
+    static Blocks planBlocks(Player me,Game game) {
+        if(!me.isLifeTotalCanChange() || !me.canLose(game)) return null;
+        List<Unit> attackers=new ArrayList<>();
+        for(CombatGroup group:game.getCombat().getGroups()) {
+            if(!me.getId().equals(group.getDefenderId())) { if(!group.getAttackers().isEmpty()) return null;continue; }
+            for(UUID attackerId:group.getAttackers()) {
+                Permanent p=game.getPermanent(attackerId);
+                if(p==null) continue;
+                if(p.getAbilities(game).containsKey(InfectAbility.getInstance().getId())) return null;
+                attackers.add(new Unit(p,game));
+            }
+        }
+        if(attackers.isEmpty()) return null;
+        List<Unit> blockers=units(me.getAvailableBlockers(game),game);
+        boolean[][] canBlock=new boolean[attackers.size()][blockers.size()];
+        for(int i=0;i<attackers.size();i++) for(int j=0;j<blockers.size();j++)
+            canBlock[i][j]=blockers.get(j).permanent.canBlock(attackers.get(i).id,game);
+        return new Blocks(attackers,blockers,chooseBlocks(attackers,blockers,canBlock,me.getLife(),game.getStartingLife()));
     }
 }

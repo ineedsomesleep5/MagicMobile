@@ -254,9 +254,29 @@ final class MobileAICancellation {
                 logger.info("AI deliberate mistake for "+getName()+": no blocks");
                 return;
             }
+            if(expert && !game.isSimulation()) {
+                // The engine asks again when a declaration breaks a blocking requirement; then upstream decides.
+                String step=game.getTurnNum()+":"+game.getCombat().getAttackers();
+                boolean retry=step.equals(blockedStep);blockedStep=step;
+                CombatPlanner.Blocks plan=retry?null:CombatPlanner.planBlocks(this,game);
+                if(plan!=null) {
+                    // Same events as upstream's declareBlockers, around the optimizer's choice.
+                    UUID active=game.getActivePlayerId();
+                    game.fireEvent(new GameEvent(GameEvent.EventType.DECLARE_BLOCKERS_STEP_PRE,null,null,active));
+                    if(game.replaceEvent(GameEvent.getEvent(GameEvent.EventType.DECLARING_BLOCKERS,active,active))) return;
+                    boolean blocked=false;
+                    for(int j=0;j<plan.blockers().size();j++) if(plan.assign()[j]>=0) {
+                        declareBlocker(playerId,plan.blockers().get(j).id,plan.attackers().get(plan.assign()[j]).id,game);blocked=true;
+                    }
+                    if(blocked) game.getPlayers().resetPassed();
+                    return;
+                }
+            }
             super.selectBlockers(source,game,defendingPlayerId);
             if(expert && !game.isSimulation()) { CombatPlanner.chumpIfLethal(this,game);CombatPlanner.doubleBlock(this,game); }
         }
+        /** The combat this expert last blocked in (turn and attackers); transient, a restored game blocks afresh. */
+        private transient String blockedStep;
         private boolean possiblyLethal(Game game) {
             int power=0;
             for(Permanent attacker:getAvailableAttackers(game)) power+=Math.max(0,attacker.getPower().getValue());

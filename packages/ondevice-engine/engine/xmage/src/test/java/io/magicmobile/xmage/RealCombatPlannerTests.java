@@ -37,6 +37,10 @@ public final class RealCombatPlannerTests {
         tests.put("chump-when-lethal", RealCombatPlannerTests::chumpWhenLethal);
         tests.put("double-block-gains", RealCombatPlannerTests::doubleBlockGains);
         tests.put("double-block", RealCombatPlannerTests::doubleBlock);
+        tests.put("life-scale", RealCombatPlannerTests::lifeScale);
+        tests.put("block-choices", RealCombatPlannerTests::blockChoices);
+        tests.put("blocks-against-swarm", RealCombatPlannerTests::blocksAgainstSwarm);
+        tests.put("expert-blocks-on-board", RealCombatPlannerTests::expertBlocksOnBoard);
         tests.put("expert-search-plays", RealCombatPlannerTests::expertSearchPlays);
         int passed = 0;
         for (Map.Entry<String,ThrowingRunnable> test : tests.entrySet()) {
@@ -221,6 +225,74 @@ public final class RealCombatPlannerTests {
                 Set<UUID> blockers = b.game.getCombat().getBlockers();
                 eq(blockers.contains(bears1.getId()) && blockers.contains(bears2.getId()), skill == 6);
                 if (skill == 4) eq(blockers.size(), 0);
+            }
+        }
+    }
+
+    /** Life scores keep upstream's curve on the game's own scale: 40 life in Commander scores like 20. */
+    private static void lifeScale() {
+        for (int life = 0; life <= 30; life++)
+            eq(CombatPlanner.lifeValue(life, 20), mage.player.ai.score.ArtificialScoringSystem.getLifeScore(life));
+        eq(CombatPlanner.lifeValue(40, 40), mage.player.ai.score.ArtificialScoringSystem.getLifeScore(20));
+        eq(CombatPlanner.lifeValue(20, 40), mage.player.ai.score.ArtificialScoringSystem.getLifeScore(10));
+        eq(CombatPlanner.lifeValue(0, 40), 0);
+        check(CombatPlanner.lifeValue(15, 40) - CombatPlanner.lifeValue(10, 40)
+            > CombatPlanner.lifeValue(40, 40) - CombatPlanner.lifeValue(35, 40), "low life is worth more per point");
+    }
+
+    /** The optimizer: kill-and-live blocks, a double block on a 3/3, chumps only against lethal, menace needs two. */
+    private static void blockChoices() {
+        CombatPlanner.Unit giant = u("giant", 3, 3, 3000, ""), wall = u("wall", 0, 5, 1500, ""), b1 = u("b1", 2, 2, 2000, ""),
+            b2 = u("b2", 2, 2, 2000, "");
+        int[] a = CombatPlanner.chooseBlocks(List.of(giant), List.of(wall, b1), all(1, 2), 40, 40);
+        eq(a[0], 0); // the wall blocks and lives
+        a = CombatPlanner.chooseBlocks(List.of(giant), List.of(b1, b2), all(1, 2), 40, 40);
+        check(a[0] == 0 && a[1] == 0, "double block: " + Arrays.toString(a));
+        a = CombatPlanner.chooseBlocks(List.of(giant), List.of(b1), all(1, 1), 40, 40);
+        eq(a[0], -1); // a lone bear doesn't chump at 40
+        a = CombatPlanner.chooseBlocks(List.of(giant), List.of(b1), all(1, 1), 3, 40);
+        eq(a[0], 0); // but does when the giant is lethal
+        CombatPlanner.Unit menace = u("m", 3, 3, 3000, "menace");
+        eq(CombatPlanner.blockScore(List.of(menace), List.of(b1), new int[]{0}, 40, 40), Long.MIN_VALUE);
+        a = CombatPlanner.chooseBlocks(List.of(menace), List.of(b1, b2), all(1, 2), 40, 40);
+        check(a[0] == 0 && a[1] == 0, "two blockers on menace: " + Arrays.toString(a));
+        CombatPlanner.Melee m = CombatPlanner.melee(u("dragon", 7, 7, 6000, "trample"), List.of(b1, b2));
+        check(!m.attackerDies() && m.blockersDie().size() == 2, "7/7 kills both 2/2s"); eq(m.trampleOver(), 3);
+    }
+
+    /**
+     * Five pumped 5/3 goblins into a 40-life defender (seen in calibration game 32: upstream blocked one and
+     * fell to 15). The optimizer blocks enough to keep its life, trading where blockers kill.
+     */
+    private static void blocksAgainstSwarm() {
+        List<CombatPlanner.Unit> goblins = new ArrayList<>();
+        for (int i = 0; i < 5; i++) goblins.add(u("g" + i, 5, 3, 2600, ""));
+        List<CombatPlanner.Unit> ours = List.of(u("skaab", 3, 5, 3100, ""), u("wilhelt", 4, 4, 3500, ""),
+            u("captain", 2, 2, 2400, "deathtouch"), u("zombie", 2, 2, 1600, ""));
+        int[] a = CombatPlanner.chooseBlocks(goblins, ours, all(5, 4), 40, 40);
+        int blocks = 0; for (int x : a) if (x >= 0) blocks++;
+        check(blocks >= 3, "blocks most of the swarm: " + Arrays.toString(a));
+        check(CombatPlanner.blockScore(goblins, ours, a, 40, 40) > CombatPlanner.blockScore(goblins, ours, new int[]{-1, -1, -1, -1}, 40, 40),
+            "better than taking 25");
+    }
+
+    /** At 12 life three Hill Giants attack into three Grizzly Bears: upstream takes 9, the expert blocks. */
+    private static void expertBlocksOnBoard() throws Exception {
+        for (int skill : new int[]{4, 6}) {
+            try (Board b = new Board(skill)) {
+                List<Card> bears = new ArrayList<>(), giants = new ArrayList<>();
+                for (int i = 0; i < 3; i++) bears.add(b.permanent(b.ai, GrizzlyBears::new, "Grizzly Bears"));
+                for (int i = 0; i < 3; i++) giants.add(b.permanent(b.human, HillGiant::new, "Hill Giant"));
+                b.ai.setLife(12, b.game, null);
+                b.attackStep(b.human);
+                for (Card giant : giants)
+                    check(b.game.getCombat().declareAttacker(giant.getId(), b.ai.getId(), b.human.getId(), b.game), "real attack");
+                DeclareBlockersStep step = new DeclareBlockersStep();
+                CombatPhase phase = new CombatPhase(); phase.setStep(step); b.game.getTurn().setPhase(phase);
+                b.ai.selectBlockers(null, b.game, b.ai.getId());
+                int blockers = b.game.getCombat().getBlockers().size();
+                System.out.println("  skill " + skill + ": " + blockers + " blockers");
+                if (skill == 6) check(blockers >= 2, "expert blocks at 12 life: " + blockers);
             }
         }
     }
