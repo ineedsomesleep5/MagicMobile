@@ -95,7 +95,7 @@ The editor shows and exports only history matching its exact playing cards and c
 gh workflow run magicmobile-android.yml --ref codex/android-ios-parity
 
 # everything that does run on macOS
-gradle -p apps/android :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
+apps/android/gradlew -p apps/android :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
 python3 -m unittest discover -s scripts/android/tests
 ```
 
