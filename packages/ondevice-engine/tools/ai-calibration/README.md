@@ -10,6 +10,7 @@ python3 scripts/ai_calibration.py decks         # resolve the ranked AI deck poo
 python3 scripts/ai_calibration.py run --skill-a 2 --skill-b 6 --games 80
 python3 scripts/ai_calibration.py matrix tools/ai-calibration/baseline-matrix.json
 python3 scripts/ai_calibration.py summarize build/ai-calibration/results/*.csv
+python3 scripts/ai_calibration.py summarize --by-deck build/ai-calibration/results/skill3-vs-skill3-phone.csv  # after a --pool precon run
 ```
 
 - **Decks:** the five precons from `apps/ios/MagicMobile/PreconCatalog.swift` and the 21 bracket decks in
@@ -32,6 +33,11 @@ python3 scripts/ai_calibration.py summarize build/ai-calibration/results/*.csv
   time from a shared queue; upstream AI search state is static, so games never share a JVM. Workers
   (2560m heap each) restart every 10 games. Searches are time-bounded, so a busy machine weakens every AI equally; keep
   other heavy work off the machine during a run.
+- **AI settings (engines with C2's `AIDifficulty`):** `run --depth-a/--mistake-a/--depth-b/--mistake-b`
+  or matrix entries like `{"a": 3, "b": 4, "mistake_a": 10}` override a seat's search depth and mistake
+  chance; each AI's mistake rolls are seeded from the game seed, and the CSV counts its deliberate
+  mistakes. On older engines the tool runs without them. `tuning-matrix.json` and
+  `tuning-c-matrix.json` are the C3 tuning runs (docs/cloud/reports/c3.md).
 - **Limits:** a game stops as a draw after 40 turns or 1800 s (`--max-turns`, `--max-seconds`).
 - **Output:** one CSV per pairing in `build/ai-calibration/results/` (game, game_seed, budget, skill_a,
   skill_b, deck_a, deck_b, first, winner, winner_skill, turns, seconds, end), appended as each game

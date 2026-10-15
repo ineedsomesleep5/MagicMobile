@@ -6,7 +6,6 @@ game,game_seed,budget,skill_a,skill_b,deck_a,deck_b,first,winner,winner_skill,tu
 4,5030043463954920778,phone,1,2,grave-danger,draconic-destruction,A,B,2,22,44.1,ended,,,,,3,3
 6,2313245857044670562,phone,1,2,draconic-destruction,grave-danger,A,B,2,20,36.1,ended,,,,,8,3
 7,8848468655573790768,phone,1,2,draconic-destruction,grave-danger,B,B,2,15,28.2,ended,,,,,3,4
-5,1577572090027968086,phone,1,2,grave-danger,draconic-destruction,B,draw,,12,179.1,engine-stopped,,,,,1,1
 8,7549177662187645641,phone,1,2,first-flight,ai-lathril-blade-of-the-elves-core,A,A,1,21,12.3,ended,,,,,4,1
 9,4874994241689618185,phone,1,2,first-flight,ai-lathril-blade-of-the-elves-core,B,B,2,19,79.5,ended,,,,,6,1
 10,355164709368660289,phone,1,2,ai-lathril-blade-of-the-elves-core,first-flight,A,B,2,22,35.6,ended,,,,,5,2
@@ -79,3 +78,4 @@ game,game_seed,budget,skill_a,skill_b,deck_a,deck_b,first,winner,winner_skill,tu
 77,9119904419360405946,phone,1,2,draconic-destruction,ai-gishath-suns-avatar-core,B,B,2,11,10.0,ended,,,,,2,1
 78,644496568715495298,phone,1,2,ai-gishath-suns-avatar-core,draconic-destruction,A,A,1,15,9.8,ended,,,,,5,3
 79,2875683574318633366,phone,1,2,ai-gishath-suns-avatar-core,draconic-destruction,B,B,2,13,18.1,ended,,,,,0,1
+5,1577572090027968086,phone,1,2,grave-danger,draconic-destruction,B,B,2,13,16.8,ended,,,,,3,1
