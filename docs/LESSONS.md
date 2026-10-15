@@ -99,7 +99,8 @@ contradicting one.
   `priority()` vanished: `GameImpl.playPriority` catches `Exception`, rolls back and asks again, which
   looked like an unrelated mismatch two entries later. **Rule:** verify replays in a fresh JVM
   (`GameReplay` command line); turn any replay-side exception into `GameRecorder.Stop` (an `Error`),
-  never let it reach XMage's error recovery.
+  never let it reach XMage's error recovery. A human's UUID answer is often not an object at all (a
+  mode, or a triggered ability to order): name it by its place in the question's options first.
 - 2026-10-15 (Claude, C5): `RealControlPrivacyTests` builds `XmageEngine.Running` by reflection with its
   exact constructor signature, so a new `Running` parameter compiles everywhere and then fails ten
   checks at run time with `NoSuchMethodException`. **Rule:** when `Running`'s constructor changes,
