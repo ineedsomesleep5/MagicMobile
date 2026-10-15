@@ -6,13 +6,18 @@ table (Substrate adds -H:+ExitAfterRelocatableImageWrite), so this reads the fun
 the unstripped library instead (the android-native-symbols-<sha> CI artifact). No dependencies:
 it parses the ELF64 symbol table directly.
 
-  native_code_sizes.py libmmengine.so [--csv out.csv] [--top 40] [--samples 20]
+GraalVM 22.1 names a method symbol <SimpleClassName>_<method>_<sha1>, without the package, so
+package names come from class inventories given on the command line:
+  --sources DIR    Java sources: every class, interface, enum or record declared in each file
+  --classes FILE   one fully qualified class name per line (jimage list, unzip -Z1 of a jar)
 
-Prints Markdown: the code total, then the largest packages (two and three levels), card classes
-grouped as mage.cards.*, and the largest classes. Measurement only; it changes nothing.
+  native_code_sizes.py libmmengine.so --sources .upstream/mage --classes jdk.txt [--csv out.csv]
+
+Prints Markdown: the code total, then code by package group, by package, card classes, the largest
+classes and the largest names no inventory knows. Measurement only; it changes nothing.
 """
 from __future__ import annotations
-import argparse, collections, csv, re, struct, sys
+import argparse, collections, csv, os, re, struct, sys
 
 
 def function_symbols(path: str):
@@ -28,8 +33,7 @@ def function_symbols(path: str):
     if not symtabs:
         raise SystemExit(f'{path}: no .symtab (stripped library?)')
     for _, _, _, _, offset, size, link, _, _, entsize in symtabs:
-        strtab = sections[link]
-        str_off = strtab[4]
+        str_off = sections[link][4]
         for i in range(size // entsize):
             name_off, info, _, _, _, sym_size = struct.unpack_from('<IBBHQQ', data, offset + i * entsize)
             if info & 0xF != 2 or sym_size == 0:  # STT_FUNC with a size
@@ -38,73 +42,156 @@ def function_symbols(path: str):
             yield data[str_off + name_off:end].decode('utf-8', 'replace'), sym_size
 
 
-QUALIFIED = re.compile(r'([A-Za-z_$][\w$]*(?:[./][A-Za-z_$][\w$]*)+)')
+HASH = re.compile(r'(?:_[0-9a-f]{40})+$')
+DECLARATION = re.compile(r'^\s*(?:(?:public|protected|private|abstract|final|static|sealed|non-sealed|strictfp)\s+)*'
+                         r'(?:class|interface|enum|record|@interface)\s+([A-Za-z_$][\w$]*)', re.M)
+PACKAGE = re.compile(r'^\s*package\s+([\w.]+)\s*;', re.M)
 
 
-def owner(name: str) -> str:
-    """The Java class a method symbol belongs to, or '(native)' for C and runtime stubs."""
-    if name.startswith('_Z'):  # C++ (JDK static libraries)
-        return '(native)'
-    head = name.split('(', 1)[0]
-    head = head.replace('::', '.')
-    m = QUALIFIED.search(head)
-    if not m:
-        return '(native)'
-    parts = m.group(1).replace('/', '.').split('.')
-    # The last part is the method; a class name starts upper case (or is an inner class with $).
-    return '.'.join(parts[:-1]) if len(parts) > 1 else parts[0]
+def split_symbol(name: str) -> tuple[str, str] | None:
+    """(simple class, method) for a GraalVM Java method symbol, None for C and runtime stubs."""
+    if not HASH.search(name):
+        return None
+    head = HASH.sub('', name)
+    cls, _, method = head.partition('_')
+    return (cls, method) if cls and method else None
 
 
-def package(cls: str, depth: int) -> str:
-    parts = cls.split('.')
-    pkg = [p for p in parts[:-1]]
-    return '.'.join(pkg[:depth]) if pkg else cls
+class Inventory:
+    """Simple class name to the packages that declare it."""
+    def __init__(self):
+        self.packages: dict[str, set[str]] = collections.defaultdict(set)
+
+    def add(self, fqcn: str):
+        fqcn = fqcn.strip().replace('/', '.')
+        if fqcn.endswith('.class'):
+            fqcn = fqcn[:-6]
+        if not fqcn or fqcn.startswith(('META-INF', 'module-info')) or '.' not in fqcn:
+            return
+        package, _, simple = fqcn.rpartition('.')
+        self.packages[simple].add(package)
+        # Nested classes: GraalVM keeps the binary name (Outer$Inner), also index the outer class.
+        if '$' in simple:
+            self.packages[simple.split('$')[0]].add(package)
+
+    def scan_sources(self, root: str):
+        for directory, _, files in os.walk(root):
+            for file in files:
+                if not file.endswith('.java'):
+                    continue
+                with open(os.path.join(directory, file), encoding='utf-8', errors='replace') as f:
+                    text = f.read()
+                m = PACKAGE.search(text)
+                if not m:
+                    continue
+                for declared in DECLARATION.findall(text):
+                    self.packages[declared].add(m.group(1))
+
+    def package(self, simple: str) -> str:
+        found = self.packages.get(simple) or self.packages.get(simple.split('$')[0])
+        if not found:
+            return '(unknown)'
+        if len(found) == 1:
+            return next(iter(found))
+        # Same simple name in several packages: prefer XMage, then the shared prefix.
+        mage = sorted(p for p in found if p.startswith('mage.'))
+        pick = mage or sorted(found)
+        prefix = os.path.commonprefix([p.split('.') for p in pick])
+        return '.'.join(prefix) + '.*' if prefix else '(ambiguous)'
+
+
+def group(package: str) -> str:
+    """A coarse owner for one package: card classes, XMage areas, the adapter, the JDK or a library."""
+    if package.startswith('mage.cards.') and re.match(r'mage\.cards\.[a-z]$', package):
+        return 'XMage card classes (mage.cards.<letter>)'
+    for prefix, label in (('mage.abilities', 'XMage abilities and effects'), ('mage.game', 'XMage game'),
+                          ('mage.filter', 'XMage filters'), ('mage.target', 'XMage targets'),
+                          ('mage.watchers', 'XMage watchers'), ('mage.player', 'XMage AI and players'),
+                          ('mage.players', 'XMage AI and players'), ('mage.view', 'XMage views'),
+                          ('mage.sets', 'XMage set classes'), ('mage.', 'XMage other'),
+                          ('io.magicmobile', 'MagicMobile adapter'), ('java.', 'JDK'), ('javax.', 'JDK'),
+                          ('jdk.', 'JDK'), ('sun.', 'JDK'), ('com.sun.', 'JDK'), ('com.oracle.svm', 'GraalVM runtime'),
+                          ('org.graalvm', 'GraalVM runtime'), ('com.google.common', 'Guava'),
+                          ('com.google.protobuf', 'protobuf'), ('com.google.gson', 'Gson'), ('org.h2', 'H2'),
+                          ('com.j256.ormlite', 'ORMLite'), ('org.jsoup', 'jsoup'), ('org.jboss', 'JBoss remoting'),
+                          ('org.apache.log4j', 'reload4j'), ('org.slf4j', 'SLF4J'), ('org.apache.commons', 'commons-lang3')):
+        if package.startswith(prefix):
+            return label
+    return package if package.startswith('(') else 'other library'
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('library')
-    parser.add_argument('--csv', help='write class,methods,bytes rows')
+    parser.add_argument('--sources', action='append', default=[], help='Java source root to scan (repeatable)')
+    parser.add_argument('--classes', action='append', default=[], help='file of class names (repeatable)')
+    parser.add_argument('--csv', help='write package,class,methods,bytes rows')
     parser.add_argument('--top', type=int, default=40)
-    parser.add_argument('--samples', type=int, default=20, help='raw symbol names to print, to check the parsing')
     args = parser.parse_args()
-    by_class = collections.Counter()
-    methods = collections.Counter()
+    inventory = Inventory()
+    for root in args.sources:
+        inventory.scan_sources(root)
+    for path in args.classes:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                inventory.add(line)
+    by_class, methods, owners = collections.Counter(), collections.Counter(), {}
+    special = collections.Counter()
     total = count = 0
-    samples = []
     for name, size in function_symbols(args.library):
-        cls = owner(name)
-        by_class[cls] += size
-        methods[cls] += 1
         total += size
         count += 1
-        if len(samples) < args.samples and count % 9973 == 1:
-            samples.append(f'{size:>8}  {name[:160]}')
+        parsed = split_symbol(name)
+        if parsed is None:
+            special['C, runtime stubs and other unhashed symbols'] += size
+            continue
+        cls, method = parsed
+        by_class[cls] += size
+        methods[cls] += 1
+        if cls not in owners:
+            # GraalVM's generated accessors for reflective and serialization access, one per registered member.
+            owners[cls] = '(reflection accessors)' if cls == 'ReflectionAccessorHolder' else inventory.package(cls)
     mb = lambda b: f'{b / 1e6:.1f}'
     pct = lambda b: f'{100 * b / total:.1f}%'
-    out = [f'# Native code by Java owner: {args.library}', '',
-           f'{count:,} sized function symbols, {total:,} bytes ({mb(total)} MB).', '']
-    for depth in (2, 3):
-        pk = collections.Counter()
-        for cls, size in by_class.items():
-            pk[package(cls, depth)] += size
-        out += [f'## Packages, {depth} levels', '', '| Package | MB | Share |', '|---|---|---|']
-        out += [f'| {p} | {mb(s)} | {pct(s)} |' for p, s in pk.most_common(args.top)] + ['']
-    cards = sum(s for c, s in by_class.items() if c.startswith('mage.cards.') and c.count('.') >= 3)
-    card_classes = {c.split('$')[0] for c in by_class if c.startswith('mage.cards.') and c.count('.') >= 3}
+    out = [f'# Native code by Java owner: {os.path.basename(args.library)}', '',
+           f'{count:,} sized function symbols, {total:,} bytes ({mb(total)} MB). Inventory: '
+           f'{len(inventory.packages):,} simple class names.', '']
+    groups, packages = collections.Counter(), collections.Counter()
+    for cls, size in by_class.items():
+        groups[group(owners[cls])] += size
+        packages[owners[cls]] += size
+    for label, size in special.items():
+        groups['(' + label + ')'] += size
+    out += ['## By owner', '', '| Owner | MB | Share |', '|---|---|---|']
+    out += [f'| {g} | {mb(s)} | {pct(s)} |' for g, s in groups.most_common()] + ['']
+    out += ['## By package', '', '| Package | MB | Share |', '|---|---|---|']
+    out += [f'| {p} | {mb(s)} | {pct(s)} |' for p, s in packages.most_common(args.top)] + ['']
+    card = [c for c in by_class if group(owners[c]).startswith('XMage card')]
+    card_bytes = sum(by_class[c] for c in card)
     out += ['## Card classes', '',
-            f'mage.cards.<letter>.* (card classes and their inner effect classes): {mb(cards)} MB, {pct(cards)},'
-            f' {len(card_classes):,} top-level classes, {cards / max(1, len(card_classes)):,.0f} bytes each on average.', '']
-    out += ['## Largest classes', '', '| Class | Methods | KB |', '|---|---|---|']
-    out += [f'| {c} | {methods[c]} | {s / 1e3:.0f} |' for c, s in by_class.most_common(args.top)] + ['']
-    out += ['## Sample symbols (to check the name parsing)', '', '```'] + samples + ['```']
+            f'{len(card):,} classes in mage.cards.<letter> (cards and their effect classes), {mb(card_bytes)} MB, '
+            f'{pct(card_bytes)}, {card_bytes / max(1, len(card)):,.0f} bytes and '
+            f'{sum(methods[c] for c in card) / max(1, len(card)):.1f} methods per class on average.', '']
+    card_methods = collections.Counter()
+    for name, size in function_symbols(args.library) if card else ():
+        parsed = split_symbol(name)
+        if parsed and parsed[0] in owners and group(owners[parsed[0]]).startswith('XMage card'):
+            card_methods[parsed[1]] += size
+    if card_methods:
+        out += ['Card-class code by method name:', '', '| Method | MB |', '|---|---|']
+        out += [f'| {m} | {mb(s)} |' for m, s in card_methods.most_common(12)] + ['']
+    out += ['## Largest classes', '', '| Class | Package | Methods | KB |', '|---|---|---|---|']
+    out += [f'| {c} | {owners[c]} | {methods[c]} | {s / 1e3:.0f} |' for c, s in by_class.most_common(args.top)] + ['']
+    unknown = [(c, s) for c, s in by_class.most_common() if owners[c] == '(unknown)'][:args.top]
+    out += ['## Largest classes no inventory names', '', '| Class | Methods | KB |', '|---|---|---|']
+    out += [f'| {c} | {methods[c]} | {s / 1e3:.0f} |' for c, s in unknown] + ['']
     print('\n'.join(out))
     if args.csv:
         with open(args.csv, 'w', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['class', 'methods', 'bytes'])
+            w.writerow(['package', 'class', 'methods', 'bytes'])
             for c, s in by_class.most_common():
-                w.writerow([c, methods[c], s])
+                w.writerow([owners[c], c, methods[c], s])
 
 
 if __name__ == '__main__':

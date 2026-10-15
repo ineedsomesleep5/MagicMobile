@@ -34,7 +34,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: packages/ondevice-engine/scripts
+          sparse-checkout: packages/ondevice-engine
+      - name: Class inventories (pinned XMage sources, JDK 17 classes, library jars)
+        run: |
+          sha=$(python3 -c 'import json;print(json.load(open("packages/ondevice-engine/upstream.lock.json"))["commit"])')
+          git init -q xmage && cd xmage
+          git remote add origin https://github.com/magefree/mage.git
+          git sparse-checkout set Mage/src Mage.Sets/src Mage.Common/src Mage.Server.Plugins
+          git fetch -q --depth 1 --filter=blob:none origin "$sha" && git checkout -q FETCH_HEAD
+          cd ..
+          "$JAVA_HOME_17_X64/bin/jimage" list "$JAVA_HOME_17_X64/lib/modules" | grep '\.class$' | sed 's/^ *//' > jdk-classes.txt
+          mkdir jars && cd jars
+          for c in com/google/guava/guava/33.4.8-jre com/google/code/gson/gson/2.13.2 org/jsoup/jsoup/1.21.2 \
+                   com/google/protobuf/protobuf-java/3.25.8 ch/qos/reload4j/reload4j/1.2.22 org/slf4j/slf4j-api/2.0.17 \
+                   com/j256/ormlite/ormlite-core/5.7 com/j256/ormlite/ormlite-jdbc/5.7 com/h2database/h2/1.4.197 \
+                   com/googlecode/jspf/jspf-core/0.9.1 org/jboss/remoting/jboss-remoting/2.5.4.SP5 \
+                   org/jboss/jboss-common-core/2.5.0.Final jboss/jboss-serialization/4.2.2.GA \
+                   org/ocpsoft/prettytime/prettytime/4.0.6.Final org/apache/commons/commons-lang3/3.18.0 \
+                   trove/trove/1.0.2 concurrent/concurrent/1.3.4; do
+            a=$(basename "$(dirname "$c")"); v=$(basename "$c")
+            curl -fsSL -o "$a.jar" "https://repo1.maven.org/maven2/$c/$a-$v.jar" && unzip -Z1 "$a.jar" | grep '\.class$' >> ../jar-classes.txt
+          done
+          cd .. && wc -l jdk-classes.txt jar-classes.txt
       - uses: actions/download-artifact@v4
         with:
           name: ${{ env.ARTIFACT }}
@@ -46,6 +67,7 @@ jobs:
           ls -la symbols
           lib=$(find symbols -name 'libmmengine.so' | head -1)
           python3 packages/ondevice-engine/scripts/native_code_sizes.py "$lib" --csv code-sizes.csv --top 60 \
+            --sources xmage --sources packages/ondevice-engine --classes jdk-classes.txt --classes jar-classes.txt \
             | tee code-sizes.md
           cat code-sizes.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
