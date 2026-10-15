@@ -59,6 +59,13 @@ the Exhibition AI decks are tuned tribal lists (the bracket check only screens G
 denial, extra turns and combos), so Bronze faces the precons instead. Skill 7 would mean 21 s AI turns
 on a phone, so Mythic stops at 6.
 
+Engine release A (2026-10-15, cloud session C2): skills 1 and 2 now search depth 2 and 3 (one and two
+actions ahead; upstream depth 1 never casts a spell), skill 3 keeps depth 4, and skills 1–3 make a
+deliberate mistake at 15%, 10% and 5% of their decisions (a weaker play or a pass, a held-back attack,
+a skipped block, each with a safety guard). Skill 4 and up are unchanged. The numbers live in
+`AIDifficulty.java` and each seat can override them (`aiSearchDepth`, `aiMistakePercent`, `aiSeed`;
+packages/ondevice-engine/docs/PROTOCOL.md) for the C3 calibration, which decides the final values.
+
 ## Play modes
 
 - **Quick Match**: one AI. Defaults to an AI deck at your deck's bracket (a precon when that is Core or

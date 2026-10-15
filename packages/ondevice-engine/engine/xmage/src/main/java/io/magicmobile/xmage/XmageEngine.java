@@ -298,16 +298,18 @@ public final class XmageEngine implements EnginePort {
         MobileAICancellation cancellation=new MobileAICancellation();
         MobileCommanderMatch match=new MobileCommanderMatch();
         for(Object value:configSeats) {
-            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck","aiSkill"));String id=Json.requiredString(s,"seatId");
+            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck","aiSkill",
+                "aiSearchDepth","aiMistakePercent","aiSeed"));String id=Json.requiredString(s,"seatId");
             if(id.isEmpty() || id.length()>128 || players.containsKey(id)) throw new BridgeException("invalid_seat","Seat IDs must be unique and nonempty");
             String controller=Json.optionalString(s,"controller","human");
             Player player;
             if(controller.equals("human")) {
-                if(s.containsKey("aiSkill")) throw new BridgeException("invalid_ai_skill","AI skill applies only to AI seats");
+                for(String key:AI_SETTINGS) if(s.containsKey(key)) throw new BridgeException("invalid_ai_skill","AI settings apply only to AI seats");
                 MobileHumanPlayer human=new MobileHumanPlayer(Json.requiredString(s,"name"));
                 player=human;seats.put(id,human);
             } else if(controller.equals("ai")) {
-                player=cancellation.player(Json.requiredString(s,"name"),aiSkill(s));
+                int skill=aiSkill(s);
+                player=cancellation.player(Json.requiredString(s,"name"),skill,aiDifficulty(s,skill));
             } else throw new BridgeException("invalid_controller","Controller must be human or ai");
             match.addPlayer(player,DeckLoader.load(Json.object(s.get("deck"))));players.put(id,player);
             seatSummary.add(Json.map("seatId",id,"name",player.getName(),"controller",controller));
@@ -396,6 +398,25 @@ public final class XmageEngine implements EnginePort {
         running.start();
         return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities(),
             "restored",Json.map("turn",loaded.turn(),"savedAtMillis",loaded.savedAtMillis(),"sequence",loaded.sequence()));
+    }
+    private static final List<String> AI_SETTINGS=List.of("aiSkill","aiSearchDepth","aiMistakePercent","aiSeed");
+    /**
+     * Skill's defaults (AIDifficulty), each overridable for calibration: `aiSearchDepth` 1–10 (upstream
+     * depth units), `aiMistakePercent` 0–100 and `aiSeed` (any 64-bit integer; omitted means unseeded).
+     */
+    static AIDifficulty aiDifficulty(Map<String,Object> seat,int skill) {
+        int depth=(int)aiSetting(seat,"aiSearchDepth",AIDifficulty.searchDepth(skill),1,10);
+        int mistakes=(int)aiSetting(seat,"aiMistakePercent",AIDifficulty.mistakePercent(skill),0,100);
+        long seed=aiSetting(seat,"aiSeed",java.util.concurrent.ThreadLocalRandom.current().nextLong(),Long.MIN_VALUE,Long.MAX_VALUE);
+        return new AIDifficulty(depth,mistakes,seed);
+    }
+    private static long aiSetting(Map<String,Object> seat,String key,long fallback,long min,long max) {
+        if(!seat.containsKey(key)) return fallback;
+        long value;
+        try { value=Json.integer(seat.get(key)); }
+        catch(BridgeException invalid) { throw new BridgeException("invalid_ai_skill",key+" must be an integer from "+min+" to "+max); }
+        if(value<min || value>max) throw new BridgeException("invalid_ai_skill",key+" must be an integer from "+min+" to "+max);
+        return value;
     }
     static int aiSkill(Map<String,Object> seat) {
         if(!seat.containsKey("aiSkill")) return 1; // Preserve existing callers' upstream budget.

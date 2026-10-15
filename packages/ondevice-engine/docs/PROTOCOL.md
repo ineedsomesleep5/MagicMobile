@@ -46,9 +46,31 @@ normally also leaves this way. Once only AI seats remain, AI think time is cappe
 A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
 AI seats additionally accept optional `aiSkill`, an integer from 1 to 10 matching the pinned
-XMage desktop Skill control. Omission preserves the prior level-1 engine behavior; the app's
-new setup control defaults to desktop level 2. The value goes directly to the upstream MAD
-constructor (search depth `max(4, skill)` and thinking budget `skill * 3` seconds per calculation).
+XMage desktop Skill control. Omission means level 1; the app's setup control defaults to level 2.
+The thinking budget is upstream's `skill * 3` seconds per calculation. Since engine release A the
+mobile AI wrapper (`MobileAICancellation`, `AIDifficulty`) also sets, per skill:
+
+| Skill | Search depth (upstream units) | Deliberate mistake chance |
+|---|---|---|
+| 1 | 2 (sees one action resolve) | 15% |
+| 2 | 3 (two actions) | 10% |
+| 3 | 4 (upstream) | 5% |
+| 4–10 | `max(4, skill)` (upstream) | 0% |
+
+Upstream depth counts one unit per action and scores the last one before it resolves, so depth 1
+would judge every spell while it is still on the stack and never cast one; N plies are depth N+1.
+Before release A every skill from 1 to 4 searched depth 4. A mistake is rolled at each fresh
+priority search that chose to act (the AI then takes the best other play its search scored that is
+no worse than doing nothing, or passes and searches again at its next priority), at each attack
+declaration (it holds every creature back, never when its available attackers could be lethal) and
+at each block declaration (it blocks nothing, only while the attack would cost under half its
+life). The rolls come from a SplitMix64 generator per seat, saved with a checkpoint.
+
+For calibration, AI seats also accept optional overrides: `aiSearchDepth` (1–10), `aiMistakePercent`
+(0–100) and `aiSeed` (any 64-bit integer; omitted means a random seed drawn outside XMage's own
+random generator, so shuffles are unaffected). A seed makes the mistake rolls repeatable, not the
+whole game: XMage's shuffles and AI tie-breaks are not seeded. The apps send only `aiSkill`. Any of
+these on a human seat, or out of range, fails with `invalid_ai_skill`.
 Higher levels allow more thinking, not different rules or access to additional private information.
 While a stack resolves, an AI that already searched and chose to pass with an opponent's ability (not a
 spell) on top passes again without a new search, as long as the turn, step and its instant-speed options
@@ -233,6 +255,43 @@ Source actions still answer with the object UUID, not the ability UUID. XMage ma
 ability, additional cost, or color. Old payloads safely identify only
 `basicManaAbilities` as mana during payment. Playability is upstream's offered
 action estimate, not proof that a complete payment sequence exists.
+
+The same rows also carry `respondsToStack: boolean` (new in engine release A). It says whether that
+play could answer what is pending right now: the stack, or attacks that have not dealt their combat
+damage yet (declare attackers, declare blockers and first-strike damage steps). It is a hint for
+smart-pass stops, like Arena's "you have a response", never a legality check: every row stays
+playable whatever it says. Built from the current ability, target and effect objects
+(`StackResponses.java`), never from rules text. A play counts as a response when:
+
+- it can target a stack object, a stack object's source, or a non-player object a stack object
+  targets (counters, copies, killing the source, pumping or protecting the target);
+- it can target a player a stack object targets and has a protective effect (gain life, prevent or
+  redirect damage, protection);
+- its source is targeted by a stack object, or it has a sacrifice cost while a stack object targets
+  a permanent its controller controls (sacrifice, blink or regenerate in response);
+- an untargeted stack object would harm permanents (a sweeper, an edict; drains, discard and cast
+  limits do not count) and the play can target any permanent;
+- attacks are pending and it is a permanent spell (a flash blocker) or can target an attacking or
+  blocking creature;
+- it is a permanent spell outside combat with a triggered or non-keyword static ability of its own
+  (an enters trigger, a lord);
+- it has no targets and an effect other than drawing cards, adding mana or putting a land onto the
+  battlefield (unsure, so it counts).
+
+Land plays and mana abilities are never responses, except a mana ability whose source is targeted
+or that sacrifices while something threatens its controller's permanents. With an empty stack and
+no attack pending every row is `false`. Anything the engine cannot judge (an exception, a row it
+cannot match to an offered ability) is `true` while something is pending. Only the seat whose
+priority it is gets `canPlayObjects`, so only that seat sees the flag. Older engines omit the field;
+clients must then treat every non-mana play as a possible response (today's behaviour).
+
+### Stack controllers
+
+Each per-seat snapshot carries `stackControllers`, an object from stack object ID (the same keys as
+`gameView.stack` and `stackOrder`) to the engine player ID of that object's controller (the same IDs
+as `gameView.players[].playerId` and `enginePlayerId`). Controllers of stack objects are public, so
+every seat, including spectating and controlled-player views, gets the same map. It is `{}` with an
+empty stack. Older engines omit it; clients then keep their current controller inference.
 
 Visible battlefield CardViews may carry the additive `ABILITY_MENACE` icon with
 category `ABILITY` and text `Menace`, derived only from current permanent
