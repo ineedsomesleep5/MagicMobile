@@ -151,20 +151,21 @@ public final class RealGameRecordTests {
             int answered=0;
             String phase="running";
             // Whichever seat XMage is asking answers; neither ever waits on the other.
-            while(answered<240 && "running".equals(phase)) {
+            Set<String> live=Set.of("starting","running");
+            while(answered<240 && live.contains(phase)) {
                 check(System.nanoTime()<deadline,name+": stalled after "+answered+" answers");
                 boolean any=false;
                 for(RealCheckpointTests.Driver driver:drivers) {
                     Map<String,Object> state=driver.poll();
                     phase=String.valueOf(state.get("phase"));
-                    if(!"running".equals(phase)) break;
+                    if(!live.contains(phase)) break;
                     Map<String,Object> prompt=state.get("prompt")==null?null:Json.object(state.get("prompt"));
                     if(prompt==null || Boolean.TRUE.equals(prompt.get("submitted")) || driver.seen.contains((String)prompt.get("promptId"))) continue;
                     driver.answer(state);answered++;any=true;
                 }
                 if(!any) Thread.sleep(2);
             }
-            if("running".equals(phase)) {
+            if(live.contains(phase)) {
                 engine.concede(id,"human2");
                 Thread.sleep(300);
                 if(!"ended".equals(drivers.get(0).poll().get("phase"))) engine.concede(id,"human");

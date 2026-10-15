@@ -447,6 +447,9 @@ public final class RealCheckpointTests {
             // The human goes first, so no AI search has started: only the waiting GAME thread owns the RNG.
             new Driver(engine,id,false).untilSaved(1,60);
             Files.copy(file,copy);
+            // The match's seeded stream (GameRandom) serves only its GAME thread, parked here at the
+            // human's question; lend it to this thread to read the next draws.
+            ((GameRandom)RandomUtil.getRandom()).bind(Thread.currentThread(),null);
             for(int i=0;i<64;i++) drawn.add(RandomUtil.nextInt()&0xffffffffL);
             engine.destroy(id);
         } finally { engine.close(); }
@@ -582,6 +585,7 @@ public final class RealCheckpointTests {
             Map<String,Object> first=driver.untilPrompt(90);
             if(mode.equals("rng")) {
                 List<Long> draws=new ArrayList<>();
+                ((GameRandom)RandomUtil.getRandom()).bind(Thread.currentThread(),null);
                 for(int i=0;i<64;i++) draws.add(RandomUtil.nextInt()&0xffffffffL);
                 String expected=Files.readString(expectedFile);
                 result.put("drawsMatch",expected.equals(draws.stream().map(String::valueOf).collect(Collectors.joining(","))));
