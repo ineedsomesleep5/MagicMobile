@@ -48,6 +48,16 @@ DECLARATION = re.compile(r'^\s*(?:(?:public|protected|private|abstract|final|sta
 PACKAGE = re.compile(r'^\s*package\s+([\w.]+)\s*;', re.M)
 
 
+# Classes no source declares: GraalVM's generated stubs and MagicMobile's generated registry.
+GENERATED = {'ReflectionAccessorHolder': '(GraalVM reflection and serialization accessors)',
+             'FactoryMethodHolder': '(GraalVM factory methods for allocation)',
+             'JNIJavaCallWrappers': '(GraalVM JNI call wrappers)'}
+GENERATED_PREFIXES = (('GeneratedCardBucket', 'io.magicmobile.generated (card factory)'),
+                      ('GeneratedSetBucket', 'io.magicmobile.generated (set registry)'),
+                      ('GeneratedCardFactory', 'io.magicmobile.generated (card factory)'),
+                      ('GeneratedSetRegistry', 'io.magicmobile.generated (set registry)'))
+
+
 def split_symbol(name: str) -> tuple[str, str] | None:
     """(simple class, method) for a GraalVM Java method symbol, None for C and runtime stubs."""
     if not HASH.search(name):
@@ -102,6 +112,8 @@ class Inventory:
 
 def group(package: str) -> str:
     """A coarse owner for one package: card classes, XMage areas, the adapter, the JDK or a library."""
+    if package.startswith('io.magicmobile.generated'):
+        return 'MagicMobile generated registry'
     if package.startswith('mage.cards.') and re.match(r'mage\.cards\.[a-z]$', package):
         return 'XMage card classes (mage.cards.<letter>)'
     for prefix, label in (('mage.abilities', 'XMage abilities and effects'), ('mage.game', 'XMage game'),
@@ -150,7 +162,8 @@ def main():
         methods[cls] += 1
         if cls not in owners:
             # GraalVM's generated accessors for reflective and serialization access, one per registered member.
-            owners[cls] = '(reflection accessors)' if cls == 'ReflectionAccessorHolder' else inventory.package(cls)
+            owners[cls] = GENERATED.get(cls) or next((label for prefix, label in GENERATED_PREFIXES if cls.startswith(prefix)),
+                                                     None) or inventory.package(cls)
     mb = lambda b: f'{b / 1e6:.1f}'
     pct = lambda b: f'{100 * b / total:.1f}%'
     out = [f'# Native code by Java owner: {os.path.basename(args.library)}', '',
