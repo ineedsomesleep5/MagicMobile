@@ -10,10 +10,10 @@ the log at the bottom as work lands, so any session can see where the program st
 | Release | Content | iOS | Android |
 |---|---|---|---|
 | R1 | Phases 0 and 1: app-only, on today's engine (XMage `dac400b`) | TestFlight 39 | build 23 |
-| R2 | Phases 2 to 4: the engine release, plus the app pieces that use it | TestFlight 40 | build 24 |
-| R3 | Phase 5: the engine game record, plus verified ranked AI wins | TestFlight 41 | build 25 |
+| R2 | Phases 2 to 5: the engine release (C2, C3 tuning, C4, the C5 game record), the app pieces that use it and verified ranked AI wins | TestFlight 40 | build 24 |
 
-Caleb chose the strongest path on 2026-10-15 and gave Phase 5 its own release (R3).
+Caleb chose the strongest path on 2026-10-15 and gave Phase 5 its own release (R3). Later that day, with C5 finished
+before C4, he folded R3 into R2: one native engine build instead of two.
 Builds installed directly on Caleb's phone between releases are test builds, not releases.
 
 ## Phase 0: ship what is already built (Mac)
@@ -54,10 +54,12 @@ Builds installed directly on Caleb's phone between releases are test builds, not
 
 - [ ] Better attack, block, mulligan and response choices, measured with the C3 harness (C4 after Phase 3, or C2)
 
-## Phase 5: engine game record, in R3
+## Phase 5: engine game record, in R2 (was R3)
 
-- [ ] A compact, deterministic action log from the engine, enough to replay a game, kept with each finished game (C5)
-- [ ] A replay viewer for debugging (developer-facing first) (Mac)
+- [x] A compact, deterministic action log from the engine, enough to replay a game, kept with each finished game (C5, #171;
+      apps keep the last 50, #177)
+- [x] A replay viewer for debugging (developer-facing first): `scripts/dev/replay_record.sh` with `--trace`, and Share last
+      game record on the engine report screen (Mac, #177)
 - [ ] Ranked AI wins: the phone uploads the game record with the result, and the server checks it before counting
       the win (signature, length, consistency checks; the server does not run the engine) (C5 for the format, Mac and
       server for the check)
@@ -167,3 +169,5 @@ the apps: the Mac does those.
 - 2026-10-15: Caleb gave the go with the strongest model path and a third release for Phase 5.
 - 2026-10-15: program approved in principle; cloud environment verified (tools, network, GitHub push and draft PR from
   the cloud, #160); plan written.
+- 2026-10-15: C2 merged (#163) with the smart pass wiring (#175) and C3's mistake rates (#176). C5 merged (#171); its server
+  checks and app wiring are #177. Caleb folded R3 into R2. Waiting on C4, then one native build for TestFlight 40 / Android 24.
