@@ -66,6 +66,21 @@ declaration (it holds every creature back, never when its available attackers co
 at each block declaration (it blocks nothing, only while the attack would cost under half its
 life). The rolls come from a SplitMix64 generator per seat, saved with a checkpoint.
 
+From skill 5 (Diamond) up the AI plays as an expert (`AIDifficulty.expert`, saved with a checkpoint):
+- **Attacks** come from `CombatPlanner` instead of upstream's rule (attack only with creatures no single
+  blocker can kill). Against a single opponent it scores every attack (every subset up to ten available
+  attackers, hill-climbing above that) on the blocks the defender is predicted to make and on the
+  crack-back of the defender's whole team on the next turn, in upstream's own life and permanent values,
+  and declares the best. With several opponents, attackable planeswalkers or battles, infect, or a
+  defender who can't lose, upstream's rule decides.
+- **Blocks** start from upstream's, then add chump blocks while the unblocked attack would still be
+  lethal, then double blocks on an unblocked attacker that two spare creatures kill while losing less
+  value than it is worth.
+- **Searches** run a quick two-ply search (at most 2 s) before the full one; when the full search runs out
+  of time before scoring any move, the quick search's move stands instead of a pass. The total stays
+  within the seat's think time.
+Every decision still goes through upstream's legal declarations; nothing reads hidden information.
+
 For calibration, AI seats also accept optional overrides: `aiSearchDepth` (1–10), `aiMistakePercent`
 (0–100) and `aiSeed` (any 64-bit integer; omitted means a random seed drawn outside XMage's own
 random generator, so shuffles are unaffected). A seed makes the mistake rolls repeatable, not the
