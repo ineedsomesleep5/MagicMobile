@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node verify-migration.mjs",
-    "test:ranked": "node verify-ranked.mjs",
-    "test:ranked-pending": "node verify-ranked.mjs --pending"
+    "test:ranked": "node verify-ranked.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"

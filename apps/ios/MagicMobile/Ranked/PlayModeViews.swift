@@ -398,8 +398,9 @@ struct RankedLobbyView<DeckSlot: View>: View {
                      ? String(localized: "AI opponents play official precon decks at skill \(tier.aiSkill).")
                      : String(localized: "Opponents play Bracket \(bracketText(tier.opponentBrackets)) decks. AI opponents play at skill \(tier.aiSkill)."))
                 rule("checkmark.seal.fill", String(localized: "Your deck may be up to Bracket \(tier.maxDeckBracket). A lower bracket earns +1 pip for each win."))
-                rule("arrow.up.arrow.down", String(localized: "Each win fills a pip and each loss empties one. Four pips win a division; with none left a loss drops you a division."))
-                if tier < .gold { rule("flame.fill", String(localized: "Three wins in a row below Gold earn an extra pip.")) }
+                rule("arrow.up.arrow.down", Self.stepsRule(tier))
+                rule("shield.fill", tier == .mythic ? String(localized: "A loss at Mythic can drop you back to Diamond, never lower.")
+                                                    : String(localized: "Four pips win a division, and a loss never drops you out of \(tier.name)."))
                 rule(canSearchPeople ? "antenna.radiowaves.left.and.right" : "cpu",
                      canSearchPeople ? String(localized: "We look for a player near your rank first. If nobody's searching, an AI takes the seat.")
                                      : String(localized: "Profiles are offline, so an AI takes the seat. AI games count the same."))
@@ -429,6 +430,19 @@ struct RankedLobbyView<DeckSlot: View>: View {
         let days = max(0, Int(ceil(end.timeIntervalSinceNow / 86_400)))
         return days == 1 ? String(localized: " · 1 day left") : String(localized: " · \(days) days left")
     }
+
+    /// How a result moves you at this tier (ladder option B): two pips a win up to Gold, one from Platinum; no loss in Bronze.
+
+    static func stepsRule(_ tier: RankTier) -> String {
+
+        let win = tier.winPips == 2 ? String(localized: "Each win fills two pips") : String(localized: "Each win fills a pip")
+
+        let loss = tier.lossPips == 0 ? String(localized: "and a loss costs nothing here.") : String(localized: "and each loss empties one.")
+
+        return "\(win) \(loss)"
+
+    }
+
 
     private func bracketText(_ range: ClosedRange<Int>) -> String {
         range.lowerBound == range.upperBound ? "\(range.lowerBound)" : "\(range.lowerBound)–\(range.upperBound)"

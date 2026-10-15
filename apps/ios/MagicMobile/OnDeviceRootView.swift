@@ -690,10 +690,11 @@ struct OnDeviceRootView: View {
             let upload: () async -> Void = { [account, profileRecord] in
                 await GameUploader.shared.flush(matches: profileRecord.matches) { await account.recordGame($0) }
             }
-            profileRecord.didRecord = { _ in Task { await upload() } }
+            // A ranked game goes up after its result counts on the server, which records its rank points then.
+            profileRecord.didRecord = { match in if match.mode != .ranked { Task { await upload() } } }
             account.afterRefresh = { [account, profileRecord] in
-                await upload()
                 await account.syncRank(profileRecord)
+                await upload()
             }
         }
         .onChange(of: setup.isBusy) { _, busy in
@@ -1441,10 +1442,11 @@ struct OnDeviceRootView: View {
                                    engineMatchID: session.matchID)
         rankChange = change
         let rankedMatchID = match.rankedMatchID, ranked = match.mode == .ranked
-        Task { [account, profileRecord] in
+        Task { [account] in
             if let rankedMatchID { await matchmaker.report(match: rankedMatchID, outcome: outcome) }
-            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile).
-            if ranked { await account.syncRank(profileRecord) }
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
+            // then upload the game so its rank history point is the standing after it.
+            if ranked { await account.afterRefresh?() }
         }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
             // After the result screen's own reveal.

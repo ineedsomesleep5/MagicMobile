@@ -38,6 +38,11 @@ enum RankTier: Int, CaseIterable, Codable, Comparable, Sendable {
     /// The strongest deck you may queue with here. A weaker deck is allowed and earns an extra pip per win.
     var maxDeckBracket: Int { opponentBrackets.upperBound }
 
+    /// Pips a ranked win earns here (Arena's Bo1 steps; ladder option B, Caleb 2026-10-15): two up to Gold, one from Platinum.
+    var winPips: Int { self <= .gold ? 2 : 1 }
+    /// Pips a ranked loss costs here: none in Bronze.
+    var lossPips: Int { self == .bronze ? 0 : 1 }
+
     /// Bronze AI opponents play only the official precons, the gentlest decks in the pool.
     var preconOpponentsOnly: Bool { self == .bronze }
 
@@ -213,18 +218,19 @@ enum RankLadder {
         case .win:
             next.wins += 1
             next.winStreak += 1
-            delta = 1
-            if state.position.tier < .gold, next.winStreak >= 3 { delta += 1; bonuses.append(.streak) }
+            delta = state.position.tier.winPips
             if deckBracket < state.position.tier.opponentBrackets.lowerBound { delta += 1; bonuses.append(.underdog) }
         case .loss:
             next.losses += 1
             next.winStreak = 0
-            delta = -1
+            delta = -state.position.tier.lossPips
         case .draw:
             next.draws += 1
             next.winStreak = 0
         }
-        next.position = RankPosition(points: state.position.points + delta)
+        // A loss never takes you out of your tier (Mythic can fall back to Diamond, never below Diamond IV).
+        let floor = RankPosition.atStep(min(state.position.tier, .diamond).rawValue * RankPosition.divisions).points
+        next.position = RankPosition(points: max(state.position.points + delta, floor))
         next.peak = max(next.peak, next.position)
         return (next, RankChange(outcome: outcome, before: state.position, after: next.position, bonuses: bonuses))
     }
