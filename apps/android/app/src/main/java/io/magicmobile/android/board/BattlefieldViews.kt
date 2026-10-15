@@ -56,7 +56,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -88,16 +87,13 @@ import io.magicmobile.android.ui.glow
 import io.magicmobile.android.game.BattlefieldTokenStack
 import androidx.compose.ui.draw.drawBehind
 
-/** BattlefieldBackdrop (GameBoardTheme.swift). Persisted identifiers are shared with iOS. */
-enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
-    ARENA("arena", "Stone Arena"), MIDNIGHT("midnight", "Midnight"), WOOD("wood", "Classic Wood"),
-    MOSS("moss", "Moss Sanctuary"), EMBER("ember", "Obsidian Ember"), TIDE("tide", "Tidal Slate"), TAVERN("tavern", "Walnut Tavern");
-
-    /** Square material, center-cropped for either orientation. */
-    val drawable: Int? get() = when (this) {
-        ARENA -> R.drawable.battlefield_arena; WOOD -> R.drawable.battlefield_wood; MOSS -> R.drawable.battlefield_moss
-        EMBER -> R.drawable.battlefield_ember; TIDE -> R.drawable.battlefield_tide; MIDNIGHT, TAVERN -> null
-    }
+/**
+ * BattlefieldBackdrop (GameBoardTheme.swift). Persisted identifiers are shared with iOS. Walnut Tavern is the only
+ * table players get; ARENA is the classic board layout on the plain gradient, kept for previews and tests. The old
+ * moss, wood, ember, tide and stone textures were removed on 2026-10-14 and their stored values resolve to the tavern.
+ */
+enum class BattlefieldBackdrop(val rawValue: String) {
+    ARENA("arena"), TAVERN("tavern");
 
     /**
      * A composed table rendered for each orientation (scripts/brand/tavern_table.py): its frame and play mat
@@ -118,30 +114,22 @@ enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
 object BoardAppearancePreference {
     const val key = "magicmobile.boardAppearance"
     /** Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
-     *  the other backdrops stay for previews and tests. */
+     *  "arena" (the classic layout) stays for previews and tests. */
     const val defaultValue = "tavern"
     fun normalized(value: String): String = if (BattlefieldBackdrop.entries.any { it.rawValue == value }) value else defaultValue
-}
-
-object MenuAppearancePreference {
-    const val key = "magicmobile.menuAppearance"
-    const val defaultValue = "tavern"
-    val options = listOf("tavern", "arena", "midnight")
-    fun normalized(value: String): String = if (value in options) value else defaultValue
 }
 
 val midnightGradient: Brush get() = Brush.verticalGradient(listOf(rgb(0.055, 0.085, 0.10), rgb(0.10, 0.16, 0.16)))
 
 /**
- * A square material crop keeps both orientations independent of painted slots. Composed tables pick the
- * render made for the orientation and fill the screen exactly: the controls sit on its sockets through
- * the same both-axes mapping (TavernFrame), so a phone a little taller or wider than the 440 x 956 design
- * canvas stretches the plate by a few percent instead of cropping its sockets away.
+ * Composed tables pick the render made for the orientation and fill the screen exactly: the controls sit on its
+ * sockets through the same both-axes mapping (TavernFrame), so a phone a little taller or wider than the 440 x 956
+ * design canvas stretches the plate by a few percent instead of cropping its sockets away. The classic board draws
+ * the plain gradient.
  */
 @Composable
 fun BattlefieldBackdropArt(theme: BattlefieldBackdrop, modifier: Modifier = Modifier) {
     val composed = theme.composedDrawables
-    val drawable = theme.drawable
     if (composed != null) {
         BoxWithConstraints(modifier) {
             val portrait = maxHeight >= maxWidth
@@ -150,8 +138,7 @@ fun BattlefieldBackdropArt(theme: BattlefieldBackdrop, modifier: Modifier = Modi
             val plate = remember(id) { io.magicmobile.android.ui.TavernImages.decode(resources, id) }
             Image(androidx.compose.ui.graphics.painter.BitmapPainter(plate), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
         }
-    } else if (drawable != null) Image(painterResource(drawable), null, modifier, contentScale = ContentScale.Crop)
-    else Box(modifier.background(midnightGradient))
+    } else Box(modifier.background(midnightGradient))
 }
 
 @Composable

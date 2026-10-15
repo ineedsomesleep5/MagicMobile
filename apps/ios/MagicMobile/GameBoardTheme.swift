@@ -1,28 +1,13 @@
 import SwiftUI
 
-/// Persisted identifiers are shared with Android; textures contain no game UI.
+/// Persisted identifiers are shared with Android. Walnut Tavern is the only table players get
+/// (2026-10-11). `arena` is the classic board layout on a plain dark gradient, kept for the UI tests
+/// that pin it; the old moss, wood, ember, tide and stone textures were removed on 2026-10-14, and
+/// their stored values fall back to the tavern.
 enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
-    case arena, midnight, wood, moss, ember, tide, tavern
+    case arena, tavern
 
     var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .arena: return "Stone Arena"
-        case .midnight: return "Midnight"
-        case .wood: return "Classic Wood"
-        case .moss: return "Moss Sanctuary"
-        case .ember: return "Obsidian Ember"
-        case .tide: return "Tidal Slate"
-        case .tavern: return "Walnut Tavern"
-        }
-    }
-    /// Square material, center-cropped for either orientation.
-    var assetName: String? {
-        switch self {
-        case .midnight, .tavern: return nil
-        default: return "battlefield-\(rawValue)"
-        }
-    }
     /// A composed table rendered for each orientation (scripts/brand/tavern_table.py): its
     /// frame and play mat are placed for the board layout, so it cannot share one crop.
     var composedAssetNames: (portrait: String, landscape: String)? {
@@ -37,9 +22,8 @@ enum BattlefieldBackdrop: String, CaseIterable, Identifiable {
     static func resolved(_ value: String) -> Self { Self(rawValue: value) ?? .tavern }
 }
 
-/// A square material crop keeps both orientations independent of painted slots,
-/// circles or frames. The actual board owns card placement and readable overlays.
-/// Composed tables are the exception: they pick the render made for the orientation.
+/// Composed tables pick the render made for the orientation; the classic board draws a plain
+/// gradient. The actual board owns card placement and readable overlays.
 struct BattlefieldBackdropArt: View {
     let theme: BattlefieldBackdrop
 
@@ -57,8 +41,6 @@ struct BattlefieldBackdropArt: View {
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }
-        } else if let asset = theme.assetName {
-            Image(asset).resizable().scaledToFill()
         } else {
             LinearGradient(
                 colors: [Color(red: 0.055, green: 0.085, blue: 0.10), Color(red: 0.10, green: 0.16, blue: 0.16)],

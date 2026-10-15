@@ -203,7 +203,7 @@ final class BoardPolishUITests: XCTestCase {
     func testPortraitAttachments() { runMatrix(portrait: true, selectedFixtures: ["attached-permanents"]) }
     func testLandscapeAttachments() { runMatrix(portrait: false, selectedFixtures: ["attached-permanents"]) }
     func testEveryBattlefieldBackgroundInPortraitAndLandscape() {
-        for theme in ["arena", "midnight", "wood", "moss", "ember", "tide", "tavern"] {
+        for theme in ["arena", "tavern"] {
             app?.terminate()
             let application = XCUIApplication()
             app = application
