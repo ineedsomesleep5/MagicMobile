@@ -97,16 +97,17 @@ public final class AICalibration {
             if(seat.overridden()) throw new IllegalStateException("This engine has no AI depth or mistake settings");
             return players.player(name,seat.skill());
         }
-        java.lang.reflect.Method depth=DIFFICULTY.getDeclaredMethod("searchDepth",int.class);
-        java.lang.reflect.Method mistakes=DIFFICULTY.getDeclaredMethod("mistakePercent",int.class);
-        depth.setAccessible(true);mistakes.setAccessible(true);
-        int d=seat.depth().isEmpty()?(int)depth.invoke(null,seat.skill()):Integer.parseInt(seat.depth());
-        int m=seat.mistakes().isEmpty()?(int)mistakes.invoke(null,seat.skill()):Integer.parseInt(seat.mistakes());
-        java.lang.reflect.Constructor<?> make=DIFFICULTY.getDeclaredConstructor(int.class,int.class,long.class);
-        make.setAccessible(true);
+        // The production seat parser gives every default of the skill (depth, mistakes and any later
+        // setting such as combat planning) and applies the overrides exactly as an app seat would.
+        Map<String,Object> settings=new HashMap<>();
+        settings.put("aiSeed",seat.seed());
+        if(!seat.depth().isEmpty()) settings.put("aiSearchDepth",Integer.parseInt(seat.depth()));
+        if(!seat.mistakes().isEmpty()) settings.put("aiMistakePercent",Integer.parseInt(seat.mistakes()));
+        java.lang.reflect.Method parse=XmageEngine.class.getDeclaredMethod("aiDifficulty",Map.class,int.class);
+        parse.setAccessible(true);
         java.lang.reflect.Method player=MobileAICancellation.class.getDeclaredMethod("player",String.class,int.class,DIFFICULTY);
         player.setAccessible(true);
-        return (Player)player.invoke(players,name,seat.skill(),make.newInstance(d,m,seat.seed()));
+        return (Player)player.invoke(players,name,seat.skill(),parse.invoke(null,settings,seat.skill()));
     }
     static String mistakes(Game game,Player player) {
         try {
