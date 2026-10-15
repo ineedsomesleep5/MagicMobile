@@ -53,7 +53,9 @@ public final class GameReplay {
         XmageEngine.installCards();
         long seed=Long.parseLong(Json.requiredString(parsed.setup,"seed"));
         MobileAICancellation cancellation=new MobileAICancellation();
-        XmageEngine.Built built=XmageEngine.build(Json.array(parsed.setup.get("seats")),cancellation,seed);
+        List<UUID> playerIds=new ArrayList<>();
+        for(Object id:Json.array(parsed.setup.get("players"))) playerIds.add(UUID.fromString(Json.string(id)));
+        XmageEngine.Built built=XmageEngine.build(Json.array(parsed.setup.get("seats")),cancellation,seed,playerIds);
         GameRecorder recorder=GameRecorder.replaying(built.record,parsed);
         List<String> seatIds=new ArrayList<>(built.players.keySet());
         LinkedHashMap<String,UUID> seats=new LinkedHashMap<>();
@@ -136,6 +138,22 @@ public final class GameReplay {
         int count=0;
         for(String entry:parsed.entries) if(entry.equals("-R")) count++;
         return count;
+    }
+    /**
+     * Gives a new seat the recorded player's ID (JVM replay only: reflection on upstream's final field), with
+     * the library and mana pool that carry it. Rules code iterates some hash sets of player IDs, such as the
+     * defenders asked to block in a multiplayer game, so the replay must order them as the recorded game did.
+     */
+    static void usePlayerId(mage.players.Player player,UUID id) {
+        try {
+            for(String name:List.of("playerId","library","manaPool")) {
+                java.lang.reflect.Field field=mage.players.PlayerImpl.class.getDeclaredField(name);
+                field.setAccessible(true);
+                field.set(player,name.equals("playerId")?id:name.equals("library")?new mage.players.Library(id):new mage.players.ManaPool(id));
+            }
+        } catch(ReflectiveOperationException | RuntimeException e) {
+            throw new BridgeException("replay_unavailable","This runtime cannot replay records: "+e);
+        }
     }
     /** Per-entry state digests of the last replay (when {@link GameRecorder#trace} is on). Tests only. */
     static volatile List<String> lastDigests=List.of();

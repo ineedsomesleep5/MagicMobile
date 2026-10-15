@@ -86,8 +86,14 @@ final class GameRecorder {
         game.addPlayerQueryEventListener(new PromptListener(this));
     }
     boolean active(Game game) { return game!=null && game==live && Thread.currentThread()==thread; }
-    /** True while AI reasoning runs on the GAME thread (outside the engine calls it makes). */
-    boolean inAI() { return aiDepth>0; }
+    private int presenting;
+    /** GAME thread: the seeded stream is for rules code only, not AI reasoning or views for the app. */
+    boolean drawsSeeded() { return aiDepth==0 && presenting==0; }
+    /** Runs view code for the app (snapshots, prompts), which a replay never runs, off the seeded stream. */
+    <T> T presenting(Supplier<T> call) {
+        presenting++;
+        try { return call.get(); } finally { presenting--; }
+    }
     /** A decision called by rules code, not from inside another decision's AI reasoning. */
     boolean top(Game game) { return active(game) && aiDepth==0; }
     /** Recording: AI reasoning is calling into the engine. */
@@ -110,8 +116,11 @@ final class GameRecorder {
 
     // ---- Writing ---------------------------------------------------------------------------
 
+    /** About 2 MB of entries: a record must fit a 4 MiB engine reply; real games use a few thousand. */
+    static final int MAX_ENTRIES=200_000;
     void append(int seat,char op,String args) {
         if(record.broken!=null) return;
+        if(record.entries.size()>=MAX_ENTRIES) { fail("the game is too long to record");return; }
         String entry=seat+String.valueOf(op)+(args==null || args.isEmpty()?"":" "+args);
         synchronized(record) {
             int index=record.entries.size();
@@ -260,8 +269,18 @@ final class GameRecorder {
         for(SpecialAction action:game.getState().getSpecialActions()) { if(action.getId().equals(id)) return "x"+k; k++; }
         String ability=abilityName(id,game);
         if(ability!=null) return ability;
-        if(game.getObject(id)==null && game.getPlayer(id)==null) return "?";
-        throw new IllegalArgumentException("unnamed object "+id);
+        if(game.getObject(id)==null && game.getPlayer(id)==null) {
+            // Unknown to the game in both runs, unless some playable ability still answers to it: then the
+            // record cannot name it, and stops (with what it was) rather than replay something else.
+            for(UUID playerId:record.players) {
+                Player player=game.getPlayer(playerId);
+                if(player!=null) for(Ability playable:player.getPlayable(game,true))
+                    if(id.equals(playable.getId()) || id.equals(playable.getSourceId()) || id.equals(playable.getOriginalId()))
+                        throw new IllegalArgumentException("unnamed playable "+playable.getClass().getSimpleName()+" ("+playable.getRule()+")");
+            }
+            return "?";
+        }
+        throw new IllegalArgumentException("unnamed object "+id+" ("+game.getObject(id)+")");
     }
     /** An ability ID a human may send at priority: {@code a<object>/<i>} for the i-th ability of a visible object. */
     private String abilityName(UUID id,Game game) {

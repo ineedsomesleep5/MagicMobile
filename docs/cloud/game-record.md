@@ -26,7 +26,11 @@ XMage has three sources of run-to-run difference. The adapter controls each one.
 2. **Hash order.** XMage builds each library from `Deck.getMaindeckCards()`, a `HashSet` ordered by
    identity hash codes, so the order before the opening shuffle differed in every run. The adapter
    puts each library in deck order before the game starts, so the seeded shuffle deals the same
-   cards. Other hash-ordered iterations in rules code may remain (see the limits below).
+   cards. Some rules code also iterates hash sets of player IDs (for example, which defending player
+   declares blockers first in a multiplayer game), and player IDs are random. The record keeps the
+   players' IDs, and the JVM replay gives its players the same IDs (by reflection on upstream's final
+   field, replay only), so those orders match. Hash-ordered iterations over card and permanent IDs may
+   remain (see the limits below).
 3. **AI timing.** The AI searches with a time budget, so its choices depend on CPU speed. The record
    keeps every AI choice, and a replay feeds the choices back instead of searching.
 
@@ -54,6 +58,8 @@ to re-serialize JSON the same way to check the chain.
   identity checkpoints carry). A replay refuses a record from another build unless asked
   (`--any-build`).
 - `setup.seed`: the 64-bit match seed as a decimal string (JSON numbers lose precision past 2^53).
+- `setup.players`: the engine player IDs in seat order (see above). They are random per game and
+  reveal nothing.
 - `setup.seats`: in seat order, `seatId`, `name`, `controller`, the `deck` exactly as `create` received
   it, and for AI seats the `aiSkill`, `aiSearchDepth` and `aiMistakePercent` they played with. The AI's
   mistake seed is not recorded; the replay does not need it.
@@ -199,8 +205,8 @@ cap (docs/RANKED.md). With a record it can also check, in SQL or an edge functio
 
 ## Known limits
 
-- Rules code that iterates hash-ordered collections keyed by random UUIDs or identity hash codes can
-  still order things differently in a replay. The replay names objects structurally, so this matters
+- Rules code that iterates hash-ordered collections keyed by card or permanent UUIDs (random per run)
+  or identity hash codes can still order things differently in a replay. The replay names objects structurally, so this matters
   only when the order changes an outcome. None of the test games hit one; the replay reports it as
   `diverged` at the entry where it shows.
 - A few cards shuffle with `Collections.shuffle` outside the player methods the adapter overrides

@@ -87,7 +87,7 @@ public final class XmageEngine implements EnginePort {
         }
         void snapshot() {
             if(cancellation.isClosing()) return;
-            Map<String,Map<String,Object>> views=ViewProjector.project(game,seats);
+            Map<String,Map<String,Object>> views=recorder.presenting(()->ViewProjector.project(game,seats));
             // A seat whose player left (conceded or lost in a pod) only watches from here on.
             List<String> left=new ArrayList<>();
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
@@ -131,7 +131,8 @@ public final class XmageEngine implements EnginePort {
                 checkpoint();
             }
             snapshot();
-            cancellation.runIfOpen(()->mailbox.ask(seat,QueryEncoder.encode(e,game),
+            DecisionSpec spec=recorder.presenting(()->QueryEncoder.encode(e,game));
+            cancellation.runIfOpen(()->mailbox.ask(seat,spec,
                 answer->cancellation.runIfOpen(()->seats.get(seat).offer(answer))));
         }
         /** GAME thread, before a question to the human seat is published. */
@@ -309,7 +310,7 @@ public final class XmageEngine implements EnginePort {
         try { seed=configuration.containsKey("seed")?Json.integer(configuration.get("seed")):java.util.concurrent.ThreadLocalRandom.current().nextLong(); }
         catch(BridgeException e) { throw new BridgeException("invalid_configuration","seed must be a 64-bit integer"); }
         MobileAICancellation cancellation=new MobileAICancellation();
-        Built built=build(configSeats,cancellation,seed);
+        Built built=build(configSeats,cancellation,seed,null);
         Running running=new Running(built.match,built.players,built.seats,cancellation,checkpointPath,built.seatSummary,0,false,
             GameRecorder.recording(built.record),built.random);
         MobileCommanderMatch match=built.match;
@@ -330,7 +331,7 @@ public final class XmageEngine implements EnginePort {
      * Seats, decks and the started match. XMage's generator becomes this match's seeded one first, so a
      * replay built from the same seed and seats shuffles and draws exactly the same.
      */
-    static Built build(List<Object> configSeats,MobileAICancellation cancellation,long seed) {
+    static Built build(List<Object> configSeats,MobileAICancellation cancellation,long seed,List<UUID> replayPlayerIds) {
         Built built=new Built();
         built.random=new GameRandom(seed);
         built.random.bind(Thread.currentThread(),null);
@@ -356,6 +357,8 @@ public final class XmageEngine implements EnginePort {
                 recordSeat.put("aiSkill",skill);recordSeat.put("aiSearchDepth",difficulty.searchDepth);
                 recordSeat.put("aiMistakePercent",difficulty.mistakePercent);
             } else throw new BridgeException("invalid_controller","Controller must be human or ai");
+            // A replay gives each player its recorded ID: XMage orders some per-player steps by hash sets of player IDs.
+            if(replayPlayerIds!=null) GameReplay.usePlayerId(player,replayPlayerIds.get(built.players.size()));
             Map<String,Object> deckConfig=Json.object(s.get("deck"));
             mage.cards.decks.Deck deck=DeckLoader.load(deckConfig);
             built.match.addPlayer(player,deck);built.players.put(id,player);decks.add(deck);
@@ -379,7 +382,7 @@ public final class XmageEngine implements EnginePort {
         for(Player player:built.players.values()) playerIds.add(player.getId());
         String setup=Json.write(Json.map("engine",Json.map("protocol",EngineService.PROTOCOL,"upstream",UPSTREAM,
                 "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"engineBuild",io.magicmobile.generated.EngineBuildIdentity.VALUE),
-            "seed",Long.toString(seed),"seats",recordSeats));
+            "seed",Long.toString(seed),"seats",recordSeats,"players",playerIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList())));
         built.record=new GameRecord(setup,playerIds,GameRecorder.cardIds(decks));
         // The record names cards by load order: every one must be the game's own object.
         for(UUID id:built.record.cards) if(game.getCard(id)==null) built.record.broken="card load order differs from the game";

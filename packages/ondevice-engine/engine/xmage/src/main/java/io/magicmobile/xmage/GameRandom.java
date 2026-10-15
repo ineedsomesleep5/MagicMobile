@@ -12,7 +12,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * XMage's process-wide generator (RandomUtil) for one match, installed by the adapter. Only the rules
  * code on the match's GAME thread draws from the seeded stream: shuffles, coin flips, "at random"
  * effects and the opening player. AI reasoning (search threads, and AI choice code on the GAME thread)
- * draws from an unseeded source instead, so a replay that feeds the AI's recorded choices back draws
+ * and views for the app draw from an unseeded source instead, so a replay that feeds the AI's recorded choices back draws
  * exactly the same seeded values (docs/cloud/game-record.md).
  *
  * The seeded stream is java.util.Random's own generator, so its state is saved with a checkpoint.
@@ -30,7 +30,7 @@ final class GameRandom extends Random {
 
     @Override protected int next(int bits) {
         GameRecorder r=recorder;
-        if(Thread.currentThread()==owner && (r==null || !r.inAI())) return super.next(bits);
+        if(Thread.currentThread()==owner && (r==null || r.drawsSeeded())) return super.next(bits);
         return ThreadLocalRandom.current().nextInt()>>>(32-bits);
     }
 
