@@ -108,8 +108,6 @@ if(withNative) {
     tasks.named("preBuild").configure { dependsOn(verifyNative) }
 }
 dependencies {
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("junit:junit:4.13.2")
     testImplementation("junit:junit:4.13.2")

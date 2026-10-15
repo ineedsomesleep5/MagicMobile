@@ -71,7 +71,7 @@ Android consumes the merged type, mana value, printed color, color identity, set
 curated-role metadata. Catalogue facts remain distinct from XMage legality results.
 
 The client includes local deck editing and per-deck drafts, text/JSON/file/public-link
-imports, bundled on-device photo text recognition, retained import receipts, favorites,
+imports, Archidekt account imports, retained import receipts, favorites,
 tags/notes, grid/list browsing, card replacement and basic-land tools. Analysis includes
 curve, printed mana symbols, roles with local overrides/targets, and explicitly bounded
 draw probabilities. Scryfall search, Commander Spellbook and EDHREC are optional,

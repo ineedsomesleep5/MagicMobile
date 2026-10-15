@@ -2,7 +2,6 @@ package io.magicmobile.android.studio
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -103,7 +102,6 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     var saving by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
     var generation by remember { mutableStateOf(UUID.randomUUID()) }
-    var scanNotice by remember { mutableStateOf<String?>(null) }
     var receipt by remember { mutableStateOf<File?>(null) }
     var saved by remember { mutableStateOf<DeckLibraryRecord?>(null) }
     // Commander first: the card the player picks leads the import even when the list doesn't mark it.
@@ -180,21 +178,6 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
             } catch (failure: Exception) { error = failure.message }
         }
     }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        invalidate(); error = null; busy = true
-        val token = generation
-        job = scope.launch {
-            try {
-                val recognized = DeckStudioOCR.recognize(context, uri)
-                if (generation != token) return@launch
-                text = recognized; method = "Paste"
-                scanNotice = "OCR can misread quantities and card names. Correct the text, then choose Review decklist."
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { if (generation == token) error = failure.message }
-            finally { if (generation == token) busy = false }
-        }
-    }
     fun beginPreview() {
         val resolver = resolver ?: return
         invalidate(); error = null; busy = true
@@ -266,9 +249,9 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
     // The parts of the importer, shared by the single page (upright) and the two pages of a spread.
     val entry: @Composable () -> Unit = {
         Text("Bring your deck.", color = DeckStudioPalette.ink, style = sf(34f, SfWeight.bold, tracking = -1f))
-        Text("Paste, link, or scan a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
-        StudioSegmented(listOf("Paste", "Link", "Account", "Scan"), method, { method = it },
-            { when (it) { "Scan" -> "Scan image"; "Account" -> "Archidekt"; else -> it } }, enabled = !busy && saved == null && batch.isEmpty())
+        Text("Paste or link a decklist. Review every card before saving.", color = DeckStudioPalette.secondaryInk, style = StudioText.body)
+        StudioSegmented(listOf("Paste", "Link", "Account"), method, { method = it },
+            { if (it == "Account") "Archidekt" else it }, enabled = !busy && saved == null && batch.isEmpty())
         // Type a commander's name and pick it from the suggestions, as on Archidekt.
         if (!isBatch && batch.isEmpty()) StudioPanel(spacing = 10.dp) {
             val locked = busy || saved != null
@@ -367,17 +350,10 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
                             color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
                     }
                 }
-                else -> {
-                    StudioPlainButton("Choose decklist photo or screenshot", { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        Modifier.defaultMinSize(minHeight = 60.dp), icon = "text.viewfinder", enabled = !locked)
-                    Text("Text recognition runs on this device. Images are not uploaded. Review and correct the recognized text before parsing; this is not a physical-card scanner.",
-                        color = DeckStudioPalette.secondaryInk, style = StudioText.caption)
-                }
             }
         }
-        scanNotice?.let { DeckStudioNotice("Check recognized text", it) }
         error?.let { DeckStudioNotice("Import needs attention", it, "exclamationmark.triangle") }
-        if (busy) StudioProgress(if (saving) "Saving deck and import details…" else if (method == "Scan") "Reading image on this device…" else "Preparing review…")
+        if (busy) StudioProgress(if (saving) "Saving deck and import details…" else "Preparing review…")
         if (batch.isNotEmpty()) StudioPanel(spacing = 8.dp) {
             Text(if (batchDone) "Import finished" else "Importing decks…", color = DeckStudioPalette.ink, style = StudioText.headline)
             for ((deckName, outcome) in batch) {
@@ -394,7 +370,7 @@ fun DeckStudioImportScreen(library: DeckLibraryStore, resolver: OnDeviceDeckReso
             if (batchDone) StudioButton("Done", ::cancel, Modifier.semantics { contentDescription = "deckStudio.import.batchDone" })
             else if (picked.isNotEmpty()) StudioButton(if (isBatch) "Import ${picked.size} decks" else "Review deck", if (isBatch) ::importPicked else ::beginPreview,
                 Modifier.semantics { contentDescription = "deckStudio.import.review" }, enabled = !busy && resolver != null && saved == null && batch.isEmpty())
-        } else if (method != "Scan") StudioButton("Review decklist", ::beginPreview, Modifier.semantics { contentDescription = "deckStudio.import.review" },
+        } else StudioButton("Review decklist", ::beginPreview, Modifier.semantics { contentDescription = "deckStudio.import.review" },
             enabled = !busy && resolver != null && saved == null && (if (method == "Link") link else text).isNotBlank())
     }
     val reviewed: @Composable () -> Unit = {
