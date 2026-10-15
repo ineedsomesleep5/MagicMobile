@@ -333,7 +333,8 @@ struct OnDeviceRootView: View {
             canSkipToMyTurn: session.canSkipToMyTurn, isAutoPassing: session.isAutoPassing,
             status: session.autoPassStatus, endTurn: { session.endTurn() },
             skipResponses: { session.endTurnSkippingResponses() }, skipToMyTurn: { session.skipToMyTurn() },
-            stop: { session.stopAutoPass() }
+            stop: { session.stopAutoPass() },
+            isFullControl: session.isFullControl, toggleFullControl: { session.toggleFullControl() }
         )
     }
 

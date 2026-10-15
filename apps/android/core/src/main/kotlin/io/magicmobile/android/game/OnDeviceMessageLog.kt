@@ -12,10 +12,32 @@ class OnDeviceMessageLog {
     private var processedThrough = -1L
     var entries: List<GameLogEntry> = emptyList(); private set
     private var messageBytes = 0
+    /** The steps or stack items in the current run of automatic passes (one log line per run). */
+    private var autoPassRun: List<String> = emptyList()
 
     fun copy(): OnDeviceMessageLog = OnDeviceMessageLog().also {
         it.matchID = matchID; it.seatID = seatID; it.processedThrough = processedThrough
-        it.entries = entries; it.messageBytes = messageBytes
+        it.entries = entries; it.messageBytes = messageBytes; it.autoPassRun = autoPassRun
+    }
+
+    /**
+     * A quiet local line for a pass smart pass made for the player (Swift `noteAutoPass`), so the game never seems to move
+     * on without them. A run of passes shares one line ("Auto-passed: Upkeep · Draw · Main 1"). Never sent to the engine.
+     */
+    fun noteAutoPass(label: String, id: String) {
+        val next = entries.toMutableList()
+        val last = next.lastOrNull()
+        if (last != null && last.id.startsWith(AUTO_PASS_PREFIX)) {
+            if (autoPassRun.lastOrNull() != label) autoPassRun = autoPassRun + label
+            messageBytes -= last.message.toByteArray().size
+            next[next.size - 1] = GameLogEntry(last.id, autoPassMessage(autoPassRun), null)
+        } else {
+            autoPassRun = listOf(label)
+            next += GameLogEntry(AUTO_PASS_PREFIX + id, autoPassMessage(autoPassRun), null)
+        }
+        messageBytes += next.last().message.toByteArray().size
+        while (next.size > retainedMessages) messageBytes -= next.removeAt(0).message.toByteArray().size
+        entries = next
     }
 
     /** Validate the whole batch before changing state. Older polls never duplicate notices. */
@@ -59,5 +81,8 @@ class OnDeviceMessageLog {
     companion object {
         private const val retainedMessages = 64
         private const val retainedBytes = 1024 * 1024
+        private const val AUTO_PASS_PREFIX = "local:auto-pass:"
+        /** The latest six labels of a run. */
+        fun autoPassMessage(labels: List<String>): String = "Auto-passed: " + labels.takeLast(6).joinToString(" · ")
     }
 }
