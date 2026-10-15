@@ -8,6 +8,7 @@ import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
 import mage.game.combat.CombatGroup;
+import mage.game.events.GameEvent;
 import mage.game.permanent.Permanent;
 import mage.game.stack.Spell;
 import mage.game.stack.StackObject;
@@ -138,6 +139,7 @@ final class MobileAICancellation {
         private int mistakePercent;
         private long mistakeState;
         private int mistakes;
+        private boolean plansCombat;
         // One search's root candidates. Written by the simulation thread, read after it returns.
         private transient volatile SimulationNode2 searchRoot;
         private transient List<ScoredChoice> rootChoices;
@@ -145,12 +147,14 @@ final class MobileAICancellation {
         CancellablePlayer(String name,int skill,AIDifficulty difficulty,MobileAICancellation cancellation) {
             super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
             maxDepth=difficulty.searchDepth;mistakePercent=difficulty.mistakePercent;mistakeState=difficulty.seed;
+            plansCombat=difficulty.plansCombat;
         }
         private CancellablePlayer(CancellablePlayer source) {
             super(source);cancellation=source.cancellation;
             // Keep the configured upstream budgets when XMage copies this live adapter.
             maxNodes=source.maxNodes;maxThinkTimeSecs=source.maxThinkTimeSecs;
             mistakePercent=source.mistakePercent;mistakeState=source.mistakeState;mistakes=source.mistakes;
+            plansCombat=source.plansCombat;
         }
         /** Advances the seeded generator once per decision that could go wrong. */
         private boolean rollMistake(Game game) {
@@ -198,7 +202,12 @@ final class MobileAICancellation {
                 logger.info("AI deliberate mistake for "+getName()+": no attack");
                 return;
             }
-            super.selectAttackers(game,attackingPlayerId);
+            CombatPlanner.Plan plan=plansCombat && !game.isSimulation()?CombatPlanner.planAttack(this,game):null;
+            if(plan==null) { super.selectAttackers(game,attackingPlayerId);return; }
+            // Same events as upstream's declareAttackers, around the planner's choice.
+            game.fireEvent(new GameEvent(GameEvent.EventType.DECLARE_ATTACKERS_STEP_PRE,null,null,playerId));
+            if(game.replaceEvent(GameEvent.getEvent(GameEvent.EventType.DECLARING_ATTACKERS,playerId,playerId))) return;
+            for(UUID attackerId:plan.attackers()) declareAttacker(attackerId,plan.defenderId(),game,true);
         }
         /** Sometimes declares no blocks, but only while the attack would cost under half its life. */
         @Override public void selectBlockers(Ability source,Game game,UUID defendingPlayerId) {
@@ -209,6 +218,7 @@ final class MobileAICancellation {
                 return;
             }
             super.selectBlockers(source,game,defendingPlayerId);
+            if(plansCombat && !game.isSimulation()) CombatPlanner.chumpIfLethal(this,game);
         }
         private boolean possiblyLethal(Game game) {
             int power=0;

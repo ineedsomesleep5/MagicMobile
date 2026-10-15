@@ -11,13 +11,18 @@ final class AIDifficulty {
     final int searchDepth;
     final int mistakePercent;
     final long seed;
+    /** Attacks and blocks from CombatPlanner instead of upstream's fixed rules (Diamond and up). */
+    final boolean plansCombat;
 
-    AIDifficulty(int searchDepth,int mistakePercent,long seed) {
+    AIDifficulty(int searchDepth,int mistakePercent,long seed) { this(searchDepth,mistakePercent,seed,false); }
+    AIDifficulty(int searchDepth,int mistakePercent,long seed,boolean plansCombat) {
         if(searchDepth<1 || searchDepth>10) throw new IllegalArgumentException("AI search depth must be 1–10");
         if(mistakePercent<0 || mistakePercent>100) throw new IllegalArgumentException("AI mistake chance must be 0–100%");
-        this.searchDepth=searchDepth;this.mistakePercent=mistakePercent;this.seed=seed;
+        this.searchDepth=searchDepth;this.mistakePercent=mistakePercent;this.seed=seed;this.plansCombat=plansCombat;
     }
-    static AIDifficulty forSkill(int skill,long seed) { return new AIDifficulty(searchDepth(skill),mistakePercent(skill),seed); }
+    static AIDifficulty forSkill(int skill,long seed) {
+        return new AIDifficulty(searchDepth(skill),mistakePercent(skill),seed,plansCombat(skill));
+    }
 
     /**
      * Upstream depth counts one unit per action, and the last unit scores the game before that
@@ -33,6 +38,11 @@ final class AIDifficulty {
     static int mistakePercent(int skill) {
         checkSkill(skill);
         return switch(skill) { case 1->15; case 2->10; case 3->5; default->0; };
+    }
+    /** Skill 5 (Diamond) and up plan attacks and lethal-aware blocks (CombatPlanner). */
+    static boolean plansCombat(int skill) {
+        checkSkill(skill);
+        return skill>=5;
     }
     private static void checkSkill(int skill) { if(skill<1 || skill>10) throw new IllegalArgumentException("AI skill must be 1–10"); }
 
