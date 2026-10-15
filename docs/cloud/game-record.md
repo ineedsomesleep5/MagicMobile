@@ -146,7 +146,9 @@ fixture decks): 11–55 turns (median 20), 437–4,422 entries (median 1,023), 6
 18 KB), **1.2–6.7 KB gzipped (median 3.3 KB)**, of which the entries alone gzip to 0.3–2.3 KB
 (median 0.5 KB). The longest game seen in testing, 69 turns, was 5,973 entries, 66 KB of JSON and
 7.5 KB gzipped. Most of the size is the deck lists in `setup`. Store and upload the record gzipped.
-Replaying one took 0.15–3.2 s on the JVM (median 0.44 s); no AI search runs.
+Replaying one took 0.15–3.2 s inside a warm JVM (median 0.44 s; no AI search runs) and 8.5–25 s
+from the command line in a fresh JVM (median 12.6 s, mostly JVM start and the card catalogue), over a
+second soak of 35 games that all replayed in fresh JVMs.
 
 ## Replay API
 
