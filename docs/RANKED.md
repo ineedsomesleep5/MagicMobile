@@ -179,8 +179,11 @@ could publish any rank. Now the server is the referee, using the existing databa
   within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
 - Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
   functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
-- **Status: not applied to the live project.** Apply only with Caleb's go-ahead, then check grants with
-  `has_function_privilege` (internal helpers revoked from `authenticated`) and the security advisor.
+- **Status: applied to the live project on 2026-10-15 UTC** (migration `ranked_referee`, file SHA-256 `a87d4431…a9ea`,
+  with Caleb's go-ahead). Checked afterwards: the four new public functions plus `mm_ranked_report`/`publish` are
+  callable by signed-in players and not anonymous callers; `mm_ranked_mirror/current/apply/settle` by neither; the four
+  new tables have RLS on with no grants; all 3 published standings were carried over as `imported`; the security
+  advisor shows only the usual RPC-only notices. No live game has been played against it yet.
 
 ## Tests
 
