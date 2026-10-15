@@ -858,7 +858,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     BackHandler(enabled = activeGame) { requestLeave() }
 
     val turnControl = NativeTurnControl(session.canEndTurn, session.canEndTurnSkippingResponses, session.canSkipToMyTurn, session.isAutoPassing,
-        session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() })
+        session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() },
+        session.isFullControl, { session.toggleFullControl() })
 
     // One flag for everything the starting roll covers (iOS startingRollVisible): a relay table's
     // shared roll or its "Who goes first?" panel, or an AI table's local roll.

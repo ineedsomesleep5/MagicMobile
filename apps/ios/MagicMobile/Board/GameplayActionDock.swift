@@ -28,6 +28,8 @@ struct GameplayActionDock: View {
     let openLog: () -> Void
     let openSettings: () -> Void
     let runAction: (LegalAction) -> Void
+    /// Set by a long press on Pass, so lifting that finger doesn't also pass.
+    @State private var swallowNextPass = false
 
     private var promptActions: [LegalAction] {
         CompactPromptPopup.compactLegalPromptActions(in: snapshot)
@@ -63,6 +65,7 @@ struct GameplayActionDock: View {
                         primaryButton
                     }
                 }
+                .modifier(FullControlHold(control: nativeTurnControl, swallowNextPass: $swallowNextPass, tavern: true))
                 .overlay {
                     if let turnClockFeed {
                         TurnClockRing(feed: turnClockFeed, diameter: TavernDesign.passDiameter(in: tavernCanvas) * 1.12)
@@ -73,11 +76,11 @@ struct GameplayActionDock: View {
             HStack(spacing: 6) {
                 secondaryControl.frame(width: 44)
                 controlsMenu
-                primaryButton
+                primaryButton.modifier(FullControlHold(control: nativeTurnControl, swallowNextPass: $swallowNextPass, tavern: false))
             }
         } else {
             VStack(spacing: landscapeSidebar ? LandscapeActionDockLayout.controlSpacing : 8) {
-                primaryButton
+                primaryButton.modifier(FullControlHold(control: nativeTurnControl, swallowNextPass: $swallowNextPass, tavern: false))
                 HStack(spacing: 6) { secondaryControl; controlsMenu }
             }
         }
@@ -86,6 +89,7 @@ struct GameplayActionDock: View {
     private var primaryButton: some View {
         VStack(spacing: 2) {
         Button {
+                    if swallowNextPass { swallowNextPass = false; return }
                     if let primaryAction = model.primaryAction {
                         runAction(primaryAction)
                     } else if model.mode == .prompt {
@@ -160,6 +164,10 @@ struct GameplayActionDock: View {
                 TavernMenuDivider()
             }
             TavernMenuItem(title: "Game Log", systemImage: "list.bullet.rectangle", action: openLog)
+            if let control = nativeTurnControl {
+                TavernMenuItem(title: control.isFullControl ? "Full control: on (this turn)" : "Full control this turn",
+                               systemImage: "hand.raised.fill", action: control.toggleFullControl)
+            }
             if snapshot.source == "xmage-ondevice", model.mode != .prompt {
                 TavernMenuItem(title: "More actions", systemImage: "ellipsis", action: openPromptDetails)
             }
@@ -186,6 +194,12 @@ struct GameplayActionDock: View {
                     }
                     Button(action: openLog) {
                         Label("Game Log", systemImage: "list.bullet.rectangle")
+                    }
+                    if let control = nativeTurnControl {
+                        Button(action: control.toggleFullControl) {
+                            Label(control.isFullControl ? "Full control: on (this turn)" : "Full control this turn",
+                                  systemImage: "hand.raised.fill")
+                        }
                     }
                     if snapshot.source == "xmage-ondevice", model.mode != .prompt {
                         Button("More actions", action: openPromptDetails)
@@ -1065,4 +1079,49 @@ struct PortraitStackLane: View {
         responseLabel == "RESPOND" ? MagicPalette.legalEmerald : .white.opacity(0.55)
     }
 
+}
+
+/// Long-press Pass: full control for this turn, as on Arena (Caleb, 2026-10-14). Smart pass then stops at every priority
+/// until the turn ends; a small tag over the button says so. The finger lifted after the hold doesn't pass.
+struct FullControlHold: ViewModifier {
+    let control: NativeTurnControl?
+    @Binding var swallowNextPass: Bool
+    let tavern: Bool
+
+    func body(content: Content) -> some View {
+        if let control {
+            content
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.6).onEnded { _ in
+                    swallowNextPass = true
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    control.toggleFullControl()
+                    // A hold that ends without a tap (finger slid off) must not swallow a later pass.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { swallowNextPass = false }
+                })
+                .overlay(alignment: .top) {
+                    if control.isFullControl {
+                        Group {
+                            if tavern { TavernTag(text: String(localized: "Full control"), leather: true) }
+                            else {
+                                Text("Full control")
+                                    .font(.system(size: 10, weight: .heavy, design: .serif))
+                                    .foregroundStyle(MagicPalette.parchment)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(MagicPalette.iron.opacity(0.92), in: Capsule())
+                                    .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.8), lineWidth: 1))
+                            }
+                        }
+                        .fixedSize()
+                        .offset(y: tavern ? -30 : -22)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("board.fullControl")
+                    }
+                }
+                .accessibilityAction(named: Text(control.isFullControl ? "Turn off full control" : "Full control this turn"),
+                                     control.toggleFullControl)
+        } else {
+            content
+        }
+    }
 }
