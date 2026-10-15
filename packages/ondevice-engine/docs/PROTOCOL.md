@@ -46,9 +46,31 @@ normally also leaves this way. Once only AI seats remain, AI think time is cappe
 A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
 AI seats additionally accept optional `aiSkill`, an integer from 1 to 10 matching the pinned
-XMage desktop Skill control. Omission preserves the prior level-1 engine behavior; the app's
-new setup control defaults to desktop level 2. The value goes directly to the upstream MAD
-constructor (search depth `max(4, skill)` and thinking budget `skill * 3` seconds per calculation).
+XMage desktop Skill control. Omission means level 1; the app's setup control defaults to level 2.
+The thinking budget is upstream's `skill * 3` seconds per calculation. Since engine release A the
+mobile AI wrapper (`MobileAICancellation`, `AIDifficulty`) also sets, per skill:
+
+| Skill | Search depth (upstream units) | Deliberate mistake chance |
+|---|---|---|
+| 1 | 2 (sees one action resolve) | 15% |
+| 2 | 3 (two actions) | 10% |
+| 3 | 4 (upstream) | 5% |
+| 4–10 | `max(4, skill)` (upstream) | 0% |
+
+Upstream depth counts one unit per action and scores the last one before it resolves, so depth 1
+would judge every spell while it is still on the stack and never cast one; N plies are depth N+1.
+Before release A every skill from 1 to 4 searched depth 4. A mistake is rolled at each fresh
+priority search that chose to act (the AI then takes the best other play its search scored that is
+no worse than doing nothing, or passes and searches again at its next priority), at each attack
+declaration (it holds every creature back, never when its available attackers could be lethal) and
+at each block declaration (it blocks nothing, only while the attack would cost under half its
+life). The rolls come from a SplitMix64 generator per seat, saved with a checkpoint.
+
+For calibration, AI seats also accept optional overrides: `aiSearchDepth` (1–10), `aiMistakePercent`
+(0–100) and `aiSeed` (any 64-bit integer; omitted means a random seed drawn outside XMage's own
+random generator, so shuffles are unaffected). A seed makes the mistake rolls repeatable, not the
+whole game: XMage's shuffles and AI tie-breaks are not seeded. The apps send only `aiSkill`. Any of
+these on a human seat, or out of range, fails with `invalid_ai_skill`.
 Higher levels allow more thinking, not different rules or access to additional private information.
 While a stack resolves, an AI that already searched and chose to pass with an opponent's ability (not a
 spell) on top passes again without a new search, as long as the turn, step and its instant-speed options

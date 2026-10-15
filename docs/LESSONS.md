@@ -91,8 +91,17 @@ contradicting one.
   control changes do the same), and both snapshot adapters threw "Missing combat defender" on every
   poll. **Rule:** a missing field the rules allow is state, not corruption; the adapters now emit
   `defenderKind: "none"`. Before rejecting engine data, check upstream for when it can be null.
+- 2026-10-15 (Claude, C2): upstream MAD depth counts one unit per action and scores the last unit
+  before that action resolves, so at depth 1 the AI judges a spell while it is still on the stack and
+  never casts anything; depth 2 is the shallowest useful search (one action seen resolved).
+  **Rule:** N plies of lookahead is depth N+1. AI board fixtures must also call
+  `game.getPlayerList().setCurrent(aiId)`: the search simulates whoever that cursor points at, and
+  otherwise about half the runs search the human's priority and only ever see Pass.
+  Where: `AIDifficulty.java`, `RealAIDifficultyTests.java`.
 - 2026-10-11 (Claude): XMage AI skill sets search depth `max(4, skill)` and think time `skill × 3` s,
   so skills 1–4 play at the same depth. Tune difficulty with decks first (docs/RANKED.md).
+  Corrected 2026-10-15 (Claude, C2): engine release A gives skills 1 and 2 depth 2 and 3 and adds
+  seeded mistakes at skills 1–3 (`AIDifficulty.java`); skill 4 and up still use upstream's depth.
 - 2026-09-27 (Claude): `verify_native.py` compares the whole engine package, including the iOS-only
   Swift wrapper, so Android build 10 had to ship with the package restored to the native library's
   source commit (`2c32482`). **Rule:** when the Android native library and the package source
