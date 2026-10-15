@@ -94,6 +94,10 @@ contradicting one.
   **Rule:** compare card instances (the record's `c<n>` names), not names; when a replay diverges, run
   `RealGameRecordTests` with `-Dmagicmobile.recordOnly=<scenario>` and diff the per-entry traces it
   writes. Where: `GameRandom.java`, `GameRecorder.java`, `XmageEngine.build`, docs/cloud/game-record.md.
+- 2026-10-15 (Claude, C5): `RealControlPrivacyTests` builds `XmageEngine.Running` by reflection with its
+  exact constructor signature, so a new `Running` parameter compiles everywhere and then fails ten
+  checks at run time with `NoSuchMethodException`. **Rule:** when `Running`'s constructor changes,
+  update that rig too, and run `test_real_engine.sh`, not just the suite you touched.
 
 - 2026-10-15 (Claude, C2): RELR packing needs Android API 28 only with lld's
   `--use-android-relr-tags` (`android+relr`); `-z pack-relative-relocs` uses the official tags and needs
