@@ -1,10 +1,6 @@
--- PENDING CALEB'S CHOICE: NOT A MIGRATION YET. Do not apply.
---
--- Ladder option B from docs/cloud/ladder-options.md (C1's recommendation): Arena's Bo1 steps per tier and a floor at
--- each tier. It lives outside supabase/migrations so `supabase db push` cannot pick it up. If Caleb chooses B, the
--- Mac session moves it to supabase/migrations/<timestamp>_ladder_option_b.sql (a later timestamp than every
--- migration already applied), ships the same rules in RankLadder.swift / Ranked.kt / ranked-cases.json in the same
--- release, and applies it live with Caleb's OK. Test: `npm run test:ranked-pending --prefix supabase/tests`.
+-- Ladder option B (docs/cloud/ladder-options.md; Caleb chose it on 2026-10-15): Arena's Bo1 steps per tier and a floor
+-- at each tier. The apps ship the same rules (RankLadder.swift, Ranked.kt, ranked-cases.json) in Release 1, and this
+-- migration goes live with that release. Test: `npm run test:ranked --prefix supabase/tests`.
 --
 -- The rules (shared with the apps):
 -- * A win earns 2 pips in Bronze, Silver and Gold, 1 in Platinum, Diamond and Mythic. A loss costs nothing in

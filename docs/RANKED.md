@@ -30,9 +30,11 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 ## The ladder (`RankLadder.swift`, `Ranked.kt`)
 
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
-- Win +1 pip. Loss −1 pip; with none left you drop a division or tier. Bronze IV with no pips can't fall.
-- Bonuses: a third straight win below Gold (+1), and a win with a deck below the tier's opponent brackets
-  (+1, "underdog"). Draws change nothing and end the streak.
+- Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
+  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A loss never takes you out of your tier
+  (Mythic can fall back to Diamond, never below Diamond IV).
+- Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
+  gone (two-pip wins replace it). Draws change nothing and end the streak.
 - Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 

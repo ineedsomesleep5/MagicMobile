@@ -1,6 +1,5 @@
--- PENDING CALEB'S CHOICE: ladder option B (supabase/pending/ladder_option_b.sql). Run by
--- `node verify-ranked.mjs --pending` inside a transaction that is rolled back, after every other suite.
--- The cases are the ones docs/cloud/ladder-options.md proposes for ranked-cases.json under option B.
+-- Ladder option B (Caleb's choice, 2026-10-15; migration 20261015200000_ladder_option_b.sql), run last by
+-- verify-ranked.mjs. The cases match the `ladder` array in apps/android/core/src/test/resources/parity/ranked-cases.json.
 insert into auth.users(id,aud,role,email) values
  ('d9000000-0000-0000-0000-000000000001','authenticated','authenticated','ladder-b@example.invalid');
 insert into public.profiles(id, display_name, username) values ('d9000000-0000-0000-0000-000000000001', 'LadderB', 'LadderB');

@@ -294,8 +294,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         // Finished games go to the profile server too: now, and again whenever the app is open and online (GameUploader).
         val uploader = io.magicmobile.android.game.GameUploader(java.io.File(context.filesDir, "Profile/uploaded-games.json"))
         val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
-        record.didRecord = { scope.launch { upload() } }
-        vm.account.afterRefresh = { upload(); vm.account.syncRank(record) }
+        // A ranked game goes up after its result counts on the server, which records its rank points then.
+        record.didRecord = { match -> if (match.mode != io.magicmobile.android.game.PlayMode.RANKED) scope.launch { upload() } }
+        vm.account.afterRefresh = { vm.account.syncRank(record); upload() }
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -582,8 +583,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         rankChange = change
         scope.launch {
             match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
-            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile).
-            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.syncRank(record)
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
+            // then upload the game so its rank history point is the standing after it.
+            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.afterRefresh?.invoke()
         }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
