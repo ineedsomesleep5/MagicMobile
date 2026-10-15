@@ -226,3 +226,8 @@ contradicting one.
   On Android the ring's `LocalTurnClock` holds lambdas that read the table's state, not the values,
   so a clock tick recomposes only the rings instead of the whole board under the provider. Cloud
   containers have no Android SDK; the PR's Android app CI job is the compile check.
+- 2026-10-15 (Claude, R2): `Data.write(options: .completeFileProtection)` passed in the iOS simulator tests but
+  failed in preflight's `presentation-contracts`, which runs `apps/ios/Package.swift` tests on macOS, where file
+  protection isn't supported and the write throws. CI's `swift` job didn't catch it. **Rule:** guard iOS-only write
+  options with `#if os(iOS)`, and run `swift test --package-path apps/ios` (or preflight `ios-fast`) after
+  touching code the package compiles. Where: `PlayerRecordStore.keepGameRecord`.

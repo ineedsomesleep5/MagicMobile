@@ -350,7 +350,12 @@ final class PlayerRecordStore: ObservableObject {
             var folder = gameRecordsURL
             var values = URLResourceValues(); values.isExcludedFromBackup = true
             try? folder.setResourceValues(values)
-            try data.write(to: gameRecordsURL.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
+            #if os(iOS)
+            let options: Data.WritingOptions = [.atomic, .completeFileProtection]
+            #else
+            let options: Data.WritingOptions = [.atomic] // file protection is iOS-only (the macOS test package)
+            #endif
+            try data.write(to: gameRecordsURL.appendingPathComponent(name), options: options)
         } catch { return nil }
         for old in gameRecordFiles().dropFirst(Self.maxGameRecords) { try? FileManager.default.removeItem(at: old) }
         return name
