@@ -38,6 +38,7 @@ struct OnDeviceRootView: View {
     @AppStorage(AutoPassAfterCast.key) private var autoPassAfterCast = true
     @AppStorage(OnDeviceSmartPass.enabledKey) private var smartAutoPass = true
     @AppStorage(OnDeviceSmartPass.stopsKey) private var phaseStops = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
+    @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwnSpells = false
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
@@ -972,6 +973,7 @@ struct OnDeviceRootView: View {
         .onChange(of: autoPassAfterCast) { _, enabled in session.setAutoPassAfterCast(enabled) }
         .onChange(of: smartAutoPass) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: phaseStops) { _, _ in session.setSmartPass(.load()) }
+        .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
         .sheet(isPresented: $emotes.isChatOpen) {
