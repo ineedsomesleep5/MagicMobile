@@ -30,7 +30,7 @@
   <main>
     <a href="/">← MagicMobile</a>
     <h1>Privacy</h1>
-    <p class="updated">Last updated October 1, 2026. Applies to the MagicMobile apps for iPhone and Android and this website.</p>
+    <p class="updated">Last updated October 15, 2026. Applies to the MagicMobile apps for iPhone and Android and this website.</p>
 
     <p>MagicMobile is an independent, non-commercial fan project. There are no ads, no analytics and no tracking in the apps or on this site, and nothing is sold or shared for advertising.</p>
 
@@ -45,7 +45,19 @@
       <li>when you were last online, your phone type (iPhone or Android), and the code of a table you are hosting while it has open seats. Only your accepted friends can see these;</li>
       <li>reports you send about another player, including the reported chat message.</li>
     </ul>
-    <p>You can delete all of this at any time: <strong>Friends → Delete my profile</strong>. Reports you sent are kept without your account attached so abuse can still be reviewed.</p>
+
+    <h2>Signing in with Apple or Google</h2>
+    <p>Signing in is optional. It links your profile to your Apple or Google account so it follows you to another phone. Supabase stores the account identifier and the email address Apple or Google shares with us (Apple may give a private relay address instead). It is used only to sign you in, is shown only to you, and is never shared with other players.</p>
+
+    <h2>Your profile and game history</h2>
+    <p>Once you choose a player name, the app also stores:</p>
+    <ul>
+      <li>your <strong>finished games</strong>: when you played, the mode, the result, your deck's name, commanders and colors, your opponents' names and commanders, the number of turns and how long it took. The latest 500 games are kept;</li>
+      <li>your <strong>ranked standing</strong>: rank, points, wins and losses this season and past seasons, and the result of each ranked game, including ranked games against the AI, so the server can keep score fairly;</li>
+      <li>your title and favorite commander, if you pick them.</li>
+    </ul>
+    <p>Your profile and game history are public by default so other players can find you. You can make them friends-only or private on your <strong>Profile</strong>, under <strong>Who can see your profile</strong>. Players you block can't see them either way.</p>
+    <p>You can delete all of this at any time: <strong>Friends → Delete my profile</strong> removes your account, profile, game history and ranked standing. Reports you sent are kept without your account attached so abuse can still be reviewed.</p>
 
     <h2>Online tables and chat</h2>
     <p>Cross-play tables pass game moves and chat messages between players' phones through a relay on Cloudflare. The relay keeps a table's roster and undelivered messages only while the table is open and deletes them when everyone leaves or after 30 idle minutes. Chat is not stored on a server unless someone reports a message. Game Center tables use Apple's Game Center.</p>

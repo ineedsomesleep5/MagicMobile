@@ -37,11 +37,15 @@ object OnDeviceSmartPass {
 
     const val ENABLED_KEY = "magicmobile.smartAutoPass"
     const val STOPS_KEY = "magicmobile.phaseStops"
+    /** Off by default: smart pass lets your own spells and triggers resolve (Arena's default; engine release A). */
+    const val STOP_FOR_OWN_SPELLS_KEY = "magicmobile.stopForOwnSpells"
     /** Your main phases, and your opponents' attacks and end step: where instants usually matter. */
     val defaultStops: Set<String> = setOf(stopKey(Step.MAIN1, true), stopKey(Step.MAIN2, true),
         stopKey(Step.DECLARE_ATTACKERS, false), stopKey(Step.END, false))
 
-    data class Settings(val enabled: Boolean = true, val stops: Set<String> = defaultStops) {
+    data class Settings(val enabled: Boolean = true, val stops: Set<String> = defaultStops,
+                        /** Stop for your own spells and triggers on the stack when you could respond to them. */
+                        val stopForOwnSpells: Boolean = false) {
         companion object {
             fun encode(stops: Set<String>): String = stops.sorted().joinToString(",")
             fun decode(raw: String?): Set<String> =
@@ -54,7 +58,13 @@ object OnDeviceSmartPass {
                          /** A land, spell or non-mana ability XMage offers this seat right now. */
                          val hasPlay: Boolean,
                          /** Mana floating in this seat's pool: passing would empty it, so the player decides. */
-                         val manaFloating: Boolean)
+                         val manaFloating: Boolean,
+                         /** The top of the stack is this seat's own spell or ability (engine `stackControllers`); null
+                          *  when the engine doesn't say (older engines), which keeps today's stop. */
+                         val topStackIsMine: Boolean? = null,
+                         /** Some non-mana play could answer the stack or a pending attack (engine `respondsToStack`; a row
+                          *  without the field counts as a response, so older engines keep today's stops). */
+                         val hasResponse: Boolean = true)
 
     /** The prompt to pass, or null when the player should decide. */
     fun passPrompt(value: Situation, settings: Settings): OnDeviceYieldPolicy.Prompt? {
@@ -66,10 +76,37 @@ object OnDeviceSmartPass {
             prompt == null || prompt.submitted || !OnDeviceYieldPolicy.ordinaryPriority(prompt, context.viewerID) ||
             value.manaFloating) return null
         if (!value.hasPlay) return prompt
-        // Something to play: stop while a spell or ability waits on the stack, or at a stop.
-        if (!context.emptyStack) return null
+        // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
+        // otherwise stop only when you hold a play that actually answers it.
+        if (!context.emptyStack) {
+            if (value.topStackIsMine == true && !settings.stopForOwnSpells) return prompt
+            return if (value.hasResponse) null else prompt
+        }
         val step = Step.fromEngine(value.step) ?: return null
+        // During an attack, a stop is worth making only with a play that answers it (a trick, a flash blocker).
+        if (step in setOf(Step.DECLARE_ATTACKERS, Step.DECLARE_BLOCKERS, Step.COMBAT_DAMAGE) && !value.hasResponse) return prompt
         return if (stopKey(step, active == context.viewerID) in settings.stops) null else prompt
+    }
+
+    /** Whether some non-mana play could answer what is pending (engine `respondsToStack`, missing means yes). */
+    fun hasResponse(gameView: J?): Boolean {
+        val objects = gameView["canPlayObjects"]["objects"].obj ?: return false
+        return objects.values.any { stats ->
+            stats.obj.orEmpty().any { (category, rows) ->
+                rows.array.orEmpty().any { row ->
+                    !(row["manaAbility"].bool ?: (category == "basicManaAbilities")) && row["respondsToStack"].bool != false
+                }
+            }
+        }
+    }
+
+    /** Whether the top stack object is the viewer's own (engine `stackControllers` and `stackOrder`, top first);
+     *  null when the engine doesn't send controllers. */
+    fun topStackIsMine(root: J?, viewer: String): Boolean? {
+        val controllers = root["stackControllers"].obj ?: return null
+        val top = root["stackOrder"].array?.firstOrNull()?.string ?: return null
+        val controller = controllers[top]?.string ?: return null
+        return controller == viewer
     }
 
     /** Reads the engine's own playable list: lands, spells and non-mana abilities count, mana abilities don't. */

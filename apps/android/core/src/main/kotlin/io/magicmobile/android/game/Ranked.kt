@@ -135,6 +135,10 @@ enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSki
     val key: String get() = name.lowercase()
     /** The strongest deck you may queue with here. */
     val maxDeckBracket: Int get() = opponentBrackets.last
+    /** Pips a ranked win earns here (Arena's Bo1 steps; ladder option B, Caleb 2026-10-15): two up to Gold, one from Platinum. */
+    val winPips: Int get() = if (this <= GOLD) 2 else 1
+    /** Pips a ranked loss costs here: none in Bronze. */
+    val lossPips: Int get() = if (this == BRONZE) 0 else 1
     /** The badge art: tavern_rank_<tier> (from the iOS asset catalogue). */
     val drawableName: String get() = "tavern_rank_$key"
 
@@ -235,14 +239,15 @@ object RankLadder {
         var wins = state.wins; var losses = state.losses; var draws = state.draws; var streak = state.winStreak
         when (outcome) {
             RankOutcome.WIN -> {
-                wins++; streak++; delta = 1
-                if (state.position.tier < RankTier.GOLD && streak >= 3) { delta++; bonuses += RankBonus.STREAK }
+                wins++; streak++; delta = state.position.tier.winPips
                 if (deckBracket < state.position.tier.opponentBrackets.first) { delta++; bonuses += RankBonus.UNDERDOG }
             }
-            RankOutcome.LOSS -> { losses++; streak = 0; delta = -1 }
+            RankOutcome.LOSS -> { losses++; streak = 0; delta = -state.position.tier.lossPips }
             RankOutcome.DRAW -> { draws++; streak = 0 }
         }
-        val position = RankPosition.ofPoints(state.position.points + delta)
+        // A loss never takes you out of your tier (Mythic can fall back to Diamond, never below Diamond IV).
+        val floor = minOf(state.position.tier, RankTier.DIAMOND).ordinal * RankPosition.DIVISIONS * RankPosition.PIPS_PER_DIVISION
+        val position = RankPosition.ofPoints(maxOf(state.position.points + delta, floor))
         val next = state.copy(position = position, peak = maxOf(state.peak, position), wins = wins, losses = losses, draws = draws, winStreak = streak)
         return next to RankChange(outcome, state.position, position, bonuses)
     }
@@ -282,10 +287,18 @@ object AIDeckPool {
         return decks
     }
 
-    /** `preconsOnly` keeps to the official precons. */
+    /**
+     * The softest precons in the AI's hands, for Bronze ranked (AIDeckPool.gentlestPrecons in AIDeckPool.swift): an
+     * equal-skill round-robin (C3, 2026-10-15, 200 games) put Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%,
+     * First Flight 56% and Draconic Destruction 62%.
+     */
+    val gentlestPrecons: Set<String> = setOf("chaos-incarnate", "grave-danger", "token-triumph")
+
+    /** `preconsOnly` keeps to the official precons; `onlyPrecons` narrows them further when any of those are present. */
     fun pick(bracket: Int, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>, preconsOnly: Boolean = false,
-             roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
-        val precons = decks.filter { it.isPrecon }
+             onlyPrecons: Set<String>? = null, roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
+        val allPrecons = decks.filter { it.isPrecon }
+        val precons = if (onlyPrecons != null && allPrecons.any { it.id in onlyPrecons }) allPrecons.filter { it.id in onlyPrecons } else allPrecons
         var candidates = pool(bracket, if (preconsOnly && precons.isNotEmpty()) precons else decks)
         if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
         val fresh = candidates.filter { it.id !in recent }

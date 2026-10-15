@@ -71,7 +71,7 @@ Android consumes the merged type, mana value, printed color, color identity, set
 curated-role metadata. Catalogue facts remain distinct from XMage legality results.
 
 The client includes local deck editing and per-deck drafts, text/JSON/file/public-link
-imports, bundled on-device photo text recognition, retained import receipts, favorites,
+imports, Archidekt account imports, retained import receipts, favorites,
 tags/notes, grid/list browsing, card replacement and basic-land tools. Analysis includes
 curve, printed mana symbols, roles with local overrides/targets, and explicitly bounded
 draw probabilities. Scryfall search, Commander Spellbook and EDHREC are optional,
@@ -95,7 +95,7 @@ The editor shows and exports only history matching its exact playing cards and c
 gh workflow run magicmobile-android.yml --ref codex/android-ios-parity
 
 # everything that does run on macOS
-gradle -p apps/android :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
+apps/android/gradlew -p apps/android :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
 python3 -m unittest discover -s scripts/android/tests
 ```
 

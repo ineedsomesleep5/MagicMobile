@@ -383,12 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 22 adds smart auto-pass: the game passes for you
-                when you have nothing to play, stops at the phases you pick, and
-                lets spells and removal finish playing before it moves on.
-                Online games get a turn timer ring, your first game can have a
-                coach, and titles use a new small-caps typeface. Android is an
-                early alpha; physical-phone acceptance is still pending.
+                Android build 23 makes ranked fair and friendlier: the server
+                keeps score, wins earn two pips up to Gold, losses are free in
+                Bronze, and a bad night can't drop you out of your tier. Bronze
+                faces the gentlest precons, and a long press on Pass gives you
+                full control for a turn. Android is an early alpha;
+                physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -397,13 +397,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 38 adds smart auto-pass: the game passes for you when you
-                have nothing to play, stops at the phases you pick, and lets
-                spells and removal finish playing before it moves on. Online
-                games get a turn timer ring, your first game can have a coach,
-                and titles use a new small-caps typeface. It runs on iPhone and
-                iPad. Apple has approved this build for Internal and External
-                TestFlight.
+                Build 39 makes ranked fair and friendlier: the server keeps
+                score, wins earn two pips up to Gold, losses are free in Bronze,
+                and a bad night can't drop you out of your tier. Bronze faces
+                the gentlest precons, and a long press on Pass gives you full
+                control for a turn. It runs on iPhone and iPad. Apple has
+                approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>

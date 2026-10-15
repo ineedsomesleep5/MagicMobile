@@ -3,21 +3,19 @@ import UIKit
 @testable import MagicMobile
 
 final class BattlefieldBackdropTests: XCTestCase {
-    func testStableChoicesPreserveExistingPreferences() {
-        XCTAssertEqual(BattlefieldBackdrop.allCases.map(\.rawValue),
-                       ["arena", "midnight", "wood", "moss", "ember", "tide", "tavern"])
+    func testOnlyTheTavernAndTheTestBoardRemain() {
+        XCTAssertEqual(BattlefieldBackdrop.allCases.map(\.rawValue), ["arena", "tavern"])
         XCTAssertEqual(BattlefieldBackdrop.resolved("arena"), .arena)
-        XCTAssertEqual(BattlefieldBackdrop.resolved("midnight"), .midnight)
-        XCTAssertEqual(BattlefieldBackdrop.resolved("wood"), .wood)
         XCTAssertEqual(BattlefieldBackdrop.resolved("unknown"), .tavern, "Walnut Tavern is the default board")
+        for retired in ["midnight", "wood", "moss", "ember", "tide"] {
+            XCTAssertEqual(BattlefieldBackdrop.resolved(retired), .tavern, "\(retired) was retired on 2026-10-14")
+        }
     }
 
-    func testGeneratedMaterialsAreBundledAndSquareForBothCrops() throws {
-        for theme in BattlefieldBackdrop.allCases {
-            guard let asset = theme.assetName else { continue }
-            let image = try XCTUnwrap(UIImage(named: asset), "Missing battlefield material: \(asset)")
-            XCTAssertEqual(image.size.width, image.size.height, "Material must support either orientation from a center crop")
-            XCTAssertGreaterThanOrEqual(image.size.width * image.scale, 1024)
+    /// The retired textures (about 2.7 MB of Assets.car) must not come back with an asset-catalog merge.
+    func testRetiredTexturesAreNotBundled() {
+        for name in ["arena", "wood", "moss", "ember", "tide"] {
+            XCTAssertNil(UIImage(named: "battlefield-\(name)"), "battlefield-\(name) was retired on 2026-10-14")
         }
     }
 
@@ -27,7 +25,6 @@ final class BattlefieldBackdropTests: XCTestCase {
                 XCTAssertFalse(theme.hasBakedLighting)
                 continue
             }
-            XCTAssertNil(theme.assetName, "A composed table must not fall back to a square crop")
             XCTAssertTrue(theme.hasBakedLighting)
             let portrait = try XCTUnwrap(UIImage(named: composed.portrait), "Missing \(composed.portrait)")
             let landscape = try XCTUnwrap(UIImage(named: composed.landscape), "Missing \(composed.landscape)")

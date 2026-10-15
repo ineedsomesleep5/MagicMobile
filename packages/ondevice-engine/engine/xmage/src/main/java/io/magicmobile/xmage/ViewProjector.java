@@ -12,6 +12,7 @@ import mage.constants.Zone;
 import mage.game.Game;
 import mage.game.permanent.PermanentToken;
 import mage.game.permanent.token.Token;
+import mage.game.stack.StackObject;
 import mage.players.Player;
 import mage.players.PlayerImpl;
 import mage.abilities.mana.ActivatedManaAbilityImpl;
@@ -69,9 +70,12 @@ public final class ViewProjector {
             if(priority!=null && viewer.equals(priority.getTurnControlledBy())) {
                 Set<String> manaIds=new HashSet<>();
                 Set<String> spellIds=new HashSet<>();
+                Map<String,Boolean> responses=new HashMap<>();
+                StackResponses.Pending pending=StackResponses.pending(source);
                 for(var ability:((PlayerImpl)priority).getPlayable(source,true,Zone.ALL,false)) {
                     if(ability instanceof ActivatedManaAbilityImpl) manaIds.add(ability.getId().toString());
                     if(ability instanceof SpellAbility) spellIds.add(ability.getId().toString());
+                    responses.put(ability.getId().toString(),StackResponses.responds(ability,source,pending));
                 }
                 Map<String,Object> playable=Json.object(data.get("canPlayObjects"));
                 for(Object stats:Json.object(playable.get("objects")).values())
@@ -80,6 +84,8 @@ public final class ViewProjector {
                             Map<String,Object> fields=Json.object(row);
                             fields.put("manaAbility",manaIds.contains(fields.get("id")));
                             fields.put("spellAbility",spellIds.contains(fields.get("id")));
+                            // A row this list cannot match is unsure, so it counts as a response while anything is pending.
+                            fields.put("respondsToStack",responses.getOrDefault(fields.get("id"),pending.any()));
                         }
             }
             // Pinned XMage has no menace CardIconType. Emit a text-badge extension
@@ -121,8 +127,14 @@ public final class ViewProjector {
             view.getOpponentHands().forEach((name,cards)->authorizedOpponentHands.put(name,printedCards(cards)));
             // CardsView preserves upstream top-first order; JSON object keys do not.
             List<String> stackOrder=view.getStack().keySet().stream().map(UUID::toString).toList();
+            // Who controls each stack object is public information; values are engine player IDs.
+            Map<String,Object> stackControllers=new LinkedHashMap<>();
+            for(StackObject object:source.getStack())
+                if(view.getStack().containsKey(object.getId()))
+                    stackControllers.put(object.getId().toString(),object.getControllerId().toString());
             out.put(seat.getKey(),Json.map("schema","xmage-gameview-v1","gameView",data,
                 "stackOrder",stackOrder,
+                "stackControllers",stackControllers,
                 "commanders",commanders,
                 "outcome",outcome,
                 "namedExiles",namedExiles,

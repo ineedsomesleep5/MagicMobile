@@ -30,15 +30,17 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 ## The ladder (`RankLadder.swift`, `Ranked.kt`)
 
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
-- Win +1 pip. Loss −1 pip; with none left you drop a division or tier. Bronze IV with no pips can't fall.
-- Bonuses: a third straight win below Gold (+1), and a win with a deck below the tier's opponent brackets
-  (+1, "underdog"). Draws change nothing and end the streak.
+- Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
+  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A loss never takes you out of your tier
+  (Mythic can fall back to Diamond, never below Diamond IV).
+- Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
+  gone (two-pip wins replace it). Draws change nothing and end the streak.
 - Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 
 | Tier | Opponent decks | Your deck up to | AI skill |
 |---|---|---|---|
-| Bronze | Official precons only (Core) | 2 | 1 |
+| Bronze | The three gentlest official precons (Core): Chaos Incarnate, Grave Danger, Token Triumph | 2 | 1 |
 | Silver | 2 | 2 | 2 |
 | Gold | 2–3 | 3 | 3 |
 | Platinum | 3 | 3 | 4 |
@@ -47,11 +49,22 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 In tiers with two opponent brackets, divisions IV–III face the lower one and II–I the upper.
 
+Bronze's three precons come from C3's equal-skill round-robin of all five (2026-10-15, 200 games, docs/cloud/reports/c3.md):
+Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%, First Flight 56%, Draconic Destruction 62%. Going first won 65%
+of those games, a bigger effect than any deck.
+
 Why this curve (2026-10-11): the XMage AI searches `max(4, skill)` moves deep and thinks `skill × 3` s,
 so skills 1–4 differ only in thinking time and depth grows from Diamond. Ranked never asks for Bracket 1:
 the Exhibition AI decks are tuned tribal lists (the bracket check only screens Game Changers, land
 denial, extra turns and combos), so Bronze faces the precons instead. Skill 7 would mean 21 s AI turns
 on a phone, so Mythic stops at 6.
+
+Engine release A (2026-10-15, cloud session C2): skills 1 and 2 now search depth 2 and 3 (one and two
+actions ahead; upstream depth 1 never casts a spell), skill 3 keeps depth 4, and skills 1–3 make a
+deliberate mistake at 15%, 10% and 5% of their decisions (a weaker play or a pass, a held-back attack,
+a skipped block, each with a safety guard). Skill 4 and up are unchanged. The numbers live in
+`AIDifficulty.java` and each seat can override them (`aiSearchDepth`, `aiMistakePercent`, `aiSeed`;
+packages/ondevice-engine/docs/PROTOCOL.md) for the C3 calibration, which decides the final values.
 
 ## Play modes
 

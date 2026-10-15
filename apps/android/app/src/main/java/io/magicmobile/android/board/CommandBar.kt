@@ -35,7 +35,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -72,7 +78,48 @@ import io.magicmobile.android.game.PlayerStatusSummary
 /** On-device turn skipping (Swift NativeTurnControl), provided by the session owner. */
 data class NativeTurnControl(val canEndTurn: Boolean, val canSkipResponses: Boolean, val canSkipToMyTurn: Boolean, val isAutoPassing: Boolean,
                              val status: String?, val endTurn: () -> Unit, val skipResponses: () -> Unit, val skipToMyTurn: () -> Unit,
-                             val stop: () -> Unit)
+                             val stop: () -> Unit,
+                             /** Full control: smart pass stops at every priority until the turn ends (long-press Pass, or the controls menu). */
+                             val isFullControl: Boolean = false, val toggleFullControl: () -> Unit = {})
+
+/**
+ * Long-press Pass: full control for this turn, as on Arena (FullControlHold in GameplayActionDock.swift; Caleb, 2026-10-14).
+ * A small tag over the button says so while it's on; the finger lifted after the hold doesn't pass.
+ */
+@Composable
+fun FullControlHold(control: NativeTurnControl?, tavern: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    if (control == null) { Box(modifier) { content() }; return }
+    val view = androidx.compose.ui.platform.LocalView.current
+    val latest by androidx.compose.runtime.rememberUpdatedState(control)
+    Box(modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val up = withTimeoutOrNull(600) { waitForUpOrCancellation(PointerEventPass.Initial) }
+            if (up == null) {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                latest.toggleFullControl()
+                // Swallow the rest of this touch so the button underneath doesn't also pass.
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    event.changes.forEach { it.consume() }
+                } while (event.changes.any { it.pressed })
+            }
+        }
+    }.semantics {
+        customActions = listOf(androidx.compose.ui.semantics.CustomAccessibilityAction(
+            if (control.isFullControl) "Turn off full control" else "Full control this turn") { latest.toggleFullControl(); true })
+    }, contentAlignment = Alignment.Center) {
+        content()
+        if (control.isFullControl) {
+            Box(Modifier.align(Alignment.TopCenter).offset(y = if (tavern) (-30).dp else (-22).dp).wrapContentSize(unbounded = true)) {
+                if (tavern) io.magicmobile.android.ui.TavernTag("Full control", leather = true)
+                else Text("Full control", color = MagicPalette.parchment, style = sf(10f, SfWeight.heavy, SfDesign.SERIF),
+                    modifier = Modifier.background(MagicPalette.iron.copy(alpha = 0.92f), CircleShape)
+                        .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.8f), CircleShape).padding(horizontal = 8.dp, vertical = 3.dp))
+            }
+        }
+    }
+}
 
 val LocalNativeTurnControl = compositionLocalOf<NativeTurnControl?> { null }
 
@@ -195,6 +242,10 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
                     add(MenuEntry.Divider)
                 }
                 add(MenuEntry.Item("Game Log", "list.bullet.rectangle", action = openLog))
+                nativeTurnControl?.let { control ->
+                    add(MenuEntry.Item(if (control.isFullControl) "Full control: on (this turn)" else "Full control this turn", "hand.raised.fill",
+                        action = control.toggleFullControl))
+                }
                 if (snapshot.source == "xmage-ondevice" && model.mode != GameActionDockModel.Mode.PROMPT) {
                     add(MenuEntry.Item("More actions", if (tavernRows) "ellipsis" else null, action = openPromptDetails))
                 }
@@ -251,25 +302,25 @@ fun GameplayActionDock(snapshot: GameSnapshot, passAction: LegalAction?, yieldAc
             TavernDockPart.SKIP -> secondaryControl(modifier.size(44.dp))
             TavernDockPart.MENU -> Box(modifier) { controlsMenu() }
             // Passing priority is the hourglass alone (waiting is its dim face), so neither shows a title.
-            TavernDockPart.PRIMARY -> TavernPassStage(model.isPrimaryEnabled, model.primaryAction != null, model.primaryTitle,
+            TavernDockPart.PRIMARY -> FullControlHold(nativeTurnControl, tavern = true, modifier = modifier) { TavernPassStage(model.isPrimaryEnabled, model.primaryAction != null, model.primaryTitle,
                 showsTitle = !(model.mode == GameActionDockModel.Mode.PRIORITY && model.primaryAction?.type == "pass_priority") && model.isPrimaryEnabled,
                 diameter = tavernPassDiameter,
                 actionKey = "${model.primaryAction?.id ?: "none"}:${snapshot.promptEnvelopeV2?.id ?: "none"}:${model.primaryAction?.messageId ?: snapshot.promptEnvelopeV2?.messageId ?: -1}",
                 onClick = {
                     val primary = model.primaryAction
                     if (primary != null) runAction(primary) else if (model.mode == GameActionDockModel.Mode.PROMPT) openPromptDetails()
-                }, modifier = modifier,
-                contentDescription = model.primaryTitle + if (showsPriorityHelp) ". " + GameplayActionPresentation.priorityHint(hasStackForPriority) else "")
+                },
+                contentDescription = model.primaryTitle + if (showsPriorityHelp) ". " + GameplayActionPresentation.priorityHint(hasStackForPriority) else "") }
         }
     } else if (horizontal) {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             secondaryControl(Modifier.width(44.dp))
             controlsMenu()
-            primaryButton(Modifier.weight(1f))
+            FullControlHold(nativeTurnControl, tavern = false, modifier = Modifier.weight(1f)) { primaryButton(Modifier.fillMaxWidth()) }
         }
     } else {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(if (landscapeSidebar) 4.dp else 8.dp)) {
-            primaryButton(Modifier.fillMaxWidth())
+            FullControlHold(nativeTurnControl, tavern = false, modifier = Modifier.fillMaxWidth()) { primaryButton(Modifier.fillMaxWidth()) }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 secondaryControl(Modifier.weight(1f)); controlsMenu()
             }

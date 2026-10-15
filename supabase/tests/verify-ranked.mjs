@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFile } from 'node:fs/promises';
 
-// The social, ranked, friend-challenge, public-profile and ranked-referee migrations on a minimal Supabase stand-in: auth.users, auth.uid() and the
+// The social, ranked, friend-challenge, public-profile, ranked-referee and ranked-record-points migrations on a minimal Supabase stand-in: auth.users, auth.uid() and the
 // original profiles table. No production rows, keys or tokens; nothing touches the live project.
 const db = new PGlite();
 const migration = name => readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8');
@@ -32,11 +32,18 @@ try {
   await db.exec(await readFile(new URL('./ranked_referee_before.sql', import.meta.url), 'utf8'));
   await db.exec(await migration('20261015120000_ranked_referee.sql'));
   await db.exec(await readFile(new URL('./ranked_referee.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261015180000_ranked_record_points.sql'));
+  await db.exec(await readFile(new URL('./ranked_record_points.sql', import.meta.url), 'utf8'));
+  // Ladder option B (Caleb's choice, 2026-10-15) replaces mm_ranked_apply: the referee suite above ran on the old steps.
+  await db.exec(await migration('20261015200000_ladder_option_b.sql'));
+  await db.exec(await readFile(new URL('./ladder_option_b.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
   console.log('PASS PGlite: public profiles (visibility public/friends/private, blocks, live prefix search with limits and index, recorded games with caps and rate limit, rank history and opponent names, no direct access, anon refused)');
   console.log('PASS PGlite: ranked referee (published standings carried over, one capped seed, agreeing reports count, disputes and capped pairs do not, lone reports time out, AI tickets with minimum time, daily cap and abandonment, streak and underdog bonuses, season rollover, publish keeps only cosmetics, no direct access, account deletion)');
+  console.log('PASS PGlite: ranked record points (server points stored for ranked games, phone claims ignored, none before a seed, for quick/casual games or an earlier month, rollover first, imported standings, re-sends unchanged, public rank history, anon refused)');
+  console.log('PASS PGlite: ladder option B (Arena steps per tier, Bronze losses free, tier floors with Mythic falling to Diamond, no streak bonus, underdog kept, card mirrored, still internal)');
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
