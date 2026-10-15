@@ -383,12 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 23 makes ranked fair and friendlier: the server
-                keeps score, wins earn two pips up to Gold, losses are free in
-                Bronze, and a bad night can't drop you out of your tier. Bronze
-                faces the gentlest precons, and a long press on Pass gives you
-                full control for a turn. Android is an early alpha;
-                physical-phone acceptance is still pending.
+                Android build 24 brings a new engine: smart pass lets your own
+                spells resolve and stops only when you can answer, the AI gets
+                tougher as you climb (Diamond and Mythic plan their attacks and
+                blocks), ranked AI wins are checked against the game's own
+                record, and the engine is about 10 MB smaller. Android is an
+                early alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -397,12 +397,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 39 makes ranked fair and friendlier: the server keeps
-                score, wins earn two pips up to Gold, losses are free in Bronze,
-                and a bad night can't drop you out of your tier. Bronze faces
-                the gentlest precons, and a long press on Pass gives you full
-                control for a turn. It runs on iPhone and iPad. Apple has
-                approved this build for Internal and External TestFlight.
+                Build 40 brings a new engine: smart pass lets your own spells
+                resolve and stops only when you can answer, the AI gets tougher
+                as you climb (Diamond and Mythic plan their attacks and blocks),
+                ranked AI wins are checked against the game's own record, and
+                the engine is about 10 MB smaller. It runs on iPhone and iPad.
+                Apple has approved this build for Internal and External
+                TestFlight.
               </p>
             </details>
             <details>
