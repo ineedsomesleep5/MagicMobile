@@ -56,6 +56,14 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-15 (Claude, C1): `mm_record_game` now stores the server's standing at the moment a ranked game arrives
+  (`20261015180000_ranked_record_points.sql`), but both apps upload a game as soon as it is recorded, racing
+  `syncRank`, and `afterRefresh` uploads before it seeds. **Rule:** for ranked games, run `syncRank` first and upload
+  after, or the rank history charts the points from before the game. A ladder floor can read only the current points:
+  you can't fall out of a tier, so "start of your tier" equals "highest tier reached", and a stored peak can sit above
+  the points (imported or seeded standings). Ladder SQL waiting for Caleb lives in `supabase/pending/`, outside
+  `migrations/`, and is tested with `npm run test:ranked-pending --prefix supabase/tests`. Where: `docs/cloud/reports/c1.md`.
+
 - 2026-10-11 (Claude): Arena-style smart auto-pass and phase stops needed no engine change. The poll
   already carries XMage's own playable list (`gameView.canPlayObjects`, with `manaAbility` marks) and
   the step, so the session sends the same `pass_priority` a tap sends. **Rule:** client-side pass

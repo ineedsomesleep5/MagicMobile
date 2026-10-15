@@ -40,6 +40,14 @@ try {
   console.log('PASS PGlite: public profiles (visibility public/friends/private, blocks, live prefix search with limits and index, recorded games with caps and rate limit, rank history and opponent names, no direct access, anon refused)');
   console.log('PASS PGlite: ranked referee (published standings carried over, one capped seed, agreeing reports count, disputes and capped pairs do not, lone reports time out, AI tickets with minimum time, daily cap and abandonment, streak and underdog bonuses, season rollover, publish keeps only cosmetics, no direct access, account deletion)');
   console.log('PASS PGlite: ranked record points (server points stored for ranked games, phone claims ignored, none before a seed, for quick/casual games or an earlier month, rollover first, imported standings, re-sends unchanged, public rank history, anon refused)');
+  // --pending: also the ladder option waiting for Caleb's choice (supabase/pending), in a transaction rolled back after.
+  if (process.argv.includes('--pending')) {
+    await db.exec('begin');
+    await db.exec(await readFile(new URL('../pending/ladder_option_b.sql', import.meta.url), 'utf8'));
+    await db.exec(await readFile(new URL('./ladder_option_b.sql', import.meta.url), 'utf8'));
+    await db.exec('rollback');
+    console.log('PASS PGlite: PENDING ladder option B (Arena steps per tier, Bronze losses free, tier floors with Mythic falling to Diamond, no streak bonus, underdog kept, card mirrored, still internal)');
+  }
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
