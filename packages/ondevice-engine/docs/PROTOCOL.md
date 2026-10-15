@@ -234,6 +234,43 @@ ability, additional cost, or color. Old payloads safely identify only
 `basicManaAbilities` as mana during payment. Playability is upstream's offered
 action estimate, not proof that a complete payment sequence exists.
 
+The same rows also carry `respondsToStack: boolean` (new in engine release A). It says whether that
+play could answer what is pending right now: the stack, or attacks that have not dealt their combat
+damage yet (declare attackers, declare blockers and first-strike damage steps). It is a hint for
+smart-pass stops, like Arena's "you have a response", never a legality check: every row stays
+playable whatever it says. Built from the current ability, target and effect objects
+(`StackResponses.java`), never from rules text. A play counts as a response when:
+
+- it can target a stack object, a stack object's source, or a non-player object a stack object
+  targets (counters, copies, killing the source, pumping or protecting the target);
+- it can target a player a stack object targets and has a protective effect (gain life, prevent or
+  redirect damage, protection);
+- its source is targeted by a stack object, or it has a sacrifice cost while a stack object targets
+  a permanent its controller controls (sacrifice, blink or regenerate in response);
+- an untargeted stack object would harm permanents (a sweeper, an edict; drains, discard and cast
+  limits do not count) and the play can target any permanent;
+- attacks are pending and it is a permanent spell (a flash blocker) or can target an attacking or
+  blocking creature;
+- it is a permanent spell outside combat with a triggered or non-keyword static ability of its own
+  (an enters trigger, a lord);
+- it has no targets and an effect other than drawing cards, adding mana or putting a land onto the
+  battlefield (unsure, so it counts).
+
+Land plays and mana abilities are never responses, except a mana ability whose source is targeted
+or that sacrifices while something threatens its controller's permanents. With an empty stack and
+no attack pending every row is `false`. Anything the engine cannot judge (an exception, a row it
+cannot match to an offered ability) is `true` while something is pending. Only the seat whose
+priority it is gets `canPlayObjects`, so only that seat sees the flag. Older engines omit the field;
+clients must then treat every non-mana play as a possible response (today's behaviour).
+
+### Stack controllers
+
+Each per-seat snapshot carries `stackControllers`, an object from stack object ID (the same keys as
+`gameView.stack` and `stackOrder`) to the engine player ID of that object's controller (the same IDs
+as `gameView.players[].playerId` and `enginePlayerId`). Controllers of stack objects are public, so
+every seat, including spectating and controlled-player views, gets the same map. It is `{}` with an
+empty stack. Older engines omit it; clients then keep their current controller inference.
+
 Visible battlefield CardViews may carry the additive `ABILITY_MENACE` icon with
 category `ABILITY` and text `Menace`, derived only from current permanent
 abilities. It is omitted for face-down permanents and does not parse printed
