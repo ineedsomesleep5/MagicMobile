@@ -241,9 +241,7 @@ private struct MultiplayerD20FixtureScreen: View {
         }
         .background {
             GeometryReader { geometry in
-                Image("battlefield-wood")
-                    .resizable()
-                    .scaledToFill()
+                BattlefieldBackdropArt(theme: .tavern)
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
                     .overlay(Color.black.opacity(0.58))

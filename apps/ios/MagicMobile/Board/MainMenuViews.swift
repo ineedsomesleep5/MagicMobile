@@ -302,7 +302,7 @@ private struct FitsHeightKey: PreferenceKey {
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
     /// Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
-    /// the other backdrops stay for UI tests that pin one with a launch argument.
+    /// `arena` (the classic layout) stays for UI tests that pin it with a launch argument.
     static let defaultValue = "tavern"
     static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }

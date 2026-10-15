@@ -31,7 +31,9 @@ contradicting one.
   tavern. **Rule:** UI tests that need another board still pin it with the
   `-magicmobile.boardAppearance arena` launch argument (iOS argument domain, untouched by the reset)
   or `MAGICMOBILE_UI_TEST_BOARD_APPEARANCE` (set after the reset). Where: `MagicMobileApp.swift`,
-  Android `MainActivity.kt`.
+  Android `MainActivity.kt`. Updated 2026-10-14 (Claude): the other boards' textures are gone; `arena`
+  (the classic layout on a plain gradient) is the only other value, and anything else resolves to the
+  tavern.
 - 2026-10-11 (Claude): Android screens drift back to plain Material, `IosAlert` or `IosListRow`
   when a port reaches for whatever control is handy. **Rule:** follow `docs/TAVERN_STYLE.md` and use
   the `Tavern*` counterpart of the iOS piece; port the piece into `ui/TavernKit.kt` first if it is
