@@ -122,8 +122,9 @@ object DeckBracketPreference {
 
 /**
  * Bracket 1 is never asked for: the Exhibition AI decks are tribal lists no weaker than Core, so Bronze plays
- * precons instead. The AI searches max(4, skill) moves deep and thinks skill × 3 s, so skills 1–4 differ only in
- * thinking time; depth grows from Diamond. Mythic stops at 6: skill 7 means 21 s turns on a phone.
+ * precons instead. AI skill (AIDifficulty.java): Bronze to Gold look fewer moves ahead and make deliberate mistakes,
+ * Platinum plays upstream's full strength, Diamond and Mythic play as experts (combat planner). It thinks skill × 3 s.
+ * Mythic stops at 6: skill 7 means 21 s turns on a phone.
  */
 enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSkill: Int) {
     BRONZE("Bronze", 2..2, 1), SILVER("Silver", 2..2, 2), GOLD("Gold", 2..3, 3),
@@ -135,6 +136,10 @@ enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSki
     val key: String get() = name.lowercase()
     /** The strongest deck you may queue with here. */
     val maxDeckBracket: Int get() = opponentBrackets.last
+    /** Pips a ranked win earns here (Arena's Bo1 steps; ladder option B, Caleb 2026-10-15): two up to Gold, one from Platinum. */
+    val winPips: Int get() = if (this <= GOLD) 2 else 1
+    /** Pips a ranked loss costs here: none in Bronze. */
+    val lossPips: Int get() = if (this == BRONZE) 0 else 1
     /** The badge art: tavern_rank_<tier> (from the iOS asset catalogue). */
     val drawableName: String get() = "tavern_rank_$key"
 
@@ -235,14 +240,15 @@ object RankLadder {
         var wins = state.wins; var losses = state.losses; var draws = state.draws; var streak = state.winStreak
         when (outcome) {
             RankOutcome.WIN -> {
-                wins++; streak++; delta = 1
-                if (state.position.tier < RankTier.GOLD && streak >= 3) { delta++; bonuses += RankBonus.STREAK }
+                wins++; streak++; delta = state.position.tier.winPips
                 if (deckBracket < state.position.tier.opponentBrackets.first) { delta++; bonuses += RankBonus.UNDERDOG }
             }
-            RankOutcome.LOSS -> { losses++; streak = 0; delta = -1 }
+            RankOutcome.LOSS -> { losses++; streak = 0; delta = -state.position.tier.lossPips }
             RankOutcome.DRAW -> { draws++; streak = 0 }
         }
-        val position = RankPosition.ofPoints(state.position.points + delta)
+        // A loss never takes you out of your tier (Mythic can fall back to Diamond, never below Diamond IV).
+        val floor = minOf(state.position.tier, RankTier.DIAMOND).ordinal * RankPosition.DIVISIONS * RankPosition.PIPS_PER_DIVISION
+        val position = RankPosition.ofPoints(maxOf(state.position.points + delta, floor))
         val next = state.copy(position = position, peak = maxOf(state.peak, position), wins = wins, losses = losses, draws = draws, winStreak = streak)
         return next to RankChange(outcome, state.position, position, bonuses)
     }
@@ -282,10 +288,18 @@ object AIDeckPool {
         return decks
     }
 
-    /** `preconsOnly` keeps to the official precons. */
+    /**
+     * The softest precons in the AI's hands, for Bronze ranked (AIDeckPool.gentlestPrecons in AIDeckPool.swift): an
+     * equal-skill round-robin (C3, 2026-10-15, 200 games) put Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%,
+     * First Flight 56% and Draconic Destruction 62%.
+     */
+    val gentlestPrecons: Set<String> = setOf("chaos-incarnate", "grave-danger", "token-triumph")
+
+    /** `preconsOnly` keeps to the official precons; `onlyPrecons` narrows them further when any of those are present. */
     fun pick(bracket: Int, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>, preconsOnly: Boolean = false,
-             roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
-        val precons = decks.filter { it.isPrecon }
+             onlyPrecons: Set<String>? = null, roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
+        val allPrecons = decks.filter { it.isPrecon }
+        val precons = if (onlyPrecons != null && allPrecons.any { it.id in onlyPrecons }) allPrecons.filter { it.id in onlyPrecons } else allPrecons
         var candidates = pool(bracket, if (preconsOnly && precons.isNotEmpty()) precons else decks)
         if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
         val fresh = candidates.filter { it.id !in recent }
@@ -435,7 +449,24 @@ data class RankedStanding(
 
 /** A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result). */
 @Serializable
-data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long)
+data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long,
+                               /** The ticket carried a server seed (mm_ranked_ai_start2): the result goes with the game record. */
+                               val seeded: Boolean = false,
+                               /** The game record's file in GameRecords, when the engine kept one. */
+                               val recordFile: String? = null)
+
+/** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
+data class RankedAITicket(val id: String, val seed: Long) {
+    companion object {
+        /** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+        fun parse(text: String): RankedAITicket? = runCatching {
+            val value = kotlinx.serialization.json.Json.parseToJsonElement(text) as JsonObject
+            val id = value["id"]!!.jsonPrimitive.also { require(it.isString) }.content
+            val seed = value["seed"]!!.jsonPrimitive.also { require(it.isString) }.content.toLong()
+            RankedAITicket(java.util.UUID.fromString(id).toString(), seed)
+        }.getOrNull()
+    }
+}
 
 /** The profile file: ranked standing, match history, title and favorite commander (PlayerRecordStore). */
 @Serializable
@@ -444,13 +475,15 @@ data class PlayerRecordFile(
     val favoriteCommander: String? = null, val recentAIDecks: List<String> = emptyList(),
     /** The server's ticket for the ranked AI game being played (mm_ranked_ai_start); kept across a resume. */
     val rankedTicket: String? = null,
+    /** That ticket carried a server seed. */
+    val rankedTicketSeeded: Boolean = false,
     /** Finished ranked AI games still to send, oldest first. */
     val pendingRankedResults: List<PendingRankedResult> = emptyList(),
 ) {
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null, engineMatchID: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
@@ -459,9 +492,11 @@ data class PlayerRecordFile(
             turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
-        val pending = if (ticket == null) pendingRankedResults else (pendingRankedResults + PendingRankedResult(ticket, outcome, now)).takeLast(20)
+        val pending = if (ticket == null) pendingRankedResults
+            else (pendingRankedResults + PendingRankedResult(ticket, outcome, now, rankedTicketSeeded, gameRecordFile)).takeLast(20)
         return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent,
-            rankedTicket = if (ticket == null) rankedTicket else null, pendingRankedResults = pending) to change
+            rankedTicket = if (ticket == null) rankedTicket else null, rankedTicketSeeded = ticket == null && rankedTicketSeeded,
+            pendingRankedResults = pending) to change
     }
 
     /**

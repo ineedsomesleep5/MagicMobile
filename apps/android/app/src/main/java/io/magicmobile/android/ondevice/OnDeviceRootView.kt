@@ -294,8 +294,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         // Finished games go to the profile server too: now, and again whenever the app is open and online (GameUploader).
         val uploader = io.magicmobile.android.game.GameUploader(java.io.File(context.filesDir, "Profile/uploaded-games.json"))
         val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
-        record.didRecord = { scope.launch { upload() } }
-        vm.account.afterRefresh = { upload(); vm.account.syncRank(record) }
+        // A ranked game goes up after its result counts on the server, which records its rank points then.
+        record.didRecord = { match -> if (match.mode != io.magicmobile.android.game.PlayMode.RANKED) scope.launch { upload() } }
+        vm.account.afterRefresh = { vm.account.syncRank(record); upload() }
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -389,14 +390,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
         rankChange = null
-        if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
-            // The server's ticket for this game, so its result counts there too.
-            record.beginRankedAIGame(null)
-            scope.launch { record.beginRankedAIGame(vm.account.startRankedAIGame(deckBracket.level)) }
-        }
+        if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, aiStartingPlayerMode, mode.raw, deckBracket.level)
         scope.launch {
-            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID)
+            // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
+            var seed: Long? = null
+            if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
+                val ticket = vm.account.startRankedAIGame(deckBracket.level)
+                record.beginRankedAIGame(ticket?.id, seeded = ticket != null)
+                seed = ticket?.seed
+            }
+            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID, seed = seed)
             if (session.matchID == null) activeMatch = null
         }
     }
@@ -448,7 +452,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
         val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
-            preconsOnly = position.tier.preconOpponentsOnly) ?: return
+            preconsOnly = position.tier.preconOpponentsOnly,
+            onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
         startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
     }
 
@@ -575,15 +580,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         }
     }
 
-    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?,
+                   gameRecordFile: String? = null) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
         rankChange = change
         scope.launch {
             match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
-            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile).
-            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.syncRank(record)
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
+            // then upload the game so its rank history point is the standing after it.
+            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.afterRefresh?.invoke()
         }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
@@ -605,8 +612,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             snapshot.isCompleted && winners.isEmpty() -> io.magicmobile.android.game.RankOutcome.DRAW
             else -> io.magicmobile.android.game.RankOutcome.LOSS
         }
-        saveResult(current, outcome, snapshot.turn, snapshot)
         activeMatch = current.copy(recorded = true)
+        // The engine's game record first (solo games, before the match is destroyed), so a ranked result goes with it.
+        scope.launch {
+            val file = setup.finishedGameRecord()?.let(record::keepGameRecord)
+            saveResult(current, outcome, snapshot.turn, snapshot, file)
+        }
     }
 
     /** Leaving a ranked game before it ends counts as a loss. */
@@ -867,7 +878,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     BackHandler(enabled = activeGame) { requestLeave() }
 
     val turnControl = NativeTurnControl(session.canEndTurn, session.canEndTurnSkippingResponses, session.canSkipToMyTurn, session.isAutoPassing,
-        session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() })
+        session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() },
+        session.isFullControl, { session.toggleFullControl() })
 
     // One flag for everything the starting roll covers (iOS startingRollVisible): a relay table's
     // shared roll or its "Who goes first?" panel, or an AI table's local roll.
@@ -955,9 +967,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         val smartAutoPass by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.ENABLED_KEY, true)
                         val phaseStops by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
                             io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops))
-                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops) {
+                        val stopForOwnSpells by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
+                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops, stopForOwnSpells) {
                             session.setSmartPass(io.magicmobile.android.game.OnDeviceSmartPass.Settings(smartAutoPass,
-                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops)))
+                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops), stopForOwnSpells))
                         }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)

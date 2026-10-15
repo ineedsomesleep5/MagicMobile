@@ -201,12 +201,18 @@ enum Achievement: String, CaseIterable, Codable, Identifiable, Sendable {
 @MainActor
 final class PlayerRecordStore: ObservableObject {
     static let maxMatches = 300
+    /// Engine game records kept on this phone (docs/cloud/game-record.md): the last games, newest first.
+    static let maxGameRecords = 50
 
     /// A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result).
     struct PendingRankedResult: Codable, Equatable {
         let ticket: UUID
         let outcome: RankOutcome
         let date: Date
+        /// The ticket carried a server seed (mm_ranked_ai_start2): the result goes with the game record.
+        var seeded: Bool? = nil
+        /// The game record's file in GameRecords, when the engine kept one.
+        var recordFile: String? = nil
     }
 
     private struct File: Codable {
@@ -216,6 +222,7 @@ final class PlayerRecordStore: ObservableObject {
         var favoriteCommander: String?
         var recentAIDecks: [String]?
         var rankedTicket: UUID?
+        var rankedTicketSeeded: Bool?
         var pendingRankedResults: [PendingRankedResult]?
     }
 
@@ -227,6 +234,8 @@ final class PlayerRecordStore: ObservableObject {
     private(set) var recentAIDecks: [String] = []
     /// The server's ticket for the ranked AI game being played (mm_ranked_ai_start); kept across a resume.
     private(set) var rankedTicket: UUID?
+    /// That ticket carried a server seed.
+    private(set) var rankedTicketSeeded = false
     /// Finished ranked AI games still to send, oldest first.
     private(set) var pendingRankedResults: [PendingRankedResult] = []
     /// Set by the app to share rank changes with friends; nil in tests.
@@ -235,11 +244,14 @@ final class PlayerRecordStore: ObservableObject {
     var didRecord: ((MatchRecord) -> Void)?
 
     private let fileURL: URL?
+    /// Game records, one JSON file per finished game (the engine's `record`), private to this phone.
+    let gameRecordsURL: URL?
     private let now: () -> Date
 
     init(directory: URL?, now: @escaping () -> Date = Date.init) {
         self.now = now
         fileURL = directory?.appendingPathComponent("player-record.json")
+        gameRecordsURL = directory?.appendingPathComponent("GameRecords", isDirectory: true)
         let season = RankLadder.season(for: now())
         var loaded = File(rank: .fresh(season: season), matches: [])
         if let fileURL, let data = try? Data(contentsOf: fileURL), let file = try? JSONDecoder.record.decode(File.self, from: data) {
@@ -251,6 +263,7 @@ final class PlayerRecordStore: ObservableObject {
         favoriteCommander = loaded.favoriteCommander
         recentAIDecks = loaded.recentAIDecks ?? []
         rankedTicket = loaded.rankedTicket
+        rankedTicketSeeded = loaded.rankedTicketSeeded ?? false
         pendingRankedResults = loaded.pendingRankedResults ?? []
         if rank != loaded.rank { save() }
     }
@@ -288,7 +301,7 @@ final class PlayerRecordStore: ObservableObject {
     @discardableResult
     func record(mode: PlayMode, outcome: RankOutcome, opponents: [MatchRecord.Opponent], opponentBracket: Int?, aiSkill: Int?,
                 deckID: String, deckName: String, commander: String?, colors: [String], deckBracket: Int, turns: Int,
-                aiDeckID: String? = nil, engineMatchID: String? = nil) -> RankChange? {
+                aiDeckID: String? = nil, engineMatchID: String? = nil, gameRecordFile: String? = nil) -> RankChange? {
         refreshSeason()
         var change: RankChange?
         if mode == .ranked {
@@ -304,8 +317,11 @@ final class PlayerRecordStore: ObservableObject {
         if matches.count > Self.maxMatches { matches.removeLast(matches.count - Self.maxMatches) }
         if let aiDeckID { recentAIDecks = Array(([aiDeckID] + recentAIDecks.filter { $0 != aiDeckID }).prefix(4)) }
         if mode == .ranked, opponents.allSatisfy(\.isAI), let ticket = rankedTicket {
-            pendingRankedResults = Array((pendingRankedResults + [PendingRankedResult(ticket: ticket, outcome: outcome, date: now())]).suffix(20))
+            let pending = PendingRankedResult(ticket: ticket, outcome: outcome, date: now(), seeded: rankedTicketSeeded,
+                                              recordFile: gameRecordFile)
+            pendingRankedResults = Array((pendingRankedResults + [pending]).suffix(20))
             rankedTicket = nil
+            rankedTicketSeeded = false
         }
         save()
         if mode == .ranked { publish?(rank, stats, title, shownCommander) }
@@ -317,10 +333,40 @@ final class PlayerRecordStore: ObservableObject {
     func publishNow() { publish?(rank, stats, title, shownCommander) }
 
     /// A ranked AI game began; `ticket` is the server's (nil offline: that game counts on this phone only).
-    func beginRankedAIGame(ticket: UUID?) {
-        guard rankedTicket != ticket else { return }
+    func beginRankedAIGame(ticket: UUID?, seeded: Bool = false) {
+        guard rankedTicket != ticket || rankedTicketSeeded != seeded else { return }
         rankedTicket = ticket
+        rankedTicketSeeded = ticket != nil && seeded
         save()
+    }
+
+    /// Keeps a finished game's record (the engine's JSON) and returns its file name; the oldest go past
+    /// `maxGameRecords`. Excluded from backups: it holds every hand and library order of that game.
+    func keepGameRecord(_ data: Data) -> String? {
+        guard let gameRecordsURL else { return nil }
+        let name = "game-\(Int(now().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8)).json"
+        do {
+            try FileManager.default.createDirectory(at: gameRecordsURL, withIntermediateDirectories: true)
+            var folder = gameRecordsURL
+            var values = URLResourceValues(); values.isExcludedFromBackup = true
+            try? folder.setResourceValues(values)
+            try data.write(to: gameRecordsURL.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
+        } catch { return nil }
+        for old in gameRecordFiles().dropFirst(Self.maxGameRecords) { try? FileManager.default.removeItem(at: old) }
+        return name
+    }
+
+    /// The kept game records, newest first.
+    func gameRecordFiles() -> [URL] {
+        guard let gameRecordsURL, let files = try? FileManager.default.contentsOfDirectory(at: gameRecordsURL, includingPropertiesForKeys: nil)
+        else { return [] }
+        return files.filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent > $1.lastPathComponent }
+    }
+
+    /// A kept record by file name, for the ranked upload.
+    func gameRecord(named name: String) -> Data? {
+        guard let gameRecordsURL, !name.contains("/") else { return nil }
+        return try? Data(contentsOf: gameRecordsURL.appendingPathComponent(name))
     }
 
     /// The server answered for this ticket (or never will).
@@ -357,7 +403,7 @@ final class PlayerRecordStore: ObservableObject {
     private func save() {
         guard let fileURL else { return }
         let file = File(rank: rank, matches: matches, title: title, favoriteCommander: favoriteCommander, recentAIDecks: recentAIDecks,
-                        rankedTicket: rankedTicket, pendingRankedResults: pendingRankedResults)
+                        rankedTicket: rankedTicket, rankedTicketSeeded: rankedTicketSeeded, pendingRankedResults: pendingRankedResults)
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder.record.encode(file).write(to: fileURL, options: .atomic)

@@ -319,6 +319,38 @@ final class OnDeviceSessionTests: XCTestCase {
         try await session.close()
     }
 
+    /// Full control (long-press Pass): smart pass stops at every priority until it is turned off or the turn ends,
+    /// and a pass it makes is noted in the game log.
+    @MainActor
+    func testFullControlHoldsSmartPassAndPassesAreLogged() async throws {
+        let poll = try fixture("2p-priority")
+        var bare = poll.raw.object!
+        var root = bare["snapshot"]!.object!; var view = root["gameView"]!.object!
+        view["canPlayObjects"] = .object(["objects": .object([:])])
+        root["gameView"] = .object(view); bare["snapshot"] = .object(root)
+        let transport = SessionFixtureTransport(poll: .object(bare))
+        let session = OnDeviceSession()
+        session.presentationHold = BoardPresentationHold()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true,
+                                 smartPass: .init(), close: {})
+        // Before the board-ingest wait ends: the pass not yet sent is called off.
+        session.toggleFullControl()
+        XCTAssertTrue(session.isFullControl)
+        try await Task.sleep(for: .milliseconds(400))
+        let held = await transport.responses()
+        XCTAssertTrue(held.isEmpty, "full control let smart pass answer")
+        session.toggleFullControl()
+        XCTAssertFalse(session.isFullControl)
+        try await waitForResponses(1, transport: transport)
+        try await waitUntilIdle(session)
+        let sent = await transport.responses()
+        XCTAssertEqual(sent.count, 1)
+        try await session.refresh()
+        XCTAssertTrue(session.snapshot?.log.contains { $0.message.hasPrefix("Auto-passed:") } == true)
+        try await session.close()
+    }
+
     /// Regression: Skip tapped while a poll is in flight used to be disabled for that
     /// instant and silently ignored. It now arms and passes once the poll finishes.
     @MainActor

@@ -10,9 +10,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026101401
+        versionCode = providers.gradleProperty("androidVersionCode").orNull?.toInt() ?: 2026101501
         versionName = providers.gradleProperty("androidVersionName").orNull ?: "0.1.1"
-        buildConfigField("int", "RELEASE_BUILD", "22")
+        buildConfigField("int", "RELEASE_BUILD", "23")
         ndk { abiFilters += "arm64-v8a" }
         buildConfigField("boolean", "NATIVE_ENGINE", withNative.toString())
         val relayURL = providers.gradleProperty("relayUrl").orNull ?: "https://magicmobile-relay.calebjfeliciano.workers.dev"
@@ -108,8 +108,6 @@ if(withNative) {
     tasks.named("preBuild").configure { dependsOn(verifyNative) }
 }
 dependencies {
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("junit:junit:4.13.2")
     testImplementation("junit:junit:4.13.2")

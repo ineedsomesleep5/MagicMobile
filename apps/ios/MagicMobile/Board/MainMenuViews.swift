@@ -302,7 +302,7 @@ private struct FitsHeightKey: PreferenceKey {
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
     /// Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
-    /// the other backdrops stay for UI tests that pin one with a launch argument.
+    /// `arena` (the classic layout) stays for UI tests that pin it with a launch argument.
     static let defaultValue = "tavern"
     static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
@@ -370,12 +370,16 @@ struct AutoPassAfterCastToggle: View {
 /// Smart auto-pass (OnDeviceSmartPass, on by default) and the button to its phase stops.
 struct SmartAutoPassToggle: View {
     @AppStorage(OnDeviceSmartPass.enabledKey) private var isOn = true
+    @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwn = false
     @State private var showStops = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TavernToggle(title: "Smart Auto-Pass", isOn: $isOn, identifier: "settings.smartAutoPass",
                          subtitle: "Passes for you when you have nothing to play, and skips steps you don’t stop at.")
+            TavernToggle(title: "Stop for My Own Spells", isOn: $stopForOwn, identifier: "settings.stopForOwnSpells",
+                         subtitle: "Off: your own spells and triggers resolve without a stop, as on Arena.")
+                .disabled(!isOn)
             Button { showStops = true } label: {
                 Label("Phase Stops", systemImage: "hand.raised.fill").frame(maxWidth: .infinity)
             }
@@ -419,7 +423,7 @@ struct PhaseStopsGrid: View {
     @AppStorage(OnDeviceSmartPass.stopsKey) private var raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
 
     private var explanation: String {
-        enabled ? "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It always stops when you can answer a spell on the stack."
+        enabled ? "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
                 : "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops."
     }
 

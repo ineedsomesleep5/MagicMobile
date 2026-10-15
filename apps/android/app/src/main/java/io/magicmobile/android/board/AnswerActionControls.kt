@@ -113,10 +113,14 @@ fun AutoPassAfterCastToggle() {
 @Composable
 fun SmartAutoPassToggle() {
     var isOn by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
+    var stopForOwn by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
     var showStops by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.tavernSettingsPanel().semantics { contentDescription = "settings.smartAutoPass" }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TavernToggle("Smart Auto-Pass", isOn, { isOn = it },
             subtitle = "Passes for you when you have nothing to play, and skips steps you don\u2019t stop at.", color = TavernPalette.parchment)
+        TavernToggle("Stop for My Own Spells", stopForOwn, { stopForOwn = it },
+            Modifier.semantics { contentDescription = "settings.stopForOwnSpells" },
+            subtitle = "Off: your own spells and triggers resolve without a stop, as on Arena.", enabled = isOn, color = TavernPalette.parchment)
         TavernButton({ showStops = true }, Modifier.fillMaxWidth().semantics { contentDescription = "settings.phaseStops" },
             kind = TavernButtonKind.SECONDARY, compact = true, enabled = isOn) {
             SfImage("hand.raised.fill", TavernPalette.parchment, 13.dp); TavernButtonText("Phase Stops")
@@ -148,7 +152,7 @@ fun PhaseStopsGrid() {
     var raw by AppPreferences.string(OnDeviceSmartPass.STOPS_KEY, OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops))
     val stops = OnDeviceSmartPass.Settings.decode(raw)
     Column(Modifier.fillMaxWidth()) {
-        Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It always stops when you can answer a spell on the stack."
+        Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
              else "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops.",
             Modifier.padding(bottom = 12.dp), color = TavernPalette.parchment.copy(alpha = 0.75f), style = sf(13f, design = SfDesign.SERIF))
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

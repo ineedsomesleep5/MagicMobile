@@ -369,8 +369,11 @@ public final class RealControlPrivacyTests {
             game.getState().setActivePlayerId(player("b").getId());
             Class<?> type=Class.forName("io.magicmobile.xmage.XmageEngine$Running");
             Constructor<?> constructor=type.getDeclaredConstructor(MobileCommanderMatch.class,LinkedHashMap.class,LinkedHashMap.class,MobileAICancellation.class,
-                java.nio.file.Path.class,List.class,long.class,boolean.class);constructor.setAccessible(true);
-            running=constructor.newInstance(match,new LinkedHashMap<String,Player>(seats),seats,new MobileAICancellation(),null,List.of(),0L,false);
+                java.nio.file.Path.class,List.class,long.class,boolean.class,GameRecorder.class,GameRandom.class);constructor.setAccessible(true);
+            // An unbound recorder: this rig calls the query seam directly, without a GAME thread or a record.
+            List<java.util.UUID> ids=new ArrayList<>();seats.values().forEach(p->ids.add(p.getId()));
+            running=constructor.newInstance(match,new LinkedHashMap<String,Player>(seats),seats,new MobileAICancellation(),null,List.of(),0L,false,
+                GameRecorder.recording(new GameRecord("{}",ids,List.of())),new GameRandom(0));
             query=type.getDeclaredMethod("query",PlayerQueryEvent.class);query.setAccessible(true);
             close=type.getDeclaredMethod("close");close.setAccessible(true);
             Field field=type.getDeclaredField("mailbox");field.setAccessible(true);mailbox=(MatchMailbox)field.get(running);

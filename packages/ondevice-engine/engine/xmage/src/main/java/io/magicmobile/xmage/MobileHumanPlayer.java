@@ -99,7 +99,28 @@ public final class MobileHumanPlayer extends HumanPlayer {
         // Resolve the current controller on each wait, so reset restores the original seat's channel.
         Channel input=((MobileHumanPlayer)controller).channel;
         Map<String,Object> answer=null;
-        try {
+        GameRecorder recorder=game instanceof MobileCommanderGame mobileGame?mobileGame.cancellation().recorder():null;
+        if(recorder!=null && !recorder.active(game)) recorder=null;
+        if(recorder!=null && recorder.replaying) {
+            // Replay (GameReplay): the recorded answer, a recorded concede, or the recorded save and resume.
+            int seat=recorder.seat(controller.getId());
+            while(answer==null) {
+                if(recorder.resumeNext()) recorder.resumeHere();
+                if(recorder.concedeDue() && game instanceof MobileCommanderGame mobile) {
+                    mobile.checkConcede();
+                    Player asked=game.getPlayer(getId());
+                    if(game.hasEnded() || asked==null || !asked.isInGame() || !controller.isInGame()) {
+                        response.resetAnswers();
+                        input.onRetracted.run();
+                        return;
+                    }
+                    input.onBoardChanged.run();
+                    continue;
+                }
+                GameRecorder replay=recorder;
+                answer=recorder.guard(()->replay.humanAnswer(seat,getId(),game));
+            }
+        } else try {
             while(answer==null) {
                 if(input.closed || Thread.currentThread().isInterrupted())
                     throw new CancellationException("Mobile match stopped");
@@ -121,6 +142,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
         } catch(InterruptedException e) {
             Thread.currentThread().interrupt();throw new CancellationException("Mobile match interrupted");
         }
+        if(recorder!=null && !recorder.replaying) recorder.human(recorder.seat(controller.getId()),getId(),answer,game);
         response.resetAnswers();
         // Standing instructions validated against this prompt (AnswerActions), applied on the GAME thread before the
         // answer itself. A pass action's own skip() marks the response; the answer below is the same pass.
@@ -169,6 +191,17 @@ public final class MobileHumanPlayer extends HumanPlayer {
                 default: throw new BridgeException("unsupported_response","Unknown answer action");
             }
         }
+    }
+    // "In a random order" from the game's seeded generator (GameRandom.randomOrder), one card at a time as upstream does.
+    @Override public boolean putCardsOnBottomOfLibrary(mage.cards.Cards cards,Game game,mage.abilities.Ability source,boolean anyOrder) {
+        if(anyOrder || cards==null || cards.size()<2) return super.putCardsOnBottomOfLibrary(cards,game,source,anyOrder);
+        for(UUID id:GameRandom.randomOrder(cards)) { mage.cards.Cards one=new mage.cards.CardsImpl();one.add(id);super.putCardsOnBottomOfLibrary(one,game,source,false); }
+        return true;
+    }
+    @Override public boolean putCardsOnTopOfLibrary(mage.cards.Cards cards,Game game,mage.abilities.Ability source,boolean anyOrder) {
+        if(anyOrder || cards==null || cards.size()<2) return super.putCardsOnTopOfLibrary(cards,game,source,anyOrder);
+        for(UUID id:GameRandom.randomOrder(cards)) { mage.cards.Cards one=new mage.cards.CardsImpl();one.add(id);super.putCardsOnTopOfLibrary(one,game,source,false); }
+        return true;
     }
     @Override public Player prepareControllableProxy(Player playerUnderControl) {
         if(playerUnderControl==null || !getId().equals(playerUnderControl.getTurnControlledBy()))

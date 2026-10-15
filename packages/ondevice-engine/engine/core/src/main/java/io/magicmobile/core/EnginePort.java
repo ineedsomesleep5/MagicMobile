@@ -26,6 +26,10 @@ public interface EnginePort extends AutoCloseable {
     default Map<String,Object> cancelCheckpoint(String matchId) {
         throw new BridgeException("checkpoint_unavailable","This installed engine cannot save games on request");
     }
+    /** The match's game record (docs/cloud/game-record.md). Backends without one say so. */
+    default Map<String,Object> record(String matchId) {
+        throw new BridgeException("record_unavailable","This installed engine does not record games");
+    }
     void destroy(String matchId);
     Map<String,Object> capabilities();
     /** Trusted local-only operation. Older/test backends must not imply validation. */

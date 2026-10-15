@@ -495,8 +495,11 @@ fun RankedLobbyScreen(rank: RankState, deckBracket: CommanderBracket?, canSearch
             Rule("person.2.fill", if (tier.preconOpponentsOnly) "AI opponents play official precon decks at skill ${tier.aiSkill}."
                 else "Opponents play Bracket $brackets decks. AI opponents play at skill ${tier.aiSkill}.")
             Rule("checkmark.seal.fill", "Your deck may be up to Bracket ${tier.maxDeckBracket}. A lower bracket earns +1 pip for each win.")
-            Rule("arrow.up.arrow.down", "Each win fills a pip and each loss empties one. Four pips win a division; with none left a loss drops you a division.")
-            if (tier < RankTier.GOLD) Rule("flame.fill", "Three wins in a row below Gold earn an extra pip.")
+            // Ladder option B (Caleb, 2026-10-15): Arena's steps and a floor at each tier.
+            Rule("arrow.up.arrow.down", (if (tier.winPips == 2) "Each win fills two pips" else "Each win fills a pip") + " " +
+                (if (tier.lossPips == 0) "and a loss costs nothing here." else "and each loss empties one."))
+            Rule("shield.fill", if (tier == RankTier.MYTHIC) "A loss at Mythic can drop you back to Diamond, never lower."
+                else "Four pips win a division, and a loss never drops you out of ${tier.label}.")
             Rule(if (canSearchPeople) "antenna.radiowaves.left.and.right" else "cpu",
                 if (canSearchPeople) "We look for a player near your rank first. If nobody's searching, an AI takes the seat."
                 else "Profiles are offline, so an AI takes the seat. AI games count the same.")

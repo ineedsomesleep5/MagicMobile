@@ -76,3 +76,11 @@ python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeou
   build/isamaru.json build/yargle.json build/adeline.json build/checkpoint-features.json \
   build/native-metadata-check/serialization-config.json \
   2>&1 | tee evidence/RealCheckpointTests.txt
+# Game records (docs/cloud/game-record.md): AI-only and scripted-human games recorded through the production
+# API and replayed from the record alone to the same winner, turn and life totals, plus eight more seeds.
+RECORD_TEST=$(mktemp -d "$ROOT/build/record-test-XXXXXX")
+python3 -c 'import subprocess,sys; subprocess.run(sys.argv[1:],check=True,timeout=1500)' \
+  java -Xmx1g -Djava.awt.headless=true -Dmagicmobile.recordSoak=8 -cp "$CP:build/test-real" io.magicmobile.xmage.RealGameRecordTests \
+  "$RECORD_TEST" build/token-triumph.json build/chaos-incarnate.json build/first-flight.json \
+  build/isamaru.json build/yargle.json build/adeline.json \
+  2>&1 | tee evidence/RealGameRecordTests.txt

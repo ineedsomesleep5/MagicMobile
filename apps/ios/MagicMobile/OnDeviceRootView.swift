@@ -38,6 +38,7 @@ struct OnDeviceRootView: View {
     @AppStorage(AutoPassAfterCast.key) private var autoPassAfterCast = true
     @AppStorage(OnDeviceSmartPass.enabledKey) private var smartAutoPass = true
     @AppStorage(OnDeviceSmartPass.stopsKey) private var phaseStops = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
+    @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwnSpells = false
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
@@ -333,7 +334,8 @@ struct OnDeviceRootView: View {
             canSkipToMyTurn: session.canSkipToMyTurn, isAutoPassing: session.isAutoPassing,
             status: session.autoPassStatus, endTurn: { session.endTurn() },
             skipResponses: { session.endTurnSkippingResponses() }, skipToMyTurn: { session.skipToMyTurn() },
-            stop: { session.stopAutoPass() }
+            stop: { session.stopAutoPass() },
+            isFullControl: session.isFullControl, toggleFullControl: { session.toggleFullControl() }
         )
     }
 
@@ -689,10 +691,11 @@ struct OnDeviceRootView: View {
             let upload: () async -> Void = { [account, profileRecord] in
                 await GameUploader.shared.flush(matches: profileRecord.matches) { await account.recordGame($0) }
             }
-            profileRecord.didRecord = { _ in Task { await upload() } }
+            // A ranked game goes up after its result counts on the server, which records its rank points then.
+            profileRecord.didRecord = { match in if match.mode != .ranked { Task { await upload() } } }
             account.afterRefresh = { [account, profileRecord] in
-                await upload()
                 await account.syncRank(profileRecord)
+                await upload()
             }
         }
         .onChange(of: setup.isBusy) { _, busy in
@@ -970,6 +973,7 @@ struct OnDeviceRootView: View {
         .onChange(of: autoPassAfterCast) { _, enabled in session.setAutoPassAfterCast(enabled) }
         .onChange(of: smartAutoPass) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: phaseStops) { _, _ in session.setSmartPass(.load()) }
+        .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
         .sheet(isPresented: $emotes.isChatOpen) {
@@ -1163,7 +1167,8 @@ struct OnDeviceRootView: View {
         let position = profileRecord.rank.position
         guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
                                              recent: profileRecord.recentAIDecks,
-                                             preconsOnly: position.tier.preconOpponentsOnly) else { return }
+                                             preconsOnly: position.tier.preconOpponentsOnly,
+                                             onlyPrecons: position.tier.preconOpponentsOnly ? AIDeckPool.gentlestPrecons : nil) else { return }
         startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
     }
 
@@ -1386,17 +1391,18 @@ struct OnDeviceRootView: View {
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: skill, aiDeckID: opponent.id)
         rankChange = nil
-        if mode == .ranked {
-            // The server's ticket for this game, so its result counts there too.
-            profileRecord.beginRankedAIGame(ticket: nil)
-            Task { [account, profileRecord] in
-                profileRecord.beginRankedAIGame(ticket: await account.startRankedAIGame(deckBracket: deckBracket.rawValue))
-            }
-        }
+        if mode == .ranked { profileRecord.beginRankedAIGame(ticket: nil) }
         Task {
+            // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
+            var seed: Int64?
+            if mode == .ranked {
+                let ticket = await account.startRankedAIGame(deckBracket: deckBracket.rawValue)
+                profileRecord.beginRankedAIGame(ticket: ticket?.id, seeded: ticket != nil)
+                seed = ticket?.seed
+            }
             await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
                                 deckID: selectedDeckID, aiDeckIDs: [opponent.id], startingPlayerMode: aiStartingPlayerMode,
-                                mode: mode, deckBracket: deckBracket.rawValue)
+                                mode: mode, deckBracket: deckBracket.rawValue, seed: seed)
             if session.matchID == nil { activeMatch = nil }
         }
     }
@@ -1419,9 +1425,13 @@ struct OnDeviceRootView: View {
         let winners = snapshot.winnerPlayerIds ?? []
         let outcome: RankOutcome = winners.contains(snapshot.viewerID) ? .win
             : (snapshot.isCompleted && winners.isEmpty ? .draw : .loss)
-        saveResult(current, outcome: outcome, turns: snapshot.turn, snapshot: snapshot)
         match?.recorded = true
         activeMatch = match
+        // The engine's game record first (solo games, before the match is destroyed), so a ranked result goes with it.
+        Task {
+            let file = await setup.finishedGameRecord().flatMap(profileRecord.keepGameRecord)
+            saveResult(current, outcome: outcome, turns: snapshot.turn, snapshot: snapshot, gameRecordFile: file)
+        }
     }
 
     /// Leaving a ranked game before it ends counts as a loss.
@@ -1432,18 +1442,19 @@ struct OnDeviceRootView: View {
         activeMatch = match
     }
 
-    private func saveResult(_ match: ActiveMatch, outcome: RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+    private func saveResult(_ match: ActiveMatch, outcome: RankOutcome, turns: Int, snapshot: GameSnapshot?, gameRecordFile: String? = nil) {
         let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
         let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
                                    aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
                                    colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
-                                   engineMatchID: session.matchID)
+                                   engineMatchID: session.matchID, gameRecordFile: gameRecordFile)
         rankChange = change
         let rankedMatchID = match.rankedMatchID, ranked = match.mode == .ranked
-        Task { [account, profileRecord] in
+        Task { [account] in
             if let rankedMatchID { await matchmaker.report(match: rankedMatchID, outcome: outcome) }
-            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile).
-            if ranked { await account.syncRank(profileRecord) }
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
+            // then upload the game so its rank history point is the standing after it.
+            if ranked { await account.afterRefresh?() }
         }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
             // After the result screen's own reveal.
@@ -1781,6 +1792,14 @@ struct OnDeviceRootView: View {
                     } else if diagnostics.errorMessage == nil {
                         Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.")
                     }
+                    // Developer replays (scripts/dev/replay_record.sh): the record shows every hand and library order.
+                    if let latest = profileRecord.gameRecordFiles().first {
+                        Divider()
+                        Text("Your last game's record lists every decision so it can be replayed on a computer. It shows your hands and library order.")
+                            .font(.footnote)
+                        ShareLink(item: latest) { Label("Share last game record", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("ondevice.shareGameRecord")
+                    }
                 }.padding()
             }
             .navigationTitle("Engine error report").navigationBarTitleDisplayMode(.inline)
@@ -1946,7 +1965,7 @@ private final class OnDeviceSetupModel: ObservableObject {
 
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
                  deckID: String, aiDeckIDs: [String], startingPlayerMode: String,
-                 mode: PlayMode? = nil, deckBracket: Int? = nil) async {
+                 mode: PlayMode? = nil, deckBracket: Int? = nil, seed: Int64? = nil) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
@@ -1958,8 +1977,11 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDecks: opponentDecks, aiSkill: aiSkill)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
+            // A ranked game's server seed, on engines that keep a game record (docs/PROTOCOL.md "Game record").
+            var configuration: [String: MagicMobileOnDevice.JSONValue] = ["seats": .array(seats)]
+            if let seed, runtime.capabilities?["gameRecord"] != nil { configuration["seed"] = .integer(seed) }
             // Checkpointed only when this engine advertises saveResume; otherwise sent unchanged.
-            let plan = resume.planSoloGame(configuration: .object(["seats": .array(seats)]), capabilities: runtime.capabilities)
+            let plan = resume.planSoloGame(configuration: .object(configuration), capabilities: runtime.capabilities)
             let created = try await runtime.create(client: client, configuration: plan.configuration)
             guard let matchID = created["matchId"]?.string, !matchID.isEmpty else {
                 throw EngineError.invalidMessage("XMage did not return a match ID. Close the runtime before trying again.")
@@ -1987,6 +2009,16 @@ private final class OnDeviceSetupModel: ObservableObject {
             if !runtime.isOpen, aiMatchID == nil { aiClient = nil }
             status = needsLeave ? "Game startup interrupted. Refresh or leave before starting again." : "Unable to start local game"
         }
+    }
+
+    /// The finished solo game's record (the engine's `record` op), fetched before the match is destroyed. Nil on engines
+    /// without game records, outside a solo game, or when recording stopped (`broken`). Local only: never sent to an
+    /// online opponent; a ranked AI result uploads it.
+    func finishedGameRecord() async -> Data? {
+        guard runtime.capabilities?["gameRecord"] != nil, let aiClient, let aiMatchID,
+              let record = try? await aiClient.call("record", fields: ["matchId": .string(aiMatchID)]),
+              record["format"]?.string == "magicmobile-game-record", record["broken"] == nil else { return nil }
+        return try? record.encoded()
     }
 
     /// Restores a saved solo game. On any failure the save is deleted, the player is told,

@@ -193,6 +193,42 @@ final class OnDeviceYieldPolicyTests: XCTestCase {
         XCTAssertNotNil(OnDeviceSmartPass.passPrompt(situation(hasPlay: true), settings: custom))
     }
 
+    /// Engine release A: your own spell or trigger on top resolves (unless you asked to stop for those); an opponent's
+    /// stops only with a play that answers it; an attack with nothing that answers it passes even at a stop.
+    func testSmartPassUsesStackControllersAndResponses() {
+        let settings = OnDeviceSmartPass.Settings()
+        func value(_ step: String = "UPKEEP", empty: Bool = false, mine: Bool?, response: Bool, myTurn: Bool = true) -> OnDeviceSmartPass.Situation {
+            var v = situation(hasPlay: true, step: step, myTurn: myTurn, emptyStack: empty)
+            v.topStackIsMine = mine; v.hasResponse = response
+            return v
+        }
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(value(mine: true, response: true), settings: settings), "own trigger resolves")
+        var stopOwn = settings; stopOwn.stopForOwnSpells = true
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(value(mine: true, response: true), settings: stopOwn))
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(value(mine: false, response: true), settings: settings), "an answer to their spell stops")
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(value(mine: false, response: false), settings: settings), "nothing answers it")
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(value(mine: nil, response: true), settings: settings), "older engine: today's stop")
+        // Their attack, a default stop: only a play that answers it stops.
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(value("DECLARE_ATTACKERS", empty: true, mine: nil, response: true, myTurn: false), settings: settings))
+        XCTAssertNotNil(OnDeviceSmartPass.passPrompt(value("DECLARE_ATTACKERS", empty: true, mine: nil, response: false, myTurn: false), settings: settings))
+        // Main phases keep their stops whatever the response flag says.
+        XCTAssertNil(OnDeviceSmartPass.passPrompt(value("PRECOMBAT_MAIN", empty: true, mine: nil, response: false), settings: settings))
+    }
+
+    func testSmartPassReadsEngineControllersAndResponseFlags() {
+        typealias J = MagicMobileOnDevice.JSONValue
+        let root: J = .object(["stackOrder": .array([.string("s2"), .string("s1")]),
+                               "stackControllers": .object(["s2": .string("viewer"), "s1": .string("other")])])
+        XCTAssertEqual(OnDeviceSmartPass.topStackIsMine(root, viewer: "viewer"), true)
+        XCTAssertEqual(OnDeviceSmartPass.topStackIsMine(root, viewer: "other"), false)
+        XCTAssertNil(OnDeviceSmartPass.topStackIsMine(.object(["stackOrder": .array([.string("s2")])]), viewer: "viewer"))
+        func view(_ rows: [J]) -> J { .object(["canPlayObjects": .object(["objects": .object(["c1": .object(["spells": .array(rows)])])])]) }
+        XCTAssertFalse(OnDeviceSmartPass.hasResponse(view([.object(["respondsToStack": .bool(false)])])))
+        XCTAssertTrue(OnDeviceSmartPass.hasResponse(view([.object(["respondsToStack": .bool(false)]), .object(["respondsToStack": .bool(true)])])))
+        XCTAssertTrue(OnDeviceSmartPass.hasResponse(view([.object([:])])), "a missing flag counts as a response")
+        XCTAssertFalse(OnDeviceSmartPass.hasResponse(view([.object(["manaAbility": .bool(true)])])), "mana abilities never count")
+    }
+
     func testSmartPassNeverAnswersAChoiceFloatingManaOrWhenOff() {
         let settings = OnDeviceSmartPass.Settings()
         var value = situation(hasPlay: false)

@@ -104,7 +104,8 @@ object OnDeviceSnapshotAdapter {
                 "id" to s(id), "objectId" to s(id), "objectType" to (item["mageObjectType"] ?: JsonNull),
                 "name" to (item["displayName"] ?: item["name"] ?: s("Stack object")),
                 "rulesText" to s((item["rules"].array ?: emptyList()).mapNotNull { it.string }.joinToString("\n")),
-                "targetIds" to (item["targets"] ?: JsonArray(emptyList())), "paid" to (item["paid"] ?: JsonNull))
+                "targetIds" to (item["targets"] ?: JsonArray(emptyList())), "paid" to (item["paid"] ?: JsonNull),
+                "controllerId" to (root["stackControllers"][id] ?: JsonNull))
             if (source !is JsonNull) {
                 fields["sourceCard"] = card(source)
                 (source["displayName"] ?: source["name"])?.let { fields["sourceName"] = it }

@@ -150,7 +150,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.ENABLED_KEY, true).value,
             io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(io.magicmobile.android.ui.AppPreferences.string(
                 io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
-                io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops)).value))
+                io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops)).value),
+            io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false).value)
     private var aiClient: EngineClient? = null
     private var aiMatchID: String? = null
     private var sceneActive = true
@@ -259,8 +260,24 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
         }
     }
 
+    /**
+     * The finished solo game's record (the engine's `record` op), fetched before the match is destroyed. Null on engines without
+     * game records, outside a solo game, or when recording stopped (`broken`). Local only: never sent to an online opponent; a
+     * ranked AI result uploads it.
+     */
+    suspend fun finishedGameRecord(): ByteArray? {
+        val client = aiClient ?: return null
+        val matchID = aiMatchID ?: return null
+        if (runtime.capabilities["gameRecord"] == null) return null
+        val record = runCatching { client.call("record", mapOf("matchId" to kotlinx.serialization.json.JsonPrimitive(matchID))) }.getOrNull()
+            ?: return null
+        if (record["format"].string != "magicmobile-game-record" || record["broken"] != null) return null
+        return runCatching { EngineJson.encode(record) }.getOrNull()
+    }
+
     /** `settings` are the setup choices kept with a checkpoint, so a resumed game can rebuild its menu state and Rematch. */
-    suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null, deckID: String? = null) {
+    suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null, deckID: String? = null,
+                        seed: Long? = null) {
         val identity = identity ?: return
         if (isBusy || needsLeave) return
         isBusy = true; errorMessage = null; feedback = null; status = "Starting XMage"
@@ -278,7 +295,9 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             aiClient = client
             // The checkpoint field goes only to an engine that advertises saveResume.
             val capabilities = runtime.capabilities
-            val base = JsonObject(mapOf("seats" to JsonArray(seats)))
+            // A ranked game's server seed, on engines that keep a game record (docs/PROTOCOL.md "Game record").
+            val base = JsonObject(mapOf("seats" to JsonArray(seats)) +
+                (if (seed != null && capabilities["gameRecord"] != null) mapOf("seed" to kotlinx.serialization.json.JsonPrimitive(seed)) else emptyMap()))
             val checkpoint = resume.checkpointFor(capabilities, seats)
             val created = runtime.create(client, checkpoint?.let { JsonObject(base + ("checkpoint" to it)) } ?: base)
             runtimeOpen = runtime.isOpen

@@ -49,6 +49,7 @@ public final class EngineService implements AutoCloseable {
                 case "poll": keys(r,"protocol","op","matchId","viewerId","after");result=engine().poll(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.integer(r.get("after")));break;
                 case "respond": keys(r,"protocol","op","matchId","viewerId","command");result=engine().respond(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"),Json.object(r.get("command")));break;
                 case "concede": keys(r,"protocol","op","matchId","viewerId");engine().concede(Json.requiredString(r,"matchId"),Json.requiredString(r,"viewerId"));result=Json.map("conceded",true);break;
+                case "record": keys(r,"protocol","op","matchId");result=engine().record(Json.requiredString(r,"matchId"));break;
                 case "destroy": keys(r,"protocol","op","matchId");engine().destroy(Json.requiredString(r,"matchId"));result=Json.map("destroyed",true);break;
                 case "shutdown": keys(r,"protocol","op");close();result=Json.map("closed",true);break;
                 default: throw new BridgeException("unknown_operation","Unknown operation");

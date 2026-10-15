@@ -36,16 +36,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # Gradle comes from the wrapper (apps/android/gradlew, pinned with a checksum).
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
       - name: Prepare Android SDK
         run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager 'platforms;android-35' 'build-tools;35.0.0'"
       - name: Compile app and exercise Kotlin contracts against captured XMage views
         run: |
           set -euo pipefail
           mkdir -p build_output/android-app
-          gradle -p apps/android --no-daemon :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug 2>&1 | tee build_output/android-app/build.log
+          apps/android/gradlew -p apps/android --no-daemon :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug 2>&1 | tee build_output/android-app/build.log
           git rev-parse HEAD > build_output/android-app/source.txt
           echo 'Diagnostic compilation: no native engine, no Android device execution.' > build_output/android-app/SCOPE.txt
       - uses: actions/upload-artifact@v4
