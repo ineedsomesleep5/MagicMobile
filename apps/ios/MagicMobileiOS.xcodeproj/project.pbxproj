@@ -168,6 +168,7 @@
 		760A9FB9120D62A42DF5D4BF /* dice-land.caf in Resources */ = {isa = PBXBuildFile; fileRef = 8BC13E054B7D03947A85C88B /* dice-land.caf */; };
 		76BF8C0B6C031B4143B13EE2 /* grimoire-close-portrait.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 369879E8AAF8F8EC8B2597E5 /* grimoire-close-portrait.mp4 */; };
 		77198AC6D92BD046F1CC9D3C /* OnDevicePromptAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECEAC8960FAD7EA6D906C998 /* OnDevicePromptAdapter.swift */; };
+		77C80EF92433CD20BBB5E576 /* PrivacyManifestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0558E7561DEF2A95235ADB /* PrivacyManifestTests.swift */; };
 		7809578545F0C6535C327D5C /* commander-brackets.json in Resources */ = {isa = PBXBuildFile; fileRef = 0011D51DDEED2576ED425898 /* commander-brackets.json */; };
 		7A783E437023DFC7F7699487 /* OnDeviceStartingPlayerChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1767B12B3ED4F770199B3F44 /* OnDeviceStartingPlayerChoice.swift */; };
 		7B5832D9238D0C17B22BAED4 /* BattlefieldAdaptiveSizingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F675833239E93937C36ABD7C /* BattlefieldAdaptiveSizingTests.swift */; };
@@ -447,6 +448,7 @@
 		49A07E72198624C12E6A1CEB /* CommanderSpellbookModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommanderSpellbookModels.swift; sourceTree = "<group>"; };
 		49D79412BAEE1AAFF99487D7 /* DeckStudioTileLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioTileLayoutTests.swift; sourceTree = "<group>"; };
 		49FED4AF9E62808A6FB79605 /* DeckStudioPlaytestStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlaytestStore.swift; sourceTree = "<group>"; };
+		4A0558E7561DEF2A95235ADB /* PrivacyManifestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyManifestTests.swift; sourceTree = "<group>"; };
 		4A8AB3E92C8E6BBBE67EFE6A /* FriendChallenges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendChallenges.swift; sourceTree = "<group>"; };
 		4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardCardChoiceView.swift; sourceTree = "<group>"; };
 		4C8C847CE9842FA9A99B2ACD /* GameResume.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameResume.swift; sourceTree = "<group>"; };
@@ -999,6 +1001,7 @@
 				6EA5ECC621D4E6094CABD432 /* ParityGoldenTests.swift */,
 				D5ADEEA6719E8EF6079D8800 /* PortraitInteractionPolicyTests.swift */,
 				860E2CBE7896CA937E309ED2 /* PortraitPolishTests.swift */,
+				4A0558E7561DEF2A95235ADB /* PrivacyManifestTests.swift */,
 				79AEE33A42096E2A875A9C73 /* ProfileAnalyticsTests.swift */,
 				A58F68D10D8378ECA84A2BA1 /* RankedParityTests.swift */,
 				F1ED1A69CE6E4F9B7C2D7F7E /* RankedStandingTests.swift */,
@@ -1694,6 +1697,7 @@
 				844B57B284E797BBF126E0EE /* ParityGoldenTests.swift in Sources */,
 				1A1C13307BD020E5919ABD1A /* PortraitInteractionPolicyTests.swift in Sources */,
 				A31A4E6160F42888F3DD8A0E /* PortraitPolishTests.swift in Sources */,
+				77C80EF92433CD20BBB5E576 /* PrivacyManifestTests.swift in Sources */,
 				A0D58893AC1BD35CE5E90594 /* ProfileAnalyticsTests.swift in Sources */,
 				56F37B5CD12752F12D64FA56 /* RankedParityTests.swift in Sources */,
 				4ED5D0592E24486B49C573F8 /* RankedStandingTests.swift in Sources */,
