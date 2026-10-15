@@ -383,13 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 21 flips double-faced cards in Deck Studio and
-                the card inspector, lets you pick your commander before
-                importing and imports public decks from an Archidekt username.
-                The opponent’s status badges curve around their portrait,
-                Concede, Start New and Quit sit at the top of the game menu,
-                and a combat freeze is fixed. Android is an early alpha;
-                physical-phone acceptance is still pending.
+                Android build 22 adds smart auto-pass: the game passes for you
+                when you have nothing to play, stops at the phases you pick, and
+                lets spells and removal finish playing before it moves on.
+                Online games get a turn timer ring, your first game can have a
+                coach, and titles use a new small-caps typeface. Android is an
+                early alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -398,13 +397,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 36 flips double-faced cards in Deck Studio and the card
-                inspector, lets you pick your commander before importing and
-                imports public decks from an Archidekt username. The
-                opponent’s status badges curve around their portrait, Concede,
-                Start New and Quit sit at the top of the game menu, and a
-                combat freeze is fixed. It runs on iPhone and iPad. Apple has
-                approved this build for Internal and External TestFlight.
+                Build 38 adds smart auto-pass: the game passes for you when you
+                have nothing to play, stops at the phases you pick, and lets
+                spells and removal finish playing before it moves on. Online
+                games get a turn timer ring, your first game can have a coach,
+                and titles use a new small-caps typeface. It runs on iPhone and
+                iPad. Apple has approved this build for Internal and External
+                TestFlight.
               </p>
             </details>
             <details>
