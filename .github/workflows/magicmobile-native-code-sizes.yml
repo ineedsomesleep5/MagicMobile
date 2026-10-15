@@ -1,0 +1,57 @@
+name: MagicMobile native code sizes
+
+# Measurement only: breaks down the AOT code of an existing unstripped Android engine (the
+# android-native-symbols-<sha> artifact of a magicmobile-android.yml run) by Java package and
+# class. It downloads one artifact and parses its symbol table; it builds and publishes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'magicmobile-android.yml run whose android-native-symbols artifact to read'
+        required: true
+      artifact:
+        description: 'Artifact name (android-native-symbols-<sha>)'
+        required: true
+  push:
+    branches: [cloud/c4-engine-size-ai]
+    paths:
+      - .github/workflows/magicmobile-native-code-sizes.yml
+      - packages/ondevice-engine/scripts/native_code_sizes.py
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  code-sizes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Push trigger (C4): Android run 37683328246 at 0546f91, the latest symbols artifact
+      # still kept (expires 2026-10-21).
+      RUN_ID: ${{ inputs.run_id || '37683328246' }}
+      ARTIFACT: ${{ inputs.artifact || 'android-native-symbols-0546f91e88ee6ff528fd95563f09c766ba4d4e1b' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packages/ondevice-engine/scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+          path: symbols
+      - name: Code size by package and class
+        run: |
+          ls -la symbols
+          lib=$(find symbols -name 'libmmengine.so' | head -1)
+          python3 packages/ondevice-engine/scripts/native_code_sizes.py "$lib" --csv code-sizes.csv --top 60 \
+            | tee code-sizes.md
+          cat code-sizes.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-code-sizes-${{ env.RUN_ID }}
+          path: |
+            code-sizes.md
+            code-sizes.csv
+          retention-days: 30
