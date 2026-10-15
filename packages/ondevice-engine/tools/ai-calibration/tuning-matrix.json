@@ -1,0 +1,12 @@
+{
+  "description": "C3 tuning on engines with AIDifficulty (cloud/c2-engine-a): adjacent tiers with C2's defaults (skill 1 d2 m15, 2 d3 m10, 3 d4 m5), and candidate B with more mistakes (1 m20, 2 m15, 3 m10, same depths). Skill 3 vs 4 with defaults is in baseline-matrix.json. Lower skill is A.",
+  "pool": "core+precon",
+  "games": 80,
+  "pairings": [
+    [1, 2],
+    [2, 3],
+    {"a": 1, "b": 2, "mistake_a": 20, "mistake_b": 15},
+    {"a": 2, "b": 3, "mistake_a": 15, "mistake_b": 10},
+    {"a": 3, "b": 4, "mistake_a": 10}
+  ]
+}
