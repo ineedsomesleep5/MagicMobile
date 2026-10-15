@@ -192,11 +192,41 @@ could publish any rank. Now the server is the referee, using the existing databa
   within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
 - Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
   functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
+
 - **Status: applied to the live project on 2026-10-15 UTC** (migration `ranked_referee`, file SHA-256 `a87d4431…a9ea`,
   with Caleb's go-ahead). Checked afterwards: the four new public functions plus `mm_ranked_report`/`publish` are
   callable by signed-in players and not anonymous callers; `mm_ranked_mirror/current/apply/settle` by neither; the four
   new tables have RLS on with no grants; all 3 published standings were carried over as `imported`; the security
   advisor shows only the usual RPC-only notices. No live game has been played against it yet.
+
+### AI wins backed by the game record (R3, migration `20261016120000_ranked_ai_records.sql`)
+
+- `mm_ranked_ai_start2` hands out the same ticket plus a server seed (text, 64-bit) and remembers the tier's AI
+  skill. The app waits up to four seconds for it before starting the game and passes the seed to the engine's `create`
+  (only on engines advertising `gameRecord`), so one seed is one game.
+- When a solo game ends the app fetches the engine's `record` before saving the result, keeps it on the phone
+  (`Profile/GameRecords`, the last 50, no backups) and sends it with the result: `mm_ranked_ai_result2(game, result,
+  record)`. Only seeded tickets use it; older builds keep `mm_ranked_ai_start` / `mm_ranked_ai_result` unchanged.
+- Before a win on a seeded ticket counts, `mm_ranked_ai_record_check` runs the cheap checks of
+  docs/cloud/game-record.md: hash chain equals `head`, the ticket's seed, an engine build listed in
+  `ranked_engine_builds`, one human and one AI seat, an AI skill no more than one tier below the ticket's with the
+  engine's depth and mistake chance for that skill (`mm_ai_engine_depth` / `mm_ai_engine_mistakes`, keep them in step
+  with `AIDifficulty.java`), an end where the human alone won and the AI lost, increasing turn marks, the entry
+  grammar with no concede, at least four turns and five seconds a turn since the ticket. A failed check settles the win
+  as `unverified` (no rank change, `ranked_ai_games.record_check` says why). Every win's record is kept in
+  `ranked_ai_records` for review and can be replayed with `scripts/dev/replay_record.sh`.
+- **Release step:** every release whose engine records games registers its engine build before it goes out, or its
+  ranked AI wins settle as `unverified`:
+  `insert into public.ranked_engine_builds (engine_build, label) values ('<sha256:… from python3
+  packages/ondevice-engine/scripts/engine_build_identity.py>', 'TestFlight NN / Android NN');` The identity is a hash
+  of the engine sources, the same on both platforms (print it with `python3 -c 'import sys; sys.path.insert(0,
+  "packages/ondevice-engine/scripts"); import engine_build_identity as e; print(e.identity())'`).
+- **Limits:** the checks prove a record is well formed, unaltered, made for this ticket and consistent with the claimed
+  win; a modified app can still write a consistent record by hand, and the AI's choices are recorded, not recomputed.
+  The older entry points stay open for older builds until they are retired.
+- Tests: `supabase/tests/ranked_ai_records.sql` (records built by `verify-ranked.mjs` with node's SHA-256),
+  `RankedStandingTests.swift`, `RankedStandingTest.kt`, the guest-refusal tests in `SafetyTests.swift` and
+  `HostRouterPrivacyTest.kt`.
 
 ## Tests
 

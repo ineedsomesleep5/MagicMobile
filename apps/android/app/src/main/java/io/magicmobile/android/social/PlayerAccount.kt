@@ -184,14 +184,16 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         if (phase == Phase.READY && username != null) SupabaseFriendChallenges(api) else null
 
     /**
-     * Starts a ranked game against the AI on the server (mm_ranked_ai_start), so its result counts there. Null offline
-     * or without a profile name: that game then counts on this phone only.
+     * Starts a ranked game against the AI on the server (mm_ranked_ai_start2), so its result counts there, with the seed the
+     * engine deals it with. Null offline or without a profile name: that game then counts on this phone only. Waits at most
+     * [timeoutMillis], since the game waits for it.
      */
-    suspend fun startRankedAIGame(deckBracket: Int): String? {
+    suspend fun startRankedAIGame(deckBracket: Int, timeoutMillis: Long = 4_000): io.magicmobile.android.game.RankedAITicket? {
         if (phase != Phase.READY || username == null) return null
-        return runCatching {
-            Json.parseToJsonElement(api.rpc("mm_ranked_ai_start", mapOf("p_deck_bracket" to JsonPrimitive(deckBracket)))).jsonPrimitive.content
-        }.getOrNull()
+        return kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+            runCatching { api.rpc("mm_ranked_ai_start2", mapOf("p_deck_bracket" to JsonPrimitive(deckBracket))) }.getOrNull()
+                ?.let(io.magicmobile.android.game.RankedAITicket::parse)
+        }
     }
 
     /**
@@ -203,7 +205,15 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         fun parse(text: String) = runCatching { io.magicmobile.android.game.RankedStanding.parse(Json.parseToJsonElement(text) as JsonObject) }.getOrNull()
         for (pending in record.file.pendingRankedResults) {
             try {
-                val text = api.rpc("mm_ranked_ai_result", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw)))
+                val text = if (pending.seeded) {
+                    // The game record backs the result; without one a win settles as unverified.
+                    val gameRecord = pending.recordFile?.let(record::gameRecord)
+                        ?.let { runCatching { Json.parseToJsonElement(it.decodeToString()) }.getOrNull() } ?: kotlinx.serialization.json.JsonNull
+                    api.rpc("mm_ranked_ai_result2", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw),
+                        "p_record" to gameRecord))
+                } else {
+                    api.rpc("mm_ranked_ai_result", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw)))
+                }
                 record.resolvePendingRankedResult(pending.ticket)
                 parse(text)?.let(record::adopt)
             } catch (error: kotlinx.coroutines.CancellationException) {
