@@ -94,6 +94,12 @@ contradicting one.
   **Rule:** compare card instances (the record's `c<n>` names), not names; when a replay diverges, run
   `RealGameRecordTests` with `-Dmagicmobile.recordOnly=<scenario>` and diff the per-entry traces it
   writes. Where: `GameRandom.java`, `GameRecorder.java`, `XmageEngine.build`, docs/cloud/game-record.md.
+- 2026-10-15 (Claude, C5): a game replay that matched inside the recording JVM failed in a fresh one
+  (simultaneous tokens enter in identity-hash order), and an exception in replay code inside an AI's
+  `priority()` vanished: `GameImpl.playPriority` catches `Exception`, rolls back and asks again, which
+  looked like an unrelated mismatch two entries later. **Rule:** verify replays in a fresh JVM
+  (`GameReplay` command line); turn any replay-side exception into `GameRecorder.Stop` (an `Error`),
+  never let it reach XMage's error recovery.
 - 2026-10-15 (Claude, C5): `RealControlPrivacyTests` builds `XmageEngine.Running` by reflection with its
   exact constructor signature, so a new `Running` parameter compiles everywhere and then fails ten
   checks at run time with `NoSuchMethodException`. **Rule:** when `Running`'s constructor changes,

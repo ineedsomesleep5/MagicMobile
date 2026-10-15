@@ -174,7 +174,9 @@ final class GameRecorder {
             seats.add(Json.map("seatId",seatIds.get(i),"life",player.getLife(),"lost",player.hasLost(),"left",player.hasLeft()));
         }
         return Json.write(Json.map("state",ended?"ended":"running","turn",game.getTurnNum(),"winners",winners,
-            "seats",seats,"entries",record.entries.size(),"digest",digest(game)));
+            "seats",seats,"entries",replaying?cursor:record.entries.size(),"digest",digest(game),
+            // Errors XMage caught and rolled back (GameImpl.playPriority): a replay must hit the same ones.
+            "engineErrors",game.getTotalErrorsCount()));
     }
 
     // ---- Reading (replay) ------------------------------------------------------------------
@@ -184,6 +186,15 @@ final class GameRecorder {
         private static final long serialVersionUID=1L;
         final String kind; final int index;
         Stop(String kind,int index,String message) { super(message,null,false,false);this.kind=kind;this.index=index; }
+    }
+    /**
+     * Replay code: a failure becomes a Stop. Upstream's priority loop catches Exception, rolls back and asks
+     * again, which would hide it behind an unrelated mismatch later.
+     */
+    <T> T guard(Supplier<T> call) {
+        try { return call.get(); }
+        catch(Stop stop) { throw stop; }
+        catch(RuntimeException e) { throw diverged("the replay could not apply it: "+e); }
     }
     Stop diverged(String message) {
         return new Stop("diverged",cursor,"Entry "+cursor+" (turn "+(live==null?"?":live.getTurnNum())+"): "+message);
@@ -253,15 +264,17 @@ final class GameRecorder {
         if(id==null) return "-";
         int seat=record.players.indexOf(id);
         if(seat>=0) return "p"+seat;
-        if(cardIndex==null) {
-            cardIndex=new HashMap<>();
-            for(int i=0;i<record.cards.size();i++) cardIndex.put(record.cards.get(i),i);
-        }
-        Integer card=cardIndex.get(id);
+        Integer card=cardIndex().get(id);
         if(card!=null) return "c"+card;
+        Permanent token=game.getPermanent(id);
+        if(token!=null) {
+            String key=tokenKey(token);int k=0;
+            for(Permanent permanent:game.getBattlefield().getAllPermanents()) {
+                if(permanent.getId().equals(id)) return "b"+key+"."+k;
+                if(!cardIndex().containsKey(permanent.getId()) && tokenKey(permanent).equals(key)) k++;
+            }
+        }
         int k=0;
-        for(Permanent permanent:game.getBattlefield().getAllPermanents()) { if(permanent.getId().equals(id)) return "b"+k; k++; }
-        k=0;
         for(StackObject item:game.getStack()) { if(item.getId().equals(id)) return "s"+k; k++; }
         k=0;
         for(CommandObject object:game.getState().getCommand()) { if(object.getId().equals(id)) return "o"+k; k++; }
@@ -269,17 +282,8 @@ final class GameRecorder {
         for(SpecialAction action:game.getState().getSpecialActions()) { if(action.getId().equals(id)) return "x"+k; k++; }
         String ability=abilityName(id,game);
         if(ability!=null) return ability;
-        if(game.getObject(id)==null && game.getPlayer(id)==null) {
-            // Unknown to the game in both runs, unless some playable ability still answers to it: then the
-            // record cannot name it, and stops (with what it was) rather than replay something else.
-            for(UUID playerId:record.players) {
-                Player player=game.getPlayer(playerId);
-                if(player!=null) for(Ability playable:player.getPlayable(game,true))
-                    if(id.equals(playable.getId()) || id.equals(playable.getSourceId()) || id.equals(playable.getOriginalId()))
-                        throw new IllegalArgumentException("unnamed playable "+playable.getClass().getSimpleName()+" ("+playable.getRule()+")");
-            }
-            return "?";
-        }
+        // Unknown to the game in both runs (an answer that names nothing, such as a click on no object).
+        if(game.getObject(id)==null && game.getPlayer(id)==null) return "?";
         throw new IllegalArgumentException("unnamed object "+id+" ("+game.getObject(id)+")");
     }
     /** An ability ID a human may send at priority: {@code a<object>/<i>} for the i-th ability of a visible object. */
@@ -300,6 +304,22 @@ final class GameRecorder {
         }
         return null;
     }
+    private Map<UUID,Integer> cardIndex() {
+        if(cardIndex==null) {
+            cardIndex=new HashMap<>();
+            for(int i=0;i<record.cards.size();i++) cardIndex.put(record.cards.get(i),i);
+        }
+        return cardIndex;
+    }
+    /**
+     * Tokens (permanents that are not deck cards) by name and controller, then by order among the same:
+     * XMage puts simultaneous tokens onto the battlefield in hash order, so a plain position differs.
+     */
+    private String tokenKey(Permanent permanent) {
+        CRC32 crc=new CRC32();
+        crc.update(permanent.getName().getBytes(StandardCharsets.UTF_8));
+        return Long.toString(crc.getValue(),36)+"."+record.players.indexOf(permanent.getControllerId());
+    }
     UUID resolve(String name,Game game) {
         if(name.equals("-")) return null;
         if(name.equals("?")) return UUID.randomUUID(); // unknown to the game in both runs
@@ -310,11 +330,17 @@ final class GameRecorder {
             if(abilities==null || i>=abilities.size()) throw diverged("no ability "+name);
             return abilities.get(i).getId();
         }
+        if(name.startsWith("b")) {
+            int dot=name.lastIndexOf('.');
+            String key=name.substring(1,dot);int k=Integer.parseInt(name.substring(dot+1));
+            for(Permanent permanent:game.getBattlefield().getAllPermanents())
+                if(!cardIndex().containsKey(permanent.getId()) && tokenKey(permanent).equals(key) && k--==0) return permanent.getId();
+            throw diverged("no permanent "+name);
+        }
         int index=Integer.parseInt(name.substring(1));
         switch(name.charAt(0)) {
             case 'p': return record.players.get(index);
             case 'c': return record.cards.get(index);
-            case 'b': return nth(game.getBattlefield().getAllPermanents(),index,name).getId();
             case 's': return nth(game.getStack(),index,name).getId();
             case 'o': return nth(game.getState().getCommand(),index,name).getId();
             case 'x': return nth(game.getState().getSpecialActions(),index,name).getId();
@@ -400,7 +426,9 @@ final class GameRecorder {
             text.append('m');
             for(UUID id:selected) { int i=keys.indexOf(id);text.append(i<0?"?":Integer.toString(i)).append(','); }
         }
-        List<UUID> described=selected.isEmpty() && modes.getMode()!=null?List.of(modes.getMode().getId()):selected;
+        // Modes not chosen yet are chosen (and recorded) during activation, so the active mode's targets
+        // before that are incidental state and stay out of the description.
+        List<UUID> described=!selected.isEmpty()?selected:modes.size()<=1 && modes.getMode()!=null?List.of(modes.getMode().getId()):List.of();
         for(UUID id:described) {
             Mode mode=modes.get(id);
             if(mode==null) continue;
@@ -411,6 +439,49 @@ final class GameRecorder {
         return text.length()==0?".":text.toString();
     }
     /** Sorted: upstream's option generator lists a target's combinations in hash order, so only the set is compared. */
+    /**
+     * The ability with the described modes and targets set the way upstream's option generator sets them
+     * (PlayerImpl.addModeOptions and addTargetOptions), or null when that cannot express it (an X payment)
+     * or the result describes differently.
+     */
+    Ability rebuild(Ability ability,String want,Game game) {
+        String[] groups=want.equals(".")?new String[]{""}:want.split(";",-1);
+        String header=groups[0];
+        if(want.contains(";x")) return null;
+        Modes modes=ability.getModes();
+        List<Mode> all=new ArrayList<>(modes.values());
+        List<Mode> chosen=new ArrayList<>();
+        int m=header.indexOf('m');
+        if(m>=0) {
+            modes.clearSelectedModes();
+            for(String index:header.substring(m+1).split(",")) {
+                if(index.isEmpty()) continue;
+                if(index.equals("?")) return null;
+                Mode mode=all.get(Integer.parseInt(index));
+                modes.addSelectedMode(mode.getId());modes.setActiveMode(mode);chosen.add(mode);
+            }
+        } else if(modes.getMode()!=null) chosen.add(modes.getMode());
+        List<Target> targets=new ArrayList<>();
+        for(Mode mode:chosen) targets.addAll(mode.getTargets());
+        int t=0,c=0;
+        for(int g=1;g<groups.length;g++) {
+            String group=groups[g];
+            Target target=group.startsWith("t")?(t<targets.size()?targets.get(t++):null)
+                :group.startsWith("c")?(c<ability.getCosts().getTargets().size()?ability.getCosts().getTargets().get(c++):null):null;
+            if(target==null) return null;
+            String items=group.substring(1);
+            if(items.endsWith("k")) { target.setSkipChoice(true);items=items.substring(0,items.length()-1); }
+            for(String item:items.split(",")) {
+                if(item.isEmpty()) continue;
+                int star=item.indexOf('*');
+                UUID id=resolve(star<0?item:item.substring(0,star),game);
+                if(star>=0) target.addTarget(id,Integer.parseInt(item.substring(star+1)),ability,game,true);
+                else target.addTarget(id,ability,game,true);
+            }
+        }
+        if(header.contains("P")) modes.setPreselected(true);
+        return describe(ability,game).equals(want)?ability:null;
+    }
     private void targets(StringBuilder text,Target target,Game game) {
         List<String> items=new ArrayList<>();
         for(UUID id:target.getTargets()) items.add(name(id,game)+(target instanceof TargetAmount?"*"+target.getTargetAmount(id):""));
@@ -532,14 +603,11 @@ final class GameRecorder {
         }
         return text.toString();
     }
+    /** An option the question lists (a mode, a triggered ability to order) by its position; anything else by name. */
     private String uuidName(String value,Prompt prompt,Game game) {
-        UUID id=UUID.fromString(value);
-        try { return name(id,game); }
-        catch(IllegalArgumentException unnamed) {
-            int option=prompt.options.indexOf(value);
-            if(option<0) throw unnamed;
-            return "#"+option;
-        }
+        int option=prompt.options.indexOf(value);
+        if(option>=0) return "#"+option;
+        return name(UUID.fromString(value),game);
     }
     private UUID resolveUuid(String name,Prompt prompt,Game game) {
         if(name.startsWith("#")) {

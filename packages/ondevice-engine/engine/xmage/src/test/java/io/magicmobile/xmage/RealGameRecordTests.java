@@ -45,7 +45,7 @@ public final class RealGameRecordTests {
         // -Dmagicmobile.recordSoak=<games>: more seeds and deck pairings, alternating AI-only and human games.
         int soak=Integer.getInteger("magicmobile.recordSoak",0);
         List<Map<String,Object>> precons=List.of(tokens,chaos,flight,adeline,isamaru,yargle);
-        for(int i=0;i<soak;i++) {
+        for(int i=Integer.getInteger("magicmobile.recordSoakFrom",0);i<soak;i++) {
             Map<String,Object> a=precons.get(i%precons.size()),b=precons.get((i*5+1)%precons.size()),c=precons.get((i*7+2)%precons.size());
             long seed=1000+i;
             switch(i%4) {
@@ -188,9 +188,14 @@ public final class RealGameRecordTests {
         Map<String,Object> end=Json.parseObject((String)record.get("end"));
         check(ended==("ended".equals(end.get("state"))),name+": record end state "+end.get("state"));
         long started=System.nanoTime();
-        Map<String,Object> result=GameReplay.replay(record,false,TimeUnit.MINUTES.toMillis(5));
+        // A fresh JVM, as a verifier runs it: the documented command line, with nothing left over from the
+        // recorded game's process.
+        Map<String,Object> result=replayInFreshJvm(work.resolve(name+".record.json"));
         long millis=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
         if(!Boolean.TRUE.equals(result.get("matches"))) {
+            // Diagnostics only: the same replay in this process, with per-entry traces.
+            Map<String,Object> local=GameReplay.replay(record,false,TimeUnit.MINUTES.toMillis(5));
+            result.put("inProcess",Json.map("outcome",local.get("outcome"),"entriesUsed",local.get("entriesUsed"),"message",local.get("message")));
             List<String> replayed=GameReplay.lastDigests;
             int first=0;
             while(first<Math.min(digests.size(),replayed.size()) && digests.get(first).equals(replayed.get(first))) first++;
@@ -208,6 +213,20 @@ public final class RealGameRecordTests {
         sizes.add(size);
         System.out.println("PASS "+name+" replay "+result.get("outcome")+" to the recorded "+(ended?"winner, ":"question, ")
             +"turn "+end.get("turn")+" and life totals "+Json.write(end.get("seats"))+" in "+millis+"ms; "+size);
+    }
+
+    private static Map<String,Object> replayInFreshJvm(Path file) throws Exception {
+        String java=ProcessHandle.current().info().command().orElse(Path.of(System.getProperty("java.home"),"bin","java").toString());
+        Path log=file.resolveSibling(file.getFileName()+".replay.log");
+        Process process=new ProcessBuilder(java,"-Xmx1g","-Djava.awt.headless=true","-cp",System.getProperty("java.class.path"),
+            GameReplay.class.getName(),file.toString()).redirectError(log.toFile()).start();
+        String output=new String(process.getInputStream().readAllBytes(),StandardCharsets.UTF_8);
+        if(!process.waitFor(300,TimeUnit.SECONDS)) { process.destroyForcibly();throw new AssertionError("replay timed out: "+file); }
+        String line=output.lines().filter(l->l.startsWith("{")).reduce((a,b)->b).orElse(null);
+        if(line==null) throw new AssertionError("replay printed no result ("+process.exitValue()+"): "+Files.readString(log).lines().limit(20).toList());
+        Map<String,Object> result=new LinkedHashMap<>(Json.parseObject(line));
+        check((process.exitValue()==0)==Boolean.TRUE.equals(result.get("matches")),"the command line exits 0 exactly when the replay matches");
+        return result;
     }
 
     /** A changed entry breaks the hash chain; a different engine build is refused unless allowed. */

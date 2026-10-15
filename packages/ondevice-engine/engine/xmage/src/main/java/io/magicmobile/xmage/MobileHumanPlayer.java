@@ -117,7 +117,8 @@ public final class MobileHumanPlayer extends HumanPlayer {
                     input.onBoardChanged.run();
                     continue;
                 }
-                answer=recorder.humanAnswer(seat,getId(),game);
+                GameRecorder replay=recorder;
+                answer=recorder.guard(()->replay.humanAnswer(seat,getId(),game));
             }
         } else try {
             while(answer==null) {

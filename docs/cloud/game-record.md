@@ -46,7 +46,7 @@ to re-serialize JSON the same way to check the chain.
 {
   "format": "magicmobile-game-record",
   "version": 1,
-  "setup": "{\"engine\":{...},\"seed\":\"-412...\",\"seats\":[...]}",
+  "setup": "{\"engine\":{...},\"players\":[...],\"seats\":[...],\"seed\":\"-412...\"}",
   "entries": ["0h b0", "1M 0", "1Q 0", "0h uc12", ...],
   "marks": ["1 0 d8637a56", "2 31 84e244e0", ...],
   "end": "{\"state\":\"ended\",\"turn\":15,\"winners\":[\"ai2\"],\"seats\":[...],\"entries\":867,\"digest\":\"1a4f4c0a\"}",
@@ -66,7 +66,8 @@ to re-serialize JSON the same way to check the chain.
 - `entries`: one short string per decision, in the order the GAME thread made them (grammar below).
 - `marks`: `"<turn> <entry index> <digest>"` at the first entry of each turn.
 - `end`: `state` (`ended`, or `running` for a record taken mid-game), `turn`, `winners` (seat IDs),
-  per seat `life`, `lost` and `left`, the entry count and the final digest.
+  per seat `life`, `lost` and `left`, the entry count, the final digest and `engineErrors` (errors
+  XMage caught and recovered from by rolling back; a replay must hit the same ones).
 - `head`: the hash chain (below).
 - `broken` (only when present): recording met a value it cannot express and stopped. The game went on,
   but the record cannot be replayed (`record_incomplete`). No test game has produced one.
@@ -107,8 +108,10 @@ the key comes from the question, as AnswerActions builds it), `rt`, `pu`, `ac0`/
 
 An AI action (`A`) names the ability on its source plus a descriptor of what the search chose:
 `P` (modes preselected), `m<i>,…` (selected modes), `;t<names>` per target (with `*amount`, `k` when
-skipped), `;c<names>` per cost target, `;x<mana text>` for an X spell. The replay rebuilds the action
-with upstream's own option generator and takes the option with the same descriptor.
+skipped), `;c<names>` per cost target, `;x<mana text>` for an X spell. Modes not chosen yet are left
+out (activation chooses them, and records it). The replay rebuilds the action with upstream's own option
+generator and takes the option with the same descriptor; when the search acted on a plan the generator
+no longer lists, it sets the recorded modes and targets on the ability directly, as the generator does.
 
 ### Names
 
@@ -116,13 +119,13 @@ with upstream's own option generator and takes the option with the same descript
 |---|---|
 | `p<i>` | The player in seat i |
 | `c<n>` | The n-th card or card face in deck load order (seat by seat, main deck then commanders, faces as `GameImpl.loadCards` registers them) |
-| `b<k>` | The k-th battlefield permanent that is not a loaded card (tokens) |
+| `b<h>.<seat>.<k>` | A token (a permanent that is not a deck card): base-36 CRC-32 of its name, its controller's seat, and its order among those two on the battlefield. XMage puts simultaneous tokens onto the battlefield in hash order, so a plain position would differ between runs |
 | `s<k>` | The k-th stack object from the top |
 | `o<k>` | The k-th command-zone object |
 | `x<k>` | The k-th special action |
 | `a<name>/<i>` | The i-th ability of an object |
 | `<name>/<i>`, `@<k>/<i>`, `!p`, `!m<k>`/`!a<k>` | Ability refs: on a source object, on the k-th command object (commander casts, with commander tax), the search's pass, special actions |
-| `#<i>` | The i-th option of the question being answered (modes, abilities) |
+| `#<i>` | The i-th option of the question being answered: a mode, a triggered ability to order, an ability to pick. Checked before any object name, since these IDs are not objects |
 | `?` | An ID unknown to the game (an answer that names nothing) |
 
 ## Size per game
@@ -138,8 +141,12 @@ per seat, skill-1 AIs:
 | Human + 3 AIs | 32 | 2,341 | 25.3 KB | 3.8 KB | 1.1 KB |
 | 2 AIs, basic-land fixture decks | 15 | 610 | 6.1 KB | 1.2 KB | 0.3 KB |
 
-Most of the size is the deck lists in `setup`; the decisions of a whole game gzip to about a kilobyte.
-Store and upload the record gzipped. Replaying one takes 0.2 to 1.5 s on the JVM (no AI search runs).
+Over a 40-game soak of mixed games (AI-only with 2 AIs, human against 1 and 3 AIs, six precon and
+fixture decks): 11–55 turns (median 20), 437–4,422 entries (median 1,023), 6–54 KB of JSON (median
+18 KB), **1.2–6.7 KB gzipped (median 3.3 KB)**, of which the entries alone gzip to 0.3–2.3 KB
+(median 0.5 KB). The longest game seen in testing, 69 turns, was 5,973 entries, 66 KB of JSON and
+7.5 KB gzipped. Most of the size is the deck lists in `setup`. Store and upload the record gzipped.
+Replaying one took 0.15–3.2 s on the JVM (median 0.44 s); no AI search runs.
 
 ## Replay API
 
@@ -149,16 +156,23 @@ Store and upload the record gzipped. Replaying one takes 0.2 to 1.5 s on the JVM
   installs the same seeded generator and plays the game with every decision fed from the record. It
   returns `outcome` (`ended`; `exhausted` when the record ends at a question; `diverged`, `error` or
   `timeout`), `matches` (every entry used and the replay's end equals the recorded `end`: state, turn,
-  winners, each seat's life, lost and left, and the digest), `entriesUsed`, `entries`, `resumes`,
+  winners, each seat's life, lost and left, the digest and the engine error count), `entriesUsed`, `entries`, `resumes`,
   `sameBuild`, `end`, `recordedEnd` and a `message` on failure. At each turn mark the replay compares
   the digest and stops at the first difference.
 - **Command line**: `java -cp <runtime classpath> io.magicmobile.xmage.GameReplay record.json [--any-build]`
   (after `scripts/build_jvm.sh`; the classpath is `build/runtime-classpath.txt`). It prints the result
   JSON and exits 0 only when the replay matches.
+- **The same view code.** At each human question the live engine projects every seat's snapshot and
+  encodes the prompt for the app. Some upstream view code touches game state, so the replay runs the
+  same code at the same points and drops the output.
 - **Save and resume**: a checkpoint carries the record so far. A restored game appends `-R` and goes
   on recording. When the replay reaches `-R` it does what the app did: it saves the parked game with
   the checkpoint serializer, restores it as `XmageEngine.restore` does, and resumes.
 - XMage's generator is process-wide, so a replay must not run beside a live match in the same JVM.
+- Tests replay every record in a fresh JVM through the command line, as a verifier would; a replay
+  inside the recording JVM hid two of the bugs found while building this.
+- Debugging: `-Dmagicmobile.recordTrace=<file>` on the command line writes the state text before every
+  entry; `RealGameRecordTests` writes the recorded side's trace when a replay differs.
 
 ## What the ranked server can check without the engine
 
@@ -206,7 +220,9 @@ cap (docs/RANKED.md). With a record it can also check, in SQL or an edge functio
 ## Known limits
 
 - Rules code that iterates hash-ordered collections keyed by card or permanent UUIDs (random per run)
-  or identity hash codes can still order things differently in a replay. The replay names objects structurally, so this matters
+  or identity hash codes can still order things differently in a replay. Tokens with the same name and
+  controller created at the same moment may swap places; they are identical when created, so this
+  matters only if something later tells them apart by order. The replay names objects structurally, so this matters
   only when the order changes an outcome. None of the test games hit one; the replay reports it as
   `diverged` at the entry where it shows.
 - A few cards shuffle with `Collections.shuffle` outside the player methods the adapter overrides

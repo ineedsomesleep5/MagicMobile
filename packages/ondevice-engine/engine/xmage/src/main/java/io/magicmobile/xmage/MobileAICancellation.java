@@ -349,7 +349,7 @@ final class MobileAICancellation {
             GameRecorder r=recorder(game);
             if(r==null) return live.get();
             int seat=r.seat(playerId);
-            if(r.replaying) return replay.apply(r,r.take(seat,op));
+            if(r.replaying) return r.guard(()->replay.apply(r,r.take(seat,op)));
             T result;
             r.enterAI(op);
             try { result=live.get(); } finally { r.exitAI(); }
@@ -397,21 +397,13 @@ final class MobileAICancellation {
          * ComputerPlayer6.act does with it.
          */
         private void replayAction(GameRecorder r,String args,Game game) {
-            int space=args.indexOf(' ');
-            String ref=space<0?args:args.substring(0,space),want=space<0?".":args.substring(space+1);
-            Ability base=r.resolveAbility(ref,game,playerId);
-            Ability option=null;
-            r.enterAI('A'); // rebuilding asks no one and draws nothing from the game's stream
-            try {
-                Ability plain=base.copy(),cleared=base.copy();
-                // Upstream's option generator clears a modal ability's default mode on the ability it was given.
-                cleared.getModes().clearSelectedModes();
-                if(r.describe(plain,game).equals(want)) option=plain;
-                else if(r.describe(cleared,game).equals(want)) option=cleared;
-                else for(Ability candidate:new SimulatedPlayer2(this,true).getPlayableOptions(base.copy(),game))
-                    if(r.describe(candidate,game).equals(want)) { option=candidate;break; }
-            } finally { r.exitAI(); }
-            if(option==null) throw r.diverged("no option "+want+" for "+ref);
+            Ability option;
+            // Upstream's priority loop would catch a failure here and roll back; the replay stops instead.
+            try { option=rebuildAction(r,args,game); }
+            catch(GameRecorder.Stop stop) { throw stop; }
+            catch(RuntimeException e) {
+                throw r.diverged("could not rebuild action "+args+": "+e);
+            }
             for(Target target:option.getTargets())
                 for(UUID id:target.getTargets()) {
                     target.updateTarget(id,game);
@@ -419,6 +411,40 @@ final class MobileAICancellation {
                         game.addSimultaneousEvent(GameEvent.getEvent(GameEvent.EventType.TARGETED,id,option,option.getControllerId()));
                 }
             activateAbility((ActivatedAbility)option,game);
+        }
+        private Ability rebuildAction(GameRecorder r,String args,Game game) {
+            int space=args.indexOf(' ');
+            String ref=space<0?args:args.substring(0,space),want=space<0?".":args.substring(space+1);
+            Ability base=r.resolveAbility(ref,game,playerId);
+            Ability option=null;
+            List<String> seen=new ArrayList<>();
+            r.enterAI('A'); // rebuilding asks no one and draws nothing from the game's stream
+            try {
+                Ability plain=base.copy(),cleared=base.copy();
+                // Upstream's option generator clears a modal ability's default mode on the ability it was given.
+                cleared.getModes().clearSelectedModes();
+                List<Ability> candidates=new ArrayList<>(List.of(plain,cleared));
+                // As ComputerPlayer6.createSimulation: a simulated player starts empty until restored from the real one.
+                SimulatedPlayer2 generator=new SimulatedPlayer2(this,true);
+                generator.restore(this);
+                candidates.addAll(generator.getPlayableOptions(base.copy(),game));
+                for(Ability candidate:candidates) {
+                    String described;
+                    // A candidate naming an object the record cannot name is not the recorded one.
+                    try { described=r.describe(candidate,game); }
+                    catch(IllegalArgumentException unnamed) { if(seen.size()<8) seen.add("unnamed: "+unnamed.getMessage());continue; }
+                    if(described.equals(want)) { option=candidate;break; }
+                    if(seen.size()<8) seen.add(described);
+                }
+            } finally { r.exitAI(); }
+            // The search can act with an option upstream's generator no longer lists (a plan kept from an
+            // earlier search): set the recorded modes and targets on the ability directly.
+            if(option==null) {
+                r.enterAI('A');
+                try { option=r.rebuild(base.copy(),want,game); } finally { r.exitAI(); }
+            }
+            if(option==null) throw r.diverged("no option "+want+" for "+ref+" ("+base.getRule()+"); offered "+seen);
+            return option;
         }
         @Override public boolean activateAbility(ActivatedAbility ability,Game game) {
             GameRecorder r=effects(game);

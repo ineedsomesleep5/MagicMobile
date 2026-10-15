@@ -23,6 +23,29 @@ import java.util.concurrent.TimeUnit;
 public final class GameReplay {
     private GameReplay() {}
 
+    /**
+     * The view code the live engine runs at each human question (XmageEngine.Running.query): the per-seat
+     * snapshot and the prompt encoding. Its output is dropped, but some upstream view code touches game
+     * state, so a replay that skipped it could drift from the recorded game.
+     */
+    private static final class Views implements mage.game.events.Listener<mage.game.events.PlayerQueryEvent> {
+        private final transient mage.game.Game game;
+        private final transient LinkedHashMap<String,MobileHumanPlayer> seats;
+        private final transient GameRecorder recorder;
+        Views(mage.game.Game game,LinkedHashMap<String,MobileHumanPlayer> seats,GameRecorder recorder) {
+            this.game=game;this.seats=seats;this.recorder=recorder;
+            for(MobileHumanPlayer human:seats.values()) human.onBoardChanged(this::project);
+        }
+        void project() { recorder.presenting(()->ViewProjector.project(game,seats)); }
+        @Override public void event(mage.game.events.PlayerQueryEvent e) {
+            if(e.getQueryType()==mage.game.events.PlayerQueryEvent.QueryType.PERSONAL_MESSAGE) return;
+            mage.players.Player acting=game.getPlayer(e.getPlayerId());
+            mage.players.Player controller=acting==null?null:game.getPlayer(acting.getTurnControlledBy());
+            project();
+            if(controller instanceof MobileHumanPlayer) recorder.presenting(()->QueryEncoder.encode(e,game));
+        }
+    }
+
     /** Stops the replay's GAME thread at a recorded save, carrying the checkpoint payload it saved. */
     private static final class Resume extends Error {
         private static final long serialVersionUID=1L;
@@ -33,7 +56,11 @@ public final class GameReplay {
     public static void main(String[] args) throws Exception {
         if(args.length<1) { System.err.println("usage: GameReplay record.json [--any-build]");System.exit(2); }
         Map<String,Object> record=Json.parseObject(Files.readString(Path.of(args[0])));
+        // Debugging: -Dmagicmobile.recordTrace=<file> writes the state before every entry, for a diff.
+        String trace=System.getProperty("magicmobile.recordTrace");
+        GameRecorder.trace=trace!=null;
         Map<String,Object> result=replay(record,Arrays.asList(args).contains("--any-build"),TimeUnit.MINUTES.toMillis(10));
+        if(trace!=null) Files.write(Path.of(trace),lastDigests);
         System.out.println(Json.write(result));
         System.exit(Boolean.TRUE.equals(result.get("matches"))?0:1);
     }
@@ -51,11 +78,15 @@ public final class GameReplay {
             && GeneratedCardFactory.CATALOGUE_HASH.equals(engine.get("catalogueHash")) && Json.integer(engine.get("protocol"))==EngineService.PROTOCOL;
         if(!sameBuild && !anyBuild) throw new BridgeException("record_engine_mismatch","The record was made by a different engine build");
         XmageEngine.installCards();
-        long seed=Long.parseLong(Json.requiredString(parsed.setup,"seed"));
+        long seed;List<Object> seatConfigs;List<UUID> playerIds=new ArrayList<>();
+        try {
+            seed=Long.parseLong(Json.requiredString(parsed.setup,"seed"));
+            seatConfigs=Json.array(parsed.setup.get("seats"));
+            for(Object id:Json.array(parsed.setup.get("players"))) playerIds.add(UUID.fromString(Json.string(id)));
+            if(playerIds.size()!=seatConfigs.size()) throw new IllegalArgumentException("players and seats differ");
+        } catch(RuntimeException e) { throw new BridgeException("record_corrupt","The record's setup is malformed: "+e.getMessage()); }
         MobileAICancellation cancellation=new MobileAICancellation();
-        List<UUID> playerIds=new ArrayList<>();
-        for(Object id:Json.array(parsed.setup.get("players"))) playerIds.add(UUID.fromString(Json.string(id)));
-        XmageEngine.Built built=XmageEngine.build(Json.array(parsed.setup.get("seats")),cancellation,seed,playerIds);
+        XmageEngine.Built built=XmageEngine.build(seatConfigs,cancellation,seed,playerIds);
         GameRecorder recorder=GameRecorder.replaying(built.record,parsed);
         List<String> seatIds=new ArrayList<>(built.players.keySet());
         LinkedHashMap<String,UUID> seats=new LinkedHashMap<>();
@@ -67,6 +98,7 @@ public final class GameReplay {
         MobileCommanderGame game=(MobileCommanderGame)match.getGame();
         GameRandom random=built.random;
         cancellation.setRecorder(recorder);game.setCancellation(cancellation);
+        game.addPlayerQueryEventListener(new Views(game,built.seats,recorder));
         long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         boolean resumed=false;
         String outcome,message=null;
@@ -106,6 +138,9 @@ public final class GameReplay {
                 random=(GameRandom)payload.random;
                 mage.util.RandomUtil.restoreRandom(random);
                 cancellation.setRecorder(recorder);game.setCancellation(cancellation);
+                LinkedHashMap<String,MobileHumanPlayer> restoredSeats=new LinkedHashMap<>();
+                for(String seat:humanSeats) restoredSeats.put(seat,(MobileHumanPlayer)game.getPlayer(seats.get(seat)));
+                game.addPlayerQueryEventListener(new Views(game,restoredSeats,recorder));
                 resumed=true;
                 continue;
             }
@@ -127,7 +162,8 @@ public final class GameReplay {
         boolean matches=used && Objects.equals(recorded.get("state"),end.get("state"))
             && ("ended".equals(outcome) || "exhausted".equals(outcome))
             && Objects.equals(recorded.get("turn"),end.get("turn")) && Objects.equals(recorded.get("winners"),end.get("winners"))
-            && Objects.equals(recorded.get("seats"),end.get("seats")) && Objects.equals(recorded.get("digest"),end.get("digest"));
+            && Objects.equals(recorded.get("seats"),end.get("seats")) && Objects.equals(recorded.get("digest"),end.get("digest"))
+            && Objects.equals(recorded.get("engineErrors"),end.get("engineErrors"));
         Map<String,Object> result=Json.map("outcome",outcome,"matches",matches,"entriesUsed",(long)recorder.cursor(),
             "entries",(long)recorder.size(),"resumes",(long)resumes(parsed),"sameBuild",sameBuild,"end",end,"recordedEnd",recorded);
         if(message!=null) result.put("message",message);
