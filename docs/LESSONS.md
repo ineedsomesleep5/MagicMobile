@@ -85,6 +85,12 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-15 (Claude, C2): RELR packing needs Android API 28 only with lld's
+  `--use-android-relr-tags` (`android+relr`); `-z pack-relative-relocs` uses the official tags and needs
+  API 30. Packing only shrinks the table: bionic still applies all 4.5 M `libmmengine.so` relocations.
+  GraalVM 22.1 has no option to remove them (`-H:+RelativeCodePointers` arrives in GraalVM 25).
+  **Rule:** keep `--pack-dyn-relocs=android` at minSdk 26; measure before changing anything.
+  Where: docs/cloud/c2-relocations.md.
 - 2026-10-11 (Claude): a game froze at combat damage when trample killed the planeswalker being
   attacked. XMage then keeps the attackers in combat with a null `defenderId` (rule 506.4,
   `PlayerImpl.removeFromBattlefield` → `Combat.removeDefendingPermanentFromCombat`; phasing out and
