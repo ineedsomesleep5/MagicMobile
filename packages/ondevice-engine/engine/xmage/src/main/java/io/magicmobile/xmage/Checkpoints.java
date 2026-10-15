@@ -96,15 +96,19 @@ final class Checkpoints {
 
     private Checkpoints() {}
 
-    /** The whole match state, plus the process-global RNG, captured at a human priority decision. */
+    /**
+     * The whole match state, plus the process-global RNG (the match's GameRandom) and the game record so
+     * far, captured at a human priority decision.
+     */
     static final class Payload implements Serializable {
         private static final long serialVersionUID=1L;
         final MobileCommanderGame game;
         final LinkedHashMap<String,UUID> seats;
         final ArrayList<String> humanSeats;
         final Random random;
-        Payload(MobileCommanderGame game,LinkedHashMap<String,UUID> seats,ArrayList<String> humanSeats,Random random) {
-            this.game=game;this.seats=seats;this.humanSeats=humanSeats;this.random=random;
+        final GameRecord record;
+        Payload(MobileCommanderGame game,LinkedHashMap<String,UUID> seats,ArrayList<String> humanSeats,Random random,GameRecord record) {
+            this.game=game;this.seats=seats;this.humanSeats=humanSeats;this.random=random;this.record=record;
         }
     }
     static final class Written {
@@ -188,13 +192,13 @@ final class Checkpoints {
      * (XmageEngine: before that prompt is published, or while it waits for an answer).
      */
     static Written write(Path path,MobileCommanderGame game,LinkedHashMap<String,UUID> seats,ArrayList<String> humanSeats,
-                         List<Map<String,Object>> seatSummary,long sequence) throws IOException {
+                         List<Map<String,Object>> seatSummary,long sequence,GameRecord record) throws IOException {
         long start=System.nanoTime();
         // Lean: an AI's retained search tree is a whole game copy that a late simulation thread
         // may still be changing. It is recalculated after a restore.
         Runnable reattach=MobileAICancellation.detachSearchTrees(game);
         byte[] payload;
-        try { payload=serialize(new Payload(game,seats,humanSeats,RandomUtil.getRandom())); }
+        try { payload=serialize(new Payload(game,seats,humanSeats,RandomUtil.getRandom(),record)); }
         finally { reattach.run(); }
         long savedAt=System.currentTimeMillis();
         int turn=game.getTurnNum();
