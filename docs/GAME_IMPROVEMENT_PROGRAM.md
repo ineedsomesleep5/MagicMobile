@@ -22,7 +22,7 @@ Builds installed directly on Caleb's phone between releases are test builds, not
 - [ ] Merge #153 smart pass v2, #155 iOS privacy manifest, #156 and #158 size trims, #157 audit report, #159 photo
       import removed
 - [ ] Privacy policy on the site: sign-in email and ranked records (ML Kit is gone with #159). Caleb approves the wording.
-- [ ] Gradle wrapper pinned to 8.14.3; CI workflows and `scripts/android/*` use `./gradlew`; the signed release APK is
+- [x] Gradle wrapper pinned to 8.14.3; CI workflows and `scripts/android/*` use `./gradlew`; the signed release APK is
       checked (signer, versionCode, size)
 
 ## Phase 1: app-only improvements, in R1
@@ -86,7 +86,7 @@ most four sessions run at once (Main plus three cloud sessions).
 
 ## Cloud protocol (every cloud session follows this)
 
-Environment: **MagicMobile Cloud**. It has JDK 17 and 21, Maven 3.9, Gradle 8.11.1 (`/opt/gradle`), Android SDK 35
+Environment: **MagicMobile Cloud**. It has JDK 17 and 21, Maven 3.9, Gradle via the repo wrapper `apps/android/gradlew` (8.14.3; the image's `/opt/gradle` is only a fallback), Android SDK 35
 (`$ANDROID_HOME=/opt/android-sdk`), Node 22 and Python 3.13, with 4 CPUs and 15 GB of memory. There is no macOS, so no
 Xcode, no iOS builds and no simulators. There is no NDK and no native engine artifact. Maven Central can answer 429:
 retry it.
@@ -104,7 +104,7 @@ retry it.
 5. **Engine work** follows packages/ondevice-engine/AGENTS.md. Real-engine tests run with
    `bash packages/ondevice-engine/scripts/build_jvm.sh` and `scripts/test_real_engine.sh`. Update PROTOCOL.md for any
    snapshot change.
-6. **Android work** builds with `gradle -p apps/android :core:test :app:compileDebugKotlin`. Never split one feature
+6. **Android work** builds with `apps/android/gradlew -p apps/android :core:test :app:compileDebugKotlin`. Never split one feature
    between an iOS session and an Android session: the Mac does the iOS half of cloud engine features.
 7. **Subagents:** a cloud session may use one or two Sonnet 5.5 subagents for research, test writing and analysis.
    Design and engine changes stay with the session itself.
