@@ -61,7 +61,7 @@ public final class RealAIDifficultyTests {
     /** Skills 1 and 2 look one and two actions ahead; 3 and up keep upstream; mistakes only at 1 to 3. */
     private static void curve() {
         int[] depth = {2, 3, 4, 4, 5, 6, 7, 8, 9, 10};
-        int[] mistakes = {15, 10, 5, 0, 0, 0, 0, 0, 0, 0};
+        int[] mistakes = {15, 15, 10, 0, 0, 0, 0, 0, 0, 0};
         for (int skill = 1; skill <= 10; skill++) {
             eq(AIDifficulty.searchDepth(skill), depth[skill - 1]);
             eq(AIDifficulty.mistakePercent(skill), mistakes[skill - 1]);
