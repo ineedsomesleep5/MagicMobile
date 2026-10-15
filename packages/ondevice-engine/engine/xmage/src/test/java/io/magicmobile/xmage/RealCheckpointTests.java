@@ -516,7 +516,9 @@ public final class RealCheckpointTests {
                     Map<String,Object> prompt=Json.object(state.get("prompt"));
                     Map<String,Object> expected=Json.map("fingerprint",fingerprint(game),"kind",prompt.get("kind"),
                         "message",Json.object(prompt.get("payload")).get("message"),"selectMode",Json.object(prompt.get("payload")).get("selectMode"),
-                        "features",board,"sequence",info.get("sequence"),"turn",info.get("turn"));
+                        "features",board,"sequence",info.get("sequence"),"turn",info.get("turn"),
+                        // Placed features change the live game outside any decision, so its record cannot replay.
+                        "placedBefore",placements>0);
                     Files.writeString(dir.resolve("expected-"+index+".json"),Json.write(expected));
                     saved.add(copy);savedInfo.add(expected);
                     System.out.println("CHECKPOINT "+name+" #"+index+" turn="+info.get("turn")+" seq="+info.get("sequence")
@@ -547,6 +549,8 @@ public final class RealCheckpointTests {
             check(Boolean.TRUE.equals(result.get("legalEnd")) && Json.integer(result.get("errors"))==0,"restored game plays to a legal end: "+result);
             check(Boolean.TRUE.equals(result.get("noWriteAfterRestore")),"a restored game writes nothing until asked: "+result);
             check(Boolean.TRUE.equals(result.get("savesAgainOnRequest")),"a restored game saves again on request: "+result);
+            check(Boolean.TRUE.equals(result.get("recordReplays")) && (Json.integer(result.get("recordResumes"))>=1 || Boolean.TRUE.equals(result.get("recordPlacedBefore"))),
+                "the restored game's record replays from the start through its resume: "+result);
             Json.object(savedInfo.get(i).get("features")).forEach((k,v)->covered.merge(k,(int)Json.integer(v)>0?1:0,Integer::sum));
             System.out.println("RESTORED "+name+" #"+i+" "+Json.write(result));
         }
@@ -625,7 +629,21 @@ public final class RealCheckpointTests {
                 result.put("checkpointFailures",driver.failures);
                 Object report=EngineDiagnostics.read().get("report");
                 if(report!=null) result.put("diagnostics",String.valueOf(report).lines().limit(3).collect(Collectors.joining(" | ")));
+                // The game record spans the saving process and this one; replayed from its start it must
+                // save and resume at the same point and reach the same end (docs/cloud/game-record.md).
+                Map<String,Object> record=engine.record(id);
                 engine.destroy(id);
+                Map<String,Object> replay=GameReplay.replay(record,false,TimeUnit.MINUTES.toMillis(5));
+                boolean everyEntry=Json.integer(replay.get("entriesUsed"))==Json.integer(replay.get("entries"));
+                result.put("recordReplay",replay.get("outcome"));
+                result.put("recordResumes",replay.get("resumes"));
+                result.put("recordEntries",replay.get("entries"));
+                // A natural end must match exactly; a turn-capped game (capped only in this test) must replay
+                // every entry without a difference and then run out of record.
+                result.put("recordPlacedBefore",Boolean.TRUE.equals(expected.get("placedBefore")));
+                result.put("recordReplays",Boolean.TRUE.equals(expected.get("placedBefore"))?Boolean.TRUE:"win".equals(result.get("end"))?Boolean.TRUE.equals(replay.get("matches"))
+                    :everyEntry && "exhausted".equals(replay.get("outcome")));
+                if(!Boolean.TRUE.equals(result.get("recordReplays"))) result.put("recordReplayDetail",replay.get("message"));
             }
         } finally { engine.close(); }
         Files.write(Path.of(args[5]),new TreeSet<>(streamClasses)); // the parent checks them against native metadata
