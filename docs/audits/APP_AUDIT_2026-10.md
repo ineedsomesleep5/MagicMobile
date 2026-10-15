@@ -28,9 +28,10 @@ from observations, not confirmed at runtime) and **unknowns** (what would settle
 - **Release builds are locked down.** Android isn't debuggable, has backups and cleartext traffic off,
   and every UI-test and design-preview hook is ignored outside debug builds. iOS is signed for
   distribution with `get-task-allow` false and links no third-party SDKs.
-- **ML Kit is still in use**: Deck Studio's decklist-photo import on Android. It brings Google's
-  usage telemetry with it, which the site's privacy policy ("no analytics") doesn't mention.
-  The policy also predates Apple/Google sign-in (email) and ranked.
+- **ML Kit was still in use** by Deck Studio's decklist-photo import on Android, and brought Google's
+  usage telemetry the site's privacy policy ("no analytics") doesn't mention. Photo import is now removed
+  from both apps ([#159](https://github.com/ineedsomesleep5/MagicMobile/pull/159)). The policy still
+  predates Apple/Google sign-in (email) and ranked.
 - **Size:** the engine is about two thirds of each download: 202 MB of AOT code plus a 167 MB GraalVM
   image heap. On the app side, the rank-badge spin frames are the largest single win, at about 7 MB
   per platform. Six unused Android backgrounds (1.4 MB) are removed in
@@ -41,8 +42,8 @@ from observations, not confirmed at runtime) and **unknowns** (what would settle
 | # | Priority | Platform | Fix | Size or effect | Status |
 |---|---|---|---|---|---|
 | 1 | P0 | iOS | Declare FileTimestamp C617.1, SystemBootTime 35F9.1, DiskSpace E174.1 in `PrivacyInfo.xcprivacy` | Unblocks App Store submission | [#155](https://github.com/ineedsomesleep5/MagicMobile/pull/155) |
-| 2 | P1 | both + site | Bring the privacy policy, the iOS manifest's collected data types and the App Store privacy labels up to date: optional email from Apple/Google sign-in, ranked match records and ranks, Android ML Kit telemetry | Accurate disclosure | Needs Caleb's wording; touches the live site and App Store Connect |
-| 3 | P1 | Android | ML Kit: keep the bundled model, start it only when a photo is scanned (remove `MlKitInitProvider`), and disclose its diagnostics | ML Kit stays idle for players who never scan | Recommended; needs Caleb's go-ahead and a phone check |
+| 2 | P1 | both + site | Bring the privacy policy, the iOS manifest's collected data types and the App Store privacy labels up to date: optional email from Apple/Google sign-in, ranked match records and ranks. (ML Kit telemetry goes away with #159.) | Accurate disclosure | Needs Caleb's wording; touches the live site and App Store Connect |
+| 3 | P1 | both | Photo import removed on both apps (Caleb, 2026-10-14: decks come in by text, file, link or Archidekt). On Android this drops ML Kit, its launch-time provider, Google's datatransport telemetry and `ACCESS_NETWORK_STATE` | Android download about 5.7 MB smaller; no third-party telemetry | [#159](https://github.com/ineedsomesleep5/MagicMobile/pull/159) |
 | 4 | P2 | both | Rank-badge spin animations: 6 tiers × 32 frames stored lossless. Use lossy frames with alpha, fewer frames, or spin one badge at draw time | iOS about 7.2 MB, Android 6.8 MB | Proposal |
 | 5 | P2 | Android | `tavern_pass_flip_*`: 48 lossless frames | 2.2 MB | Proposal |
 | 6 | P2 | both | Retired battlefield skins (moss, arena, tide, wood, ember) still ship. Remove them; keep `arena` as the classic layout the UI tests pin, on the plain gradient | iOS 2.75 MB, Android 1.74 MB | [#158](https://github.com/ineedsomesleep5/MagicMobile/pull/158) |
@@ -162,7 +163,7 @@ launcher, `https://magicmobile-downloads.vercel.app/join/` (autoVerify) and `mag
 | INTERNET | app | Supabase, relay, Scryfall, downloads |
 | FOREGROUND_SERVICE, FOREGROUND_SERVICE_DATA_SYNC | app | `ArtworkDownloadService` |
 | POST_NOTIFICATIONS | app | the download's notification, requested in `NativeDownloadsView.kt:198` |
-| ACCESS_NETWORK_STATE | merged from `transport-runtime` 2.2.6 and `transport-backend-cct` 2.3.3 (Google datatransport, pulled in by ML Kit) | ML Kit's telemetry upload scheduling; the app itself never checks connectivity |
+| ACCESS_NETWORK_STATE | merged from `transport-runtime` 2.2.6 and `transport-backend-cct` 2.3.3 (Google datatransport, pulled in by ML Kit) | ML Kit's telemetry upload scheduling; the app itself never checks connectivity. Gone with #159 |
 | `…DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | AndroidX core (signature-level) | internal receivers |
 
 Library components in the merged manifest: `MlKitInitProvider` (a ContentProvider, so it runs at every
@@ -238,6 +239,10 @@ blocks, `client_secret`, bearer tokens, `/Users/…` paths and private IPs.
 
 ## 4. ML Kit text recognition
 
+**Outcome (2026-10-14):** Caleb removed photo import from both apps
+([#159](https://github.com/ineedsomesleep5/MagicMobile/pull/159)), since decks come in by text, file, link or
+Archidekt account. The observations below describe build 22. The options were weighed before that decision.
+
 ### Observations
 
 ML Kit is still used. Deck Studio → Import → photo calls `DeckStudioOCR.recognize`
@@ -277,9 +282,9 @@ needs one sentence either way.
 |---|---|---|---|
 | iOS required-reason APIs | UserDefaults | + file timestamp, boot time, disk space | fixed in #155 |
 | iOS collected data | UserID, OtherUserContent | Sign in with Apple requests `.email` (`AccountSignInCard.swift:88`); Google sign-in; ranked stores `ranked_matches` / `ranked_profiles` linked to the account (docs/RANKED.md) | EmailAddress and GameplayContent likely belong in the manifest and the App Store labels |
-| Site privacy policy (2026-10-01) | "anonymous account (no email, no password)", "no ads, no analytics and no tracking" | optional Apple/Google sign-in with email (TF 35 / Android 20), ranked and friend challenges, public profiles, ML Kit diagnostics on Android | policy predates these |
+| Site privacy policy (2026-10-01) | "anonymous account (no email, no password)", "no ads, no analytics and no tracking" | optional Apple/Google sign-in with email (TF 35 / Android 20), ranked and friend challenges, public profiles; ML Kit diagnostics on Android until #159 | policy predates these |
 | iOS tracking | false | no ATT, no IDFA, no third-party SDKs | consistent |
-| Android permissions | 5 app + 1 library | all used; ACCESS_NETWORK_STATE comes from ML Kit's transport | consistent once item 3 is decided |
+| Android permissions | 5 app + 1 library | all used; ACCESS_NETWORK_STATE came from ML Kit's transport | consistent after #159 |
 | `NSPhotoLibraryUsageDescription` | "player icon" | photo picking uses `PhotosPicker`, which doesn't prompt for permission | harmless; mention decklist photos if the string ever shows |
 
 The data-type and policy changes are not in #155. They are disclosure decisions for Caleb, and the
@@ -291,7 +296,6 @@ manifest, the App Store Connect privacy questionnaire and the site have to chang
 |---|---|
 | Real App Store / TestFlight download and install size for build 38 | App Store Connect → TestFlight → build 38 → App File Sizes |
 | Whether ITMS-91053 warning emails arrived for earlier uploads | Caleb's developer-account inbox |
-| Does ML Kit send anything at launch, or only on a scan? | Emulator + network capture over a launch and one decklist scan (REA `capture_process_scenario` / adb) |
 | Engine load cost of the relocations: Private_Dirty of the `.svm_heap` mapping, time to `JNI_OnLoad` | `adb shell cat /proc/<pid>/smaps` on a release install; a startup trace |
 | What fills the 167 MB image heap and 202 MB of code | GraalVM `--emit build-report` on the next engine build |
 | Installed size on Android | Settings → Apps → MagicMobile → Storage, or `adb shell du` on `/data/app/…` |
