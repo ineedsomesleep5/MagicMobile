@@ -1,0 +1,10 @@
+{
+  "description": "C3 candidate C (recommended): Bronze skill 1 as C2 (depth 2, 15%), Silver skill 2 at depth 3 with 15%, Gold skill 3 at depth 4 with 10%, Platinum skill 4 unchanged. Adjacent tiers at 160 games each; the last two extend tuning-matrix.json's 80-game runs (same seed and schedule).",
+  "pool": "core+precon",
+  "games": 160,
+  "pairings": [
+    {"a": 1, "b": 2, "mistake_b": 15},
+    {"a": 2, "b": 3, "mistake_a": 15, "mistake_b": 10},
+    {"a": 3, "b": 4, "mistake_a": 10}
+  ]
+}
