@@ -44,7 +44,8 @@
   --sc-accent: var(--ember);
   --sc-accent-ink: #221713;
   --sc-shadow-color: 24 60% 3%;
-  --sc-font-display: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+  /* Cormorant SC Bold is the app's tavern display face (docs/TAVERN_STYLE.md). */
+  --sc-font-display: "Cormorant SC", "Source Serif 4 Variable", Georgia, serif;
   --sc-font-text: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
   font-family: var(--sc-font-text);
   font-optical-sizing: auto;
@@ -102,9 +103,10 @@ h1,
 h2,
 h3 {
   font-family: var(--sc-font-display);
-  font-weight: 760;
-  letter-spacing: -0.025em;
-  line-height: 0.98;
+  font-weight: 700;
+  font-variant-numeric: lining-nums;
+  letter-spacing: 0;
+  line-height: 1.02;
   text-wrap: balance;
   color: var(--parchment-ink);
   text-shadow:
@@ -164,6 +166,14 @@ svg {
 }
 .skip:focus {
   top: 16px;
+}
+
+/* Cormorant SC sets lowercase as small caps, so "iPhone" would read "iPHONE";
+   platform names go full caps instead. */
+.hero-downloads .plaque span,
+.platform-picker button {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 /* ---- Plaques: riveted brass rim over leather, or ember glass for the call to action ---- */
@@ -671,7 +681,7 @@ svg {
 .gameplay-ground {
   position: absolute;
   z-index: -1;
-  font: 800 clamp(140px, 19vw, 300px) / 1 var(--sc-font-display);
+  font: 700 clamp(140px, 19vw, 300px) / 1 var(--sc-font-display);
   color: rgba(219, 163, 77, 0.05);
   -webkit-text-stroke: 1.5px rgba(219, 163, 77, 0.26);
   letter-spacing: -0.04em;
