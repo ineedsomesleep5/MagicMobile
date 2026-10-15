@@ -42,10 +42,10 @@ from observations, not confirmed at runtime) and **unknowns** (what would settle
 |---|---|---|---|---|---|
 | 1 | P0 | iOS | Declare FileTimestamp C617.1, SystemBootTime 35F9.1, DiskSpace E174.1 in `PrivacyInfo.xcprivacy` | Unblocks App Store submission | [#155](https://github.com/ineedsomesleep5/MagicMobile/pull/155) |
 | 2 | P1 | both + site | Bring the privacy policy, the iOS manifest's collected data types and the App Store privacy labels up to date: optional email from Apple/Google sign-in, ranked match records and ranks, Android ML Kit telemetry | Accurate disclosure | Needs Caleb's wording; touches the live site and App Store Connect |
-| 3 | P1 | Android | Decide on ML Kit: keep and disclose; keep but initialise lazily (remove `MlKitInitProvider`); or move to the Play Services text-recognition model | Lazy init: less work at launch. Unbundled: about 5.7 MB smaller APK, 12.6 MB less installed | Needs a decision |
+| 3 | P1 | Android | ML Kit: keep the bundled model, start it only when a photo is scanned (remove `MlKitInitProvider`), and disclose its diagnostics | ML Kit stays idle for players who never scan | Recommended; needs Caleb's go-ahead and a phone check |
 | 4 | P2 | both | Rank-badge spin animations: 6 tiers × 32 frames stored lossless. Use lossy frames with alpha, fewer frames, or spin one badge at draw time | iOS about 7.2 MB, Android 6.8 MB | Proposal |
 | 5 | P2 | Android | `tavern_pass_flip_*`: 48 lossless frames | 2.2 MB | Proposal |
-| 6 | P2 | both | Retired battlefield skins (moss, arena, tide, wood, ember) still ship. Keep only what UI tests pin (`arena`) or move test boards into test-only assets | iOS 2.75 MB, Android 1.74 MB | Needs a test plan |
+| 6 | P2 | both | Retired battlefield skins (moss, arena, tide, wood, ember) still ship. Remove them; keep `arena` as the classic layout the UI tests pin, on the plain gradient | iOS 2.75 MB, Android 1.74 MB | [#158](https://github.com/ineedsomesleep5/MagicMobile/pull/158) |
 | 7 | P2 | both | App icon sources are very heavy: iOS 1024 px icon 2.8 MB in `Assets.car`, Android `magicmobile_icon` 1.96 MB PNG | Estimated 1.5–2.5 MB per platform after re-encoding | Proposal |
 | 8 | P2 | Android | Delete six unreferenced legacy backgrounds | 1.43 MB | [#156](https://github.com/ineedsomesleep5/MagicMobile/pull/156) |
 | 9 | P3 | engine | Measure, then reduce, the 4.5 million load-time relocations in `libmmengine.so`. Options: relative image-heap references in the native-image build, or RELR (needs minSdk 28, currently 26) | Up to 12 MB of relocation data. Possible launch time and memory, still unmeasured | Engine release only |
@@ -260,6 +260,16 @@ The APK carries the transport for that: `transport-backend-cct`, `JobInfoSchedul
    about 5.7 MB smaller download and 12.6 MB less installed. Phones without Play services lose
    photo import, and telemetry stays.
 4. Drop photo import on Android, losing parity with iOS. Not recommended.
+
+**Recommendation: option 2.** The bundled model works offline and without Google Play services. Per Google's
+disclosure page it sends less than the Play Services version (per-installation identifiers only; "thin"
+features add a device identifier). Starting it only on a scan keeps it idle for anyone who never imports a
+photo. Moving to the Play Services model would save about 5.7 MB of a 154 MB download, but that isn't worth
+the extra identifier and the Play services dependency. Google documents disabling the provider and calling
+`MlKit.initialize` (developers.google.com/android/reference/com/google/mlkit/common/MlKit). One open report
+(googlesamples/mlkit#777) describes crashes with that pattern on some devices, so the change needs a phone
+check of photo import. I found no official switch that turns ML Kit's telemetry off, so the privacy policy
+needs one sentence either way.
 
 ## 5. Privacy declarations vs behaviour
 
