@@ -150,7 +150,8 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.ENABLED_KEY, true).value,
             io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(io.magicmobile.android.ui.AppPreferences.string(
                 io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
-                io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops)).value))
+                io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops)).value),
+            io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false).value)
     private var aiClient: EngineClient? = null
     private var aiMatchID: String? = null
     private var sceneActive = true

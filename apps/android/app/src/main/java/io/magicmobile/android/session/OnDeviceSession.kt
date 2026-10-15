@@ -398,7 +398,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val context = yieldContext ?: return null
         val view = poll?.snapshot?.get("gameView") ?: return null
         val owner = view["players"].array?.firstOrNull { it["playerId"].string == context.viewerID } ?: return null
-        return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner))
+        return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner),
+            OnDeviceSmartPass.topStackIsMine(poll?.snapshot, context.viewerID), OnDeviceSmartPass.hasResponse(view))
     }
 
     private fun smartPassPrompt(): OnDeviceYieldPolicy.Prompt? {

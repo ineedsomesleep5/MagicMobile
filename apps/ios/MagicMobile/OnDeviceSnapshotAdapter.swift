@@ -97,7 +97,9 @@ enum OnDeviceSnapshotAdapter {
                 "id": .string(id), "objectId": .string(id), "objectType": object["mageObjectType"] ?? .null,
                 "name": object["displayName"] ?? object["name"] ?? .string("Stack object"),
                 "rulesText": .string((object["rules"]?.array ?? []).compactMap(\.string).joined(separator: "\n")),
-                "targetIds": object["targets"] ?? .array([]), "paid": object["paid"] ?? .null
+                "targetIds": object["targets"] ?? .array([]), "paid": object["paid"] ?? .null,
+                // Engine release A: who controls it (public); older engines omit it.
+                "controllerId": root["stackControllers"]?[id] ?? .null
             ]
             if source != .null {
                 fields["sourceCard"] = try card(source)

@@ -373,7 +373,9 @@ final class OnDeviceSession: ObservableObject {
         guard let context = yieldContext, let root = poll?.snapshot, let view = root["gameView"],
               let owner = view["players"]?.array?.first(where: { $0["playerId"]?.string == context.viewerID }) else { return nil }
         let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
-        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating)
+        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
+                     topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: context.viewerID),
+                     hasResponse: OnDeviceSmartPass.hasResponse(view))
     }
 
     /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.

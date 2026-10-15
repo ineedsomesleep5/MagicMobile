@@ -182,6 +182,8 @@ enum OnDeviceSmartPass {
     static func stopKey(_ step: Step, myTurn: Bool) -> String { (myTurn ? "mine." : "theirs.") + step.rawValue }
 
     static let enabledKey = "magicmobile.smartAutoPass"
+    /// Off by default: smart pass lets your own spells and triggers resolve (Arena's default; engine release A).
+    static let stopForOwnSpellsKey = "magicmobile.stopForOwnSpells"
     static let stopsKey = "magicmobile.phaseStops"
     /// Your main phases, and your opponents' attacks and end step: where instants usually matter.
     static let defaultStops: Set<String> = [stopKey(.main1, myTurn: true), stopKey(.main2, myTurn: true),
@@ -190,6 +192,8 @@ enum OnDeviceSmartPass {
     struct Settings: Equatable {
         var enabled = true
         var stops = OnDeviceSmartPass.defaultStops
+        /// Stop for your own spells and triggers on the stack when you could respond to them.
+        var stopForOwnSpells = false
 
         static func encode(_ stops: Set<String>) -> String { stops.sorted().joined(separator: ",") }
         static func decode(_ raw: String?) -> Set<String> {
@@ -198,7 +202,8 @@ enum OnDeviceSmartPass {
         }
         static func load(_ defaults: UserDefaults = .standard) -> Settings {
             Settings(enabled: defaults.object(forKey: OnDeviceSmartPass.enabledKey) as? Bool ?? true,
-                     stops: decode(defaults.string(forKey: OnDeviceSmartPass.stopsKey)))
+                     stops: decode(defaults.string(forKey: OnDeviceSmartPass.stopsKey)),
+                     stopForOwnSpells: defaults.bool(forKey: OnDeviceSmartPass.stopForOwnSpellsKey))
         }
     }
 
@@ -210,6 +215,12 @@ enum OnDeviceSmartPass {
         var hasPlay: Bool
         /// Mana floating in this seat's pool: passing would empty it, so the player decides.
         var manaFloating: Bool
+        /// The top of the stack is this seat's own spell or ability (engine `stackControllers`); nil when the engine
+        /// doesn't say (older engines), which keeps today's stop.
+        var topStackIsMine: Bool? = nil
+        /// Some non-mana play could answer the stack or a pending attack (engine `respondsToStack`; a row without
+        /// the field counts as a response, so older engines keep today's stops).
+        var hasResponse = true
     }
 
     /// The prompt to pass, or nil when the player should decide.
@@ -221,9 +232,37 @@ enum OnDeviceSmartPass {
               let prompt = context.prompt, !prompt.submitted,
               OnDeviceYieldPolicy.ordinaryPriority(prompt, viewer: context.viewerID), !value.manaFloating else { return nil }
         if !value.hasPlay { return prompt }
-        // Something to play: stop while a spell or ability waits on the stack, or at a stop.
-        guard context.emptyStack, let step = Step(engine: value.step) else { return nil }
+        // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
+        // otherwise stop only when you hold a play that actually answers it.
+        if !context.emptyStack {
+            if value.topStackIsMine == true && !settings.stopForOwnSpells { return prompt }
+            return value.hasResponse ? nil : prompt
+        }
+        guard let step = Step(engine: value.step) else { return nil }
+        // During an attack, a stop is worth making only with a play that answers it (a trick, a flash blocker).
+        if [.declareAttackers, .declareBlockers, .combatDamage].contains(step) && !value.hasResponse { return prompt }
         return settings.stops.contains(stopKey(step, myTurn: active == context.viewerID)) ? nil : prompt
+    }
+
+    /// Whether some non-mana play could answer what is pending (engine `respondsToStack`, missing means yes).
+    static func hasResponse(_ gameView: MagicMobileOnDevice.JSONValue?) -> Bool {
+        let objects = gameView?["canPlayObjects"]?["objects"]?.object ?? [:]
+        for stats in objects.values {
+            for (category, rows) in stats.object ?? [:] {
+                for row in rows.array ?? [] where !(row["manaAbility"]?.bool ?? (category == "basicManaAbilities")) {
+                    if row["respondsToStack"]?.bool != false { return true }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Whether the top stack object is the viewer's own (engine `stackControllers` and `stackOrder`, top first);
+    /// nil when the engine doesn't send controllers.
+    static func topStackIsMine(_ root: MagicMobileOnDevice.JSONValue?, viewer: String) -> Bool? {
+        guard let controllers = root?["stackControllers"]?.object, let top = root?["stackOrder"]?.array?.first?.string,
+              let controller = controllers[top]?.string else { return nil }
+        return controller == viewer
     }
 
     /// Reads the engine's own playable list: lands, spells and non-mana abilities count, mana abilities don't.
