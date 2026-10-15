@@ -370,4 +370,65 @@ final class CombatPlanner {
         if(added>0) game.getPlayers().resetPassed();
         return added;
     }
+
+    /**
+     * What a double block on one attacker gains, in upstream's permanent values: the attacker's value if
+     * the pair kills it, less what the attacker kills (it assigns its damage to the most valuable blockers it
+     * can kill, first strike before they hit). Zero or less when the attacker survives or the trade is bad.
+     */
+    static int doubleBlockGain(Unit a,Unit b1,Unit b2) {
+        if(a.indestructible) return 0;
+        int damage=a.power*a.hits(),best=0;boolean[] bestKill={false,false};
+        Unit[] pair={b1,b2};
+        for(int mask=1;mask<4;mask++) {
+            int need=0,value=0;
+            for(int i=0;i<2;i++) if((mask>>i&1)!=0) {
+                if(pair[i].indestructible) { need=Integer.MAX_VALUE/2;break; }
+                need+=a.deathtouch?1:Math.max(1,pair[i].toughness);value+=pair[i].value;
+            }
+            if(need<=damage && value>best) { best=value;bestKill=new boolean[]{(mask&1)!=0,(mask&2)!=0}; }
+        }
+        boolean early=a.firstStrike || a.doubleStrike;
+        int back=0;boolean touched=false;
+        for(int i=0;i<2;i++) {
+            Unit b=pair[i];
+            boolean strikes=!(bestKill[i] && early && !b.firstStrike && !b.doubleStrike);
+            if(strikes && b.power>0) { back+=b.power*b.hits();touched|=b.deathtouch; }
+        }
+        boolean dies=back>=a.toughness || (touched && back>0);
+        return dies?a.value-best:0;
+    }
+
+    /**
+     * After upstream chose its blocks (and any lethal chumps): double-block an unblocked attacker with two
+     * creatures that are not blocking yet when together they kill it and lose less value than it is worth
+     * (upstream never blocks with more than one creature). Strongest gains first. Returns the pairs added.
+     */
+    static int doubleBlock(Player me,Game game) {
+        List<Unit> unblocked=new ArrayList<>();Set<UUID> blocking=new HashSet<>();
+        for(CombatGroup group:game.getCombat().getGroups()) {
+            blocking.addAll(group.getBlockers());
+            if(!me.getId().equals(group.getDefenderId()) || !group.getBlockers().isEmpty()) continue;
+            for(UUID attackerId:group.getAttackers()) { Permanent p=game.getPermanent(attackerId);if(p!=null) unblocked.add(new Unit(p,game)); }
+        }
+        if(unblocked.isEmpty()) return 0;
+        List<Unit> spare=new ArrayList<>();
+        for(Permanent p:me.getAvailableBlockers(game)) if(!blocking.contains(p.getId()) && p.isCreature(game)) spare.add(new Unit(p,game));
+        unblocked.sort(Comparator.comparingInt((Unit u)->-u.value));
+        int pairs=0;
+        for(Unit a:unblocked) {
+            int bestGain=0;Unit first=null,second=null;
+            for(int i=0;i<spare.size();i++) for(int j=i+1;j<spare.size();j++) {
+                Unit b1=spare.get(i),b2=spare.get(j);
+                if(blocking.contains(b1.id) || blocking.contains(b2.id)) continue;
+                int gain=doubleBlockGain(a,b1,b2);
+                if(gain>bestGain && b1.permanent.canBlock(a.id,game) && b2.permanent.canBlock(a.id,game)) { bestGain=gain;first=b1;second=b2; }
+            }
+            if(first==null) continue;
+            me.declareBlocker(me.getId(),first.id,a.id,game);me.declareBlocker(me.getId(),second.id,a.id,game);
+            blocking.add(first.id);blocking.add(second.id);pairs++;
+        }
+        if(pairs>0) game.getPlayers().resetPassed();
+        return pairs;
+    }
 }

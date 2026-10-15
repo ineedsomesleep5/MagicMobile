@@ -255,7 +255,7 @@ final class MobileAICancellation {
                 return;
             }
             super.selectBlockers(source,game,defendingPlayerId);
-            if(expert && !game.isSimulation()) CombatPlanner.chumpIfLethal(this,game);
+            if(expert && !game.isSimulation()) { CombatPlanner.chumpIfLethal(this,game);CombatPlanner.doubleBlock(this,game); }
         }
         private boolean possiblyLethal(Game game) {
             int power=0;

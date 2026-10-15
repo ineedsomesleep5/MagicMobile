@@ -35,6 +35,8 @@ public final class RealCombatPlannerTests {
         tests.put("holds-back-against-crack-back", RealCombatPlannerTests::holdsBack);
         tests.put("lethal-attack", RealCombatPlannerTests::lethalAttack);
         tests.put("chump-when-lethal", RealCombatPlannerTests::chumpWhenLethal);
+        tests.put("double-block-gains", RealCombatPlannerTests::doubleBlockGains);
+        tests.put("double-block", RealCombatPlannerTests::doubleBlock);
         tests.put("expert-search-plays", RealCombatPlannerTests::expertSearchPlays);
         int passed = 0;
         for (Map.Entry<String,ThrowingRunnable> test : tests.entrySet()) {
@@ -191,6 +193,35 @@ public final class RealCombatPlannerTests {
             eq(CombatPlanner.chumpIfLethal(b.ai, b.game), 1);
             check(b.game.getCombat().getBlockers().contains(bears.getId()), "bears chump the giant");
             eq(CombatPlanner.chumpIfLethal(b.ai, b.game), 0); // already blocked: nothing lethal left
+        }
+    }
+
+    /** Two 2/2s kill a 3/3 and lose one; never into first strike that kills both, or an indestructible attacker. */
+    private static void doubleBlockGains() {
+        CombatPlanner.Unit giant = u("giant", 3, 3, 3000, ""), b1 = u("b1", 2, 2, 2000, ""), b2 = u("b2", 2, 2, 2000, "");
+        eq(CombatPlanner.doubleBlockGain(giant, b1, b2), 1000);
+        eq(CombatPlanner.doubleBlockGain(u("striker", 4, 3, 3000, "first"), b1, b2), 0); // kills both before they hit
+        eq(CombatPlanner.doubleBlockGain(u("wall", 3, 5, 3000, ""), b1, b2), 0); // 4 damage doesn't kill a 5-toughness attacker
+        eq(CombatPlanner.doubleBlockGain(u("god", 3, 3, 9000, "indestructible"), b1, b2), 0);
+        check(CombatPlanner.doubleBlockGain(u("dt", 1, 1, 1500, "deathtouch"), b1, b2) <= 0, "deathtouch 1/1 trades evenly at best");
+    }
+
+    /** A Hill Giant attacks into two Grizzly Bears at 40 life: upstream doesn't block, the expert double-blocks. */
+    private static void doubleBlock() throws Exception {
+        for (int skill : new int[]{4, 6}) {
+            try (Board b = new Board(skill)) {
+                Card bears1 = b.permanent(b.ai, GrizzlyBears::new, "Grizzly Bears");
+                Card bears2 = b.permanent(b.ai, GrizzlyBears::new, "Grizzly Bears");
+                Card giant = b.permanent(b.human, HillGiant::new, "Hill Giant");
+                b.attackStep(b.human);
+                check(b.game.getCombat().declareAttacker(giant.getId(), b.ai.getId(), b.human.getId(), b.game), "real attack");
+                DeclareBlockersStep step = new DeclareBlockersStep();
+                CombatPhase phase = new CombatPhase(); phase.setStep(step); b.game.getTurn().setPhase(phase);
+                b.ai.selectBlockers(null, b.game, b.ai.getId());
+                Set<UUID> blockers = b.game.getCombat().getBlockers();
+                eq(blockers.contains(bears1.getId()) && blockers.contains(bears2.getId()), skill == 6);
+                if (skill == 4) eq(blockers.size(), 0);
+            }
         }
     }
 
