@@ -1,8 +1,5 @@
 import SwiftUI
-import PhotosUI
 import UniformTypeIdentifiers
-import Vision
-import ImageIO
 
 @MainActor
 struct DeckStudioImportScreen: View {
@@ -26,9 +23,7 @@ struct DeckStudioImportScreen: View {
     @State private var saving = false
     @State private var task: Task<Void, Never>?
     @State private var generation = UUID()
-    @State private var photo: PhotosPickerItem?
     @State private var filePicker = false
-    @State private var scanNotice: String?
     @State private var receiptURL: URL?
     @State private var saved: DeckLibraryRecord?
     /// Commander first: the card the player picks leads the import even when the list doesn't mark it.
@@ -126,7 +121,6 @@ struct DeckStudioImportScreen: View {
             .onChange(of: picked) { _, _ in invalidate() }
             .task { metadata = await Task.detached(priority: .userInitiated) { try? NativeDeckMetadataCatalogue.bundled() }.value }
             .task(id: commanderQuery) { await suggestCommanders() }
-            .onChange(of: photo) { _, item in if let item { beginScan(item) } }
             .onDisappear { task?.cancel(); listTask?.cancel(); validation.cancelPending() }
         }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
@@ -144,15 +138,14 @@ struct DeckStudioImportScreen: View {
     /// Where the list goes in: the heading, the method, the input, and Review. In a spread, the left page.
     @ViewBuilder private var entry: some View {
         Text("Bring your deck.").font(.largeTitle.weight(.bold)).tracking(-1)
-        Text("Paste, link, or scan a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
-        GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Account", "Archidekt"), ("Scan", "Scan image")], selection: $method)
+        Text("Paste or link a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
+        GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Account", "Archidekt")], selection: $method)
             .disabled(busy || saved != nil || !batch.isEmpty)
         if !isBatch && batch.isEmpty { commanderPanel }
         inputPanel
         if !batch.isEmpty { batchPanel }
-        if let scanNotice { DeckStudioNotice(title: "Check recognized text", message: scanNotice) }
         if let error { DeckStudioNotice(title: "Import needs attention", message: error, icon: "exclamationmark.triangle") }
-        if busy { ProgressView(saving ? "Saving deck and import details…" : (method == "Scan" ? "Reading image on this device…" : "Preparing review…")) }
+        if busy { ProgressView(saving ? "Saving deck and import details…" : "Preparing review…") }
         if method == "Account" {
             if batchDone {
                 Button("Done", action: leave).buttonStyle(DeckStudioButtonStyle()).accessibilityIdentifier("deckStudio.import.batchDone")
@@ -162,7 +155,7 @@ struct DeckStudioImportScreen: View {
                     .disabled(busy || resolver == nil || saved != nil || !batch.isEmpty)
                     .accessibilityIdentifier("deckStudio.import.review")
             }
-        } else if method != "Scan" {
+        } else {
             Button("Review decklist", action: beginPreview).buttonStyle(DeckStudioButtonStyle())
                 .disabled(busy || resolver == nil || saved != nil || (method == "Link" ? link : text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("deckStudio.import.review")
@@ -375,13 +368,8 @@ struct DeckStudioImportScreen: View {
                     Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.")
                         .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Switch to pasted export") { method = "Paste" }.frame(minHeight: 44)
-                } else if method == "Account" {
-                    archidektPicker
                 } else {
-                    PhotosPicker(selection: $photo, matching: .images) { Label("Choose decklist photo or screenshot", systemImage: "text.viewfinder").frame(maxWidth: .infinity) }
-                        .buttonStyle(BinderPlaqueButtonStyle())
-                    Text("Apple Vision recognizes text on this device. Images are not uploaded. Review and correct the recognized text before parsing; this is not a physical-card scanner.")
-                        .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    archidektPicker
                 }
             }.disabled(busy || saved != nil)
         }
@@ -437,22 +425,6 @@ struct DeckStudioImportScreen: View {
             } catch is CancellationError { } catch { if generation == token { self.error = error.localizedDescription } }
         }
     }
-    private func beginScan(_ item: PhotosPickerItem) {
-        invalidate(); error = nil; busy = true
-        let token = generation
-        task = Task { @MainActor in
-            defer { if generation == token { busy = false } }
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self) else { throw OnDeviceDeckResolver.ResolutionError("Could not read the chosen image.") }
-                guard data.count <= 20 * 1024 * 1024 else { throw OnDeviceDeckResolver.ResolutionError("Choose an image no larger than 20 MiB.") }
-                let recognized = try await Task.detached(priority: .userInitiated) { try DeckStudioOCR.recognize(data) }.value
-                try Task.checkCancellation()
-                guard generation == token else { return }
-                text = recognized; method = "Paste"
-                scanNotice = "OCR can misread quantities and card names. Correct the text, then choose Review decklist."
-            } catch is CancellationError { } catch { if generation == token { self.error = error.localizedDescription } }
-        }
-    }
     private func save(_ preview: OnDeviceDeckLinkImporter.Preview) {
         guard !busy else { return }
         busy = true; saving = true; error = nil
@@ -479,24 +451,6 @@ struct DeckStudioImportScreen: View {
 
 }
 
-private enum DeckStudioOCR {
-    static func recognize(_ data: Data) throws -> String {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
-              width > 0, height > 0, width <= 20_000, height <= 20_000, Int64(width) * Int64(height) <= 80_000_000,
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 3000
-              ] as CFDictionary) else { throw OnDeviceDeckResolver.ResolutionError("The image is unsupported or too large to read safely.") }
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate; request.usesLanguageCorrection = false; request.recognitionLanguages = ["en-US"]
-        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-        let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
-        guard !text.isEmpty, text.utf8.count <= OnDeviceDeckLinkImporter.maximumBytes else { throw OnDeviceDeckResolver.ResolutionError("No usable decklist text was found. Try a clearer image or paste an export.") }
-        return text
-    }
-}
 private struct DeckStudioImportReceipt: Codable {
     struct Annotation: Codable { let line: Int; let text: String }
     let schemaVersion: Int
