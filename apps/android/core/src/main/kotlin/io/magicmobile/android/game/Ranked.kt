@@ -448,7 +448,24 @@ data class RankedStanding(
 
 /** A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result). */
 @Serializable
-data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long)
+data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long,
+                               /** The ticket carried a server seed (mm_ranked_ai_start2): the result goes with the game record. */
+                               val seeded: Boolean = false,
+                               /** The game record's file in GameRecords, when the engine kept one. */
+                               val recordFile: String? = null)
+
+/** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
+data class RankedAITicket(val id: String, val seed: Long) {
+    companion object {
+        /** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+        fun parse(text: String): RankedAITicket? = runCatching {
+            val value = kotlinx.serialization.json.Json.parseToJsonElement(text) as JsonObject
+            val id = value["id"]!!.jsonPrimitive.also { require(it.isString) }.content
+            val seed = value["seed"]!!.jsonPrimitive.also { require(it.isString) }.content.toLong()
+            RankedAITicket(java.util.UUID.fromString(id).toString(), seed)
+        }.getOrNull()
+    }
+}
 
 /** The profile file: ranked standing, match history, title and favorite commander (PlayerRecordStore). */
 @Serializable
@@ -457,13 +474,15 @@ data class PlayerRecordFile(
     val favoriteCommander: String? = null, val recentAIDecks: List<String> = emptyList(),
     /** The server's ticket for the ranked AI game being played (mm_ranked_ai_start); kept across a resume. */
     val rankedTicket: String? = null,
+    /** That ticket carried a server seed. */
+    val rankedTicketSeeded: Boolean = false,
     /** Finished ranked AI games still to send, oldest first. */
     val pendingRankedResults: List<PendingRankedResult> = emptyList(),
 ) {
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null, engineMatchID: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
@@ -472,9 +491,11 @@ data class PlayerRecordFile(
             turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
-        val pending = if (ticket == null) pendingRankedResults else (pendingRankedResults + PendingRankedResult(ticket, outcome, now)).takeLast(20)
+        val pending = if (ticket == null) pendingRankedResults
+            else (pendingRankedResults + PendingRankedResult(ticket, outcome, now, rankedTicketSeeded, gameRecordFile)).takeLast(20)
         return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent,
-            rankedTicket = if (ticket == null) rankedTicket else null, pendingRankedResults = pending) to change
+            rankedTicket = if (ticket == null) rankedTicket else null, rankedTicketSeeded = ticket == null && rankedTicketSeeded,
+            pendingRankedResults = pending) to change
     }
 
     /**

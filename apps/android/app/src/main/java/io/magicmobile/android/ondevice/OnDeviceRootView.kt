@@ -390,14 +390,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
         rankChange = null
-        if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
-            // The server's ticket for this game, so its result counts there too.
-            record.beginRankedAIGame(null)
-            scope.launch { record.beginRankedAIGame(vm.account.startRankedAIGame(deckBracket.level)) }
-        }
+        if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, aiStartingPlayerMode, mode.raw, deckBracket.level)
         scope.launch {
-            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID)
+            // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
+            var seed: Long? = null
+            if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
+                val ticket = vm.account.startRankedAIGame(deckBracket.level)
+                record.beginRankedAIGame(ticket?.id, seeded = ticket != null)
+                seed = ticket?.seed
+            }
+            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID, seed = seed)
             if (session.matchID == null) activeMatch = null
         }
     }
@@ -577,10 +580,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         }
     }
 
-    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?,
+                   gameRecordFile: String? = null) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
         rankChange = change
         scope.launch {
             match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
@@ -608,8 +612,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             snapshot.isCompleted && winners.isEmpty() -> io.magicmobile.android.game.RankOutcome.DRAW
             else -> io.magicmobile.android.game.RankOutcome.LOSS
         }
-        saveResult(current, outcome, snapshot.turn, snapshot)
         activeMatch = current.copy(recorded = true)
+        // The engine's game record first (solo games, before the match is destroyed), so a ranked result goes with it.
+        scope.launch {
+            val file = setup.finishedGameRecord()?.let(record::keepGameRecord)
+            saveResult(current, outcome, snapshot.turn, snapshot, file)
+        }
     }
 
     /** Leaving a ranked game before it ends counts as a loss. */

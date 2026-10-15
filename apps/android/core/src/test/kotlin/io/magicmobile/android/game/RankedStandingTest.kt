@@ -91,4 +91,31 @@ class RankedStandingTest {
         }
         assertTrue(AIDeckPool.pick(2, null, emptyList(), precons, preconsOnly = true, onlyPrecons = setOf("no-such-precon")) { 4 } != null)
     }
+
+    /** Phase 5: a seeded ticket's result goes with the game record kept on the phone, and survives a relaunch. */
+    @Test fun seededTicketKeepsTheGameRecordWithTheResult() {
+        val file = fresh().copy(rankedTicket = "t1", rankedTicketSeeded = true)
+            .recording(october, PlayMode.RANKED, RankOutcome.WIN, listOf(MatchOpponent("Foe", null, true)), 2, 1, "precon:x", "Goblins",
+                null, listOf("R"), 2, 9, gameRecordFile = "game-1.json").first
+        val pending = file.pendingRankedResults.single()
+        assertEquals(PendingRankedResult("t1", RankOutcome.WIN, october, seeded = true, recordFile = "game-1.json"), pending)
+        assertNull(file.rankedTicket)
+        assertEquals(false, file.rankedTicketSeeded)
+        val again = PlayerRecordFile.json.decodeFromString(PlayerRecordFile.serializer(),
+            PlayerRecordFile.json.encodeToString(PlayerRecordFile.serializer(), file))
+        assertEquals(file, again)
+        // An older file without the new fields reads as unseeded.
+        assertEquals(PendingRankedResult("t2", RankOutcome.LOSS, 5), PlayerRecordFile.json.decodeFromString(PendingRankedResult.serializer(),
+            """{"ticket":"t2","outcome":"LOSS","date":5}"""))
+        // The next ticket starts unseeded.
+        assertEquals(false, file.copy(rankedTicket = "t3").play(RankOutcome.LOSS).pendingRankedResults.last().seeded)
+    }
+
+    @Test fun parsesTheSeededTicket() {
+        val id = "3f1c2a9e-7b1d-4c55-9a0e-1d2c3b4a5f60"
+        assertEquals(RankedAITicket(id, -4_123_456_789_012_345_678L),
+            RankedAITicket.parse("""{"id":"$id","seed":"-4123456789012345678","aiSkill":1}"""))
+        assertNull(RankedAITicket.parse("""{"id":"$id","seed":4.5}"""))
+        assertNull(RankedAITicket.parse("\"$id\""))
+    }
 }

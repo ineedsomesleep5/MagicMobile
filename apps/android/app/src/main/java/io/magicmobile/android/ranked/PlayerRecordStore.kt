@@ -26,6 +26,8 @@ import java.io.File
  */
 class PlayerRecordStore(context: Context, private val now: () -> Long = System::currentTimeMillis) {
     private val file_ = File(context.filesDir, "Profile/player-record.json")
+    /** Game records, one JSON file per finished game (the engine's `record`), private to this phone (no backups). */
+    val gameRecordsDir = File(context.filesDir, "Profile/GameRecords")
     var file by mutableStateOf(load()); private set
     /** Set by the root to share ranked results with friends. */
     var publish: ((RankState, Achievement?, String?) -> Unit)? = null
@@ -56,9 +58,9 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     /** Records a finished game; a ranked game moves the ladder and returns how. */
     fun record(mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?, deckID: String,
                deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int, aiDeckID: String? = null,
-               engineMatchID: String? = null): RankChange? {
+               engineMatchID: String? = null, gameRecordFile: String? = null): RankChange? {
         val (next, change) = file.recording(now(), mode, outcome, opponents, opponentBracket, aiSkill, deckID, deckName, commander, colors,
-            deckBracket, turns, aiDeckID, engineMatchID)
+            deckBracket, turns, aiDeckID, engineMatchID, gameRecordFile)
         file = next; save()
         if (mode == PlayMode.RANKED) publish?.invoke(file.rank, file.title, shownCommander)
         // The finished game goes to the profile server too (when there is a profile): never blocks play.
@@ -67,10 +69,30 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     }
 
     /** A ranked AI game began; `ticket` is the server's (null offline: that game counts on this phone only). */
-    fun beginRankedAIGame(ticket: String?) {
-        if (file.rankedTicket == ticket) return
-        file = file.copy(rankedTicket = ticket); save()
+    fun beginRankedAIGame(ticket: String?, seeded: Boolean = false) {
+        val isSeeded = ticket != null && seeded
+        if (file.rankedTicket == ticket && file.rankedTicketSeeded == isSeeded) return
+        file = file.copy(rankedTicket = ticket, rankedTicketSeeded = isSeeded); save()
     }
+
+    /** Keeps a finished game's record (the engine's JSON) and returns its file name; the oldest go past [MAX_GAME_RECORDS]. */
+    fun keepGameRecord(data: ByteArray): String? = runCatching {
+        gameRecordsDir.mkdirs()
+        val name = "game-${now()}-${java.util.UUID.randomUUID().toString().take(8)}.json"
+        val temp = File(gameRecordsDir, "$name.tmp")
+        temp.writeBytes(data)
+        check(temp.renameTo(File(gameRecordsDir, name)))
+        gameRecordFiles().drop(MAX_GAME_RECORDS).forEach { it.delete() }
+        name
+    }.getOrNull()
+
+    /** The kept game records, newest first. */
+    fun gameRecordFiles(): List<File> =
+        gameRecordsDir.listFiles { file -> file.name.endsWith(".json") }.orEmpty().sortedByDescending { it.name }
+
+    /** A kept record by file name, for the ranked upload. */
+    fun gameRecord(name: String): ByteArray? =
+        if ('/' in name) null else runCatching { File(gameRecordsDir, name).readBytes() }.getOrNull()
 
     /** The server answered for this ticket (or never will). */
     fun resolvePendingRankedResult(ticket: String) {
@@ -119,6 +141,8 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     }
 
     companion object {
+        /** Engine game records kept on this phone (docs/cloud/game-record.md): the last games, newest first. */
+        const val MAX_GAME_RECORDS = 50
         @Volatile private var shared: PlayerRecordStore? = null
         fun shared(context: Context): PlayerRecordStore = shared ?: synchronized(this) {
             shared ?: PlayerRecordStore(context.applicationContext).also { shared = it }
