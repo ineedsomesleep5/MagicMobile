@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
@@ -401,11 +402,50 @@ enum class Achievement(val title: String, val detail: String) {
     }
 }
 
+/**
+ * The ladder as the server keeps it (mm_ranked_standing, RankedStanding in RankLadder.swift; Caleb 2026-10-14). Once the
+ * player has a profile the server decides rank: the phone shows its own result at once, then takes this.
+ */
+data class RankedStanding(
+    /** False only for a new server standing that has never counted a result: the phone may seed it once. */
+    val seeded: Boolean,
+    /** Matches this player reported that the other side hasn't yet. */
+    val unsettled: Int,
+    val season: String, val points: Int, val peakPoints: Int, val wins: Int, val losses: Int, val draws: Int, val winStreak: Int,
+    val history: List<Season> = emptyList(),
+    /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned. */
+    val settlement: String? = null,
+) {
+    data class Season(val season: String, val finalPoints: Int, val peakPoints: Int, val wins: Int, val losses: Int)
+
+    companion object {
+        fun parse(value: JsonObject): RankedStanding {
+            fun i(o: JsonObject, key: String) = o[key]?.jsonPrimitive?.int ?: 0
+            return RankedStanding(value["seeded"]?.jsonPrimitive?.boolean ?: true, i(value, "unsettled"),
+                value["season"]?.jsonPrimitive?.content ?: "", i(value, "points"), i(value, "peakPoints"), i(value, "wins"),
+                i(value, "losses"), i(value, "draws"), i(value, "winStreak"),
+                (value["history"] as? JsonArray).orEmpty().mapNotNull { row ->
+                    (row as? JsonObject)?.let { Season(it["season"]?.jsonPrimitive?.content ?: return@let null, i(it, "finalPoints"),
+                        i(it, "peakPoints"), i(it, "wins"), i(it, "losses")) }
+                },
+                value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content)
+        }
+    }
+}
+
+/** A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result). */
+@Serializable
+data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long)
+
 /** The profile file: ranked standing, match history, title and favorite commander (PlayerRecordStore). */
 @Serializable
 data class PlayerRecordFile(
     val rank: RankState, val matches: List<MatchRecord> = emptyList(), val title: Achievement? = null,
     val favoriteCommander: String? = null, val recentAIDecks: List<String> = emptyList(),
+    /** The server's ticket for the ranked AI game being played (mm_ranked_ai_start); kept across a resume. */
+    val rankedTicket: String? = null,
+    /** Finished ranked AI games still to send, oldest first. */
+    val pendingRankedResults: List<PendingRankedResult> = emptyList(),
 ) {
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
@@ -418,7 +458,26 @@ data class PlayerRecordFile(
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
             turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
-        return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent) to change
+        val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
+        val pending = if (ticket == null) pendingRankedResults else (pendingRankedResults + PendingRankedResult(ticket, outcome, now)).takeLast(20)
+        return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent,
+            rankedTicket = if (ticket == null) rankedTicket else null, pendingRankedResults = pending) to change
+    }
+
+    /**
+     * Takes the server's standing. Kept back while a result is still on its way (a friend match the other side hasn't
+     * reported, or an AI result not sent yet), so a pip just earned never flickers away.
+     */
+    fun adopting(standing: RankedStanding): PlayerRecordFile {
+        if (standing.unsettled != 0 || pendingRankedResults.isNotEmpty() || standing.season < rank.season) return this
+        val base = if (standing.season == rank.season) rank else RankLadder.rollover(rank, standing.season)
+        val position = RankPosition.ofPoints(standing.points)
+        // The server's past seasons replace the phone's for the same month.
+        val history = (base.history.filter { local -> standing.history.none { it.season == local.season } } +
+            standing.history.map { SeasonRecord(it.season, RankPosition.ofPoints(it.finalPoints), RankPosition.ofPoints(it.peakPoints), it.wins, it.losses) })
+            .sortedByDescending { it.season }.take(24)
+        return copy(rank = base.copy(position = position, peak = maxOf(RankPosition.ofPoints(standing.peakPoints), position),
+            wins = standing.wins, losses = standing.losses, draws = standing.draws, winStreak = standing.winStreak, history = history))
     }
 
     companion object {

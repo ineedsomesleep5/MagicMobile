@@ -22,7 +22,7 @@ import java.io.File
 
 /**
  * PlayerRecordStore (PlayerRecord.swift): the profile on this phone, in files/Profile/player-record.json.
- * Ranked standing is also published to the profile server so friends see it (`publish`).
+ * With a profile name the server keeps the ranked standing: the phone counts each result at once, then adopts the server's.
  */
 class PlayerRecordStore(context: Context, private val now: () -> Long = System::currentTimeMillis) {
     private val file_ = File(context.filesDir, "Profile/player-record.json")
@@ -64,6 +64,24 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
         // The finished game goes to the profile server too (when there is a profile): never blocks play.
         next.matches.firstOrNull()?.let { didRecord?.invoke(it) }
         return change
+    }
+
+    /** A ranked AI game began; `ticket` is the server's (null offline: that game counts on this phone only). */
+    fun beginRankedAIGame(ticket: String?) {
+        if (file.rankedTicket == ticket) return
+        file = file.copy(rankedTicket = ticket); save()
+    }
+
+    /** The server answered for this ticket (or never will). */
+    fun resolvePendingRankedResult(ticket: String) {
+        if (file.pendingRankedResults.none { it.ticket == ticket }) return
+        file = file.copy(pendingRankedResults = file.pendingRankedResults.filter { it.ticket != ticket }); save()
+    }
+
+    /** Takes the server's standing (PlayerRecordFile.adopting keeps it back while a result is on its way). */
+    fun adopt(standing: io.magicmobile.android.game.RankedStanding) {
+        val next = file.adopting(standing)
+        if (next != file) { file = next; save() }
     }
 
     private fun save() {

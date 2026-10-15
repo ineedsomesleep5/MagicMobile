@@ -183,7 +183,51 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     val challenges: io.magicmobile.android.game.FriendChallengeService? get() =
         if (phase == Phase.READY && username != null) SupabaseFriendChallenges(api) else null
 
-    /** Shares this season's standing with friends. Quiet on failure: ranks still count on the phone. */
+    /**
+     * Starts a ranked game against the AI on the server (mm_ranked_ai_start), so its result counts there. Null offline
+     * or without a profile name: that game then counts on this phone only.
+     */
+    suspend fun startRankedAIGame(deckBracket: Int): String? {
+        if (phase != Phase.READY || username == null) return null
+        return runCatching {
+            Json.parseToJsonElement(api.rpc("mm_ranked_ai_start", mapOf("p_deck_bracket" to JsonPrimitive(deckBracket)))).jsonPrimitive.content
+        }.getOrNull()
+    }
+
+    /**
+     * Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the server
+     * has none yet). Quiet on failure: the phone's own count stands until the next try.
+     */
+    suspend fun syncRank(record: io.magicmobile.android.ranked.PlayerRecordStore) {
+        if (phase != Phase.READY || username == null) return
+        fun parse(text: String) = runCatching { io.magicmobile.android.game.RankedStanding.parse(Json.parseToJsonElement(text) as JsonObject) }.getOrNull()
+        for (pending in record.file.pendingRankedResults) {
+            try {
+                val text = api.rpc("mm_ranked_ai_result", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw)))
+                record.resolvePendingRankedResult(pending.ticket)
+                parse(text)?.let(record::adopt)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // A ticket the server doesn't know never will be; anything else waits for the next sync.
+                if (SupabaseLite.code(error) == "not_found") record.resolvePendingRankedResult(pending.ticket)
+            }
+        }
+        var standing = runCatching { api.rpc("mm_ranked_standing") }.getOrNull()?.let(::parse) ?: return
+        val local = record.file.rank
+        if (!standing.seeded && (local.position > io.magicmobile.android.game.RankPosition.START || local.wins + local.losses > 0)) {
+            runCatching {
+                api.rpc("mm_ranked_seed", mapOf("p_points" to JsonPrimitive(local.position.points), "p_peak_points" to JsonPrimitive(local.peak.points),
+                    "p_wins" to JsonPrimitive(local.wins), "p_losses" to JsonPrimitive(local.losses)))
+            }.getOrNull()?.let(::parse)?.let { standing = it }
+        }
+        record.adopt(standing)
+    }
+
+    /**
+     * Shares the title and favourite commander with friends. The server keeps the rank itself and ignores the rank numbers
+     * sent here (they stay for older servers). Quiet on failure.
+     */
     suspend fun publishRank(rank: RankState, title: Achievement?, commander: String?) {
         if (phase != Phase.READY || username == null) return
         runCatching {

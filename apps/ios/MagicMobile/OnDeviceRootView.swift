@@ -690,7 +690,10 @@ struct OnDeviceRootView: View {
                 await GameUploader.shared.flush(matches: profileRecord.matches) { await account.recordGame($0) }
             }
             profileRecord.didRecord = { _ in Task { await upload() } }
-            account.afterRefresh = upload
+            account.afterRefresh = { [account, profileRecord] in
+                await upload()
+                await account.syncRank(profileRecord)
+            }
         }
         .onChange(of: setup.isBusy) { _, busy in
             if !busy { submitStartingChoiceIfNeeded() }
@@ -1383,6 +1386,13 @@ struct OnDeviceRootView: View {
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: skill, aiDeckID: opponent.id)
         rankChange = nil
+        if mode == .ranked {
+            // The server's ticket for this game, so its result counts there too.
+            profileRecord.beginRankedAIGame(ticket: nil)
+            Task { [account, profileRecord] in
+                profileRecord.beginRankedAIGame(ticket: await account.startRankedAIGame(deckBracket: deckBracket.rawValue))
+            }
+        }
         Task {
             await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
                                 deckID: selectedDeckID, aiDeckIDs: [opponent.id], startingPlayerMode: aiStartingPlayerMode,
@@ -1429,7 +1439,12 @@ struct OnDeviceRootView: View {
                                    colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
                                    engineMatchID: session.matchID)
         rankChange = change
-        if let id = match.rankedMatchID { Task { await matchmaker.report(match: id, outcome: outcome) } }
+        let rankedMatchID = match.rankedMatchID, ranked = match.mode == .ranked
+        Task { [account, profileRecord] in
+            if let rankedMatchID { await matchmaker.report(match: rankedMatchID, outcome: outcome) }
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile).
+            if ranked { await account.syncRank(profileRecord) }
+        }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
             // After the result screen's own reveal.
             Task { try? await Task.sleep(for: .milliseconds(1500)); if rankChange == change { ceremony = change } }
