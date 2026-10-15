@@ -93,6 +93,13 @@ contradicting one.
   `defenderKind: "none"`. Before rejecting engine data, check upstream for when it can be null.
 - 2026-10-11 (Claude): XMage AI skill sets search depth `max(4, skill)` and think time `skill × 3` s,
   so skills 1–4 play at the same depth. Tune difficulty with decks first (docs/RANKED.md).
+- 2026-10-15 (Claude, C3): once no person is left in a game (a watcher seat conceded),
+  `MobileAICancellation.thinkBudget` caps every AI search at 2 s. So AI-vs-AI runs through a conceding
+  watcher seat (the October calibration) never measure skill's think time. **Rule:** calibrate with
+  `scripts/ai_calibration.py` (default `--budget phone`), whose AIs keep the budget they have against a
+  person. Upstream search state (`SimulationNode2.nodeCount`, the simulation pool) is static, so run
+  parallel games in separate JVMs. A game thread must be named `GAME…` or XMage throws at the first
+  concede check.
 - 2026-09-27 (Claude): `verify_native.py` compares the whole engine package, including the iOS-only
   Swift wrapper, so Android build 10 had to ship with the package restored to the native library's
   source commit (`2c32482`). **Rule:** when the Android native library and the package source
