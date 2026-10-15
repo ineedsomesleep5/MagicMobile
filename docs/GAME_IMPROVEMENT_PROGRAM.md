@@ -48,11 +48,14 @@ Builds installed directly on Caleb's phone between releases are test builds, not
 
 ## Phase 3: smaller engine, in R2
 
-- [ ] Read the GraalVM build report: what fills the 167 MB image heap and the 202 MB of code. Make only safe cuts. (C4)
+- [x] Read the GraalVM build report: what fills the 167 MB image heap and the 202 MB of code. Make only safe cuts. (C4, #170:
+      no build report exists for GraalVM 22.1, so code was measured from symbols; one cut, the table-driven card factory;
+      the heap needs the opt-in `native_reports` Android build; further cuts proposed in docs/cloud/engine-size.md)
 
 ## Phase 4: stronger AI at Diamond and Mythic, in R2
 
-- [ ] Better attack, block, mulligan and response choices, measured with the C3 harness (C4 after Phase 3, or C2)
+- [x] Better attack and block choices, measured with the C3 harness (C4, #170: expert from skill 5 with a combat planner,
+      life scored on Commander's scale and a quick search move; mulligans and responses unchanged)
 
 ## Phase 5: engine game record, in R2 (was R3)
 
@@ -171,3 +174,6 @@ the apps: the Mac does those.
   the cloud, #160); plan written.
 - 2026-10-15: C2 merged (#163) with the smart pass wiring (#175) and C3's mistake rates (#176). C5 merged (#171); its server
   checks and app wiring are #177. Caleb folded R3 into R2. Waiting on C4, then one native build for TestFlight 40 / Android 24.
+- 2026-10-15: C4 ready for review (#170). Code breakdown of the native engine, a table-driven card factory
+  (est. 8–15 MB) and proposed cuts (docs/cloud/engine-size.md). Expert AI at skill 5 and up: skill 6 beats
+  skill 3 in 62% of 318 games and skill 4 in 59% of 160; skill 5 against 4 is 53%, not yet a measurable step.

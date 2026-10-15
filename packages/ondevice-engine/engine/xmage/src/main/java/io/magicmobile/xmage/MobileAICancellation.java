@@ -18,6 +18,7 @@ import mage.abilities.common.PassAbility;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
+import mage.game.combat.Combat;
 import mage.game.combat.CombatGroup;
 import mage.game.events.GameEvent;
 import mage.game.permanent.Permanent;
@@ -35,6 +36,8 @@ import mage.util.MultiAmountMessage;
 import org.apache.log4j.Logger;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +62,9 @@ final class MobileAICancellation {
      * again), and once only AIs remain in the game and any people left are just watching.
      */
     static final int STACK_THINK_SECS=2;
+    /** Expert quick search: one action seen resolved (upstream depth 2), within at most 2 s. */
+    static final int QUICK_DEPTH=2,QUICK_SECS=2;
+    private static final int NO_PHASE=0,QUICK=1,FULL_SEARCH=2;
     private volatile boolean closing;
     private int simulations;
     /** Concede requests from CALL threads; only the live game drains them, on its GAME thread. */
@@ -166,6 +172,7 @@ final class MobileAICancellation {
         private int mistakePercent;
         private long mistakeState;
         private int mistakes;
+        private boolean expert;
         // One search's root candidates. Written by the simulation thread, read after it returns.
         private transient volatile SimulationNode2 searchRoot;
         private transient List<ScoredChoice> rootChoices;
@@ -173,12 +180,14 @@ final class MobileAICancellation {
         CancellablePlayer(String name,int skill,AIDifficulty difficulty,MobileAICancellation cancellation) {
             super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
             maxDepth=difficulty.searchDepth;mistakePercent=difficulty.mistakePercent;mistakeState=difficulty.seed;
+            expert=difficulty.expert;
         }
         private CancellablePlayer(CancellablePlayer source) {
             super(source);cancellation=source.cancellation;
             // Keep the configured upstream budgets when XMage copies this live adapter.
             maxNodes=source.maxNodes;maxThinkTimeSecs=source.maxThinkTimeSecs;
             mistakePercent=source.mistakePercent;mistakeState=source.mistakeState;mistakes=source.mistakes;
+            expert=source.expert;
         }
         /** Advances the seeded generator once per decision that could go wrong. */
         private boolean rollMistake(Game game) {
@@ -197,7 +206,7 @@ final class MobileAICancellation {
          */
         @Override protected void calculateActions(Game game) {
             searched=false;
-            super.calculateActions(game);
+            if(expert && !game.isSimulation()) expertSearch(game); else super.calculateActions(game);
             List<ScoredChoice> candidates;
             synchronized(this) { candidates=new ArrayList<>(choices());choices().clear();searchRoot=null; }
             if(!searched || actions.isEmpty() || !rollMistake(game)) return;
@@ -218,7 +227,41 @@ final class MobileAICancellation {
                 root=alternative.node();combat=alternative.node().getCombat();
             }
         }
-        /** Sometimes holds every creature back, but never when the attack might be lethal. True when upstream declared. */
+        // Expert search phases. Transient: they only live inside one calculateActions call.
+        private transient int searchPhase;
+        private transient int phaseBudgetSecs;
+        private transient boolean timedOut;
+        /**
+         * A quick search (QUICK_DEPTH, at most QUICK_SECS) and then the full search in the time left. When the
+         * full search runs out of time before it scores any move, the quick search's move stands instead of a
+         * pass; otherwise the full search decides, exactly as upstream. Total think time stays within the budget.
+         */
+        private void expertSearch(Game game) {
+            Set<String> cache=new HashSet<>(actionCache);
+            int depth=maxDepth;long started=System.nanoTime();
+            searchPhase=QUICK;
+            try { maxDepth=Math.min(depth,QUICK_DEPTH);super.calculateActions(game); }
+            finally { maxDepth=depth;searchPhase=FULL_SEARCH; }
+            try {
+                if(!searched) return; // continued the plan of an earlier search: nothing was searched
+                int left=phaseBudgetSecs-(int)Math.ceil((System.nanoTime()-started)/1e9);
+                if(left<1) return;
+                LinkedList<Ability> quick=new LinkedList<>(actions);SimulationNode2 quickRoot=root;Combat quickCombat=combat;
+                actions=new LinkedList<>();root=null;combat=null;
+                actionCache.clear();actionCache.addAll(cache);
+                phaseBudgetSecs=left;timedOut=false;
+                super.calculateActions(game);
+                if(actions.isEmpty() && timedOut && !quick.isEmpty()) {
+                    logger.info("AI full search ran out of time for "+getName()+"; quick search move "+quick);
+                    actions=quick;root=quickRoot;combat=quickCombat;
+                    for(Ability ability:quick) actionCache.add(ability.getRule()+'_'+ability.getSourceId());
+                }
+            } finally { searchPhase=NO_PHASE; }
+        }
+        /**
+         * Sometimes holds every creature back, but never when the attack might be lethal. True when it declared (upstream,
+         * or an expert's planner with upstream's events, so a game record replays it the same way).
+         */
         private boolean selectAttackersLive(Game game,UUID attackingPlayerId) {
             if(!game.isSimulation() && isGameUnderControl() && !getAvailableAttackers(game).isEmpty()
                     && !possiblyLethal(game) && rollMistake(game)) {
@@ -226,10 +269,15 @@ final class MobileAICancellation {
                 logger.info("AI deliberate mistake for "+getName()+": no attack");
                 return false;
             }
-            super.selectAttackers(game,attackingPlayerId);
+            CombatPlanner.Plan plan=expert && !game.isSimulation()?CombatPlanner.planAttack(this,game):null;
+            if(plan==null) { super.selectAttackers(game,attackingPlayerId);return true; }
+            // Same events as upstream's declareAttackers, around the planner's choice.
+            game.fireEvent(new GameEvent(GameEvent.EventType.DECLARE_ATTACKERS_STEP_PRE,null,null,playerId));
+            if(game.replaceEvent(GameEvent.getEvent(GameEvent.EventType.DECLARING_ATTACKERS,playerId,playerId))) return true;
+            for(UUID attackerId:plan.attackers()) declareAttacker(attackerId,plan.defenderId(),game,true);
             return true;
         }
-        /** Sometimes declares no blocks, but only while the attack would cost under half its life. True when upstream declared. */
+        /** Sometimes declares no blocks, but only while the attack would cost under half its life. True when it declared (as attacks). */
         private boolean selectBlockersLive(Ability source,Game game,UUID defendingPlayerId) {
             if(!game.isSimulation() && isGameUnderControl() && !getAvailableBlockers(game).isEmpty()
                     && incomingPower(game)*2<getLife() && rollMistake(game)) {
@@ -237,9 +285,30 @@ final class MobileAICancellation {
                 logger.info("AI deliberate mistake for "+getName()+": no blocks");
                 return false;
             }
+            if(expert && !game.isSimulation()) {
+                // The engine asks again when a declaration breaks a blocking requirement; then upstream decides.
+                String step=game.getTurnNum()+":"+game.getCombat().getAttackers();
+                boolean retry=step.equals(blockedStep);blockedStep=step;
+                CombatPlanner.Blocks plan=retry?null:CombatPlanner.planBlocks(this,game);
+                if(plan!=null) {
+                    // Same events as upstream's declareBlockers (ComputerPlayer6 passes its own player ID), around the
+                    // optimizer's choice.
+                    game.fireEvent(new GameEvent(GameEvent.EventType.DECLARE_BLOCKERS_STEP_PRE,null,null,playerId));
+                    if(game.replaceEvent(GameEvent.getEvent(GameEvent.EventType.DECLARING_BLOCKERS,playerId,playerId))) return true;
+                    boolean blocked=false;
+                    for(int j=0;j<plan.blockers().size();j++) if(plan.assign()[j]>=0) {
+                        declareBlocker(playerId,plan.blockers().get(j).id,plan.attackers().get(plan.assign()[j]).id,game);blocked=true;
+                    }
+                    if(blocked) game.getPlayers().resetPassed();
+                    return true;
+                }
+            }
             super.selectBlockers(source,game,defendingPlayerId);
+            if(expert && !game.isSimulation()) { CombatPlanner.chumpIfLethal(this,game);CombatPlanner.doubleBlock(this,game); }
             return true;
         }
+        /** The combat this expert last blocked in (turn and attackers); transient, a restored game blocks afresh. */
+        private transient String blockedStep;
         private boolean possiblyLethal(Game game) {
             int power=0;
             for(Permanent attacker:getAvailableAttackers(game)) power+=Math.max(0,attacker.getPower().getValue());
@@ -304,9 +373,16 @@ final class MobileAICancellation {
             searched=true;
             int configured=maxThinkTimeSecs;
             Game simulation=root==null?null:root.getGame();
-            maxThinkTimeSecs=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
+            int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
+            if(searchPhase==QUICK) { phaseBudgetSecs=budget;budget=Math.min(budget,QUICK_SECS); }
+            else if(searchPhase==FULL_SEARCH) budget=Math.min(budget,phaseBudgetSecs);
+            maxThinkTimeSecs=budget;
+            long started=System.nanoTime();
             try { return super.addActionsTimed(); }
-            finally { maxThinkTimeSecs=configured; }
+            finally {
+                maxThinkTimeSecs=configured;
+                timedOut=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
+            }
         }
         @Override protected int addActions(SimulationNode2 node,int depth,int alpha,int beta) {
             cancellation.enterSimulation();

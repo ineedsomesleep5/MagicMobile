@@ -46,9 +46,9 @@ enum RankTier: Int, CaseIterable, Codable, Comparable, Sendable {
     /// Bronze AI opponents play only the official precons, the gentlest decks in the pool.
     var preconOpponentsOnly: Bool { self == .bronze }
 
-    /// XMage AI skill for AI opponents at this tier. The AI searches max(4, skill) moves deep and
-    /// thinks skill × 3 s, so skills 1–4 differ only in thinking time; depth grows from Diamond.
-    /// Mythic stops at 6: skill 7 means 21 s turns on a phone.
+    /// XMage AI skill for AI opponents at this tier (AIDifficulty.java): Bronze to Gold look fewer moves ahead
+    /// and make deliberate mistakes, Platinum plays upstream's full strength, Diamond and Mythic play as experts
+    /// (combat planner). It thinks skill × 3 s. Mythic stops at 6: skill 7 means 21 s turns on a phone.
     var aiSkill: Int {
         switch self {
         case .bronze: return 1

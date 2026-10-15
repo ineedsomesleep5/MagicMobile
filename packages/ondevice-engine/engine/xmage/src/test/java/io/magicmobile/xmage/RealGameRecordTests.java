@@ -41,6 +41,9 @@ public final class RealGameRecordTests {
         if(only.isEmpty() || only.equals("human-vs-3ai")) humanGame("human-vs-3ai",flight,List.of(isamaru,yargle,adeline),404L,90,false);
         // Two human seats (an online table) and an AI: both humans answer through the API, then concede in turn.
         if(only.isEmpty() || only.equals("two-humans")) twoHumans(tokens,flight,chaos,505L);
+        // Expert AIs (skill 5 and up): the combat planner's attacks and blocks and the quick search move replay too.
+        if(only.isEmpty() || only.equals("ai-experts")) aiGame("ai-experts",List.of(flight,chaos,tokens),606L,6);
+        if(only.isEmpty() || only.equals("human-vs-expert")) humanGame("human-vs-expert",tokens,List.of(flight),707L,160,true,5);
         if(only.isEmpty()) tamper(isamaru,yargle);
         // -Dmagicmobile.recordSoak=<games>: more seeds and deck pairings, alternating AI-only and human games.
         int soak=Integer.getInteger("magicmobile.recordSoak",0);
@@ -87,11 +90,12 @@ public final class RealGameRecordTests {
         System.out.println("PASS seeded setup: two matches with seed 77 dealt the same card instances to identical hands and library orders");
     }
 
-    private static void aiGame(String name,List<Map<String,Object>> decks,long seed) throws Exception {
+    private static void aiGame(String name,List<Map<String,Object>> decks,long seed) throws Exception { aiGame(name,decks,seed,1); }
+    private static void aiGame(String name,List<Map<String,Object>> decks,long seed,int skill) throws Exception {
         List<Object> seats=new ArrayList<>();
         seats.add(seat("human","Watcher",decks.get(2),null));
-        seats.add(seat("ai1","AI 1",decks.get(0),1));
-        seats.add(seat("ai2","AI 2",decks.get(1),1));
+        seats.add(seat("ai1","AI 1",decks.get(0),skill));
+        seats.add(seat("ai2","AI 2",decks.get(1),skill));
         XmageEngine engine=new XmageEngine("jvm-record-"+name);
         Map<String,Object> record;List<String> digests;
         long started=System.nanoTime();
@@ -112,9 +116,12 @@ public final class RealGameRecordTests {
     }
 
     private static void humanGame(String name,Map<String,Object> human,List<Map<String,Object>> ais,long seed,int prompts,boolean finish) throws Exception {
+        humanGame(name,human,ais,seed,prompts,finish,1);
+    }
+    private static void humanGame(String name,Map<String,Object> human,List<Map<String,Object>> ais,long seed,int prompts,boolean finish,int skill) throws Exception {
         List<Object> seats=new ArrayList<>();
         seats.add(seat("human","Human",human,null));
-        for(int i=0;i<ais.size();i++) seats.add(seat("ai"+(i+1),"AI "+(i+1),ais.get(i),1));
+        for(int i=0;i<ais.size();i++) seats.add(seat("ai"+(i+1),"AI "+(i+1),ais.get(i),skill));
         XmageEngine engine=new XmageEngine("jvm-record-"+name);
         Map<String,Object> record;List<String> digests;
         try {

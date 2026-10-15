@@ -122,8 +122,9 @@ object DeckBracketPreference {
 
 /**
  * Bracket 1 is never asked for: the Exhibition AI decks are tribal lists no weaker than Core, so Bronze plays
- * precons instead. The AI searches max(4, skill) moves deep and thinks skill × 3 s, so skills 1–4 differ only in
- * thinking time; depth grows from Diamond. Mythic stops at 6: skill 7 means 21 s turns on a phone.
+ * precons instead. AI skill (AIDifficulty.java): Bronze to Gold look fewer moves ahead and make deliberate mistakes,
+ * Platinum plays upstream's full strength, Diamond and Mythic play as experts (combat planner). It thinks skill × 3 s.
+ * Mythic stops at 6: skill 7 means 21 s turns on a phone.
  */
 enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSkill: Int) {
     BRONZE("Bronze", 2..2, 1), SILVER("Silver", 2..2, 2), GOLD("Gold", 2..3, 3),

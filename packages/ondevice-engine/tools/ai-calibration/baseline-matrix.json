@@ -1,0 +1,6 @@
+{
+  "description": "C3 calibration matrix: lower skill is A. Core bracket pool (the 5 precons and the 6 Core AI decks) for every pairing, so skill is the only difference.",
+  "pool": "core+precon",
+  "games": 80,
+  "pairings": [[1, 3], [2, 4], [3, 4], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6]]
+}

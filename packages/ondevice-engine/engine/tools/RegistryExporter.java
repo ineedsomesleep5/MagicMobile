@@ -57,15 +57,26 @@ public final class RegistryExporter {
             if(entries.isEmpty())continue;
             String classname="GeneratedCardBucket"+bucket;
             dispatch.append("   case ").append(bucket).append(": return ").append(classname).append(".create(name,info);\n");
-            StringBuilder b=new StringBuilder(pre+"final class "+classname+" { static Card create(String name,CardSetInfo info) { switch(name) {\n");
-            for(CardEntry e:entries){
-                b.append(" case \"").append(e.binary()).append("\": ");
+            // A sorted name table and an int switch: each case is one allocation and one constructor call. A
+            // switch on the name string compiled a hash dispatch, an inlined String.equals and its own throw
+            // site per card, about 20 MB of the native engine's code for 32k cards.
+            List<CardEntry> sorted=entries.stream().sorted(Comparator.comparing(CardEntry::binary)).toList();
+            StringBuilder b=new StringBuilder(pre+"final class "+classname+" {\n private static final String[] NAMES={\n");
+            StringBuilder requires=new StringBuilder();
+            for(CardEntry e:sorted){ b.append("  \"").append(e.binary()).append("\",\n");requires.append(e.withInfo()&&!e.noInfo()?'1':'0'); }
+            b.append(" };\n /** '1' where the card has only a CardSetInfo constructor. */\n private static final String REQUIRES_INFO=\"").append(requires).append("\";\n");
+            b.append(" static Card create(String name,CardSetInfo info) {\n  int index=java.util.Arrays.binarySearch(NAMES,name);\n");
+            b.append("  if(index<0)throw new IllegalArgumentException(\"Unregistered card class: \"+name);\n");
+            b.append("  if(info==null && REQUIRES_INFO.charAt(index)=='1')throw new IllegalArgumentException(\"CardSetInfo required\");\n  switch(index) {\n");
+            for(int i=0;i<sorted.size();i++){
+                CardEntry e=sorted.get(i);
+                b.append("   case ").append(i).append(": ");
                 if(e.withInfo()&&e.noInfo())b.append("return info==null ? new ").append(e.source()).append("(null) : new ").append(e.source()).append("(null,info);");
-                else if(e.withInfo())b.append("if(info==null)throw new IllegalArgumentException(\"CardSetInfo required\"); return new ").append(e.source()).append("(null,info);");
+                else if(e.withInfo())b.append("return new ").append(e.source()).append("(null,info);");
                 else b.append("return new ").append(e.source()).append("(null);");
                 b.append('\n');
             }
-            b.append(" default: throw new IllegalArgumentException(\"Unregistered card class: \"+name); } } }\n");Files.writeString(source.resolve(classname+".java"),b);
+            b.append("   default: throw new IllegalStateException(\"Card table out of step: \"+name);\n  }\n }\n}\n");Files.writeString(source.resolve(classname+".java"),b);
         }
         dispatch.append("   default: throw new IllegalArgumentException(\"Unregistered card class: \"+name);\n  }\n }\n}\n");
         Files.writeString(source.resolve("GeneratedCardFactory.java"),dispatch);

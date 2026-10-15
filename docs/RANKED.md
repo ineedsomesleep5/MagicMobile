@@ -66,6 +66,15 @@ a skipped block, each with a safety guard). Skill 4 and up are unchanged. The nu
 `AIDifficulty.java` and each seat can override them (`aiSearchDepth`, `aiMistakePercent`, `aiSeed`;
 packages/ondevice-engine/docs/PROTOCOL.md) for the C3 calibration, which decides the final values.
 
+Expert tier (2026-10-15, cloud session C4): C3 found that skill made no measurable difference, because
+XMage's search runs out of time long before its node cap, and attacks and blocks are fixed rules it never
+searches. From skill 5 (Diamond) up the AI now plans its attacks against the defender's likely blocks and
+the swing back, chooses all its blocks together (double blocks, chumps only when they matter), scores
+life on Commander's 40-life scale (XMage's scores assume 20), and keeps a quick search's move when its
+full search runs out of time. Think time is unchanged. On the Core pool, skill 6 beat skill 3 in 62% of
+318 decided games (95% CI 57–67%) and skill 4 in 59% of 160 (52–67%); before, 53% and 50%. Skill 5
+against 4 is 53% (45–60%), not yet a measurable step (docs/cloud/reports/c4.md).
+
 ## Play modes
 
 - **Quick Match**: one AI. Defaults to an AI deck at your deck's bracket (a precon when that is Core or

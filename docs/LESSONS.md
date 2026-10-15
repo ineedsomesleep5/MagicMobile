@@ -91,10 +91,25 @@ contradicting one.
   `NativeUpdateNewsView.swift` (`SupportProject`), Android `ondevice/SupportViews.kt`.
 - 2026-10-11 (Claude): `pkill -f "vite preview"` inside a Bash call also matches that call's own shell
   and kills it (exit 144). **Rule:** stop a preview server by port or PID, or just start the next one on
-  a new port.
+  a new port. Same for calibration workers (C4, 2026-10-15): anchor the pattern, e.g.
+  `pgrep -f '^java .*AICalibration'`.
 
 ## Native engine and releases
 
+- 2026-10-15 (Claude, C4): XMage's AI search is limited by time, not by its 5000-node cap. Calibration
+  searches use a median of 12–18 nodes (90th percentile about 600); each node copies the whole Commander
+  game, about 20 ms. Attacks and blocks are fixed rules in `ComputerPlayer6` and never searched. **Rule:**
+  more depth or nodes buys nothing; strengthen the AI in its decisions (`CombatPlanner`, `AIDifficulty.expert`).
+  Where: docs/cloud/reports/c4.md.
+- 2026-10-15 (Claude, C4): C3's calibration harness built `AIDifficulty` itself by reflection, so a new
+  per-skill setting silently never reached calibration seats and a first run measured the old AI. **Rule:**
+  calibration seats go through `XmageEngine.aiDifficulty`, the production seat parser.
+  Where: `tools/ai-calibration/AICalibration.java`.
+- 2026-10-15 (Claude, C4): GraalVM 22.1 has no `--emit build-report`, and Gluon's cross-compiles
+  (`-H:+ExitAfterRelocatableImageWrite`) stop before the "Top 10" size table prints. The cloud container
+  also can't download Actions artifacts (the blob host is refused). **Rule:** break code down with
+  `magicmobile-native-code-sizes.yml` (symbols artifact, runs in Actions, about a minute); for the heap,
+  dispatch the Android build with `native_reports`. Where: docs/cloud/engine-size.md.
 - 2026-10-15 (Claude, C5): a seeded `RandomUtil` alone does not make an XMage game repeat. Libraries are
   filled from `Deck.getMaindeckCards()` (a `HashSet` in identity-hash order) before the opening shuffle;
   "in a random order" library placement uses `Collections.shuffle`'s own generator; AI reasoning draws

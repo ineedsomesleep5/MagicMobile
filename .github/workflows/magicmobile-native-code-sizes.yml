@@ -1,0 +1,74 @@
+name: MagicMobile native code sizes
+
+# Measurement only: breaks down the AOT code of an existing unstripped Android engine (the
+# android-native-symbols-<sha> artifact of a magicmobile-android.yml run) by Java package and
+# class. It downloads one artifact and parses its symbol table; it builds and publishes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'magicmobile-android.yml run whose android-native-symbols artifact to read'
+        required: true
+      artifact:
+        description: 'Artifact name (android-native-symbols-<sha>)'
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  code-sizes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Push trigger (C4): Android run 37683328246 at 0546f91, the latest symbols artifact
+      # still kept (expires 2026-10-21).
+      RUN_ID: ${{ inputs.run_id || '37683328246' }}
+      ARTIFACT: ${{ inputs.artifact || 'android-native-symbols-0546f91e88ee6ff528fd95563f09c766ba4d4e1b' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packages/ondevice-engine
+      - name: Class inventories (pinned XMage sources, JDK 17 classes, library jars)
+        run: |
+          sha=$(python3 -c 'import json;print(json.load(open("packages/ondevice-engine/upstream.lock.json"))["commit"])')
+          git init -q xmage && cd xmage
+          git remote add origin https://github.com/magefree/mage.git
+          git sparse-checkout set Mage/src Mage.Sets/src Mage.Common/src Mage.Server.Plugins
+          git fetch -q --depth 1 --filter=blob:none origin "$sha" && git checkout -q FETCH_HEAD
+          cd ..
+          "$JAVA_HOME_17_X64/bin/jimage" list "$JAVA_HOME_17_X64/lib/modules" | grep '\.class$' | sed 's/^ *//' > jdk-classes.txt
+          mkdir jars && cd jars
+          for c in com/google/guava/guava/33.4.8-jre com/google/code/gson/gson/2.13.2 org/jsoup/jsoup/1.21.2 \
+                   com/google/protobuf/protobuf-java/3.25.8 ch/qos/reload4j/reload4j/1.2.22 org/slf4j/slf4j-api/2.0.17 \
+                   com/j256/ormlite/ormlite-core/5.7 com/j256/ormlite/ormlite-jdbc/5.7 com/h2database/h2/1.4.197 \
+                   com/googlecode/jspf/jspf-core/0.9.1 org/jboss/remoting/jboss-remoting/2.5.4.SP5 \
+                   org/jboss/jboss-common-core/2.5.0.Final jboss/jboss-serialization/4.2.2.GA \
+                   org/ocpsoft/prettytime/prettytime/4.0.6.Final org/apache/commons/commons-lang3/3.18.0 \
+                   trove/trove/1.0.2 concurrent/concurrent/1.3.4; do
+            a=$(basename "$(dirname "$c")"); v=$(basename "$c")
+            curl -fsSL -o "$a.jar" "https://repo1.maven.org/maven2/$c/$a-$v.jar" && unzip -Z1 "$a.jar" | grep '\.class$' >> ../jar-classes.txt
+          done
+          cd .. && wc -l jdk-classes.txt jar-classes.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ github.token }}
+          path: symbols
+      - name: Code size by package and class
+        run: |
+          ls -la symbols
+          lib=$(find symbols -name 'libmmengine.so' | head -1)
+          python3 packages/ondevice-engine/scripts/native_code_sizes.py "$lib" --csv code-sizes.csv --top 60 \
+            --sources xmage --sources packages/ondevice-engine --classes jdk-classes.txt --classes jar-classes.txt \
+            | tee code-sizes.md
+          cat code-sizes.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-code-sizes-${{ env.RUN_ID }}
+          path: |
+            code-sizes.md
+            code-sizes.csv
+          retention-days: 30
