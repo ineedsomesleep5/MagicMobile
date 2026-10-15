@@ -164,7 +164,7 @@ class RankedParityTest {
             file = next; return change
         }
         assertEquals(null, play(october, PlayMode.QUICK, RankOutcome.WIN))
-        assertEquals(RankPosition.make(RankTier.BRONZE, 4, 1), play(october, PlayMode.RANKED, RankOutcome.WIN)!!.after)
+        assertEquals(RankPosition.make(RankTier.BRONZE, 4, 2), play(october, PlayMode.RANKED, RankOutcome.WIN)!!.after)
         play(december, PlayMode.RANKED, RankOutcome.LOSS)
         assertEquals("2026-12", file.rank.season)
         assertEquals("2026-10", file.rank.history.first().season)

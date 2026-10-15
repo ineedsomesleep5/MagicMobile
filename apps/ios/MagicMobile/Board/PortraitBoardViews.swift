@@ -704,6 +704,9 @@ struct NativeTurnControl {
     let skipResponses: () -> Void
     let skipToMyTurn: () -> Void
     let stop: () -> Void
+    /// Full control: smart pass stops at every priority until the turn ends (long-press Pass, or the controls menu).
+    var isFullControl = false
+    var toggleFullControl: () -> Void = {}
 }
 
 struct BoardZoneInspectionActionKey: EnvironmentKey {

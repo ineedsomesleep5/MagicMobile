@@ -231,6 +231,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var smartPassedPromptID: String? = null
     /** What the board is still showing; smart pass lets it finish before passing. */
     var presentationHold: BoardPresentationHold = BoardPresentationHold.shared
+    /** Full control (long-press Pass, or the controls menu): smart pass stops at every priority until this turn ends. */
+    var fullControlTurn by mutableStateOf<Long?>(null); private set
+    /** A local log line was added since the last snapshot: the next poll republishes even if the game didn't change. */
+    private var logChanged = false
 
     /** The stack is resolving shortly after this seat's own answer (OnDeviceLocalPollSchedule.CHAIN_MILLIS). */
     private val inStackChain: Boolean get() {
@@ -251,7 +255,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         this.client = client; this.matchID = matchID; this.seatID = seatID; observer = observe
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = emptyMap()
         autoPassAfterCast?.let(::setAutoPassAfterCast)
-        this.smartPass = smartPass; smartPassJob?.cancel(); smartPassJob = null; smartPassedPromptID = null
+        this.smartPass = smartPass; smartPassJob?.cancel(); smartPassJob = null; smartPassedPromptID = null; fullControlTurn = null
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
         this.table = table; lastActionAt = null
@@ -300,7 +304,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             // Submission can change at the same revision. An older in-flight poll must not restore a hidden choice.
             poll?.let { current -> if (next.revision < current.revision || (next.revision == current.revision && sequence <= appliedRefreshSequence)) return }
             // While the AI thinks, polls repeat the same board; do not re-adapt it every 300 ms.
-            val unchanged = poll?.raw == next.raw && heldAbilitySnapshot == null && snapshot != null
+            val unchanged = poll?.raw == next.raw && heldAbilitySnapshot == null && snapshot != null && !logChanged
+            logChanged = false
             idlePolls = if (unchanged) idlePolls + 1 else 0
             val nextLog = messageLog.copy()
             if (!unchanged) nextLog.ingest(next)
@@ -369,6 +374,26 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         scheduleSmartPass()
     }
 
+    private val currentTurn: Long? get() = poll?.snapshot?.get("gameView")?.get("turn")?.integer
+
+    /** Full control is on for the turn being played. */
+    val isFullControl: Boolean get() = fullControlTurn != null && fullControlTurn == currentTurn
+
+    /** Turns full control for this turn on or off. Turning it on stops a smart pass that hasn't been sent yet. */
+    fun toggleFullControl() {
+        if (isFullControl) {
+            fullControlTurn = null
+            scheduleSmartPass()
+        } else {
+            fullControlTurn = currentTurn
+            smartPassGeneration = UUID.randomUUID(); smartPassJob?.cancel(); smartPassJob = null
+        }
+    }
+
+    /** What a smart pass let go by, for the game log: the top of the stack, else the step. */
+    private fun autoPassLabel(situation: OnDeviceSmartPass.Situation, shown: GameSnapshot): String =
+        shown.stackTopFirst.firstOrNull()?.displayName ?: OnDeviceSmartPass.Step.fromEngine(situation.step)?.title ?: "Priority"
+
     private val smartPassSituation: OnDeviceSmartPass.Situation? get() {
         val context = yieldContext ?: return null
         val view = poll?.snapshot?.get("gameView") ?: return null
@@ -387,7 +412,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
      * The same pass a tap sends, once per prompt; a failure is left to the player, never retried.
      */
     private fun scheduleSmartPass() {
-        if (smartPassJob != null || isAutoPassing || pending != null || pendingActionID != null || errorMessage != null ||
+        if (smartPassJob != null || isAutoPassing || isFullControl || pending != null || pendingActionID != null || errorMessage != null ||
             heldAbilitySnapshot != null || abilityAutoAnswer != null || isClosing) return
         val prompt = smartPassPrompt() ?: return
         val token = epoch
@@ -404,9 +429,11 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                 val current = smartPassPrompt()
                 val shown = snapshot
                 val situation = smartPassSituation
-                if (epoch != token || isWorking || pending != null || pendingActionID != null || isAutoPassing ||
+                if (epoch != token || isWorking || pending != null || pendingActionID != null || isAutoPassing || isFullControl ||
                     current == null || current.id != prompt.id || current.revision != prompt.revision || shown == null || situation == null) return@launch
                 smartPassedPromptID = current.id
+                messageLog.noteAutoPass(autoPassLabel(situation, shown), current.id)
+                logChanged = true
                 val command = GameCommand(type = "pass_priority", gameId = situation.context.matchID, playerId = situation.context.viewerID,
                     promptId = current.id, messageId = current.revision.toInt(), expectedBridgeRevision = shown.bridgeRevision)
                 try { submit(command, "Pass priority", OnDeviceYieldPolicy.SMART_PASS_ACTION_PREFIX + current.id); sent = true }

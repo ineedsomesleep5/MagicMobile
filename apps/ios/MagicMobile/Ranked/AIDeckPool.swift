@@ -79,12 +79,19 @@ enum AIDeckPool {
         return decks
     }
 
+    /// The softest precons in the AI's hands, for Bronze ranked: an equal-skill round-robin of all five (C3, 2026-10-15,
+    /// 200 games) put Chaos Incarnate at 36%, Grave Danger 45% and Token Triumph 50%, against First Flight 56% and
+    /// Draconic Destruction 62% (docs/cloud/reports/c3.md).
+    static let gentlestPrecons: Set<String> = ["chaos-incarnate", "grave-danger", "token-triumph"]
+
     /// An AI deck for this bracket: never your own commander, and not one of the last few you faced
-    /// while others remain. `preconsOnly` keeps to the official precons. `roll` picks among what is
-    /// left (injectable for tests).
+    /// while others remain. `preconsOnly` keeps to the official precons, and `onlyPrecons` narrows them further
+    /// when any of those are present. `roll` picks among what is left (injectable for tests).
     static func pick(bracket: Int, avoidingCommander commander: String?, recent: [String], preconsOnly: Bool = false,
+                     onlyPrecons: Set<String>? = nil,
                      in decks: [AIDeck] = all, roll: (Int) -> Int = { Int.random(in: 0..<$0) }) -> AIDeck? {
-        let precons = decks.filter(\.isPrecon)
+        var precons = decks.filter(\.isPrecon)
+        if let onlyPrecons, precons.contains(where: { onlyPrecons.contains($0.id) }) { precons.removeAll { !onlyPrecons.contains($0.id) } }
         var candidates = pool(for: bracket, in: preconsOnly && !precons.isEmpty ? precons : decks)
         if let commander, candidates.contains(where: { $0.commander != commander }) {
             candidates.removeAll { $0.commander == commander }

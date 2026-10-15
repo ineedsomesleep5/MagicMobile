@@ -31,7 +31,9 @@ contradicting one.
   tavern. **Rule:** UI tests that need another board still pin it with the
   `-magicmobile.boardAppearance arena` launch argument (iOS argument domain, untouched by the reset)
   or `MAGICMOBILE_UI_TEST_BOARD_APPEARANCE` (set after the reset). Where: `MagicMobileApp.swift`,
-  Android `MainActivity.kt`.
+  Android `MainActivity.kt`. Updated 2026-10-14 (Claude): the other boards' textures are gone; `arena`
+  (the classic layout on a plain gradient) is the only other value, and anything else resolves to the
+  tavern.
 - 2026-10-11 (Claude): Android screens drift back to plain Material, `IosAlert` or `IosListRow`
   when a port reaches for whatever control is handy. **Rule:** follow `docs/TAVERN_STYLE.md` and use
   the `Tavern*` counterpart of the iOS piece; port the piece into `ui/TavernKit.kt` first if it is
@@ -53,6 +55,14 @@ contradicting one.
   `board/InspectorViews.kt`.
 
 ## Gameplay
+
+- 2026-10-15 (Claude, C1): `mm_record_game` now stores the server's standing at the moment a ranked game arrives
+  (`20261015180000_ranked_record_points.sql`), but both apps upload a game as soon as it is recorded, racing
+  `syncRank`, and `afterRefresh` uploads before it seeds. **Rule:** for ranked games, run `syncRank` first and upload
+  after, or the rank history charts the points from before the game. A ladder floor can read only the current points:
+  you can't fall out of a tier, so "start of your tier" equals "highest tier reached", and a stored peak can sit above
+  the points (imported or seeded standings). Ladder SQL waiting for Caleb lives in `supabase/pending/`, outside
+  `migrations/`, and is tested with `npm run test:ranked-pending --prefix supabase/tests`. Where: `docs/cloud/reports/c1.md`.
 
 - 2026-10-11 (Claude): Arena-style smart auto-pass and phase stops needed no engine change. The poll
   already carries XMage's own playable list (`gameView.canPlayObjects`, with `manaAbility` marks) and
@@ -91,6 +101,13 @@ contradicting one.
   GraalVM 22.1 has no option to remove them (`-H:+RelativeCodePointers` arrives in GraalVM 25).
   **Rule:** keep `--pack-dyn-relocs=android` at minSdk 26; measure before changing anything.
   Where: docs/cloud/c2-relocations.md.
+- 2026-10-14 (Claude): build 38's privacy manifest declared only UserDefaults, but the executable also
+  calls file-timestamp, boot-time and disk-space APIs, some from Swift (`systemUptime`,
+  `contentModificationDate`, `systemFreeSize`) and some from the engine's static JDK libraries (`stat`,
+  `fstat`, `lstat`, `fstatfs`, `fstatvfs`, `mach_absolute_time`). App Store Connect refuses that at App
+  Store submission, though TestFlight let it through. **Rule:** `PrivacyManifestTests` (#155) scans the
+  Swift sources only. After an engine update, check the executable's imports (REA `inspect_macho`, or
+  `nm -u`) against `PrivacyInfo.xcprivacy`. Where: docs/audits/APP_AUDIT_2026-10.md.
 - 2026-10-11 (Claude): a game froze at combat damage when trample killed the planeswalker being
   attacked. XMage then keeps the attackers in combat with a null `defenderId` (rule 506.4,
   `PlayerImpl.removeFromBattlefield` → `Combat.removeDefendingPermanentFromCombat`; phasing out and
@@ -115,6 +132,14 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-14 (Claude): REA on our own builds: `inspect_binary_layout` handles only Linux x86-64 ELF, and
+  `decode_android_resources` / `inspect_android_package` need apktool or JADX, which aren't installed. For
+  the arm64 engine use REA `inspect_with_objdump` (section headers) and the NDK's `llvm-readelf`
+  (`/opt/homebrew/share/android-commandlinetools/ndk/*/toolchains/llvm/prebuilt/darwin-x86_64/bin`).
+  For the manifest use build-tools `aapt2 dump xmltree|badging`; `aapt2 dump resources` maps a release
+  APK's shortened `res/xx.webp` names back to drawables. Separately, `rg` in Claude's Bash is a shell
+  function, so a `zsh script.sh` that calls it finds nothing, and with `2>/dev/null` it prints no error
+  either. **Rule:** scripts use `grep` (or a real binary path), and get checked against a known hit first.
 - 2026-10-14 (Claude): Cormorant's old-style figures are on by default in both the SC and Garamond
   files, so "1v1" reads "ivi" unless `lnum` is set (`UIFontDescriptor` feature settings on iOS,
   `fontFeatureSettings = "lnum"` in Compose). Its x-height is 0.386 em against about 0.475 for New

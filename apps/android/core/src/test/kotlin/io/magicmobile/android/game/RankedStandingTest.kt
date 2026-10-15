@@ -79,4 +79,16 @@ class RankedStandingTest {
         assertEquals(human, again)
         assertTrue(again.pendingRankedResults.isNotEmpty())
     }
+
+    /** Mirrors testBronzePicksOnlyTheGentlestPrecons: Bronze faces only the three softest precons. */
+    @Test fun bronzePicksOnlyTheGentlestPrecons() {
+        val deck = io.magicmobile.android.core.Deck("x", emptyList())
+        val precons = listOf("token-triumph", "first-flight", "grave-danger", "chaos-incarnate", "draconic-destruction")
+            .map { AIDeck(it, it, "", "", "Commander $it", CommanderBracket.CORE, deck) }
+        for (roll in 0 until 10) {
+            val pick = AIDeckPool.pick(2, null, emptyList(), precons, preconsOnly = true, onlyPrecons = AIDeckPool.gentlestPrecons) { roll }
+            assertTrue("${pick?.id}", pick?.id in AIDeckPool.gentlestPrecons)
+        }
+        assertTrue(AIDeckPool.pick(2, null, emptyList(), precons, preconsOnly = true, onlyPrecons = setOf("no-such-precon")) { 4 } != null)
+    }
 }

@@ -11,8 +11,9 @@ the log at the bottom as work lands, so any session can see where the program st
 |---|---|---|---|
 | R1 | Phases 0 and 1: app-only, on today's engine (XMage `dac400b`) | TestFlight 39 | build 23 |
 | R2 | Phases 2 to 4: the engine release, plus the app pieces that use it | TestFlight 40 | build 24 |
+| R3 | Phase 5: the engine game record, plus verified ranked AI wins | TestFlight 41 | build 25 |
 
-The engine game record (Phase 5) is not in R2. It is a later release, unless Caleb asks to hold R2 for it.
+Caleb chose the strongest path on 2026-10-15 and gave Phase 5 its own release (R3).
 Builds installed directly on Caleb's phone between releases are test builds, not releases.
 
 ## Phase 0: ship what is already built (Mac)
@@ -21,7 +22,7 @@ Builds installed directly on Caleb's phone between releases are test builds, not
 - [ ] Merge #153 smart pass v2, #155 iOS privacy manifest, #156 and #158 size trims, #157 audit report, #159 photo
       import removed
 - [ ] Privacy policy on the site: sign-in email and ranked records (ML Kit is gone with #159). Caleb approves the wording.
-- [ ] Gradle wrapper pinned to 8.14.3; CI workflows and `scripts/android/*` use `./gradlew`; the signed release APK is
+- [x] Gradle wrapper pinned to 8.14.3; CI workflows and `scripts/android/*` use `./gradlew`; the signed release APK is
       checked (signer, versionCode, size)
 
 ## Phase 1: app-only improvements, in R1
@@ -53,9 +54,28 @@ Builds installed directly on Caleb's phone between releases are test builds, not
 
 - [ ] Better attack, block, mulligan and response choices, measured with the C3 harness (C4 after Phase 3, or C2)
 
-## Phase 5: engine game record (later release)
+## Phase 5: engine game record, in R3
 
-- [ ] A compact action log for replays and debugging, so the ranked server can verify AI wins instead of only capping them
+- [ ] A compact, deterministic action log from the engine, enough to replay a game, kept with each finished game (C5)
+- [ ] A replay viewer for debugging (developer-facing first) (Mac)
+- [ ] Ranked AI wins: the phone uploads the game record with the result, and the server checks it before counting
+      the win (signature, length, consistency checks; the server does not run the engine) (C5 for the format, Mac and
+      server for the check)
+
+## Sessions, models and effort
+
+| Session | Where | Model | Effort |
+|---|---|---|---|
+| Main ("Game smart skip changes") | Mac | Opus 5.5 | high (extra-high for engine reviews) |
+| C1 ladder options and rank history | cloud | Opus 5.5 | high |
+| C2 engine release A | cloud | Opus 5.5 | extra-high |
+| C3 AI calibration | cloud | Sonnet 5.5 | medium |
+| C4 engine size and high-tier AI | cloud, after C2 and C3 | Opus 5.5 | high |
+| C5 game record | cloud, after C2 merges | Opus 5.5 | extra-high |
+| Subagents | any | Sonnet 5.5 (Haiku 5.5 for mechanical sifting) | default |
+
+Cloud sessions start on the account's default model, so Caleb sets each one's model and effort when it starts. At
+most four sessions run at once (Main plus three cloud sessions).
 
 ## Approval gates (the Mac session asks Caleb)
 
@@ -66,7 +86,7 @@ Builds installed directly on Caleb's phone between releases are test builds, not
 
 ## Cloud protocol (every cloud session follows this)
 
-Environment: **MagicMobile Cloud**. It has JDK 17 and 21, Maven 3.9, Gradle 8.11.1 (`/opt/gradle`), Android SDK 35
+Environment: **MagicMobile Cloud**. It has JDK 17 and 21, Maven 3.9, Gradle via the repo wrapper `apps/android/gradlew` (8.14.3; the image's `/opt/gradle` is only a fallback), Android SDK 35
 (`$ANDROID_HOME=/opt/android-sdk`), Node 22 and Python 3.13, with 4 CPUs and 15 GB of memory. There is no macOS, so no
 Xcode, no iOS builds and no simulators. There is no NDK and no native engine artifact. Maven Central can answer 429:
 retry it.
@@ -84,7 +104,7 @@ retry it.
 5. **Engine work** follows packages/ondevice-engine/AGENTS.md. Real-engine tests run with
    `bash packages/ondevice-engine/scripts/build_jvm.sh` and `scripts/test_real_engine.sh`. Update PROTOCOL.md for any
    snapshot change.
-6. **Android work** builds with `gradle -p apps/android :core:test :app:compileDebugKotlin`. Never split one feature
+6. **Android work** builds with `apps/android/gradlew -p apps/android :core:test :app:compileDebugKotlin`. Never split one feature
    between an iOS session and an Android session: the Mac does the iOS half of cloud engine features.
 7. **Subagents:** a cloud session may use one or two Sonnet 5.5 subagents for research, test writing and analysis.
    Design and engine changes stay with the session itself.
@@ -134,7 +154,16 @@ The October calibration (docs/RANKED.md, "Calibration") used a throwaway script 
 2. Stronger AI at skill 5 and 6: improve attack, block, mulligan or response choices where calibration shows weak play.
    Measure with the C3 harness.
 
+### C5: engine game record (Phase 5, after C2 is merged)
+Design and build a compact, deterministic record of every engine decision (the seed, the decks, then each prompt
+answer in order), enough to replay a finished game on the JVM engine to the same result. Add a replay entry point and
+real-JVM tests that replay recorded games. Keep it small (kilobytes per game). Write `docs/cloud/game-record.md` with
+the format and how the ranked server can check an uploaded record cheaply without running the engine (for example a
+signed digest chain, turn and length bounds, and consistency with the reported result). Do not change the server or
+the apps: the Mac does those.
+
 ## Log
 
+- 2026-10-15: Caleb gave the go with the strongest model path and a third release for Phase 5.
 - 2026-10-15: program approved in principle; cloud environment verified (tools, network, GitHub push and draft PR from
   the cloud, #160); plan written.

@@ -218,6 +218,10 @@ final class OnDeviceSession: ObservableObject {
     private var smartPassedPromptID: String?
     /// What the board is still showing; smart pass lets it finish before passing.
     lazy var presentationHold: BoardPresentationHold = .shared
+    /// Full control (long-press Pass, or the controls menu): smart pass stops at every priority until this turn ends.
+    @Published private(set) var fullControlTurn: Int64?
+    /// A local log line was added since the last snapshot: the next poll republishes even if the game didn't change.
+    private var logChanged = false
 
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
                 allowsSeatScopedAutoYield: Bool = false, table: OnDeviceTableLink? = nil,
@@ -228,7 +232,7 @@ final class OnDeviceSession: ObservableObject {
         self.client = client; self.matchID = matchID; self.seatID = seatID
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
-        self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil
+        self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil; fullControlTurn = nil
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         self.table = table; lastActionAt = nil
@@ -278,7 +282,8 @@ final class OnDeviceSession: ObservableObject {
             (next.revision == poll.revision && sequence <= appliedRefreshSequence) { return }
         // While the AI thinks, polls repeat the same board. Re-adapting and republishing
         // it every 300 ms only competes with the engine's search for the CPU.
-        let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil
+        let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil && !logChanged
+        logChanged = false
         idlePolls = unchanged ? idlePolls + 1 : 0
         // A real change redraws whatever reads this session, including values derived from private
         // state. An unchanged poll publishes nothing (it used to redraw the whole game screen).
@@ -348,6 +353,22 @@ final class OnDeviceSession: ObservableObject {
         scheduleSmartPass()
     }
 
+    private var currentTurn: Int64? { poll?.snapshot?["gameView"]?["turn"]?.integer }
+
+    /// Full control is on for the turn being played.
+    var isFullControl: Bool { fullControlTurn != nil && fullControlTurn == currentTurn }
+
+    /// Turns full control for this turn on or off. Turning it on stops a smart pass that hasn't been sent yet.
+    func toggleFullControl() {
+        if isFullControl {
+            fullControlTurn = nil
+            scheduleSmartPass()
+        } else {
+            fullControlTurn = currentTurn
+            smartPassTask?.cancel(); smartPassTask = nil; smartPassGeneration = UUID()
+        }
+    }
+
     private var smartPassSituation: OnDeviceSmartPass.Situation? {
         guard let context = yieldContext, let root = poll?.snapshot, let view = root["gameView"],
               let owner = view["players"]?.array?.first(where: { $0["playerId"]?.string == context.viewerID }) else { return nil }
@@ -358,7 +379,7 @@ final class OnDeviceSession: ObservableObject {
     /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.
     /// The same pass a tap sends, once per prompt; a failure is left to the player, never retried.
     private func scheduleSmartPass() {
-        guard let settings = smartPass, smartPassTask == nil, !isAutoPassing, pending == nil, pendingActionID == nil,
+        guard let settings = smartPass, smartPassTask == nil, !isAutoPassing, !isFullControl, pending == nil, pendingActionID == nil,
               errorMessage == nil, heldAbilitySnapshot == nil, abilityAutoAnswer == nil, !isClosing,
               let situation = smartPassSituation,
               let prompt = OnDeviceSmartPass.passPrompt(situation, settings: settings),
@@ -372,7 +393,7 @@ final class OnDeviceSession: ObservableObject {
             await self.waitForBoardPresentation()
             // Re-check against the poll applied meanwhile: the same prompt, still a pass.
             guard !Task.isCancelled, self.epoch == token, !self.isWorking, let settings = self.smartPass,
-                  self.pending == nil, self.pendingActionID == nil, !self.isAutoPassing,
+                  self.pending == nil, self.pendingActionID == nil, !self.isAutoPassing, !self.isFullControl,
                   let situation = self.smartPassSituation,
                   let current = OnDeviceSmartPass.passPrompt(situation, settings: settings),
                   current.id == prompt.id, current.revision == prompt.revision,
@@ -381,6 +402,8 @@ final class OnDeviceSession: ObservableObject {
                 return
             }
             self.smartPassedPromptID = current.id
+            self.messageLog.noteAutoPass(self.autoPassLabel(situation, snapshot: snapshot), id: current.id)
+            self.logChanged = true
             let command = GameCommand(type: "pass_priority", gameId: situation.context.matchID,
                                       playerId: situation.context.viewerID, promptId: current.id,
                                       messageId: Int(current.revision), expectedBridgeRevision: snapshot.bridgeRevision)
@@ -390,6 +413,12 @@ final class OnDeviceSession: ObservableObject {
             // The answer's own refresh may already show the next routine priority.
             if sent { self.scheduleSmartPass() }
         }
+    }
+
+    /// What a smart pass let go by, for the game log: the top of the stack, else the step.
+    private func autoPassLabel(_ situation: OnDeviceSmartPass.Situation, snapshot: GameSnapshot) -> String {
+        if let top = snapshot.stackTopFirst.first { return top.displayName }
+        return OnDeviceSmartPass.Step(engine: situation.step)?.title ?? String(localized: "Priority")
     }
 
     /// Lets the board finish what it is showing (an opponent's removal spell read at the centre, the

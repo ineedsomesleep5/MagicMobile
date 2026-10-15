@@ -23,6 +23,22 @@ final class OnDeviceMessageLogTests: XCTestCase {
         XCTAssertNil(log.entries[0].createdAt)
         XCTAssertEqual(log.entries[0].id, "xmage:match-a:seat-a:1")
     }
+    /// Smart pass leaves one quiet local line per run of passes; an engine notice starts a new run.
+    func testAutoPassesShareOneLinePerRun() throws {
+        var log = OnDeviceMessageLog()
+        log.noteAutoPass("Upkeep", id: "p1")
+        log.noteAutoPass("Draw", id: "p2")
+        log.noteAutoPass("Draw", id: "p3")
+        XCTAssertEqual(log.entries.map(\.message), ["Auto-passed: Upkeep · Draw"])
+        XCTAssertEqual(log.entries[0].id, "local:auto-pass:p1")
+        try log.ingest(poll(.array([event(1, .string("Opponent reveals a card"))])))
+        log.noteAutoPass("Lightning Bolt", id: "p4")
+        XCTAssertEqual(log.entries.map(\.message), ["Auto-passed: Upkeep · Draw", "Opponent reveals a card", "Auto-passed: Lightning Bolt"])
+        // A long run keeps its latest six labels.
+        for step in ["A", "B", "C", "D", "E", "F", "G"] { log.noteAutoPass(step, id: step) }
+        XCTAssertEqual(log.entries.last?.message, "Auto-passed: B · C · D · E · F · G")
+    }
+
     func testSnapshotsAndPromptMetadataNeverBecomeNoticeText() throws {
         var log = OnDeviceMessageLog()
         try log.ingest(poll(.array([event(1, .string("snapshot secret"), kind: "snapshot"),
