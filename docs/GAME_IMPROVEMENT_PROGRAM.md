@@ -138,3 +138,6 @@ The October calibration (docs/RANKED.md, "Calibration") used a throwaway script 
 
 - 2026-10-15: program approved in principle; cloud environment verified (tools, network, GitHub push and draft PR from
   the cloud, #160); plan written.
+- 2026-10-15: C4 ready for review (#170). Code breakdown of the native engine, a table-driven card factory
+  (est. 8–15 MB) and proposed cuts (docs/cloud/engine-size.md). Expert AI at skill 5 and up: skill 6 beats
+  skill 3 in 62% of 318 games and skill 4 in 59% of 160; skill 5 against 4 is 53%, not yet a measurable step.

@@ -234,7 +234,6 @@ game,game_seed,budget,skill_a,skill_b,deck_a,deck_b,first,winner,winner_skill,tu
 233,7476907388495239526,phone,3,6,token-triumph,ai-lathril-blade-of-the-elves-core,B,B,6,13,84.9,ended,,,,,0,0
 235,3425557548603278696,phone,3,6,ai-lathril-blade-of-the-elves-core,token-triumph,B,B,6,23,66.0,ended,,,,,2,0
 237,1405509581939475008,phone,3,6,first-flight,grave-danger,B,B,6,15,46.6,ended,,,,,1,0
-212,4367817898028484685,phone,3,6,first-flight,draconic-destruction,?,draw,,0,0,jvm-exit,,,,,,
 234,6791824628429660349,phone,3,6,ai-lathril-blade-of-the-elves-core,token-triumph,A,A,3,19,254.7,ended,,,,,2,0
 239,8352727414031586922,phone,3,6,grave-danger,first-flight,B,A,3,14,58.5,ended,,,,,0,0
 236,5845984268547662211,phone,3,6,first-flight,grave-danger,A,A,3,31,170.3,ended,,,,,4,0
@@ -319,3 +318,4 @@ game,game_seed,budget,skill_a,skill_b,deck_a,deck_b,first,winner,winner_skill,tu
 315,7254698161437328318,phone,3,6,ai-the-ur-dragon-core,ai-lathril-blade-of-the-elves-core,B,B,6,15,141.0,ended,,,,,2,0
 305,6915333099825939662,phone,3,6,grave-danger,ai-lathril-blade-of-the-elves-core,B,A,3,30,307.1,ended,,,,,5,0
 319,7385692435848800149,phone,3,6,ai-gishath-suns-avatar-core,token-triumph,B,A,3,16,39.7,ended,,,,,0,0
+212,4367817898028484685,phone,3,6,first-flight,draconic-destruction,A,B,6,14,29.2,ended,,,,,1,0
