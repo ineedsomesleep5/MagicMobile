@@ -287,10 +287,18 @@ object AIDeckPool {
         return decks
     }
 
-    /** `preconsOnly` keeps to the official precons. */
+    /**
+     * The softest precons in the AI's hands, for Bronze ranked (AIDeckPool.gentlestPrecons in AIDeckPool.swift): an
+     * equal-skill round-robin (C3, 2026-10-15, 200 games) put Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%,
+     * First Flight 56% and Draconic Destruction 62%.
+     */
+    val gentlestPrecons: Set<String> = setOf("chaos-incarnate", "grave-danger", "token-triumph")
+
+    /** `preconsOnly` keeps to the official precons; `onlyPrecons` narrows them further when any of those are present. */
     fun pick(bracket: Int, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>, preconsOnly: Boolean = false,
-             roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
-        val precons = decks.filter { it.isPrecon }
+             onlyPrecons: Set<String>? = null, roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
+        val allPrecons = decks.filter { it.isPrecon }
+        val precons = if (onlyPrecons != null && allPrecons.any { it.id in onlyPrecons }) allPrecons.filter { it.id in onlyPrecons } else allPrecons
         var candidates = pool(bracket, if (preconsOnly && precons.isNotEmpty()) precons else decks)
         if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
         val fresh = candidates.filter { it.id !in recent }

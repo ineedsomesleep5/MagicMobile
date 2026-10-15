@@ -102,4 +102,18 @@ final class RankedStandingTests: XCTestCase {
         XCTAssertTrue(again.pendingRankedResults.isEmpty)
         XCTAssertTrue(PlayerRecordStore(directory: folder, now: { self.october }).pendingRankedResults.isEmpty)
     }
+
+    /// Bronze ranked faces only the three softest precons (C3's round-robin); an empty match falls back to every precon.
+    func testBronzePicksOnlyTheGentlestPrecons() {
+        let precons = AIDeckPool.all.filter(\.isPrecon)
+        XCTAssertEqual(precons.count, 5)
+        for roll in 0..<10 {
+            let pick = AIDeckPool.pick(bracket: 2, avoidingCommander: nil, recent: [], preconsOnly: true,
+                                       onlyPrecons: AIDeckPool.gentlestPrecons, in: precons) { _ in roll }
+            XCTAssertTrue(AIDeckPool.gentlestPrecons.contains(pick?.id ?? ""), "\(String(describing: pick?.id))")
+        }
+        let fallback = AIDeckPool.pick(bracket: 2, avoidingCommander: nil, recent: [], preconsOnly: true,
+                                       onlyPrecons: ["no-such-precon"], in: precons) { _ in 4 }
+        XCTAssertNotNil(fallback)
+    }
 }

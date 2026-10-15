@@ -449,7 +449,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
         val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
-            preconsOnly = position.tier.preconOpponentsOnly) ?: return
+            preconsOnly = position.tier.preconOpponentsOnly,
+            onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
         startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
     }
 

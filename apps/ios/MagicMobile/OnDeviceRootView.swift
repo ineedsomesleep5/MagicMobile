@@ -1165,7 +1165,8 @@ struct OnDeviceRootView: View {
         let position = profileRecord.rank.position
         guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
                                              recent: profileRecord.recentAIDecks,
-                                             preconsOnly: position.tier.preconOpponentsOnly) else { return }
+                                             preconsOnly: position.tier.preconOpponentsOnly,
+                                             onlyPrecons: position.tier.preconOpponentsOnly ? AIDeckPool.gentlestPrecons : nil) else { return }
         startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
     }
 

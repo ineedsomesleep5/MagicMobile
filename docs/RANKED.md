@@ -40,7 +40,7 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 | Tier | Opponent decks | Your deck up to | AI skill |
 |---|---|---|---|
-| Bronze | Official precons only (Core) | 2 | 1 |
+| Bronze | The three gentlest official precons (Core): Chaos Incarnate, Grave Danger, Token Triumph | 2 | 1 |
 | Silver | 2 | 2 | 2 |
 | Gold | 2–3 | 3 | 3 |
 | Platinum | 3 | 3 | 4 |
@@ -48,6 +48,10 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 | Mythic | 4 | 4 | 6 |
 
 In tiers with two opponent brackets, divisions IV–III face the lower one and II–I the upper.
+
+Bronze's three precons come from C3's equal-skill round-robin of all five (2026-10-15, 200 games, docs/cloud/reports/c3.md):
+Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%, First Flight 56%, Draconic Destruction 62%. Going first won 65%
+of those games, a bigger effect than any deck.
 
 Why this curve (2026-10-11): the XMage AI searches `max(4, skill)` moves deep and thinks `skill × 3` s,
 so skills 1–4 differ only in thinking time and depth grows from Diamond. Ranked never asks for Bracket 1:
