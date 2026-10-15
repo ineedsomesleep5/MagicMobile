@@ -5,6 +5,7 @@ import io.magicmobile.generated.GeneratedSetRegistry;
 import mage.cards.Card;
 import mage.cards.CardSetInfo;
 import mage.cards.MobileCardFactories;
+import mage.cards.basiclands.Forest;
 import mage.cards.decks.Deck;
 import mage.cards.g.GrizzlyBears;
 import mage.cards.h.HillGiant;
@@ -34,6 +35,7 @@ public final class RealCombatPlannerTests {
         tests.put("holds-back-against-crack-back", RealCombatPlannerTests::holdsBack);
         tests.put("lethal-attack", RealCombatPlannerTests::lethalAttack);
         tests.put("chump-when-lethal", RealCombatPlannerTests::chumpWhenLethal);
+        tests.put("expert-search-plays", RealCombatPlannerTests::expertSearchPlays);
         int passed = 0;
         for (Map.Entry<String,ThrowingRunnable> test : tests.entrySet()) {
             if (args.length > 0 && !args[0].equals(test.getKey())) continue;
@@ -54,11 +56,11 @@ public final class RealCombatPlannerTests {
     /** Only Diamond (5) and up plan combat; settings and copies carry the flag. */
     private static void tiers() {
         for (int skill = 1; skill <= 10; skill++) {
-            eq(AIDifficulty.plansCombat(skill), skill >= 5);
-            eq(AIDifficulty.forSkill(skill, 1).plansCombat, skill >= 5);
-            eq(XmageEngine.aiDifficulty(Map.of(), skill).plansCombat, skill >= 5);
+            eq(AIDifficulty.expert(skill), skill >= 5);
+            eq(AIDifficulty.forSkill(skill, 1).expert, skill >= 5);
+            eq(XmageEngine.aiDifficulty(Map.of(), skill).expert, skill >= 5);
         }
-        eq(new AIDifficulty(4, 0, 1).plansCombat, false);
+        eq(new AIDifficulty(4, 0, 1).expert, false);
     }
 
     private static CombatPlanner.Unit u(String name, int power, int toughness, int value, String keywords) {
@@ -192,6 +194,25 @@ public final class RealCombatPlannerTests {
         }
     }
 
+    /** The expert quick-then-full search still makes the obvious play, and leaves nothing pending. */
+    private static void expertSearchPlays() throws Exception {
+        for (int skill : new int[]{4, 6}) {
+            try (Board b = new Board(skill)) {
+                b.permanent(b.ai, Forest::new, "Forest"); b.permanent(b.ai, Forest::new, "Forest");
+                Card bears = b.card(b.ai, GrizzlyBears::new, "Grizzly Bears");
+                bears.setZone(Zone.HAND, b.game); b.ai.getHand().add(bears);
+                PreCombatMainPhase phase = new PreCombatMainPhase(); phase.setStep(new PreCombatMainStep()); b.game.getTurn().setPhase(phase);
+                long started = System.nanoTime();
+                b.ai.priority(b.game);
+                double seconds = (System.nanoTime() - started) / 1e9;
+                List<String> stack = new ArrayList<>();
+                b.game.getStack().forEach(o -> stack.add(o.getName()));
+                eq(stack, List.of("Grizzly Bears"));
+                check(seconds < skill * 3, "within the skill's think time: " + seconds);
+            }
+        }
+    }
+
     /** A two-player game with the given AI skill, its permanents free of summoning sickness. */
     private static final class Board implements AutoCloseable {
         final MobileHumanPlayer human = new MobileHumanPlayer("Human");
@@ -211,9 +232,13 @@ public final class RealCombatPlannerTests {
             game.getState().setPriorityPlayerId(ai.getId());
             game.getPlayerList().setCurrent(ai.getId());
         }
-        Card permanent(Player owner, BiFunction<UUID,CardSetInfo,Card> constructor, String name) {
+        Card card(Player owner, BiFunction<UUID,CardSetInfo,Card> constructor, String name) {
             Card card = constructor.apply(owner.getId(), new CardSetInfo(name, "M10", "1", Rarity.COMMON));
             game.loadCards(new HashSet<>(List.of(card)), owner.getId());
+            return card;
+        }
+        Card permanent(Player owner, BiFunction<UUID,CardSetInfo,Card> constructor, String name) {
+            Card card = card(owner, constructor, name);
             card.setZone(Zone.HAND, game); owner.getHand().add(card);
             check(owner.moveCards(card, Zone.BATTLEFIELD, null, game), "real move to battlefield");
             UUID active = game.getActivePlayerId();

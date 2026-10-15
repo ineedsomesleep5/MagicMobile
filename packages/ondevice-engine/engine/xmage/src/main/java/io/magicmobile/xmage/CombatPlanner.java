@@ -27,7 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Attack and block choices for the strongest AI tiers (AIDifficulty.plansCombat). Upstream XMage
+ * Attack and block choices for the strongest AI tiers (AIDifficulty.expert). Upstream XMage
  * declares attackers by a fixed rule (attack only with creatures no single blocker can kill) and
  * never asks whether its blocks leave it dead. This planner predicts the defender's blocks and the
  * crack-back on the next turn with plain combat arithmetic on the real permanents, then picks the
@@ -35,10 +35,10 @@ import java.util.UUID;
  * declares through the same player calls as upstream; it never changes rules or sees hidden cards.
  */
 final class CombatPlanner {
-    /** How much more the planner values the opponent's lost life than the evaluator does (racing). */
-    static final int AGGRESSION_PERCENT=150;
-    /** Share of the crack-back damage counted against an attack (the opponent may not swing back). */
-    static final int CRACK_BACK_PERCENT=50;
+    /** Weight of the opponent's lost life against upstream's life score, in percent (above 100 races harder). */
+    static final int AGGRESSION_PERCENT=100;
+    /** Weight of the predicted crack-back damage, in percent (below 100 trusts the opponent not to swing back). */
+    static final int CRACK_BACK_PERCENT=100;
     /** Every subset is scored up to this many attackers; larger boards hill-climb from three starts. */
     static final int EXHAUSTIVE_ATTACKERS=10;
     private static final int LETHAL_FOR_US=-10_000_000;

@@ -7,6 +7,7 @@ import mage.abilities.common.PassAbility;
 import mage.constants.PhaseStep;
 import mage.constants.RangeOfInfluence;
 import mage.game.Game;
+import mage.game.combat.Combat;
 import mage.game.combat.CombatGroup;
 import mage.game.events.GameEvent;
 import mage.game.permanent.Permanent;
@@ -17,6 +18,8 @@ import mage.player.ai.ComputerPlayerControllableProxy;
 import mage.player.ai.SimulationNode2;
 import org.apache.log4j.Logger;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.TreeSet;
@@ -36,6 +39,9 @@ final class MobileAICancellation {
      * again), and once only AIs remain in the game and any people left are just watching.
      */
     static final int STACK_THINK_SECS=2;
+    /** Expert quick search: one action seen resolved (upstream depth 2), within at most 2 s. */
+    static final int QUICK_DEPTH=2,QUICK_SECS=2;
+    private static final int NO_PHASE=0,QUICK=1,FULL_SEARCH=2;
     private volatile boolean closing;
     private int simulations;
     /** Concede requests from CALL threads; only the live game drains them, on its GAME thread. */
@@ -139,7 +145,7 @@ final class MobileAICancellation {
         private int mistakePercent;
         private long mistakeState;
         private int mistakes;
-        private boolean plansCombat;
+        private boolean expert;
         // One search's root candidates. Written by the simulation thread, read after it returns.
         private transient volatile SimulationNode2 searchRoot;
         private transient List<ScoredChoice> rootChoices;
@@ -147,14 +153,14 @@ final class MobileAICancellation {
         CancellablePlayer(String name,int skill,AIDifficulty difficulty,MobileAICancellation cancellation) {
             super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
             maxDepth=difficulty.searchDepth;mistakePercent=difficulty.mistakePercent;mistakeState=difficulty.seed;
-            plansCombat=difficulty.plansCombat;
+            expert=difficulty.expert;
         }
         private CancellablePlayer(CancellablePlayer source) {
             super(source);cancellation=source.cancellation;
             // Keep the configured upstream budgets when XMage copies this live adapter.
             maxNodes=source.maxNodes;maxThinkTimeSecs=source.maxThinkTimeSecs;
             mistakePercent=source.mistakePercent;mistakeState=source.mistakeState;mistakes=source.mistakes;
-            plansCombat=source.plansCombat;
+            expert=source.expert;
         }
         /** Advances the seeded generator once per decision that could go wrong. */
         private boolean rollMistake(Game game) {
@@ -173,7 +179,7 @@ final class MobileAICancellation {
          */
         @Override protected void calculateActions(Game game) {
             searched=false;
-            super.calculateActions(game);
+            if(expert && !game.isSimulation()) expertSearch(game); else super.calculateActions(game);
             List<ScoredChoice> candidates;
             synchronized(this) { candidates=new ArrayList<>(choices());choices().clear();searchRoot=null; }
             if(!searched || actions.isEmpty() || !rollMistake(game)) return;
@@ -194,6 +200,37 @@ final class MobileAICancellation {
                 root=alternative.node();combat=alternative.node().getCombat();
             }
         }
+        // Expert search phases. Transient: they only live inside one calculateActions call.
+        private transient int searchPhase;
+        private transient int phaseBudgetSecs;
+        private transient boolean timedOut;
+        /**
+         * A quick search (QUICK_DEPTH, at most QUICK_SECS) and then the full search in the time left. When the
+         * full search runs out of time before it scores any move, the quick search's move stands instead of a
+         * pass; otherwise the full search decides, exactly as upstream. Total think time stays within the budget.
+         */
+        private void expertSearch(Game game) {
+            Set<String> cache=new HashSet<>(actionCache);
+            int depth=maxDepth;long started=System.nanoTime();
+            searchPhase=QUICK;
+            try { maxDepth=Math.min(depth,QUICK_DEPTH);super.calculateActions(game); }
+            finally { maxDepth=depth;searchPhase=FULL_SEARCH; }
+            try {
+                if(!searched) return; // continued the plan of an earlier search: nothing was searched
+                int left=phaseBudgetSecs-(int)Math.ceil((System.nanoTime()-started)/1e9);
+                if(left<1) return;
+                LinkedList<Ability> quick=new LinkedList<>(actions);SimulationNode2 quickRoot=root;Combat quickCombat=combat;
+                actions=new LinkedList<>();root=null;combat=null;
+                actionCache.clear();actionCache.addAll(cache);
+                phaseBudgetSecs=left;timedOut=false;
+                super.calculateActions(game);
+                if(actions.isEmpty() && timedOut && !quick.isEmpty()) {
+                    logger.info("AI full search ran out of time for "+getName()+"; quick search move "+quick);
+                    actions=quick;root=quickRoot;combat=quickCombat;
+                    for(Ability ability:quick) actionCache.add(ability.getRule()+'_'+ability.getSourceId());
+                }
+            } finally { searchPhase=NO_PHASE; }
+        }
         /** Sometimes holds every creature back, but never when the attack might be lethal. */
         @Override public void selectAttackers(Game game,UUID attackingPlayerId) {
             if(!game.isSimulation() && isGameUnderControl() && !getAvailableAttackers(game).isEmpty()
@@ -202,7 +239,7 @@ final class MobileAICancellation {
                 logger.info("AI deliberate mistake for "+getName()+": no attack");
                 return;
             }
-            CombatPlanner.Plan plan=plansCombat && !game.isSimulation()?CombatPlanner.planAttack(this,game):null;
+            CombatPlanner.Plan plan=expert && !game.isSimulation()?CombatPlanner.planAttack(this,game):null;
             if(plan==null) { super.selectAttackers(game,attackingPlayerId);return; }
             // Same events as upstream's declareAttackers, around the planner's choice.
             game.fireEvent(new GameEvent(GameEvent.EventType.DECLARE_ATTACKERS_STEP_PRE,null,null,playerId));
@@ -218,7 +255,7 @@ final class MobileAICancellation {
                 return;
             }
             super.selectBlockers(source,game,defendingPlayerId);
-            if(plansCombat && !game.isSimulation()) CombatPlanner.chumpIfLethal(this,game);
+            if(expert && !game.isSimulation()) CombatPlanner.chumpIfLethal(this,game);
         }
         private boolean possiblyLethal(Game game) {
             int power=0;
@@ -284,9 +321,16 @@ final class MobileAICancellation {
             searched=true;
             int configured=maxThinkTimeSecs;
             Game simulation=root==null?null:root.getGame();
-            maxThinkTimeSecs=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
+            int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
+            if(searchPhase==QUICK) { phaseBudgetSecs=budget;budget=Math.min(budget,QUICK_SECS); }
+            else if(searchPhase==FULL_SEARCH) budget=Math.min(budget,phaseBudgetSecs);
+            maxThinkTimeSecs=budget;
+            long started=System.nanoTime();
             try { return super.addActionsTimed(); }
-            finally { maxThinkTimeSecs=configured; }
+            finally {
+                maxThinkTimeSecs=configured;
+                timedOut=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
+            }
         }
         @Override protected int addActions(SimulationNode2 node,int depth,int alpha,int beta) {
             cancellation.enterSimulation();

@@ -408,7 +408,7 @@ public final class XmageEngine implements EnginePort {
         int depth=(int)aiSetting(seat,"aiSearchDepth",AIDifficulty.searchDepth(skill),1,10);
         int mistakes=(int)aiSetting(seat,"aiMistakePercent",AIDifficulty.mistakePercent(skill),0,100);
         long seed=aiSetting(seat,"aiSeed",java.util.concurrent.ThreadLocalRandom.current().nextLong(),Long.MIN_VALUE,Long.MAX_VALUE);
-        return new AIDifficulty(depth,mistakes,seed,AIDifficulty.plansCombat(skill));
+        return new AIDifficulty(depth,mistakes,seed,AIDifficulty.expert(skill));
     }
     private static long aiSetting(Map<String,Object> seat,String key,long fallback,long min,long max) {
         if(!seat.containsKey(key)) return fallback;
