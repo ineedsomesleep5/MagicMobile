@@ -23,7 +23,10 @@ TOOL = ROOT / 'tools/ai-calibration'
 BUILD = ROOT / 'build/ai-calibration'
 DECKS = BUILD / 'decks'
 FIELDS = ['game', 'game_seed', 'budget', 'skill_a', 'skill_b', 'deck_a', 'deck_b', 'first', 'winner',
-          'winner_skill', 'turns', 'seconds', 'end']
+          'winner_skill', 'turns', 'seconds', 'end', 'depth_a', 'mistake_a', 'depth_b', 'mistake_b',
+          'mistakes_a', 'mistakes_b']
+# Per-seat overrides of the skill's AI search depth and mistake chance (engines with AIDifficulty only).
+OVERRIDES = ('depth_a', 'mistake_a', 'depth_b', 'mistake_b')
 # Ranked tier pools (docs/RANKED.md): Bronze plays the precons; the others the bracket decks.
 POOLS = {'precon': lambda d: d['precon'], 'core': lambda d: d['bracket'] == 2 and not d['precon'],
          'upgraded': lambda d: d['bracket'] == 3, 'optimized': lambda d: d['bracket'] == 4}
@@ -91,7 +94,8 @@ def mix(seed: int, *parts: int) -> int:
     return value & 0x7FFFFFFFFFFFFFFF
 
 
-def schedule(skill_a: int, skill_b: int, decks: list[str], games: int, seed: int, budget: str) -> list[dict]:
+def schedule(skill_a: int, skill_b: int, decks: list[str], games: int, seed: int, budget: str,
+             overrides: dict | None = None) -> list[dict]:
     """Every block of 4 games plays one deck pair with both deck assignments and both seatings.
 
     Skill A plays deck X going first, deck X going second, deck Y going first, deck Y going second, so
@@ -107,15 +111,30 @@ def schedule(skill_a: int, skill_b: int, decks: list[str], games: int, seed: int
         swap = (game // 2) % 2 == 1
         rows.append({'game': game, 'game_seed': mix(seed, skill_a, skill_b, game), 'budget': budget,
                      'skill_a': skill_a, 'skill_b': skill_b, 'deck_a': y if swap else x, 'deck_b': x if swap else y,
-                     'a_first': game % 2 == 0})
+                     'a_first': game % 2 == 0, **{k: (overrides or {}).get(k, '') for k in OVERRIDES}})
     return rows
 
 
+# Game results; any other end (engine-stopped, jvm-exit, error-*) is a harness failure, such as a
+# worker out of memory, and is played again on the next run.
+RESULT_ENDS = ('ended', 'turn-limit', 'time-limit')
+
+
 def done_games(path: Path) -> set[int]:
+    """Games already played; drops harness failures from the CSV so they are played again."""
     if not path.exists():
         return set()
     with path.open() as stream:
-        return {int(row['game']) for row in csv.DictReader(stream)}
+        reader = csv.DictReader(stream)
+        fields, rows = reader.fieldnames, list(reader)
+    kept = [r for r in rows if r['end'] in RESULT_ENDS]
+    if len(kept) != len(rows):
+        print(f'{path.name}: replaying {len(rows) - len(kept)} games that failed in the harness', flush=True)
+        with path.open('w', newline='') as stream:
+            writer = csv.DictWriter(stream, fields)
+            writer.writeheader()
+            writer.writerows(kept)
+    return {int(r['game']) for r in kept}
 
 
 def compile_tool() -> str:
@@ -193,20 +212,24 @@ def play_all(jobs: list[tuple[Path, dict]], workers: int, heap: str, max_turns: 
                 line = ','.join(str(v) for v in (
                     row['game'], row['game_seed'], row['budget'], row['skill_a'], row['skill_b'],
                     1 if row['a_first'] else 0, DECKS / f"{row['deck_a']}.json", DECKS / f"{row['deck_b']}.json",
-                    max_turns, max_seconds))
+                    max_turns, max_seconds, *(row[k] for k in OVERRIDES)))
                 try:
-                    _, first, winner, turns, seconds, end = worker.play(line)
+                    _, first, winner, turns, seconds, end, mistakes_a, mistakes_b = worker.play(line)
                 except RuntimeError:
                     worker.close()
                     worker = None
-                    first, winner, turns, seconds, end = '?', 'draw', '0', '0', 'jvm-exit'
-                result = {k: row[k] for k in ('game', 'game_seed', 'budget', 'skill_a', 'skill_b', 'deck_a', 'deck_b')}
+                    first, winner, turns, seconds, end, mistakes_a, mistakes_b = '?', 'draw', '0', '0', 'jvm-exit', '', ''
+                result = {k: row[k] for k in ('game', 'game_seed', 'budget', 'skill_a', 'skill_b', 'deck_a', 'deck_b',
+                                              *OVERRIDES)}
                 result.update(first=first, winner=winner, turns=turns, seconds=seconds, end=end,
+                              mistakes_a=mistakes_a, mistakes_b=mistakes_b,
                               winner_skill=row['skill_a'] if winner == 'A' else row['skill_b'] if winner == 'B' else '')
                 with lock:
                     new = not path.exists()
+                    # Resuming a CSV keeps its own columns (files from before a column was added).
+                    fields = FIELDS if new else next(csv.reader(path.open()))
                     with path.open('a', newline='') as stream:
-                        writer = csv.DictWriter(stream, FIELDS)
+                        writer = csv.DictWriter(stream, fields, extrasaction='ignore')
                         if new:
                             writer.writeheader()
                         writer.writerow(result)
@@ -239,9 +262,19 @@ def wilson(wins: float, n: int, z: float = 1.96) -> tuple[float, float]:
     return centre - half, centre + half
 
 
+def seat_label(skill, depth: str, mistake: str) -> str:
+    extra = (f' d{depth}' if depth else '') + (f' m{mistake}%' if mistake else '')
+    return f'skill {skill}{extra}'
+
+
+def label(row: dict) -> str:
+    return (f"{seat_label(row['skill_a'], row.get('depth_a', ''), row.get('mistake_a', ''))} vs "
+            f"{seat_label(row['skill_b'], row.get('depth_b', ''), row.get('mistake_b', ''))}")
+
+
 def summarize(paths: list[Path]) -> str:
-    lines = ['| Pairing (A vs B) | Budget | Games | A wins | B wins | Draws | A win rate (95% CI) | Avg turns | Avg s/game | A first: A wins |',
-             '|---|---|---|---|---|---|---|---|---|---|']
+    lines = ['| Pairing (A vs B) | Budget | Games | A wins | B wins | Draws | A win rate (95% CI) | Avg turns | Avg s/game | A first: A wins | Mistakes/game A, B |',
+             '|---|---|---|---|---|---|---|---|---|---|---|']
     for path in paths:
         with path.open() as stream:
             rows = list(csv.DictReader(stream))
@@ -257,18 +290,48 @@ def summarize(paths: list[Path]) -> str:
         seconds = sum(float(r['seconds']) for r in rows) / len(rows)
         first = [r for r in rows if r['first'] == 'A' and r['winner'] in 'AB']
         first_rate = f"{sum(r['winner'] == 'A' for r in first)}/{len(first)}"
-        lines.append(f"| skill {rows[0]['skill_a']} vs {rows[0]['skill_b']} | {rows[0]['budget']} | {len(rows)} | "
-                     f"{a} | {b} | {draws} | {rate} | {turns:.1f} | {seconds:.0f} | {first_rate} |")
+        def avg(key):
+            values = [int(r[key]) for r in rows if r.get(key)]
+            return f'{sum(values) / len(values):.1f}' if values else '–'
+        lines.append(f"| {label(rows[0])} | {rows[0]['budget']} | {len(rows)} | "
+                     f"{a} | {b} | {draws} | {rate} | {turns:.1f} | {seconds:.0f} | {first_rate} | "
+                     f"{avg('mistakes_a')}, {avg('mistakes_b')} |")
     lines.append('')
     lines.append('Win rate counts decided games only (draws are turn or time limits). Interval: Wilson score, 95%.')
     return '\n'.join(lines)
 
 
-def pairing_jobs(out: Path, skill_a: int, skill_b: int, pool: str, games: int, seed: int, budget: str):
-    path = out / f'skill{skill_a}-vs-skill{skill_b}-{budget}.csv'
+def pairing_jobs(out: Path, skill_a: int, skill_b: int, pool: str, games: int, seed: int, budget: str,
+                 overrides: dict | None = None):
+    o = {k: str(v) for k, v in (overrides or {}).items() if v not in (None, '')}
+    tag = lambda side: ''.join(f'{k[0]}{o[k + "_" + side]}' for k in ('depth', 'mistake') if k + '_' + side in o)
+    path = out / f'skill{skill_a}{tag("a")}-vs-skill{skill_b}{tag("b")}-{budget}.csv'
     done = done_games(path)
-    rows = [r for r in schedule(skill_a, skill_b, pool_decks(pool), games, seed, budget) if r['game'] not in done]
+    rows = [r for r in schedule(skill_a, skill_b, pool_decks(pool), games, seed, budget, o) if r['game'] not in done]
     return path, [(path, r) for r in rows]
+
+
+def summarize_decks(paths: list[Path]) -> str:
+    """Each deck's win rate over every game it played (meaningful when both seats share a skill)."""
+    stats: dict[str, list[int]] = {}
+    for path in paths:
+        with path.open() as stream:
+            for r in csv.DictReader(stream):
+                for side, other in (('a', 'b'), ('b', 'a')):
+                    entry = stats.setdefault(r['deck_' + side], [0, 0, 0])
+                    if r['winner'] == side.upper():
+                        entry[0] += 1
+                    elif r['winner'] == other.upper():
+                        entry[1] += 1
+                    else:
+                        entry[2] += 1
+    lines = ['| Deck | Games | Wins | Losses | Draws | Win rate (95% CI) |', '|---|---|---|---|---|---|']
+    for deck, (won, lost, drawn) in sorted(stats.items(), key=lambda item: -item[1][0] / max(1, sum(item[1][:2]))):
+        low, high = wilson(won, won + lost)
+        rate = f'{100 * won / (won + lost):.0f}% ({100 * low:.0f}–{100 * high:.0f})' if won + lost else '–'
+        lines.append(f'| {deck} | {won + lost + drawn} | {won} | {lost} | {drawn} | {rate} |')
+    lines += ['', 'Win rate counts decided games only. Interval: Wilson score, 95%.']
+    return '\n'.join(lines)
 
 
 def main():
@@ -281,15 +344,18 @@ def main():
         p.add_argument('--seed', type=int, default=20261015)
         p.add_argument('--budget', choices=('phone', 'watcher'), default='phone')
         p.add_argument('--workers', type=int, default=os.cpu_count() or 4)
-        p.add_argument('--heap', default='1536m')
+        p.add_argument('--heap', default='2560m', help='per worker; 1536m ran out on long precon games')
         p.add_argument('--max-turns', type=int, default=40)
         p.add_argument('--max-seconds', type=int, default=1800)
-        p.add_argument('--restart-every', type=int, default=20, help='games per worker JVM before a fresh one')
+        p.add_argument('--restart-every', type=int, default=10, help='games per worker JVM before a fresh one')
         p.add_argument('--out', type=Path, default=BUILD / 'results')
 
     run = sub.add_parser('run', help='one pairing')
     run.add_argument('--skill-a', type=int, required=True)
     run.add_argument('--skill-b', type=int, required=True)
+    for key in OVERRIDES:
+        run.add_argument('--' + key.replace('_', '-'), default='',
+                         help='override the skill default (engines with AIDifficulty): search depth 1-10 or mistake 0-100%%')
     run.add_argument('--pool', default='core+precon',
                      help='precon, core, upgraded, optimized, core+precon, or comma-separated deck ids')
     common(run)
@@ -298,6 +364,7 @@ def main():
     common(matrix)
     summary = sub.add_parser('summarize', help='Markdown table of result CSVs')
     summary.add_argument('csv', nargs='+', type=Path)
+    summary.add_argument('--by-deck', action='store_true', help="each deck's win rate instead of each pairing's")
     args = parser.parse_args()
 
     if args.command == 'decks':
@@ -306,21 +373,28 @@ def main():
             print(f"{name}: {', '.join(d['id'] for d in index if keep(d))}")
         return
     if args.command == 'summarize':
-        print(summarize(args.csv))
+        print(summarize_decks(args.csv) if args.by_deck else summarize(args.csv))
         return
     if not (ROOT / 'build/runtime-classpath.txt').exists():
         raise SystemExit('Run scripts/build_jvm.sh first')
     deck_index()
     args.out.mkdir(parents=True, exist_ok=True)
     if args.command == 'run':
-        specs = [(args.skill_a, args.skill_b, args.pool)]
+        specs = [(args.skill_a, args.skill_b, args.pool, {k: getattr(args, k) for k in OVERRIDES})]
     else:
+        # A pairing is [skill_a, skill_b] or {"a": 1, "b": 6, "depth_a": 2, "mistake_a": 15, ...}.
         spec = json.loads(args.file.read_text())
-        specs = [(p[0], p[1], spec.get('pool', 'core+precon')) for p in spec['pairings']]
+        specs = []
+        for p in spec['pairings']:
+            if isinstance(p, list):
+                specs.append((p[0], p[1], spec.get('pool', 'core+precon'), {}))
+            else:
+                specs.append((p['a'], p['b'], p.get('pool', spec.get('pool', 'core+precon')),
+                              {k: p[k] for k in OVERRIDES if k in p}))
         args.games = spec.get('games', args.games)
     paths, jobs = [], []
-    for skill_a, skill_b, pool in specs:
-        path, new = pairing_jobs(args.out, skill_a, skill_b, pool, args.games, args.seed, args.budget)
+    for skill_a, skill_b, pool, overrides in specs:
+        path, new = pairing_jobs(args.out, skill_a, skill_b, pool, args.games, args.seed, args.budget, overrides)
         paths.append(path)
         jobs += new
     # Interleave pairings so partial results cover every pairing.

@@ -30,12 +30,13 @@ python3 scripts/ai_calibration.py summarize build/ai-calibration/results/*.csv
   statistically, not move for move.
 - **Parallelism:** one JVM per worker (`--workers`, default the CPU count), each playing games one at a
   time from a shared queue; upstream AI search state is static, so games never share a JVM. Workers
-  restart every 20 games. Searches are time-bounded, so a busy machine weakens every AI equally; keep
+  (2560m heap each) restart every 10 games. Searches are time-bounded, so a busy machine weakens every AI equally; keep
   other heavy work off the machine during a run.
 - **Limits:** a game stops as a draw after 40 turns or 1800 s (`--max-turns`, `--max-seconds`).
 - **Output:** one CSV per pairing in `build/ai-calibration/results/` (game, game_seed, budget, skill_a,
   skill_b, deck_a, deck_b, first, winner, winner_skill, turns, seconds, end), appended as each game
-  ends. Rerunning the same command resumes: games already in the CSV are skipped. Worker logs (XMage
+  ends. Rerunning the same command resumes: games already in the CSV are skipped, and games that failed in
+  the harness (`engine-stopped`, `jvm-exit`, for example a worker out of memory) are played again. Worker logs (XMage
   warnings) are in `build/ai-calibration/logs/`.
 
 `AICalibration.java` sits in the adapter's package so it can build matches from the production classes

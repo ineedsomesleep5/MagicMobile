@@ -29,9 +29,12 @@ import java.util.concurrent.TimeUnit;
  *
  * Protocol: one game per stdin line, games run one at a time (upstream AI search state is static,
  * so parallel games need separate JVMs):
- *   key,seed,budget,skill_a,skill_b,a_first(1|0),deck_a.json,deck_b.json,max_turns,max_seconds
+ *   key,seed,budget,skill_a,skill_b,a_first(1|0),deck_a.json,deck_b.json,max_turns,max_seconds[,depth_a,mistake_a,depth_b,mistake_b]
  * and one stdout line per game, after it ends (XMage may log other lines to stdout):
- *   RESULT,key,first(A|B|?),winner(A|B|draw),turns,seconds,end(ended|turn-limit|time-limit|...)
+ *   RESULT,key,first(A|B|?),winner(A|B|draw),turns,seconds,end(ended|turn-limit|time-limit|...)[,mistakes_a,mistakes_b]
+ * The four optional fields (blank = the skill's default) and the two mistake counts need an engine with
+ * AIDifficulty (cloud/c2-engine-a and later); it is found by reflection, so the tool also runs on
+ * engines without it. There, each AI's mistake rolls are seeded from the game seed.
  */
 public final class AICalibration {
     public static void main(String[] args) throws Exception {
@@ -43,9 +46,12 @@ public final class AICalibration {
             for(String line=in.readLine();line!=null;line=in.readLine()) {
                 if(line.isBlank()) continue;
                 String[] f=line.split(",",-1);
-                if(f.length!=10) throw new IllegalArgumentException("Bad game line: "+line);
+                if(f.length!=10 && f.length!=14) throw new IllegalArgumentException("Bad game line: "+line);
+                boolean extended=f.length==14;
                 String key=f[0],budget=f[2];long seed=Long.parseLong(f[1]);
-                int skillA=Integer.parseInt(f[3]),skillB=Integer.parseInt(f[4]);boolean aFirst=f[5].equals("1");
+                Seat skillA=new Seat(Integer.parseInt(f[3]),extended?f[10]:"",extended?f[11]:"",seed^0x5EA7A11CEL);
+                Seat skillB=new Seat(Integer.parseInt(f[4]),extended?f[12]:"",extended?f[13]:"",seed^0x5EA7B0B0L);
+                boolean aFirst=f[5].equals("1");
                 Map<String,Object> deckA=deck(decks,f[6]),deckB=deck(decks,f[7]);
                 int maxTurns=Integer.parseInt(f[8]),maxSeconds=Integer.parseInt(f[9]);
                 RandomUtil.setSeed(seed);
@@ -57,9 +63,10 @@ public final class AICalibration {
                         case "watcher" -> watcher(engine,deckA,deckB,skillA,skillB,aFirst,maxTurns,maxSeconds);
                         default -> throw new IllegalArgumentException("budget is phone or watcher");
                     };
-                } catch(BridgeException e) { r=new Result("?","draw",0,"error-"+e.code()); }
+                } catch(BridgeException e) { r=new Result("?","draw",0,"error-"+e.code(),"",""); }
                 double seconds=(System.nanoTime()-started)/1e9;
-                System.out.printf(Locale.ROOT,"RESULT,%s,%s,%s,%d,%.1f,%s%n",key,r.first,r.winner,r.turns,seconds,r.end);
+                System.out.printf(Locale.ROOT,"RESULT,%s,%s,%s,%d,%.1f,%s%s%n",key,r.first,r.winner,r.turns,seconds,r.end,
+                    extended?","+r.mistakesA+","+r.mistakesB:"");
                 System.out.flush();
             }
         } finally { engine.close(); }
@@ -73,14 +80,48 @@ public final class AICalibration {
     }
 
     /** A or B for the seat that won, draw when nobody did, first is the seat that took turn 1. */
-    record Result(String first,String winner,int turns,String end) {}
+    record Result(String first,String winner,int turns,String end,String mistakesA,String mistakesB) {}
 
-    static Result phone(Map<String,Object> deckA,Map<String,Object> deckB,int skillA,int skillB,boolean aFirst,
+    /** One AI seat: skill, optional depth and mistake overrides (blank = the skill's default), mistake seed. */
+    record Seat(int skill,String depth,String mistakes,long seed) {
+        boolean overridden() { return !depth.isEmpty() || !mistakes.isEmpty(); }
+    }
+    /** AIDifficulty exists from engine release A (C2) on; null on older engines. */
+    static final Class<?> DIFFICULTY=difficultyClass();
+    static Class<?> difficultyClass() {
+        try { return Class.forName("io.magicmobile.xmage.AIDifficulty"); }
+        catch(ClassNotFoundException absent) { return null; }
+    }
+    static Player aiPlayer(MobileAICancellation players,String name,Seat seat) throws Exception {
+        if(DIFFICULTY==null) {
+            if(seat.overridden()) throw new IllegalStateException("This engine has no AI depth or mistake settings");
+            return players.player(name,seat.skill());
+        }
+        java.lang.reflect.Method depth=DIFFICULTY.getDeclaredMethod("searchDepth",int.class);
+        java.lang.reflect.Method mistakes=DIFFICULTY.getDeclaredMethod("mistakePercent",int.class);
+        depth.setAccessible(true);mistakes.setAccessible(true);
+        int d=seat.depth().isEmpty()?(int)depth.invoke(null,seat.skill()):Integer.parseInt(seat.depth());
+        int m=seat.mistakes().isEmpty()?(int)mistakes.invoke(null,seat.skill()):Integer.parseInt(seat.mistakes());
+        java.lang.reflect.Constructor<?> make=DIFFICULTY.getDeclaredConstructor(int.class,int.class,long.class);
+        make.setAccessible(true);
+        java.lang.reflect.Method player=MobileAICancellation.class.getDeclaredMethod("player",String.class,int.class,DIFFICULTY);
+        player.setAccessible(true);
+        return (Player)player.invoke(players,name,seat.skill(),make.newInstance(d,m,seat.seed()));
+    }
+    static String mistakes(Game game,Player player) {
+        try {
+            java.lang.reflect.Method count=MobileAICancellation.class.getDeclaredMethod("mistakes",Player.class);
+            count.setAccessible(true);
+            return String.valueOf(count.invoke(null,game.getPlayer(player.getId())));
+        } catch(ReflectiveOperationException absent) { return ""; }
+    }
+
+    static Result phone(Map<String,Object> deckA,Map<String,Object> deckB,Seat skillA,Seat skillB,boolean aFirst,
                         int maxTurns,int maxSeconds) throws Exception {
         MobileAICancellation players=new MobileAICancellation(); // never bound: AIs think as against a person
         MobileAICancellation lifecycle=new MobileAICancellation();
         MobileCommanderMatch match=new MobileCommanderMatch();
-        Player a=players.player("A",skillA),b=players.player("B",skillB);
+        Player a=aiPlayer(players,"A",skillA),b=aiPlayer(players,"B",skillB);
         // Seat order is turn order; the first seat also chooses who starts.
         if(aFirst) { match.addPlayer(a,DeckLoader.load(deckA));match.addPlayer(b,DeckLoader.load(deckB)); }
         else { match.addPlayer(b,DeckLoader.load(deckB));match.addPlayer(a,DeckLoader.load(deckA)); }
@@ -104,15 +145,14 @@ public final class AICalibration {
             lifecycle.close();players.close();worker.interrupt();worker.join(10_000);
         } else if(!game.hasEnded()) end="engine-stopped";
         return new Result(seatOf(game.getStartingPlayerId(),a,b),end.equals("ended")?winner(game,a,b):"draw",
-            game.getTurnNum(),end);
+            game.getTurnNum(),end,mistakes(game,a),mistakes(game,b));
     }
 
-    static Result watcher(XmageEngine engine,Map<String,Object> deckA,Map<String,Object> deckB,int skillA,int skillB,
+    static Result watcher(XmageEngine engine,Map<String,Object> deckA,Map<String,Object> deckB,Seat skillA,Seat skillB,
                           boolean aFirst,int maxTurns,int maxSeconds) throws Exception {
         Map<String,Object> config=Json.map("seats",List.of(
             Json.map("seatId","watcher","name","Watcher","controller","human","deck",deckA),
-            Json.map("seatId","a","name","A","controller","ai","aiSkill",skillA,"deck",deckA),
-            Json.map("seatId","b","name","B","controller","ai","aiSkill",skillB,"deck",deckB)));
+            aiSeat("a","A",skillA,deckA),aiSeat("b","B",skillB,deckB)));
         String id=Json.requiredString(engine.create(config),"matchId");
         String first="?",end="ended",winner="draw";int turns=0;boolean conceded=false;
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(maxSeconds);
@@ -153,9 +193,16 @@ public final class AICalibration {
                 Thread.sleep(50);
             }
         } finally { destroy(engine,id); }
-        return new Result(first,winner,turns,end);
+        return new Result(first,winner,turns,end,"","");
     }
 
+    static Map<String,Object> aiSeat(String id,String name,Seat seat,Map<String,Object> deck) {
+        Map<String,Object> s=Json.map("seatId",id,"name",name,"controller","ai","aiSkill",seat.skill(),"deck",deck);
+        if(DIFFICULTY!=null) s.put("aiSeed",seat.seed());
+        if(!seat.depth().isEmpty()) s.put("aiSearchDepth",Integer.parseInt(seat.depth()));
+        if(!seat.mistakes().isEmpty()) s.put("aiMistakePercent",Integer.parseInt(seat.mistakes()));
+        return s;
+    }
     static String seatOf(UUID id,Player a,Player b) {
         return id==null?"?":id.equals(a.getId())?"A":id.equals(b.getId())?"B":"?";
     }
