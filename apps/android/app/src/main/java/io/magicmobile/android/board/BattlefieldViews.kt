@@ -361,14 +361,34 @@ fun BattlefieldRow(
 
     /**
      * Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab above it. The creature
-     * keeps its full size (Caleb, 2026-10-02): the tabs rise above it, over the gap or the row above.
+     * keeps its full size (Caleb, 2026-10-02): the tabs rise above it, over the gap. In a lower row ([tucked]) they would
+     * cover the power and toughness of the card above (Caleb, 2026-10-15), so there they sit inside the creature's top edge.
      */
     @Composable
-    fun attachmentGroupTile(group: BattlefieldCardGroup) {
+    fun attachmentGroupTile(group: BattlefieldCardGroup, tucked: Boolean = false) {
         val attachments = group.cards.drop(1)
         // Two tabs at most; the rest count on the top tab.
         val shown = attachments.take(2)
         val peek = maxOf(11f, minOf(14f, renderedCardHeight * 0.13f))
+        if (tucked) {
+            Box(Modifier.requiredSize(renderedCardWidth.dp, renderedCardHeight.dp), contentAlignment = Alignment.TopCenter) {
+                cardTile(group.representative)
+                Column(Modifier.padding(top = (peek * 0.35f).dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    shown.withIndex().forEach { (index, card) ->
+                        AttachmentNameTab(card, peek.dp, Modifier.width(renderedCardWidth.dp)
+                            .semantics { contentDescription = "${card.card.name}. Attached to ${group.representative.card.name}. Tap to select; hold to inspect." }
+                            .onCardInteraction(tap = {
+                                handleCardTap(card, !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id)), false)
+                            }, inspect = {
+                                selection.inspectedCard = card
+                                GameHaptics.impact(haptics)
+                            }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
+                            more = if (index == shown.size - 1) attachments.size - shown.size else 0)
+                    }
+                }
+            }
+            return
+        }
         Box(Modifier.requiredSize(renderedCardWidth.dp, renderedCardHeight.dp), contentAlignment = Alignment.BottomCenter) {
             shown.withIndex().reversed().forEach { (index, card) ->
                 Box(Modifier.offset(y = (-peek * (index + 1)).dp)) {
@@ -382,11 +402,12 @@ fun BattlefieldRow(
     }
 
     @Composable
-    fun rowTiles(groups: List<BattlefieldCardGroup>) {
+    /** [tucked]: a row sits above this one in the lane, so attachment tabs stay inside their creature. */
+    fun rowTiles(groups: List<BattlefieldCardGroup>, tucked: Boolean = false) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             for (group in groups) androidx.compose.runtime.key(group.id) {
                 when {
-                    group.id.startsWith("attachment:") -> attachmentGroupTile(group)
+                    group.id.startsWith("attachment:") -> attachmentGroupTile(group, tucked)
                     group.count > 1 -> collapsedGroupTile(group)
                     else -> cardTile(group.representative)
                 }
@@ -406,7 +427,7 @@ fun BattlefieldRow(
                     BattlefieldRowScroller(scroll, title, rowWidth, targetRenderedWidth, listOf(arranged[row].map { it.count }),
                         showsIndicator = rowContentWidth(arranged[row]) > rowWidth) {
                         Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp), contentAlignment = Alignment.Center) {
-                            Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row]) }
+                            Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row], tucked = row > 0) }
                         }
                     }
                 }
@@ -418,7 +439,7 @@ fun BattlefieldRow(
                 // Rows keep their leading edges together; the block is centered in the lane.
                 Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp), contentAlignment = Alignment.Center) {
                     Column(Modifier.padding(horizontal = 8.dp, vertical = if (availableHeight == null) 0.dp else 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() })
+                        for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() }, tucked = row > 0)
                     }
                 }
             }

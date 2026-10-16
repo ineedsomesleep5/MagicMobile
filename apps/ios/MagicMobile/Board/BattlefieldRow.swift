@@ -249,7 +249,7 @@ struct BattlefieldRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(0..<2, id: \.self) { row in
                         ScrollView(.horizontal, showsIndicators: rowContentWidth(arranged[row]) > rowWidth) {
-                            rowTiles(arranged[row])
+                            rowTiles(arranged[row], tucked: row > 0)
                                 .padding(.horizontal, 8)
                                 .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
                                 .reportsBattlefieldRowOffset(row)
@@ -264,7 +264,7 @@ struct BattlefieldRow: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: showsOverflowIndicator) {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row]) }
+                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row], tucked: row > 0) }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
@@ -294,10 +294,11 @@ struct BattlefieldRow: View {
     }
 
     @ViewBuilder
-    private func rowTiles(_ groups: [BattlefieldCardGroup]) -> some View {
+    /// `tucked`: a row sits above this one in the lane, so attachment tabs stay inside their creature.
+    private func rowTiles(_ groups: [BattlefieldCardGroup], tucked: Bool = false) -> some View {
         HStack(alignment: .center, spacing: 4) {
             ForEach(groups) { group in
-                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group) }
+                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group, tucked: tucked) }
                 else if group.count > 1 { collapsedGroupTile(group) }
                 else { battlefieldCardTile(group.representative) }
             }
@@ -314,13 +315,39 @@ struct BattlefieldRow: View {
 
     /// Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab
     /// above it. The creature keeps its full size (Caleb, 2026-10-02): the tabs rise above it,
-    /// over the gap or the row above, since the lanes do not clip.
+    /// over the gap. In a lower row (`tucked`) they would cover the power and toughness of the card
+    /// above (Caleb, 2026-10-15), so there they sit inside the creature's top edge instead.
     @ViewBuilder
-    private func attachmentGroupTile(_ group: BattlefieldCardGroup) -> some View {
+    private func attachmentGroupTile(_ group: BattlefieldCardGroup, tucked: Bool = false) -> some View {
         let attachments = Array(group.cards.dropFirst())
         // Two tabs at most; the rest count on the top tab.
         let shown = Array(attachments.prefix(2))
         let peek = max(11, min(14, renderedCardHeight * 0.13))
+        if tucked {
+            battlefieldCardTile(group.representative)
+                .overlay(alignment: .top) {
+                    VStack(spacing: 1) {
+                        ForEach(Array(shown.enumerated()), id: \.element.id) { index, card in
+                            AttachmentNameTab(card: card, height: peek,
+                                              more: index == shown.count - 1 ? attachments.count - shown.count : 0)
+                                .contentShape(Rectangle())
+                                .onCardInteraction(tap: {
+                                    let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
+                                    handleCardTap(card, action: legalAction(for: card), targetable: targetable, combatHighlighted: false)
+                                }, inspect: {
+                                    inspectedCard = card
+                                    GameHaptics.impact()
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(card.card.name)
+                                .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
+                        }
+                    }
+                    .padding(.top, peek * 0.35)
+                }
+                .frame(width: renderedCardWidth, height: renderedCardHeight)
+                .accessibilityElement(children: .contain)
+        } else {
         ZStack(alignment: .bottom) {
             ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
                 battlefieldCardTile(card)
@@ -335,6 +362,7 @@ struct BattlefieldRow: View {
         }
         .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
         .accessibilityElement(children: .contain)
+        }
     }
 
     @ViewBuilder
