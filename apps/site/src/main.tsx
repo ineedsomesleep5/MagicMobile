@@ -383,12 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 24 brings a new engine: smart pass lets your own
-                spells resolve and stops only when you can answer, the AI gets
-                tougher as you climb (Diamond and Mythic plan their attacks and
-                blocks), ranked AI wins are checked against the game's own
-                record, and the engine is about 10 MB smaller. Android is an
-                early alpha; physical-phone acceptance is still pending.
+                Android build 25 lets removal play out: when an opponent's spell
+                hits your board you see it read and what it removes leave before
+                the game moves on. Choosing several tokens from a pile now pulls
+                each one out with a check, and equipment tabs no longer cover the
+                card above. Same engine as build 24. Android is an early alpha;
+                physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -397,13 +397,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 40 brings a new engine: smart pass lets your own spells
-                resolve and stops only when you can answer, the AI gets tougher
-                as you climb (Diamond and Mythic plan their attacks and blocks),
-                ranked AI wins are checked against the game's own record, and
-                the engine is about 10 MB smaller. It runs on iPhone and iPad.
-                Apple has approved this build for Internal and External
-                TestFlight.
+                Build 41 lets removal play out: when an opponent's spell hits
+                your board you see it read and what it removes leave before the
+                game moves on. Choosing several tokens from a pile now pulls each
+                one out with a check, and equipment tabs no longer cover the card
+                above. It runs on iPhone and iPad. Apple has approved this build
+                for Internal and External TestFlight.
               </p>
             </details>
             <details>
