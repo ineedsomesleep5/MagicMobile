@@ -128,6 +128,8 @@ struct BattlefieldRow: View {
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
     let targetableIds: Set<String>
+    /// Already chosen in a multi-card target prompt (GameBoardInteractionState.boardChosenTargetIds).
+    var chosenIds: Set<String> = []
     let combatHighlightIds: Set<String>
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
@@ -149,10 +151,37 @@ struct BattlefieldRow: View {
     @Environment(\.tavernBoard) private var tavern
 
     private var visibleCards: [ZoneCard] {
-        cardGroups.flatMap { group in
-            isExpanded(group) ? group.cards : [group.representative]
-        }
+        cardGroups.flatMap(displayGroups).map(\.representative)
     }
+
+    /// The tiles a group shows: every card when it is open; otherwise one pile, with the cards already chosen from it
+    /// pulled out beside it as their own tiles (Caleb, 2026-10-15), so the pile's next tap chooses another one and a
+    /// tap on a pulled-out card takes it back.
+    private func displayGroups(_ group: BattlefieldCardGroup) -> [BattlefieldCardGroup] {
+        Self.displayGroups(group, expanded: isExpanded(group), chosenIds: chosenIds)
+    }
+
+    static func displayGroups(_ group: BattlefieldCardGroup, expanded: Bool, chosenIds: Set<String>) -> [BattlefieldCardGroup] {
+        func single(_ card: ZoneCard) -> BattlefieldCardGroup { BattlefieldCardGroup(id: "card:" + card.instanceId, cards: [card]) }
+        if expanded { return group.cards.map(single) }
+        guard group.count > 1, !group.id.hasPrefix("attachment:") else { return [group] }
+        let chosen = group.cards.filter { isChosen($0, chosenIds) }
+        guard !chosen.isEmpty else { return [group] }
+        let rest = group.cards.filter { !isChosen($0, chosenIds) }
+        return (rest.isEmpty ? [] : [BattlefieldCardGroup(id: group.id, cards: rest)]) + chosen.map(single)
+    }
+
+    /// The card a tap on a pile chooses next: the first that can be targeted and isn't chosen yet.
+    static func nextTargetable(in group: BattlefieldCardGroup, targetableIds: Set<String>, chosenIds: Set<String>) -> ZoneCard? {
+        group.cards.first { !$0.isPhasedOut && !isChosen($0, chosenIds) &&
+                            (targetableIds.contains($0.instanceId) || targetableIds.contains($0.id)) }
+    }
+
+    static func isChosen(_ card: ZoneCard, _ chosenIds: Set<String>) -> Bool {
+        chosenIds.contains(card.instanceId) || chosenIds.contains(card.id)
+    }
+
+    private func isChosen(_ card: ZoneCard) -> Bool { Self.isChosen(card, chosenIds) }
 
     private func isExpanded(_ group: BattlefieldCardGroup) -> Bool {
         guard !group.id.hasPrefix("attachment:") else { return false }
@@ -170,7 +199,7 @@ struct BattlefieldRow: View {
     /// The card a tap on a stack acts on: the first that can be targeted, then the first that
     /// combat highlights; nil when the stack simply opens.
     private func nextChoosable(in group: BattlefieldCardGroup) -> (card: ZoneCard, targetable: Bool)? {
-        if let card = group.cards.first(where: { !$0.isPhasedOut && (targetableIds.contains($0.instanceId) || targetableIds.contains($0.id)) }) {
+        if let card = Self.nextTargetable(in: group, targetableIds: targetableIds, chosenIds: chosenIds) {
             return (card, true)
         }
         if let card = group.cards.first(where: { combatHighlightIds.contains($0.instanceId) || combatHighlightIds.contains($0.id) }) {
@@ -209,9 +238,7 @@ struct BattlefieldRow: View {
     }
 
     private var renderedGroups: [BattlefieldCardGroup] {
-        cardGroups.flatMap { group in
-            isExpanded(group) ? group.cards.map { BattlefieldCardGroup(id: "card:" + $0.instanceId, cards: [$0]) } : [group]
-        }
+        cardGroups.flatMap(displayGroups)
     }
 
     var body: some View {
@@ -222,7 +249,7 @@ struct BattlefieldRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(0..<2, id: \.self) { row in
                         ScrollView(.horizontal, showsIndicators: rowContentWidth(arranged[row]) > rowWidth) {
-                            rowTiles(arranged[row])
+                            rowTiles(arranged[row], tucked: row > 0)
                                 .padding(.horizontal, 8)
                                 .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
                                 .reportsBattlefieldRowOffset(row)
@@ -237,7 +264,7 @@ struct BattlefieldRow: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: showsOverflowIndicator) {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row]) }
+                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row], tucked: row > 0) }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
@@ -267,10 +294,11 @@ struct BattlefieldRow: View {
     }
 
     @ViewBuilder
-    private func rowTiles(_ groups: [BattlefieldCardGroup]) -> some View {
+    /// `tucked`: a row sits above this one in the lane, so attachment tabs stay inside their creature.
+    private func rowTiles(_ groups: [BattlefieldCardGroup], tucked: Bool = false) -> some View {
         HStack(alignment: .center, spacing: 4) {
             ForEach(groups) { group in
-                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group) }
+                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group, tucked: tucked) }
                 else if group.count > 1 { collapsedGroupTile(group) }
                 else { battlefieldCardTile(group.representative) }
             }
@@ -282,20 +310,44 @@ struct BattlefieldRow: View {
     }
 
     private var visibleCardCount: Int {
-        cardGroups.reduce(0) { count, group in
-            count + (isExpanded(group) ? group.count : 1)
-        }
+        cardGroups.reduce(0) { count, group in count + displayGroups(group).count }
     }
 
     /// Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab
     /// above it. The creature keeps its full size (Caleb, 2026-10-02): the tabs rise above it,
-    /// over the gap or the row above, since the lanes do not clip.
+    /// over the gap. In a lower row (`tucked`) they would cover the power and toughness of the card
+    /// above (Caleb, 2026-10-15), so there they sit inside the creature's top edge instead.
     @ViewBuilder
-    private func attachmentGroupTile(_ group: BattlefieldCardGroup) -> some View {
+    private func attachmentGroupTile(_ group: BattlefieldCardGroup, tucked: Bool = false) -> some View {
         let attachments = Array(group.cards.dropFirst())
         // Two tabs at most; the rest count on the top tab.
         let shown = Array(attachments.prefix(2))
         let peek = max(11, min(14, renderedCardHeight * 0.13))
+        if tucked {
+            battlefieldCardTile(group.representative)
+                .overlay(alignment: .top) {
+                    VStack(spacing: 1) {
+                        ForEach(Array(shown.enumerated()), id: \.element.id) { index, card in
+                            AttachmentNameTab(card: card, height: peek,
+                                              more: index == shown.count - 1 ? attachments.count - shown.count : 0)
+                                .contentShape(Rectangle())
+                                .onCardInteraction(tap: {
+                                    let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
+                                    handleCardTap(card, action: legalAction(for: card), targetable: targetable, combatHighlighted: false)
+                                }, inspect: {
+                                    inspectedCard = card
+                                    GameHaptics.impact()
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(card.card.name)
+                                .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
+                        }
+                    }
+                    .padding(.top, peek * 0.35)
+                }
+                .frame(width: renderedCardWidth, height: renderedCardHeight)
+                .accessibilityElement(children: .contain)
+        } else {
         ZStack(alignment: .bottom) {
             ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
                 battlefieldCardTile(card)
@@ -310,6 +362,7 @@ struct BattlefieldRow: View {
         }
         .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
         .accessibilityElement(children: .contain)
+        }
     }
 
     @ViewBuilder
@@ -398,7 +451,7 @@ struct BattlefieldRow: View {
 
         ArenaBattlefieldCard(
             card: card,
-            selected: selectedCard?.id == card.id,
+            selected: selectedCard?.id == card.id || isChosen(card),
             legal: action != nil,
             targetable: targetable || combatHighlighted,
             zoneName: title,
@@ -406,9 +459,25 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
+        .overlay(alignment: .topTrailing) {
+            // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
+            if isChosen(card) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: max(9, renderedCardWidth * 0.11), weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: max(18, renderedCardWidth * 0.22), height: max(18, renderedCardWidth * 0.22))
+                    .background(TavernPalette.ember, in: Circle())
+                    .overlay(Circle().stroke(MagicPalette.antiqueGold, lineWidth: 1.2))
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .offset(x: 3, y: -3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
+        .accessibilityAddTraits(isChosen(card) ? .isSelected : [])
         .onCardInteraction(tap: {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }, inspect: {

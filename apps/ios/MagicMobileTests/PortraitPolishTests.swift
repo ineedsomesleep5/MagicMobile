@@ -200,4 +200,24 @@ final class PortraitPolishTests: XCTestCase {
         XCTAssertEqual(solRing.producedMana, ["C", "C"])
         XCTAssertTrue(snapshot.human?.zones.battlefield.contains { $0.instanceId == solRing.sourceInstanceId } == true)
     }
+
+    /// Choosing several from a token pile (Caleb, 2026-10-15): chosen tokens come out beside the pile, the pile's next
+    /// tap chooses another, and a chosen token taken back rejoins the pile.
+    func testTokenPileChoosesTheNextAndShowsChosenBeside() {
+        let squirrels = (1...10).map { ZoneCard(instanceId: "sq\($0)", card: CardIdentity(name: "Squirrel", typeLine: "Token Creature — Squirrel", oracleText: nil), tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil, power: 1, toughness: 1, isCreaturePermanent: true, damage: nil, isAttacking: nil, blocking: nil, attachedToInstanceId: nil) }
+        let pile = BattlefieldCardGroup(id: "pile", cards: squirrels)
+        let all = Set(squirrels.map(\.instanceId))
+        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: []).map(\.count), [10])
+        XCTAssertEqual(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: [])?.instanceId, "sq1")
+        let chosen: Set<String> = ["sq1", "sq2"]
+        let tiles = BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: chosen)
+        XCTAssertEqual(tiles.map(\.count), [8, 1, 1])
+        XCTAssertEqual(tiles.first?.id, "pile", "the pile keeps its identity")
+        XCTAssertEqual(tiles.dropFirst().map(\.representative.instanceId), ["sq1", "sq2"])
+        XCTAssertEqual(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: chosen)?.instanceId, "sq3",
+                       "the next tap chooses another token instead of taking the first one back")
+        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: ["sq2"]).map(\.count), [9, 1])
+        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: true, chosenIds: chosen).count, 10)
+        XCTAssertNil(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: all))
+    }
 }

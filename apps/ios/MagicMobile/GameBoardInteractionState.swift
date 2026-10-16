@@ -315,6 +315,14 @@ struct GameBoardInteractionState: Equatable {
         return ids
     }
 
+    /// Cards already chosen in a multi-card target prompt ("sacrifice three creatures"): XMage keeps them choosable, and
+    /// choosing one again takes it back. A token pile pulls these out so the next tap chooses another one.
+    static func boardChosenTargetIds(for snapshot: GameSnapshot) -> Set<String> {
+        guard !boardTargetableIds(for: snapshot).isEmpty,
+              let chosen = snapshot.promptEnvelopeV2?.options?["chosenTargets"]?.stringArrayValue else { return [] }
+        return Set(chosen)
+    }
+
     static func boardTargetableIds(for snapshot: GameSnapshot) -> Set<String> {
         guard let prompt = snapshot.promptEnvelopeV2 else { return [] }
         if isManaPaymentPrompt(prompt) || snapshot.manaPayment?.active == true {

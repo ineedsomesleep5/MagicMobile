@@ -81,6 +81,7 @@ fun PortraitGameContent(
         tavernTop = tavernFrame?.point(BoardPoint(0f, 124f))?.y, tavernDockTop = tavernFrame?.point(BoardPoint(0f, 830f))?.y)
     val actions = snapshot.legalActions ?: emptyList()
     val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
+    val chosenIds = GameBoardInteractionState.boardChosenTargetIds(snapshot)
     val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
     val shouldShowCompactPrompt = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, pendingActionId)
     val allBattlefield = snapshot.players.flatMap { it.zones.battlefield }
@@ -100,11 +101,11 @@ fun PortraitGameContent(
                 openLog, Modifier.place(metrics.topHUDRect).zIndex(3f), viewZone, selectOpponent)
         }
 
-        PortraitBattlefieldPermanentGroup("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
+        PortraitBattlefieldPermanentGroup("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
             metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.opponentBattlefieldRect.width, metrics.opponentBattlefieldRect.height,
             runAction, submitTarget, handleCombatCardTap, Modifier.place(metrics.opponentBattlefieldRect), flipped = true)
 
-        BattlefieldRow("Opponent lands", lane(opponent.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
+        BattlefieldRow("Opponent lands", lane(opponent.zones.battlefield, true), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
             metrics.landCardWidth, metrics.landCardHeight, metrics.opponentLandsRect.width, runAction, submitTarget, handleCombatCardTap,
             Modifier.place(metrics.opponentLandsRect), flipped = true)
 
@@ -125,12 +126,12 @@ fun PortraitGameContent(
             }
         }
 
-        PortraitBattlefieldPermanentGroup("Your board", lane(human.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
+        PortraitBattlefieldPermanentGroup("Your board", lane(human.zones.battlefield, false), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
             metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.playerBattlefieldRect.width, metrics.playerBattlefieldRect.height,
             runAction, submitTarget, handleCombatCardTap, Modifier.place(metrics.playerBattlefieldRect),
             allowsManaUndo = true, manaPaymentActive = snapshot.manaPayment?.active == true)
 
-        BattlefieldRow("Your lands", lane(human.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
+        BattlefieldRow("Your lands", lane(human.zones.battlefield, true), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
             metrics.landCardWidth, metrics.landCardHeight, metrics.playerLandsRect.width, runAction, submitTarget, handleCombatCardTap,
             Modifier.place(metrics.playerLandsRect), allowsManaUndo = true, manaPaymentActive = snapshot.manaPayment?.active == true)
 
