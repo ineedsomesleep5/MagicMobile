@@ -287,8 +287,9 @@ fun BattlefieldRow(
         val action = legalAction(card)
         val targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
         val combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
+        Box(Modifier.offset(y = tappedOffset(card))) {
         ArenaBattlefieldCard(card, title, renderedCardWidth.dp, renderedCardHeight.dp,
-            Modifier.offset(y = tappedOffset(card))
+            Modifier
                 .cardBounds(card.instanceId)
                 .boardFXCardMotion(card.instanceId)
                 .alpha(if (targetableIds.isNotEmpty() && !targetable) 0.54f else 1f)
@@ -298,6 +299,15 @@ fun BattlefieldRow(
                 }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
             selected = selection.selectedCard?.id == card.id || BattlefieldTokenStack.isChosen(card, chosenIds), legal = action != null,
             targetable = targetable || combatHighlighted)
+        // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
+        if (BattlefieldTokenStack.isChosen(card, chosenIds)) {
+            Box(Modifier.align(Alignment.TopEnd).offset(3.dp, (-3).dp).size(maxOf(18f, renderedCardWidth * 0.22f).dp)
+                .background(io.magicmobile.android.ui.TavernPalette.ember, CircleShape).border(1.2.dp, MagicPalette.antiqueGold, CircleShape),
+                contentAlignment = Alignment.Center) {
+                SfImage("checkmark", Color.White, maxOf(9f, renderedCardWidth * 0.11f).dp)
+            }
+        }
+        }
     }
 
     @Composable

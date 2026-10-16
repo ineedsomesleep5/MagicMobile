@@ -431,9 +431,25 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
+        .overlay(alignment: .topTrailing) {
+            // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
+            if isChosen(card) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: max(9, renderedCardWidth * 0.11), weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: max(18, renderedCardWidth * 0.22), height: max(18, renderedCardWidth * 0.22))
+                    .background(TavernPalette.ember, in: Circle())
+                    .overlay(Circle().stroke(MagicPalette.antiqueGold, lineWidth: 1.2))
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .offset(x: 3, y: -3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
+        .accessibilityAddTraits(isChosen(card) ? .isSelected : [])
         .onCardInteraction(tap: {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }, inspect: {
