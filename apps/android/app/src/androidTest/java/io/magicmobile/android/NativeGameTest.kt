@@ -124,7 +124,8 @@ class NativeGameTest {
                 val poll=GamePoll.parse(request("poll","matchId" to match,"viewerId" to "player-1","after" to (state.current?.revision ?: 0L)),match,"player-1")
                 state.publish(poll)
                 turn=maxOf(turn,poll.snapshot?.obj("gameView")?.number("turn") ?: 0L)
-                if(poll.phase!="running") break
+                // A new game opens in its setup phases before "running"; only an ended or failed game stops early.
+                if(poll.phase=="ended" || poll.phase=="failed") break
                 val prompt=state.current?.decision
                 if(prompt!=null && !prompt.submitted) {
                     val choices=Decisions.choices(prompt,poll.snapshot)
