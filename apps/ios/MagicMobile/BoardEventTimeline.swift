@@ -467,10 +467,22 @@ struct ScheduledBoardFX: Equatable, Identifiable {
         }
     }
 
-    /// Until when a later snapshot's effects wait: a showcase until it hands off, and the
-    /// first-strike beat until it ends, so the regular damage never overlaps it.
+    /// When the effects after this one may begin (the next group in its batch, or a later snapshot's). A spell is read
+    /// to the end and a card leaving play finishes before anything else moves (Caleb, 2026-10-15: an opponent's Path to
+    /// Exile flashed by while the next plays already ran behind it); everything else hands off as before.
+    var release: TimeInterval {
+        switch event {
+        case let .spellCast(_, _, _, _, weight) where weight != .ability: return end
+        case .leftBattlefield: return end
+        default: return handoff
+        }
+    }
+
+    /// Until when a later snapshot's effects wait: a spell read and a departure until they end (`release`), a showcase
+    /// until it hands off, and the first-strike beat until it ends, so the regular damage never overlaps it.
     var holdsLaterBatchesUntil: TimeInterval? {
         if case .firstStrikeBeat = event { return end }
+        if release != handoff { return release }
         return isSequential ? handoff : nil
     }
 
@@ -501,8 +513,8 @@ enum BoardFXScheduler {
     /// Decorative effects per transition; board wipes collapse to the first few.
     static let decorativeLimit = 10
     static let stagger: TimeInterval = 0.07
-    /// Effects never wait more than this for a showcase from an earlier snapshot.
-    static let maximumHold: TimeInterval = 3
+    /// Effects never wait more than this for a showcase from an earlier snapshot (a spell read, then what it removed).
+    static let maximumHold: TimeInterval = 4
 
     static func schedule(_ events: [BoardFXEvent], level: BoardFXLevel, firstID: Int = 0,
                          hold: TimeInterval = 0) -> [ScheduledBoardFX] {
@@ -525,7 +537,7 @@ enum BoardFXScheduler {
         var indexInGroup = 0
         for event in kept {
             if let previousOrder, previousOrder != event.order {
-                groupStart = result.map(\.handoff).max() ?? groupStart
+                groupStart = result.map(\.release).max() ?? groupStart
                 // Regular damage waits a short beat after the first strikers' hits.
                 if event.isRegularStrike, let beat = firstStrikeBeatEnd(result, motion: motion) {
                     groupStart = max(groupStart, beat)
@@ -684,9 +696,10 @@ struct BoardFXDirector: Equatable {
 
     static let renderGrace: TimeInterval = 2
 
-    /// Until when a showcase holds the centre of the board, so the turn banner waits its turn.
+    /// Until when a showcase holds the centre of the board, or a spell, departure or hit is still playing, so the turn
+    /// banner waits its turn and never covers what just happened to the board.
     var centreBusyUntil: Date? {
-        active.filter { $0.scheduled.isSequential }.map(\.endDate).max()
+        active.filter { $0.scheduled.isSequential || $0.scheduled.holdsSmartPass }.map(\.endDate).max()
     }
 
     /// Until when smart auto-pass waits, so the board finishes what it is showing first.
@@ -740,9 +753,10 @@ struct BoardFXDirector: Equatable {
 final class BoardPresentationHold {
     static let shared = BoardPresentationHold()
     /// Smart pass never waits longer than this for one prompt, so the board can't stall the game.
-    static let maximumWait: TimeInterval = 4
-    /// How long smart pass gives the board to take in a newly published snapshot.
-    static let ingestWait: TimeInterval = 0.15
+    static let maximumWait: TimeInterval = 5
+    /// How long smart pass gives the board to take in a newly published snapshot. A busy frame (a spell showcase drawing)
+    /// can take longer than a tenth of a second, and passing before the board has seen the snapshot skips its hold.
+    static let ingestWait: TimeInterval = 1
 
     private(set) var ingested: BoardFXRevisionKey?
     private(set) var until: Date?

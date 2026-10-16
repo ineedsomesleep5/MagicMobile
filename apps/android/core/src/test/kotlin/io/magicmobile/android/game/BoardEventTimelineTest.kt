@@ -2,6 +2,7 @@ package io.magicmobile.android.game
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,5 +42,42 @@ class BoardEventTimelineTest {
             assertTrue("$level", BoardFXScheduler.schedule(held, level).all { it.holdsSmartPass })
             assertFalse("$level", BoardFXScheduler.schedule(quick, level).any { it.holdsSmartPass })
         }
+    }
+
+    /** Mirrors testRemovalPlaysInOrderBeforeAnythingElse (Caleb, 2026-10-15: Path to Exile flashed by under the next plays). */
+    @Test fun removalPlaysInOrderBeforeAnythingElse() {
+        for (level in listOf(BoardFXLevel.FULL, BoardFXLevel.REDUCED)) {
+            val batch = BoardFXScheduler.schedule(listOf(
+                BoardFXEvent.SpellCast("s", "Path to Exile", "b", BoardFXTint.WHITE, BoardFXSpellWeight.SPELL),
+                BoardFXEvent.LeftBattlefield("commander", "a", BoardFXZone.EXILE, BoardFXTint.GREEN),
+                BoardFXEvent.EnteredBattlefield("plains", "b", BoardFXZone.HAND, BoardFXTint.WHITE, BoardFXEntrance.PLAIN),
+                BoardFXEvent.LifeChanged("b", 1)), level)
+            assertTrue("$level: the exile waits for the whole read", batch[1].delay >= batch[0].end - 1e-9)
+            assertTrue("$level: the next play waits for the exile", batch[2].delay >= batch[1].end - 1e-9)
+            assertEquals(batch[0].end, batch[0].holdsLaterBatchesUntil)
+            assertEquals(batch[1].end, batch[1].holdsLaterBatchesUntil)
+        }
+        val triggers = BoardFXScheduler.schedule(listOf(
+            BoardFXEvent.SpellCast("t", "Trigger", "b", BoardFXTint.WHITE, BoardFXSpellWeight.ABILITY),
+            BoardFXEvent.LifeChanged("b", 1)), BoardFXLevel.FULL)
+        assertTrue("repeated triggers keep their pace", triggers[1].delay < triggers[0].end)
+    }
+
+    /** Mirrors testTokenPileChoosesTheNextAndShowsChosenBeside. */
+    @Test fun tokenPileChoosesTheNextAndShowsChosenBeside() {
+        val squirrels = (1..10).map { ZoneCard("sq$it", CardIdentity("Squirrel", "Token Creature — Squirrel", isToken = true)) }
+        val pile = BattlefieldCardGroup("pile", squirrels)
+        val all = squirrels.map { it.instanceId }.toSet()
+        assertEquals(listOf(10), BattlefieldTokenStack.displayGroups(pile, false, emptySet()).map { it.count })
+        assertEquals("sq1", BattlefieldTokenStack.nextTargetable(pile, all, emptySet())?.instanceId)
+        val chosen = setOf("sq1", "sq2")
+        val tiles = BattlefieldTokenStack.displayGroups(pile, false, chosen)
+        assertEquals(listOf(8, 1, 1), tiles.map { it.count })
+        assertEquals("pile", tiles.first().id)
+        assertEquals(listOf("sq1", "sq2"), tiles.drop(1).map { it.representative.instanceId })
+        assertEquals("sq3", BattlefieldTokenStack.nextTargetable(pile, all, chosen)?.instanceId)
+        assertEquals(listOf(9, 1), BattlefieldTokenStack.displayGroups(pile, false, setOf("sq2")).map { it.count })
+        assertEquals(10, BattlefieldTokenStack.displayGroups(pile, true, chosen).size)
+        assertNull(BattlefieldTokenStack.nextTargetable(pile, all, all))
     }
 }

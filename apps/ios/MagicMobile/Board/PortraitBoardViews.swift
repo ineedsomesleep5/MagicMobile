@@ -392,6 +392,7 @@ struct PortraitBattlefieldPermanentGroup: View {
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
     let targetableIds: Set<String>
+    var chosenIds: Set<String> = []
     let combatHighlightIds: Set<String>
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
@@ -409,7 +410,7 @@ struct PortraitBattlefieldPermanentGroup: View {
     var body: some View {
         BattlefieldRow(
             title: title, cards: cards, legalActions: legalActions,
-            targetableIds: targetableIds, combatHighlightIds: combatHighlightIds,
+            targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlightIds,
             selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: flipped,
             cardWidth: cardWidth, cardHeight: cardHeight, rowWidth: rowWidth, adaptsToDensity: true,
             availableHeight: availableHeight, arrangement: .portraitPermanents,

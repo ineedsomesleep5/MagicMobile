@@ -159,10 +159,10 @@
                  "strike wolf -> player:a regular", "left rats graveyard", "life a -3"],
       "full": ["first-strike @0.000 +1.400", "strike atarka -> card:rats first @0.150 +0.950",
                "strike atarka -> card:rats regular @1.400 +0.950", "strike wolf -> player:a regular @1.470 +0.950",
-               "left rats graveyard @1.869 +0.950", "life a -3 @2.029 +1.300"],
+               "left rats graveyard @1.869 +0.950", "life a -3 @2.819 +1.300"],
       "reduced": ["first-strike @0.000 +1.000", "strike atarka -> card:rats first @0.060 +0.600",
                   "strike atarka -> card:rats regular @0.810 +0.600", "strike wolf -> player:a regular @0.830 +0.600",
-                  "left rats graveyard @0.890 +0.900", "life a -3 @0.950 +0.900"]
+                  "left rats graveyard @0.890 +0.900", "life a -3 @1.790 +0.900"]
     },
     {
       "name": "only a blocker has first strike: the step is still named",

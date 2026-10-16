@@ -398,4 +398,65 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(planned.first?.event, .firstStrikeBeat)
         XCTAssertEqual(planned.count, BoardFXScheduler.decorativeLimit + 1)
     }
+
+    /// Caleb, 2026-10-15: an opponent's Path to Exile flashed by while the next plays ran behind it. A spell is read to
+    /// the end, then what it removed leaves, and only then does anything else play, in one batch or across snapshots.
+    func testRemovalPlaysInOrderBeforeAnythingElse() {
+        for level in [BoardFXLevel.full, .reduced] {
+            let batch = BoardFXScheduler.schedule([
+                .spellCast(stackID: "s", name: "Path to Exile", controllerID: "b", tint: .white, weight: .spell),
+                .leftBattlefield(cardID: "commander", playerID: "a", to: .exile, tint: .green),
+                .enteredBattlefield(cardID: "plains", playerID: "b", from: .hand, tint: .white, entrance: .plain),
+                .lifeChanged(playerID: "b", delta: 1),
+            ], level: level)
+            XCTAssertGreaterThanOrEqual(batch[1].delay, batch[0].end, "\(level): the exile waits for the whole read")
+            XCTAssertGreaterThanOrEqual(batch[2].delay, batch[1].end, "\(level): the next play waits for the exile")
+            XCTAssertEqual(batch[0].holdsLaterBatchesUntil, batch[0].end)
+            XCTAssertEqual(batch[1].holdsLaterBatchesUntil, batch[1].end)
+        }
+        // Abilities still hand off quickly, so a stack of repeated triggers keeps its pace.
+        let triggers = BoardFXScheduler.schedule([
+            .spellCast(stackID: "t", name: "Trigger", controllerID: "b", tint: .white, weight: .ability),
+            .lifeChanged(playerID: "b", delta: 1),
+        ], level: .full)
+        XCTAssertLessThan(triggers[1].delay, triggers[0].end)
+    }
+
+    /// A later snapshot waits for a departure still playing, and the turn banner waits for it too.
+    func testLaterSnapshotAndTurnBannerWaitForADeparture() {
+        let start = Date(timeIntervalSince1970: 9_000)
+        var director = BoardFXDirector()
+        let commander = card("commander"), bear = card("bear")
+        director.ingest(snapshot([player("a", battlefield: [commander]), player("b", hand: [bear])]), level: .full, now: start)
+        let exiled = director.ingest(snapshot([player("a", exile: [commander]), player("b", hand: [bear])], revision: 2),
+                                     level: .full, now: start)
+        let departure = try? XCTUnwrap(exiled.first { if case .leftBattlefield = $0.event { return true }; return false })
+        let departureEnd = departure.map { start.addingTimeInterval($0.end) }
+        XCTAssertEqual(director.centreBusyUntil, departureEnd, "the turn banner waits for the exile")
+        let later = start.addingTimeInterval(0.2)
+        let next = director.ingest(snapshot([player("a", exile: [commander]), player("b", battlefield: [bear])], revision: 3),
+                                   level: .full, now: later)
+        XCTAssertEqual(later.addingTimeInterval(next[0].delay).timeIntervalSince1970,
+                       departureEnd?.timeIntervalSince1970 ?? 0, accuracy: 0.001)
+    }
+
+    /// Choosing several from a token pile (Caleb, 2026-10-15): chosen tokens come out beside the pile, the pile's next
+    /// tap chooses another, and a chosen token taken back rejoins the pile.
+    func testTokenPileChoosesTheNextAndShowsChosenBeside() {
+        let squirrels = (1...10).map { card("sq\($0)", "Squirrel", cost: nil, type: "Token Creature — Squirrel") }
+        let pile = BattlefieldCardGroup(id: "pile", cards: squirrels)
+        let all = Set(squirrels.map(\.instanceId))
+        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: []).map(\.count), [10])
+        XCTAssertEqual(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: [])?.instanceId, "sq1")
+        let chosen: Set<String> = ["sq1", "sq2"]
+        let tiles = BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: chosen)
+        XCTAssertEqual(tiles.map(\.count), [8, 1, 1])
+        XCTAssertEqual(tiles.first?.id, "pile", "the pile keeps its identity")
+        XCTAssertEqual(tiles.dropFirst().map(\.representative.instanceId), ["sq1", "sq2"])
+        XCTAssertEqual(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: chosen)?.instanceId, "sq3",
+                       "the next tap chooses another token instead of taking the first one back")
+        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: ["sq2"]).map(\.count), [9, 1])
+        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: true, chosenIds: chosen).count, 10)
+        XCTAssertNil(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: all))
+    }
 }

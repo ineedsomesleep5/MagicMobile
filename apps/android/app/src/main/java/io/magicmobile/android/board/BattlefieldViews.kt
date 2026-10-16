@@ -213,7 +213,7 @@ fun AttachmentNameTab(card: ZoneCard, height: Dp, modifier: Modifier = Modifier,
 /** A battlefield lane (Board/BattlefieldRow.swift BattlefieldRow): grouped, attachment-stacked, density-sized permanents. */
 @Composable
 fun BattlefieldRow(
-    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, combatHighlightIds: Set<String>,
+    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, chosenIds: Set<String>, combatHighlightIds: Set<String>,
     selection: BoardSelection, cardWidth: Float, cardHeight: Float, rowWidth: Float,
     runAction: (LegalAction) -> Unit, runTargetAction: (ZoneCard) -> Unit, runCombatCardAction: (ZoneCard) -> Boolean,
     modifier: Modifier = Modifier, flipped: Boolean = false, adaptsToDensity: Boolean = false, availableHeight: Float? = null,
@@ -236,16 +236,15 @@ fun BattlefieldRow(
 
     /** The card a tap on a stack acts on: the first that can be targeted, then the first that combat highlights; null when the stack simply opens. */
     fun nextChoosable(group: BattlefieldCardGroup): Pair<ZoneCard, Boolean>? {
-        group.cards.firstOrNull { !it.isPhasedOut && (targetableIds.contains(it.instanceId) || targetableIds.contains(it.id)) }?.let { return it to true }
+        BattlefieldTokenStack.nextTargetable(group, targetableIds, chosenIds)?.let { return it to true }
         group.cards.firstOrNull { combatHighlightIds.contains(it.instanceId) || combatHighlightIds.contains(it.id) }?.let { return it to false }
         return null
     }
 
-    val visibleCards = cardGroups.flatMap { if (isExpanded(it)) it.cards else listOf(it.representative) }
-    val visibleCardCount = cardGroups.sumOf { if (isExpanded(it)) it.count else 1 }
-    val renderedGroups = cardGroups.flatMap { group ->
-        if (isExpanded(group)) group.cards.map { BattlefieldCardGroup("card:" + it.instanceId, listOf(it)) } else listOf(group)
-    }
+    // A pile shows the cards already chosen from it beside it (BattlefieldTokenStack.displayGroups).
+    val renderedGroups = cardGroups.flatMap { BattlefieldTokenStack.displayGroups(it, isExpanded(it), chosenIds) }
+    val visibleCards = renderedGroups.map { it.representative }
+    val visibleCardCount = renderedGroups.size
     val permanentLayout = availableHeight?.let { height ->
         val proposed = arrangement.rows(renderedGroups, flipped, arrangement == BattlefieldRowArrangement.LANDSCAPE_RESOURCES || visibleCardCount > 5)
         ArenaPermanentLayout.of(proposed.map { it.size }, rowWidth, height, cardWidth, cardHeight / maxOf(cardWidth, 1f))
@@ -297,7 +296,8 @@ fun BattlefieldRow(
                     selection.inspectedCard = card
                     GameHaptics.impact(haptics)
                 }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
-            selected = selection.selectedCard?.id == card.id, legal = action != null, targetable = targetable || combatHighlighted)
+            selected = selection.selectedCard?.id == card.id || BattlefieldTokenStack.isChosen(card, chosenIds), legal = action != null,
+            targetable = targetable || combatHighlighted)
     }
 
     @Composable
@@ -492,12 +492,12 @@ fun requiresIndividualCombatCards(group: BattlefieldCardGroup, highlightedIDs: S
 /** Board/PortraitBoardViews.swift PortraitBattlefieldPermanentGroup: creatures and other permanents in portrait's two-row lane. */
 @Composable
 fun PortraitBattlefieldPermanentGroup(
-    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, combatHighlightIds: Set<String>,
+    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, chosenIds: Set<String>, combatHighlightIds: Set<String>,
     selection: BoardSelection, cardWidth: Float, cardHeight: Float, rowWidth: Float, availableHeight: Float,
     runAction: (LegalAction) -> Unit, runTargetAction: (ZoneCard) -> Unit, runCombatCardAction: (ZoneCard) -> Boolean,
     modifier: Modifier = Modifier, flipped: Boolean = false, allowsManaUndo: Boolean = false, manaPaymentActive: Boolean = false,
 ) {
-    BattlefieldRow(title, cards, legalActions, targetableIds, combatHighlightIds, selection, cardWidth, cardHeight, rowWidth,
+    BattlefieldRow(title, cards, legalActions, targetableIds, chosenIds, combatHighlightIds, selection, cardWidth, cardHeight, rowWidth,
         runAction, runTargetAction, runCombatCardAction, modifier, flipped, adaptsToDensity = true, availableHeight = availableHeight,
         arrangement = BattlefieldRowArrangement.PORTRAIT_PERMANENTS, allowsManaUndo = allowsManaUndo, manaPaymentActive = manaPaymentActive)
 }

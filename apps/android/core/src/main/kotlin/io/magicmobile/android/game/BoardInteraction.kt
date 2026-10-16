@@ -146,6 +146,15 @@ data class GameBoardInteractionState(val mode: GameBoardInteractionMode = GameBo
             return ids
         }
 
+        /**
+         * Cards already chosen in a multi-card target prompt ("sacrifice three creatures"): XMage keeps them choosable, and
+         * choosing one again takes it back. A token pile pulls these out so the next tap chooses another one.
+         */
+        fun boardChosenTargetIds(snapshot: GameSnapshot): Set<String> {
+            if (boardTargetableIds(snapshot).isEmpty()) return emptySet()
+            return snapshot.promptEnvelopeV2?.options?.get("chosenTargets").stringArrayValue?.toSet() ?: emptySet()
+        }
+
         fun boardTargetableIds(snapshot: GameSnapshot): Set<String> {
             val prompt = snapshot.promptEnvelopeV2 ?: return emptySet()
             if (isManaPaymentPrompt(prompt) || snapshot.manaPayment?.active == true) return emptySet()

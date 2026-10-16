@@ -41,6 +41,8 @@ enum GameBoardDesignPreviewState: String, CaseIterable, Identifiable {
     case tokenCopyInspection = "token-copy-inspection"
     case abilityShowcase = "ability-showcase"
     case firstStrike = "first-strike"
+    /// "Sacrifice three" over a pile of ten tokens, two chosen and pulled out beside the pile.
+    case tokenPileChoice = "token-pile-choice"
 
     var id: String { rawValue }
 

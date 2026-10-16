@@ -614,7 +614,7 @@ fun NativeGameView(
             lastTurnBannerKey = turnKey
             if (!firstBanner || board.turn > 1) {
                 // A showcase at the centre finishes first, so the banner and a cast never stack.
-                boardFX.centreBusyUntil?.let { busy -> val wait = busy - System.currentTimeMillis(); if (wait > 0) delay(minOf(wait, 3000L)) }
+                boardFX.centreBusyUntil?.let { busy -> val wait = busy - System.currentTimeMillis(); if (wait > 0) delay(minOf(wait, (io.magicmobile.android.game.BoardFXScheduler.maximumHold * 1000).toLong())) }
                 if (board.isViewer(board.activePlayerId)) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                 turnBannerEndsAt = System.currentTimeMillis() + 1950
                 showsTurnBanner = true; showsTurnCue = !isTavernBoard

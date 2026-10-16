@@ -268,6 +268,7 @@ private fun LandscapeCenterColumn(
         val metrics = BattlefieldLayoutMetrics(BoardSize(maxWidth.value, maxHeight.value),
             centerControlsVisible = BoardDecisionPresentation.needsCenterSpace(snapshot, false))
         val targetableIds = GameBoardInteractionState.boardTargetableIds(snapshot)
+        val chosenIds = GameBoardInteractionState.boardChosenTargetIds(snapshot)
         val combatHighlights = CombatHighlightSet(combatSelection, actions, snapshot.xmage?.combat ?: emptyList())
         val shouldShowCompactPrompt = !LocalStartingRollVisible.current && CompactPromptPopup.shouldShow(snapshot, pendingActionId)
         val interactionMode = GameBoardInteractionState.mode(snapshot, pendingActionId, selection.selectedCard)
@@ -277,10 +278,10 @@ private fun LandscapeCenterColumn(
         val tavern = LocalTavernFrame.current != null
 
         Box(Modifier.fillMaxSize()) {
-            BattlefieldRow("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
+            BattlefieldRow("Opponent board", lane(opponent.zones.battlefield, false), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
                 metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.opponentBattlefieldRect.width, runAction, submitTarget, handleCombatCardTap,
                 Modifier.place(metrics.opponentBattlefieldRect), flipped = true, adaptsToDensity = true, availableHeight = metrics.opponentBattlefieldRect.height)
-            BattlefieldRow("Opponent lands", lane(opponent.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
+            BattlefieldRow("Opponent lands", lane(opponent.zones.battlefield, true), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
                 metrics.landCardWidth, metrics.landCardHeight, metrics.opponentLandsRect.width, runAction, submitTarget, handleCombatCardTap,
                 Modifier.place(metrics.opponentLandsRect), flipped = true, adaptsToDensity = true, availableHeight = metrics.opponentLandsRect.height,
                 arrangement = BattlefieldRowArrangement.LANDSCAPE_RESOURCES)
@@ -288,11 +289,11 @@ private fun LandscapeCenterColumn(
                 Box(Modifier.centerAt(metrics.centerStripRect.midX, metrics.centerStripRect.midY)
                     .requiredWidth(maxOf(metrics.centerStripRect.width - 28, 80f).dp).height(1.5.dp).background(Color.White.copy(alpha = 0.13f)))
             }
-            BattlefieldRow("Your board", lane(human.zones.battlefield, false), actions, targetableIds, combatHighlights.cardIds, selection,
+            BattlefieldRow("Your board", lane(human.zones.battlefield, false), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
                 metrics.permanentCardWidth, metrics.permanentCardHeight, metrics.playerBattlefieldRect.width, runAction, submitTarget, handleCombatCardTap,
                 Modifier.place(metrics.playerBattlefieldRect), adaptsToDensity = true, availableHeight = metrics.playerBattlefieldRect.height,
                 allowsManaUndo = true, manaPaymentActive = manaActive)
-            BattlefieldRow("Your lands", lane(human.zones.battlefield, true), actions, targetableIds, combatHighlights.cardIds, selection,
+            BattlefieldRow("Your lands", lane(human.zones.battlefield, true), actions, targetableIds, chosenIds, combatHighlights.cardIds, selection,
                 metrics.landCardWidth, metrics.landCardHeight, metrics.playerLandsRect.width, runAction, submitTarget, handleCombatCardTap,
                 Modifier.place(metrics.playerLandsRect), adaptsToDensity = true, availableHeight = metrics.playerLandsRect.height,
                 arrangement = BattlefieldRowArrangement.LANDSCAPE_RESOURCES, allowsManaUndo = true, manaPaymentActive = manaActive)

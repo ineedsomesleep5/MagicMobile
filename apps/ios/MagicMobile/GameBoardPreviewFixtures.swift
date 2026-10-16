@@ -471,6 +471,23 @@ enum GameBoardPreviewFixtures {
             actions.append(["id": "make-mana-sol-ring", "type": "make_mana", "playerId": "human", "label": "Tap Sol Ring", "sourceInstanceId": "human-sol-ring", "cardName": "Sol Ring", "sourceZone": "battlefield", "producedMana": ["C", "C"]])
         }
         root["legalActions"] = actions
+        if state == .tokenPileChoice {
+            // "Sacrifice three creatures" over a pile of ten Squirrels, two already chosen: the chosen ones sit beside the
+            // pile and its next tap chooses a third (Caleb, 2026-10-15).
+            let squirrels = (1...10).map { card("human-squirrel-\($0)", "Squirrel", "Token Creature — Squirrel", "", "", power: 1) }
+            var zones = players[0]["zones"] as! [String: Any]
+            zones["battlefield"] = ((zones["battlefield"] as? [[String: Any]]) ?? []) + squirrels
+            players[0]["zones"] = zones
+            root["players"] = players
+            root["legalActions"] = []
+            let ids = squirrels.map { $0["instanceId"] as! String }
+            root["promptEnvelopeV2"] = ["id": "preview-sacrifice", "method": "GAME_TARGET", "messageId": 9, "playerId": "human",
+                                         "responseKind": "target", "message": "Choose creatures to sacrifice (selected 2 of 3)",
+                                         "required": true, "minChoices": 3, "maxChoices": 3, "targetIds": ids,
+                                         "targets": ids.map { ["id": $0, "label": "Squirrel"] },
+                                         "options": ["possibleTargets": ids, "chosenTargets": Array(ids.prefix(2))],
+                                         "responseCommand": ["type": "choose_target", "promptId": "preview-sacrifice", "messageId": 9]]
+        }
         if state == .normalBattlefield, ProcessInfo.processInfo.environment["MAGICMOBILE_MDFC_UI_TEST"] == "1" {
             var zones = players[0]["zones"] as! [String: Any]
             zones["hand"] = (0..<3).map { index in

@@ -25,7 +25,8 @@ enum class GameBoardDesignPreviewState(val rawValue: String) {
     HAND_SCRUBBER("hand-scrubber"), ZONE_INSPECTION("zone-inspection"), ABILITY_CHOICE("ability-choice"), MODE_CHOICE("mode-choice"),
     PHASE_ANNOUNCEMENT("phase-announcement"), LIFE_CHANGE("life-change"), LARGE_TEXT("large-text"), STACK_TRAY("stack-tray"),
     VICTORY("victory"), SPECTATING("spectating"), FOUR_PLAYER_SPECTATING("four-player-spectating"), OPENING_HAND("opening-hand"),
-    TOKEN_COPY_INSPECTION("token-copy-inspection"), ABILITY_SHOWCASE("ability-showcase"), FIRST_STRIKE("first-strike");
+    TOKEN_COPY_INSPECTION("token-copy-inspection"), ABILITY_SHOWCASE("ability-showcase"), FIRST_STRIKE("first-strike"),
+    TOKEN_PILE_CHOICE("token-pile-choice");
 
     val title: String get() = capitalizedWords(rawValue.replace("-", " "))
 
@@ -410,6 +411,20 @@ object GameBoardPreviewFixtures {
                 "sourceInstanceId" to "human-sol-ring", "cardName" to "Sol Ring", "sourceZone" to "battlefield", "producedMana" to mutableListOf("C", "C"))
         }
         root["legalActions"] = actions
+        if (state == GameBoardDesignPreviewState.TOKEN_PILE_CHOICE) {
+            // "Sacrifice three creatures" over a pile of ten Squirrels, two already chosen: the chosen ones sit beside the pile
+            // and its next tap chooses a third (Caleb, 2026-10-15).
+            val squirrels = (1..10).map { card("human-squirrel-$it", "Squirrel", "Token Creature — Squirrel", "", "", power = 1) }
+            zones(players[0])["battlefield"] = (list(zones(players[0])["battlefield"]) + squirrels).toMutableList()
+            root["legalActions"] = mutableListOf<Any?>()
+            val ids = squirrels.map { it["instanceId"] as String }
+            root["promptEnvelopeV2"] = mutableMapOf("id" to "preview-sacrifice", "method" to "GAME_TARGET", "messageId" to 9, "playerId" to "human",
+                "responseKind" to "target", "message" to "Choose creatures to sacrifice (selected 2 of 3)",
+                "required" to true, "minChoices" to 3, "maxChoices" to 3, "targetIds" to ids.toMutableList(),
+                "targets" to ids.map { mutableMapOf("id" to it, "label" to "Squirrel") }.toMutableList(),
+                "options" to mutableMapOf("possibleTargets" to ids.toMutableList(), "chosenTargets" to ids.take(2).toMutableList()),
+                "responseCommand" to mutableMapOf("type" to "choose_target", "promptId" to "preview-sacrifice", "messageId" to 9))
+        }
         if (state == GameBoardDesignPreviewState.NORMAL_BATTLEFIELD && environment["MAGICMOBILE_MDFC_UI_TEST"] == "1") {
             zones(players[0])["hand"] = (0 until 3).map { card("modal-$it", "Revitalizing Repast", "Instant", "{B/G}",
                 "Development fixture: Put a +1/+1 counter on target creature.") }.toMutableList()
