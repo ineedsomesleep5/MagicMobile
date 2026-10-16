@@ -440,23 +440,4 @@ extension BoardEventTimelineTests {
                        departureEnd?.timeIntervalSince1970 ?? 0, accuracy: 0.001)
     }
 
-    /// Choosing several from a token pile (Caleb, 2026-10-15): chosen tokens come out beside the pile, the pile's next
-    /// tap chooses another, and a chosen token taken back rejoins the pile.
-    func testTokenPileChoosesTheNextAndShowsChosenBeside() {
-        let squirrels = (1...10).map { card("sq\($0)", "Squirrel", cost: nil, type: "Token Creature — Squirrel") }
-        let pile = BattlefieldCardGroup(id: "pile", cards: squirrels)
-        let all = Set(squirrels.map(\.instanceId))
-        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: []).map(\.count), [10])
-        XCTAssertEqual(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: [])?.instanceId, "sq1")
-        let chosen: Set<String> = ["sq1", "sq2"]
-        let tiles = BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: chosen)
-        XCTAssertEqual(tiles.map(\.count), [8, 1, 1])
-        XCTAssertEqual(tiles.first?.id, "pile", "the pile keeps its identity")
-        XCTAssertEqual(tiles.dropFirst().map(\.representative.instanceId), ["sq1", "sq2"])
-        XCTAssertEqual(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: chosen)?.instanceId, "sq3",
-                       "the next tap chooses another token instead of taking the first one back")
-        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: false, chosenIds: ["sq2"]).map(\.count), [9, 1])
-        XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: true, chosenIds: chosen).count, 10)
-        XCTAssertNil(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: all))
-    }
 }

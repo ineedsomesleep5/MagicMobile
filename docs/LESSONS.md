@@ -231,3 +231,7 @@ contradicting one.
   protection isn't supported and the write throws. CI's `swift` job didn't catch it. **Rule:** guard iOS-only write
   options with `#if os(iOS)`, and run `swift test --package-path apps/ios` (or preflight `ios-fast`) after
   touching code the package compiles. Where: `PlayerRecordStore.keepGameRecord`.
+- 2026-10-15 (Claude): a test added to `BoardEventTimelineTests.swift` that used `BattlefieldRow` passed in the Xcode
+  test target but broke CI's `swift` job, because `apps/ios/Package.swift` compiles that test file without the `Board/`
+  views. **Rule:** tests of board views go in a file the package excludes (`PortraitPolishTests.swift`), and run
+  `swift test --package-path apps/ios` (macOS, no simulator, ~1 min) before pushing iOS test changes.
