@@ -217,4 +217,28 @@ enum ProfileHistoryFixture {
         }
     }
 }
+
+// MARK: The fixture leaderboard (mm_ranked_leaderboard): the fixture players by rank, private ones left out, friends-only
+// ones only for friends, and the fixture account itself in the middle.
+
+extension SocialFixtures {
+    static func leaderboard(_ scope: RankedLeaderboard.Scope, own: String, limit: Int = 50, friends: [PlayerFriend] = startingFriends()) -> RankedLeaderboard {
+        let friendNames = Set(friends.filter(\.isFriend).map(\.username))
+        var rows: [(name: String, points: Int, title: String?, commander: String?, online: Bool, wins: Int, losses: Int)] = players
+            .filter { $0.visibility == .public || ($0.visibility == .friends && friendNames.contains($0.name)) }
+            .filter { scope == .everyone || friendNames.contains($0.name) }
+            .map { player in
+                let points = RankPosition.published(step: player.step, pips: player.pips).points
+                return (player.name, points, player.title, player.commander, player.online, 8 + player.step, 4 + player.name.count % 7)
+            }
+        rows.append((own, RankPosition.published(step: 10, pips: 2).points, "Contender", "Edgar Markov", true, 14, 9))
+        rows.sort { $0.points != $1.points ? $0.points > $1.points : $0.name.lowercased() < $1.name.lowercased() }
+        let entries = rows.enumerated().map { index, row in
+            RankedLeaderboard.Entry(position: index + 1, username: row.name, title: row.title, commander: row.commander, points: row.points,
+                                    wins: row.wins, losses: row.losses, online: row.online, you: row.name == own)
+        }
+        return RankedLeaderboard(season: RankLadder.season(for: Date()), scope: scope.rawValue, total: entries.count,
+                                 online: entries.filter(\.online).count, entries: Array(entries.prefix(limit)), me: entries.first(where: \.you))
+    }
+}
 #endif

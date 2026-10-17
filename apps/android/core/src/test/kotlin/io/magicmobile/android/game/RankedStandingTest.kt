@@ -118,4 +118,23 @@ class RankedStandingTest {
         assertNull(RankedAITicket.parse("""{"id":"$id","seed":4.5}"""))
         assertNull(RankedAITicket.parse("\"$id\""))
     }
+
+    /** mm_ranked_leaderboard's reply (RankedStandingTests.swift testLeaderboardParsesAndPinsYourRowOffTheList). */
+    @Test fun leaderboardParsesAndPinsYourRowOffTheList() {
+        val board = RankedLeaderboard.parse(Json.parseToJsonElement("""
+            {"season":"2026-10","scope":"everyone","total":3,"online":1,"entries":[
+             {"position":1,"username":"Dahlia_Rose","title":"Mythic Legend","commander":"Ayula, Queen Among Bears","points":87,"step":20,"pips":7,"peakStep":20,"wins":28,"losses":11,"online":true,"you":false},
+             {"position":2,"username":"ManaFiend","title":null,"commander":null,"points":71,"step":17,"pips":3,"peakStep":17,"wins":25,"losses":10,"online":false,"you":false}],
+             "me":{"position":3,"username":"CalebM","title":"Contender","commander":"Edgar Markov","points":42,"step":10,"pips":2,"peakStep":11,"wins":14,"losses":9,"online":true,"you":true}}
+        """) as JsonObject)
+        assertEquals(listOf("Dahlia_Rose", "ManaFiend"), board.entries.map { it.username })
+        assertEquals(RankTier.MYTHIC, board.entries[0].rank.tier)
+        assertNull(board.entries[1].title)
+        assertTrue(board.entries[0].online)
+        assertEquals("CalebM", board.pinnedMe?.username)
+        val empty = RankedLeaderboard.parse(Json.parseToJsonElement(
+            """{"season":"2026-10","scope":"friends","total":0,"online":0,"entries":[],"me":null}""") as JsonObject)
+        assertTrue(empty.entries.isEmpty())
+        assertNull(empty.pinnedMe)
+    }
 }

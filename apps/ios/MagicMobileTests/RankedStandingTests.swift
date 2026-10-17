@@ -162,4 +162,33 @@ final class RankedStandingTests: XCTestCase {
         XCTAssertNil(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":4.5}"#.utf8)))
         XCTAssertNil(PlayerAccount.rankedAITicket(Data(#""\#(id.uuidString)""#.utf8)))
     }
+
+    /// mm_ranked_leaderboard's reply (supabase/migrations/20261016180000_ranked_leaderboard.sql).
+    func testLeaderboardParsesAndPinsYourRowOffTheList() throws {
+        let json = #"{"season":"2026-10","scope":"everyone","total":3,"online":1,"entries":[{"position":1,"username":"Dahlia_Rose","title":"Mythic Legend","commander":"Ayula, Queen Among Bears","points":87,"step":20,"pips":7,"peakStep":20,"wins":28,"losses":11,"online":true,"you":false},{"position":2,"username":"ManaFiend","title":null,"commander":null,"points":71,"step":17,"pips":3,"peakStep":17,"wins":25,"losses":10,"online":false,"you":false}],"me":{"position":3,"username":"CalebM","title":"Contender","commander":"Edgar Markov","points":42,"step":10,"pips":2,"peakStep":11,"wins":14,"losses":9,"online":true,"you":true}}"#
+        let board = try RankedLeaderboard.parse(Data(json.utf8))
+        XCTAssertEqual(board.entries.map(\.username), ["Dahlia_Rose", "ManaFiend"])
+        XCTAssertEqual(board.entries[0].rank.tier, .mythic)
+        XCTAssertNil(board.entries[1].title)
+        XCTAssertEqual(board.pinnedMe?.username, "CalebM", "your row is pinned when it's not among the shown entries")
+        let empty = try RankedLeaderboard.parse(Data(#"{"season":"2026-10","scope":"friends","total":0,"online":0,"entries":[],"me":null}"#.utf8))
+        XCTAssertTrue(empty.entries.isEmpty)
+        XCTAssertNil(empty.pinnedMe)
+    }
+
+    /// The fixture leaderboard follows the server's visibility rules.
+    func testFixtureLeaderboardHidesPrivateAndNonFriendRows() {
+        let everyone = SocialFixtures.leaderboard(.everyone, own: "CalebM")
+        let names = everyone.entries.map(\.username)
+        XCTAssertFalse(names.contains("DaPrivate"))
+        XCTAssertFalse(names.contains("Dagger99"), "friends-only and not a friend")
+        XCTAssertEqual(names.first, "Dahlia_Rose")
+        XCTAssertEqual(everyone.entries.map(\.position), Array(1...everyone.entries.count))
+        XCTAssertEqual(everyone.me?.username, "CalebM")
+        let top = SocialFixtures.leaderboard(.everyone, own: "CalebM", limit: 3)
+        XCTAssertEqual(top.entries.count, 3, "the limit caps the rows, like the server")
+        XCTAssertEqual(top.pinnedMe?.username, "CalebM")
+        let friends = SocialFixtures.leaderboard(.friends, own: "CalebM")
+        XCTAssertEqual(Set(friends.entries.map(\.username)), ["Aria_Blade", "ManaFiend", "DarkMoonDan", "CalebM"])
+    }
 }

@@ -80,4 +80,14 @@ class BoardEventTimelineTest {
         assertEquals(10, BattlefieldTokenStack.displayGroups(pile, true, chosen).size)
         assertNull(BattlefieldTokenStack.nextTargetable(pile, all, all))
     }
+
+    /** Restacking (PortraitPolishTests.testOpenedPilesRestack on iOS). */
+    @Test fun openedPilesRestack() {
+        val squirrels = (1..3).map { ZoneCard("sq$it", CardIdentity("Squirrel", "Token Creature — Squirrel", isToken = true)) }
+        val pile = BattlefieldCardGroup("pile", squirrels)
+        val lone = BattlefieldCardGroup("card:x", listOf(squirrels[0]))
+        assertEquals(mapOf("sq3" to "pile"), BattlefieldTokenStack.stackChipPiles(listOf(pile, lone), setOf("pile", "card:x")))
+        assertEquals(emptyMap<String, String>(), BattlefieldTokenStack.stackChipPiles(listOf(pile), emptySet()))
+        assertEquals(setOf("look"), BattlefieldTokenStack.openAfterChoice(setOf("look", "choose"), setOf("choose")))
+    }
 }

@@ -44,6 +44,8 @@ struct BoardFXOverlay: View {
 
     /// Cards that just left the battlefield no longer report bounds; keep their last rectangle.
     @State private var lastKnownBounds: [String: CGRect] = [:]
+    /// Half the frame rate while the phone is hot (DeviceHeat).
+    @ObservedObject private var heat = DeviceHeat.shared
 
     var body: some View {
         Group {
@@ -51,7 +53,8 @@ struct BoardFXOverlay: View {
                 Color.clear.accessibilityHidden(true)
             } else {
                 // 60 fps is smooth for card flights; ProMotion's 120 doubled the work of every flying card for no visible gain.
-                TimelineView(.animation(minimumInterval: 1 / 60)) { timeline in
+                // While the phone is hot, 30.
+                TimelineView(.animation(minimumInterval: heat.effectsFrameInterval)) { timeline in
                     let now = timeline.date
                     let _ = clock.observe(effects, at: now)
                     ZStack {

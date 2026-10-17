@@ -62,15 +62,46 @@ final class RankedUITests: XCTestCase {
         capture("Quick Match bottom")
         tapSteady(app.buttons["lobby.back"], until: app.buttons["play.ranked"])
         XCTAssertTrue(app.buttons["play.ranked"].waitForExistence(timeout: 5))
-        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.find"])
+        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.hall.play"])
+        XCTAssertTrue(app.buttons["ranked.hall.play"].waitForExistence(timeout: 10), "Ranked opens the Ranked Hall first")
+        XCTAssertTrue(app.buttons["ranked.hall.leaderboard"].exists)
+        capture("Ranked Hall")
+        tapSteady(app.buttons["ranked.hall.play"], until: app.buttons["ranked.find"])
         XCTAssertTrue(app.buttons["ranked.find"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.otherElements["ranked.standing"].exists || app.descendants(matching: .any)["ranked.standing"].exists)
         capture("Ranked lobby")
         reveal(app.buttons["ranked.find"])
         capture("Ranked lobby bottom")
+        tapSteady(app.buttons["lobby.back"], until: app.buttons["ranked.hall.play"])
+        XCTAssertTrue(app.buttons["ranked.hall.play"].waitForExistence(timeout: 5), "Back from the ranked lobby returns to the hall")
         tapSteady(app.buttons["lobby.back"], until: app.buttons["play.quick"])
         tapSteady(app.buttons["lobby.back"], until: app.buttons["menu.play"])
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5), "Back returns to the main menu")
+    }
+
+    /// The fixture leaderboard (SocialFixtures.leaderboard): podium, live strip, rows, scopes and a profile from a row.
+    func testLeaderboardShowsPodiumRowsAndScopes() {
+        launch(["MAGICMOBILE_UI_TEST_SOCIAL": "1"])
+        tapSteady(app.buttons["menu.play"], until: app.buttons["play.ranked"])
+        tapSteady(app.buttons["play.ranked"], until: app.buttons["ranked.hall.leaderboard"])
+        tapSteady(app.buttons["ranked.hall.leaderboard"], until: app.descendants(matching: .any)["leaderboard.podium"])
+        XCTAssertTrue(app.descendants(matching: .any)["leaderboard.podium"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["leaderboard.live"].exists)
+        XCTAssertTrue(app.buttons["leaderboard.row.Dahlia_Rose"].exists, "The Mythic player leads the podium")
+        XCTAssertFalse(app.buttons["leaderboard.row.DaPrivate"].exists, "Private profiles never appear")
+        capture("Leaderboard everyone")
+        reveal(app.buttons["leaderboard.row.CalebM"])
+        XCTAssertTrue(app.buttons["leaderboard.row.CalebM"].exists, "Your own row is on the board")
+        capture("Leaderboard rows")
+        app.swipeDown(); app.swipeDown()
+        tapSteady(app.buttons["leaderboard.scope.friends"], until: app.buttons["leaderboard.row.Aria_Blade"])
+        XCTAssertTrue(app.buttons["leaderboard.row.Aria_Blade"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["leaderboard.row.Dahlia_Rose"].exists, "Friends shows friends only")
+        capture("Leaderboard friends")
+        let header = app.descendants(matching: .any)["publicProfile.header"]
+        tapSteady(app.buttons["leaderboard.row.Aria_Blade"], until: header)
+        XCTAssertTrue(header.waitForExistence(timeout: 8), "A row opens that player's profile")
+        capture("Leaderboard profile")
     }
 
     func testQuickMatchBracketSheetExplainsTheDeck() {

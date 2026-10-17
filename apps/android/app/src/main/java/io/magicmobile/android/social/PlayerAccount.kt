@@ -248,6 +248,16 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         }
     }
 
+    /** The season leaderboard (mm_ranked_leaderboard), or null offline or without a profile name. */
+    suspend fun rankedLeaderboard(scope: io.magicmobile.android.game.RankedLeaderboard.Scope, limit: Int = 50): io.magicmobile.android.game.RankedLeaderboard? {
+        if (SocialFixtures.isActive) return SocialFixtures.leaderboard(scope, username ?: SocialFixtures.OWN_NAME, limit)
+        if (phase != Phase.READY || username == null) return null
+        return runCatching {
+            io.magicmobile.android.game.RankedLeaderboard.parse(Json.parseToJsonElement(api.rpc("mm_ranked_leaderboard",
+                mapOf("p_scope" to JsonPrimitive(scope.raw), "p_limit" to JsonPrimitive(limit)))) as JsonObject)
+        }.getOrNull()
+    }
+
     /** Another player's public ranked card, or null when they have none or can't be seen. */
     suspend fun profileCard(name: String): PlayerProfileCard? = if (phase != Phase.READY) null else runCatching {
         PlayerProfileCard.parse(Json.parseToJsonElement(api.rpc("mm_profile_card", mapOf("p_username" to JsonPrimitive(name)))) as JsonObject)

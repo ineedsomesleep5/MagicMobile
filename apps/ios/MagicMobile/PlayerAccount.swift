@@ -374,6 +374,16 @@ final class PlayerAccount: ObservableObject {
             "p_title": title?.title ?? NSNull(), "p_favorite_commander": commander ?? NSNull()])
     }
 
+    /// The season leaderboard (mm_ranked_leaderboard), or nil offline or without a profile name.
+    func rankedLeaderboard(_ scope: RankedLeaderboard.Scope, limit: Int = 50) async -> RankedLeaderboard? {
+        #if DEBUG
+        if SocialFixtures.isActive { return SocialFixtures.leaderboard(scope, own: username ?? SocialFixtures.ownName, limit: limit) }
+        #endif
+        guard phase == .ready, username != nil,
+              let data = try? await api.rpc("mm_ranked_leaderboard", ["p_scope": scope.rawValue, "p_limit": limit]) else { return nil }
+        return try? RankedLeaderboard.parse(data)
+    }
+
     /// Another player's ranked card, or nil when they have none (or can't be seen).
     func profileCard(_ username: String) async -> PlayerProfileCard? {
         guard phase == .ready, let data = try? await api.rpc("mm_profile_card", ["p_username": username]) else { return nil }

@@ -265,6 +265,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(Unit) {
         when (io.magicmobile.android.ranked.SocialFixtures.openScreen?.substringBefore(":")) {
             "profile" -> lobby = "profile"
+            "rankedHall" -> lobby = "rankedHall"
+            "leaderboard" -> lobby = "leaderboard"
             "friends", "public", "search" -> showFriends = true
         }
     }
@@ -815,8 +817,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     }
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }
+    LaunchedEffect(session.snapshot?.turn) { io.magicmobile.android.ui.GamePerformanceRecorder.noteTurn(session.snapshot?.turn) }
     LaunchedEffect(activeGame) {
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
+        if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
+        else io.magicmobile.android.ui.GamePerformanceRecorder.end()
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
         // A resumed game is not a new matchup: no versus intro.
         if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
@@ -1036,18 +1041,24 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             selectedDeckID.startsWith("local:"), selectedDeckID, deckPickerSections, { selectedDeckID = it }, ::openDecks,
                             { showBracketSheet = true }, enabled = !setup.isBusy && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle)
                     }
-                    BackHandler { GameAudio.play(GameSound.UI_BACK); lobby = if (lobby == "chooser" || lobby == "profile") null else "chooser" }
+                    BackHandler {
+                        GameAudio.play(GameSound.UI_BACK)
+                        lobby = when (lobby) { "chooser", "profile" -> null; "ranked", "leaderboard" -> "rankedHall"; else -> "chooser" }
+                    }
                     when (lobby) {
                         "quick" -> io.magicmobile.android.ranked.QuickMatchScreen(selectedDeckBracket, quickBracket, { quickBracket = it }, quickDeckID,
                             { quickDeckID = it }, quickSkill, { quickSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it }, aiPool, mayStartSolo,
                             if (setup.identity == null) setup.status else null, ::startQuickMatch, { lobby = "chooser" }, deckSlot)
                         "ranked" -> io.magicmobile.android.ranked.RankedLobbyScreen(record.file.rank, selectedDeckBracket, vm.account.rankedQueue != null,
-                            mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "chooser" }, deckSlot)
+                            mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "rankedHall" }, deckSlot)
+                        "rankedHall" -> io.magicmobile.android.ranked.RankedHallScreen(vm.account, record.file.rank, play = { lobby = "ranked" },
+                            leaderboard = { lobby = "leaderboard" }, profile = { lobby = "profile" }, back = { lobby = "chooser" })
+                        "leaderboard" -> io.magicmobile.android.ranked.RankedLeaderboardScreen(vm.account) { lobby = "rankedHall" }
                         "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account, vm.account.username ?: playerDisplayName,
                             setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander },
                             loadMetadata = { runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { io.magicmobile.android.studio.NativeDeckMetadataCatalogue(setup.awaitCatalogue()) } }.getOrNull() }) { lobby = null }
                         else -> io.magicmobile.android.ranked.PlayModeChooser(record.file.rank.position, io.magicmobile.android.game.RankLadder.seasonName(record.file.rank.season),
-                            quick = { lobby = "quick" }, ranked = { lobby = "ranked" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
+                            quick = { lobby = "quick" }, ranked = { lobby = "rankedHall" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
                     }
                 } else {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { lobby = "chooser" },

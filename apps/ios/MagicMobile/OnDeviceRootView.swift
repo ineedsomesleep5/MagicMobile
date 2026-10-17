@@ -95,7 +95,7 @@ struct OnDeviceRootView: View {
     @State private var bracketRevision = 0
     @State private var rankedConnectTask: Task<Void, Never>?
 
-    private enum LobbyScreen: Equatable { case chooser, quick, ranked, profile }
+    private enum LobbyScreen: Equatable { case chooser, quick, rankedHall, leaderboard, ranked, profile }
 
     private struct ActiveMatch: Equatable {
         let mode: PlayMode
@@ -606,6 +606,8 @@ struct OnDeviceRootView: View {
         .task {
             switch SocialFixtures.openScreen?.split(separator: ":").first.map(String.init) {
             case "profile": lobby = .profile
+            case "rankedHall": lobby = .rankedHall
+            case "leaderboard": lobby = .leaderboard
             case "friends", "public", "search": showFriends = true
             default: break
             }
@@ -623,6 +625,14 @@ struct OnDeviceRootView: View {
             if let code = pendingJoinCode { pendingJoinCode = nil; openJoinLink(code) }
         }
         .onOpenURL { url in if let code = TableJoinLink.code(from: url) { openJoinLink(code) } }
+        .onChange(of: session.snapshot?.turn) { _, turn in GamePerformanceLog.shared.noteTurn(turn) }
+        // Memory warnings free the caches that reload by themselves (not the sounds or music, which would cut out).
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            GamePerformanceLog.shared.noteMemoryWarning()
+            NativeDeckArtwork.purgeMemoryCaches()
+            NativeArtworkMemory.shared.purge()
+            NativeDeckMetadataCatalogue.purgeShared()
+        }
         .task(id: menuIsFree) { if menuIsFree { await showHowToPlayIfFirstLaunch() } }
         // Friends' challenges arrive while the menu or lobby is open (never during a game).
         .task(id: watchesChallenges) {
@@ -633,6 +643,12 @@ struct OnDeviceRootView: View {
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
+            if playing {
+                GamePerformanceLog.shared.begin(mode: activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
+                                                aiSkill: activeMatch?.aiSkill)
+            } else {
+                GamePerformanceLog.shared.end()
+            }
             if playing { matchmaker.finish(); rankedConnectTask?.cancel() }
             guard playing else { versusIntro = nil; return }
             if skipNextVersusIntro { skipNextVersusIntro = false; return }
@@ -1088,17 +1104,22 @@ struct OnDeviceRootView: View {
         switch screen {
         case .chooser:
             PlayModeChooser(rank: profileRecord.rank.position, seasonName: RankLadder.seasonName(profileRecord.rank.season),
-                            quick: { lobby = .quick }, ranked: { lobby = .ranked },
+                            quick: { lobby = .quick }, ranked: { lobby = .rankedHall },
                             custom: { lobby = nil; showSetup = true }, back: { lobby = nil })
         case .quick:
             QuickMatchView(deckBracket: selectedDeckBracket, opponentBracket: $quickBracket, opponentDeckID: $quickDeckID,
                            aiSkill: $quickSkill, startingPlayerMode: $aiStartingPlayerMode, mayStart: mayStartSolo,
                            status: setup.identity == nil ? setup.status : nil, start: startQuickMatch,
                            back: { lobby = .chooser }) { playDeckSlot }
+        case .rankedHall:
+            RankedHallView(account: account, rank: profileRecord.rank, play: { lobby = .ranked }, leaderboard: { lobby = .leaderboard },
+                           profile: { lobby = .profile }, back: { lobby = .chooser })
+        case .leaderboard:
+            RankedLeaderboardView(account: account, back: { lobby = .rankedHall })
         case .ranked:
             RankedLobbyView(rank: profileRecord.rank, deckBracket: selectedDeckBracket, canSearchPeople: account.rankedQueue != nil,
                             mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
-                            profile: { lobby = .profile }, back: { lobby = .chooser }) { playDeckSlot }
+                            profile: { lobby = .profile }, back: { lobby = .rankedHall }) { playDeckSlot }
         case .profile:
             PlayerProfileView(record: profileRecord, account: account, playerName: account.username ?? playerDisplayName,
                               deckCommanders: library.decks.compactMap { $0.deckList.commander?.cardName } + AIDeckPool.all.map(\.commander),
@@ -1799,6 +1820,14 @@ struct OnDeviceRootView: View {
                             .font(.footnote)
                         ShareLink(item: latest) { Label("Share last game record", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("ondevice.shareGameRecord")
+                    }
+                    // Memory peak and heat per game, to compare builds on this phone. Nothing about cards or players.
+                    if let performance = GamePerformanceLog.section(GamePerformanceLog.shared.entries) {
+                        Divider()
+                        Text("Recent games' memory and heat, to compare app versions on this phone.").font(.footnote)
+                        ShareLink(item: performance) { Label("Share game performance", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("ondevice.sharePerformance")
+                        Text(performance).font(.caption.monospaced()).textSelection(.enabled)
                     }
                 }.padding()
             }

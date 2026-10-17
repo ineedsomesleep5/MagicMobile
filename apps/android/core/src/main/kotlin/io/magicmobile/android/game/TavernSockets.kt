@@ -241,6 +241,14 @@ object BattlefieldTokenStack {
         group.cards.firstOrNull { !it.isPhasedOut && !isChosen(it, chosenIds) && (targetableIds.contains(it.instanceId) || targetableIds.contains(it.id)) }
 
     fun isChosen(card: ZoneCard, chosenIds: Set<String>): Boolean = chosenIds.contains(card.instanceId) || chosenIds.contains(card.id)
+
+    /** The piles still open once a choice or combat has ended: the ones opened only to look (Caleb, 2026-10-16). */
+    fun openAfterChoice(expanded: Set<String>, openedForChoice: Set<String>): Set<String> = expanded - openedForChoice
+
+    /** The last card of each pile the player opened, keyed to that pile: it carries the Stack chip. */
+    fun stackChipPiles(groups: List<BattlefieldCardGroup>, expanded: Set<String>): Map<String, String> =
+        groups.filter { it.count > 1 && it.id in expanded && !it.id.startsWith("attachment:") }
+            .associate { it.cards.last().instanceId to it.id }
 }
 
 /**

@@ -220,4 +220,15 @@ final class PortraitPolishTests: XCTestCase {
         XCTAssertEqual(BattlefieldRow.displayGroups(pile, expanded: true, chosenIds: chosen).count, 10)
         XCTAssertNil(BattlefieldRow.nextTargetable(in: pile, targetableIds: all, chosenIds: all))
     }
+
+    /// Restacking (Caleb, 2026-10-16): an opened pile's last card carries the Stack chip; piles opened to choose from
+    /// close when the choice ends, piles opened to look stay open.
+    func testOpenedPilesRestack() {
+        let squirrels = (1...3).map { ZoneCard(instanceId: "sq\($0)", card: CardIdentity(name: "Squirrel", typeLine: "Token Creature — Squirrel", oracleText: nil), tapped: nil, summoningSickness: nil, cardIcons: nil, counters: nil, power: 1, toughness: 1, isCreaturePermanent: true, damage: nil, isAttacking: nil, blocking: nil, attachedToInstanceId: nil) }
+        let pile = BattlefieldCardGroup(id: "pile", cards: squirrels)
+        let lone = BattlefieldCardGroup(id: "card:x", cards: [squirrels[0]])
+        XCTAssertEqual(BattlefieldRow.stackChipPiles([pile, lone], expanded: ["pile", "card:x"]), ["sq3": "pile"])
+        XCTAssertEqual(BattlefieldRow.stackChipPiles([pile], expanded: []), [:])
+        XCTAssertEqual(BattlefieldRow.openAfterChoice(expanded: ["look", "choose"], openedForChoice: ["choose"]), ["look"])
+    }
 }

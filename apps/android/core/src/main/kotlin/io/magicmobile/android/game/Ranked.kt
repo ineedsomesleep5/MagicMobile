@@ -447,6 +447,37 @@ data class RankedStanding(
     }
 }
 
+/**
+ * The season leaderboard from the server's standings (mm_ranked_leaderboard; RankedLeaderboard in RankLadder.swift): everyone
+ * or friends, private profiles and blocked players already left out by the server, plus the caller's own row.
+ */
+data class RankedLeaderboard(val season: String, val scope: String, val total: Int, val online: Int, val entries: List<Entry>, val me: Entry?) {
+    enum class Scope(val raw: String) { EVERYONE("everyone"), FRIENDS("friends") }
+
+    data class Entry(val position: Int, val username: String, val title: String?, val commander: String?, val points: Int,
+                     val wins: Int, val losses: Int, val online: Boolean, val you: Boolean) {
+        val rank: RankPosition get() = RankPosition.ofPoints(points)
+    }
+
+    /** The caller's row is pinned at the foot when it isn't among the shown entries. */
+    val pinnedMe: Entry? get() = me?.takeIf { mine -> entries.none { it.username == mine.username } }
+
+    companion object {
+        fun parse(value: JsonObject): RankedLeaderboard {
+            fun entry(o: JsonObject?): Entry? {
+                o ?: return null
+                fun s(key: String) = o[key]?.jsonPrimitive?.takeIf { it.isString }?.content
+                fun i(key: String) = o[key]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                return Entry(i("position"), s("username") ?: return null, s("title"), s("commander"), i("points"), i("wins"), i("losses"),
+                    o["online"]?.jsonPrimitive?.content == "true", o["you"]?.jsonPrimitive?.content == "true")
+            }
+            return RankedLeaderboard(value["season"]?.jsonPrimitive?.content ?: "", value["scope"]?.jsonPrimitive?.content ?: "everyone",
+                value["total"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0, value["online"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                (value["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) }, entry(value["me"] as? JsonObject))
+        }
+    }
+}
+
 /** A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result). */
 @Serializable
 data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long,

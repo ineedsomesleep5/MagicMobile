@@ -60,3 +60,6 @@ Choosing Ranked opens a Ranked Hall before matchmaking, in the Walnut Tavern sty
 ## Log
 - 2026-10-16: roadmap agreed: Ranked Hall and leaderboard, token restacking, combo loop shortcut, and the lighter engine
   plan including the GraalVM upgrade and cards as data.
+- 2026-10-16: release A built on `claude/release-a` (PR #188): `mm_ranked_leaderboard` with PGlite tests (applied live 2026-10-16 with Caleb's go-ahead; grants checked: authenticated only);
+  Ranked Hall and leaderboard, Stack chip and auto-restack, heat/memory awareness on iOS and Android. Shorter AI thinking
+  while hot needs an engine change and moves to release C. Online status uses the existing 90-second presence window.

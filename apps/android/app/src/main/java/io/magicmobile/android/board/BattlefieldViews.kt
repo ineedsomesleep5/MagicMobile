@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -77,6 +79,7 @@ import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.MagicPalette
+import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
@@ -210,6 +213,21 @@ fun AttachmentNameTab(card: ZoneCard, height: Dp, modifier: Modifier = Modifier,
     }
 }
 
+/** The brass chip on the last card of a spread-out pile (BattlefieldStackChip in BattlefieldRow.swift): tap to stack it back together. */
+@Composable
+fun BattlefieldStackChip(cardWidth: Float, modifier: Modifier = Modifier, action: () -> Unit) {
+    Box(modifier.size(44.dp).clickable(onClick = action).semantics { contentDescription = "Stack the group"; testTag = "battlefield.restack" },
+        contentAlignment = Alignment.Center) {
+        Row(Modifier.defaultMinSize(minHeight = 20.dp).glow(Color.Black.copy(alpha = 0.6f), 2.dp, 10.dp)
+            .background(Brush.verticalGradient(listOf(rgb(1.0, 0.88, 0.56), rgb(0.80, 0.56, 0.22))), CircleShape)
+            .border(1.dp, Color.Black.copy(alpha = 0.45f), CircleShape).padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+            SfImage("square.stack.3d.up.fill", rgb(0.25, 0.12, 0.04), 9.dp)
+            if (cardWidth >= 44f) Text("Stack", color = rgb(0.25, 0.12, 0.04), style = sf(10f, SfWeight.heavy, SfDesign.SERIF))
+        }
+    }
+}
+
 /** A battlefield lane (Board/BattlefieldRow.swift BattlefieldRow): grouped, attachment-stacked, density-sized permanents. */
 @Composable
 fun BattlefieldRow(
@@ -220,6 +238,16 @@ fun BattlefieldRow(
     arrangement: BattlefieldRowArrangement = BattlefieldRowArrangement.AUTOMATIC, allowsManaUndo: Boolean = false, manaPaymentActive: Boolean = false,
 ) {
     var expandedGroupIds by rememberSaveable(title) { mutableStateOf(setOf<String>()) }
+    // Piles opened with a hold while choosing from them stack again once the choice or combat ends; a pile opened just to look
+    // stays open until its Stack chip (Caleb, 2026-10-16).
+    var choiceOpenedGroupIds by rememberSaveable(title) { mutableStateOf(setOf<String>()) }
+    val settled = targetableIds.isEmpty() && combatHighlightIds.isEmpty()
+    LaunchedEffect(settled) {
+        if (settled && choiceOpenedGroupIds.isNotEmpty()) {
+            expandedGroupIds = BattlefieldTokenStack.openAfterChoice(expandedGroupIds, choiceOpenedGroupIds)
+            choiceOpenedGroupIds = emptySet()
+        }
+    }
     val haptics = rememberHaptics()
     val cardGroups = remember(cards) { BattlefieldAttachments.groups(cards) }
 
@@ -281,6 +309,7 @@ fun BattlefieldRow(
     }
 
     val tappedOffset = { card: ZoneCard -> if (card.tapped == true && rows == 1) 5.dp else 0.dp }
+    val stackChips = if (expandedGroupIds.isEmpty()) emptyMap() else BattlefieldTokenStack.stackChipPiles(cardGroups, expandedGroupIds)
 
     @Composable
     fun cardTile(card: ZoneCard) {
@@ -305,6 +334,14 @@ fun BattlefieldRow(
                 .background(io.magicmobile.android.ui.TavernPalette.ember, CircleShape).border(1.2.dp, MagicPalette.antiqueGold, CircleShape),
                 contentAlignment = Alignment.Center) {
                 SfImage("checkmark", Color.White, maxOf(9f, renderedCardWidth * 0.11f).dp)
+            }
+        }
+        // The last card of a pile the player spread out: tap to stack it back together.
+        stackChips[card.instanceId]?.let { pile ->
+            BattlefieldStackChip(renderedCardWidth, Modifier.align(Alignment.BottomEnd).offset(10.dp, 10.dp)) {
+                expandedGroupIds = expandedGroupIds - pile
+                choiceOpenedGroupIds = choiceOpenedGroupIds - pile
+                GameHaptics.selection(haptics)
             }
         }
         }
@@ -337,8 +374,9 @@ fun BattlefieldRow(
                 }
             }, inspect = {
                 if (nextChoosable(group) != null) {
-                    // Hold to open the pile and pick a particular card.
+                    // Hold to open the pile and pick a particular card; it stacks again when the choice ends.
                     expandedGroupIds = expandedGroupIds + group.id
+                    choiceOpenedGroupIds = choiceOpenedGroupIds + group.id
                 } else selection.inspectedCard = card
                 GameHaptics.impact(haptics)
             }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null })) {
