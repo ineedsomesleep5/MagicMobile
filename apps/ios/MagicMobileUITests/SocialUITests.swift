@@ -35,6 +35,41 @@ final class SocialUITests: XCTestCase {
         target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
+    /// Messages between friends (fixture conversations): the Messages tab with unread counts, a conversation, a quick
+    /// reply, and the Message button on a friend's row.
+    func testMessagesTabConversationAndQuickReply() {
+        launch(open: "messages")
+        let aria = element("messages.row.Aria_Blade")
+        XCTAssertTrue(aria.waitForExistence(timeout: 20), "the Messages tab lists conversations")
+        XCTAssertTrue(element("messages.row.ManaFiend").exists)
+        XCTAssertTrue(element("messages.row.DarkMoonDan").exists, "friends without messages are listed to start one")
+        XCTAssertTrue(aria.label.contains("2 unread"), aria.label)
+        capture("Messages tab")
+        tapSteady(aria)
+        XCTAssertTrue(element("conversation.message.6").waitForExistence(timeout: 10), "the conversation opens on the newest messages")
+        XCTAssertTrue(element("conversation.message.1").exists)
+        capture("Conversation")
+        let quick = app.buttons["conversation.quick.Good game!"]
+        let sent = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'You: Good game!'")).firstMatch
+        tapSteady(quick)
+        // A synthesized tap can be swallowed under load (UITestHarness.settleFirstTouch): one more try.
+        if !sent.waitForExistence(timeout: 4) { tapSteady(quick) }
+        XCTAssertTrue(sent.waitForExistence(timeout: 5), "a quick reply sends at once")
+        let field = app.textFields["conversation.field"]
+        tapSteady(field)
+        field.typeText("See you at the table")
+        tapSteady(app.buttons["conversation.send"])
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == 'You: See you at the table'")).firstMatch
+            .waitForExistence(timeout: 5), "a typed message sends")
+        capture("Conversation sent")
+        tapSteady(app.buttons["lobby.back"])
+        // Read now: the unread count is gone from Aria's row.
+        XCTAssertTrue(aria.waitForExistence(timeout: 10))
+        XCTAssertFalse(element("messages.row.Aria_Blade").label.contains("unread"))
+        tapSteady(app.buttons["friends.tab.friends"])
+        XCTAssertTrue(app.buttons["friends.message.ManaFiend"].waitForExistence(timeout: 10), "friends have a Message button")
+    }
+
     func testFriendsSearchShowsPlayersAsYouType() {
         launch(open: "friends")
         let field = app.textFields["friends.search"]

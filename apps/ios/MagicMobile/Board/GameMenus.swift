@@ -269,8 +269,10 @@ struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.gameConcede) private var gameConcede
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.friendMessages) private var friendMessages
     @State private var confirmingConcede = false
     @State private var showHowToPlay = false
+    @State private var showMessages = false
     let snapshot: GameSnapshot
     let concedeAction: LegalAction?
     let runAction: (LegalAction) -> Void
@@ -331,6 +333,25 @@ struct GameManagementMenu: View {
                     .buttonStyle(CompactActionButtonStyle(isPrimary: false))
                     .accessibilityIdentifier("board.menu.howToPlay")
 
+                    // Friends' messages without leaving the game.
+                    if let friendMessages {
+                        Button { showMessages = true } label: {
+                            HStack(spacing: 8) {
+                                Label("Messages", systemImage: "bubble.left.and.bubble.right.fill")
+                                if friendMessages.unread > 0 {
+                                    Text("\(friendMessages.unread)")
+                                        .font(.system(size: 11, weight: .black)).monospacedDigit().foregroundStyle(.white)
+                                        .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
+                                        .background(TavernPalette.ember, in: Capsule())
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                        .accessibilityValue(friendMessages.unread > 0 ? "\(friendMessages.unread) unread" : "")
+                        .accessibilityIdentifier("board.menu.messages")
+                    }
+
                     RememberedChoicesPanel()
 
                     GameMenuSectionLabel(text: "Options")
@@ -357,6 +378,7 @@ struct GameManagementMenu: View {
             if tavern && TavernUIKit.available { Color.clear } else { BattlefieldSurface().ignoresSafeArea() }
         }
         .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
+        .sheet(isPresented: $showMessages) { friendMessages?.hub() }
         .tavernConfirmation(
             active: tavern,
             title: "Concede this game?",

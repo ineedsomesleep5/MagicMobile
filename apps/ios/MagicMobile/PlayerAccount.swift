@@ -18,6 +18,9 @@ enum PlayerAccountRules {
         case "no_username": return String(localized: "Choose your name first.")
         case "too_many_requests": return String(localized: "You have too many friend requests waiting.")
         case "too_many_reports": return String(localized: "You've sent a lot of reports. Try again later.")
+        case "not_friends": return String(localized: "You can only message friends.")
+        case "invalid_message": return String(localized: "Write something first (500 characters at most).")
+        case "too_many_messages": return String(localized: "You're sending messages fast. Wait a moment and try again.")
         case "anonymous_provider_disabled", "anonymous_disabled": return String(localized: "Profiles aren't available right now. You can still play.")
         case "feature_unavailable": return String(localized: "That part of the profile server isn't ready yet. Try again after the next update.")
         case "invalid_visibility": return String(localized: "Choose Public, Friends only or Private.")
@@ -147,6 +150,10 @@ final class PlayerAccount: ObservableObject {
     /// False once the server has said it has no player search / public profiles yet: the screens fall back gently.
     @Published private(set) var searchAvailable = true
     @Published private(set) var profilesAvailable = true
+    /// Unread messages from friends: the badge on the Friends button.
+    @Published private(set) var unreadMessages = 0
+    /// False on a server without friend messages yet.
+    @Published private(set) var messagesAvailable = true
     @Published var notice: String?
     /// Google or Apple sign-ins on this account; empty while the profile lives only on this phone (anonymous).
     @Published private(set) var linkedIdentities: [LinkedIdentity] = []
@@ -168,8 +175,13 @@ final class PlayerAccount: ObservableObject {
     var incomingCount: Int { friends.filter(\.isIncoming).count }
 
     #if DEBUG
+    /// The fixture account's conversations, changed as the player sends.
+    private var fixtureMessages: [String: [FriendMessage]] = [:]
+
     /// Development fixtures (SocialFixtures): a signed-in account with friends, instead of the server.
     private func applyFixtureAccount() {
+        fixtureMessages = SocialFixtures.messages()
+        unreadMessages = fixtureMessages.values.joined().filter { !$0.fromMe && !$0.read }.count
         phase = .ready
         username = SocialFixtures.ownName
         friends = SocialFixtures.startingFriends()
@@ -264,7 +276,7 @@ final class PlayerAccount: ObservableObject {
     /// until the player signs in again.
     func signOut() async {
         api.forgetSession()
-        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []
+        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []; unreadMessages = 0
         visibility = .public; visibilityKnown = false
         phase = .idle
         await start()
@@ -281,6 +293,11 @@ final class PlayerAccount: ObservableObject {
             blocked = rows.compactMap { $0["username"] as? String }
         } catch {
             notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error))
+        }
+        // Messages are extra too: a server without them leaves the badge off.
+        if let data = try? await api.rpc("mm_message_unread"),
+           let count = (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) as? Int {
+            unreadMessages = count
         }
         // Ranks are extra: a server without them leaves the badges off.
         if let data = try? await api.rpc("mm_friend_ranks"),
@@ -372,6 +389,81 @@ final class PlayerAccount: ObservableObject {
             "p_season": rank.season, "p_rank_step": rank.position.step, "p_pips": rank.position.pips,
             "p_peak_step": rank.peak.step, "p_wins": rank.wins, "p_losses": rank.losses,
             "p_title": title?.title ?? NSNull(), "p_favorite_commander": commander ?? NSNull()])
+    }
+
+    // MARK: Messages between friends
+
+    /// Just the unread count (checked more often during a game).
+    func refreshUnread() async {
+        #if DEBUG
+        if SocialFixtures.isActive { return }
+        #endif
+        guard phase == .ready, username != nil, messagesAvailable else { return }
+        do {
+            let data = try await api.rpc("mm_message_unread")
+            if let count = (try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) as? Int { unreadMessages = count }
+        } catch {
+            if SupabaseLite.code(of: error) == "feature_unavailable" { messagesAvailable = false }
+        }
+    }
+
+    /// Conversations with friends, newest first; nil offline or on a server without messages.
+    func conversations() async -> [MessageConversation]? {
+        #if DEBUG
+        if SocialFixtures.isActive {
+            return fixtureMessages.compactMap { name, messages in
+                messages.last.map { MessageConversation(username: name, unread: messages.filter { !$0.fromMe && !$0.read }.count, last: $0) }
+            }.sorted { $0.last.id > $1.last.id }
+        }
+        #endif
+        guard phase == .ready, username != nil else { return nil }
+        do {
+            let list = try FriendMessageRules.parseConversations(try await api.rpc("mm_message_conversations"))
+            messagesAvailable = true
+            return list
+        } catch {
+            if SupabaseLite.code(of: error) == "feature_unavailable" { messagesAvailable = false }
+            return nil
+        }
+    }
+
+    /// A page of a conversation (the newest, or the messages before `before`). Reading the newest marks theirs read.
+    func thread(with name: String, before: Int64? = nil) async throws -> MessageThread {
+        #if DEBUG
+        if SocialFixtures.isActive {
+            let all = fixtureMessages[name] ?? []
+            if before == nil {
+                fixtureMessages[name] = all.map { $0.fromMe || $0.read ? $0 : FriendMessage(id: $0.id, body: $0.body, sentAt: $0.sentAt, fromMe: false, read: true) }
+                unreadMessages = fixtureMessages.values.joined().filter { !$0.fromMe && !$0.read }.count
+            }
+            return MessageThread(username: name, messages: (fixtureMessages[name] ?? []).filter { before == nil || $0.id < before! }, hasMore: false)
+        }
+        #endif
+        let thread = try FriendMessageRules.parseThread(try await api.rpc("mm_message_thread", ["p_username": name, "p_before": before.map { NSNumber(value: $0) } ?? NSNull(), "p_limit": 50]))
+        if before == nil, let data = try? await api.rpc("mm_message_unread"),
+           let count = (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) as? Int {
+            unreadMessages = count
+        }
+        return thread
+    }
+
+    /// Sends a message to a friend; nil (with a notice) when it couldn't be sent.
+    func sendMessage(to name: String, _ raw: String) async -> FriendMessage? {
+        guard let body = FriendMessageRules.sanitize(raw) else { return nil }
+        #if DEBUG
+        if SocialFixtures.isActive {
+            let next = (fixtureMessages.values.joined().map(\.id).max() ?? 0) + 1
+            let message = FriendMessage(id: next, body: body, sentAt: Date(), fromMe: true, read: false)
+            fixtureMessages[name, default: []].append(message)
+            return message
+        }
+        #endif
+        do {
+            return try FriendMessageRules.parseMessage(try await api.rpc("mm_message_send", ["p_username": name, "p_body": body]))
+        } catch {
+            notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error))
+            return nil
+        }
     }
 
     /// The season leaderboard (mm_ranked_leaderboard), or nil offline or without a profile name.

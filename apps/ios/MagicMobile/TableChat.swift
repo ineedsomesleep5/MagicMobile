@@ -7,8 +7,9 @@ enum TableChatText {
     static let maxScalars = 200
 
     /// One line of chat: control characters, tabs and line breaks become spaces, runs of spaces
-    /// collapse, and the result is trimmed and capped. Nothing is left: nothing is sent.
-    static func sanitize(_ raw: String) -> String? {
+    /// collapse, and the result is trimmed and capped (at `limit` scalars; friend messages allow more).
+    /// Nothing is left: nothing is sent.
+    static func sanitize(_ raw: String, limit: Int = maxScalars) -> String? {
         var scalars = String.UnicodeScalarView()
         var pendingSpace = false
         for scalar in raw.unicodeScalars {
@@ -20,7 +21,7 @@ enum TableChatText {
                 scalars.append(scalar)
             }
         }
-        let capped = String(String.UnicodeScalarView(scalars.prefix(maxScalars)))
+        let capped = String(String.UnicodeScalarView(scalars.prefix(limit)))
         let trimmed = capped.hasSuffix(" ") ? String(capped.dropLast()) : capped
         return trimmed.isEmpty ? nil : trimmed
     }

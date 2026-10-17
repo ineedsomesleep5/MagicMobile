@@ -216,7 +216,7 @@ struct TavernMainMenu: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(BrandButtonStyle(kind: .secondary))
-            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
+            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online, waiting or unread" : "")
             .accessibilityIdentifier("menu.friends")
         }
         if let profile {
