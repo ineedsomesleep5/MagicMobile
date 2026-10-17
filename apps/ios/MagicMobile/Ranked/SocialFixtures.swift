@@ -217,7 +217,6 @@ enum ProfileHistoryFixture {
         }
     }
 }
-#endif
 
 // MARK: The fixture leaderboard (mm_ranked_leaderboard): the fixture players by rank, private ones left out, friends-only
 // ones only for friends, and the fixture account itself in the middle.
@@ -242,3 +241,4 @@ extension SocialFixtures {
                                  online: entries.filter(\.online).count, entries: Array(entries.prefix(limit)), me: entries.first(where: \.you))
     }
 }
+#endif
