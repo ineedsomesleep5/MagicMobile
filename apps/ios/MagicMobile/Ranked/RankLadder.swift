@@ -272,3 +272,39 @@ extension RankPosition {
         return RankPosition(tier: base.tier, division: base.division, pips: pips)
     }
 }
+
+/// The season leaderboard from the server's standings (mm_ranked_leaderboard): everyone or friends, private profiles
+/// and blocked players already left out by the server, plus the caller's own row.
+struct RankedLeaderboard: Decodable, Equatable, Sendable {
+    enum Scope: String, CaseIterable, Sendable { case everyone, friends }
+
+    struct Entry: Decodable, Equatable, Identifiable, Sendable {
+        let position: Int
+        let username: String
+        let title: String?
+        let commander: String?
+        let points: Int
+        let wins: Int
+        let losses: Int
+        let online: Bool
+        let you: Bool
+
+        var id: String { username }
+        var rank: RankPosition { RankPosition(points: points) }
+    }
+
+    let season: String
+    let scope: String
+    let total: Int
+    let online: Int
+    let entries: [Entry]
+    let me: Entry?
+
+    static func parse(_ data: Data) throws -> RankedLeaderboard { try JSONDecoder().decode(RankedLeaderboard.self, from: data) }
+
+    /// The caller's row is pinned at the foot when it isn't among the shown entries.
+    var pinnedMe: Entry? {
+        guard let me, !entries.contains(where: { $0.username == me.username }) else { return nil }
+        return me
+    }
+}

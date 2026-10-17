@@ -146,6 +146,9 @@ struct BattlefieldRow: View {
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
     @State private var expandedGroupIds: Set<String> = []
+    /// Piles opened with a hold while choosing from them: they stack again once the choice or combat ends. A pile opened
+    /// just to look stays open until its Stack chip (Caleb, 2026-10-16).
+    @State private var choiceOpenedGroupIds: Set<String> = []
     @State private var scrollOffsets = BattlefieldRowScrollOffsets()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
@@ -195,6 +198,28 @@ struct BattlefieldRow: View {
 
     /// From this many identical cards a group stays stacked while it can be chosen.
     static let stackThreshold = 8
+
+    /// The piles still open once a choice or combat has ended: the ones opened only to look.
+    static func openAfterChoice(expanded: Set<String>, openedForChoice: Set<String>) -> Set<String> {
+        expanded.subtracting(openedForChoice)
+    }
+
+    /// The last card of each pile the player opened, keyed to that pile: it carries the Stack chip.
+    static func stackChipPiles(_ groups: [BattlefieldCardGroup], expanded: Set<String>) -> [String: String] {
+        var piles: [String: String] = [:]
+        for group in groups where group.count > 1 && expanded.contains(group.id) && !group.id.hasPrefix("attachment:") {
+            if let last = group.cards.last { piles[last.instanceId] = group.id }
+        }
+        return piles
+    }
+
+    private func restack(_ groupId: String) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82)) {
+            expandedGroupIds.remove(groupId)
+            choiceOpenedGroupIds.remove(groupId)
+        }
+        GameHaptics.selection()
+    }
 
     /// The card a tap on a stack acts on: the first that can be targeted, then the first that
     /// combat highlights; nil when the stack simply opens.
@@ -277,6 +302,13 @@ struct BattlefieldRow: View {
             }
         }
         .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2), value: renderedCardWidth)
+        .onChange(of: targetableIds.isEmpty && combatHighlightIds.isEmpty) { _, settled in
+            guard settled, !choiceOpenedGroupIds.isEmpty else { return }
+            withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.4, dampingFraction: 0.82)) {
+                expandedGroupIds = Self.openAfterChoice(expanded: expandedGroupIds, openedForChoice: choiceOpenedGroupIds)
+                choiceOpenedGroupIds = []
+            }
+        }
     }
 
     private func rowContentWidth(_ groups: [BattlefieldCardGroup]) -> CGFloat {
@@ -423,8 +455,9 @@ struct BattlefieldRow: View {
             }
         }, inspect: {
             if nextChoosable(in: group) != nil {
-                // Hold to open the pile and pick a particular card.
+                // Hold to open the pile and pick a particular card; it stacks again when the choice ends.
                 expandedGroupIds.insert(group.id)
+                choiceOpenedGroupIds.insert(group.id)
                 GameHaptics.impact()
             } else {
                 inspectedCard = card
@@ -445,6 +478,7 @@ struct BattlefieldRow: View {
 
     @ViewBuilder
     private func battlefieldCardTile(_ card: ZoneCard) -> some View {
+        let pile = expandedGroupIds.isEmpty ? nil : Self.stackChipPiles(cardGroups, expanded: expandedGroupIds)[card.instanceId]
         let action = legalAction(for: card)
         let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
@@ -484,6 +518,9 @@ struct BattlefieldRow: View {
             inspectedCard = card
             GameHaptics.impact()
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+        .overlay(alignment: .bottomTrailing) {
+            if let pile { BattlefieldStackChip(cardWidth: renderedCardWidth) { restack(pile) } }
+        }
         .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .accessibilityAction(named: Text(targetable ? "Choose target" : "Select")) {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
@@ -534,6 +571,33 @@ struct BattlefieldRow: View {
 
     private static let tapRunnableActionTypes = Set(["make_mana", "undo_mana"])
     private static let manaUndoActionTypes = Set(["undo_mana"])
+}
+
+/// The brass chip on the last card of a pile the player spread out: tap to stack it back together.
+struct BattlefieldStackChip: View {
+    let cardWidth: CGFloat
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: "square.stack.3d.down.right.fill").font(.system(size: 9, weight: .black))
+                if cardWidth >= 44 { Text("Stack").font(.system(size: 10, weight: .heavy, design: .serif)) }
+            }
+            .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04))
+            .padding(.horizontal, 6)
+            .frame(minHeight: 20)
+            .background(Capsule().fill(BrandTheme.brassGradient))
+            .overlay(Capsule().strokeBorder(Color.black.opacity(0.45), lineWidth: 1))
+            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+            .padding(8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .offset(x: 10, y: 10)
+        .accessibilityLabel("Stack the group")
+        .accessibilityIdentifier("battlefield.restack")
+    }
 }
 
 enum HandFanLayout {
