@@ -256,6 +256,7 @@
 		B9C204367A644D4365AAA00C /* DeckLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13EC4CC09BB14F446DB7424 /* DeckLibrary.swift */; };
 		BBE8185693461F485D667B3A /* player-hit.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 39CE03E5D480617F7D20468C /* player-hit.m4a */; };
 		BD1CA2E655DD7E9185ED910A /* OnDeviceDeckEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C37D72C4561936225893B0E /* OnDeviceDeckEditingTests.swift */; };
+		BD2B17B710B62B95B69EE704 /* ComboLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B58B29A295BD7033CC534DC /* ComboLoopTests.swift */; };
 		BE6B548663973E8919AB5DE5 /* CardPrintingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCCB62A192C1DF5E084F4AF0 /* CardPrintingTests.swift */; };
 		C083DC09C3B36F75989EC7E2 /* DeckStudioPlaytestInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC1B9518484E7A9E2437F96 /* DeckStudioPlaytestInsightsView.swift */; };
 		C0C60EA33C8FDB6D936286A5 /* token-create.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 783FC40AC3079A6E58525B89 /* token-create.m4a */; };
@@ -559,6 +560,7 @@
 		988DBFFA77578C5DFCF416B0 /* GrimoirePageCurl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrimoirePageCurl.swift; sourceTree = "<group>"; };
 		9A355B8478CC74C10279C9E6 /* d20-throws.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "d20-throws.json"; sourceTree = "<group>"; };
 		9AA4BE32E20CCDE498416F95 /* SocialComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialComponents.swift; sourceTree = "<group>"; };
+		9B58B29A295BD7033CC534DC /* ComboLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComboLoopTests.swift; sourceTree = "<group>"; };
 		9B7A28D6C74C34A9AE62C4F9 /* DeckStudioPlaySelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioPlaySelectionTests.swift; sourceTree = "<group>"; };
 		9BC0EAEA663F3051BA202B5A /* DeckStudioEditorTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioEditorTools.swift; sourceTree = "<group>"; };
 		9C3713BAC2F8354AD17630E1 /* OnDeviceSessionLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSessionLifecycleTests.swift; sourceTree = "<group>"; };
@@ -973,6 +975,7 @@
 				DA3E6B77F45884B349C71CC9 /* CardArtChoicesTests.swift */,
 				FE7B7AECD659F55C150D0846 /* CardChoicePlanTests.swift */,
 				CCCB62A192C1DF5E084F4AF0 /* CardPrintingTests.swift */,
+				9B58B29A295BD7033CC534DC /* ComboLoopTests.swift */,
 				EAD8E45FEB2F53AE9F7E397A /* DeckStudioCompletionTests.swift */,
 				71FA1327EADF12DC5FCC75CE /* DeckStudioCoreTests.swift */,
 				DD616D9917FF26F6512FA5EF /* DeckStudioEditorModelTests.swift */,
@@ -1680,6 +1683,7 @@
 				72C404E0923E22EE031A2D22 /* CardArtChoicesTests.swift in Sources */,
 				B4CE2A5C9E5A26961D2A82A0 /* CardChoicePlanTests.swift in Sources */,
 				BE6B548663973E8919AB5DE5 /* CardPrintingTests.swift in Sources */,
+				BD2B17B710B62B95B69EE704 /* ComboLoopTests.swift in Sources */,
 				54EF23C4A3A23B37A0EAF05C /* DeckStudioCompletionTests.swift in Sources */,
 				361E17FFCB5AD3DCFBE3127A /* DeckStudioCoreTests.swift in Sources */,
 				394A4AD5A0595EF5086920FF /* DeckStudioEditorModelTests.swift in Sources */,
@@ -1920,7 +1924,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 45;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2005,7 +2009,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 45;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 82HPAY85M8;
 				ENABLE_NS_ASSERTIONS = NO;
