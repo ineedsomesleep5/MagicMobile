@@ -46,6 +46,8 @@ try {
     await db.query('insert into public.test_records values ($1, $2)', [name, JSON.stringify(record)]);
   }
   await db.exec(await readFile(new URL('./ranked_ai_records.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261016180000_ranked_leaderboard.sql'));
+  await db.exec(await readFile(new URL('./ranked_leaderboard.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
@@ -54,6 +56,7 @@ try {
   console.log('PASS PGlite: ranked record points (server points stored for ranked games, phone claims ignored, none before a seed, for quick/casual games or an earlier month, rollover first, imported standings, re-sends unchanged, public rank history, anon refused)');
   console.log('PASS PGlite: ladder option B (Arena steps per tier, Bronze losses free, tier floors with Mythic falling to Diamond, no streak bonus, underdog kept, card mirrored, still internal)');
   console.log('PASS PGlite: ranked AI records (seeded tickets with the tier skill, a valid record counts, tampered/reseeded/unknown-build/easier-AI/wrong-winner/conceded/short/too-fast/missing records settle unverified, losses need none, older tickets unchanged, records kept, no direct access, anon refused)');
+  console.log('PASS PGlite: ranked leaderboard (server standings order, current season with games only, public/friends-only/private and blocks respected both ways, friends scope, online flags, own row kept past the limit, limit cap, bad scope, anon refused)');
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
