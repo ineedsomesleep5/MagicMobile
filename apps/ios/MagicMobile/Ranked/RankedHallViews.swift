@@ -73,14 +73,14 @@ struct RankedHallView: View {
             if let teaser, !teaser.entries.isEmpty {
                 HStack(spacing: 8) {
                     HStack(spacing: -10) {
-                        ForEach(teaser.entries) { RankEmblem(tier: $0.rank.tier, size: 30) }
+                        ForEach(teaser.entries.prefix(3)) { RankEmblem(tier: $0.rank.tier, size: 30) }
                     }
                     if teaser.online > 0 {
                         LeaderboardOnlineDot(size: 8)
                         Text(teaser.online == 1 ? String(localized: "1 online now") : String(localized: "\(teaser.online) online now"))
                             .font(.system(size: 12, weight: .bold, design: .serif))
                     }
-                    Text(String(localized: "\(teaser.total) ranked")).font(.system(size: 12, design: .serif)).opacity(0.7)
+                    Text(String(localized: "\(teaser.total) ranked")).font(.system(size: 12, design: .serif)).opacity(0.7).lineLimit(1).fixedSize()
                 }
             }
         }

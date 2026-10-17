@@ -223,7 +223,7 @@ enum ProfileHistoryFixture {
 // ones only for friends, and the fixture account itself in the middle.
 
 extension SocialFixtures {
-    static func leaderboard(_ scope: RankedLeaderboard.Scope, own: String, friends: [PlayerFriend] = startingFriends()) -> RankedLeaderboard {
+    static func leaderboard(_ scope: RankedLeaderboard.Scope, own: String, limit: Int = 50, friends: [PlayerFriend] = startingFriends()) -> RankedLeaderboard {
         let friendNames = Set(friends.filter(\.isFriend).map(\.username))
         var rows: [(name: String, points: Int, title: String?, commander: String?, online: Bool, wins: Int, losses: Int)] = players
             .filter { $0.visibility == .public || ($0.visibility == .friends && friendNames.contains($0.name)) }
@@ -239,6 +239,6 @@ extension SocialFixtures {
                                     wins: row.wins, losses: row.losses, online: row.online, you: row.name == own)
         }
         return RankedLeaderboard(season: RankLadder.season(for: Date()), scope: scope.rawValue, total: entries.count,
-                                 online: entries.filter(\.online).count, entries: entries, me: entries.first(where: \.you))
+                                 online: entries.filter(\.online).count, entries: Array(entries.prefix(limit)), me: entries.first(where: \.you))
     }
 }

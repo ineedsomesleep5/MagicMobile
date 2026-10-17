@@ -377,7 +377,7 @@ final class PlayerAccount: ObservableObject {
     /// The season leaderboard (mm_ranked_leaderboard), or nil offline or without a profile name.
     func rankedLeaderboard(_ scope: RankedLeaderboard.Scope, limit: Int = 50) async -> RankedLeaderboard? {
         #if DEBUG
-        if SocialFixtures.isActive { return SocialFixtures.leaderboard(scope, own: username ?? SocialFixtures.ownName) }
+        if SocialFixtures.isActive { return SocialFixtures.leaderboard(scope, own: username ?? SocialFixtures.ownName, limit: limit) }
         #endif
         guard phase == .ready, username != nil,
               let data = try? await api.rpc("mm_ranked_leaderboard", ["p_scope": scope.rawValue, "p_limit": limit]) else { return nil }

@@ -700,7 +700,13 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
     val ribbon = io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_card_ribbon)
     val art = if (tavern) remember(ribbon) { TavernFXArt(ribbon) } else null
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(effects) { while (true) withFrameMillis { now = System.currentTimeMillis() } }
+    // While the phone is hot (DeviceHeat), every other frame: about 30 fps.
+    LaunchedEffect(effects) {
+        var drawn = 0L
+        while (true) withFrameMillis { frame ->
+            if (!io.magicmobile.android.ui.DeviceHeat.isHot || frame - drawn >= 30) { drawn = frame; now = System.currentTimeMillis() }
+        }
+    }
     LaunchedEffect(effects.lastOrNull()?.id) {
         // A frozen preview keeps its effects on screen.
         if (BoardFXPreviewFreeze.seconds != null) return@LaunchedEffect

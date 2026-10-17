@@ -170,4 +170,21 @@ object SocialFixtures {
         return PublicProfile(player.name, false, player.visibility, relation, if (relation == "friend") player.online else null, player.title, player.commander,
             PublicProfile.Rank(RankLadder.season(now), player.step, player.pips, minOf(20, player.step + 1), summary.wins / 2, summary.losses / 2), summary, games.take(30))
     }
+
+    /** mm_ranked_leaderboard on the fixture (SocialFixtures.leaderboard in Swift): private players left out, friends-only ones only for friends. */
+    fun leaderboard(scope: io.magicmobile.android.game.RankedLeaderboard.Scope, own: String, limit: Int = 50,
+                    friends: List<PlayerFriend> = startingFriends()): io.magicmobile.android.game.RankedLeaderboard {
+        data class Row(val name: String, val points: Int, val title: String?, val commander: String?, val online: Boolean, val wins: Int, val losses: Int)
+        val friendNames = friends.filter { it.isFriend }.map { it.username }.toSet()
+        val rows = players
+            .filter { it.visibility == ProfileVisibility.PUBLIC || (it.visibility == ProfileVisibility.FRIENDS && it.name in friendNames) }
+            .filter { scope == io.magicmobile.android.game.RankedLeaderboard.Scope.EVERYONE || it.name in friendNames }
+            .map { Row(it.name, RankPosition.published(it.step, it.pips).points, it.title, it.commander, it.online, 8 + it.step, 4 + it.name.length % 7) } +
+            Row(own, RankPosition.published(10, 2).points, "Contender", "Edgar Markov", true, 14, 9)
+        val entries = rows.sortedWith(compareByDescending<Row> { it.points }.thenBy { it.name.lowercase() }).mapIndexed { index, row ->
+            io.magicmobile.android.game.RankedLeaderboard.Entry(index + 1, row.name, row.title, row.commander, row.points, row.wins, row.losses, row.online, row.name == own)
+        }
+        return io.magicmobile.android.game.RankedLeaderboard(RankLadder.season(System.currentTimeMillis()), scope.raw, entries.size,
+            entries.count { it.online }, entries.take(limit), entries.firstOrNull { it.you })
+    }
 }

@@ -54,12 +54,14 @@ build per platform.
 - [ ] Report the findings here before step 3 is written.
 
 ### 2. App release: heat and memory awareness (PR A)
-- [ ] Thermal state (iOS `ProcessInfo.thermalState`, Android `PowerManager` thermal status): shorter AI think time and
-      lighter board effects while the phone is hot.
-- [ ] Free memory on memory warnings and in the background (engine `trim`-style request plus app caches).
-- [ ] Per-game performance log (memory peak, thermal state, AI think time) and MetricKit / Android vitals reports.
+- [x] Thermal state (iOS `ProcessInfo.thermalState`, Android `PowerManager` thermal status): lighter board effects
+      (half frame rate) while the phone is hot. Shorter AI think time needs the engine: moved to step 3.
+- [x] Free memory on memory warnings and in the background (app caches; an engine trim request moves to step 3).
+- [x] Per-game performance log (memory peak, lowest headroom, hottest thermal state, memory warnings), shared from
+      Diagnostics. AI think time per decision needs engine timing and moves to step 3.
 
 ### 3. Engine release: long games and safe size cuts (PR B)
+- [ ] Shorter AI think time while the phone is hot, and an engine `trim` request on memory warnings (from step 2).
 - [ ] AI search memory cap scaled to available memory (bounded peaks instead of multi-GB spikes); free search memory
       after each decision.
 - [ ] Game-copy fixes the profile points to (less CPU per AI turn at equal strength).
@@ -94,3 +96,4 @@ build per platform.
 
 ## Log
 - 2026-10-16: measurements above; Caleb approved the plan including the GraalVM upgrade and cards as data.
+- 2026-10-16: step 2's app half built in release A (PR #188); the engine-side parts moved to step 3.

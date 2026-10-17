@@ -419,6 +419,19 @@ fun OnDeviceDiagnosticsEntry(setup: OnDeviceSetupModel) {
                         runCatching { context.startActivity(Intent.createChooser(send, "Share last game record")) }
                     }, Modifier.semantics { contentDescription = "ondevice.shareGameRecord" }, color = BrandTheme.ember)
                 }
+                // Memory peak and heat per game, to compare builds on this phone. Nothing about cards or players.
+                val performance = remember {
+                    io.magicmobile.android.game.GamePerformanceLog.section(io.magicmobile.android.ui.GamePerformanceRecorder.entries,
+                        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).let { "${it.versionName} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(it)})" } }.getOrDefault("unknown"))
+                }
+                if (performance != null) {
+                    Text("Recent games' memory and heat, to compare app versions on this phone.", color = MagicPalette.parchment, style = SfText.footnote())
+                    IosTextButton("Share game performance", {
+                        val send = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, performance) }
+                        runCatching { context.startActivity(Intent.createChooser(send, "Share game performance")) }
+                    }, Modifier.semantics { contentDescription = "ondevice.sharePerformance" }, color = BrandTheme.ember)
+                    Text(performance, color = MagicPalette.parchment, style = SfText.caption(design = SfDesign.MONOSPACED))
+                }
                 IosTextButton("Done", { open = false }, color = BrandTheme.ember, bold = true)
             }
         }

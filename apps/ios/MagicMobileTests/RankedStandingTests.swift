@@ -185,6 +185,9 @@ final class RankedStandingTests: XCTestCase {
         XCTAssertEqual(names.first, "Dahlia_Rose")
         XCTAssertEqual(everyone.entries.map(\.position), Array(1...everyone.entries.count))
         XCTAssertEqual(everyone.me?.username, "CalebM")
+        let top = SocialFixtures.leaderboard(.everyone, own: "CalebM", limit: 3)
+        XCTAssertEqual(top.entries.count, 3, "the limit caps the rows, like the server")
+        XCTAssertEqual(top.pinnedMe?.username, "CalebM")
         let friends = SocialFixtures.leaderboard(.friends, own: "CalebM")
         XCTAssertEqual(Set(friends.entries.map(\.username)), ["Aria_Blade", "ManaFiend", "DarkMoonDan", "CalebM"])
     }

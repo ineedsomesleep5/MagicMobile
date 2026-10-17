@@ -235,3 +235,12 @@ contradicting one.
   test target but broke CI's `swift` job, because `apps/ios/Package.swift` compiles that test file without the `Board/`
   views. **Rule:** tests of board views go in a file the package excludes (`PortraitPolishTests.swift`), and run
   `swift test --package-path apps/ios` (macOS, no simulator, ~1 min) before pushing iOS test changes.
+- 2026-10-16 (Claude, release A): after Xcode updated itself to 27.1, local `xcodebuild` failed with "missing Metal
+  Toolchain" and "CoreSimulator is out of date" (simulator support disabled), although `xcodebuild -showComponent
+  MetalToolchain` still listed the 27.0 toolchain as installed. The new Xcode needs its own first-launch components
+  (`sudo xcodebuild -runFirstLaunch`, then `xcodebuild -downloadComponent MetalToolchain`), which need Caleb's password.
+  Until then `swift test --package-path apps/ios` still works locally, and the PR's `swift` CI job (Xcode 27.0, installs
+  its own Metal toolchain) is the iOS compile check; Android emulator screenshots stand in for simulator ones.
+- 2026-10-16 (Claude, release A): fixtures must honour the same limits as the server function they stand in for. The
+  leaderboard fixture ignored `p_limit`, so the Ranked Hall's three-badge teaser drew all ten players and overflowed;
+  only an emulator screenshot showed it. `SocialFixtures.leaderboard` now takes `limit` on both platforms.
