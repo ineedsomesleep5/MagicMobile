@@ -646,6 +646,7 @@ struct OnDeviceRootView: View {
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
+            session.comboLoopsAllowed = playing && !setup.usingMultiplayer
             if playing {
                 GamePerformanceLog.shared.begin(mode: activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
                                                 aiSkill: activeMatch?.aiSkill)
@@ -1013,6 +1014,8 @@ struct OnDeviceRootView: View {
             }
         }
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.25), value: messageBanner?.id)
+        // The combo loop shortcut (solo games): the offer, the repeats and their result.
+        .overlay(alignment: .top) { ComboLoopOverlay(session: session) }
         .sheet(item: $messagesHub) { target in FriendMessagesHub(account: account, initial: target.name) }
         // Checked more often during a game than the menu's heartbeat, so a friend's message shows within seconds.
         .task(id: activeGame && account.messagesAvailable) {

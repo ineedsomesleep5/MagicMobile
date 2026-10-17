@@ -231,6 +231,7 @@ final class OnDeviceSession: ObservableObject {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
+        comboHistory = []; comboOffer = nil; comboDeclined = nil; comboResult = nil
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
         self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil; fullControlTurn = nil
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
@@ -551,18 +552,7 @@ final class OnDeviceSession: ObservableObject {
         guard let snapshot, let current = snapshot.legalActions?.first(where: { $0.id == action.id }) else {
             throw EngineError.invalidMessage("This action is no longer available")
         }
-        let command = GameCommand(
-            type: current.type, gameId: snapshot.id, playerId: current.playerId,
-            cardInstanceId: current.cardInstanceId, sourceInstanceId: current.sourceInstanceId,
-            abilityId: current.abilityId, promptId: current.promptId, messageId: current.messageId,
-            choiceIds: current.choiceIds, targetIds: current.targetIds, cardInstanceIds: current.cardInstanceIds,
-            modeIds: current.modeIds, pile: current.pile?.value, amount: current.amount, amounts: current.amounts,
-            orderedIds: current.orderedIds, useCommandZone: current.useCommandZone,
-            manaType: current.manaType, manaTypes: current.manaTypes, playerIds: current.playerIds,
-            confirmed: current.confirmed, pay: current.pay, sourceZone: current.sourceZone,
-            fromZone: current.sourceZone, cardName: current.cardName, attackers: current.attackers,
-            blockers: current.blockers, expectedBridgeRevision: snapshot.bridgeRevision
-        )
+        let command = GameCommand(action: current, gameId: snapshot.id, bridgeRevision: snapshot.bridgeRevision)
         try await send(command, label: current.label, actionID: current.id)
     }
 
@@ -588,7 +578,130 @@ final class OnDeviceSession: ObservableObject {
 
     func send(_ command: GameCommand, label: String, actionID: String) async throws {
         stopAutoPass()
+        let decision = snapshot
         try await submit(command, label: label, actionID: actionID)
+        noteComboStep(command, label: label, actionID: actionID, decision: decision)
+    }
+
+    // MARK: Combo loop shortcut (ComboLoop)
+
+    /// Solo games only: the root turns it on for games against the AI.
+    var comboLoopsAllowed = false { didSet { if !comboLoopsAllowed { comboHistory = []; comboOffer = nil } } }
+    /// A round the player has made three times in a row this turn, offered for repeating.
+    @Published private(set) var comboOffer: [ComboStep]?
+    /// Repeating a round: how many are done of how many (nil: until the opponents lose).
+    @Published private(set) var comboRun: ComboRun?
+    /// The line shown when repeating stops: rounds, life changes and why.
+    @Published var comboResult: String?
+    struct ComboRun: Equatable {
+        var round: [ComboStep]
+        var target: Int?
+        var done: Int
+    }
+    private var comboHistory: [(step: ComboStep, turn: Int)] = []
+    private var comboDeclined: [ComboStep]?
+    private var comboStopRequested = false
+    private var comboTask: Task<Void, Never>?
+
+    private func noteComboStep(_ command: GameCommand, label: String, actionID: String, decision: GameSnapshot?) {
+        guard comboLoopsAllowed, comboRun == nil else { return }
+        guard let decision, let step = ComboLoop.step(command: command, label: label, actionID: actionID, snapshot: decision) else {
+            comboHistory = []; comboOffer = nil; return
+        }
+        // A loop is offered only for rounds made in one turn.
+        if let last = comboHistory.last, last.turn != decision.turn { comboHistory = [] }
+        comboHistory.append((step, decision.turn))
+        if comboHistory.count > ComboLoop.historyLimit { comboHistory.removeFirst(comboHistory.count - ComboLoop.historyLimit) }
+        let round = ComboLoop.cycle(in: comboHistory.map(\.step))
+        comboOffer = round != nil && round != comboDeclined ? round : nil
+    }
+
+    /// The player said no to this round: it isn't offered again until they make a different one.
+    func declineComboLoop() {
+        comboDeclined = comboOffer
+        comboOffer = nil
+    }
+
+    /// Repeats the offered round `times` times (nil: until every opponent has lost, at most ComboLoop.maxRepeats).
+    func startComboLoop(times: Int?) {
+        guard let round = comboOffer, comboRun == nil, let start = snapshot else { return }
+        comboOffer = nil
+        comboResult = nil
+        comboStopRequested = false
+        comboRun = ComboRun(round: round, target: times, done: 0)
+        comboTask = Task { [weak self] in await self?.runComboLoop(round, times: times, start: start) }
+    }
+
+    func stopComboLoop() { comboStopRequested = true }
+
+    private enum ComboWait {
+        case ready(GameCommand, String, String)
+        case stop(ComboLoopStop)
+    }
+
+    private func runComboLoop(_ round: [ComboStep], times: Int?, start: GameSnapshot) async {
+        // The board skips its effects while the loop runs; the result shows at the end.
+        BoardFXLevel.suppressedForLoop = true
+        defer { BoardFXLevel.suppressedForLoop = false }
+        let limit = min(times ?? ComboLoop.maxRepeats, ComboLoop.maxRepeats)
+        var rounds = 0, unchanged = 0
+        var lastDigest = ComboLoop.digest(start)
+        var stop = ComboLoopStop.finished
+        repeating: while rounds < limit {
+            for step in round {
+                switch await waitForComboStep(step) {
+                case .stop(let reason):
+                    stop = reason
+                    break repeating
+                case .ready(let command, let label, let actionID):
+                    do { try await submit(command, label: label, actionID: actionID) }
+                    catch { stop = .failed(error.localizedDescription); break repeating }
+                }
+            }
+            rounds += 1
+            comboRun?.done = rounds
+            guard let current = snapshot else { break }
+            if current.isCompleted { stop = .gameOver; break }
+            let digest = ComboLoop.digest(current)
+            unchanged = digest == lastDigest ? unchanged + 1 : 0
+            lastDigest = digest
+            if unchanged >= ComboLoop.unchangedRoundsToStop { stop = .nothingChanged; break }
+        }
+        if times == nil, stop == .finished { stop = .reachedLimit }
+        let summary = ComboLoop.summary(rounds: rounds, before: start, after: snapshot ?? start)
+        comboResult = stop == .finished || stop == .gameOver ? summary : "\(summary). \(stop.message)"
+        comboRun = nil
+        comboHistory = []
+        comboDeclined = round
+        comboTask = nil
+    }
+
+    /// Waits for this step's answer to be possible: the session idle and the step among the choices. Stops when the
+    /// game ends, an opponent responds, the player is asked something the round doesn't answer, or nothing comes.
+    private func waitForComboStep(_ step: ComboStep) async -> ComboWait {
+        let started = Date()
+        var askedSince: Date?
+        while Date().timeIntervalSince(started) < 45 {
+            if comboStopRequested || Task.isCancelled || isClosing { return .stop(.stoppedByPlayer) }
+            if let current = snapshot {
+                if current.isCompleted || isOverForSeat { return .stop(.gameOver) }
+                let idle = !isWorking && !isAutoPassing && pendingActionID == nil && pending == nil && smartPassTask == nil
+                    && heldAbilitySnapshot == nil && abilityAutoAnswer == nil
+                if idle {
+                    if ComboLoop.opponentResponded(current) { return .stop(.opponentResponded) }
+                    if let match = ComboLoop.command(for: step, in: current) { return .ready(match.command, match.label, match.actionID) }
+                    let asked = current.legalActions?.isEmpty == false || current.promptEnvelopeV2.map { current.isViewer($0.playerId) } == true
+                    if asked {
+                        askedSince = askedSince ?? Date()
+                        if Date().timeIntervalSince(askedSince!) > 3 { return .stop(.stepMissing) }
+                    } else {
+                        askedSince = nil
+                    }
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(120))
+        }
+        return .stop(.stepMissing)
     }
 
     private func submit(_ command: GameCommand, label: String, actionID: String) async throws {
@@ -762,6 +875,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func close() async throws {
+        comboStopRequested = true; comboTask?.cancel(); comboHistory = []; comboOffer = nil
         stopAutoPass()
         smartPassTask?.cancel(); smartPassTask = nil
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil

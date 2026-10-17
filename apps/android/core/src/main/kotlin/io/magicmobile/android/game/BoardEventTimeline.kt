@@ -286,8 +286,12 @@ enum class BoardFXLevel(val rawValue: String, val title: String) {
         const val key = "magicmobile.boardEffectsLevel"
         val defaultValue = FULL.rawValue
         fun of(raw: String?): BoardFXLevel? = entries.firstOrNull { it.rawValue == raw }
+        /** Effects are skipped while a combo loop repeats (ComboLoop); the board shows where it ends. */
+        @Volatile var suppressedForLoop = false
+
         /** System reduced motion always caps the level at REDUCED. */
         fun resolved(stored: String, reduceMotion: Boolean): BoardFXLevel {
+            if (suppressedForLoop) return OFF
             val level = of(stored) ?: FULL
             return if (reduceMotion && level == FULL) REDUCED else level
         }

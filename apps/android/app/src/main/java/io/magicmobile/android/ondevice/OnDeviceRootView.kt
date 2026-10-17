@@ -838,6 +838,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         }
     }
     LaunchedEffect(activeGame) {
+        // The combo loop shortcut: solo games only.
+        session.comboLoopsAllowed = activeGame && !setup.usingMultiplayer
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
         if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
         else io.magicmobile.android.ui.GamePerformanceRecorder.end()
@@ -1031,6 +1033,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 guidedTipID = step.current?.id
                                 if (snapshot.isCompleted) guidedActive = false
                             }
+                            // The combo loop shortcut: the offer, the repeats and their result.
+                            if (!boardQuiet) ComboLoopOverlay(session)
                             // A friend's new message: a banner at the top for a few seconds; a tap opens the conversation.
                             androidx.compose.animation.AnimatedVisibility(messageBanner != null && !boardQuiet,
                                 Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 16.dp).padding(top = 6.dp)) {

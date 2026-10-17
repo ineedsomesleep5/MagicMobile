@@ -112,6 +112,8 @@ object SfSymbols {
         "xmark.circle.fill" -> Icons.Filled.Cancel
         "person.2.fill" -> Icons.Filled.People
         "bubble.left.and.bubble.right.fill" -> Icons.Filled.Forum
+        "bubble.left.fill", "bubble.left" -> Icons.Filled.ChatBubble
+        "exclamationmark.bubble" -> Icons.Filled.Feedback
         "paperplane.fill" -> Icons.AutoMirrored.Filled.Send
         "speaker.slash" -> Icons.AutoMirrored.Filled.VolumeOff
         "person.badge.plus" -> Icons.Filled.PersonAdd

@@ -425,8 +425,12 @@ enum BoardFXLevel: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Effects are skipped while a combo loop repeats (ComboLoop); the board shows where it ends.
+    nonisolated(unsafe) static var suppressedForLoop = false
+
     /// System Reduce Motion always caps the level at `.reduced`.
     static func resolved(stored: String, reduceMotion: Bool) -> BoardFXLevel {
+        if suppressedForLoop { return .off }
         let level = BoardFXLevel(rawValue: stored) ?? .full
         return reduceMotion && level == .full ? .reduced : level
     }
