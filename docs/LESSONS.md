@@ -251,3 +251,8 @@ contradicting one.
   (`xcodebuild build -configuration Release -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO`). A failed
   archive leaves the controller run `uncertain`: confirm with `asc builds list` that nothing uploaded, then plan a new
   run ID with the same build number.
+- 2026-10-17 (Claude): release A put the per-game performance report inside the "Engine error report" sheet, whose
+  button only appears after an engine error, so on a healthy phone the report was unreachable (Caleb couldn't find it).
+  **Rule:** a feature the player is meant to use needs a path a tester can actually walk on a normal install; check it
+  on the simulator/emulator from the main menu, not just the sheet in isolation. The report now has its own panel in
+  Settings on both apps (`GamePerformancePanel`; iOS UI fixture `MAGICMOBILE_UI_TEST_PERFORMANCE=1`).

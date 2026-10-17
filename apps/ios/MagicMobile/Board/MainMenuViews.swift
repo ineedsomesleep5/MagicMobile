@@ -322,6 +322,7 @@ struct AppearanceSettingsView: View {
                     AutoPassAfterCastToggle()
                     SmartAutoPassToggle()
                     BoardEffectsPicker()
+                    GamePerformancePanel()
                     SupportSettingsPanel()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
@@ -329,6 +330,86 @@ struct AppearanceSettingsView: View {
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }.preferredColorScheme(.dark)
+    }
+}
+
+/// Recent games' memory and heat (GamePerformanceLog), always reachable here so the player can share it to compare app
+/// versions. Numbers only: no cards or player names. Android's GamePerformancePanel matches it.
+struct GamePerformancePanel: View {
+    @State private var entries: [GamePerformanceEntry] = []
+    @State private var showReport = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TavernPanelTitle(text: "Game Performance")
+            Text("Memory and heat from your recent games, to compare app versions. Numbers only, no cards or names. Nothing is sent unless you share it.")
+                .font(.system(size: 12, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(entries.last.map { String(localized: "Last game: \($0.line)") } ?? String(localized: "Finish a game to record one."))
+                .font(.system(size: 12, weight: .semibold, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("settings.performance.last")
+            Button { showReport = true } label: {
+                Label("View and Share", systemImage: "chart.bar.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+            .disabled(entries.isEmpty)
+            .accessibilityIdentifier("settings.performance")
+        }
+        .modifier(TavernSettingsPanel())
+        .onAppear {
+            entries = GamePerformanceLog.shared.entries
+            #if DEBUG
+            // UI tests: two recorded games without playing them.
+            if ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PERFORMANCE"] != nil {
+                let start = Date().addingTimeInterval(-7_200)
+                entries = [GamePerformanceEntry(started: start, mode: "quick", aiSkill: 3, minutes: 18, turns: 11, peakFootprintMB: 612, hottest: 1),
+                           GamePerformanceEntry(started: start.addingTimeInterval(3_600), mode: "ranked", aiSkill: 4, minutes: 34, turns: 19,
+                                                peakFootprintMB: 845, lowestAvailableMB: 410, hottest: 2, hotMinutes: 6, memoryWarnings: 1)]
+            }
+            #endif
+        }
+        .sheet(isPresented: $showReport) { GamePerformanceSheet(report: GamePerformanceLog.section(entries) ?? "") }
+    }
+}
+
+/// The full performance report on a tavern sheet, with Share.
+struct GamePerformanceSheet: View {
+    let report: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                TavernPanelTitle(text: "Game Performance")
+                Spacer()
+                Button { dismiss() } label: { TavernSealLabel() }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Close")
+                    .accessibilityIdentifier("performance.close")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 12)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ShareLink(item: report) { Label("Share Report", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
+                        .buttonStyle(TavernButtonStyle(kind: .primary, compact: true))
+                        .accessibilityIdentifier("performance.share")
+                    Text(report)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(TavernPalette.parchment)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("performance.report")
+                }
+                .padding(18)
+            }
+        }
+        .background { TavernSheetBackground() }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
     }
 }
 
