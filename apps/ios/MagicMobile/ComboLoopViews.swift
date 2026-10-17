@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// The combo loop shortcut on the board (ComboLoop): the offer after three identical rounds, the repeating card with its
-/// Stop button (which also keeps stray taps off the board), and the closing line. Android's ComboLoopOverlay matches it.
+/// The combo loop shortcut on the board (ComboLoop): the offer after three identical rounds (what a round does, a count
+/// picker, until I can't, until they lose), the repeating card with its last rounds and Stop (over a scrim that keeps
+/// stray taps off the board), and the closing line. Android's ComboLoopOverlay matches it.
 struct ComboLoopOverlay: View {
     @ObservedObject var session: OnDeviceSession
+    @State private var count = ComboLoop.pickerDefault
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -30,6 +32,8 @@ struct ComboLoopOverlay: View {
         .animation(.easeOut(duration: 0.2), value: session.comboResult)
     }
 
+    // MARK: Offer
+
     private func offer(_ round: [ComboStep]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -43,19 +47,26 @@ struct ComboLoopOverlay: View {
                 .accessibilityLabel(String(localized: "Not now"))
                 .accessibilityIdentifier("comboLoop.decline")
             }
-            Text(ComboLoop.describe(round))
-                .font(.system(size: 13, design: .serif)).opacity(0.85).lineLimit(2)
-            Text(String(localized: "You've done this three times. Repeat it? Every step is still checked by the rules, and it stops if anything changes."))
-                .font(.system(size: 12, design: .serif)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                ForEach(ComboLoop.repeatChoices, id: \.self) { count in
-                    Button("\(count)×") { start(count) }
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
-                        .accessibilityLabel(String(localized: "Repeat \(count) times"))
-                        .accessibilityIdentifier("comboLoop.repeat.\(count)")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(String(localized: "EACH ROUND")).font(.system(size: 10, weight: .heavy, design: .serif)).tracking(1.2).foregroundStyle(BrandTheme.brassGradient)
+                ForEach(Array(ComboLoop.preview(round).enumerated()), id: \.offset) { _, line in
+                    Label(line, systemImage: "chevron.right").labelStyle(PreviewLineStyle())
                 }
-                Button(String(localized: "Until they lose")) { start(nil) }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("comboLoop.preview")
+            Text(String(localized: "Every step is still checked by the rules. It waits for your own triggers, keeps the same target until it's gone, and stops if an opponent responds."))
+                .font(.system(size: 11, design: .serif)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
+            picker
+            HStack(spacing: 6) {
+                Button(String(localized: "Repeat \(count)×")) { start(.times(count)) }
                     .buttonStyle(TavernButtonStyle(kind: .primary, compact: true))
+                    .accessibilityIdentifier("comboLoop.repeat")
+                Button(String(localized: "Until I can't")) { start(.untilCant) }
+                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                    .accessibilityIdentifier("comboLoop.untilCant")
+                Button(String(localized: "Until they lose")) { start(.untilWin) }
+                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("comboLoop.untilWin")
             }
         }
@@ -67,21 +78,67 @@ struct ComboLoopOverlay: View {
         .accessibilityIdentifier("comboLoop.offer")
     }
 
+    /// − count +, with +5 and +10.
+    private var picker: some View {
+        HStack(spacing: 8) {
+            stepButton("minus", String(localized: "One fewer"), "comboLoop.minus") { count = max(1, count - 1) }
+                .disabled(count <= 1)
+            Text("\(count)")
+                .font(.system(size: 22, weight: .black, design: .serif)).monospacedDigit()
+                .frame(minWidth: 44)
+                .contentTransition(.numericText())
+                .accessibilityIdentifier("comboLoop.count")
+            stepButton("plus", String(localized: "One more"), "comboLoop.plus") { count = min(ComboLoop.maxRepeats, count + 1) }
+                .disabled(count >= ComboLoop.maxRepeats)
+            Spacer(minLength: 4)
+            Button("+5") { bump(5) }.buttonStyle(TavernButtonStyle(kind: .secondary, compact: true)).accessibilityIdentifier("comboLoop.plus5")
+            Button("+10") { bump(10) }.buttonStyle(TavernButtonStyle(kind: .secondary, compact: true)).accessibilityIdentifier("comboLoop.plus10")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityValue(String(localized: "\(count) rounds"))
+    }
+
+    private func stepButton(_ symbol: String, _ label: String, _ id: String, action: @escaping () -> Void) -> some View {
+        Button {
+            GameAudio.shared.play(.uiTick)
+            withAnimation(.snappy) { action() }
+        } label: {
+            Image(systemName: symbol).font(.system(size: 14, weight: .black))
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(TavernPalette.leather))
+                .overlay(Circle().strokeBorder(TavernPalette.brass.opacity(0.7), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+
+    private func bump(_ by: Int) {
+        GameAudio.shared.play(.uiTick)
+        withAnimation(.snappy) { count = min(ComboLoop.maxRepeats, count + by) }
+    }
+
+    // MARK: Running
+
     private func running(_ run: OnDeviceSession.ComboRun) -> some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 16, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
                     .rotationEffect(.degrees(reduceMotion ? 0 : Double(run.done) * 90))
                     .animation(.easeInOut(duration: 0.3), value: run.done)
-                Text(run.target.map { String(localized: "Repeating · \(run.done) of \($0)") } ?? String(localized: "Repeating · \(run.done) done"))
-                    .font(.system(size: 16, weight: .black, design: .serif)).monospacedDigit()
+                Text(title(run)).font(.system(size: 16, weight: .black, design: .serif)).monospacedDigit()
             }
-            if let target = run.target {
+            if let target = run.mode.count {
                 ProgressView(value: Double(run.done), total: Double(max(target, 1))).tint(TavernPalette.ember)
-            } else {
-                Text(String(localized: "Until every opponent has lost")).font(.system(size: 12, design: .serif)).opacity(0.75)
             }
-            Text(ComboLoop.describe(run.round)).font(.system(size: 12, design: .serif)).opacity(0.7).lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(run.lines.enumerated()), id: \.offset) { index, line in
+                    Text(line).font(.system(size: 12, design: .serif)).lineLimit(1)
+                        .opacity(index == run.lines.count - 1 ? 0.95 : 0.55)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("comboLoop.rounds")
             Button { GameAudio.shared.play(.uiBack); session.stopComboLoop() } label: {
                 Label(String(localized: "Stop"), systemImage: "stop.fill").frame(maxWidth: .infinity)
             }
@@ -90,10 +147,18 @@ struct ComboLoopOverlay: View {
         }
         .foregroundStyle(TavernPalette.parchment)
         .padding(16)
-        .frame(maxWidth: 380)
+        .frame(maxWidth: 400)
         .modifier(TavernPanelChrome(tavern: true, cornerRadius: 14))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("comboLoop.running")
+    }
+
+    private func title(_ run: OnDeviceSession.ComboRun) -> String {
+        switch run.mode {
+        case .times(let target): return String(localized: "Repeating · \(run.done) of \(target)")
+        case .untilCant: return String(localized: "Repeating until you can't · \(run.done)")
+        case .untilWin: return String(localized: "Repeating until they lose · \(run.done)")
+        }
     }
 
     private func resultLine(_ text: String) -> some View {
@@ -115,8 +180,17 @@ struct ComboLoopOverlay: View {
         .accessibilityIdentifier("comboLoop.result")
     }
 
-    private func start(_ times: Int?) {
+    private func start(_ mode: ComboRepeat) {
         GameAudio.shared.play(.menuPlay)
-        session.startComboLoop(times: times)
+        session.startComboLoop(mode)
+    }
+}
+
+private struct PreviewLineStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            configuration.icon.font(.system(size: 8, weight: .black)).foregroundStyle(TavernPalette.brass)
+            configuration.title.font(.system(size: 13, design: .serif)).lineLimit(1)
+        }
     }
 }

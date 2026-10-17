@@ -936,7 +936,8 @@ struct OnDeviceRootView: View {
 
     private var game: some View {
         ImmersivePlayShell(
-            snapshot: session.snapshot,
+            // While a combo loop repeats, the board shows its quiet copy: no flickering prompts.
+            snapshot: session.presentedSnapshot,
             selectedCard: $selectedCard, inspectedCard: $inspectedCard,
             playerDisplayName: playerDisplayName, avatarData: nil,
             pendingActionId: session.pendingActionID, pendingCardInstanceId: session.pendingCardID,

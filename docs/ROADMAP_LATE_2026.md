@@ -69,15 +69,21 @@ Caleb asked for messages between friends, beside the in-game table chat (which o
   platforms with the social fixtures.
 
 ### Combo loop shortcut (solo)
-- The app watches the player's own actions. After the same sequence three times in a row it offers **Repeat this
-  loop**: 5, 10 or 20 times, or until an opponent loses.
-- The app then presses the same answers itself, fast; the engine still runs and checks every step, so no rule is
-  skipped. Effects are skipped during the repeats and a summary plays at the end.
-- It stops and hands control back the moment anything differs: an opponent responds, a choice no longer exists, a new
-  question appears, the loop stops changing the game, or a cap of a few hundred repeats; there is always a Stop button.
+- The app watches the player's own actions. After the same sequence three times in a row it offers **Loop spotted**,
+  with what one round does and a count picker (− / +, +5, +10) and three starts: **Repeat N×**, **Until I can't**
+  (runs until a step can't be taken, a normal finish) and **Until they lose**.
+- The app then presses the same answers itself; the engine still runs and checks every step, so no rule is skipped.
+  Up to 10 rounds play their effects with a short pause between rounds; longer runs go fast and show the board once a
+  round. The board never flashes the prompts the repeats answer. The running card lists the last rounds and notes
+  such as "Kinjalli's Caller is gone, now Zacama".
+- Choices are matched by kind, not exact card: the same target while it lives, then another of the same kind
+  (an opponent's creature, a Squirrel token, never a Squirrel card). Mana comes from any source of the same mana.
+  Passing priority is not part of a round; before a step taken with an empty stack, the loop passes so the player's
+  own triggers resolve first (Chatterfang, Pitiless Plunderer).
+- It stops and hands control back with a reason: an opponent responds, a step or target is gone ("no opponent's
+  creature left to choose"), a question the round doesn't answer, an open-ended loop stops changing the game for 3
+  rounds (power/toughness, damage and tapping count as changes), or 300 rounds; there is always a Stop button.
 - Solo games against the AI first. Online games need the other player's agreement and a separate design.
-- Tested with real combos on the JVM engine (for example Sanguine Bond with Exquisite Blood, a token sacrifice loop and
-  an untap loop) and parity tests on both platforms.
 
 ## Log
 - 2026-10-16: roadmap agreed: Ranked Hall and leaderboard, token restacking, combo loop shortcut, and the lighter engine
@@ -93,3 +99,7 @@ Caleb asked for messages between friends, beside the in-game table chat (which o
   tests; Messages tab, conversations, Message buttons, unread badge, and in games a Messages button plus a banner,
   as Caleb asked: messages outside and inside games) and the combo loop shortcut (solo games), on iOS and Android.
   Push notifications not included (no Apple push key or Firebase project yet). Live migration waits for Caleb.
+- 2026-10-17: Caleb tested the combo loop in TestFlight 45 (Chatterfang + Pitiless Plunderer): it stopped after 2
+  rounds (the stuck check ignored +X/−X changes and new Squirrel tokens), flashed choice pop-ups, and he wanted a count
+  picker, "until I can't", same-kind targets and a pace you can watch for small counts. All of it built on
+  `claude/combo-loop-2` for iOS and Android (shared parity cases now carry target kinds).
