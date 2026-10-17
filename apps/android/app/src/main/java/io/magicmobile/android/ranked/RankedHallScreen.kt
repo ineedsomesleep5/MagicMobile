@@ -382,12 +382,12 @@ private fun PodiumStep(entry: RankedLeaderboard.Entry, up: Boolean, open: (Ranke
     Column(Modifier.fillMaxWidth().clickable { open(entry) }.semantics(mergeDescendants = true) { contentDescription = describe(entry); role = Role.Button }
         .testTag("leaderboard.row.${entry.username}"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (place == 1) SfImage("crown.fill", TavernPalette.brass, 22.dp, Modifier.glow(TavernPalette.ember.copy(alpha = 0.7f), 6.dp, 22.dp))
-        Box(contentAlignment = Alignment.BottomEnd) {
-            Box(contentAlignment = Alignment.Center) {
-                if (place == 1) RankGlow(entry.rank.tier, 110.dp)
+        Box(contentAlignment = Alignment.Center) {
+            if (place == 1) RankGlow(entry.rank.tier, 110.dp)
+            Box(contentAlignment = Alignment.BottomEnd) {
                 RankEmblem(entry.rank.tier, if (place == 1) 74.dp else 58.dp)
+                if (entry.online) Box(Modifier.padding(4.dp)) { OnlineDot(12.dp) }
             }
-            if (entry.online) Box(Modifier.padding(4.dp)) { OnlineDot(12.dp) }
         }
         Text(entry.username, color = TavernPalette.parchment, style = sf(if (place == 1) 15f else 13f, SfWeight.black, SfDesign.SERIF), maxLines = 1,
             overflow = TextOverflow.Ellipsis)

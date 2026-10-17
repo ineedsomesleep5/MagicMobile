@@ -388,12 +388,12 @@ struct RankedLeaderboardView: View {
                         .foregroundStyle(BrandTheme.brassGradient)
                         .shadow(color: TavernPalette.ember.opacity(0.7), radius: 6)
                 }
-                ZStack(alignment: .bottomTrailing) {
-                    ZStack {
-                        if place == 1 { RankGlow(tier: entry.rank.tier, size: 110) }
-                        RankEmblem(tier: entry.rank.tier, size: place == 1 ? 74 : 58)
-                    }
-                    if entry.online { LeaderboardOnlineDot(size: 12).padding(4) }
+                ZStack {
+                    if place == 1 { RankGlow(tier: entry.rank.tier, size: 110) }
+                    RankEmblem(tier: entry.rank.tier, size: place == 1 ? 74 : 58)
+                        .overlay(alignment: .bottomTrailing) {
+                            if entry.online { LeaderboardOnlineDot(size: 12).padding(4) }
+                        }
                 }
                 Text(entry.username)
                     .font(.system(size: place == 1 ? 15 : 13, weight: .black, design: .serif))
