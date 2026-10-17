@@ -265,3 +265,8 @@ contradicting one.
 - 2026-10-17 (Claude, release B): the combo loop records only the player's own answers (`OnDeviceSession.send`), never
   smart pass, auto-yield or ability follow-ups (they call `submit` with their own action-id prefixes), and replays by
   card name, action text and target names, because tokens made by a loop get new ids every round.
+- 2026-10-17 (Claude, release B): TestFlight 44 crashed on the player's first action in any solo game:
+  `ComboLoop.cycle(in:)` looped over `1...min(12, history.count / 3)`, which is `1...0` with one or two steps, and a
+  Swift closed range whose upper bound is below its lower bound traps (Kotlin's `1..0` is just empty, so Android was
+  fine). The parity cases all had three or more steps. **Rule:** guard the bounds before building a `...` range from a
+  computed value, and put the empty and smallest inputs in shared parity cases ("", "A", "AT" now are).

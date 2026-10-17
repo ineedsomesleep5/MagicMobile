@@ -12,6 +12,9 @@
     "D": "action|declare_attackers|||Squirrel"
   },
   "cases": [
+    { "name": "no steps yet", "history": "", "expected": 0 },
+    { "name": "the first step of a game", "history": "A", "expected": 0 },
+    { "name": "two steps", "history": "AT", "expected": 0 },
     { "name": "sacrifice loop twice-step", "history": "ATATAT", "expected": 2 },
     { "name": "only two rounds", "history": "ATAT", "expected": 0 },
     { "name": "passing is not a combo", "history": "PPP", "expected": 0 },

@@ -105,8 +105,10 @@ enum ComboLoop {
 
     /// The shortest round the last steps repeat `repeatsToOffer` times in a row, or nil.
     static func cycle(in history: [ComboStep]) -> [ComboStep]? {
-        guard !history.isEmpty else { return nil }
-        for length in 1...min(maxCycleLength, history.count / repeatsToOffer) {
+        // Fewer steps than one round repeated three times: nothing to find (and `1...0` would trap).
+        let longest = min(maxCycleLength, history.count / repeatsToOffer)
+        guard longest >= 1 else { return nil }
+        for length in 1...longest {
             let tail = Array(history.suffix(length * repeatsToOffer))
             guard (length..<tail.count).allSatisfy({ tail[$0] == tail[$0 - length] }) else { continue }
             let round = Array(tail.prefix(length))
