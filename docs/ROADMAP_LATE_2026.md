@@ -10,6 +10,7 @@ External and the public APK. Update the checkboxes and the log as work lands.
 | Release | What | Kind | Depends on |
 |---|---|---|---|
 | A | Ranked Hall and live leaderboard, token restacking, heat and memory awareness | App + server | Step 1 of the engine plan can run alongside |
+| Msg | Messages between friends | App + server | A shipped; order against B is Caleb's call |
 | B | Combo loop shortcut (solo games) | App | A shipped |
 | C | Long-game AI and safe size cuts | Engine | Measurements (engine plan step 1) |
 | D | GraalVM upgrade (Gluon JDK 23, `-Os`) | Engine toolchain | C shipped |
@@ -46,6 +47,22 @@ Choosing Ranked opens a Ranked Hall before matchmaking, in the Walnut Tavern sty
 - Shorter AI thinking and lighter effects while the phone reports heat; free memory on warnings and in the background;
   a per-game performance log.
 
+## Messages between friends (added 2026-10-17)
+Caleb asked for messages between friends, beside the in-game table chat (which only works during a game).
+- Server: a `friend_messages` table (sender, recipient, text, sent and read times) behind `mm_*` functions, like the
+  rest of the social backend: send (friends only, never across a block, length cap, rate limit), list conversations
+  with the last message and unread count, read one conversation in pages, mark read. Reports reuse `mm_report`;
+  blocking hides the conversation both ways; deleting an account deletes its messages. PGlite tests; the migration goes
+  live with Caleb's go-ahead.
+- Apps (iOS and Android together, Walnut Tavern): a Messages tab in Friends with conversations and unread dots, a
+  conversation screen (parchment bubbles, send box, quick replies from the table chat), a Message button on a friend's
+  profile and in the friends list, and an unread badge on the Friends button. New messages arrive by polling while the
+  app is open (about every 15 seconds in a conversation, with the 45-second heartbeat otherwise), at no server cost.
+- Later, separate: push notifications when the app is closed need an Apple push key and Firebase for Android, plus a
+  server function; decided after messages ship.
+- Checks: PGlite tests (friends only, blocks, rate limit, pagination, read state), parity tests, UI tests on both
+  platforms with the social fixtures.
+
 ## Release B: combo loop shortcut (solo)
 - The app watches the player's own actions. After the same sequence three times in a row it offers **Repeat this
   loop**: 5, 10 or 20 times, or until an opponent loses.
@@ -63,3 +80,5 @@ Choosing Ranked opens a Ranked Hall before matchmaking, in the Walnut Tavern sty
 - 2026-10-16: release A built on `claude/release-a` (PR #188): `mm_ranked_leaderboard` with PGlite tests (applied live 2026-10-16 with Caleb's go-ahead; grants checked: authenticated only);
   Ranked Hall and leaderboard, Stack chip and auto-restack, heat/memory awareness on iOS and Android. Shorter AI thinking
   while hot needs an engine change and moves to release C. Online status uses the existing 90-second presence window.
+- 2026-10-17: Caleb played TestFlight 42/43 and Android 26: the Stack chip and Ranked Hall work well and games felt
+  smooth. Game Performance moved into Settings (#189). Added messages between friends to the plan.

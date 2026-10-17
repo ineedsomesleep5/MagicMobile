@@ -29,7 +29,13 @@ From iPhone build 41 and Android build 25 (engine `160e250`), Android 24's `nati
   from shared effects in one class (61.7 MB), 8,811 custom (20,348 classes; 46 MB with helper classes).
 - Long AI games: the AI copies the whole game for every search node (about 20 ms each). C4 measured skill-6 games
   peaking at 270–420 MB of Java heap and one 22-turn game at 2.5 GB; think time is skill × 3 s per decision.
-- Not yet measured: how much of the 47.6 MB iOS keeps resident, phone heat, real-device memory peaks.
+- Not yet measured: how much of the 47.6 MB iOS keeps resident.
+- First phone readings (Caleb's iPhone, TestFlight 43 Game Performance report, 2026-10-17), both games at AI skill 2:
+  a 14-minute, 18-turn Quick Match peaked at 1,112 MB with 2,263 MB still available and stayed "fair"; a 7-minute,
+  15-turn Ranked game peaked at 1,040 MB with 2,335 MB available and reached "serious" for 3 minutes. So the app plus
+  engine uses about 1.0–1.1 GB even in short, low-skill games (memory is not near this phone's limit), and heat can
+  reach "serious" in a short game, so heat comes from more than long AI searches. Still needed: long games at skill
+  4–6, and the Instruments session to split the 1.1 GB into Java heap, image heap and app memory.
 
 ## How every step is checked
 
@@ -97,3 +103,4 @@ build per platform.
 ## Log
 - 2026-10-16: measurements above; Caleb approved the plan including the GraalVM upgrade and cards as data.
 - 2026-10-16: step 2's app half built in release A (PR #188); the engine-side parts moved to step 3.
+- 2026-10-17: first Game Performance report from Caleb's iPhone (above).
