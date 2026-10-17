@@ -10,8 +10,7 @@ External and the public APK. Update the checkboxes and the log as work lands.
 | Release | What | Kind | Depends on |
 |---|---|---|---|
 | A | Ranked Hall and live leaderboard, token restacking, heat and memory awareness | App + server | Step 1 of the engine plan can run alongside |
-| Msg | Messages between friends (next, chosen 2026-10-17) | App + server | A shipped |
-| B | Combo loop shortcut (solo games) | App | Messages shipped |
+| B | Next release (Caleb, 2026-10-17: as much as possible in it): messages between friends, the combo loop shortcut, push notifications if the keys are ready | App + server | A shipped |
 | C | Long-game AI and safe size cuts | Engine | Measurements (engine plan step 1) |
 | D | GraalVM upgrade (Gluon JDK 23, `-Os`) | Engine toolchain | C shipped |
 | E… | Cards as data (simple cards first, then composed cards in batches) | Engine | D shipped |
@@ -47,9 +46,14 @@ Choosing Ranked opens a Ranked Hall before matchmaking, in the Walnut Tavern sty
 - Shorter AI thinking and lighter effects while the phone reports heat; free memory on warnings and in the background;
   a per-game performance log.
 
-## Messages between friends (next release; added 2026-10-17)
-Caleb asked for messages between friends, beside the in-game table chat (which only works during a game), and chose it
-as the next release, before the combo loop. Building starts when he says.
+## Release B: messages between friends and the combo loop shortcut
+Caleb chose this as the next release on 2026-10-17 and asked for as much as possible in it, so it carries both app
+features (neither changes the engine, so they may ship together). Messages come first in the work order, then the
+combo loop; push notifications join if Caleb provides the Apple push key and a Firebase project. Building starts when
+he says.
+
+### Messages between friends
+Caleb asked for messages between friends, beside the in-game table chat (which only works during a game).
 - Server: a `friend_messages` table (sender, recipient, text, sent and read times) behind `mm_*` functions, like the
   rest of the social backend: send (friends only, never across a block, length cap, rate limit), list conversations
   with the last message and unread count, read one conversation in pages, mark read. Reports reuse `mm_report`;
@@ -59,12 +63,12 @@ as the next release, before the combo loop. Building starts when he says.
   conversation screen (parchment bubbles, send box, quick replies from the table chat), a Message button on a friend's
   profile and in the friends list, and an unread badge on the Friends button. New messages arrive by polling while the
   app is open (about every 15 seconds in a conversation, with the 45-second heartbeat otherwise), at no server cost.
-- Later, separate: push notifications when the app is closed need an Apple push key and Firebase for Android, plus a
-  server function; decided after messages ship.
+- Push notifications when the app is closed (in this release if ready): an Apple push key, a Firebase project for
+  Android and a Supabase server function; otherwise they follow in a later release.
 - Checks: PGlite tests (friends only, blocks, rate limit, pagination, read state), parity tests, UI tests on both
   platforms with the social fixtures.
 
-## Release B: combo loop shortcut (solo)
+### Combo loop shortcut (solo)
 - The app watches the player's own actions. After the same sequence three times in a row it offers **Repeat this
   loop**: 5, 10 or 20 times, or until an opponent loses.
 - The app then presses the same answers itself, fast; the engine still runs and checks every step, so no rule is
@@ -83,4 +87,5 @@ as the next release, before the combo loop. Building starts when he says.
   while hot needs an engine change and moves to release C. Online status uses the existing 90-second presence window.
 - 2026-10-17: Caleb played TestFlight 42/43 and Android 26: the Stack chip and Ranked Hall work well and games felt
   smooth. Game Performance moved into Settings (#189). Added messages between friends to the plan as the next release,
-  before the combo loop (Caleb's choice); not started until he says.
+  then folded the combo loop into the same release (release B: as much as possible in the next release); not started
+  until he says.
