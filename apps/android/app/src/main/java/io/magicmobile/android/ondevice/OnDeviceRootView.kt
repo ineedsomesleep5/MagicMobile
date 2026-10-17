@@ -1626,6 +1626,10 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage = "bubble.left.and.bubble.right.fill")
+                IosListRow("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it for you, with every step still checked by the rules.", systemImage = "arrow.triangle.2.circlepath")
+                IosListRow("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage = "trophy.fill")
+                IosListRow("Spread-out token piles stack back up with the Stack chip.", systemImage = "square.stack.3d.up.fill")
                 IosListRow("Keep your profile: sign in with Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage = "person.crop.circle.badge.checkmark")
                 IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
                 IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")

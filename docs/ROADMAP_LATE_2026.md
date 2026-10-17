@@ -89,3 +89,7 @@ Caleb asked for messages between friends, beside the in-game table chat (which o
   smooth. Game Performance moved into Settings (#189). Added messages between friends to the plan as the next release,
   then folded the combo loop into the same release (release B: as much as possible in the next release); not started
   until he says.
+- 2026-10-17: release B built on `claude/release-b`: friend messages (server `friend_messages` + `mm_message_*`, PGlite
+  tests; Messages tab, conversations, Message buttons, unread badge, and in games a Messages button plus a banner,
+  as Caleb asked: messages outside and inside games) and the combo loop shortcut (solo games), on iOS and Android.
+  Push notifications not included (no Apple push key or Firebase project yet). Live migration waits for Caleb.

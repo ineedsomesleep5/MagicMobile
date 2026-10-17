@@ -16,6 +16,10 @@ struct NativeUpdateNewsView: View {
                     }
                 }
                 Section("What's new") {
+                    Label("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage: "bubble.left.and.bubble.right.fill")
+                    Label("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it for you, with every step still checked by the rules.", systemImage: "arrow.triangle.2.circlepath")
+                    Label("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage: "trophy.fill")
+                    Label("Spread-out token piles stack back up with the Stack chip.", systemImage: "square.stack.fill")
                     Label("Keep your profile: sign in with Apple or Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage: "person.crop.circle.badge.checkmark")
                     Label("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage: "paintpalette.fill")
                     Label("The offline download now includes every token and emblem.", systemImage: "arrow.down.to.line.circle.fill")

@@ -256,3 +256,12 @@ contradicting one.
   **Rule:** a feature the player is meant to use needs a path a tester can actually walk on a normal install; check it
   on the simulator/emulator from the main menu, not just the sheet in isolation. The report now has its own panel in
   Settings on both apps (`GamePerformancePanel`; iOS UI fixture `MAGICMOBILE_UI_TEST_PERFORMANCE=1`).
+- 2026-10-17 (Claude, release B): in Postgres, `row_value IS NOT NULL` is true only when every field of the row is
+  non-null, so `where c.last is not null` (a whole `friend_messages` row) dropped every conversation whose last message
+  was unread (`read_at` null). Test a row's key instead (`(c.last).id is not null`). The PGlite suite caught it.
+- 2026-10-17 (Claude, release B): a SwiftUI `Button` whose `.background`/`.overlay` sit outside the label only takes taps
+  on the label's text; put the capsule inside the label with `.contentShape`. Synthesized UI-test taps on small targets
+  can also be swallowed under load: find results by their label text and allow one retry, rather than fixed ids.
+- 2026-10-17 (Claude, release B): the combo loop records only the player's own answers (`OnDeviceSession.send`), never
+  smart pass, auto-yield or ability follow-ups (they call `submit` with their own action-id prefixes), and replays by
+  card name, action text and target names, because tokens made by a loop get new ids every round.
