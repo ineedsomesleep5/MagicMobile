@@ -51,6 +51,25 @@ final class Build19FeatureUITests: XCTestCase {
         XCTAssertFalse(app.buttons["soundlab.done"].waitForExistence(timeout: 2))
     }
 
+    /// Settings always offers the game performance report (memory and heat per game), with Share.
+    func testSettingsShowsGamePerformanceWithShare() {
+        let app = launch(environment: ["MAGICMOBILE_UI_TEST_PERFORMANCE": "1"])
+        let settings = app.buttons["menu.settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        let open = app.buttons["settings.performance"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        for _ in 0..<6 where !open.isHittable { app.swipeUp() }
+        XCTAssertTrue(app.staticTexts["settings.performance.last"].label.contains("ranked skill 4"), "the last game's line shows in Settings")
+        capture(app, "settings-game-performance")
+        open.tap()
+        XCTAssertTrue(app.buttons["performance.share"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["performance.report"].label.contains("2 games, newest first"))
+        capture(app, "game-performance-report")
+        app.buttons["performance.close"].tap()
+        XCTAssertFalse(app.buttons["performance.share"].waitForExistence(timeout: 2))
+    }
+
     func testDeckStudioCoversNameTheCommander() {
         let app = launch()
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))

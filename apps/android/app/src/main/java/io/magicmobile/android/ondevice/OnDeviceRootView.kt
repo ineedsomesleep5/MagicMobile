@@ -1565,6 +1565,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             io.magicmobile.android.board.AutoPassAfterCastToggle()
             io.magicmobile.android.board.SmartAutoPassToggle()
             BoardEffectsPicker()
+            GamePerformancePanel()
             SupportSettingsPanel()
         }
     }
