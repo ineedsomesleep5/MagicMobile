@@ -244,3 +244,10 @@ contradicting one.
 - 2026-10-16 (Claude, release A): fixtures must honour the same limits as the server function they stand in for. The
   leaderboard fixture ignored `p_limit`, so the Ranked Hall's three-badge teaser drew all ten players and overflowed;
   only an emulator screenshot showed it. `SocialFixtures.leaderboard` now takes `limit` on both platforms.
+- 2026-10-16 (Claude, release A): build 42's archive failed with "cannot find type 'SocialFixtures'" because a new
+  extension was appended after `SocialFixtures.swift`'s closing `#endif` (the fixtures are DEBUG-only). Package tests,
+  the simulator UI tests and CI's `swift` job all build Debug, so only the Release archive saw it; nothing reached Apple.
+  **Rule:** when adding to a `#if DEBUG` file, add inside the guard, and before a release run a Release compile
+  (`xcodebuild build -configuration Release -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO`). A failed
+  archive leaves the controller run `uncertain`: confirm with `asc builds list` that nothing uploaded, then plan a new
+  run ID with the same build number.
