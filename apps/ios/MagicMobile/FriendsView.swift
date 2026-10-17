@@ -27,10 +27,13 @@ struct FriendsView: View {
     @State private var confirmDelete = false
     @State private var confirmBlock: PlayerFriend?
     @State private var profileFor: ProfileTarget?
+    @State private var tab: Tab = .friends
+    @State private var conversationWith: ProfileTarget?
     @FocusState private var searchFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     private struct ProfileTarget: Identifiable { let name: String; var id: String { name } }
+    private enum Tab: String, CaseIterable { case friends, messages }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -69,10 +72,15 @@ struct FriendsView: View {
                 let parts = screen.split(separator: ":", maxSplits: 1).map(String.init)
                 if parts.first == "public", parts.count == 2 { profileFor = ProfileTarget(name: parts[1]) }
                 if parts.first == "search", parts.count == 2 { query = parts[1] }
+                if parts.first == "messages" { tab = .messages }
+                if parts.first == "conversation", parts.count == 2 { tab = .messages; conversationWith = ProfileTarget(name: parts[1]) }
             }
             #endif
         }
         .onChange(of: query) { _, _ in scheduleSearch() }
+        .fullScreenCover(item: $conversationWith) { target in
+            FriendConversationView(account: account, username: target.name) { conversationWith = nil }
+        }
         .fullScreenCover(item: $profileFor) { target in
             PublicProfileView(account: account, username: target.name, challenge: challenge.map { handler in
                 { name, mode in
@@ -112,6 +120,10 @@ struct FriendsView: View {
             nameCard
         } else {
             profileCard
+            tabPicker
+            if tab == .messages {
+                FriendMessagesList(account: account) { openConversation($0) }
+            } else {
             searchCard
             let incoming = account.friends.filter(\.isIncoming)
             if !incoming.isEmpty { requestsCard(incoming) }
@@ -119,6 +131,7 @@ struct FriendsView: View {
             let outgoing = account.friends.filter(\.isOutgoing)
             if !outgoing.isEmpty { sentCard(outgoing) }
             if !account.blocked.isEmpty { blockedCard }
+            }
             VStack(alignment: .leading, spacing: 10) {
                 Button(String(localized: "Delete my profile")) { confirmDelete = true }
                     .buttonStyle(TavernButtonStyle(kind: .danger, compact: true))
@@ -184,6 +197,48 @@ struct FriendsView: View {
                 .accessibilityIdentifier("friends.changeName")
         }
         .modifier(TavernLeatherCard())
+    }
+
+    // MARK: Tabs
+
+    /// Friends or Messages, with the unread count on Messages.
+    private var tabPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(Tab.allCases, id: \.self) { option in
+                let selected = tab == option
+                Button {
+                    guard !selected else { return }
+                    GameAudio.shared.play(.uiTap)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { tab = option }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(option == .friends ? String(localized: "Friends") : String(localized: "Messages"))
+                            .font(.system(size: 15, weight: .heavy, design: .serif))
+                        if option == .messages, account.unreadMessages > 0 {
+                            Text("\(account.unreadMessages)")
+                                .font(.system(size: 11, weight: .black)).monospacedDigit().foregroundStyle(.white)
+                                .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
+                                .background(TavernPalette.ember, in: Capsule())
+                        }
+                    }
+                    .foregroundStyle(selected ? Color(red: 0.25, green: 0.12, blue: 0.04) : TavernPalette.parchment.opacity(0.8))
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background { if selected { Capsule().fill(BrandTheme.brassGradient) } }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityIdentifier("friends.tab.\(option.rawValue)")
+            }
+        }
+        .padding(4)
+        .background(TavernFill(material: .leather).clipShape(Capsule()))
+        .overlay(TavernCapsuleRim(thin: true))
+    }
+
+    private func openConversation(_ name: String) {
+        searchFocused = false
+        conversationWith = ProfileTarget(name: name)
     }
 
     // MARK: Search
@@ -447,8 +502,21 @@ struct FriendsView: View {
                     } else if let challenge, friend.online {
                         challengeMenu(friend, challenge)
                     }
+                    if account.messagesAvailable {
+                        Button {
+                            GameAudio.shared.play(.uiOpen)
+                            openConversation(friend.username)
+                        } label: {
+                            Image(systemName: "bubble.left.fill").font(.system(size: 16, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "Message \(friend.username)"))
+                        .accessibilityIdentifier("friends.message.\(friend.username)")
+                    }
                     TavernMenu(arrowEdge: .top) {
                         TavernMenuItem(title: String(localized: "View profile"), systemImage: "person.crop.circle") { openProfile(friend.username) }
+                        TavernMenuItem(title: String(localized: "Message"), systemImage: "bubble.left") { openConversation(friend.username) }
                         TavernMenuItem(title: String(localized: "Remove friend"), systemImage: "person.fill.xmark", destructive: true) { Task { await account.remove(friend) } }
                         TavernMenuItem(title: String(localized: "Block"), systemImage: "hand.raised", destructive: true) { confirmBlock = friend }
                     } label: {

@@ -238,6 +238,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var guidedGame by rememberSaveable { mutableStateOf(false) }
     var guidedTipID by rememberSaveable { mutableStateOf<String?>(null) }
     var showFriends by remember { mutableStateOf(false) }
+    // A friend's message during a game (the banner) and the Messages sheet it opens (a name, or "" for the list).
+    var messageBanner by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var messagesHub by remember { mutableStateOf<String?>(null) }
     var chatProfile by remember { mutableStateOf<String?>(null) }
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
@@ -267,7 +270,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             "profile" -> lobby = "profile"
             "rankedHall" -> lobby = "rankedHall"
             "leaderboard" -> lobby = "leaderboard"
-            "friends", "public", "search" -> showFriends = true
+            "friends", "public", "search", "messages", "conversation" -> showFriends = true
         }
     }
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
@@ -818,7 +821,25 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }
     LaunchedEffect(session.snapshot?.turn) { io.magicmobile.android.ui.GamePerformanceRecorder.noteTurn(session.snapshot?.turn) }
+    // During a game, friends' messages are checked every 15 seconds (the menu's heartbeat is slower), and a new one shows a banner.
+    LaunchedEffect(activeGame, vm.account.messagesAvailable) {
+        if (!activeGame || !vm.account.messagesAvailable) return@LaunchedEffect
+        var seen = vm.account.unreadMessages
+        while (true) {
+            delay(15_000)
+            if (!appForeground) continue
+            vm.account.refreshUnread()
+            if (vm.account.unreadMessages > seen && messagesHub == null) {
+                vm.account.conversations()?.firstOrNull { it.unread > 0 && !it.last.fromMe }?.let {
+                    messageBanner = it.username to io.magicmobile.android.game.FriendMessageRules.shown(it.last)
+                }
+            }
+            seen = vm.account.unreadMessages
+        }
+    }
     LaunchedEffect(activeGame) {
+        // The combo loop shortcut: solo games only.
+        session.comboLoopsAllowed = activeGame && !setup.usingMultiplayer
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
         if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
         else io.magicmobile.android.ui.GamePerformanceRecorder.end()
@@ -959,6 +980,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalEmoteCenter provides vm.emotes,
+                        // Messages from friends inside a game too: the game menu's Messages button.
+                        io.magicmobile.android.social.LocalFriendMessages provides
+                            if (vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && vm.account.username != null && vm.account.messagesAvailable)
+                                io.magicmobile.android.social.FriendMessagesEntry(vm.account.unreadMessages) { messagesHub = "" } else null,
                         io.magicmobile.android.board.LocalBoardAnswerActions provides io.magicmobile.android.board.BoardAnswerActions(
                             session.supportedAnswerActions, session.rememberedAnswers, session.rememberedTriggerOrders,
                             { session.forgetRememberedAnswers() }, { session.forgetTriggerOrder() }),
@@ -1007,6 +1032,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 step.newlyShown?.let { guidedShownTips = GuidedGameLaunch.remember(it, guidedShownTips) }
                                 guidedTipID = step.current?.id
                                 if (snapshot.isCompleted) guidedActive = false
+                            }
+                            // The combo loop shortcut: the offer, the repeats and their result.
+                            if (!boardQuiet) ComboLoopOverlay(session)
+                            // A friend's new message: a banner at the top for a few seconds; a tap opens the conversation.
+                            androidx.compose.animation.AnimatedVisibility(messageBanner != null && !boardQuiet,
+                                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 16.dp).padding(top = 6.dp)) {
+                                messageBanner?.let { (name, text) ->
+                                    io.magicmobile.android.social.FriendMessageBanner(name, text, { messageBanner = null; messagesHub = name }, { messageBanner = null })
+                                    LaunchedEffect(name, text) { delay(6_000); if (messageBanner == name to text) messageBanner = null }
+                                }
                             }
                             val tip = guidedTipID?.let(GuidedGameTip::fromId)
                             androidx.compose.animation.AnimatedVisibility(guidedGame && tip != null && !boardQuiet,
@@ -1064,7 +1099,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { lobby = "chooser" },
                         decks = ::openDecks, settings = { showAppearance = true }, news = { showUpdates = true },
                         commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true },
-                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount,
+                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount + vm.account.unreadMessages,
                         profile = { lobby = "profile" }, rank = record.file.rank.position)
                 }
 
@@ -1234,6 +1269,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         ?: if (selectedDeckID.startsWith("precon:")) io.magicmobile.android.game.CommanderBracket.CORE else null
                     io.magicmobile.android.ranked.DeckBracketSheet(deck.name, report, run { bracketRevision; declaredBracket(selectedDeckID) }, fixed,
                         if (fixed == null) { b -> setDeclaredBracket(selectedDeckID, b) } else null) { showBracketSheet = false }
+                }
+            }
+            messagesHub?.let { initial ->
+                androidx.compose.ui.window.Dialog({ messagesHub = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                    BackHandler { messagesHub = null }
+                    io.magicmobile.android.social.FriendMessagesHub(vm.account, initial.ifEmpty { null }) { messagesHub = null }
                 }
             }
             if (showFriends) BoardSheet({ showFriends = false }, skipPartiallyExpanded = true) {
@@ -1584,6 +1626,10 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage = "bubble.left.and.bubble.right.fill")
+                IosListRow("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it for you, with every step still checked by the rules.", systemImage = "arrow.triangle.2.circlepath")
+                IosListRow("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage = "trophy.fill")
+                IosListRow("Spread-out token piles stack back up with the Stack chip.", systemImage = "square.stack.3d.up.fill")
                 IosListRow("Keep your profile: sign in with Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage = "person.crop.circle.badge.checkmark")
                 IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
                 IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")

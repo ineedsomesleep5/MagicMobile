@@ -12,6 +12,9 @@ struct OnDeviceRootView: View {
     @State private var showFriends = false
     /// A player opened from the table chat: their public profile covers the chat.
     @State private var chatProfile: ChatProfileTarget?
+    /// A friend's message that arrived during a game (the banner), and the Messages sheet it opens.
+    @State private var messageBanner: MessageBannerItem?
+    @State private var messagesHub: MessagesHubTarget?
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -359,7 +362,7 @@ struct OnDeviceRootView: View {
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
                                    downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true },
                                    friends: { showFriends = true },
-                                   friendsBadge: account.onlineFriendCount + account.incomingCount,
+                                   friendsBadge: account.onlineFriendCount + account.incomingCount + account.unreadMessages,
                                    profile: { lobby = .profile }, rank: profileRecord.rank.position)
                 }
             }
@@ -608,7 +611,7 @@ struct OnDeviceRootView: View {
             case "profile": lobby = .profile
             case "rankedHall": lobby = .rankedHall
             case "leaderboard": lobby = .leaderboard
-            case "friends", "public", "search": showFriends = true
+            case "friends", "public", "search", "messages", "conversation": showFriends = true
             default: break
             }
         }
@@ -643,6 +646,7 @@ struct OnDeviceRootView: View {
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
+            session.comboLoopsAllowed = playing && !setup.usingMultiplayer
             if playing {
                 GamePerformanceLog.shared.begin(mode: activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
                                                 aiSkill: activeMatch?.aiSkill)
@@ -992,6 +996,42 @@ struct OnDeviceRootView: View {
         .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
+        // Messages from friends inside a game too: the game menu's Messages button, and a banner for a new one.
+        .environment(\.friendMessages, account.phase == .ready && account.username != nil && account.messagesAvailable
+                     ? FriendMessagesEntry(unread: account.unreadMessages, hub: { [account] in AnyView(FriendMessagesHub(account: account)) })
+                     : nil)
+        .overlay(alignment: .top) {
+            if let banner = messageBanner {
+                FriendMessageBanner(name: banner.name, text: banner.text,
+                                    open: { messageBanner = nil; messagesHub = MessagesHubTarget(name: banner.name) },
+                                    dismiss: { messageBanner = nil })
+                    .padding(.horizontal, 16).padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task(id: banner.id) {
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        if messageBanner?.id == banner.id { withAnimation { messageBanner = nil } }
+                    }
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.25), value: messageBanner?.id)
+        // The combo loop shortcut (solo games): the offer, the repeats and their result.
+        .overlay(alignment: .top) { ComboLoopOverlay(session: session) }
+        .sheet(item: $messagesHub) { target in FriendMessagesHub(account: account, initial: target.name) }
+        // Checked more often during a game than the menu's heartbeat, so a friend's message shows within seconds.
+        .task(id: activeGame && account.messagesAvailable) {
+            guard activeGame, account.messagesAvailable else { return }
+            var seen = account.unreadMessages
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard UIApplication.shared.applicationState == .active else { continue }
+                await account.refreshUnread()
+                if account.unreadMessages > seen, messagesHub == nil,
+                   let newest = await account.conversations()?.first(where: { $0.unread > 0 && !$0.last.fromMe }) {
+                    withAnimation { messageBanner = MessageBannerItem(name: newest.username, text: FriendMessageRules.shown(newest.last)) }
+                }
+                seen = account.unreadMessages
+            }
+        }
         .sheet(isPresented: $emotes.isChatOpen) {
             TableChatPanel(center: emotes, snapshot: session.snapshot,
                            report: account.phase == .ready ? { line in
@@ -2561,6 +2601,17 @@ private enum ResumeBackgroundTask {
 }
 
 /// A player whose profile is open over the table chat.
+private struct MessageBannerItem: Equatable {
+    let id = UUID()
+    let name: String
+    let text: String
+}
+
+private struct MessagesHubTarget: Identifiable {
+    let name: String?
+    let id = UUID()
+}
+
 private struct ChatProfileTarget: Identifiable {
     let name: String
     var id: String { name }

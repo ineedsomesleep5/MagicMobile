@@ -516,6 +516,19 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
             CompactActionButton({ showHowToPlay = true }, Modifier.fillMaxWidth().testTag("board.menu.howToPlay")) {
                 SfImage("questionmark.circle", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText(HowToPlayText.TITLE)
             }
+            // Friends' messages without leaving the game.
+            io.magicmobile.android.social.LocalFriendMessages.current?.let { messages ->
+                CompactActionButton({ dismiss(); messages.open() }, Modifier.fillMaxWidth().testTag("board.menu.messages")
+                    .semantics { contentDescription = if (messages.unread > 0) "Messages, ${messages.unread} unread" else "Messages" }) {
+                    SfImage("bubble.left.and.bubble.right.fill", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Messages")
+                    if (messages.unread > 0) {
+                        Spacer(Modifier.width(6.dp))
+                        androidx.compose.material3.Text("${messages.unread}", Modifier.background(io.magicmobile.android.ui.TavernPalette.ember,
+                            androidx.compose.foundation.shape.CircleShape).padding(horizontal = 6.dp, vertical = 1.dp), color = Color.White,
+                            style = io.magicmobile.android.ui.sf(11f, io.magicmobile.android.ui.SfWeight.black))
+                    }
+                }
+            }
             RememberedChoicesPanel()
             GameMenuSectionLabel("Options")
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)

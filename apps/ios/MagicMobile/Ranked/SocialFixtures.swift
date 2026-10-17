@@ -241,4 +241,24 @@ extension SocialFixtures {
                                  online: entries.filter(\.online).count, entries: Array(entries.prefix(limit)), me: entries.first(where: \.you))
     }
 }
+
+// MARK: Fixture messages (mm_message_*): a conversation with unread messages and a quiet one.
+
+extension SocialFixtures {
+    static func messages(now: Date = Date()) -> [String: [FriendMessage]] {
+        func at(_ minutesAgo: Double) -> Date { now.addingTimeInterval(-minutesAgo * 60) }
+        return [
+            "Aria_Blade": [
+                FriendMessage(id: 1, body: "Your Krenko deck was brutal last night", sentAt: at(190), fromMe: false, read: true),
+                FriendMessage(id: 2, body: "Ha, thanks! Rematch soon?", sentAt: at(185), fromMe: true, read: true),
+                FriendMessage(id: 5, body: "I'm hosting a table now", sentAt: at(6), fromMe: false, read: false),
+                FriendMessage(id: 6, body: "Want to play?", sentAt: at(5), fromMe: false, read: false),
+            ],
+            "ManaFiend": [
+                FriendMessage(id: 3, body: "Good game!", sentAt: at(1500), fromMe: false, read: true),
+                FriendMessage(id: 4, body: "Well played!", sentAt: at(1490), fromMe: true, read: true),
+            ],
+        ]
+    }
+}
 #endif
