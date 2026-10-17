@@ -187,4 +187,18 @@ object SocialFixtures {
         return io.magicmobile.android.game.RankedLeaderboard(RankLadder.season(System.currentTimeMillis()), scope.raw, entries.size,
             entries.count { it.online }, entries.take(limit), entries.firstOrNull { it.you })
     }
+
+    /** mm_message_* on the fixture (SocialFixtures.messages in Swift): a conversation with unread messages and a quiet one. */
+    fun messages(now: Long = System.currentTimeMillis()): Map<String, List<io.magicmobile.android.game.FriendMessage>> {
+        fun at(minutesAgo: Long) = now - minutesAgo * 60_000
+        return mapOf(
+            "Aria_Blade" to listOf(
+                io.magicmobile.android.game.FriendMessage(1, "Your Krenko deck was brutal last night", at(190), fromMe = false, read = true),
+                io.magicmobile.android.game.FriendMessage(2, "Ha, thanks! Rematch soon?", at(185), fromMe = true, read = true),
+                io.magicmobile.android.game.FriendMessage(5, "I'm hosting a table now", at(6), fromMe = false, read = false),
+                io.magicmobile.android.game.FriendMessage(6, "Want to play?", at(5), fromMe = false, read = false)),
+            "ManaFiend" to listOf(
+                io.magicmobile.android.game.FriendMessage(3, "Good game!", at(1500), fromMe = false, read = true),
+                io.magicmobile.android.game.FriendMessage(4, "Well played!", at(1490), fromMe = true, read = true)))
+    }
 }

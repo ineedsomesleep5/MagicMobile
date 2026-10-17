@@ -31,7 +31,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import io.magicmobile.android.ui.tavernCapsuleRim
+import io.magicmobile.android.ui.tavernFill
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -102,12 +105,16 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmBlock by remember { mutableStateOf<PlayerFriend?>(null) }
     var profileFor by remember { mutableStateOf<String?>(null) }
+    var messagesTab by remember { mutableStateOf(false) }
+    var conversationWith by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         if (account.phase == PlayerAccount.Phase.READY) account.refresh() else account.start()
         io.magicmobile.android.ranked.SocialFixtures.openScreen?.let { screen ->
             val value = screen.substringAfter(":", "")
             if (screen.startsWith("public:") && value.isNotEmpty()) profileFor = value
             if (screen.startsWith("search:") && value.isNotEmpty()) query = value
+            if (screen == "messages") messagesTab = true
+            if (screen.startsWith("conversation:") && value.isNotEmpty()) { messagesTab = true; conversationWith = value }
         }
     }
     // Typing: wait a moment after the last key; a newer key cancels this effect, so a stale request never lands.
@@ -166,6 +173,8 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
                             }
                             TavernPlaqueButton("Change", { nameDraft = account.username ?: ""; editingName = true }, Modifier.testTag("friends.changeName"), kind = TavernButtonKind.SECONDARY)
                         }
+                        FriendsTabPicker(messagesTab, account.unreadMessages) { messagesTab = it }
+                        if (messagesTab) FriendMessagesList(account) { conversationWith = it } else {
                         // Search: live as you type, or, on a server without it, a plain "add by exact name".
                         Column(Modifier.leatherCard().testTag("friends.searchCard"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ProfileSectionTitle(if (account.searchAvailable) "Find players" else "Add a friend")
@@ -228,7 +237,9 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
                         Column(Modifier.leatherCard().testTag("friends.list"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             ProfileSectionTitle("Friends", if (friends.isEmpty()) null else "${account.onlineFriendCount} online")
                             if (friends.isEmpty()) ProfileEmptyNote("Search for a player above to add your first friend. You'll see when they're online and can join their tables.", "person.2.fill")
-                            for (friend in friends) FriendRow(friend, account, myRankStep, challenge, { profileFor = friend.username }, join, done, { confirmBlock = friend }, scope)
+                            for (friend in friends) FriendRow(friend, account, myRankStep, challenge, { profileFor = friend.username }, join, done, { confirmBlock = friend }, scope) {
+                                conversationWith = friend.username
+                            }
                         }
                         val outgoing = account.friends.filter { it.isOutgoing }
                         if (outgoing.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -250,6 +261,7 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
                                 }
                             }
                         }
+                        }
                         Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             TavernPlaqueButton("Delete my profile", { confirmDelete = true }, Modifier.testTag("friends.deleteAccount"), kind = TavernButtonKind.DANGER)
                             Text("Deletes your player name, friends, blocks and game history from MagicMobile's server. Your decks and games on this phone stay.",
@@ -262,6 +274,12 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
         account.notice?.takeIf { account.phase == PlayerAccount.Phase.READY }?.let { SocialNotice(it, { account.notice = null }, Modifier.align(Alignment.BottomCenter)) }
     }
 
+    conversationWith?.let { name ->
+        Dialog({ conversationWith = null }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+            androidx.activity.compose.BackHandler { conversationWith = null }
+            FriendConversationScreen(account, name) { conversationWith = null }
+        }
+    }
     profileFor?.let { name ->
         Dialog({ profileFor = null }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
             PublicProfileScreen(account, name, challenge?.let { handler -> { friendName, mode -> account.friends.firstOrNull { it.username == friendName }?.let { handler(it, mode) } } },
@@ -306,7 +324,7 @@ private fun ResultRow(result: PlayerSearchResult, openProfile: () -> Unit, add: 
 
 @Composable
 private fun FriendRow(friend: PlayerFriend, account: PlayerAccount, myRankStep: Int?, challenge: ((PlayerFriend, PlayMode) -> Unit)?, openProfile: () -> Unit,
-                      join: (String) -> Unit, done: () -> Unit, block: () -> Unit, scope: kotlinx.coroutines.CoroutineScope) {
+                      join: (String) -> Unit, done: () -> Unit, block: () -> Unit, scope: kotlinx.coroutines.CoroutineScope, message: () -> Unit) {
     val rank = account.friendRanks[friend.username]
     SocialRowCard {
         SocialPlayerHeading(friend.username, null, friendStatus(friend), friend.online, rank,
@@ -321,10 +339,14 @@ private fun FriendRow(friend: PlayerFriend, account: PlayerAccount, myRankStep: 
                     TavernMenuItem(if (mayRank) "Ranked" else "Ranked · same tier only", { if (mayRank) { challenge(friend, PlayMode.RANKED); done() } }, systemImage = "shield.lefthalf.filled")
                 }
             }
+            if (account.messagesAvailable) Box(Modifier.size(44.dp).socialButton("Message ${friend.username}", "friends.message.${friend.username}") {
+                io.magicmobile.android.ui.GameAudio.play(io.magicmobile.android.ui.GameSound.UI_OPEN); message()
+            }, contentAlignment = Alignment.Center) { SfImage("bubble.left.fill", TavernPalette.brass, 16.dp) }
             TavernMenu(Modifier.testTag("friends.more.${friend.username}"), TavernMenuEdge.BELOW, contentDescription = "More about ${friend.username}", label = {
                 Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { SfImage("ellipsis", TavernPalette.brass, 17.dp) }
             }) {
                 TavernMenuItem("View profile", openProfile, systemImage = "person.crop.circle")
+                TavernMenuItem("Message", message, systemImage = "bubble.left")
                 TavernMenuItem("Remove friend", { scope.launch { account.remove(friend) } }, systemImage = "xmark.circle", destructive = true)
                 TavernMenuItem("Block", block, systemImage = "hand.raised", destructive = true)
             }
@@ -344,5 +366,27 @@ private fun friendStatus(friend: PlayerFriend): String {
         minutes < 60 -> "Last seen $minutes min ago"
         minutes < 60 * 24 -> "Last seen ${minutes / 60} h ago"
         else -> "Last seen ${minutes / (60 * 24)} d ago"
+    }
+}
+
+/** Friends or Messages, with the unread count on Messages (FriendsView.swift tabPicker). */
+@Composable
+private fun FriendsTabPicker(messages: Boolean, unread: Int, select: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().tavernFill(io.magicmobile.android.ui.TavernMaterial.LEATHER, androidx.compose.foundation.shape.CircleShape)
+        .tavernCapsuleRim(thin = true).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (option in listOf(false, true)) {
+            val selected = option == messages
+            Row(Modifier.weight(1f).defaultMinSize(minHeight = 40.dp)
+                .then(if (selected) Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(rgb(1.0, 0.88, 0.56), rgb(0.80, 0.56, 0.22))),
+                    androidx.compose.foundation.shape.CircleShape) else Modifier)
+                .clickable { if (!selected) { io.magicmobile.android.ui.GameAudio.play(io.magicmobile.android.ui.GameSound.UI_TAP); select(option) } }
+                .semantics { this.selected = selected }.testTag(if (option) "friends.tab.messages" else "friends.tab.friends"),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (option) "Messages" else "Friends", color = if (selected) rgb(0.25, 0.12, 0.04) else TavernPalette.parchment.copy(alpha = 0.8f),
+                    style = sf(15f, SfWeight.heavy, SfDesign.SERIF))
+                if (option && unread > 0) Text("$unread", Modifier.background(TavernPalette.ember, androidx.compose.foundation.shape.CircleShape)
+                    .padding(horizontal = 6.dp, vertical = 2.dp), color = Color.White, style = sf(11f, SfWeight.black))
+            }
+        }
     }
 }
