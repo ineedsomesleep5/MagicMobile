@@ -97,8 +97,9 @@ object ComboLoop {
 
     /** The shortest round the last steps repeat REPEATS_TO_OFFER times in a row, or null. */
     fun cycle(history: List<ComboStep>): List<ComboStep>? {
-        if (history.isEmpty()) return null
-        for (length in 1..minOf(MAX_CYCLE_LENGTH, history.size / REPEATS_TO_OFFER)) {
+        val longest = minOf(MAX_CYCLE_LENGTH, history.size / REPEATS_TO_OFFER)
+        if (longest < 1) return null
+        for (length in 1..longest) {
             val tail = history.takeLast(length * REPEATS_TO_OFFER)
             if ((length until tail.size).all { tail[it] == tail[it - length] }) {
                 val round = tail.take(length)
