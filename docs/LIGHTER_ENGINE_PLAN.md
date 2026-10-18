@@ -68,6 +68,9 @@ build per platform.
 
 ### 3. Engine release: long games and safe size cuts (PR B)
 - [ ] Shorter AI think time while the phone is hot, and an engine `trim` request on memory warnings (from step 2).
+      Think time built on `claude/engine-hot-pace`: answer action `devicePace` halves each AI search's time (never
+      below 2 s) while the phone is serious or critical, in unranked games the engine runs on that phone; JVM-tested
+      in CI, waits for this release's native builds. `trim` waits for the profile (what to free).
 - [ ] AI search memory cap scaled to available memory (bounded peaks instead of multi-GB spikes); free search memory
       after each decision.
 - [ ] Game-copy fixes the profile points to (less CPU per AI turn at equal strength).

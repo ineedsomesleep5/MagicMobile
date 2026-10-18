@@ -250,6 +250,7 @@ answers its own later questions. None decides a rule or answers for another play
 | `{"type":"passUntilStackResolved"}` | priority `SELECT`, `boolean` pass | Keeps passing until the current stack resolves; stops when an opponent adds to it (F10). |
 | `{"type":"autoPassAfterCast","enabled":true}` | any | Passes priority right after this player casts a spell (XMage's pass-after-cast setting). |
 | `{"type":"resetRememberedAnswers"}` / `{"type":"resetTriggerOrder"}` | any | Forgets every remembered answer, or trigger order. |
+| `{"type":"devicePace","hot":true}` | any | Not an XMage action: the phone running the engine is hot, so every AI seat in this match gets half its think time per search (never below the 2 s stack cap) until an answer sends `hot: false`. No rule changes; not saved and not in the game record (a replay runs no AI search). Apps send it only for games the engine runs on that phone, never in ranked games. |
 
 A remembered answer's key is never taken from the client: the engine builds it from the pending prompt's
 own `originalId` and `autoAnswerMessage` options, exactly as the desktop client sends them. Unknown or

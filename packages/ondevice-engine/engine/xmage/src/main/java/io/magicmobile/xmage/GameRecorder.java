@@ -598,6 +598,7 @@ final class GameRecorder {
                 case "autoPassAfterCast": text.append(" ac").append(Json.bool(action.get("enabled"))?1:0);break;
                 case "resetRememberedAnswers": text.append(" xa");break;
                 case "resetTriggerOrder": text.append(" xt");break;
+                case "devicePace": break; // AI think time only: no rule effect, and a replay runs no AI search
                 default: throw new IllegalArgumentException("unknown answer action");
             }
         }

@@ -647,6 +647,7 @@ struct OnDeviceRootView: View {
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
             session.comboLoopsAllowed = playing && !setup.usingMultiplayer
+            updateDevicePace()
             if playing {
                 GamePerformanceLog.shared.begin(mode: activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
                                                 aiSkill: activeMatch?.aiSkill)
@@ -992,6 +993,7 @@ struct OnDeviceRootView: View {
             rememberedTriggerOrders: session.rememberedTriggerOrders,
             forgetAnswers: { session.forgetRememberedAnswers() }, forgetTriggerOrder: { session.forgetTriggerOrder() }))
         .onChange(of: autoPassAfterCast) { _, enabled in session.setAutoPassAfterCast(enabled) }
+        .onReceive(DeviceHeat.shared.$thermal) { _ in updateDevicePace() }
         .onChange(of: smartAutoPass) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: phaseStops) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
@@ -1480,6 +1482,11 @@ struct OnDeviceRootView: View {
     }
 
     /// Records a finished game once: every game goes into the profile, ranked games move the ladder.
+    /// A hot phone shortens AI thinking in games its engine runs: never ranked (the same AI for everyone) or online.
+    private func updateDevicePace() {
+        session.devicePaceHot = activeGame && !setup.usingMultiplayer && activeMatch?.mode != .ranked && DeviceHeat.shared.isHot
+    }
+
     private func recordFinishedGameIfNeeded() {
         guard let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
         var match = activeMatch ?? casualMatch(snapshot)
