@@ -16,10 +16,11 @@ final class OnDeviceRuntimeManager {
     private var startupDiagnostic: String?
     private(set) var capabilities: MagicMobileOnDevice.JSONValue?
     var isOpen: Bool { transport != nil }
-    /// Reads polls through the transport the client from `makeClient` uses (the playtest recorder when it observes).
-    var pollReader: OnDevicePollReader? {
-        if let recording { return OnDevicePollReader(transport: recording) }
-        return transport.map { OnDevicePollReader(transport: $0) }
+    /// The transport the client from `makeClient` uses (the playtest recorder when it observes), for the session's
+    /// OnDevicePollReader.
+    var clientTransport: (any EngineTransport)? {
+        if let recording { return recording }
+        return transport
     }
     func diagnosticReport() async throws -> String? {
         if let startupDiagnostic { return startupDiagnostic }

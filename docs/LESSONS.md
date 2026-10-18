@@ -293,6 +293,11 @@ contradicting one.
   uncommitted. Committing the ledger first and then running the second `resume` would invalidate the run. If the
   ledger is already committed: `git reset <upload commit>` (keeps the ledger as an unstaged change), run `resume` with
   the same fingerprint, then `git reset <ledger commit>` to return to the pushed branch. No force push needed.
+- 2026-10-18 (Claude): CI's `swift` job also runs `packages/ondevice-engine/scripts/test_runtime_manager.sh`, which
+  compiles `OnDeviceRuntimeManager.swift` with a fixed list of app files (not `OnDeviceSession.swift`), so a new app type
+  used there fails only in CI ("cannot find type in scope") after every package test passed. **Rule:** keep the runtime
+  manager's API in engine-package types (it now exposes `clientTransport`; the root view builds the
+  `OnDevicePollReader`), and run that script locally after touching the manager.
 - 2026-10-18 (Claude): `xcodebuild build -destination generic/platform=iOS` fails at "Verify staged native input
   hashes (device only)" ("Installed file set differs from owned native inputs") in a worktree without the staged engine.
   **Rule:** for a compile check, build `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`; device

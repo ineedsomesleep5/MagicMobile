@@ -81,8 +81,9 @@ They were measured on the iPhone 17 Pro Max simulator and the API 35 emulator, n
 - **No idle redraws.** A poll whose answer is unchanged publishes nothing: the iOS session sends
   `objectWillChange` only when the snapshot, status or error changed.
 - **Unchanged polls are not decoded.** A reply byte-for-byte equal to the previous one, for the same request, comes
-  back as the previous poll without JSON decoding (iOS `OnDevicePollReader`, Android `EngineClient.poll`), and Deck
-  Studio's recorder skips it too (it cannot advance the record). The engine still answers every poll in full.
+  back as the previous poll without JSON decoding (iOS `OnDevicePollReader` over the runtime manager's
+  `clientTransport`, Android `EngineClient.poll`), and Deck Studio's recorder skips it too (it cannot advance the
+  record). The engine still answers every poll in full.
 - **Ambient motion.** Slow glows step on the wall clock instead of at the display's rate (iOS `BoardBreath`,
   30 a second; Android `rememberBoardBreath`, 20 a second), and brief glints draw only while they show
   (`BurstTimelineSchedule`). On iOS every ambient timeline (glows, the inspector's foil, the turn rope) steps on one

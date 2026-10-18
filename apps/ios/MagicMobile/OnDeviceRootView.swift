@@ -2062,7 +2062,7 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode,
                 mode: mode?.rawValue, deckBracket: deckBracket), playerDeckName: deck.name)
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, pollReader: runtime.pollReader,
+            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, pollReader: runtime.clientTransport.map { OnDevicePollReader(transport: $0) },
                                      allowsSeatScopedAutoYield: true,
                                      answerActions: engineAnswerActions, autoPassAfterCast: autoPassAfterCastSetting, smartPass: .load(), close: { [self] in try await closeAI() })
             status = "Game started"
@@ -2107,7 +2107,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             aiMatchID = restored.matchID
             updateSessionForeground()
             try await session.attach(client: client, matchID: restored.matchID, seatID: record.setup.seatID,
-                                     pollReader: runtime.pollReader,
+                                     pollReader: runtime.clientTransport.map { OnDevicePollReader(transport: $0) },
                                      allowsSeatScopedAutoYield: true, answerActions: engineAnswerActions,
                                      autoPassAfterCast: autoPassAfterCastSetting, smartPass: .load(), close: { [self] in try await closeAI() })
             status = "Game resumed"
