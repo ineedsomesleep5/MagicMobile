@@ -55,8 +55,41 @@ build per platform.
 ### 1. Measure (no code changes)
 - [ ] Cloud: profile long, complex AI games on the JVM (async-profiler CPU and allocation, Java Flight Recorder,
       a heap dump at the peak): where game copies spend time and memory, which objects dominate.
-- [ ] Caleb's iPhone, about 5 minutes, plugged into the Mac: Instruments (VM Tracker, Allocations, Time Profiler,
+- [x] Caleb's iPhone, about 5 minutes, plugged into the Mac: Instruments (VM Tracker, Allocations, Time Profiler,
       Energy) during a long AI game; confirms the resident cost of the image heap fixups.
+      Done 2026-10-18 (findings below). VM Tracker's region table does not export from `xctrace`, so the image
+      heap's resident share still needs the saved trace opened in Instruments.
+
+#### Phone readings (2026-10-18, Caleb's iPhone 16 Pro Max, iOS 27.0)
+Development-signed Release build of build 46 (same source and engine as TestFlight 46), Time Profiler + VM Tracker +
+Activity Monitor + Thermal State, attached during Caleb's AI Commander games: 5 min (the end of one game, then a new one)
+and 8 min (a second game). Caleb was on a phone call throughout, which adds device heat outside MagicMobile.
+Traces: `~/Documents/MagicMobile-releases/profiles/2026-10-18-iphone16promax-build46/`.
+
+| | 5-minute trace | 8-minute trace |
+|---|---|---|
+| MagicMobile CPU | 78 s (26% of one core on average) | 141 s (29%); 90th percentile 51%, peak 134% |
+| Main thread (UI) | 68% of the app's CPU | 65% |
+| Polling and decoding thread | 26% | 28% |
+| AI search threads (`AI-SIM-MAD`) | 2% | 3.5% |
+| GraalVM GC and safepoints | 1% | 1% |
+| Memory (physical footprint) | 370 MB between games; 450–500 MB as the game starts, 999 MB at the end of the game Caleb lost | 500–650 MB through the game, peak 733 MB |
+| Thermal state | nominal 3 min, then fair | fair 6.7 min, then serious 1.3 min |
+
+- **The app, not the AI, is most of the CPU in these games.** AI search took 2–3.5%. Shorter AI thinking while hot
+  (step 3) only matters in long expert games; the bigger heat lever is in the app.
+- **The board redraws continuously.** On the main thread, SwiftUI's display-link updates are in 44–47% of samples,
+  layout 31–36%, Core Animation commits 24–26% and Canvas drawing 14–15% (board FX banners, battlefield row layout and
+  density grouping on top). Decoding snapshots is only 1.5%. So the board re-renders every frame between game events
+  (the main thread alone averages 18–19% of a core), which looks like idle animations or timelines that never stop.
+- **Polls decode the whole snapshot every time.** In the polling thread, `JSONValue.init(from:)` takes 42–46%. The
+  engine's own request handling (`mm_runtime_request`) is 21–22%, and Deck Studio's recording transport sits around
+  every call (28–29% inclusive, about 8% its own work). Polls are spaced 0.12–2 s already. Skipping the decode when
+  the engine's revision hasn't changed, and lighter recording, would cut most of this thread.
+- **Memory is lower than the TestFlight 43 reports** (1.0–1.1 GB) in a normal game. The 999 MB peak came at a game's
+  end and needs a look (game record, stats and the end screen run then).
+- **Next (app release, separate from engine release C):** stop the board's per-frame redraws when nothing is
+  animating (and more so while hot), and skip decoding unchanged polls. Re-measure with the same two-trace setup.
 - [ ] Report the findings here before step 3 is written.
 
 ### 2. App release: heat and memory awareness (PR A)
@@ -104,3 +137,5 @@ build per platform.
 - 2026-10-16: measurements above; Caleb approved the plan including the GraalVM upgrade and cards as data.
 - 2026-10-16: step 2's app half built in release A (PR #188); the engine-side parts moved to step 3.
 - 2026-10-17: first Game Performance report from Caleb's iPhone (above).
+- 2026-10-18: Instruments on Caleb's iPhone (build 46): the UI and poll decoding, not AI search, are most of the
+  CPU; findings under step 1.
