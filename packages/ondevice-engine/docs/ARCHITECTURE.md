@@ -26,9 +26,9 @@ Polling reads frozen objects. It never traverses a concurrently mutating GameSta
 
 ## Construction and updates
 
-Three source patches are protected by commit and blob hashes. The adapter installs generated direct card factories, then generated set singletons, then resolves deck printings from those trusted sets. Caller-supplied Java class names and rarities are not accepted in match configuration. Card legality/identity/Commander rules stay in the upstream validator.
+Three source patches are protected by commit and blob hashes. The adapter installs generated direct card factories, then the sets of the bundled set catalogue (`MobileExpansionSet`, exported from the set classes at build time), then resolves deck printings from that trusted catalogue. Caller-supplied Java class names and rarities are not accepted in match configuration. Card legality/identity/Commander rules stay in the upstream validator.
 
-`RegistryExporter` runs in the developer JVM. Reflection there discovers public constructors, not rules text. Generated runtime factories use direct constructor calls and explicit set singleton calls. Large factories are sharded to avoid a single oversized Java method. Excluded classes and missing printing factories are visible failures/reports, not silently omitted cards.
+`RegistryExporter` runs in the developer JVM. Reflection there discovers public constructors, not rules text. Generated runtime factories use direct constructor calls. It also writes the set catalogue (`mage/mobile/set-catalogue.tsv.gz`: every set class's field values and card list), so the engine constructs no set class; only the classes that make their own booster packs are created, on first use, for Booster Tutor. Large factories are sharded to avoid a single oversized Java method. Excluded classes and missing printing factories are visible failures/reports, not silently omitted cards.
 
 Registration does not solve every native issue. Gson/Java resources, runtime class initialization, serialization and Java desktop dependencies still need reachability/runtime proof. Source scans are indicators, not proof of whether a class will execute on a phone.
 

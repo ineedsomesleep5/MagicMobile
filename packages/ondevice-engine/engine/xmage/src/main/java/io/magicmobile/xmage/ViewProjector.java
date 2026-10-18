@@ -4,9 +4,6 @@ import com.google.gson.Gson;
 import io.magicmobile.core.Json;
 import io.magicmobile.generated.GeneratedCardFactory;
 import mage.cards.Card;
-import mage.cards.CardSetInfo;
-import mage.cards.ExpansionSet;
-import mage.cards.Sets;
 import mage.constants.CommanderCardType;
 import mage.constants.Zone;
 import mage.game.Game;
@@ -178,17 +175,10 @@ public final class ViewProjector {
             SimpleCardView simple=entry.getValue();
             String code=simple.getExpansionSetCode(),number=simple.getCardNumber();
             if(code==null || code.isBlank() || number==null || number.isBlank()) continue;
-            ExpansionSet set=Sets.getInstance().get(code);
-            if(set==null) continue;
-            ExpansionSet.SetCardInfo selected=null;
-            for(var info:set.getSetCardInfo()) {
-                if(!number.equals(info.getCardNumber())) continue;
-                if(selected!=null) { selected=null; break; } // Ambiguous printing stays unknown.
-                selected=info;
-            }
-            if(selected==null) continue;
-            Card card=GeneratedCardFactory.create(selected.getCardClass().getName(),
-                new CardSetInfo(selected.getName(),code,number,selected.getRarity(),selected.getGraphicInfo()));
+            var printings=DeckLoader.printings(code,number);
+            if(printings==null || printings.size()!=1) continue; // Ambiguous printing stays unknown.
+            var selected=printings.get(0);
+            Card card=GeneratedCardFactory.create(selected.getClassName(),selected.setInfo(code));
             // Only fresh printed characteristics; never resolve a game object or pass Game to CardView.
             if(card!=null) printed.put(entry.getKey(),new CardView(card,simple));
         }

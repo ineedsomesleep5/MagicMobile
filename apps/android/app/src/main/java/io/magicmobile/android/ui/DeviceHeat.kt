@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 /**
  * Heat and memory awareness (PerformanceAwareness.swift; docs/LIGHTER_ENGINE_PLAN.md step 2, app only). While the phone reports
  * heat, board effects draw at half rate; memory trims free the artwork cache (MainActivity); every game keeps a small performance
- * record for Diagnostics. Shorter AI thinking while hot needs the engine and waits for engine release C.
+ * record for Diagnostics. While hot, games the engine runs on this phone (not ranked, not online) ask the AI to think for less time
+ * (OnDeviceSession.devicePaceHot, engine release C).
  */
 object DeviceHeat {
     /** iOS's scale: 0 nominal, 1 fair, 2 serious, 3 critical (GamePerformanceEntry.thermalLevel). */
