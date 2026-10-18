@@ -277,3 +277,9 @@ contradicting one.
   Passes are not round steps: record whether the stack was empty when a step was taken and pass for the player's own
   triggers before it. In the parity fixture, separate targets with `;`: card names like "Zacama, Primal Calamity"
   contain commas. Test snapshots that include `xmage` need every `panels` field or decoding fails.
+- 2026-10-17 (Claude): main has a ruleset ("main: CI must pass", id 25329787) requiring `Download site build`, `app`,
+  `boundary-tests`, `swift` and `real-jvm`, and the repo allows auto-merge (`gh pr merge N --auto --merge`). GitHub's
+  auto-merge waits only for required checks, and a required check that never reports blocks the PR forever, so never
+  put `paths:` on the `pull_request` trigger of a workflow with a required job. Filter inside the workflow instead: the
+  `changes` job in magicmobile-ondevice.yml and magicmobile-android-app.yml decides, and a job skipped by `if:` counts
+  as passing. A new required job needs the same pattern before it is added to the ruleset.
