@@ -383,12 +383,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 29 opens Ranked in the new Ranked Hall with a live
-                leaderboard, lets you message friends from Friends or in the
-                middle of a game, and repeats a combo for you: as many times as
-                you pick, until you can't, or until they lose, with every step
-                still checked by the rules. Token piles stack back up with the
-                Stack chip. Same engine as build 25. Android is an early alpha;
+                Android build 30 keeps your phone cooler: the board no longer
+                redraws while nothing is happening, so long, token-heavy games
+                use less battery and memory. It also has the Ranked Hall with a
+                live leaderboard, friend messages, and the combo loop shortcut.
+                Same engine as build 25. Android is an early alpha;
                 physical-phone acceptance is still pending.
               </p>
             </details>
@@ -398,13 +397,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 46 opens Ranked in the new Ranked Hall with a live
-                leaderboard, lets you message friends from Friends or in the
-                middle of a game, and repeats a combo for you: as many times as
-                you pick, until you can't, or until they lose, with every step
-                still checked by the rules. Token piles stack back up with the
-                Stack chip. It runs on iPhone and iPad. Apple has approved this
-                build for Internal and External TestFlight.
+                Build 47 keeps your phone cooler: the board no longer redraws
+                while nothing is happening, so long, token-heavy games use less
+                battery and memory. It also has the Ranked Hall with a live
+                leaderboard, friend messages, and the combo loop shortcut. It
+                runs on iPhone and iPad. Apple has approved this build for
+                Internal and External TestFlight.
               </p>
             </details>
             <details>
