@@ -480,17 +480,17 @@ object BoardFXPainter {
         val face = px(w * 0.66)
         val ink = rgb(0.2, 0.1, 0.04)
         fun layout(text: String, size: Float) = measurer.measure(text, sf(size, SfWeight.heavy, SfDesign.SERIF).copy(color = ink), maxLines = 1, softWrap = false)
-        var fontSize = 19f
-        var shown = title
-        var name = layout(shown, fontSize)
-        while (name.size.width > face && fontSize > 10f) { fontSize -= 1f; name = layout(shown, fontSize) }
-        while (name.size.width > face && shown.length > 4) { shown = shown.dropLast(2).trim() + "…"; name = layout(shown, fontSize) }
-        val nameY = if (subtitle == null) frame.center.y - px(h * 0.04) else frame.top + px(h * 0.58)
-        if (subtitle != null) {
-            val caption = measurer.measure(subtitle, sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.5f).copy(color = rgb(0.5, 0.16, 0.07)), maxLines = 1, softWrap = false)
-            drawText(caption, topLeft = Offset(frame.center.x - caption.size.width / 2f, frame.top + px(h * 0.3) - caption.size.height / 2f), alpha = textAlpha)
+        // Nothing is measured while the name is still hidden, and its fit is measured once per width (RibbonFit).
+        if (textAlpha > 0f) {
+            val (fontSize, shown) = RibbonFit.fit(title, face) { text, size -> layout(text, size).size.width.toFloat() }
+            val name = layout(shown, fontSize)
+            val nameY = if (subtitle == null) frame.center.y - px(h * 0.04) else frame.top + px(h * 0.58)
+            if (subtitle != null) {
+                val caption = measurer.measure(subtitle, sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 2.5f).copy(color = rgb(0.5, 0.16, 0.07)), maxLines = 1, softWrap = false)
+                drawText(caption, topLeft = Offset(frame.center.x - caption.size.width / 2f, frame.top + px(h * 0.3) - caption.size.height / 2f), alpha = textAlpha)
+            }
+            drawText(name, topLeft = Offset(frame.center.x - name.size.width / 2f, nameY - name.size.height / 2f), alpha = textAlpha)
         }
-        drawText(name, topLeft = Offset(frame.center.x - name.size.width / 2f, nameY - name.size.height / 2f), alpha = textAlpha)
         // The seal presses in once the ribbon is open.
         val press = max(0.0, min(1.0, (p - 0.2) / 0.08))
         if (!seal || press <= 0) return
@@ -1025,3 +1025,26 @@ object BoardFXSound {
 
 /** The tavern art the effect layer draws with (the parchment ribbon). */
 class TavernFXArt(val ribbon: androidx.compose.ui.graphics.ImageBitmap)
+
+/**
+ * How a ribbon banner's name fits its face (in pixels): the largest size from 19 down to 10 that fits, then shortened with
+ * an ellipsis. Measured once per name and face width (in half pixels): the ribbon unrolls over many frames and used to
+ * re-measure the name at up to ten sizes on each, past the text measurer's small cache. iOS: RibbonFit. Main thread only.
+ */
+object RibbonFit {
+    private val fits = HashMap<Pair<String, Int>, Pair<Float, String>>()
+
+    fun fit(title: String, face: Float, width: (String, Float) -> Float): Pair<Float, String> {
+        val halfPixels = kotlin.math.floor(face * 2f).toInt()
+        val key = title to halfPixels
+        fits[key]?.let { return it }
+        val limit = halfPixels / 2f
+        var size = 19f
+        var shown = title
+        var measured = width(shown, size)
+        while (measured > limit && size > 10f) { size -= 1f; measured = width(shown, size) }
+        while (measured > limit && shown.length > 4) { shown = shown.dropLast(2).trim() + "…"; measured = width(shown, size) }
+        if (fits.size > 1024) fits.clear()
+        return (size to shown).also { fits[key] = it }
+    }
+}

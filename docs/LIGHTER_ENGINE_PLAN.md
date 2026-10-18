@@ -90,6 +90,10 @@ Traces: `~/Documents/MagicMobile-releases/profiles/2026-10-18-iphone16promax-bui
   end and needs a look (game record, stats and the end screen run then).
 - **Next (app release, separate from engine release C):** stop the board's per-frame redraws when nothing is
   animating (and more so while hot), and skip decoding unchanged polls. Re-measure with the same two-trace setup.
+  Built 2026-10-18 on both apps (see the Log): ambient glows on one shared grid, resting when the board is idle and at
+  half rate while hot; the thinking ring off the main thread; repeated polls not decoded or re-recorded; battlefield
+  rows and ribbon banners measured once per change. Compare traces with `scripts/ios/time_profile_summary.py`
+  (build 46: display-link updates 24–45 a second per minute, decoding 62% of the poll loop).
 - [ ] Report the findings here before step 3 is written.
 
 ### 2. App release: heat and memory awareness (PR A)
@@ -139,3 +143,4 @@ Traces: `~/Documents/MagicMobile-releases/profiles/2026-10-18-iphone16promax-bui
 - 2026-10-17: first Game Performance report from Caleb's iPhone (above).
 - 2026-10-18: Instruments on Caleb's iPhone (build 46): the UI and poll decoding, not AI search, are most of the
   CPU; findings under step 1.
+- 2026-10-18: app-only fix for those readings, on both platforms (heat PR, see step 1); awaits a phone re-measure.

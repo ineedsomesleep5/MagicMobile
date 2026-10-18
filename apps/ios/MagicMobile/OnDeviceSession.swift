@@ -120,6 +120,56 @@ enum OnDeviceLocalPollSchedule {
     }
 }
 
+/// Polls a local engine, and hands back the previous poll undecoded when the engine answered the same request with
+/// exactly the same bytes. While the AI thinks most polls repeat the board, and decoding the whole game view was about
+/// half of the polling thread's work (Instruments on Caleb's iPhone, 2026-10-18). The engine package's EngineClient
+/// still decodes every reply that changed. Android: EngineClient.poll keeps the same memo.
+struct OnDevicePollReader: Sendable {
+    /// One poll as sent and answered, and its decoded result.
+    struct Exchange: Sendable {
+        let request: Data
+        let reply: Data
+        let poll: MatchPoll
+    }
+
+    let transport: any EngineTransport
+
+    /// `previous` is the exchange whose poll the session last applied; `repeated` means it came back unchanged.
+    func poll(matchID: String, seatID: String, after: Int64, previous: Exchange?) async throws -> (exchange: Exchange, repeated: Bool) {
+        let tap = Tap(base: transport, previous: previous)
+        do {
+            let poll = try await EngineClient(transport: tap).poll(matchID: matchID, seatID: seatID, after: after)
+            guard let sent = tap.sent else { throw EngineError.invalidMessage("The engine was not asked for this poll") }
+            return (Exchange(request: sent.request, reply: sent.reply, poll: poll), false)
+        } catch is Tap.Repeated {
+            guard let previous else { throw EngineError.invalidMessage("A repeated poll has no previous poll") }
+            return (previous, true)
+        }
+    }
+
+    /// Passes the poll through, keeps the bytes, and stops before decoding a reply that repeats `previous`.
+    private final class Tap: EngineTransport, @unchecked Sendable {
+        struct Repeated: Error {}
+        private let base: any EngineTransport
+        private let previous: Exchange?
+        private let lock = NSLock()
+        private var exchanged: (request: Data, reply: Data)?
+        var sent: (request: Data, reply: Data)? { lock.withLock { exchanged } }
+
+        init(base: any EngineTransport, previous: Exchange?) {
+            self.base = base
+            self.previous = previous
+        }
+
+        func request(_ data: Data) async throws -> Data {
+            let reply = try await base.request(data)
+            lock.withLock { exchanged = (data, reply) }
+            if let previous, previous.reply == reply, previous.request == data { throw Repeated() }
+            return reply
+        }
+    }
+}
+
 /// A guest retries a poll a few times when its host stops answering, then gives up with the
 /// usual message. Only polls and hello are retried: an answer keeps its exact request ID for
 /// the player's explicit retry, and a host that left ends the table through the roster.
@@ -176,6 +226,9 @@ final class OnDeviceSession: ObservableObject {
     private var yieldGeneration = UUID()
     private var client: EngineClient?
     private var poll: MatchPoll?
+    /// Local games: polls whose reply repeats `pollExchange` (the exchange behind `poll`) are not decoded again.
+    private var pollReader: OnDevicePollReader?
+    private var pollExchange: OnDevicePollReader.Exchange?
     private var messageLog = OnDeviceMessageLog()
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
@@ -223,13 +276,16 @@ final class OnDeviceSession: ObservableObject {
     /// A local log line was added since the last snapshot: the next poll republishes even if the game didn't change.
     private var logChanged = false
 
+    /// `pollReader` reads polls through the same transport as `client` (local games).
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
+                pollReader: OnDevicePollReader? = nil,
                 allowsSeatScopedAutoYield: Bool = false, table: OnDeviceTableLink? = nil,
                 answerActions: Set<String> = [], autoPassAfterCast: Bool? = nil,
                 smartPass: OnDeviceSmartPass.Settings? = nil,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
+        self.pollReader = pollReader; pollExchange = nil
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
         comboHistory = []; comboOffer = nil; comboDeclined = nil; comboResult = nil
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
@@ -266,8 +322,16 @@ final class OnDeviceSession: ObservableObject {
         refreshSequence += 1
         let sequence = refreshSequence
         let next: MatchPoll
+        var exchange: OnDevicePollReader.Exchange?
         do {
-            next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+            if let pollReader {
+                let read = try await pollReader.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0,
+                                                     previous: pollExchange)
+                next = read.exchange.poll
+                exchange = read.exchange
+            } else {
+                next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+            }
         } catch {
             // Obsolete reads must not interrupt a replacement or resumed session.
             guard epoch == token, visibilityEpoch == visibility, isForeground,
@@ -310,6 +374,7 @@ final class OnDeviceSession: ObservableObject {
         }
         messageLog = nextLog
         poll = next
+        pollExchange = exchange
         if let saved = next.checkpoint, saved != checkpoint { checkpoint = saved }
         let over = GameResumePolicy.isOver(next)
         if over != isOverForSeat { isOverForSeat = over }
@@ -960,6 +1025,7 @@ final class OnDeviceSession: ObservableObject {
         isClosing = false
         refreshSequence = 0; appliedRefreshSequence = 0
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
+        pollReader = nil; pollExchange = nil
         table = nil; lastActionAt = nil; checkpoint = nil; isOverForSeat = false
         messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"

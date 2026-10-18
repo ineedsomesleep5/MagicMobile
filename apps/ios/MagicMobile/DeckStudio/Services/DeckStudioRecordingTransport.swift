@@ -10,6 +10,9 @@ actor DeckStudioRecordingTransport: EngineTransport {
     private var admission: DeckStudioPlaytestStore.Admission?
     private var accumulator = DeckStudioPlaytestAccumulator()
     private var lastSaved = Date.distantPast
+    /// The last poll seen. A reply identical to it has the same revision, so it can never advance the record and is
+    /// not parsed again: while the AI thinks most polls repeat (Instruments, 2026-10-18).
+    private var lastPoll: (request: Data, reply: Data)?
     init(base: any EngineTransport, store: DeckStudioPlaytestStore = .shared,
          appBuild: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development") {
         self.base = base; self.store = store; self.appBuild = appBuild
@@ -22,6 +25,13 @@ actor DeckStudioRecordingTransport: EngineTransport {
             let now = Date()
             let currentlyDetailed = await store.detailedEnabled()
             let detailed = admission.detailedEnabled && currentlyDetailed
+            if op == "poll" {
+                if let lastPoll, lastPoll.reply == reply, lastPoll.request == data {
+                    if !detailed { accumulator.revokeDetail() }
+                    return reply
+                }
+                lastPoll = (data, reply)
+            }
             if accumulator.observe(request: data, response: reply, enabled: true, appBuild: appBuild, now: now,
                                    detailedEnabled: detailed, sanitizeLog: { EngineDisplayText.label($0) }),
                let game = accumulator.game,

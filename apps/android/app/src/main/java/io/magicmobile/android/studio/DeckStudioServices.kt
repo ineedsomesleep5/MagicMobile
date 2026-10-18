@@ -119,6 +119,11 @@ class DeckStudioRecordingTransport(private val base: EngineTransport, private va
     private var admission: DeckStudioPlaytestStore.Admission? = null
     private val accumulator = DeckStudioPlaytestAccumulator()
     private var lastSaved = 0L
+    /**
+     * The last poll seen. A reply identical to it has the same revision, so it can never advance the record and is not
+     * decoded again: while the AI thinks most polls repeat (Instruments, 2026-10-18).
+     */
+    private var lastPoll: Pair<ByteArray, ByteArray>? = null
 
     override suspend fun request(data: ByteArray): ByteArray {
         val request = runCatching { EngineJson.decode(data) }.getOrNull()
@@ -131,6 +136,12 @@ class DeckStudioRecordingTransport(private val base: EngineTransport, private va
                 lock.withLock {
                     val now = System.currentTimeMillis()
                     val detailed = admission.detailedEnabled && store.detailedEnabled()
+                    val previous = lastPoll
+                    if (op == "poll" && previous != null && previous.second.contentEquals(reply) && previous.first.contentEquals(data)) {
+                        if (!detailed) accumulator.revokeDetail()
+                        return@withLock
+                    }
+                    if (op == "poll") lastPoll = data to reply
                     val response = EngineJson.decode(reply)
                     if (accumulator.observe(request, response, true, appBuild, now, detailed) { io.magicmobile.android.core.Decisions.plain(it) }) {
                         val game = accumulator.game

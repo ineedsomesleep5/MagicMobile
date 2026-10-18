@@ -150,11 +150,44 @@ struct BattlefieldRow: View {
     /// just to look stays open until its Stack chip (Caleb, 2026-10-16).
     @State private var choiceOpenedGroupIds: Set<String> = []
     @State private var scrollOffsets = BattlefieldRowScrollOffsets()
+    @State private var layoutCache = BattlefieldRowLayoutCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
 
-    private var visibleCards: [ZoneCard] {
-        cardGroups.flatMap(displayGroups).map(\.representative)
+    /// The row's groups, sizes and arrangement, recomputed only when an input changes.
+    private var layout: BattlefieldRowLayout {
+        layoutCache.layout(BattlefieldRowLayout.Input(
+            flipped: flipped, adaptsToDensity: adaptsToDensity, arrangement: arrangement, rowWidth: rowWidth,
+            cardWidth: cardWidth, cardHeight: cardHeight, availableHeight: availableHeight,
+            expandedGroupIds: expandedGroupIds, chosenIds: chosenIds, targetableIds: targetableIds,
+            combatHighlightIds: combatHighlightIds, cards: cards), make: makeLayout)
+    }
+
+    private func makeLayout() -> BattlefieldRowLayout {
+        let groups = BattlefieldAttachments.groups(cards)
+        let rendered = groups.flatMap(displayGroups)
+        let permanent = availableHeight.map { height in
+            let proposed = arrangement.rows(rendered, flipped: flipped,
+                twoRows: arrangement == .landscapeResources || rendered.count > 5)
+            return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
+                height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
+        }
+        let width: CGFloat
+        if let permanent {
+            width = permanent.cardWidth
+        } else if adaptsToDensity {
+            width = BattlefieldAdaptiveSizing.cardWidth(
+                availableRowWidth: rowWidth, maxCardWidth: cardWidth,
+                heightRatio: 1,
+                tappedSlots: Array(repeating: false, count: min(5, rendered.count)))
+        } else {
+            width = cardWidth
+        }
+        return BattlefieldRowLayout(
+            groups: groups, rendered: rendered, permanent: permanent, cardWidth: width,
+            cardHeight: cardHeight * width / max(cardWidth, 1),
+            arranged: arrangement.rows(rendered, flipped: flipped, twoRows: (permanent?.rows ?? 1) == 2),
+            stackChips: expandedGroupIds.isEmpty ? [:] : Self.stackChipPiles(groups, expanded: expandedGroupIds))
     }
 
     /// The tiles a group shows: every card when it is open; otherwise one pile, with the cards already chosen from it
@@ -240,36 +273,14 @@ struct BattlefieldRow: View {
         }
     }
 
-    private var renderedCardWidth: CGFloat {
-        if let permanentLayout { return permanentLayout.cardWidth }
-        guard adaptsToDensity else { return cardWidth }
-        return BattlefieldAdaptiveSizing.cardWidth(
-            availableRowWidth: rowWidth, maxCardWidth: cardWidth,
-            heightRatio: 1,
-            tappedSlots: Array(repeating: false, count: min(5, visibleCards.count)))
-    }
-
-    private var renderedCardHeight: CGFloat {
-        cardHeight * renderedCardWidth / max(cardWidth, 1)
-    }
-
-    private var permanentLayout: ArenaPermanentLayout? {
-        availableHeight.map { height in
-            let proposed = arrangement.rows(renderedGroups, flipped: flipped,
-                twoRows: arrangement == .landscapeResources || visibleCardCount > 5)
-            return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
-                height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
-        }
-    }
-
-    private var renderedGroups: [BattlefieldCardGroup] {
-        cardGroups.flatMap(displayGroups)
-    }
+    private var renderedCardWidth: CGFloat { layout.cardWidth }
+    private var renderedCardHeight: CGFloat { layout.cardHeight }
+    private var permanentLayout: ArenaPermanentLayout? { layout.permanent }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             let rows = permanentLayout?.rows ?? 1
-            let arranged = arrangement.rows(renderedGroups, flipped: flipped, twoRows: rows == 2)
+            let arranged = layout.arranged
             if arrangement == .landscapeResources && rows == 2 {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(0..<2, id: \.self) { row in
@@ -337,13 +348,7 @@ struct BattlefieldRow: View {
         }
     }
 
-    private var cardGroups: [BattlefieldCardGroup] {
-        BattlefieldAttachments.groups(cards)
-    }
-
-    private var visibleCardCount: Int {
-        cardGroups.reduce(0) { count, group in count + displayGroups(group).count }
-    }
+    private var cardGroups: [BattlefieldCardGroup] { layout.groups }
 
     /// Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab
     /// above it. The creature keeps its full size (Caleb, 2026-10-02): the tabs rise above it,
@@ -478,7 +483,7 @@ struct BattlefieldRow: View {
 
     @ViewBuilder
     private func battlefieldCardTile(_ card: ZoneCard) -> some View {
-        let pile = expandedGroupIds.isEmpty ? nil : Self.stackChipPiles(cardGroups, expanded: expandedGroupIds)[card.instanceId]
+        let pile = layout.stackChips[card.instanceId]
         let action = legalAction(for: card)
         let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
@@ -550,7 +555,8 @@ struct BattlefieldRow: View {
     private var showsOverflowIndicator: Bool {
         if cardGroups.contains(where: { $0.id.hasPrefix("attachment:") }) { return true }
         if let permanentLayout { return permanentLayout.contentWidth > rowWidth }
-        let contentWidth = 16 + CGFloat(visibleCards.count) * renderedCardWidth + CGFloat(max(visibleCardCount - 1, 0)) * 4
+        let visible = layout.rendered.count
+        let contentWidth = 16 + CGFloat(visible) * renderedCardWidth + CGFloat(max(visible - 1, 0)) * 4
         return contentWidth > rowWidth
     }
 
@@ -571,6 +577,58 @@ struct BattlefieldRow: View {
 
     private static let tapRunnableActionTypes = Set(["make_mana", "undo_mana"])
     private static let manaUndoActionTypes = Set(["undo_mana"])
+}
+
+/// Everything BattlefieldRow derives from its cards, sizes and selection. The tile builders read the card width about a
+/// dozen times per tile, and every read used to group the whole row again; Instruments on Caleb's iPhone (2026-10-18)
+/// put that grouping at about a tenth of the main thread, during scrolls and animations as well as new snapshots.
+struct BattlefieldRowLayout {
+    /// Cheap fields first: the synthesized == stops at the first difference, and the sets and the card array compare by
+    /// storage before contents.
+    struct Input: Equatable {
+        let flipped: Bool
+        let adaptsToDensity: Bool
+        let arrangement: BattlefieldRowArrangement
+        let rowWidth: CGFloat
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        let availableHeight: CGFloat?
+        let expandedGroupIds: Set<String>
+        let chosenIds: Set<String>
+        let targetableIds: Set<String>
+        let combatHighlightIds: Set<String>
+        let cards: [ZoneCard]
+    }
+
+    let groups: [BattlefieldCardGroup]
+    /// The tiles in order: open piles spread out, chosen cards pulled out of theirs.
+    let rendered: [BattlefieldCardGroup]
+    let permanent: ArenaPermanentLayout?
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    /// `rendered` split into the rows the row shows.
+    let arranged: [[BattlefieldCardGroup]]
+    /// The last card of each opened pile, keyed to that pile (it carries the Stack chip).
+    let stackChips: [String: String]
+}
+
+/// Holds the last BattlefieldRowLayout. A reference type on purpose: it is written while the body is evaluated and must
+/// not invalidate the view.
+final class BattlefieldRowLayoutCache {
+    private var input: BattlefieldRowLayout.Input?
+    private var cached: BattlefieldRowLayout?
+
+    func layout(_ input: BattlefieldRowLayout.Input, make: () -> BattlefieldRowLayout) -> BattlefieldRowLayout {
+        if let cached, self.input == input {
+            // Keep the newest storage, so the next comparison is by identity.
+            self.input = input
+            return cached
+        }
+        let made = make()
+        self.input = input
+        cached = made
+        return made
+    }
 }
 
 /// The brass chip on the last card of a pile the player spread out: tap to stack it back together.

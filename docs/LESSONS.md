@@ -75,6 +75,17 @@ contradicting one.
 
 ## Performance
 
+- 2026-10-18 (Claude): Instruments on Caleb's iPhone showed the board redrawing 30–60 times a second with nothing
+  happening. Each glow's `TimelineView(.animation(minimumInterval: 1/30))` started on its own phase, so a few 30 Hz glows
+  (plus the inspector's foil) drove SwiftUI at 60 Hz, and the AI thinking ring's `repeatForever` animation redrew every
+  frame. Every update re-walks the whole board's display list (shadowed shapes even rebuild their shadow paths), so the
+  cost follows the board's size, not the glow's; the app's own code barely shows in the samples. **Rule:** ambient
+  timelines use `AmbientTimelineSchedule` (one grid, heat-aware, paused when `BoardActivity` says idle); a spinner that
+  turns forever runs in Core Animation (`OrbitingArcView`). To name a ticker, export the time profile and run
+  `scripts/ios/time_profile_summary.py`: gaps of 33.3 ms between display-link updates mean one 30 Hz timeline, 16.7 ms
+  mean 60 Hz. Separately, `JSONValue.init(from:)` probes types with `try?`, and building those errors' coding paths was a
+  quarter of the polling thread: skip decoding repeated replies (`OnDevicePollReader`) rather than editing the engine
+  package's decoder, which ships with the engine.
 - 2026-10-03 (Claude): a quiet Android tavern board used about 105% CPU on the emulator because
   breathing glows redrew every frame. **Fix:** one shared 20 Hz clock (`rememberBoardBreath` in
   `board/BoardSupport.kt`), read at draw time; it now uses about 45% CPU, and 0.6% with
@@ -282,6 +293,10 @@ contradicting one.
   uncommitted. Committing the ledger first and then running the second `resume` would invalidate the run. If the
   ledger is already committed: `git reset <upload commit>` (keeps the ledger as an unstaged change), run `resume` with
   the same fingerprint, then `git reset <ledger commit>` to return to the pushed branch. No force push needed.
+- 2026-10-18 (Claude): `xcodebuild build -destination generic/platform=iOS` fails at "Verify staged native input
+  hashes (device only)" ("Installed file set differs from owned native inputs") in a worktree without the staged engine.
+  **Rule:** for a compile check, build `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`; device
+  and Release builds need the engine staged (a release worktree).
 - 2026-10-17 (Claude): main has a ruleset ("main: CI must pass", id 25329787) requiring `Download site build`, `app`,
   `boundary-tests`, `swift` and `real-jvm`, and the repo allows auto-merge (`gh pr merge N --auto --merge`). GitHub's
   auto-merge waits only for required checks, and a required check that never reports blocks the PR forever, so never

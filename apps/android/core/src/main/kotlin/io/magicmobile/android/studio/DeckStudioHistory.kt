@@ -268,6 +268,11 @@ class DeckStudioPlaytestAccumulator {
     private val recorder = DeckStudioPublicTimelineRecorder()
     private var detailRevoked = false
 
+    /** All that observing a repeated poll would change: detail switched off during a game still ends its timeline. */
+    fun revokeDetail() {
+        if (game?.end == DeckStudioRecordedGame.End.IN_PROGRESS) detailRevoked = true
+    }
+
     fun observe(request: J, response: J, enabled: Boolean, appBuild: String, now: Long, detailedEnabled: Boolean = false,
                 sanitizeLog: ((String) -> String)? = null): Boolean {
         if (!enabled || request["protocol"].integer != 1L || response["protocol"].integer != 1L || response["ok"].bool != true) return false

@@ -1,24 +1,30 @@
 import SwiftUI
+import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// A slow breathing value for glows, stepped thirty times a second on one shared clock.
 ///
 /// A SwiftUI repeating animation redraws at the display's full rate (up to 120 a second on
 /// ProMotion) for as long as it runs, and the board's glows run for most of a player's turn. On a
-/// glow this slow thirty steps a second look the same and let the display rest in between.
-/// Android's `rememberBoardBreath` does the same.
+/// glow this slow thirty steps a second look the same and let the display rest in between. Every
+/// breath steps on the same grid (AmbientTimelineSchedule), fifteen a second while the phone is
+/// hot, and rests at `high` once the board is idle (BoardActivity). Android's `rememberBoardBreath`
+/// does the same.
 struct BoardBreath<Content: View>: View {
     /// Seconds from `low` to `high`; the way back takes as long.
     let period: Double
     var low: Double = 0
     var high: Double = 1
     @ViewBuilder let content: (Double) -> Content
-
-    static var stepsPerSecond: Double { 30 }
+    @ObservedObject private var heat = DeviceHeat.shared
+    @ObservedObject private var activity = BoardActivity.shared
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / Self.stepsPerSecond)) { timeline in
-            content(Self.value(at: timeline.date, period: period, low: low, high: high))
+        let resting = activity.isIdle
+        TimelineView(AmbientTimelineSchedule(interval: heat.ambientInterval, paused: resting)) { timeline in
+            content(resting ? high : Self.value(at: timeline.date, period: period, low: low, high: high))
         }
+        .animation(.easeInOut(duration: 0.6), value: resting)
     }
 
     /// Eases between `low` and `high` like `.easeInOut`. Every breath reads the same wall clock, so
@@ -84,5 +90,52 @@ struct BurstTimelineSchedule: TimelineSchedule {
             }
             return date
         }
+    }
+}
+
+/// Tells BoardActivity about every touch on the board's window without taking part in any gesture: its recognizer
+/// fails as soon as a touch begins, never delays or cancels touches, and recognizes alongside everything else.
+struct BoardTouchActivity: UIViewRepresentable {
+    func makeUIView(context: Context) -> Probe { Probe() }
+    func updateUIView(_ view: Probe, context: Context) {}
+    static func dismantleUIView(_ view: Probe, coordinator: ()) { view.detach() }
+
+    final class Probe: UIView {
+        private let noticer = TouchNoticer()
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            backgroundColor = .clear
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if noticer.view !== window { detach() }
+            window?.addGestureRecognizer(noticer)
+        }
+
+        func detach() { noticer.view?.removeGestureRecognizer(noticer) }
+    }
+
+    final class TouchNoticer: UIGestureRecognizer, UIGestureRecognizerDelegate {
+        init() {
+            super.init(target: nil, action: nil)
+            cancelsTouchesInView = false
+            delaysTouchesBegan = false
+            delaysTouchesEnded = false
+            delegate = self
+        }
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            BoardActivity.shared.note()
+            state = .failed
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }

@@ -1141,6 +1141,8 @@ struct NativeGameView: View {
 
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
+            // Touches and game changes keep the breathing glows awake (BoardActivity).
+            .background { BoardTouchActivity() }
             .modifier(BoardImpactShake(animatableData: boardShake, amplitude: boardShakeAmplitude))
             .overlay { if hitVignette > 0 { BoardHitVignette(strength: hitVignette) } }
             .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
@@ -1148,6 +1150,7 @@ struct NativeGameView: View {
             .environment(\.boardHUDPulse, hudPulse)
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
+                BoardActivity.shared.note()
                 ingestBoardFX(snapshot)
                 gameStats.record(snapshot)
                 combatLogReasons.observe(snapshot)

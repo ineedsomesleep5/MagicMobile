@@ -1,10 +1,5 @@
 package io.magicmobile.android.board
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -123,8 +118,18 @@ object CardRulesReminder {
 fun Modifier.inspectionFoil(): Modifier = this.then(Modifier.composed {
     val level by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
     if (BoardFXLevel.of(level) != BoardFXLevel.FULL || BoardMotion.reduceMotion) return@composed Modifier
-    val transition = rememberInfiniteTransition(label = "foil")
-    val t by transition.animateFloat(0f, 1000f, infiniteRepeatable(tween(1_000_000, easing = LinearEasing)), label = "foilTime")
+    // Seconds since the inspector opened, stepped 30 times a second (15 while the phone is hot) like iOS, not every frame.
+    var t by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = androidx.compose.runtime.withFrameMillis { it }
+        var drawn = 0L
+        while (true) androidx.compose.runtime.withFrameMillis { frame ->
+            if (frame - drawn >= (if (io.magicmobile.android.ui.DeviceHeat.isHot) 66 else 33)) {
+                drawn = frame
+                t = (frame - start) / 1000f
+            }
+        }
+    }
     Modifier.graphicsLayer {
         rotationY = (sin(t * 0.9) * 3).toFloat()
         cameraDistance = 12f * density

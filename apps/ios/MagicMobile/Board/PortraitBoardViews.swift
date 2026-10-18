@@ -224,8 +224,9 @@ struct PortraitOpponentStatusBar: View {
     private func opponentMedallion(diameter: CGFloat) -> some View {
         let medallion = TavernMedallion(diameter: diameter, life: opponent.isOut ? nil : opponent.life,
                                         active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable) {
-            PlayerPortrait(player: opponent, size: diameter, active: false,
-                           thinking: snapshot.thinkingPlayerID == opponent.playerId)
+            // No thinking ring: the medallion clips the portrait to its circle, which hid the ring while it still
+            // redrew the board every frame (2026-10-18). The bar says who is thinking.
+            PlayerPortrait(player: opponent, size: diameter, active: false)
         }
         .opacity(opponent.isOut ? 0.45 : 1)
         .frame(width: diameter + 8, height: diameter + 8)
