@@ -75,7 +75,7 @@ build per platform.
 - [ ] Drop H2/ORMLite JDBC, protobuf, TLS/crypto and unused locales where unreachable (about −10 MB code).
 - Expected: engine about −45 MB uncompressed (iPhone download about 162 → 147 MB, Android APK about 143 → 131 MB),
   −24 MB memory at all times, no multi-GB spikes, less heat in long games.
-- Size cuts status, 2026-10-18 (branch `claude/youthful-archimedes-8heqeu`, draft; JVM-verified, no native build yet,
+- Size cuts status, 2026-10-18 (draft PR #199; JVM-verified, no native build yet,
   so neither box is ticked):
   - Sets: the engine installs its sets from a bundled set catalogue (`mage/mobile/set-catalogue.tsv.gz`, 1.4 MB,
     written from the set classes at build time). 492 of the 589 set classes (5.7 of their 8.3 MB of bytecode) are no
