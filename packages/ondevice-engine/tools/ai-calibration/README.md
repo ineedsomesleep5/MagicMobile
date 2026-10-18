@@ -19,6 +19,13 @@ python3 scripts/ai_calibration.py summarize build/ai-calibration/results/*.csv
   of deck ids.
 - **Pairing order:** every four games play one deck pair with both deck assignments and both seatings
   (skill A on deck X first, X second, Y first, Y second), so deck strength and going first cancel out.
+- **Decks against skill:** a deck much stronger than the rest (Draconic Destruction, the strongest precon in C3's
+  round-robin, docs/RANKED.md) must not stand in for skill. The pairing order already gives each skill each deck of a
+  pair equally often; `summarize` checks that over the CSVs it reads (a partial block or a replayed failure leaves it
+  uneven), and reports each pairing three ways: all games, without the focus deck's games, and the focus deck's
+  games alone (how often it won with each skill), then each deck's win rate overall and in each seat.
+  `--focus-deck` picks the deck (default `draconic-destruction`; empty for none); `--by-deck` prints only the deck
+  table. Keep Draconic games when reproducing release C's out-of-memory case: there the deck is the test case.
 - **Budgets:** `phone` (default) gives each AI the think budget it has against a person who is playing
   (`skill × 3` s on an empty stack, 2 s while responding). `watcher` is the October 2026 method: a human
   watcher seat goes through the production adapter, picks the starting AI and concedes at its first
@@ -68,6 +75,9 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl --in
   --commander "Gishath, Sun's Avatar" --output build/ai-calibration/decks/tutor-heavy-gishath.json
 python3 scripts/profile_long_games.py run --mode memory --skills 6 --games 2 --pool tutor-heavy-gishath,ai-the-ur-dragon-optimized
 ```
+
+`--engine-classpath` runs the same tools on another engine build (a saved copy of its `build/runtime-classpath.txt`,
+with the classes it names), for before and after measurements.
 
 JVM runs read the container's free memory, so a search's cap there is far above a phone's; to stand in for a phone,
 pass the phone's available memory to every JVM, for example

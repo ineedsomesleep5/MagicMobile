@@ -1,5 +1,7 @@
 package mage.player.ai;
 
+import mage.game.Game;
+import mage.game.GameImpl;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -13,19 +15,27 @@ import java.util.Set;
 public final class MobileSearchNodes {
     private MobileSearchNodes() {}
 
-    /** Nodes reachable from these through children lists that still hold a game copy (each holds its own). */
-    public static int liveGames(Iterable<SimulationNode2> from) {
+    /**
+     * Nodes reachable from these through children lists that still hold a game copy (each holds its own): how many,
+     * and how many of those hold their own copy of every card (a deep copy, such as the live game's or one made while
+     * a trigger is handled; GameImpl.mobileOwnsAllCards), which is larger than a copy that shares unused cards.
+     */
+    public static int[] liveGames(Iterable<SimulationNode2> from) {
         Set<SimulationNode2> seen=Collections.newSetFromMap(new IdentityHashMap<>());
         ArrayDeque<SimulationNode2> todo=new ArrayDeque<>();
-        int games=0;
+        int games=0,deep=0;
         for(SimulationNode2 node:from) if(node!=null) todo.push(node);
         while(!todo.isEmpty()) {
             SimulationNode2 node=todo.pop();
             if(!seen.add(node)) continue;
-            if(node.game!=null) games++;
+            Game game=node.game;
+            if(game!=null) {
+                games++;
+                if(!(game instanceof GameImpl) || ((GameImpl)game).mobileOwnsAllCards()) deep++;
+            }
             for(SimulationNode2 child:node.children) todo.push(child);
         }
-        return games;
+        return new int[]{games,deep};
     }
 
     /** Drops the game copy of every node reachable from these, and of their ancestors. */

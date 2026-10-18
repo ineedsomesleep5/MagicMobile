@@ -13,6 +13,7 @@ import mage.cards.f.FlametongueKavu;
 import mage.cards.g.GrizzlyBears;
 import mage.cards.h.HillGiant;
 import mage.cards.l.LightningBolt;
+import mage.cards.l.LoamingShaman;
 import mage.cards.w.WoodElves;
 import mage.constants.Rarity;
 import mage.constants.Zone;
@@ -29,6 +30,9 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
 /**
@@ -46,6 +50,9 @@ public final class RealSearchMemoryTests {
         tests.put("lazy-cards", RealSearchMemoryTests::lazyCards);
         tests.put("same-search", RealSearchMemoryTests::sameSearch);
         tests.put("cap", RealSearchMemoryTests::cap);
+        tests.put("trigger-fan-out", RealSearchMemoryTests::triggerFanOut);
+        tests.put("abandoned-search-stops", RealSearchMemoryTests::abandonedSearchStops);
+        tests.put("cap-counts-other-searches", RealSearchMemoryTests::capCountsOtherSearches);
         tests.put("released-after-decision", RealSearchMemoryTests::releasedAfterDecision);
         tests.put("copy-size", RealSearchMemoryTests::copySize);
         tests.put("device-memory", RealSearchMemoryTests::deviceMemory);
@@ -178,6 +185,111 @@ public final class RealSearchMemoryTests {
             check(!under.capped && under.peak < under.cap, "one at a time stays under the cap: peak " + under.peak);
             System.out.println("  eager: " + eager + ", peak " + capped.peak + " of " + capped.cap
                 + "; one at a time: " + oneAtATime + ", peak " + under.peak);
+        } finally {
+            DeviceMemory.install(null);
+        }
+    }
+
+    /**
+     * Loaming Shaman's trigger ("any number of target cards" from a graveyard) lists every set of up to four cards of
+     * the graveyard, and the AI copies the whole game, cards included, for each option while it handles the trigger
+     * (SimulatedPlayer2.triggerAbility), before its search enters that node. The cap counts those copies at their
+     * deep size, and the search makes no copy past it: the fan-out that ran release C's calibration games out of
+     * memory, where nothing counted it and nothing stopped it.
+     */
+    private static void triggerFanOut() throws Exception {
+        DeviceMemory.install(() -> 1); // the smallest cap, AISearchMemory.MIN_COPIES
+        try (Board b = new Board(new AIDifficulty(4, 0, 7))) {
+            b.setUp("shaman");
+            Search search = b.search(5L);
+            AISearchMemory memory = AISearchMemory.last;
+            check(memory.capped, "the trigger's copies reach the cap: " + search + ", peak " + memory.peak);
+            check(memory.deepCopyBytes > memory.copyBytes, "a trigger's copies count at their deep size");
+            // Each of the 795 options would copy the game; the search stops at the cap instead.
+            check(search.copies() < 4 * memory.cap, "no copies past the cap: " + search + ", cap " + memory.cap);
+            check(AISearchMemory.abandonedRunning() == 0, "nothing left running");
+            System.out.println("  " + search + ", peak " + memory.peak + " of " + memory.cap);
+        } finally {
+            DeviceMemory.install(null);
+        }
+    }
+
+    /**
+     * A search the AI stopped waiting for (out of time) is abandoned: its thread makes no further game copy and
+     * enters no further node, even in code that never checks the interrupt (a trigger's fan-out), and its copies are
+     * freed once it has unwound and the AI has decided. The next search waits for that. A search whose task was still
+     * queued never runs.
+     */
+    private static void abandonedSearchStops() throws Exception {
+        try (Board b = new Board(new AIDifficulty(4, 0, 7))) {
+            b.setUp("bolt");
+            Game rootGame = b.game.createSimulationForAI();
+            SimulationNode2 root = new SimulationNode2(null, rootGame, 4, b.ai.getId());
+            AISearchMemory search = AISearchMemory.start(root, List::of);
+            int[] made = {0};
+            CountDownLatch copying = new CountDownLatch(1);
+            AtomicReference<Throwable> ended = new AtomicReference<>();
+            Thread thread = new Thread(() -> {
+                AISearchMemory entered = null;
+                try {
+                    entered = AISearchMemory.enter(search, root);
+                    while (true) { // copies, as a trigger's options do, without looking at the interrupt
+                        rootGame.createSimulationForAI();
+                        made[0]++;
+                        copying.countDown();
+                    }
+                } catch (Throwable stop) { ended.set(stop); }
+                finally { AISearchMemory.leave(entered); }
+            }, "AI-SIM-MAD abandoned-search test");
+            thread.start();
+            check(copying.await(10, TimeUnit.SECONDS), "the search copies");
+            thread.interrupt(); // upstream's only signal: ignored by the loop
+            search.returned(); // the AI stopped waiting for it
+            check(AISearchMemory.awaitAbandoned(5000), "it stops at its next copy");
+            thread.join(5000);
+            check(ended.get() instanceof AISearchMemory.Stopped, "stopped: " + ended.get());
+            check(root.getGame() != null, "its copies stay until the AI decides");
+            search.decided(List.of());
+            check(root.getGame() == null, "then they are freed");
+            // A search whose task was still queued when the AI stopped waiting.
+            SimulationNode2 queuedRoot = new SimulationNode2(null, b.game.createSimulationForAI(), 4, b.ai.getId());
+            AISearchMemory queued = AISearchMemory.start(queuedRoot, List::of);
+            queued.returned();
+            eq(AISearchMemory.abandonedRunning(), 0);
+            try {
+                AISearchMemory.enter(queued, queuedRoot);
+                throw new AssertionError("a late task must not start");
+            } catch (AISearchMemory.Stopped expected) { /* refused before touching its node */ }
+            queued.decided(List.of());
+            check(queuedRoot.getGame() == null, "the queued search's copy is freed");
+            System.out.println("  abandoned after " + made[0] + " copies; stopped at the next one");
+        }
+    }
+
+    /**
+     * The cap covers every search whose copies are not freed yet, not just the one running: an abandoned search
+     * still unwinding, or this decision's quick search, holds memory the new search must leave room for.
+     */
+    private static void capCountsOtherSearches() throws Exception {
+        DeviceMemory.install(() -> 400L << 20);
+        try (Board b = new Board(new AIDifficulty(4, 0, 7))) {
+            b.setUp("fetch");
+            Search alone = b.search(5L);
+            AISearchMemory free = AISearchMemory.last;
+            check(!free.capped, "alone, the search stays under its cap: " + alone + ", peak " + free.peak + " of " + free.cap);
+            SimulationNode2 otherRoot = new SimulationNode2(null, b.game.createSimulationForAI(), 4, b.ai.getId());
+            AISearchMemory other = AISearchMemory.start(otherRoot, List::of);
+            other.heldBytes = (free.cap - free.peak / 2) * free.copyBytes; // another search holding most of the budget
+            try {
+                Search squeezed = b.search(5L);
+                check(AISearchMemory.last.capped, "the other search's copies count: " + squeezed);
+            } finally {
+                other.returned();
+                other.decided(List.of());
+            }
+            Search again = b.search(5L);
+            check(!AISearchMemory.last.capped, "once they are freed, the room is back: " + again);
+            eq(again.decision(), alone.decision());
         } finally {
             DeviceMemory.install(null);
         }
@@ -335,6 +447,14 @@ public final class RealSearchMemoryTests {
                     hand(ai, FlametongueKavu::new, "Flametongue Kavu");
                     for (int i = 0; i < 10; i++) library(ai, Forest::new, "Forest");
                 }
+                case "shaman" -> {
+                    // 12 cards in the opponent's graveyard: 1 + 12 + 66 + 220 + 495 sets of up to four (upstream's
+                    // limit), and one option for the AI's own empty graveyard.
+                    for (int i = 0; i < 3; i++) permanent(ai, Forest::new, "Forest");
+                    hand(ai, LoamingShaman::new, "Loaming Shaman");
+                    for (int i = 0; i < 12; i++) graveyard(human, GrizzlyBears::new, "Grizzly Bears");
+                    for (int i = 0; i < 10; i++) library(ai, Forest::new, "Forest");
+                }
                 default -> throw new IllegalArgumentException(board);
             }
         }
@@ -346,6 +466,11 @@ public final class RealSearchMemoryTests {
         Card library(Player owner, BiFunction<UUID,CardSetInfo,Card> constructor, String name) {
             Card card = card(owner, constructor, name);
             card.setZone(Zone.LIBRARY, game); owner.getLibrary().putOnTop(card, game);
+            return card;
+        }
+        Card graveyard(Player owner, BiFunction<UUID,CardSetInfo,Card> constructor, String name) {
+            Card card = card(owner, constructor, name);
+            card.setZone(Zone.GRAVEYARD, game); owner.getGraveyard().add(card);
             return card;
         }
         Card hand(Player owner, BiFunction<UUID,CardSetInfo,Card> constructor, String name) {

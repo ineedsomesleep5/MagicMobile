@@ -68,6 +68,40 @@ class StatisticsTests(unittest.TestCase):
             table = calibration.summarize_decks([path])
             self.assertIn("| x | 3 | 1 | 1 | 1 | 50%", table)
             self.assertIn("| y | 3 | 1 | 1 | 1 | 50%", table)
+            # x won in seat A once of one decided game there; lost its one decided game in seat B.
+            self.assertRegex(table, r"\| x \|.*\| 1/1 \| 0/1 \|")
+
+    def test_focus_deck_reported_apart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "skill1-vs-skill6-phone.csv"
+            rows = [("x", "strong", "B"), ("strong", "x", "A"), ("x", "y", "A"), ("y", "x", "B"), ("strong", "x", "draw")]
+            with path.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, calibration.FIELDS)
+                writer.writeheader()
+                for game, (deck_a, deck_b, winner) in enumerate(rows):
+                    writer.writerow({"game": game, "budget": "phone", "skill_a": 1, "skill_b": 6, "deck_a": deck_a,
+                                     "deck_b": deck_b, "first": "A", "winner": winner, "turns": 10, "seconds": 1})
+            text = calibration.summarize([path], "strong")
+            sections = text.split("\n\n")
+            self.assertIn("| skill 1 vs skill 6 | phone | 5 | 2 | 2 | 1 | 50%", text)
+            # Without the strong deck: games 2 and 3 only.
+            self.assertIn("Without strong games:", text)
+            self.assertIn("| skill 1 vs skill 6 | phone | 2 | 1 | 1 | 0 | 50%", text)
+            # Its games: A won with it 1 of 1 decided, B won with it 1 of 1; deck 100%, A 50%.
+            self.assertIn("| skill 1 vs skill 6 | 3 | 1/1 | 1/1 | 100% (34–100) | 50% (9–91) |", text)
+            self.assertIn("Deck balance: uneven", sections[-1] + text)
+            self.assertIn("strong A 2, B 1", text)
+
+    def test_balanced_schedule_reports_even(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "pairing.csv"
+            with path.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, calibration.FIELDS)
+                writer.writeheader()
+                for row in calibration.schedule(2, 6, DECKS, 24, 3, "phone"):
+                    writer.writerow({**{k: row[k] for k in ("game", "budget", "skill_a", "skill_b", "deck_a", "deck_b")},
+                                     "first": "A", "winner": "A", "turns": 5, "seconds": 1})
+            self.assertIn("each skill played each deck equally often", calibration.summarize([path], None))
 
 
 if __name__ == "__main__":

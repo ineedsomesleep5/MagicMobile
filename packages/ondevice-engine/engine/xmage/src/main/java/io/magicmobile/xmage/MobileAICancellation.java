@@ -399,6 +399,8 @@ final class MobileAICancellation {
         @Override protected Integer addActionsTimed() {
             synchronized(this) { choices().clear();searchRoot=root; }
             searched=true;
+            // An earlier search the AI stopped waiting for holds a search thread and its copies until it stops.
+            if(root!=null) AISearchMemory.awaitAbandoned(AISearchMemory.ABANDONED_WAIT_MILLIS);
             AISearchMemory memory=root==null?null:AISearchMemory.start(root,this::alternatives);
             if(memory!=null) { searchMemory=memory;searches().add(memory); }
             int configured=maxThinkTimeSecs;
@@ -410,6 +412,8 @@ final class MobileAICancellation {
             long started=System.nanoTime();
             try { return super.addActionsTimed(); }
             finally {
+                // Upstream stopped waiting (done, out of time or failed); a search still running stops at its next copy.
+                if(memory!=null) memory.returned();
                 maxThinkTimeSecs=configured;
                 boolean outOfTime=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
                 if(memory!=null && memory.capped) {
@@ -433,13 +437,20 @@ final class MobileAICancellation {
         }
         @Override protected int addActions(SimulationNode2 node,int depth,int alpha,int beta) {
             cancellation.enterSimulation();
-            AISearchMemory memory=AISearchMemory.enter(searchMemory,node);
+            AISearchMemory memory=null;
             try {
+                memory=AISearchMemory.enter(searchMemory,node);
                 int score=super.addActions(node,depth,alpha,beta);
                 // The search keeps only its best root action; remember how the others scored, when a mistake can use them.
                 if(mistakePercent>0 && node!=null && searchRoot!=null && node.getParent()==searchRoot && (memory==null || !memory.capped))
                     synchronized(this) { if(node.getParent()==searchRoot) choices().add(new ScoredChoice(node,score)); }
                 return score;
+            }
+            catch(AISearchMemory.Stopped stopped) {
+                // A search stopped at its cap within its time returns as a timed-out one does (upstream reads no score)
+                // and the AI plays its best line at the cap; an abandoned one only unwinds.
+                if(memory!=null && memory.root==node && memory.capped && !memory.abandoned) return 0;
+                throw stopped;
             }
             catch(Throwable failure) {
                 // Upstream addActionsTimed can consume the Future's ExecutionException.

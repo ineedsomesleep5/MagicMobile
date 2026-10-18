@@ -57,6 +57,7 @@ class PatchTests(unittest.TestCase):
         self.assertIn('if (mobileLazyCards && game.simulation && game.mobileTriggering == 0) {',out)
         self.assertIn('this.gameCards = CardUtil.deepCopyObject(game.gameCards);',out)  # live games: as upstream
         self.assertEqual(out.count('mobileTriggerAbility(player, '),4)
+        self.assertIn('public boolean mobileOwnsAllCards() {\n        return ownedCards == null;',out)  # search memory weight
         self.assertNotIn('player.triggerAbility(a, this)',out)
         with self.assertRaises(ValueError):patch.patch_lazy_cards(game.replace('player.triggerAbility(b, this);\n',''))
         search=('                if (!game.getStack().isEmpty()) {\n                    resolve(node, depth, game);\n'

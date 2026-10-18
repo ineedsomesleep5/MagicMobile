@@ -31,7 +31,8 @@ OUT = ROOT / 'build/profile-long-games'
 RESULT_ENDS = ('ended', 'turn-limit', 'time-limit')
 
 
-def compile_tool() -> str:
+def compile_tool(engine: Path | None = None) -> str:
+    """The tools compiled against this build, on the classpath of this build or of another (engine, before/after)."""
     cp = (ROOT / 'build/runtime-classpath.txt').read_text().strip()
     out = BUILD / 'classes'
     sources = [TOOL / 'AICalibration.java', TOOL / 'LongGameProfile.java']
@@ -40,6 +41,8 @@ def compile_tool() -> str:
         out.mkdir(parents=True, exist_ok=True)
         subprocess.run(['javac', '-J-Xmx512m', '--release', '17', '-nowarn', '-cp', cp, '-d', str(out), *map(str, sources)],
                        check=True)
+    if engine:
+        cp = engine.read_text().strip()
     return f'{cp}{os.pathsep}{out}'
 
 
@@ -96,7 +99,7 @@ def run(args: argparse.Namespace) -> None:
         raise SystemExit('--asprof must name an async-profiler release directory (bin/asprof, lib/)')
     deck_index()
     decks = [d for pool in args.pool.split('+') for d in pool_decks(pool)]
-    classpath = compile_tool()
+    classpath = compile_tool(args.engine_classpath)
     for skill in [int(s) for s in args.skills.split(',')]:
         rows = schedule(skill, skill, decks, args.first_game + args.games, args.seed, 'phone')[args.first_game:]
         for row in rows:
@@ -602,6 +605,8 @@ def main():
     r.add_argument('--interval', default='10ms', help='CPU sampling interval')
     r.add_argument('--alloc', default='512k', help='allocation sampling interval in bytes')
     r.add_argument('--out', type=Path, default=OUT)
+    r.add_argument('--engine-classpath', type=Path,
+                   help="another engine build's runtime-classpath.txt (a saved copy, for before and after runs)")
     rep = sub.add_parser('report', help='Markdown summary')
     rep.add_argument('dirs', nargs='*', type=Path, default=[OUT])
     rep.add_argument('--asprof', default=os.environ.get('ASYNC_PROFILER_HOME', ''), help='for jfrconv')

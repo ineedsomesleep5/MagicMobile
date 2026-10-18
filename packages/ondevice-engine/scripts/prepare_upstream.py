@@ -117,7 +117,11 @@ def patch_lazy_cards(text: str) -> str:
         '    // processing, which then goes on; those copies take their own cards, as upstream.\n'
         '    private transient int mobileTriggering;\n'
         '    /** MOBILE_LAZY_CARDS: false only in equivalence checks (every copy deep-copies its cards, as upstream). */\n'
-        '    public static volatile boolean mobileLazyCards = true;\n','GameImpl.gameCards')
+        '    public static volatile boolean mobileLazyCards = true;\n\n'
+        '    /** MOBILE_LAZY_CARDS: true when this game holds its own copy of every card (a deep copy, or all handed out). */\n'
+        '    public boolean mobileOwnsAllCards() {\n'
+        '        return ownedCards == null;\n'
+        '    }\n','GameImpl.gameCards')
     text=exact(text,'        this.gameCards = CardUtil.deepCopyObject(game.gameCards);\n',
         '        if (mobileLazyCards && game.simulation && game.mobileTriggering == 0) {\n'
         '            // MOBILE_LAZY_CARDS: the deep copy\'s map and iteration order, with the source\'s card objects for now\n'

@@ -96,6 +96,17 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
+  (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
+  makes a full deep game copy for every option of a trigger, and Loaming Shaman (Draconic Destruction) targets "any number"
+  of graveyard cards: up to about 4,000 options (upstream's limit is 4 of 18 cards). A timed-out search kept copying while
+  the AI's next search ran beside it, 1.9 GB in one node's children. Those copies also hang under a node the tree does not
+  reach yet (`simulatePriority` handles triggers before it attaches the new node), so #202's copy count never saw them.
+  **Rule:** stop searches at their game copies (`AISearchMemory.Stopped`), count the node being copied, and take a live
+  heap dump before tuning budgets (MAT's leak suspects named the thread and the node). An out-of-memory error on a search
+  thread is swallowed by its cancelled task (calibration only shows `engine-stopped`); `-XX:OnOutOfMemoryError=touch <file>`
+  marks it. A watcher that flags search threads busy while the GAME thread is idle misses an orphan that overlaps the next
+  search: count busy search threads instead. Where: `AISearchMemory.java`, `RealSearchMemoryTests` (`trigger-fan-out`).
 - 2026-10-18 (Claude, release C AI memory): sharing card objects between game copies (`GameImpl`
   `MOBILE_LAZY_CARDS`) is exact only while a source is not changed again while a copy that shares its cards is alive.
   The AI's search sources are frozen once copied, or their copies are dropped before the source goes on, except
