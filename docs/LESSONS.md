@@ -277,3 +277,8 @@ contradicting one.
   Passes are not round steps: record whether the stack was empty when a step was taken and pass for the player's own
   triggers before it. In the parity fixture, separate targets with `;`: card names like "Zacama, Primal Calamity"
   contain commas. Test snapshots that include `xmage` need every `panels` field or decoding fails.
+- 2026-10-17 (Claude, TestFlight 46): the release controller distributes to External only from the exact commit it
+  uploaded (`sourceCommit` is part of the run identity), with at most the upload's `build-ledger.json` change left
+  uncommitted. Committing the ledger first and then running the second `resume` would invalidate the run. If the
+  ledger is already committed: `git reset <upload commit>` (keeps the ledger as an unstaged change), run `resume` with
+  the same fingerprint, then `git reset <ledger commit>` to return to the pushed branch. No force push needed.
