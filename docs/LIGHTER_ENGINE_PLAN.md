@@ -277,7 +277,7 @@ same objects that dominate allocation.
     time. A search's copy keeps 0.53–0.58 MB alive instead of 1.8–1.9 MB. Live heap over the 98 MB baseline at its
     peak: 80 → 45 MB (skill 5), 74 → 51 (6), 91 → 33 (tutor-heavy); heap during a search at most 521 → 320 MB
     (skill 6), 466 → 323 (tutor-heavy). Searches held at most 25 copies at once and never reached the cap; the
-    largest fan-out measured held 50 copies before, 8 after. Searches are bounded by time, so the faster engine
+    largest fan-out measured held 8 copies where upstream's way held at least 50. Searches are bounded by time, so the faster engine
     searches more nodes where a search runs out of time, and per-decision means move less (skill 6: 1.25 → 1.15 s
     of CPU, 1,184 → 1,038 MB allocated).
   - Calibration (C3 baseline matrix, 80 games per pairing, phone budget, both builds at once on two workers each):
