@@ -141,7 +141,8 @@ def done_games(path: Path) -> set[int]:
     return {int(r['game']) for r in kept}
 
 
-def compile_tool() -> str:
+def compile_tool(engine: Path | None = None) -> str:
+    """The tool compiled against this build, on the classpath of this build or of another (engine, before/after)."""
     cp = (ROOT / 'build/runtime-classpath.txt').read_text().strip()
     out = BUILD / 'classes'
     source = TOOL / 'AICalibration.java'
@@ -149,6 +150,8 @@ def compile_tool() -> str:
     if not stamp.exists() or stamp.stat().st_mtime < source.stat().st_mtime:
         out.mkdir(parents=True, exist_ok=True)
         subprocess.run(['javac', '-J-Xmx512m', '--release', '17', '-cp', cp, '-d', str(out), str(source)], check=True)
+    if engine:
+        cp = engine.read_text().strip()
     # The tool's classes go after the engine's, so they never replace production classes.
     return f'{cp}{os.pathsep}{out}'
 
@@ -188,9 +191,9 @@ class Worker:
 
 
 def play_all(jobs: list[tuple[Path, dict]], workers: int, heap: str, max_turns: int, max_seconds: int,
-             restart_every: int) -> None:
+             restart_every: int, engine: Path | None = None) -> None:
     """jobs: (csv path, schedule row). Appends each finished game to its CSV."""
-    classpath = compile_tool()
+    classpath = compile_tool(engine)
     work: queue.Queue = queue.Queue()
     for job in jobs:
         work.put(job)
@@ -425,6 +428,8 @@ def main():
         p.add_argument('--max-seconds', type=int, default=1800)
         p.add_argument('--restart-every', type=int, default=10, help='games per worker JVM before a fresh one')
         p.add_argument('--out', type=Path, default=BUILD / 'results')
+        p.add_argument('--engine-classpath', type=Path,
+                       help="another engine build's runtime-classpath.txt (a saved copy, for before and after runs)")
 
     run = sub.add_parser('run', help='one pairing')
     run.add_argument('--skill-a', type=int, required=True)
@@ -478,7 +483,7 @@ def main():
     # Interleave pairings so partial results cover every pairing.
     jobs.sort(key=lambda job: (job[1]['game'], job[0].name))
     print(f'{len(jobs)} games to play on {args.workers} workers ({args.budget} budget)', flush=True)
-    play_all(jobs, args.workers, args.heap, args.max_turns, args.max_seconds, args.restart_every)
+    play_all(jobs, args.workers, args.heap, args.max_turns, args.max_seconds, args.restart_every, args.engine_classpath)
     print(summarize([p for p in paths if p.exists()]))
 
 

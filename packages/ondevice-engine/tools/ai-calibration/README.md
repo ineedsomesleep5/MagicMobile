@@ -43,8 +43,12 @@ python3 scripts/ai_calibration.py summarize build/ai-calibration/results/*.csv
 - **Output:** one CSV per pairing in `build/ai-calibration/results/` (game, game_seed, budget, skill_a,
   skill_b, deck_a, deck_b, first, winner, winner_skill, turns, seconds, end), appended as each game
   ends. Rerunning the same command resumes: games already in the CSV are skipped, and games that failed in
-  the harness (`engine-stopped`, `jvm-exit`, for example a worker out of memory) are played again. Worker logs (XMage
-  warnings) are in `build/ai-calibration/logs/`.
+  the harness (`engine-stopped`, `jvm-exit`, for example a worker out of memory) are played again, so count them
+  before a rerun. An out-of-memory error on an AI search thread leaves no log line (its cancelled task swallows it);
+  `-XX:OnOutOfMemoryError=<script>` in `JAVA_TOOL_OPTIONS` marks it. Worker logs (XMage warnings) are in
+  `build/ai-calibration/logs/`.
+- **Before and after:** `--engine-classpath` (here and in `profile_long_games.py run`) plays on another engine build: a
+  saved copy of its `build/runtime-classpath.txt`, naming saved copies of the classes that differ.
 
 `AICalibration.java` sits in the adapter's package so it can build matches from the production classes
 (`MobileCommanderMatch`, `MobileAICancellation` players, `DeckLoader`, `XmageEngine`) without changing them.
@@ -75,9 +79,6 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl --in
   --commander "Gishath, Sun's Avatar" --output build/ai-calibration/decks/tutor-heavy-gishath.json
 python3 scripts/profile_long_games.py run --mode memory --skills 6 --games 2 --pool tutor-heavy-gishath,ai-the-ur-dragon-optimized
 ```
-
-`--engine-classpath` runs the same tools on another engine build (a saved copy of its `build/runtime-classpath.txt`,
-with the classes it names), for before and after measurements.
 
 JVM runs read the container's free memory, so a search's cap there is far above a phone's; to stand in for a phone,
 pass the phone's available memory to every JVM, for example
