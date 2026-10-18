@@ -7,7 +7,7 @@ import mage.cards.decks.Deck;
 import mage.deck.Commander;
 import java.util.*;
 
-/** Resolve printings only from compiled XMage set metadata, never caller-supplied Java classes. */
+/** Resolve printings only from the bundled XMage set catalogue, never caller-supplied Java classes. */
 public final class DeckLoader {
     private DeckLoader() {}
     public static Deck load(Map<String,Object> config) {
@@ -40,23 +40,24 @@ public final class DeckLoader {
             if(countLong<1 || countLong>2000 || (total+=(int)countLong)>2000)
                 throw new BridgeException("invalid_deck","Invalid card count");
             String code=Json.requiredString(r,"setCode"),number=Json.requiredString(r,"collectorNumber");
-            ExpansionSet set=Sets.getInstance().get(code);
-            if(set==null) throw new BridgeException("unknown_printing","Set is not in the compiled catalogue");
-            ExpansionSet.SetCardInfo selected=null;
-            for(ExpansionSet.SetCardInfo info:set.getSetCardInfo()) {
-                if(!info.getCardNumber().equals(number))continue;
-                if(selected!=null) throw new BridgeException("ambiguous_printing","Collector number is not unique in this set");
-                selected=info;
-            }
-            if(selected==null) throw new BridgeException("unknown_printing","Collector number is not in the compiled catalogue");
+            List<MobileExpansionSet.Printing> printings=printings(code,number);
+            if(printings==null) throw new BridgeException("unknown_printing","Set is not in the compiled catalogue");
+            if(printings.size()>1) throw new BridgeException("ambiguous_printing","Collector number is not unique in this set");
+            if(printings.isEmpty()) throw new BridgeException("unknown_printing","Collector number is not in the compiled catalogue");
+            MobileExpansionSet.Printing selected=printings.get(0);
             if(r.containsKey("name") && !Json.string(r.get("name")).equals(selected.getName()))
                 throw new BridgeException("printing_name_mismatch","Requested name does not match the compiled printing");
-            CardSetInfo info=new CardSetInfo(selected.getName(),code,number,selected.getRarity(),selected.getGraphicInfo());
+            CardSetInfo info=selected.setInfo(code);
             for(int i=0;i<(int)countLong;i++) {
-                Card c=GeneratedCardFactory.create(selected.getCardClass().getName(),info);
+                Card c=GeneratedCardFactory.create(selected.getClassName(),info);
                 if(c==null) throw new BridgeException("unsupported_card","Compiled printing has no working factory");
                 cards.add(c);
             }
         }
+    }
+    /** A set's printings with this collector number (as its set class lists them), or null for an unknown set. */
+    static List<MobileExpansionSet.Printing> printings(String code,String number) {
+        ExpansionSet set=Sets.getInstance().get(code);
+        return set==null ? null : ((MobileExpansionSet)set).printings(number);
     }
 }

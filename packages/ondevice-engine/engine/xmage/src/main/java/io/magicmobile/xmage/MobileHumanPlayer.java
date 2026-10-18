@@ -188,6 +188,7 @@ public final class MobileHumanPlayer extends HumanPlayer {
                     sendPlayerAction(PlayerAction.TRIGGER_AUTO_ORDER_ABILITY_FIRST,game,UUID.fromString(Json.requiredString(action,"abilityId")));break;
                 case "passUntilStackResolved": sendPlayerAction(PlayerAction.PASS_PRIORITY_UNTIL_STACK_RESOLVED,game,null);break;
                 case "autoPassAfterCast": controller.userData.setPassPriorityCast(Json.bool(action.get("enabled")));break;
+                case "devicePace": if(game instanceof MobileCommanderGame mobileGame) mobileGame.cancellation().setHot(Json.bool(action.get("hot")));break;
                 default: throw new BridgeException("unsupported_response","Unknown answer action");
             }
         }

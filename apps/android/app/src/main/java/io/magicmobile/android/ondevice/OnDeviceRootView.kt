@@ -837,6 +837,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             seen = vm.account.unreadMessages
         }
     }
+    // A hot phone shortens AI thinking in games its engine runs: never ranked (the same AI for everyone) or online.
+    LaunchedEffect(activeGame, io.magicmobile.android.ui.DeviceHeat.isHot, activeMatch?.mode) {
+        session.devicePaceHot = activeGame && !setup.usingMultiplayer && activeMatch?.mode != io.magicmobile.android.game.PlayMode.RANKED &&
+            io.magicmobile.android.ui.DeviceHeat.isHot
+    }
     LaunchedEffect(activeGame) {
         // The combo loop shortcut: solo games only.
         session.comboLoopsAllowed = activeGame && !setup.usingMultiplayer

@@ -283,6 +283,8 @@ public final class XmageEngine implements EnginePort {
         MobileCardFactories.install(GeneratedCardFactory::create);
         GeneratedSetRegistry.install();
     }
+    /** The platform's reading of memory the app still has, in bytes, for AI search memory caps (DeviceMemory). */
+    public static void useAvailableMemory(java.util.function.LongSupplier reader) { DeviceMemory.install(reader); }
     /** Same compiled loader/Commander validator as create, without starting a game or AI. */
     @Override public synchronized Map<String,Object> validateDeck(Map<String,Object> deck) {
         if(closed) throw new BridgeException("engine_closed","Engine is closed");

@@ -12,7 +12,7 @@ runs games one at a time from a queue, so slow pairings do not leave CPUs idle. 
 appended as each game ends, and a rerun with the same arguments skips games already in the CSV.
 """
 from __future__ import annotations
-import argparse, csv, itertools, json, math, os, queue, random, re, subprocess, sys, threading, time
+import argparse, collections, csv, itertools, json, math, os, queue, random, re, subprocess, sys, threading, time
 from pathlib import Path
 
 from jvm_client import ROOT
@@ -27,6 +27,9 @@ FIELDS = ['game', 'game_seed', 'budget', 'skill_a', 'skill_b', 'deck_a', 'deck_b
           'mistakes_a', 'mistakes_b']
 # Per-seat overrides of the skill's AI search depth and mistake chance (engines with AIDifficulty only).
 OVERRIDES = ('depth_a', 'mistake_a', 'depth_b', 'mistake_b')
+# The strongest precon (C3 round-robin, docs/RANKED.md): summaries also report pairings without its games and its
+# games apart, so its matchups do not stand in for skill.
+FOCUS_DECK = 'draconic-destruction'
 # Ranked tier pools (docs/RANKED.md): Bronze plays the precons; the others the bracket decks.
 POOLS = {'precon': lambda d: d['precon'], 'core': lambda d: d['bracket'] == 2 and not d['precon'],
          'upgraded': lambda d: d['bracket'] == 3, 'optimized': lambda d: d['bracket'] == 4}
@@ -76,7 +79,8 @@ def pool_decks(pool: str) -> list[str]:
     if pool == 'core+precon':
         return [d['id'] for d in index if d['bracket'] == 2]
     ids = pool.split(',')
-    known = {d['id'] for d in index}
+    # The ranked pools, plus any other deck resolved into DECKS (tools/ai-calibration/decks, for example).
+    known = {d['id'] for d in index} | {p.stem for p in DECKS.glob('*.json') if p.stem != 'index'}
     missing = [i for i in ids if i not in known]
     if missing:
         raise SystemExit(f'Unknown decks: {missing}. Known pools: {sorted(POOLS) + ["core+precon"]}')
@@ -137,7 +141,8 @@ def done_games(path: Path) -> set[int]:
     return {int(r['game']) for r in kept}
 
 
-def compile_tool() -> str:
+def compile_tool(engine: Path | None = None) -> str:
+    """The tool compiled against this build, on the classpath of this build or of another (engine, before/after)."""
     cp = (ROOT / 'build/runtime-classpath.txt').read_text().strip()
     out = BUILD / 'classes'
     source = TOOL / 'AICalibration.java'
@@ -145,6 +150,8 @@ def compile_tool() -> str:
     if not stamp.exists() or stamp.stat().st_mtime < source.stat().st_mtime:
         out.mkdir(parents=True, exist_ok=True)
         subprocess.run(['javac', '-J-Xmx512m', '--release', '17', '-cp', cp, '-d', str(out), str(source)], check=True)
+    if engine:
+        cp = engine.read_text().strip()
     # The tool's classes go after the engine's, so they never replace production classes.
     return f'{cp}{os.pathsep}{out}'
 
@@ -184,9 +191,9 @@ class Worker:
 
 
 def play_all(jobs: list[tuple[Path, dict]], workers: int, heap: str, max_turns: int, max_seconds: int,
-             restart_every: int) -> None:
+             restart_every: int, engine: Path | None = None) -> None:
     """jobs: (csv path, schedule row). Appends each finished game to its CSV."""
-    classpath = compile_tool()
+    classpath = compile_tool(engine)
     work: queue.Queue = queue.Queue()
     for job in jobs:
         work.put(job)
@@ -272,20 +279,49 @@ def label(row: dict) -> str:
             f"{seat_label(row['skill_b'], row.get('depth_b', ''), row.get('mistake_b', ''))}")
 
 
-def summarize(paths: list[Path]) -> str:
-    lines = ['| Pairing (A vs B) | Budget | Games | A wins | B wins | Draws | A win rate (95% CI) | Avg turns | Avg s/game | A first: A wins | Mistakes/game A, B |',
-             '|---|---|---|---|---|---|---|---|---|---|---|']
+def rate(wins: int, decided: int) -> str:
+    low, high = wilson(wins, decided)
+    return f"{100 * wins / decided:.0f}% ({100 * low:.0f}–{100 * high:.0f})" if decided else '–'
+
+
+def read_rows(paths: list[Path]) -> list[list[dict]]:
+    """Each CSV's rows, empty CSVs left out."""
+    tables = []
     for path in paths:
         with path.open() as stream:
             rows = list(csv.DictReader(stream))
+        if rows:
+            tables.append(rows)
+    return tables
+
+
+def summarize(paths: list[Path], focus: str | None = FOCUS_DECK) -> str:
+    """Each pairing's win rates; with a focus deck in the games, also without it, its games alone, and by deck.
+
+    The schedule gives both skills each deck of a pair equally often, so deck strength cancels out of a pairing's
+    win rate over whole blocks. A much stronger deck still widens the spread, so its games are also reported apart.
+    """
+    tables = read_rows(paths)
+    lines = summarize_pairings(tables)
+    if focus and any(focus in (r['deck_a'], r['deck_b']) for rows in tables for r in rows):
+        lines += ['', f'Without {focus} games:', '']
+        lines += summarize_pairings([[r for r in rows if focus not in (r['deck_a'], r['deck_b'])] for rows in tables])
+        lines += ['', f'{focus} games only (it plays one seat in each):', '']
+        lines += summarize_focus(tables, focus)
+    lines += ['', 'By deck and seat:', '', summarize_decks(paths), '', deck_balance(tables)]
+    return '\n'.join(lines)
+
+
+def summarize_pairings(tables: list[list[dict]]) -> list[str]:
+    lines = ['| Pairing (A vs B) | Budget | Games | A wins | B wins | Draws | A win rate (95% CI) | Avg turns | Avg s/game | A first: A wins | Mistakes/game A, B |',
+             '|---|---|---|---|---|---|---|---|---|---|---|']
+    for rows in tables:
         if not rows:
             continue
         a = sum(r['winner'] == 'A' for r in rows)
         b = sum(r['winner'] == 'B' for r in rows)
         draws = len(rows) - a - b
         decided = a + b
-        low, high = wilson(a, decided)
-        rate = f"{100 * a / decided:.0f}% ({100 * low:.0f}–{100 * high:.0f})" if decided else '–'
         turns = sum(int(r['turns']) for r in rows) / len(rows)
         seconds = sum(float(r['seconds']) for r in rows) / len(rows)
         first = [r for r in rows if r['first'] == 'A' and r['winner'] in 'AB']
@@ -294,11 +330,46 @@ def summarize(paths: list[Path]) -> str:
             values = [int(r[key]) for r in rows if r.get(key)]
             return f'{sum(values) / len(values):.1f}' if values else '–'
         lines.append(f"| {label(rows[0])} | {rows[0]['budget']} | {len(rows)} | "
-                     f"{a} | {b} | {draws} | {rate} | {turns:.1f} | {seconds:.0f} | {first_rate} | "
+                     f"{a} | {b} | {draws} | {rate(a, decided)} | {turns:.1f} | {seconds:.0f} | {first_rate} | "
                      f"{avg('mistakes_a')}, {avg('mistakes_b')} |")
     lines.append('')
     lines.append('Win rate counts decided games only (draws are turn or time limits). Interval: Wilson score, 95%.')
-    return '\n'.join(lines)
+    return lines
+
+
+def summarize_focus(tables: list[list[dict]], focus: str) -> list[str]:
+    """Per pairing: how often the focus deck won with each skill, and skill A's win rate in those games."""
+    lines = ['| Pairing (A vs B) | Games | A on it: A wins | B on it: B wins | Deck win rate (95% CI) | A win rate (95% CI) |',
+             '|---|---|---|---|---|---|']
+    for rows in tables:
+        games = [r for r in rows if focus in (r['deck_a'], r['deck_b'])]
+        if not games:
+            continue
+        seat = {side: [r for r in games if r['deck_' + side] == focus] for side in 'ab'}
+        won = {side: sum(r['winner'] == side.upper() for r in seat[side]) for side in 'ab'}
+        decided = {side: sum(r['winner'] in ('A', 'B') for r in seat[side]) for side in 'ab'}
+        a_wins = sum(r['winner'] == 'A' for r in games)
+        lines.append(f"| {label(games[0])} | {len(games)} | {won['a']}/{decided['a']} | {won['b']}/{decided['b']} | "
+                     f"{rate(won['a'] + won['b'], decided['a'] + decided['b'])} | "
+                     f"{rate(a_wins, decided['a'] + decided['b'])} |")
+    lines += ['', 'Decided games only; a draw counts for neither seat.']
+    return lines
+
+
+def deck_balance(tables: list[list[dict]]) -> str:
+    """Whether each skill played each deck equally often (the schedule's blocks of 4, when whole and none failed)."""
+    uneven = []
+    for rows in tables:
+        seats = collections.Counter()
+        for r in rows:
+            seats[r['deck_a'], 'a'] += 1
+            seats[r['deck_b'], 'b'] += 1
+        for deck in sorted({d for d, _ in seats}):
+            if seats[deck, 'a'] != seats[deck, 'b']:
+                uneven.append(f"{label(rows[0])}: {deck} A {seats[deck, 'a']}, B {seats[deck, 'b']}")
+    if not uneven:
+        return 'Deck balance: in every pairing, each skill played each deck equally often.'
+    return 'Deck balance: uneven (a partial block of 4, or replayed failures):\n' + '\n'.join(f'- {u}' for u in uneven)
 
 
 def pairing_jobs(out: Path, skill_a: int, skill_b: int, pool: str, games: int, seed: int, budget: str,
@@ -312,25 +383,33 @@ def pairing_jobs(out: Path, skill_a: int, skill_b: int, pool: str, games: int, s
 
 
 def summarize_decks(paths: list[Path]) -> str:
-    """Each deck's win rate over every game it played (meaningful when both seats share a skill)."""
+    """Each deck's win rate over every game it played, and apart in seat A (the lower skill) and seat B."""
     stats: dict[str, list[int]] = {}
     for path in paths:
         with path.open() as stream:
             for r in csv.DictReader(stream):
                 for side, other in (('a', 'b'), ('b', 'a')):
-                    entry = stats.setdefault(r['deck_' + side], [0, 0, 0])
+                    # won, lost, drawn; then won and decided in seat A, then in seat B
+                    entry = stats.setdefault(r['deck_' + side], [0] * 7)
+                    seat = 3 if side == 'a' else 5
                     if r['winner'] == side.upper():
                         entry[0] += 1
+                        entry[seat] += 1
                     elif r['winner'] == other.upper():
                         entry[1] += 1
                     else:
                         entry[2] += 1
-    lines = ['| Deck | Games | Wins | Losses | Draws | Win rate (95% CI) |', '|---|---|---|---|---|---|']
-    for deck, (won, lost, drawn) in sorted(stats.items(), key=lambda item: -item[1][0] / max(1, sum(item[1][:2]))):
-        low, high = wilson(won, won + lost)
-        rate = f'{100 * won / (won + lost):.0f}% ({100 * low:.0f}–{100 * high:.0f})' if won + lost else '–'
-        lines.append(f'| {deck} | {won + lost + drawn} | {won} | {lost} | {drawn} | {rate} |')
-    lines += ['', 'Win rate counts decided games only. Interval: Wilson score, 95%.']
+                        continue
+                    entry[seat + 1] += 1
+    lines = ['| Deck | Games | Wins | Losses | Draws | Win rate (95% CI) | In seat A: wins | In seat B: wins |',
+             '|---|---|---|---|---|---|---|---|']
+    for deck, (won, lost, drawn, a_won, a_n, b_won, b_n) in sorted(
+            stats.items(), key=lambda item: -item[1][0] / max(1, sum(item[1][:2]))):
+        lines.append(f'| {deck} | {won + lost + drawn} | {won} | {lost} | {drawn} | {rate(won, won + lost)} | '
+                     f'{a_won}/{a_n} | {b_won}/{b_n} |')
+    lines += ['', 'Win rate counts decided games only. Interval: Wilson score, 95%. Seat A is the lower skill of each '
+              'pairing, B the higher; with each skill on each deck equally often, a deck that wins far more than half '
+              'is stronger, whoever plays it.']
     return '\n'.join(lines)
 
 
@@ -349,6 +428,8 @@ def main():
         p.add_argument('--max-seconds', type=int, default=1800)
         p.add_argument('--restart-every', type=int, default=10, help='games per worker JVM before a fresh one')
         p.add_argument('--out', type=Path, default=BUILD / 'results')
+        p.add_argument('--engine-classpath', type=Path,
+                       help="another engine build's runtime-classpath.txt (a saved copy, for before and after runs)")
 
     run = sub.add_parser('run', help='one pairing')
     run.add_argument('--skill-a', type=int, required=True)
@@ -365,6 +446,8 @@ def main():
     summary = sub.add_parser('summarize', help='Markdown table of result CSVs')
     summary.add_argument('csv', nargs='+', type=Path)
     summary.add_argument('--by-deck', action='store_true', help="each deck's win rate instead of each pairing's")
+    summary.add_argument('--focus-deck', default=FOCUS_DECK,
+                         help='a deck whose games are also reported apart (empty: none)')
     args = parser.parse_args()
 
     if args.command == 'decks':
@@ -373,7 +456,7 @@ def main():
             print(f"{name}: {', '.join(d['id'] for d in index if keep(d))}")
         return
     if args.command == 'summarize':
-        print(summarize_decks(args.csv) if args.by_deck else summarize(args.csv))
+        print(summarize_decks(args.csv) if args.by_deck else summarize(args.csv, args.focus_deck or None))
         return
     if not (ROOT / 'build/runtime-classpath.txt').exists():
         raise SystemExit('Run scripts/build_jvm.sh first')
@@ -400,7 +483,7 @@ def main():
     # Interleave pairings so partial results cover every pairing.
     jobs.sort(key=lambda job: (job[1]['game'], job[0].name))
     print(f'{len(jobs)} games to play on {args.workers} workers ({args.budget} budget)', flush=True)
-    play_all(jobs, args.workers, args.heap, args.max_turns, args.max_seconds, args.restart_every)
+    play_all(jobs, args.workers, args.heap, args.max_turns, args.max_seconds, args.restart_every, args.engine_classpath)
     print(summarize([p for p in paths if p.exists()]))
 
 

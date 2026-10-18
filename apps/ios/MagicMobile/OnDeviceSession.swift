@@ -289,6 +289,7 @@ final class OnDeviceSession: ObservableObject {
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
         comboHistory = []; comboOffer = nil; comboDeclined = nil; comboResult = nil
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
+        if devicePaceHot { queueDevicePace() }
         self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil; fullControlTurn = nil
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
@@ -626,6 +627,15 @@ final class OnDeviceSession: ObservableObject {
     func setAutoPassAfterCast(_ enabled: Bool) {
         guard supportedAnswerActions.contains("autoPassAfterCast") else { return }
         standingActions["autoPassAfterCast"] = .object(["type": .string("autoPassAfterCast"), "enabled": .bool(enabled)])
+    }
+
+    /// The phone is hot and the engine runs on it: AI seats think for less time (answer action devicePace, engine
+    /// release C). The root sets it from DeviceHeat; it rides on the next answer, and again after every attach.
+    var devicePaceHot = false { didSet { if devicePaceHot != oldValue { queueDevicePace() } } }
+
+    private func queueDevicePace() {
+        guard supportedAnswerActions.contains("devicePace") else { return }
+        standingActions["devicePace"] = .object(["type": .string("devicePace"), "hot": .bool(devicePaceHot)])
     }
 
     /// Forget every remembered answer (asked again from the next one).

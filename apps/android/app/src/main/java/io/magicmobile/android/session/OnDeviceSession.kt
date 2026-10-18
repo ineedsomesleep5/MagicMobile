@@ -263,6 +263,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = emptyMap()
         comboHistory = emptyList(); comboOffer = null; comboDeclined = null; comboResult = null
         autoPassAfterCast?.let(::setAutoPassAfterCast)
+        if (devicePaceHot) queueDevicePace()
         this.smartPass = smartPass; smartPassJob?.cancel(); smartPassJob = null; smartPassedPromptID = null; fullControlTurn = null
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
@@ -766,6 +767,18 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     fun setAutoPassAfterCast(enabled: Boolean) {
         if ("autoPassAfterCast" !in supportedAnswerActions) return
         standingActions = standingActions + ("autoPassAfterCast" to jsonObject("type" to JsonPrimitive("autoPassAfterCast"), "enabled" to JsonPrimitive(enabled)))
+    }
+
+    /**
+     * The phone is hot and the engine runs on it: AI seats think for less time (answer action devicePace, engine release C).
+     * The root sets it from DeviceHeat; it rides on the next answer, and again after every attach.
+     */
+    var devicePaceHot = false
+        set(value) { if (field != value) { field = value; queueDevicePace() } }
+
+    private fun queueDevicePace() {
+        if ("devicePace" !in supportedAnswerActions) return
+        standingActions = standingActions + ("devicePace" to jsonObject("type" to JsonPrimitive("devicePace"), "hot" to JsonPrimitive(devicePaceHot)))
     }
 
     /** Forget every remembered answer (asked again from the next one). */

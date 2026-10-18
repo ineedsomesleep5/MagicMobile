@@ -36,6 +36,7 @@ import mage.util.MultiAmountMessage;
 import org.apache.log4j.Logger;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.LinkedList;
@@ -64,6 +65,9 @@ final class MobileAICancellation {
     static final int STACK_THINK_SECS=2;
     /** Expert quick search: one action seen resolved (upstream depth 2), within at most 2 s. */
     static final int QUICK_DEPTH=2,QUICK_SECS=2;
+    /** While the phone running the engine reports it is hot (answer action devicePace), each AI search gets half its
+     *  time, never less than STACK_THINK_SECS. Not saved: the app sends it again with its next answer after a restore. */
+    private volatile boolean hot;
     private static final int NO_PHASE=0,QUICK=1,FULL_SEARCH=2;
     private volatile boolean closing;
     private int simulations;
@@ -76,6 +80,8 @@ final class MobileAICancellation {
     void setRecorder(GameRecorder recorder) { this.recorder=recorder; }
     GameRecorder recorder() { return recorder; }
     boolean isClosing() { return closing; }
+    void setHot(boolean hot) { this.hot=hot; }
+    boolean isHot() { return hot; }
     void bind(Game game) { live=game; }
     void requestConcede(UUID playerId) { if(!concedes.contains(playerId)) concedes.add(playerId); }
     boolean hasConcedeFor(Game game) { return game==live && !concedes.isEmpty(); }
@@ -140,6 +146,10 @@ final class MobileAICancellation {
     static int thinkBudget(int configured,boolean stackEmpty,boolean humansPlaying) {
         return stackEmpty && humansPlaying?configured:Math.min(configured,STACK_THINK_SECS);
     }
+    static int thinkBudget(int configured,boolean stackEmpty,boolean humansPlaying,boolean hot) {
+        int budget=thinkBudget(configured,stackEmpty,humansPlaying);
+        return hot?Math.min(budget,Math.max(STACK_THINK_SECS,budget/2)):budget;
+    }
 
     /** A restored game's AI seats answer to this match's lifecycle; budgets are kept as read. */
     void adopt(Game game) {
@@ -173,10 +183,14 @@ final class MobileAICancellation {
         private long mistakeState;
         private int mistakes;
         private boolean expert;
-        // One search's root candidates. Written by the simulation thread, read after it returns.
+        // One search's root candidates, kept only when a deliberate mistake can use them (mistakePercent > 0).
+        // Written by the simulation thread, read after it returns.
         private transient volatile SimulationNode2 searchRoot;
         private transient List<ScoredChoice> rootChoices;
         private transient boolean searched;
+        // The running search's game copies (cap, then release), and every search of the decision being made.
+        private transient volatile AISearchMemory searchMemory;
+        private transient List<AISearchMemory> decisionSearches;
         CancellablePlayer(String name,int skill,AIDifficulty difficulty,MobileAICancellation cancellation) {
             super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
             maxDepth=difficulty.searchDepth;mistakePercent=difficulty.mistakePercent;mistakeState=difficulty.seed;
@@ -199,13 +213,27 @@ final class MobileAICancellation {
             if(rootChoices==null) rootChoices=new ArrayList<>();
             return rootChoices;
         }
+        /** Chooses this priority's actions, then drops the searches' game copies (AISearchMemory). */
+        @Override protected void calculateActions(Game game) {
+            searched=false;
+            try { chooseActions(game); }
+            finally {
+                // The plan kept for the next priorities needs abilities and combat only, not the search's copies.
+                List<SimulationNode2> kept=root==null?List.of():List.of(root);
+                for(AISearchMemory search:searches()) search.decided(kept);
+                searches().clear();
+            }
+        }
+        private List<AISearchMemory> searches() {
+            if(decisionSearches==null) decisionSearches=new ArrayList<>(); // null in a restored game
+            return decisionSearches;
+        }
         /**
          * After a fresh search that chose to act, sometimes take the best other root action the
          * search scored instead, as long as it scores no worse than doing nothing; otherwise pass.
          * The next priority searches again, so a passed play can still come later.
          */
-        @Override protected void calculateActions(Game game) {
-            searched=false;
+        private void chooseActions(Game game) {
             if(expert && !game.isSimulation()) expertSearch(game); else super.calculateActions(game);
             List<ScoredChoice> candidates;
             synchronized(this) { candidates=new ArrayList<>(choices());choices().clear();searchRoot=null; }
@@ -371,27 +399,58 @@ final class MobileAICancellation {
         @Override protected Integer addActionsTimed() {
             synchronized(this) { choices().clear();searchRoot=root; }
             searched=true;
+            // An earlier search the AI stopped waiting for holds a search thread and its copies until it stops.
+            if(root!=null) AISearchMemory.awaitAbandoned(AISearchMemory.ABANDONED_WAIT_MILLIS);
+            AISearchMemory memory=root==null?null:AISearchMemory.start(root,this::alternatives);
+            if(memory!=null) { searchMemory=memory;searches().add(memory); }
             int configured=maxThinkTimeSecs;
             Game simulation=root==null?null:root.getGame();
-            int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
+            int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying(),cancellation.isHot());
             if(searchPhase==QUICK) { phaseBudgetSecs=budget;budget=Math.min(budget,QUICK_SECS); }
             else if(searchPhase==FULL_SEARCH) budget=Math.min(budget,phaseBudgetSecs);
             maxThinkTimeSecs=budget;
             long started=System.nanoTime();
             try { return super.addActionsTimed(); }
             finally {
+                // Upstream stopped waiting (done, out of time or failed); a search still running stops at its next copy.
+                if(memory!=null) memory.returned();
                 maxThinkTimeSecs=configured;
-                timedOut=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
+                boolean outOfTime=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
+                if(memory!=null && memory.capped) {
+                    // As when time runs out: the best line when it stopped. A search also out of time may still be
+                    // unwinding on its thread, so upstream reads its root as it is.
+                    if(!outOfTime) memory.restoreBestLine();
+                    logger.info("AI search for "+getName()+" stopped at its memory cap: "+memory.peak+" game copies alive (cap "
+                        +memory.cap+", "+(memory.availableBytes>>20)+" MB available, about "+(memory.copyBytes>>10)+" KB a copy)");
+                }
+                timedOut=outOfTime || memory!=null && memory.capped;
+            }
+        }
+        /** The root alternatives a deliberate mistake may take; they keep their copies until the AI decides. */
+        private Collection<SimulationNode2> alternatives() {
+            if(mistakePercent==0) return List.of();
+            synchronized(this) {
+                List<SimulationNode2> nodes=new ArrayList<>();
+                for(ScoredChoice choice:choices()) nodes.add(choice.node());
+                return nodes;
             }
         }
         @Override protected int addActions(SimulationNode2 node,int depth,int alpha,int beta) {
             cancellation.enterSimulation();
+            AISearchMemory memory=null;
             try {
+                memory=AISearchMemory.enter(searchMemory,node);
                 int score=super.addActions(node,depth,alpha,beta);
-                // The search keeps only its best root action; remember how the others scored.
-                if(node!=null && searchRoot!=null && node.getParent()==searchRoot)
+                // The search keeps only its best root action; remember how the others scored, when a mistake can use them.
+                if(mistakePercent>0 && node!=null && searchRoot!=null && node.getParent()==searchRoot && (memory==null || !memory.capped))
                     synchronized(this) { if(node.getParent()==searchRoot) choices().add(new ScoredChoice(node,score)); }
                 return score;
+            }
+            catch(AISearchMemory.Stopped stopped) {
+                // A search stopped at its cap within its time returns as a timed-out one does (upstream reads no score)
+                // and the AI plays its best line at the cap; an abandoned one only unwinds.
+                if(memory!=null && memory.root==node && memory.capped && !memory.abandoned) return 0;
+                throw stopped;
             }
             catch(Throwable failure) {
                 // Upstream addActionsTimed can consume the Future's ExecutionException.
@@ -400,7 +459,7 @@ final class MobileAICancellation {
                     cancellation.runIfOpen(()->EngineDiagnostics.capture("ai-simulation",failure));
                 throw failure;
             }
-            finally { cancellation.leaveSimulation(); }
+            finally { AISearchMemory.leave(memory);cancellation.leaveSimulation(); }
         }
 
         // ---- Game record (docs/cloud/game-record.md) --------------------------------------

@@ -107,6 +107,56 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
+  (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
+  makes a full deep game copy for every option of a trigger, and Loaming Shaman (Draconic Destruction) targets "any number"
+  of graveyard cards: up to about 4,000 options (upstream's limit is 4 of 18 cards). A timed-out search kept copying while
+  the AI's next search ran beside it, 1.9 GB in one node's children. Those copies also hang under a node the tree does not
+  reach yet (`simulatePriority` handles triggers before it attaches the new node), so #202's copy count never saw them.
+  **Rule:** stop searches at their game copies (`AISearchMemory.Stopped`), count the node being copied, and take a live
+  heap dump before tuning budgets (MAT's leak suspects named the thread and the node). An out-of-memory error on a search
+  thread is swallowed by its cancelled task (calibration only shows `engine-stopped`); `-XX:OnOutOfMemoryError=touch <file>`
+  marks it. A watcher that flags search threads busy while the GAME thread is idle misses an orphan that overlaps the next
+  search: count busy search threads instead. Where: `AISearchMemory.java`, `RealSearchMemoryTests` (`trigger-fan-out`).
+- 2026-10-18 (Claude, release C AI memory): sharing card objects between game copies (`GameImpl`
+  `MOBILE_LAZY_CARDS`) is exact only while a source is not changed again while a copy that shares its cards is alive.
+  The AI's search sources are frozen once copied, or their copies are dropped before the source goes on, except
+  `SimulatedPlayer2.triggerAbility`, which copies the game for each trigger option in the middle of
+  `checkStateAndTriggered` and lets rules processing go on; copies made while a trigger is handled stay deep. Copies
+  of the live game are always deep, so a late search thread never shares objects with it. **Rule:** a new game copy
+  in AI code needs a frozen source or a copy that dies first; check it with `RealSearchMemoryTests` and
+  `profile_long_games.py equivalence` (the switches `GameImpl.mobileLazyCards`, `ComputerPlayer6.mobileSearchMemory`).
+- 2026-10-18 (Claude, release C AI memory): the engine ships no log4j configuration, so reload4j's root logger is
+  DEBUG with no appender: on phones every `isInfoEnabled()`/`isDebugEnabled()` block runs and its output is dropped
+  (in `ComputerPlayer6`, a score for every step of each root action's line, a board printout at each priority). The
+  calibration and profile tools set WARN (`tools/ai-calibration/log4j.properties`), so their CPU numbers leave that out.
+  Not changed yet. Also: memory readings in engine code avoid `java.lang.management`, which would make JMX reachable in
+  the native image; `DeviceMemory` uses `os_proc_available_memory` (iOS), `/proc/meminfo` and a JVM property.
+- 2026-10-18 (Claude, release C size cuts): GraalVM 22.1 compiles the static initializer of every reachable class
+  that initializes at run time (`DynamicHubInitializer.buildRuntimeInitializationInfo`), and registering a class for
+  checkpoint serialization or reflection makes it reachable. That kept all 589 set classes with their card lists in the
+  image, and `mage.db.EntityManager` (a Serializable enum whose initializer opens H2 through ORMLite JDBC) pulled in H2.
+  **Rule:** packages that are never game state stay out of the checkpoint list (`NOT_CHECKPOINTED` in
+  `NativeReflectionExporter`); read the pinned toolchain's own sources (`lib/svm/builder/svm.src.zip` in the Gluon
+  archive `scripts/android/prepare_toolchain.py` downloads) rather than guessing what makes code reachable. Gluon always
+  adds `-H:EnableURLProtocols=http,https` (`allowHttps()` returns true); `-H:DisableURLProtocols` overrides it.
+- 2026-10-18 (Claude): the JVM verifier loads every class a method returns where a supertype is expected, so a
+  generated `switch` of `return X.getInstance();` loaded all 95 listed set classes the first time the engine started.
+  **Fix:** `return (ExpansionSet)(Object)X.getInstance();` checks at run time instead (`GeneratedBoosterSets`).
+  `test_real_engine.sh` fails if a game loads any `mage.sets` class. Also for memory readings: the test decks that
+  `resolve_deck.py` builds use some Arena-only printings (AKR, ANB, HA4), so XMage's Commander validator falls back to
+  `CardRepository.findCards(name)` and loads the whole card-metadata catalogue (about 87 MB of JVM heap); app decks only
+  use eternal-legal printings. Measure with `build/isamaru.json`, or say which deck you used.
+- 2026-10-18 (Claude, lighter engine step 1): JVM memory traps in the long-game profiles. `GcInfo` before/after usage
+  covers every memory pool, Metaspace included (the card classes), so summing it read 550 MB "after GC" while the live
+  heap was 147 MB; heap after a Serial GC also counts dead objects in the old generation. The card catalogue (about
+  100 MB) loads on the first deck validation, so a baseline taken before `DeckLoader.load` is 27 MB, not 115. And
+  AICalibration's schedule plays one deck pair per block of 4 games, so a 4-game run covers one pair. **Rule:** sum only
+  `MemoryType.HEAP` pools, measure live heap with a full GC (or a heap dump), take baselines after loading the decks,
+  and spread runs with `--first-game 0, 4, 8, ...`. async-profiler 4.1 (GitHub release; CPU mode works at
+  `perf_event_paranoid` 2) and Eclipse MAT (download.eclipse.org) both run in the cloud container.
+  Where: `scripts/profile_long_games.py`, docs/LIGHTER_ENGINE_PLAN.md step 1.
+
 - 2026-10-15 (Claude, C4): XMage's AI search is limited by time, not by its 5000-node cap. Calibration
   searches use a median of 12–18 nodes (90th percentile about 600); each node copies the whole Commander
   game, about 20 ms. Attacks and blocks are fixed rules in `ComputerPlayer6` and never searched. **Rule:**

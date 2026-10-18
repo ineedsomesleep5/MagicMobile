@@ -23,6 +23,14 @@ public final class NativeReflectionExporter {
     private static final Set<String> dtoTypes=new TreeSet<>();
     private static final String[] CHECKPOINT_PACKAGES={"mage.","io.magicmobile.xmage."};
     /**
+     * Never game state, so never in a checkpoint, and registering them would keep their code in the
+     * image (a registered class's static initializer is compiled): the set classes and their booster
+     * collators (sets come from MobileExpansionSet's catalogue); mage.db, whose EntityManager enum opens
+     * an H2 database through ORMLite JDBC in its initializer; and the protobuf tournament and match
+     * results of mage.game.result, which pull in protobuf's runtime.
+     */
+    private static final List<String> NOT_CHECKPOINTED=List.of("mage.sets.","mage.db.","mage.game.result.");
+    /**
      * Classes allowed to keep a serializable lambda ($deserializeLambda$), each with the reviewed
      * reason its lambda can never reach a checkpoint. Empty: every such upstream lambda is a named
      * class (scripts/prepare_upstream.py). Listed classes are still NOT lambdaCapturingTypes (that
@@ -123,6 +131,9 @@ public final class NativeReflectionExporter {
         Set<String> names=new TreeSet<>();
         for(String root:roots) for(String prefix:CHECKPOINT_PACKAGES) names.addAll(classNames(Path.of(root),prefix));
         for(String root:extra) for(String prefix:CHECKPOINT_PACKAGES) names.addAll(classNames(Path.of(root),prefix));
+        int excluded=names.size();
+        names.removeIf(NativeReflectionExporter::notCheckpointed);
+        excluded-=names.size();
         Class<?> checkpoints=Class.forName("io.magicmobile.xmage.Checkpoints",false,loader);
         Method jdk=checkpoints.getDeclaredMethod("jdkTypes");
         jdk.setAccessible(true);
@@ -233,7 +244,7 @@ public final class NativeReflectionExporter {
             "arrayTypes",arrays.size(),"serialFieldArrayTypes",fieldArrays,"arrayTypesCreatedByEngineCode",created.size(),
             "classFieldBounds",classBounds.entrySet().stream().collect(Collectors.toMap(e->e.getKey().getName(),
                 e->new ArrayList<>(e.getValue()),(a,b)->a,TreeMap::new)),
-            "nonSerializableClassObjects",new ArrayList<>(classObjects),"classesWithoutSerialVersionUID",withoutUid,
+            "nonSerializableClassObjects",new ArrayList<>(classObjects),"notCheckpointedPackages",NOT_CHECKPOINTED,"notCheckpointedClasses",excluded,"classesWithoutSerialVersionUID",withoutUid,
             "declaredMembersOfRegisteredEngineClasses",members,"lambdaCapturingTypes",List.of(),
             "reviewedLambdaSafe",new ArrayList<>(LAMBDA_SAFE.keySet()),"excludedDesktopUiClasses",new ArrayList<>(desktop),"proxies",0);
     }
@@ -286,6 +297,7 @@ public final class NativeReflectionExporter {
             element=element.substring(1,element.length()-1);
         }
         if(!allowlist.contains(element) && Arrays.stream(CHECKPOINT_PACKAGES).noneMatch(element::startsWith)) return null;
+        if(notCheckpointed(element)) return null;
         Class<?> type=Class.forName(name,false,loader),base=type;
         while(base.isArray()) base=base.getComponentType();
         return component.isAssignableFrom(base) || !(Boolean)allowed.invoke(null,type)?null:type;
@@ -375,6 +387,7 @@ public final class NativeReflectionExporter {
             }
         }
     }
+    private static boolean notCheckpointed(String name) { return NOT_CHECKPOINTED.stream().anyMatch(name::startsWith); }
     private static Set<String> classNames(Path root,String prefix) throws Exception {
         Set<String> names=new TreeSet<>();
         try(Stream<Path> paths=Files.walk(root)) {
