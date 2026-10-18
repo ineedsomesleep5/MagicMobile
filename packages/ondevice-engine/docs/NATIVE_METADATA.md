@@ -371,3 +371,52 @@ stripped file.
 Image generation took 18 min 33 s (analysis 729 s at 9.38 GB); 67,848 classes and 382,066 methods
 were reachable, as before, and the checkpoint feature registered the same 50,684 types. This is a
 build result: the emulator device tests and phones are separate gates.
+
+## Set catalogue and unreachable libraries (October 18, 2026, release C, not natively built yet)
+
+GraalVM 22.1 compiles the static initializer of every reachable class that initializes at run time
+(`DynamicHubInitializer.buildRuntimeInitializationInfo` in the toolchain's `svm.src.zip`), and
+registering a class for checkpoint serialization or reflection makes it reachable. Two size costs came
+from that, plus a third from a Gluon default:
+
+- **Set classes.** `GeneratedSetRegistry` called all 589 `mage.sets` `getInstance()` methods, and the
+  checkpoint list registered every set class too, so each set's constructor (one `SetCardInfo` per
+  printing) was compiled: 27.7 MB of code by the symbol table. `RegistryExporter` now writes
+  `mage/mobile/set-catalogue.tsv.gz` (1.4 MB; header, graphic infos, one row per set class with every
+  `ExpansionSet` field, then every printing in list order) and the engine installs
+  `mage.cards.MobileExpansionSet` objects from it, in the old order. The 95 set classes that override
+  booster generation (82 with collators), and their 2 parents, are created on first use by
+  `GeneratedBoosterSets`, for Booster Tutor's packs only; the other 492 set classes (5.7 MB of the
+  8.3 MB of set-class bytecode) are referenced by nothing the engine runs. `mage.sets` is left out of
+  the checkpoint list and of the broad reflection profile.
+- **H2 and ORMLite JDBC.** `mage.db.EntityManager` (Mage.Common) is a Serializable enum, so the
+  checkpoint list registered it; its initializer opens an H2 database through ORMLite's
+  `JdbcConnectionSource`, which reaches `DriverManager`, whose `java.sql.Driver` service then registers
+  `org.h2.Driver`. `mage.db` is left out of the checkpoint list, and the build passes
+  `-H:ServiceLoaderFeatureExcludeServices=java.sql.Driver` so no JDBC driver is registered either way.
+  The card and set repositories already read the bundled catalogue (`prepare_mobile_repository.py`).
+- **protobuf.** The checkpoint list registered `mage.game.result.ResultProtos` messages (tournament and
+  match results, built only by server code); their `writeReplace` hooks and `Object` overrides reach
+  protobuf's runtime. `mage.game.result` is left out.
+- **TLS.** Gluon adds `-H:EnableURLProtocols=http,https` to every build (`allowHttps()` returns true), so
+  the https handler and with it JSSE were in the image. The engine opens no URL connection (no
+  `sun.net.www.protocol.http*` class loads in the whole real-JVM suite), and the build now passes
+  `-H:DisableURLProtocols=http,https`, which wins over Gluon's option.
+
+`NativeReflectionExporter.NOT_CHECKPOINTED` (`mage.sets.`, `mage.db.`, `mage.game.result.`) also
+drops arrays of those types. The checkpoint list went from 50,825 to 50,220 types; `RealCheckpointTests`
+still finds all 931 classes its streams write and read in it. The build fails, naming the path, if
+`org.h2.Driver`, `com.j256.ormlite.jdbc.JdbcConnectionSource`, `com.google.protobuf.GeneratedMessageV3`
+or the largest catalogue-only set class (`mage.sets.MagicOnlinePromos`) becomes reachable
+(`-H:ReportAnalysisForbiddenType`).
+
+Locale data is unchanged (`-H:+IncludeAllLocales`): the engine formats with the phone's default locale,
+and all locales were included after a French JVM/native mismatch (ORMLite section above). Dropping them
+needs a decision and a non-English device or emulator run.
+
+JVM evidence (`RealSetCatalogueTests`, `test_real_engine.sh`'s class-load check, class-load logs of the
+whole suite): every set field, card list, class and number lookup, the registry's iteration order and a
+seeded 15-card pack of every set match the set classes; engine JVMs load no set class and 1,300–5,500
+classes in all (34,000–38,000 before); heap after engine start 26.5 → 4.5 MB, plus 5.7 MB for the
+printing index at the first deck. None of this is native evidence: the code and heap savings need the
+next native build's size report.

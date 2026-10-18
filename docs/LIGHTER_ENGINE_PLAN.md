@@ -75,6 +75,18 @@ build per platform.
 - [ ] Drop H2/ORMLite JDBC, protobuf, TLS/crypto and unused locales where unreachable (about −10 MB code).
 - Expected: engine about −45 MB uncompressed (iPhone download about 162 → 147 MB, Android APK about 143 → 131 MB),
   −24 MB memory at all times, no multi-GB spikes, less heat in long games.
+- Size cuts status, 2026-10-18 (branch `claude/youthful-archimedes-8heqeu`, draft; JVM-verified, no native build yet,
+  so neither box is ticked):
+  - Sets: the engine installs its sets from a bundled set catalogue (`mage/mobile/set-catalogue.tsv.gz`, 1.4 MB,
+    written from the set classes at build time). 492 of the 589 set classes (5.7 of their 8.3 MB of bytecode) are no
+    longer referenced; the 95 that make their own booster packs, and 2 parents, stay for Booster Tutor, created on first
+    use. JVM: heap after engine start 26.5 → 4.5 MB (+5.7 MB printing index at the first deck), engine start 5.2 →
+    0.15 s, 34,456 → 1,298 classes loaded. Native estimate by bytecode share: about −17 of the 27.7 MB of set code.
+  - Libraries: H2 and ORMLite JDBC (reached through `mage.db.EntityManager`, which the checkpoint metadata registered),
+    protobuf (`mage.game.result`) and TLS (Gluon's https handler) are cut from the native build, which now fails if they
+    become reachable (measured before: H2 3.2 MB, protobuf 1.3 MB, TLS and crypto about 3.5 MB of code). Locale data
+    unchanged: the engine formats with the phone's locale, so that needs a non-English device check first.
+  - To measure: an Android native build with `native_reports`, then `magicmobile-native-code-sizes.yml` on it.
 
 ### 4. Toolchain release: GraalVM upgrade
 - [ ] Move from GraalVM 22.1 (JDK 18 static runtime) to Gluon's GraalVM build for JDK 23 (substrate 1.0.24 or later;
