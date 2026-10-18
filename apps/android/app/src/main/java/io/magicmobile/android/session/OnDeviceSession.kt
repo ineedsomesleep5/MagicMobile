@@ -6,6 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.magicmobile.android.game.BoardFXRevisionKey
 import io.magicmobile.android.game.BoardPresentationHold
+import io.magicmobile.android.game.ComboLoop
+import io.magicmobile.android.game.ComboLoopStop
+import io.magicmobile.android.game.ComboNote
+import io.magicmobile.android.game.ComboRepeat
+import io.magicmobile.android.game.ComboReplay
+import io.magicmobile.android.game.ComboStep
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EnginePrompt
@@ -26,6 +32,7 @@ import io.magicmobile.android.game.integer
 import io.magicmobile.android.game.jsonObject
 import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
+import io.magicmobile.android.game.withoutPrompts
 import io.magicmobile.android.ondevice.OnDeviceHostUnavailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -457,6 +464,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
      * its held effects play out, never longer than [BoardPresentationHold.MAXIMUM_WAIT_MS].
      */
     private suspend fun waitForBoardPresentation() {
+        // A long combo loop shows the board once a round, so there's nothing to wait for between its steps.
+        if (comboFastMode) return
         val key = BoardFXRevisionKey(snapshot ?: return)
         val start = System.currentTimeMillis()
         fun elapsed() = System.currentTimeMillis() - start
@@ -568,7 +577,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val snapshot = snapshot
         val current = snapshot?.legalActions?.firstOrNull { it.id == action.id }
             ?: throw EngineError.InvalidMessage("This action is no longer available")
-        send(io.magicmobile.android.game.ComboLoop.commandFrom(current, snapshot.id, snapshot.bridgeRevision), current.label, current.id)
+        send(ComboLoop.commandFrom(current, snapshot.id, snapshot.bridgeRevision), current.label, current.id)
     }
 
     suspend fun send(command: GameCommand, label: String, actionID: String) {
@@ -584,109 +593,172 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     var comboLoopsAllowed = false
         set(value) { field = value; if (!value) { comboHistory = emptyList(); comboOffer = null } }
     /** A round the player has made three times in a row this turn, offered for repeating. */
-    var comboOffer by mutableStateOf<List<io.magicmobile.android.game.ComboStep>?>(null); private set
-    /** Repeating a round: how many are done of how many (null target: until the opponents lose). */
+    var comboOffer by mutableStateOf<List<ComboStep>?>(null); private set
+    /** Repeating a round: how far it has got, and the last few rounds and notes. */
     var comboRun by mutableStateOf<ComboRun?>(null); private set
     /** The line shown when repeating stops: rounds, life changes and why. */
     var comboResult by mutableStateOf<String?>(null)
-    data class ComboRun(val round: List<io.magicmobile.android.game.ComboStep>, val target: Int?, val done: Int)
-    private var comboHistory: List<Pair<io.magicmobile.android.game.ComboStep, Int>> = emptyList()
-    private var comboDeclined: List<io.magicmobile.android.game.ComboStep>? = null
+    /**
+     * What the board shows while a loop repeats: the game without the prompts the repeats answer, updated after every step for a
+     * short run (so its effects play) and once a round for a long one.
+     */
+    private var comboPresented by mutableStateOf<GameSnapshot?>(null)
+    data class ComboRun(val round: List<ComboStep>, val mode: ComboRepeat, val done: Int, val lines: List<String> = emptyList())
+    /** The board's snapshot: the live game, or the repeats' quiet copy while a loop runs. */
+    val presentedSnapshot: GameSnapshot? get() = if (comboRun == null) snapshot else comboPresented ?: snapshot?.withoutPrompts()
+    private var comboHistory: List<Pair<ComboStep, Int>> = emptyList()
+    private var comboDeclined: List<ComboStep>? = null
     @Volatile private var comboStopRequested = false
+    @Volatile private var comboFastMode = false
     private var comboJob: Job? = null
 
     private fun noteComboStep(command: GameCommand, label: String, actionID: String, decision: GameSnapshot?) {
         if (!comboLoopsAllowed || comboRun != null) return
-        val step = decision?.let { io.magicmobile.android.game.ComboLoop.step(command, label, actionID, it) }
-        if (decision == null || step == null) { comboHistory = emptyList(); comboOffer = null; return }
-        // A loop is offered only for rounds made in one turn.
-        if (comboHistory.lastOrNull()?.second?.let { it != decision.turn } == true) comboHistory = emptyList()
-        comboHistory = (comboHistory + (step to decision.turn)).takeLast(io.magicmobile.android.game.ComboLoop.HISTORY_LIMIT)
-        val round = io.magicmobile.android.game.ComboLoop.cycle(comboHistory.map { it.first })
-        comboOffer = if (round != null && round != comboDeclined) round else null
+        when (val note = ComboLoop.note(command, label, actionID, decision)) {
+            ComboNote.Ignore -> return
+            ComboNote.Breaks -> { comboHistory = emptyList(); comboOffer = null }
+            is ComboNote.Step -> {
+                val turn = decision?.turn ?: 0
+                // A loop is offered only for rounds made in one turn.
+                if (comboHistory.lastOrNull()?.second?.let { it != turn } == true) comboHistory = emptyList()
+                comboHistory = (comboHistory + (note.step to turn)).takeLast(ComboLoop.HISTORY_LIMIT)
+                val round = ComboLoop.cycle(comboHistory.map { it.first })
+                comboOffer = if (round != null && round != comboDeclined) round else null
+            }
+        }
     }
 
     /** The player said no to this round: it isn't offered again until they make a different one. */
     fun declineComboLoop() { comboDeclined = comboOffer; comboOffer = null }
 
-    /** Repeats the offered round [times] times (null: until every opponent has lost, at most ComboLoop.MAX_REPEATS). */
-    fun startComboLoop(times: Int?) {
+    /**
+     * Repeats the offered round: a number of times, until a step can't be taken, or until every opponent has lost (at most
+     * ComboLoop.MAX_REPEATS rounds).
+     */
+    fun startComboLoop(mode: ComboRepeat) {
         val round = comboOffer ?: return
         val start = snapshot ?: return
         if (comboRun != null) return
         comboOffer = null; comboResult = null; comboStopRequested = false
-        comboRun = ComboRun(round, times, 0)
-        comboJob = scope.launch { runComboLoop(round, times, start) }
+        comboPresented = start.withoutPrompts()
+        comboRun = ComboRun(round, mode, 0)
+        comboJob = scope.launch { runComboLoop(round, mode, start) }
     }
 
     fun stopComboLoop() { comboStopRequested = true }
 
-    private suspend fun runComboLoop(round: List<io.magicmobile.android.game.ComboStep>, times: Int?, start: GameSnapshot) {
-        val loop = io.magicmobile.android.game.ComboLoop
-        // The board skips its effects while the loop runs; the result shows at the end.
-        io.magicmobile.android.game.BoardFXLevel.suppressedForLoop = true
+    private fun noteComboLine(line: String) { comboRun = comboRun?.let { it.copy(lines = (it.lines + line).takeLast(3)) } }
+
+    private suspend fun runComboLoop(round: List<ComboStep>, mode: ComboRepeat, start: GameSnapshot) {
+        // A long run skips the board's effects and shows the board once a round; a short one plays them at a pace you can follow.
+        val watch = mode.watchable
+        comboFastMode = !watch
+        io.magicmobile.android.game.BoardFXLevel.suppressedForLoop = !watch
         var rounds = 0
-        var stop: io.magicmobile.android.game.ComboLoopStop = io.magicmobile.android.game.ComboLoopStop.Finished
+        var stop: ComboLoopStop = ComboLoopStop.Finished
         try {
-            val limit = minOf(times ?: loop.MAX_REPEATS, loop.MAX_REPEATS)
+            val limit = minOf(mode.count ?: ComboLoop.MAX_REPEATS, ComboLoop.MAX_REPEATS)
             var unchanged = 0
-            var lastDigest = loop.digest(start)
+            var lastDigest = ComboLoop.digest(start)
+            val prefer = HashMap<Int, List<String>>()
             repeating@ while (rounds < limit) {
-                for (step in round) {
-                    val ready = waitForComboStep(step)
-                    if (ready is io.magicmobile.android.game.ComboLoopStop) { stop = ready; break@repeating }
-                    val replay = ready as io.magicmobile.android.game.ComboReplay
+                var chosen = emptyList<String>()
+                for ((index, step) in round.withIndex()) {
+                    val replay = when (val wait = waitForComboStep(step, prefer[index].orEmpty())) {
+                        is ComboWait.Stop -> { stop = wait.reason; break@repeating }
+                        is ComboWait.Ready -> wait.replay
+                    }
                     try { submit(replay.command, replay.label, replay.actionID) }
                     catch (error: CancellationException) { throw error }
-                    catch (error: Exception) { stop = io.magicmobile.android.game.ComboLoopStop.Failed(error.message ?: "The game didn't take that step."); break@repeating }
+                    catch (error: Exception) { stop = ComboLoopStop.Failed(error.message ?: "The game didn't take that step."); break@repeating }
+                    if (replay.chosenNames.isNotEmpty()) {
+                        prefer[index] = replay.chosenNames
+                        if (chosen.isEmpty() || step.targets.any { it.controller == "opponent" }) chosen = replay.chosenNames
+                    }
+                    replay.retargeted?.let { (from, to) -> noteComboLine("$from is gone, now $to") }
+                    if (watch) snapshot?.let { comboPresented = it.withoutPrompts() }
                 }
                 rounds += 1
                 comboRun = comboRun?.copy(done = rounds)
+                noteComboLine(ComboLoop.roundLine(rounds, round, chosen))
                 val current = snapshot ?: break
-                if (current.isCompleted) { stop = io.magicmobile.android.game.ComboLoopStop.GameOver; break }
-                val digest = loop.digest(current)
-                unchanged = if (digest == lastDigest) unchanged + 1 else 0
-                lastDigest = digest
-                if (unchanged >= loop.UNCHANGED_ROUNDS_TO_STOP) { stop = io.magicmobile.android.game.ComboLoopStop.NothingChanged; break }
+                comboPresented = current.withoutPrompts()
+                if (current.isCompleted) { stop = ComboLoopStop.GameOver; break }
+                if (watch) { waitForBoardPresentation(); delay(450) }
+                // Open-ended repeats stop a loop that has stopped doing anything visible; a count simply runs out.
+                if (mode.count == null) {
+                    val digest = ComboLoop.digest(current)
+                    unchanged = if (digest == lastDigest) unchanged + 1 else 0
+                    lastDigest = digest
+                    if (unchanged >= ComboLoop.UNCHANGED_ROUNDS_TO_STOP) { stop = ComboLoopStop.NothingChanged; break }
+                }
             }
-            if (times == null && stop == io.magicmobile.android.game.ComboLoopStop.Finished) stop = io.magicmobile.android.game.ComboLoopStop.ReachedLimit
+            if (mode.count == null && stop == ComboLoopStop.Finished) stop = ComboLoopStop.ReachedLimit
         } finally {
             io.magicmobile.android.game.BoardFXLevel.suppressedForLoop = false
-            val summary = loop.summary(rounds, start, snapshot ?: start)
-            comboResult = if (stop == io.magicmobile.android.game.ComboLoopStop.Finished || stop == io.magicmobile.android.game.ComboLoopStop.GameOver) summary
-                else "$summary. ${stop.message}"
-            comboRun = null; comboHistory = emptyList(); comboDeclined = round; comboJob = null
+            comboFastMode = false
+            val summary = ComboLoop.summary(rounds, start, snapshot ?: start)
+            val last = stop
+            comboResult = when {
+                last == ComboLoopStop.Finished || last == ComboLoopStop.GameOver -> summary
+                last is ComboLoopStop.StepMissing && mode == ComboRepeat.UntilCant && rounds > 0 -> "$summary, until it couldn't go on: ${last.why}."
+                else -> "$summary. ${last.message}"
+            }
+            comboRun = null; comboPresented = null; comboHistory = emptyList(); comboDeclined = round; comboJob = null
         }
     }
 
+    private sealed class ComboWait {
+        data class Ready(val replay: ComboReplay) : ComboWait()
+        data class Stop(val reason: ComboLoopStop) : ComboWait()
+    }
+
     /**
-     * Waits for this step's answer to be possible: the session idle and the step among the choices. Returns the replay, or why
-     * the loop stops (the game ended, an opponent responded, the player is asked something the round doesn't answer, nothing came).
+     * Waits for this step's answer to be possible: the session idle, the player's own triggers resolved when the step was taken
+     * with an empty stack (passing priority for them), and the step among the choices. Stops when the game ends, an opponent
+     * responds, the player is asked something the round doesn't answer, or nothing comes.
      */
-    private suspend fun waitForComboStep(step: io.magicmobile.android.game.ComboStep): Any {
-        val loop = io.magicmobile.android.game.ComboLoop
+    private suspend fun waitForComboStep(step: ComboStep, prefer: List<String>): ComboWait {
         val started = System.currentTimeMillis()
         var askedSince: Long? = null
+        var passedFor: String? = null
+        fun askedTooLong(): Boolean {
+            val since = askedSince ?: System.currentTimeMillis().also { askedSince = it }
+            return System.currentTimeMillis() - since > 3_000
+        }
         while (System.currentTimeMillis() - started < 45_000) {
-            if (comboStopRequested || isClosing) return io.magicmobile.android.game.ComboLoopStop.StoppedByPlayer
+            if (comboStopRequested || isClosing) return ComboWait.Stop(ComboLoopStop.StoppedByPlayer)
             val current = snapshot
             if (current != null) {
-                if (current.isCompleted || current.isSpectating) return io.magicmobile.android.game.ComboLoopStop.GameOver
+                if (current.isCompleted || current.isSpectating) return ComboWait.Stop(ComboLoopStop.GameOver)
                 val idle = !isWorking && !isAutoPassing && pendingActionID == null && pending == null && smartPassJob == null &&
                     heldAbilitySnapshot == null && abilityAutoAnswer == null
                 if (idle) {
-                    if (loop.opponentResponded(current)) return io.magicmobile.android.game.ComboLoopStop.OpponentResponded
-                    loop.command(step, current)?.let { return it }
+                    if (ComboLoop.opponentResponded(current)) return ComboWait.Stop(ComboLoopStop.OpponentResponded)
                     val asked = current.legalActions?.isNotEmpty() == true || current.promptEnvelopeV2?.let { current.isViewer(it.playerId) } == true
-                    if (asked) {
-                        val since = askedSince ?: System.currentTimeMillis().also { askedSince = it }
-                        if (System.currentTimeMillis() - since > 3_000) return io.magicmobile.android.game.ComboLoopStop.StepMissing
-                    } else askedSince = null
+                    val pass = ComboLoop.pass(current)
+                    if (ComboLoop.waitsForStack(step, current)) {
+                        // The round's own triggers are still resolving: pass for them, once per prompt.
+                        val key = current.promptEnvelopeV2?.id ?: "${current.bridgeRevision ?: 0}"
+                        if (pass != null && passedFor != key) {
+                            passedFor = key; askedSince = null
+                            try { submit(pass.command, pass.label, "combo-loop-pass-$key") }
+                            catch (error: CancellationException) { throw error }
+                            catch (error: Exception) { return ComboWait.Stop(ComboLoopStop.Failed(error.message ?: "The game didn't take that step.")) }
+                            continue
+                        }
+                        if (asked && pass == null && askedTooLong()) return ComboWait.Stop(ComboLoopStop.StepMissing("a choice the loop doesn't make came up"))
+                    } else {
+                        val replay = ComboLoop.command(step, current, prefer)
+                        if (replay != null) return ComboWait.Ready(replay)
+                        if (asked) { if (askedTooLong()) return ComboWait.Stop(ComboLoopStop.StepMissing(ComboLoop.missing(step))) }
+                        else askedSince = null
+                    }
                 }
             }
             delay(120)
         }
-        return io.magicmobile.android.game.ComboLoopStop.StepMissing
+        return ComboWait.Stop(ComboLoopStop.StepMissing(ComboLoop.missing(step)))
     }
 
     /** Passing priority after casting a spell (Settings), sent with this seat's next answer. */

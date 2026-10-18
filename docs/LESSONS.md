@@ -270,3 +270,10 @@ contradicting one.
   Swift closed range whose upper bound is below its lower bound traps (Kotlin's `1..0` is just empty, so Android was
   fine). The parity cases all had three or more steps. **Rule:** guard the bounds before building a `...` range from a
   computed value, and put the empty and smallest inputs in shared parity cases ("", "A", "AT" now are).
+- 2026-10-17 (Claude, combo loop 2): exact replay was too strict for real loops. Chatterfang's round sacrifices
+  Squirrel tokens, makes new ones and keeps shrinking one creature, so matching by card name and stopping on an
+  unchanged life/zone digest stopped after 2 rounds. Record each choice as *kind* (whose, creature/artifact/…, token or
+  card; options by name), prefer last round's pick, and put power, toughness, damage and tapped state in the digest.
+  Passes are not round steps: record whether the stack was empty when a step was taken and pass for the player's own
+  triggers before it. In the parity fixture, separate targets with `;`: card names like "Zacama, Primal Calamity"
+  contain commas. Test snapshots that include `xmage` need every `panels` field or decoding fails.
