@@ -358,3 +358,8 @@ contradicting one.
   put `paths:` on the `pull_request` trigger of a workflow with a required job. Filter inside the workflow instead: the
   `changes` job in magicmobile-ondevice.yml and magicmobile-android-app.yml decides, and a job skipped by `if:` counts
   as passing. A new required job needs the same pattern before it is added to the ruleset.
+- 2026-10-18 (Claude, release C): a far-calls run can finish every step and still end `cancelled` when GitHub's runner
+  hangs in "Complete job" until the 3 h job limit. Don't `gh run rerun` it: the rerun's artifact sits beside the first
+  attempt's with the same name and `controller.py stage-native` refuses ("Expected one unexpired ... artifact").
+  Dispatch a fresh run with the same `candidate_sha` and `cheap_run_id`. stage-native also refuses while
+  `apps/ios/NativeEngine` exists: move the old engine into `packages/ondevice-engine/build/` first.
