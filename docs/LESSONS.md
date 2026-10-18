@@ -282,3 +282,9 @@ contradicting one.
   uncommitted. Committing the ledger first and then running the second `resume` would invalidate the run. If the
   ledger is already committed: `git reset <upload commit>` (keeps the ledger as an unstaged change), run `resume` with
   the same fingerprint, then `git reset <ledger commit>` to return to the pushed branch. No force push needed.
+- 2026-10-17 (Claude): main has a ruleset ("main: CI must pass", id 25329787) requiring `Download site build`, `app`,
+  `boundary-tests`, `swift` and `real-jvm`, and the repo allows auto-merge (`gh pr merge N --auto --merge`). GitHub's
+  auto-merge waits only for required checks, and a required check that never reports blocks the PR forever, so never
+  put `paths:` on the `pull_request` trigger of a workflow with a required job. Filter inside the workflow instead: the
+  `changes` job in magicmobile-ondevice.yml and magicmobile-android-app.yml decides, and a job skipped by `if:` counts
+  as passing. A new required job needs the same pattern before it is added to the ruleset.

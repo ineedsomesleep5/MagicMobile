@@ -11,23 +11,38 @@ on:
       - 'apps/ios/MagicMobile/Assets.xcassets/**'
       - '.github/workflows/magicmobile-android-app.yml'
   pull_request:
-    # The diagnostic APK regenerates Android assets from these shared sources.
-    # This job compiles and checks contracts, but does not execute XMage or an
-    # Android device; the full-native workflow remains a separate evidence gate.
-    paths:
-      - 'apps/android/**'
-      - 'scripts/android/**'
-      - 'packages/ondevice-engine/**'
-      - 'apps/ios/MagicMobile/Resources/ondevice-catalogue.json'
-      - 'apps/ios/MagicMobile/PreconCatalog.swift'
-      - 'apps/ios/MagicMobile/Assets.xcassets/mana-*.imageset/**'
-      - 'apps/ios/MagicMobile/Assets.xcassets/AppIcon.appiconset/**'
-      - '.github/workflows/magicmobile-android-app.yml'
+    # Runs on every PR (main requires the check); `changes` skips the job unless these shared sources changed:
+    # the diagnostic APK regenerates Android assets from them. This job compiles and checks contracts, but does not
+    # execute XMage or an Android device; the full-native workflow remains a separate evidence gate.
   workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: read
 jobs:
+  # Every PR gets this workflow's checks, because main requires them for auto-merge. A PR that touches none of
+  # these paths skips the jobs below, and GitHub counts a skipped job as passing.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)' > changed.txt
+          # The files list stops at 3,000; a PR that big runs everything.
+          if [ "$(wc -l < changed.txt)" -ge 3000 ] || grep -qE '^(apps/android/|scripts/android/|packages/ondevice-engine/|apps/ios/MagicMobile/Resources/ondevice-catalogue\.json$|apps/ios/MagicMobile/PreconCatalog\.swift$|apps/ios/MagicMobile/Assets\.xcassets/(mana-[^/]*\.imageset|AppIcon\.appiconset)/|\.github/workflows/magicmobile-android-app\.yml$)' changed.txt; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
   app:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

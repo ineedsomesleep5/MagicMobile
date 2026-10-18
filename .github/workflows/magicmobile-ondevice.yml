@@ -1,7 +1,7 @@
 name: On-device engine gates
 on:
+  # Runs on every PR (main requires the checks); `changes` skips the jobs unless these paths changed.
   pull_request:
-    paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', 'scripts/deck-studio/**', 'scripts/ci/**', '.github/workflows/magicmobile-ondevice.yml']
   push:
     branches: [main]
     paths: ['packages/ondevice-engine/**', 'apps/ios/**', 'apps/ios-ondevice/**', 'scripts/deck-studio/**', 'scripts/ci/**', '.github/workflows/magicmobile-ondevice.yml']
@@ -9,8 +9,32 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
 jobs:
+  # Every PR gets this workflow's checks, because main requires them for auto-merge. A PR that touches none of
+  # these paths skips the jobs below, and GitHub counts a skipped job as passing.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)' > changed.txt
+          # The files list stops at 3,000; a PR that big runs everything.
+          if [ "$(wc -l < changed.txt)" -ge 3000 ] || grep -qE '^(packages/ondevice-engine/|apps/ios/|apps/ios-ondevice/|scripts/deck-studio/|scripts/ci/|\.github/workflows/magicmobile-ondevice\.yml$)' changed.txt; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
   boundary-tests:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -51,6 +75,8 @@ jobs:
           name: boundary-test-evidence
           path: packages/ondevice-engine/evidence
   swift:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     # Xcode 27.0 (27A266a), the release TestFlight builds use. GitHub's `xcode-27`
     # image is a public preview (actions/runner-images#14404); macos-latest still
     # defaults to Xcode 26.6. Move to the GA label when GitHub publishes one.
@@ -141,6 +167,8 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
   real-jvm:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
