@@ -37,10 +37,29 @@ python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
 python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl \
   --input tests/decks/yargle.txt --commander 'Yargle, Glutton of Urborg' --output build/yargle.json
 python3 scripts/make_match.py build/isamaru.json build/yargle.json --output build/match.json
+# These validate decks and play real games. Sets come from the set catalogue (MobileExpansionSet), so no set
+# class may load: only Booster Tutor's packs use one, from the few that make their own packs.
 for suite in RealStandaloneValidationLifecycleTests RealBusyShutdownTests RealResolvingCancellationTests; do
-  java -Xmx384m -Djava.awt.headless=true -cp "$CP:build/test-real" "io.magicmobile.xmage.$suite" build/match.json \
-    2>&1 | tee "evidence/$suite.txt"
+  java -Xmx384m -Xlog:class+load=info:file="build/class-load-$suite.log" -Djava.awt.headless=true -cp "$CP:build/test-real" \
+    "io.magicmobile.xmage.$suite" build/match.json 2>&1 | tee "evidence/$suite.txt"
+  if grep -E '\] mage\.sets\.' "build/class-load-$suite.log"; then echo "FAIL: $suite loaded XMage set classes" >&2; exit 1; fi
 done
+echo "PASS: no XMage set class loaded while validating decks and playing" | tee evidence/no-set-classes.txt
+# The set catalogue against the real set classes: fields, card lists and lookups, packs from every set, every printing.
+java -Xmx1g -Djava.awt.headless=true -cp "$CP:build/test-real" io.magicmobile.xmage.RealSetCatalogueTests \
+  2>&1 | tee evidence/RealSetCatalogueTests.txt
+# The same lookups on a catalogue copy that lists one collector number twice (first on the classpath).
+mkdir -p build/ambiguous-set-catalogue/mage/mobile
+python3 - build/engine/mage/mobile/set-catalogue.tsv.gz build/ambiguous-set-catalogue/mage/mobile/set-catalogue.tsv.gz <<'PY'
+import gzip, sys
+lines = gzip.open(sys.argv[1], 'rt', encoding='utf-8').read().split('\n')
+header = lines[0].split('\t'); header[4] = str(int(header[4]) + 1); lines[0] = '\t'.join(header)
+row = next(i for i, line in enumerate(lines) if line.startswith('P\tMRD\t16\t'))
+lines.insert(row + 1, lines[row])
+with gzip.open(sys.argv[2], 'wt', encoding='utf-8') as out: out.write('\n'.join(lines))
+PY
+java -Xmx384m -Djava.awt.headless=true -cp "build/ambiguous-set-catalogue:$CP:build/test-real" \
+  io.magicmobile.xmage.RealSetCatalogueTests ambiguous 2>&1 | tee -a evidence/RealSetCatalogueTests.txt
 python3 scripts/test_real_decks.py
 python3 scripts/test_real_lifecycle.py
 python3 scripts/play_jvm.py build/match.json --timeout 240 --report evidence/real-jvm-game.json

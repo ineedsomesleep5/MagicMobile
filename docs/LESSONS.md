@@ -96,6 +96,22 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-18 (Claude, release C size cuts): GraalVM 22.1 compiles the static initializer of every reachable class
+  that initializes at run time (`DynamicHubInitializer.buildRuntimeInitializationInfo`), and registering a class for
+  checkpoint serialization or reflection makes it reachable. That kept all 589 set classes with their card lists in the
+  image, and `mage.db.EntityManager` (a Serializable enum whose initializer opens H2 through ORMLite JDBC) pulled in H2.
+  **Rule:** packages that are never game state stay out of the checkpoint list (`NOT_CHECKPOINTED` in
+  `NativeReflectionExporter`); read the pinned toolchain's own sources (`lib/svm/builder/svm.src.zip` in the Gluon
+  archive `scripts/android/prepare_toolchain.py` downloads) rather than guessing what makes code reachable. Gluon always
+  adds `-H:EnableURLProtocols=http,https` (`allowHttps()` returns true); `-H:DisableURLProtocols` overrides it.
+- 2026-10-18 (Claude): the JVM verifier loads every class a method returns where a supertype is expected, so a
+  generated `switch` of `return X.getInstance();` loaded all 95 listed set classes the first time the engine started.
+  **Fix:** `return (ExpansionSet)(Object)X.getInstance();` checks at run time instead (`GeneratedBoosterSets`).
+  `test_real_engine.sh` fails if a game loads any `mage.sets` class. Also for memory readings: the test decks that
+  `resolve_deck.py` builds use some Arena-only printings (AKR, ANB, HA4), so XMage's Commander validator falls back to
+  `CardRepository.findCards(name)` and loads the whole card-metadata catalogue (about 87 MB of JVM heap); app decks only
+  use eternal-legal printings. Measure with `build/isamaru.json`, or say which deck you used.
+
 - 2026-10-15 (Claude, C4): XMage's AI search is limited by time, not by its 5000-node cap. Calibration
   searches use a median of 12–18 nodes (90th percentile about 600); each node copies the whole Commander
   game, about 20 ms. Attacks and blocks are fixed rules in `ComputerPlayer6` and never searched. **Rule:**

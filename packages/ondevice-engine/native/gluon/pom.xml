@@ -58,6 +58,18 @@
             <arg>-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED</arg>
             <arg>${native.checkpoint.feature}</arg>
             <arg>-H:ResourceConfigurationFiles=${engine.root}/native/resource-config.json</arg>
+            <!-- The engine opens no network connection. Gluon always adds -H:EnableURLProtocols=http,https;
+                 disabling both keeps HttpURLConnection and TLS (JSSE) out of the image. -->
+            <arg>-H:DisableURLProtocols=http,https</arg>
+            <!-- No JDBC driver: the card and set repositories read the bundled catalogue, so H2's
+                 java.sql.Driver service is never registered even if DriverManager is reachable. -->
+            <arg>-H:ServiceLoaderFeatureExcludeServices=java.sql.Driver</arg>
+            <!-- Fail the build, naming the path, if the card database, protobuf results or a set class
+                 the set catalogue replaces become reachable again (docs/LIGHTER_ENGINE_PLAN.md, step 3). -->
+            <arg>-H:ReportAnalysisForbiddenType=org.h2.Driver:Reachable</arg>
+            <arg>-H:ReportAnalysisForbiddenType=com.j256.ormlite.jdbc.JdbcConnectionSource:Reachable</arg>
+            <arg>-H:ReportAnalysisForbiddenType=com.google.protobuf.GeneratedMessageV3:Reachable</arg>
+            <arg>-H:ReportAnalysisForbiddenType=mage.sets.MagicOnlinePromos:Reachable</arg>
           </nativeImageArgs>
         </configuration>
       </plugin>

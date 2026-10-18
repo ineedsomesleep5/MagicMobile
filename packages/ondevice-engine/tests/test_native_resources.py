@@ -24,6 +24,7 @@ class NativeResourceGuardTests(unittest.TestCase):
         # A directory entry like build/engine plus Mage classes, and a jar with a service file.
         classes = self.dir / 'classes'
         for name, data in {'mage/mobile/card-names.json.gz': b'n', 'mage/mobile/card-metadata.jsonl.gz': b'm',
+                           'mage/mobile/set-catalogue.tsv.gz': b's',
                            'mage/mobile/card-metadata-report.json': b'{}', 'mage/cards/a/Abc.class': b'\xca\xfe\xba\xbe',
                            'mage/mobile/Loader.class': b'\xca\xfe\xba\xbe', 'tokens-database.txt': b't',
                            'pennydreadful.properties': b'p', 'log4j-unused.properties': b'x',
@@ -50,7 +51,8 @@ class NativeResourceGuardTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(sorted(r['name'] for r in report['embedded']), [
             'META-INF/services/org.slf4j.spi.SLF4JServiceProvider', 'mage/mobile/card-metadata.jsonl.gz',
-            'mage/mobile/card-names.json.gz', 'pennydreadful.properties', 'tokens-database.txt'])
+            'mage/mobile/card-names.json.gz', 'mage/mobile/set-catalogue.tsv.gz', 'pennydreadful.properties',
+            'tokens-database.txt'])
         self.assertEqual(report['classFiles'], 0)
 
     def test_broad_mage_pattern_is_refused(self):

@@ -19,9 +19,14 @@ javac --release 17 -cp "$ROOT/build/core" -d "$ROOT/build/tools" "$ROOT/engine/t
 # Exporter needs all Mage/Mage.Sets class definitions, NOT test classes or server UI classes.
 java -Xmx4g -cp "$ROOT/build/core:$ROOT/build/tools:$CP" RegistryExporter "$ROOT/build/generated" \
  "$U/Mage/target/classes" "$U/Mage.Sets/target/classes" "$U/Mage.Common/target/classes"
+# The set catalogue (sets and printings from the set classes) is an engine resource, like the card metadata.
+mkdir -p "$ROOT/build/engine/mage/mobile"
+cp "$ROOT/build/generated/resources/mage/mobile/set-catalogue.tsv.gz" "$ROOT/build/engine/mage/mobile/"
 python3 "$ROOT/scripts/prepare_mobile_repository.py" --mode runtime --output "$ROOT/build/generated/platform"
 # Save/resume checkpoints are readable only by a build with the same adapter and upstream patches.
 python3 "$ROOT/scripts/engine_build_identity.py" --output "$ROOT/build/generated/java"
+# Generated classes from an earlier inventory (the old per-set registry buckets) must not linger.
+rm -rf "$ROOT/build/engine/io/magicmobile/generated"
 find "$ROOT/engine/xmage/src/main/java" "$ROOT/build/generated/java" "$ROOT/build/generated/platform" \
   "$ROOT/platform/java" -name '*.java' | sort > "$ROOT/build/engine-sources.txt"
 javac --release 17 -cp "$ROOT/build/core:$CP" -d "$ROOT/build/engine" @"$ROOT/build/engine-sources.txt"
