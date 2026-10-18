@@ -103,6 +103,7 @@ def patch_computer(text: str) -> str:
 # an AI simulation hands out the same card states as a deep copy, and the library search searches the
 # same targets in the same order with the same alpha-beta. Each keeps a static switch that restores
 # upstream's way for the equivalence checks (RealSearchMemoryTests, tools/ai-calibration/SearchEquivalence).
+# The Modes patch (every ability copy) computes the same fields with less work.
 def patch_lazy_cards(text: str) -> str:
     """Copies of an AI simulation share the source's card objects; each game copies a card on first use."""
     text=exact(text,'    protected Map<UUID, Card> gameCards = new HashMap<>();\n',
@@ -265,6 +266,18 @@ def patch_search(text: str) -> str:
         '                            node.children.add(bestNode);\n                        }\n                    }\n',
         'ComputerPlayer6.simulatePriority opponent best line')
 
+def patch_modes(text: str) -> str:
+    """Modes' copy (in every ability copy): selected modes listed once, and a table sized for its modes."""
+    text=exact(text,'    protected Modes(final Modes modes) {\n',
+        '    protected Modes(final Modes modes) {\n'
+        '        super(modes.size() * 4 / 3 + 1); // MOBILE_SEARCH_MEMORY: sized for its modes, not 16 (same insertion order)\n',
+        'Modes copy constructor')
+    return exact(text,'        this.selectedModes.addAll(modes.getSelectedModes()); // TODO: bugged - can lost multi selects here?\n'
+        '        if (modes.getSelectedModes().isEmpty()) {\n',
+        '        List<UUID> selected = modes.getSelectedModes(); // MOBILE_SEARCH_MEMORY: listed once, not twice\n'
+        '        this.selectedModes.addAll(selected); // TODO: bugged - can lost multi selects here?\n'
+        '        if (selected.isEmpty()) {\n','Modes copy of the selected modes')
+
 # Checkpoints without serializable lambdas. The pinned GraalVM 22.1 native image fails the whole
 # build when a class registered as a serialization lambdaCapturingType also creates any lambda
 # without writeReplace, and a SerializedLambda is not a class the checkpoint filter should trust.
@@ -403,6 +416,7 @@ PATCHES={
     'Mage/src/main/java/mage/util/RandomUtil.java':patch_random,
     'Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java':patch_computer,
     'Mage.Server.Plugins/Mage.Player.AI.MAD/src/mage/player/ai/ComputerPlayer6.java':patch_search,
+    'Mage/src/main/java/mage/abilities/Modes.java':patch_modes,
     **LAMBDA_PATCHES,
 }
 

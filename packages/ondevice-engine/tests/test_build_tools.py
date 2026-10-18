@@ -70,7 +70,12 @@ class PatchTests(unittest.TestCase):
         self.assertIn('SimulationNode2.nodeCount += targetIds.size();',out)  # upstream's node count
         self.assertEqual(out.count('if (mobileSearchMemory) {'),2)  # both best-line updates
         self.assertEqual(out.count('} else if (mobileSearchMemory) {'),1)
-        for function in (patch.patch_lazy_cards,patch.patch_search):
+        modes=patch.patch_modes('    protected Modes(final Modes modes) {\n'
+            '        this.selectedModes.addAll(modes.getSelectedModes()); // TODO: bugged - can lost multi selects here?\n'
+            '        if (modes.getSelectedModes().isEmpty()) {\n')
+        self.assertEqual(modes.count('modes.getSelectedModes()'),1)
+        self.assertIn('super(modes.size() * 4 / 3 + 1);',modes)
+        for function in (patch.patch_lazy_cards,patch.patch_search,patch.patch_modes):
             with self.assertRaises(ValueError):function('class Changed {}')
     def test_lambda_patches_are_exact_and_leave_no_method_reference(self):
         lock=json.loads((ROOT/'upstream.lock.json').read_text())

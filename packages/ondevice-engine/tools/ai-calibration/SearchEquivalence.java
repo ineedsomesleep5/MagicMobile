@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Engine release C's AI search memory against upstream's way, in real long games (docs/LIGHTER_ENGINE_PLAN.md, step
  * 3). A measurement tool, never an app path. One seeded AI-vs-AI game on AICalibration's phone budget; at AI decisions
- * (main phases and combat, empty stack, at most one per turn, step and seat) the deciding AI's search runs on deep
+ * (main phases and combat, empty stack, one a turn, decisions with something to search) the deciding AI's search runs on deep
  * copies of the live game three times from the same seeded generator, with no time limit (it ends at its depth or a
  * node limit, so it can repeat): twice the upstream way (GameImpl.mobileLazyCards and ComputerPlayer6.mobileSearchMemory
  * off: every copy deep, a library search's copies made up front), then with both on. Where the two upstream runs
@@ -65,10 +65,12 @@ public final class SearchEquivalence {
                 UUID deciding=game.getPriorityPlayerId();
                 if(deciding==null || !seats.containsKey(deciding) || !game.getStack().isEmpty()
                         || !MobileAICancellation.searchesAt(game.getTurnStepType())) return;
-                if(!probed.add(game.getTurnNum()+":"+game.getTurnStepType()+":"+deciding)) return;
-                probes[0]++;
+                if(probed.contains(String.valueOf(game.getTurnNum()))) return; // at most one decision a turn
                 try {
-                    String[] row=probe(game,deciding,seed+31L*probes[0],maxNodes);
+                    String[] row=probe(game,deciding,seed+31L*game.getTurnNum(),maxNodes);
+                    if(row[2].equals("0")) return; // nothing to search (only Pass), so nothing to compare
+                    probed.add(String.valueOf(game.getTurnNum()));
+                    probes[0]++;
                     csv.println(seed+","+game.getTurnNum()+","+game.getTurnStepType()+","+seats.get(deciding)+","+skills.get(deciding)
                         +","+String.join(",",row));
                     csv.flush();

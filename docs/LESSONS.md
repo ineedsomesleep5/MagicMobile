@@ -96,6 +96,20 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-18 (Claude, release C AI memory): sharing card objects between game copies (`GameImpl`
+  `MOBILE_LAZY_CARDS`) is exact only while a source is not changed again while a copy that shares its cards is alive.
+  The AI's search sources are frozen once copied, or their copies are dropped before the source goes on, except
+  `SimulatedPlayer2.triggerAbility`, which copies the game for each trigger option in the middle of
+  `checkStateAndTriggered` and lets rules processing go on; copies made while a trigger is handled stay deep. Copies
+  of the live game are always deep, so a late search thread never shares objects with it. **Rule:** a new game copy
+  in AI code needs a frozen source or a copy that dies first; check it with `RealSearchMemoryTests` and
+  `profile_long_games.py equivalence` (the switches `GameImpl.mobileLazyCards`, `ComputerPlayer6.mobileSearchMemory`).
+- 2026-10-18 (Claude, release C AI memory): the engine ships no log4j configuration, so reload4j's root logger is
+  DEBUG with no appender: on phones every `isInfoEnabled()`/`isDebugEnabled()` block runs and its output is dropped
+  (in `ComputerPlayer6`, a score for every step of each root action's line, a board printout at each priority). The
+  calibration and profile tools set WARN (`tools/ai-calibration/log4j.properties`), so their CPU numbers leave that out.
+  Not changed yet. Also: memory readings in engine code avoid `java.lang.management`, which would make JMX reachable in
+  the native image; `DeviceMemory` uses `os_proc_available_memory` (iOS), `/proc/meminfo` and a JVM property.
 - 2026-10-18 (Claude, release C size cuts): GraalVM 22.1 compiles the static initializer of every reachable class
   that initializes at run time (`DynamicHubInitializer.buildRuntimeInitializationInfo`), and registering a class for
   checkpoint serialization or reflection makes it reachable. That kept all 589 set classes with their card lists in the
