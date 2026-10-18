@@ -93,7 +93,9 @@ Traces: `~/Documents/MagicMobile-releases/profiles/2026-10-18-iphone16promax-bui
   Built 2026-10-18 on both apps (see the Log): ambient glows on one shared grid, resting when the board is idle and at
   half rate while hot; the thinking ring off the main thread; repeated polls not decoded or re-recorded; battlefield
   rows and ribbon banners measured once per change. Compare traces with `scripts/ios/time_profile_summary.py`
-  (build 46: display-link updates 24–45 a second per minute, decoding 62% of the poll loop).
+  (build 46: display-link updates 24–45 a second per minute, decoding 62% of the poll loop). On the iPhone 17 Pro
+  simulator (Debug, design-preview boards, app CPU): your priority with glows 14% → 5%, 0.6% once resting; AI thinking
+  18–20% → 5% (tavern), 22% → 5% (classic board). The phone re-measure is still the real test.
 - [ ] Report the findings here before step 3 is written.
 
 ### 2. App release: heat and memory awareness (PR A)
