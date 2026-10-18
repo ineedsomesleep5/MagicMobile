@@ -36,6 +36,7 @@ import mage.util.MultiAmountMessage;
 import org.apache.log4j.Logger;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.LinkedList;
@@ -182,10 +183,14 @@ final class MobileAICancellation {
         private long mistakeState;
         private int mistakes;
         private boolean expert;
-        // One search's root candidates. Written by the simulation thread, read after it returns.
+        // One search's root candidates, kept only when a deliberate mistake can use them (mistakePercent > 0).
+        // Written by the simulation thread, read after it returns.
         private transient volatile SimulationNode2 searchRoot;
         private transient List<ScoredChoice> rootChoices;
         private transient boolean searched;
+        // The running search's game copies (cap, then release), and every search of the decision being made.
+        private transient volatile AISearchMemory searchMemory;
+        private transient List<AISearchMemory> decisionSearches;
         CancellablePlayer(String name,int skill,AIDifficulty difficulty,MobileAICancellation cancellation) {
             super(name,RangeOfInfluence.ALL,skill);this.cancellation=cancellation;
             maxDepth=difficulty.searchDepth;mistakePercent=difficulty.mistakePercent;mistakeState=difficulty.seed;
@@ -215,6 +220,19 @@ final class MobileAICancellation {
          */
         @Override protected void calculateActions(Game game) {
             searched=false;
+            try { searchAndMaybeErr(game); }
+            finally {
+                // The plan kept for the next priorities needs abilities and combat only, not the search's copies.
+                List<SimulationNode2> kept=root==null?List.of():List.of(root);
+                for(AISearchMemory search:searches()) search.decided(kept);
+                searches().clear();
+            }
+        }
+        private List<AISearchMemory> searches() {
+            if(decisionSearches==null) decisionSearches=new ArrayList<>(); // null in a restored game
+            return decisionSearches;
+        }
+        private void searchAndMaybeErr(Game game) {
             if(expert && !game.isSimulation()) expertSearch(game); else super.calculateActions(game);
             List<ScoredChoice> candidates;
             synchronized(this) { candidates=new ArrayList<>(choices());choices().clear();searchRoot=null; }
@@ -380,6 +398,8 @@ final class MobileAICancellation {
         @Override protected Integer addActionsTimed() {
             synchronized(this) { choices().clear();searchRoot=root; }
             searched=true;
+            AISearchMemory memory=root==null?null:AISearchMemory.start(root,this::alternatives);
+            if(memory!=null) { searchMemory=memory;searches().add(memory); }
             int configured=maxThinkTimeSecs;
             Game simulation=root==null?null:root.getGame();
             int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying(),cancellation.isHot());
@@ -390,15 +410,33 @@ final class MobileAICancellation {
             try { return super.addActionsTimed(); }
             finally {
                 maxThinkTimeSecs=configured;
-                timedOut=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
+                boolean outOfTime=System.nanoTime()-started>=budget*1_000_000_000L-50_000_000L;
+                if(memory!=null && memory.capped) {
+                    // As when time runs out: the best line when it stopped. A search also out of time may still be
+                    // unwinding on its thread, so upstream reads its root as it is.
+                    if(!outOfTime) memory.restoreBestLine();
+                    logger.info("AI search for "+getName()+" stopped at its memory cap: "+memory.peak+" game copies alive (cap "
+                        +memory.cap+", "+(memory.availableBytes>>20)+" MB available, about "+(memory.copyBytes>>10)+" KB a copy)");
+                }
+                timedOut=outOfTime || memory!=null && memory.capped;
+            }
+        }
+        /** The root alternatives a deliberate mistake may take; they keep their copies until the AI decides. */
+        private Collection<SimulationNode2> alternatives() {
+            if(mistakePercent==0) return List.of();
+            synchronized(this) {
+                List<SimulationNode2> nodes=new ArrayList<>();
+                for(ScoredChoice choice:choices()) nodes.add(choice.node());
+                return nodes;
             }
         }
         @Override protected int addActions(SimulationNode2 node,int depth,int alpha,int beta) {
             cancellation.enterSimulation();
+            AISearchMemory memory=AISearchMemory.enter(searchMemory,node);
             try {
                 int score=super.addActions(node,depth,alpha,beta);
-                // The search keeps only its best root action; remember how the others scored.
-                if(node!=null && searchRoot!=null && node.getParent()==searchRoot)
+                // The search keeps only its best root action; remember how the others scored, when a mistake can use them.
+                if(mistakePercent>0 && node!=null && searchRoot!=null && node.getParent()==searchRoot && (memory==null || !memory.capped))
                     synchronized(this) { if(node.getParent()==searchRoot) choices().add(new ScoredChoice(node,score)); }
                 return score;
             }
@@ -409,7 +447,7 @@ final class MobileAICancellation {
                     cancellation.runIfOpen(()->EngineDiagnostics.capture("ai-simulation",failure));
                 throw failure;
             }
-            finally { cancellation.leaveSimulation(); }
+            finally { AISearchMemory.leave(memory);cancellation.leaveSimulation(); }
         }
 
         // ---- Game record (docs/cloud/game-record.md) --------------------------------------

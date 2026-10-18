@@ -99,6 +99,172 @@ def patch_computer(text: str) -> str:
         '        pickedCards = new ArrayList<>();\n        chosenColors = new ArrayList<>();\n        lastUnpaidMana = new LinkedHashMap<>();\n    }',
         'ComputerPlayer lastUnpaidMana')
 
+# AI search memory (docs/LIGHTER_ENGINE_PLAN.md, step 3). Neither changes a rule or a choice: a copy of
+# an AI simulation hands out the same card states as a deep copy, and the library search searches the
+# same targets in the same order with the same alpha-beta. Each keeps a static switch that restores
+# upstream's way for the equivalence checks (RealSearchMemoryTests, tools/ai-calibration/SearchEquivalence).
+def patch_lazy_cards(text: str) -> str:
+    """Copies of an AI simulation share the source's card objects; each game copies a card on first use."""
+    text=exact(text,'    protected Map<UUID, Card> gameCards = new HashMap<>();\n',
+        '    protected Map<UUID, Card> gameCards = new HashMap<>();\n'
+        '    // MOBILE_LAZY_CARDS: a copy of an AI simulation starts with its source\'s card objects, and from then on\n'
+        '    // each of the two games copies a shared card the first time it hands it out (getCard, getCards), so the\n'
+        '    // cards a simulation never touches, most of both libraries, are never copied. Null when this game owns\n'
+        '    // every card in gameCards (always for the live game: only simulations are copied this way).\n'
+        '    private transient Set<UUID> ownedCards;\n'
+        '    // MOBILE_LAZY_CARDS: an AI handling a trigger with options copies the game in the middle of rules\n'
+        '    // processing, which then goes on; those copies take their own cards, as upstream.\n'
+        '    private transient int mobileTriggering;\n'
+        '    /** MOBILE_LAZY_CARDS: false only in equivalence checks (every copy deep-copies its cards, as upstream). */\n'
+        '    public static volatile boolean mobileLazyCards = true;\n','GameImpl.gameCards')
+    text=exact(text,'        this.gameCards = CardUtil.deepCopyObject(game.gameCards);\n',
+        '        if (mobileLazyCards && game.simulation && game.mobileTriggering == 0) {\n'
+        '            // MOBILE_LAZY_CARDS: the deep copy\'s map and iteration order, with the source\'s card objects for now\n'
+        '            this.gameCards = new HashMap<>(game.gameCards.size());\n'
+        '            for (Entry<UUID, Card> entry : game.gameCards.entrySet()) {\n'
+        '                this.gameCards.put(entry.getKey(), entry.getValue());\n'
+        '            }\n'
+        '            this.ownedCards = new HashSet<>();\n'
+        '            if (game.ownedCards == null) {\n'
+        '                game.ownedCards = new HashSet<>(); // the source shares them from now on as well\n'
+        '            } else {\n'
+        '                game.ownedCards.clear();\n'
+        '            }\n'
+        '        } else {\n'
+        '            this.gameCards = CardUtil.deepCopyObject(game.gameCards);\n'
+        '        }\n','GameImpl copy of gameCards')
+    text=exact(text,'        gameCards.put(card.getId(), card);\n',
+        '        gameCards.put(card.getId(), card);\n'
+        '        if (ownedCards != null) {\n            ownedCards.add(card.getId()); // MOBILE_LAZY_CARDS\n        }\n',
+        'GameImpl.addCardToState')
+    text=exact(text,'        return gameCards.values();\n',
+        '        if (ownedCards != null) {\n'
+        '            // MOBILE_LAZY_CARDS: the caller reads every card, so this game takes its own copy of each first\n'
+        '            for (Entry<UUID, Card> entry : gameCards.entrySet()) {\n'
+        '                if (ownedCards.add(entry.getKey())) {\n'
+        '                    entry.setValue(entry.getValue().copy());\n'
+        '                }\n'
+        '            }\n'
+        '            ownedCards = null;\n'
+        '        }\n'
+        '        return gameCards.values();\n','GameImpl.getCards')
+    text=exact(text,'        Card card = gameCards.get(cardId);\n',
+        '        Card card = gameCards.get(cardId);\n'
+        '        if (card != null && ownedCards != null && ownedCards.add(cardId)) {\n'
+        '            card = card.copy(); // MOBILE_LAZY_CARDS: the first use of a shared card in this game\n'
+        '            gameCards.put(cardId, card);\n'
+        '        }\n','GameImpl.getCard')
+    if text.count('player.triggerAbility(')!=4:raise ValueError('GameImpl trigger calls changed')
+    text=text.replace('player.triggerAbility(','mobileTriggerAbility(player, ')
+    return exact(text,'    @Override\n    public Integer getGameIndex() {',
+        '    /** MOBILE_LAZY_CARDS: copies made while a player handles a trigger take their own cards. */\n'
+        '    private boolean mobileTriggerAbility(Player player, TriggeredAbility ability, Game game) {\n'
+        '        mobileTriggering++;\n'
+        '        try {\n            return player.triggerAbility(ability, game);\n'
+        '        } finally {\n            mobileTriggering--;\n        }\n    }\n\n'
+        '    @Override\n    public Integer getGameIndex() {','GameImpl.getGameIndex')
+
+def patch_search(text: str) -> str:
+    """ComputerPlayer6: a library search's targets one at a time; each node's best line stays reachable."""
+    text=exact(text,'                if (!game.getStack().isEmpty()) {\n                    resolve(node, depth, game);\n',
+        '                if (!game.getStack().isEmpty()) {\n'
+        '                    // MOBILE_SEARCH_MEMORY: this AI\'s own library search tries its targets one at a time\n'
+        '                    List<UUID> searchTargets = mobileSearchMemory ? librarySearchTargets(game) : null;\n'
+        '                    if (searchTargets == null) {\n'
+        '                        resolve(node, depth, game);\n'
+        '                    } else if (!searchTargets.isEmpty()) {\n'
+        '                        val = searchTargetsOneAtATime(node, depth - 1, alpha, beta, game, searchTargets);\n'
+        '                        node.setScore(val);\n'
+        '                        return val;\n'
+        '                    } // no target: as resolve(), the search stays on the stack and the node simulates priority\n',
+        'ComputerPlayer6.addActions resolve')
+    text=exact(text,'    protected void resolve(SimulationNode2 node, int depth, Game game) {',
+        '    /** MOBILE_SEARCH_MEMORY: false only in equivalence checks (upstream\'s eager library search). */\n'
+        '    public static volatile boolean mobileSearchMemory = true;\n\n'
+        '    /**\n'
+        '     * MOBILE_SEARCH_MEMORY: the targets resolve() would make one child copy each for, in its order (this AI\'s\n'
+        '     * library search on top of the stack, targets not yet chosen); null when resolve() would resolve it.\n'
+        '     */\n'
+        '    private List<UUID> librarySearchTargets(Game game) {\n'
+        '        StackObject stackObject = game.getStack().getFirstOrNull();\n'
+        '        if (!(stackObject instanceof StackAbility)) {\n            return null;\n        }\n'
+        '        SearchEffect effect = getSearchEffect((StackAbility) stackObject);\n'
+        '        if (effect == null || !stackObject.getControllerId().equals(playerId)) {\n            return null;\n        }\n'
+        '        Target target = effect.getTarget();\n'
+        '        if (target.isChoiceCompleted(getId(), (StackAbility) stackObject, game, null)) {\n            return null;\n        }\n'
+        '        return new ArrayList<>(target.possibleTargets(stackObject.getControllerId(), stackObject.getStackAbility(), game));\n'
+        '    }\n\n'
+        '    /**\n'
+        '     * MOBILE_SEARCH_MEMORY: resolve()\'s children with minimaxAB() over them, but each target\'s copy is made just\n'
+        '     * before it is searched and dropped unless it is the best so far, so one branch is alive at a time instead\n'
+        '     * of one per eligible card. Same order, node count, alpha-beta and result as upstream, except that an\n'
+        '     * interrupted search (out of time or at its copy cap) makes no more copies.\n'
+        '     */\n'
+        '    private int searchTargetsOneAtATime(SimulationNode2 node, int depth, int alpha, int beta, Game game, List<UUID> targetIds) {\n'
+        '        StackObject stackObject = game.getStack().getFirstOrNull();\n'
+        '        UUID currentPlayerId = game.getPlayerList().get();\n'
+        '        SimulationNode2 bestChild = null;\n'
+        '        SimulationNode2.nodeCount += targetIds.size(); // upstream creates every child before searching one\n'
+        '        for (UUID targetId : targetIds) {\n'
+        '            if (alpha >= beta) {\n                break;\n            }\n'
+        '            if (SimulationNode2.nodeCount > MAX_SIMULATED_NODES_PER_ERROR) {\n'
+        '                throw new IllegalStateException("AI ERROR: too much nodes (possible actions)");\n            }\n'
+        '            if (SimulationNode2.nodeCount > maxNodes\n'
+        '                    || (!COMPUTER_DISABLE_TIMEOUT_IN_GAME_SIMULATIONS && Thread.currentThread().isInterrupted())) {\n'
+        '                break;\n            }\n'
+        '            Game sim = game.createSimulationForAI();\n'
+        '            StackAbility newAbility = (StackAbility) stackObject.copy();\n'
+        '            SearchEffect newEffect = getSearchEffect(newAbility);\n'
+        '            newEffect.getTarget().addTarget(targetId, newAbility, sim);\n'
+        '            sim.getStack().push(sim, newAbility);\n'
+        '            SimulationNode2 child = new SimulationNode2(node, sim, depth + 1, stackObject.getControllerId());\n'
+        '            SimulationNode2.nodeCount--; // counted above\n'
+        '            child.getTargets().add(targetId);\n'
+        '            node.children.add(child);\n'
+        '            Combat _combat = child.getCombat();\n'
+        '            int val = addActions(child, depth - 1, alpha, beta);\n'
+        '            boolean best;\n'
+        '            if (!currentPlayerId.equals(playerId)) {\n'
+        '                best = val < beta;\n                if (best) {\n                    beta = val;\n                }\n'
+        '            } else {\n'
+        '                best = val > alpha;\n                if (best) {\n                    alpha = val;\n                }\n'
+        '            }\n'
+        '            if (best) {\n'
+        '                if (bestChild != null) {\n                    node.children.remove(bestChild);\n                }\n'
+        '                bestChild = child;\n'
+        '                if (node.getCombat() == null) {\n'
+        '                    node.setCombat(_combat);\n                    bestChild.setCombat(_combat);\n'
+        '                }\n'
+        '            } else {\n'
+        '                node.children.remove(child);\n'
+        '            }\n'
+        '            if (currentPlayerId.equals(playerId) ? val == GameStateEvaluator2.WIN_GAME_SCORE : val == GameStateEvaluator2.LOSE_GAME_SCORE) {\n'
+        '                break;\n            }\n'
+        '        }\n'
+        '        node.children.clear();\n'
+        '        if (bestChild != null) {\n            node.children.add(bestChild);\n        }\n'
+        '        return currentPlayerId.equals(playerId) ? alpha : beta;\n'
+        '    }\n\n'
+        '    protected void resolve(SimulationNode2 node, int depth, Game game) {','ComputerPlayer6.resolve')
+    # The best line so far (bestNode) stays in node.children at every depth, as upstream already keeps it at the
+    # root, so the copy cap counts it; simulatePriority ends with exactly that child either way.
+    keep=('\n                        } else if (mobileSearchMemory) {\n'
+          '                            node.children.clear(); // MOBILE_SEARCH_MEMORY\n'
+          '                            node.children.add(bestNode);\n')
+    text=exact(text,'                            node.children.clear();\n                            node.children.add(bestNode);\n'
+        '                            node.setScore(bestNode.getScore());\n                        }\n',
+        '                            node.children.clear();\n                            node.children.add(bestNode);\n'
+        '                            node.setScore(bestNode.getScore());'+keep+'                        }\n',
+        'ComputerPlayer6.simulatePriority best line')
+    return exact(text,'                        if (!newNode.getChildren().isEmpty()) {\n'
+        '                            bestNode.setCombat(newNode.getChildren().get(0).getCombat());\n                        }\n                    }\n',
+        '                        if (!newNode.getChildren().isEmpty()) {\n'
+        '                            bestNode.setCombat(newNode.getChildren().get(0).getCombat());\n                        }\n'
+        '                        if (mobileSearchMemory) {\n'
+        '                            node.children.clear(); // MOBILE_SEARCH_MEMORY\n'
+        '                            node.children.add(bestNode);\n                        }\n                    }\n',
+        'ComputerPlayer6.simulatePriority opponent best line')
+
 # Checkpoints without serializable lambdas. The pinned GraalVM 22.1 native image fails the whole
 # build when a class registered as a serialization lambdaCapturingType also creates any lambda
 # without writeReplace, and a SerializedLambda is not a class the checkpoint filter should trust.
@@ -233,9 +399,10 @@ PATCHES={
     'Mage/src/main/java/mage/cards/Sets.java':patch_sets,
     'Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java':patch_human,
     'Mage/src/main/java/mage/game/Exile.java':patch_exile,
-    'Mage/src/main/java/mage/game/GameImpl.java':patch_game,
+    'Mage/src/main/java/mage/game/GameImpl.java':lambda text:patch_lazy_cards(patch_game(text)),
     'Mage/src/main/java/mage/util/RandomUtil.java':patch_random,
     'Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java':patch_computer,
+    'Mage.Server.Plugins/Mage.Player.AI.MAD/src/mage/player/ai/ComputerPlayer6.java':patch_search,
     **LAMBDA_PATCHES,
 }
 
@@ -269,5 +436,5 @@ def main() -> None:
     transformed=transform(sources)
     for path,data in transformed.items():(checkout/path).write_bytes(data)
     stamp.write_text(json.dumps({'commit':head,'outputs':{p:hashlib.sha256(b).hexdigest() for p,b in transformed.items()}},indent=2)+'\n')
-    print('Applied checked mobile patches: card factory, set registry, human response hook, checkpoint restore, named checkpoint conditions')
+    print('Applied checked mobile patches: card factory, set registry, human response hook, checkpoint restore, named checkpoint conditions, AI search memory')
 if __name__=='__main__':main()

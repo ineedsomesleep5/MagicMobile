@@ -4,6 +4,7 @@ import io.magicmobile.core.*;
 import io.magicmobile.xmage.XmageEngine;
 import org.graalvm.nativeimage.*;
 import org.graalvm.nativeimage.c.function.CEntryPoint;
+import org.graalvm.nativeimage.c.function.CFunction;
 import org.graalvm.nativeimage.c.type.CCharPointer;
 import org.graalvm.word.WordFactory;
 import java.nio.ByteBuffer;
@@ -13,9 +14,17 @@ import java.nio.charset.*;
 public final class NativeEntryPoints {
     private static EngineService service;
     private static synchronized EngineService service() {
-        if(service==null) service=EngineService.lazy(()->new XmageEngine("native-aot"));
+        if(service==null) {
+            // AI searches size their memory cap from the memory the app still has (XmageEngine.useAvailableMemory).
+            if(Platform.includedIn(Platform.IOS.class)) XmageEngine.useAvailableMemory(()->osProcAvailableMemory());
+            service=EngineService.lazy(()->new XmageEngine("native-aot"));
+        }
         return service;
     }
+    /** iOS 13 and later: bytes this app can still allocate before iOS ends it (os/proc.h). */
+    @Platforms(Platform.IOS.class)
+    @CFunction(value="os_proc_available_memory",transition=CFunction.Transition.NO_TRANSITION)
+    private static native long osProcAvailableMemory();
     @CEntryPoint(name="mm_engine_request")
     public static CCharPointer request(IsolateThread thread,CCharPointer input,int length) {
         try {

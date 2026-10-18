@@ -76,7 +76,8 @@ def pool_decks(pool: str) -> list[str]:
     if pool == 'core+precon':
         return [d['id'] for d in index if d['bracket'] == 2]
     ids = pool.split(',')
-    known = {d['id'] for d in index}
+    # The ranked pools, plus any other deck resolved into DECKS (tools/ai-calibration/decks, for example).
+    known = {d['id'] for d in index} | {p.stem for p in DECKS.glob('*.json') if p.stem != 'index'}
     missing = [i for i in ids if i not in known]
     if missing:
         raise SystemExit(f'Unknown decks: {missing}. Known pools: {sorted(POOLS) + ["core+precon"]}')

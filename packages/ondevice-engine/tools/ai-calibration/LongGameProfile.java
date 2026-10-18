@@ -39,7 +39,11 @@ import java.util.concurrent.locks.LockSupport;
  *  - turns: at the first priority of each turn (a table UPDATE event, on the GAME thread, outside any search) the
  *    live game is copied three times and timed, with the board's size. In memory mode it also measures what one
  *    copy keeps alive (heap after a full GC with eight copies held, minus without; rough, since a late search
- *    thread can free or allocate between the two GCs: heap dumps give the exact figure).
+ *    thread can free or allocate between the two GCs: heap dumps give the exact figure), and the same for a copy
+ *    of an AI simulation that listed the AI's options, which is what an AI search makes (since engine release C
+ *    such a copy shares the cards it has not used), against the engine's own estimate of that size.
+ *  - search memory (engines with AISearchMemory, release C): per search, the most game copies it held alive at
+ *    once, its cap and whether it reached it.
  *  - heap: a timeline every 250 ms and every GC (before and after).
  *  - memory mode only: a full GC every few seconds gives the live heap; each new live peak gets a class histogram,
  *    and the largest peak (once it is dump_over_baseline_mb above the heap before the game) a heap dump of live objects.
@@ -55,6 +59,13 @@ public final class LongGameProfile {
     static final String AI_CLASS=MobileAICancellation.class.getName()+"$CancellablePlayer";
     static final long T0=System.nanoTime();
     static final Set<String> HEAP_POOLS=new HashSet<>();
+    static final java.lang.reflect.Field LAST_MEMORY=lastMemoryField();
+    static java.lang.reflect.Field lastMemoryField() {
+        try {
+            java.lang.reflect.Field f=Class.forName("io.magicmobile.xmage.AISearchMemory").getDeclaredField("last");
+            f.setAccessible(true);return f;
+        } catch(ReflectiveOperationException e) { return null; }
+    }
     static {
         for(java.lang.management.MemoryPoolMXBean pool:ManagementFactory.getMemoryPoolMXBeans())
             if(pool.getType()==java.lang.management.MemoryType.HEAP) HEAP_POOLS.add(pool.getName());
@@ -176,9 +187,10 @@ public final class LongGameProfile {
         Observer(Path out,boolean memory,long gcEveryMs,long dumpOver,long baseline) throws IOException {
             this.out=out;this.memory=memory;this.gcEveryNs=gcEveryMs*1_000_000L;this.dumpOver=dumpOver;this.baseline=baseline;
             searches=writer("searches.csv","t_start_s,turn,step,seat,skill,stack,wall_ms,quick_ms,nodes_quick,nodes,copies,"
-                +"game_cpu_ms,sim_cpu_ms,process_cpu_ms,game_alloc_mb,sim_alloc_mb,heap_max_mb,searched_full");
+                +"game_cpu_ms,sim_cpu_ms,process_cpu_ms,game_alloc_mb,sim_alloc_mb,heap_max_mb,searched_full,"
+                +"copies_alive_max,copy_cap,capped");
             turns=writer("turns.csv","turn,t_s,permanents,game_cards,hand,library,graveyard,exile,triggers,"
-                +"copy_wall_ms,copy_cpu_ms,copy_alloc_kb,copy_retained_kb,heap_mb");
+                +"copy_wall_ms,copy_cpu_ms,copy_alloc_kb,copy_retained_kb,heap_mb,sim_copy_retained_kb,sim_copy_estimate_kb");
             timeline=writer("timeline.csv","t_s,turn,heap_used_mb,heap_committed_mb,copies,nodes,process_cpu_s,gc_count,gc_ms,in_search");
             gcs=writer("gc.csv","t_s,turn,gc,action,cause,ms,before_mb,after_mb");
             try { nodeCount=Class.forName("mage.player.ai.SimulationNode2").getDeclaredField("nodeCount");nodeCount.setAccessible(true); }
@@ -238,7 +250,7 @@ public final class LongGameProfile {
                 Reference.reachabilityFence(copy);
                 probeCopies+=3;
                 Arrays.sort(wall);Arrays.sort(cpu);Arrays.sort(alloc);
-                String retained="";
+                String retained="",simRetained="",simEstimate="";
                 if(memory) {
                     Game[] held=new Game[8];
                     System.gc();System.gc();long u0=usedHeap();
@@ -247,10 +259,26 @@ public final class LongGameProfile {
                     Reference.reachabilityFence(held);
                     probeCopies+=held.length;
                     retained=String.valueOf((u1-u0)/held.length/1024);
+                    held=null;
+                    // What an AI search's copy keeps alive: copies of a simulation that listed the AI's options.
+                    Game root=game.createSimulationForAI();
+                    Player lister=root.getPlayer(game.getPriorityPlayerId());
+                    Game[] sims=new Game[8];
+                    System.gc();System.gc();long s0=usedHeap();
+                    for(int i=0;i<sims.length;i++) {
+                        sims[i]=root.createSimulationForAI();
+                        if(lister!=null) sims[i].getPlayer(lister.getId()).getPlayable(sims[i],true);
+                    }
+                    System.gc();System.gc();long s1=usedHeap();
+                    Reference.reachabilityFence(sims);
+                    probeCopies+=1+sims.length*3; // each listing copies twice more
+                    simRetained=String.valueOf((s1-s0)/sims.length/1024);
+                    Long estimate=copyEstimate(root);
+                    simEstimate=estimate==null?"":String.valueOf(estimate/1024);
                 }
                 synchronized(this) {
-                    turns.printf(Locale.ROOT,"%d,%.2f,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%d,%s,%.1f%n",turn,now()/1e9,permanents,cards,hand,
-                        library,graveyard,exile,triggers,wall[1]/1e6,cpu[1]/1e6,alloc[1]/1024,retained,mb(usedHeap()));
+                    turns.printf(Locale.ROOT,"%d,%.2f,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%d,%s,%.1f,%s,%s%n",turn,now()/1e9,permanents,cards,hand,
+                        library,graveyard,exile,triggers,wall[1]/1e6,cpu[1]/1e6,alloc[1]/1024,retained,mb(usedHeap()),simRetained,simEstimate);
                     turns.flush();
                 }
             } catch(RuntimeException e) {
@@ -281,10 +309,30 @@ public final class LongGameProfile {
             return new long[]{cpu,alloc};
         }
         int nodes() { try { return nodeCount.getInt(null); } catch(IllegalAccessException e) { return -1; } }
+        /** AISearchMemory.last, or null on an engine without it (before release C). */
+        Object searchMemory() {
+            try { return LAST_MEMORY==null?null:LAST_MEMORY.get(null); } catch(IllegalAccessException e) { return null; }
+        }
+        static int memoryInt(Object memory,String name) {
+            try {
+                java.lang.reflect.Field f=memory.getClass().getDeclaredField(name);f.setAccessible(true);
+                Object v=f.get(memory);
+                return v instanceof Boolean?((Boolean)v?1:0):((Number)v).intValue();
+            } catch(ReflectiveOperationException e) { return -1; }
+        }
+        /** AISearchMemory.copyBytes(game), or null on an engine without it. */
+        static Long copyEstimate(Game game) {
+            try {
+                java.lang.reflect.Method m=Class.forName("io.magicmobile.xmage.AISearchMemory").getDeclaredMethod("copyBytes",Game.class);
+                m.setAccessible(true);return (Long)m.invoke(null,game);
+            } catch(ReflectiveOperationException e) { return null; }
+        }
 
         // One search in progress (sampler thread only).
         boolean inSearch;long sStart,sFullAt,sCopies,sGameCpu,sGameAlloc,sProcessCpu,sHeapMax;int sTurn,sStack,sQuickNodes,sNodes;
         String sStep,sSeat;Map<Long,long[]> sSim;boolean sFull;
+        // Search memory (AISearchMemory, engine release C): the searches seen during this decision, by identity.
+        final Map<Object,Boolean> sMemories=new IdentityHashMap<>();Object sLastMemory;
 
         void sample() {
             long nextTimeline=0,nextThreads=0,nextGc=gcEveryNs;
@@ -309,12 +357,15 @@ public final class LongGameProfile {
                     sTurn=game.getTurnNum();sStep=String.valueOf(game.getTurnStepType());
                     sSeat=seats.getOrDefault(game.getPriorityPlayerId(),"?");
                     sStack=game.getStack().size();sQuickNodes=0;sNodes=0;sFull=false;
+                    sMemories.clear();sLastMemory=searchMemory();
                 }
                 if(inSearch && searching) {
                     int n=nodes();
                     if(full && !sFull) { sFull=true;sFullAt=t; }
                     if(!sFull) sQuickNodes=Math.max(sQuickNodes,n); else sNodes=n;
                     sHeapMax=Math.max(sHeapMax,heap);
+                    Object m=searchMemory();
+                    if(m!=null && m!=sLastMemory) sMemories.put(m,Boolean.TRUE);
                 }
                 if(inSearch && !searching) {
                     inSearch=false;
@@ -323,14 +374,22 @@ public final class LongGameProfile {
                     long wall=t-sStart;
                     boolean expert=sFull || sFullAt>=0;
                     int nodes=expert?sNodes:sQuickNodes; // without an expert phase, the only search counts as the full one
+                    Object m=searchMemory();
+                    if(m!=null && m!=sLastMemory) sMemories.put(m,Boolean.TRUE);
+                    int alive=-1,cap=-1;boolean capped=false;
+                    for(Object memory:sMemories.keySet()) {
+                        alive=Math.max(alive,memoryInt(memory,"peak"));cap=Math.max(cap,memoryInt(memory,"cap"));
+                        capped|=memoryInt(memory,"capped")>0;
+                    }
                     synchronized(this) {
                         searchWallMs.add(wall/1_000_000);
-                        searches.printf(Locale.ROOT,"%.2f,%d,%s,%s,%d,%d,%.0f,%s,%s,%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%s%n",
+                        searches.printf(Locale.ROOT,"%.2f,%d,%s,%s,%d,%d,%.0f,%s,%s,%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%s,%s,%s,%s%n",
                             sStart/1e9,sTurn,sStep,sSeat,skills.getOrDefault(sSeat,0),sStack,wall/1e6,
                             sFullAt>=0?String.format(Locale.ROOT,"%.0f",(sFullAt-sStart)/1e6):"",expert?String.valueOf(sQuickNodes):"",
                             nodes,GameImpl.COPIED_COUNT.get()-sCopies,
                             (THREADS.getThreadCpuTime(gameId)-sGameCpu)/1e6,sim[0]/1e6,(OS.getProcessCpuTime()-sProcessCpu)/1e6,
-                            mb(THREADS.getThreadAllocatedBytes(gameId)-sGameAlloc),mb(sim[1]),mb(sHeapMax),expert?"1":"0");
+                            mb(THREADS.getThreadAllocatedBytes(gameId)-sGameAlloc),mb(sim[1]),mb(sHeapMax),expert?"1":"0",
+                            alive<0?"":String.valueOf(alive),cap<0?"":String.valueOf(cap),alive<0?"":capped?"1":"0");
                         searches.flush();
                     }
                 }

@@ -45,6 +45,33 @@ class PatchTests(unittest.TestCase):
             with self.assertRaises(ValueError):function('class Changed {}')
         lock=json.loads((ROOT/'upstream.lock.json').read_text())
         self.assertEqual(set(lock['sourceBlobs']),set(patch.PATCHES))
+    def test_ai_search_memory_patches_are_exact(self):
+        game=('    protected Map<UUID, Card> gameCards = new HashMap<>();\n'
+              '        this.gameCards = CardUtil.deepCopyObject(game.gameCards);\n'
+              '    @Override\n    public Integer getGameIndex() {\n'
+              '        gameCards.put(card.getId(), card);\n'
+              '        return gameCards.values();\n'
+              '        Card card = gameCards.get(cardId);\n'
+              + 'played |= player.triggerAbility(a, this);\n'*3+'player.triggerAbility(b, this);\n')
+        out=patch.patch_lazy_cards(game)
+        self.assertIn('if (mobileLazyCards && game.simulation && game.mobileTriggering == 0) {',out)
+        self.assertIn('this.gameCards = CardUtil.deepCopyObject(game.gameCards);',out)  # live games: as upstream
+        self.assertEqual(out.count('mobileTriggerAbility(player, '),4)
+        self.assertNotIn('player.triggerAbility(a, this)',out)
+        with self.assertRaises(ValueError):patch.patch_lazy_cards(game.replace('player.triggerAbility(b, this);\n',''))
+        search=('                if (!game.getStack().isEmpty()) {\n                    resolve(node, depth, game);\n'
+                '    protected void resolve(SimulationNode2 node, int depth, Game game) {'
+                '                            node.children.clear();\n                            node.children.add(bestNode);\n'
+                '                            node.setScore(bestNode.getScore());\n                        }\n'
+                '                        if (!newNode.getChildren().isEmpty()) {\n'
+                '                            bestNode.setCombat(newNode.getChildren().get(0).getCombat());\n                        }\n                    }\n')
+        out=patch.patch_search(search)
+        self.assertIn('private int searchTargetsOneAtATime(',out)
+        self.assertIn('SimulationNode2.nodeCount += targetIds.size();',out)  # upstream's node count
+        self.assertEqual(out.count('if (mobileSearchMemory) {'),2)  # both best-line updates
+        self.assertEqual(out.count('} else if (mobileSearchMemory) {'),1)
+        for function in (patch.patch_lazy_cards,patch.patch_search):
+            with self.assertRaises(ValueError):function('class Changed {}')
     def test_lambda_patches_are_exact_and_leave_no_method_reference(self):
         lock=json.loads((ROOT/'upstream.lock.json').read_text())
         self.assertEqual(len(patch.LAMBDA_PATCHES),13)  # every $deserializeLambda$ class at the pinned commit

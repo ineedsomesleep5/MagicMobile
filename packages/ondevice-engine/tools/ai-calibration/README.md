@@ -56,3 +56,31 @@ python3 scripts/profile_long_games.py run --mode memory --skills 6 --games 1
 python3 scripts/profile_long_games.py report build/profile-long-games/profile
 python3 scripts/profile_long_games.py heap build/profile-long-games/memory
 ```
+
+On engines from release C on, each search also reports the most game copies it held alive at once and its cap
+(`AISearchMemory`), and memory mode measures what one copy an AI search makes keeps alive, against the engine's
+estimate of it. A pool may also name decks resolved into `build/ai-calibration/decks/` by hand, such as the
+tutor-heavy deck in `decks/` (fetch lands and land or creature searches on abilities, which XMage's AI searches by
+copying the game once per eligible library card):
+
+```sh
+python3 scripts/resolve_deck.py --catalogue build/generated/catalogue.jsonl --input tools/ai-calibration/decks/tutor-heavy-gishath.txt \
+  --commander "Gishath, Sun's Avatar" --output build/ai-calibration/decks/tutor-heavy-gishath.json
+python3 scripts/profile_long_games.py run --mode memory --skills 6 --games 2 --pool tutor-heavy-gishath,ai-the-ur-dragon-optimized
+```
+
+JVM runs read the container's free memory, so a search's cap there is far above a phone's; to stand in for a phone,
+pass the phone's available memory to every JVM, for example
+`JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dmagicmobile.aiAvailableMemoryMB=2300"` (Caleb's iPhone 16 Pro Max in a game).
+
+## Search equivalence
+
+`SearchEquivalence.java` checks that release C's search memory changes leave every AI decision the same: at real AI
+decisions of seeded games it runs the deciding AI's search on copies of the live game with no time limit (it ends at
+its depth or a node limit), twice upstream's way (every copy deep, a library search's copies made up front) and once
+the new way, from the same seeded generator. Where the two upstream runs agree, the new way must make the same move
+with the same score and node count; each run also reports its copies and the most it held alive.
+
+```sh
+python3 scripts/profile_long_games.py equivalence --skills 4,5,6 --games 2 --probes 12 --max-nodes 600
+```

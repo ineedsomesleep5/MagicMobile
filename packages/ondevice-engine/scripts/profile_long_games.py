@@ -10,6 +10,9 @@ A measurement tool, not an app path. Run build_jvm.sh and `ai_calibration.py dec
           CPU hotspots and copy sites, allocation sites, heap histogram at the peak.
   heap    retained sizes at each heap dump with Eclipse MAT (--mat): top dominators, and every game object (live
           game, AI search copies, playable-calculation copies) with what it keeps alive.
+  equivalence  engine release C's AI search memory changes (card copies on first use, library searches one target
+          at a time) against upstream's way: at real AI decisions of seeded games, the same search without a time
+          limit, twice the upstream way and once the new way (tools/ai-calibration/SearchEquivalence.java).
 
 Output goes to build/profile-long-games/<mode>/skill<S>-g<N>/ (outside git): result.json, searches.csv,
 turns.csv, timeline.csv, gc.csv, worker.log; profile.jfr in profile mode; hist-*.txt and heap-peak.hprof in
@@ -203,6 +206,18 @@ def search_tables(found) -> list[str]:
         turns_ = list(per_turn.values())
         lines.append(f"| {skill} | {len(per_game)} | {100 * sum(per_game.values()) / max(1, seconds):.0f}% | "
                      f"{med(turns_):.1f} | {pct(turns_, .9):.1f} | {max(turns_):.1f} |")
+    alive = {skill: [int(s['copies_alive_max']) for s in rows if s.get('copies_alive_max')] for skill, rows in by_skill.items()}
+    if any(alive.values()):
+        lines += ['', 'Game copies one decision held alive at once (AISearchMemory, engine release C; the listing allowance of 3 '
+                  'included) and its cap.', '',
+                  '| Skill | Decisions | Copies alive median | p90 | max | Cap min | Decisions at the cap |', '|---|---|---|---|---|---|---|']
+        for skill in sorted(by_skill):
+            if not alive[skill]:
+                continue
+            caps = [int(s['copy_cap']) for s in by_skill[skill] if s.get('copy_cap')]
+            capped = sum(s.get('capped') == '1' for s in by_skill[skill])
+            lines.append(f"| {skill} | {len(alive[skill])} | {med(alive[skill]):.0f} | {pct(alive[skill], .9):.0f} | "
+                         f"{max(alive[skill])} | {min(caps) if caps else '–'} | {capped} |")
     lines += ['', '| Skill | Turns | Searches | Wall ms median | p90 | Alloc MB/search mean | Copies/search mean | '
               'Heap during search max MB |', '|' + '---|' * 8]
     for skill in sorted(by_skill):
@@ -222,19 +237,24 @@ def copy_tables(found) -> list[str]:
     for path, r in found:
         rows += [dict(t, mode=r['mode']) for t in read_csv(path / 'turns.csv')]
     lines = ['| Turns | Probes | Permanents | Cards in game | Copy wall ms median | Copy CPU ms median | Copy alloc KB median | '
-             'Copy retained KB median |', '|' + '---|' * 8]
+             'Copy retained KB median | Search copy retained KB median | Engine estimate KB median |', '|' + '---|' * 10]
     for bucket in BUCKETS:
         sel = [t for t in rows if turn_bucket(int(t['turn'])) == bucket]
         if not sel:
             continue
         retained = [float(t['copy_retained_kb']) for t in sel if t['copy_retained_kb']]
+        # Two GCs around held copies; a late search thread can free memory in between, so drop readings under 0.
+        sim = [float(t['sim_copy_retained_kb']) for t in sel if t.get('sim_copy_retained_kb') and float(t['sim_copy_retained_kb']) > 0]
+        estimate = [float(t['sim_copy_estimate_kb']) for t in sel if t.get('sim_copy_estimate_kb')]
+        tail = f" {med(sim):.0f} |" if sim else ' – |'
+        tail += f" {med(estimate):.0f} |" if estimate else ' – |'
         lines.append(f"| {bucket} | {len(sel)} | {med([int(t['permanents']) for t in sel]):.0f} | "
                      f"{med([int(t['game_cards']) for t in sel]):.0f} | {med([float(t['copy_wall_ms']) for t in sel]):.1f} | "
                      f"{med([float(t['copy_cpu_ms']) for t in sel]):.1f} | {med([float(t['copy_alloc_kb']) for t in sel]):.0f} | "
-                     f"{med(retained):.0f} |" if retained else
+                     f"{med(retained):.0f} |" + tail if retained else
                      f"| {bucket} | {len(sel)} | {med([int(t['permanents']) for t in sel]):.0f} | "
                      f"{med([int(t['game_cards']) for t in sel]):.0f} | {med([float(t['copy_wall_ms']) for t in sel]):.1f} | "
-                     f"{med([float(t['copy_cpu_ms']) for t in sel]):.1f} | {med([float(t['copy_alloc_kb']) for t in sel]):.0f} | – |")
+                     f"{med([float(t['copy_cpu_ms']) for t in sel]):.1f} | {med([float(t['copy_alloc_kb']) for t in sel]):.0f} | – |" + tail)
     return lines
 
 
@@ -525,6 +545,43 @@ def report(args: argparse.Namespace) -> None:
         print()
 
 
+def equivalence(args: argparse.Namespace) -> None:
+    """Release C's search memory changes against upstream's way at real AI decisions (SearchEquivalence.java)."""
+    classpath = compile_tool()
+    subprocess.run(['javac', '-J-Xmx512m', '--release', '17', '-nowarn', '-cp', classpath, '-d', str(BUILD / 'classes'),
+                    str(TOOL / 'SearchEquivalence.java')], check=True)
+    args.out.mkdir(parents=True, exist_ok=True)
+    table = args.out / 'equivalence.csv'
+    done = {row['game_seed'] for row in read_csv(table)}
+    decks = [d for pool in args.pool.split('+') for d in pool_decks(pool)]
+    for skill in [int(s) for s in args.skills.split(',')]:
+        for row in schedule(skill, skill, decks, args.first_game + args.games, args.seed, 'phone')[args.first_game:]:
+            if str(row['game_seed']) in done:
+                continue
+            started = time.monotonic()
+            with (args.out / f"equivalence-skill{skill}-g{row['game']}.log").open('w') as log:
+                subprocess.run(['java', f'-Xmx{args.heap}', '-XX:+UseSerialGC', '-Djava.awt.headless=true',
+                                '-Dlog4j.configuration=file:' + str(TOOL / 'log4j.properties'), '-cp', classpath,
+                                'io.magicmobile.xmage.SearchEquivalence', str(table), str(row['game_seed']), str(skill), str(skill),
+                                '1' if row['a_first'] else '0', str(DECKS / f"{row['deck_a']}.json"),
+                                str(DECKS / f"{row['deck_b']}.json"), str(args.max_turns), str(args.probes), str(args.max_nodes)],
+                               stdout=log, stderr=subprocess.STDOUT, cwd=BUILD, check=False)
+            print(f"skill {skill} game {row['game']} ({row['deck_a']} vs {row['deck_b']}): {time.monotonic() - started:.0f} s",
+                  flush=True)
+    rows = read_csv(table)
+    repeatable = [r for r in rows if r['repeatable'] == '1']
+    equal = [r for r in repeatable if r['equal'] == '1']
+    print(f'{len(rows)} decisions probed; {len(repeatable)} repeat with upstream\'s way; the new way matches {len(equal)} of them')
+    for r in repeatable:
+        if r['equal'] != '1':
+            print(f"  differs: seed {r['game_seed']} turn {r['turn']} {r['step']}: {r['decision_upstream']} | {r['decision_new']}")
+    if rows:
+        def total(key): return sum(int(r[key]) for r in rows)
+        print(f"copies made: upstream {total('copies_upstream'):,}, new {total('copies_new'):,}; most alive at once: upstream "
+              f"{max(int(r['alive_upstream']) for r in rows)}, new {max(int(r['alive_new']) for r in rows)}; "
+              f"time: upstream {total('ms_upstream') / 1000:.0f} s, new {total('ms_new') / 1000:.0f} s")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -548,11 +605,22 @@ def main():
     rep = sub.add_parser('report', help='Markdown summary')
     rep.add_argument('dirs', nargs='*', type=Path, default=[OUT])
     rep.add_argument('--asprof', default=os.environ.get('ASYNC_PROFILER_HOME', ''), help='for jfrconv')
+    eq = sub.add_parser('equivalence', help="release C's search memory changes against upstream's way, at real decisions")
+    eq.add_argument('--skills', default='4,5,6')
+    eq.add_argument('--games', type=int, default=2, help='games per skill')
+    eq.add_argument('--first-game', type=int, default=0)
+    eq.add_argument('--pool', default='upgraded+optimized')
+    eq.add_argument('--seed', type=int, default=20261015)
+    eq.add_argument('--heap', default='4g')
+    eq.add_argument('--max-turns', type=int, default=30)
+    eq.add_argument('--probes', type=int, default=12, help='decisions probed per game')
+    eq.add_argument('--max-nodes', type=int, default=600, help="each probe search's node limit (it has no time limit)")
+    eq.add_argument('--out', type=Path, default=OUT / 'equivalence')
     hp = sub.add_parser('heap', help='Eclipse MAT retained sizes at each memory-mode heap dump')
     hp.add_argument('dirs', nargs='*', type=Path, default=[OUT / 'memory'])
     hp.add_argument('--mat', default=os.environ.get('MAT_HOME', ''), help='Eclipse MAT directory (ParseHeapDump.sh)')
     args = parser.parse_args()
-    {'run': run, 'report': report, 'heap': heap}[args.command](args)
+    {'run': run, 'report': report, 'heap': heap, 'equivalence': equivalence}[args.command](args)
 
 
 if __name__ == '__main__':

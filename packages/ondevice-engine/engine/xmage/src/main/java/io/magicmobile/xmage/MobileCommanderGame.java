@@ -18,6 +18,7 @@ final class MobileCommanderGame extends CommanderFreeForAll {
     }
     private MobileCommanderGame(MobileCommanderGame source) {
         super(source);cancellation=source.cancellation;
+        AISearchMemory.copied(); // an AI search's copy counts toward its cap
     }
     void setCancellation(MobileAICancellation cancellation) { this.cancellation=cancellation;cancellation.bind(this); }
     MobileAICancellation cancellation() { return cancellation; }

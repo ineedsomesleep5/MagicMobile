@@ -3,6 +3,7 @@
   "magicmobileBase": "058478f690b713332c13d0a8369e98f5b792a282",
   "repository": "https://github.com/magefree/mage.git",
   "sourceBlobs": {
+    "Mage.Server.Plugins/Mage.Player.AI.MAD/src/mage/player/ai/ComputerPlayer6.java": "ca070e50f84474c081b66a7e06cefaccdd0206fe",
     "Mage.Server.Plugins/Mage.Player.AI/src/mage/player/ai/ComputerPlayer.java": "9d148fb1c9de93d0f59ad9d4877906eda58dd371",
     "Mage.Server.Plugins/Mage.Player.Human/src/mage/player/human/HumanPlayer.java": "e13acd23c296aa9979b8c9672b4c4590fce6b94b",
     "Mage.Sets/src/mage/cards/a/ArcaneBombardment.java": "3441716b459247082646c9bb294a458d8ce9c4d6",
