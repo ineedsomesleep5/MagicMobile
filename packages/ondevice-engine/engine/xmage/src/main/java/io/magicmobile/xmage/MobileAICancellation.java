@@ -213,14 +213,10 @@ final class MobileAICancellation {
             if(rootChoices==null) rootChoices=new ArrayList<>();
             return rootChoices;
         }
-        /**
-         * After a fresh search that chose to act, sometimes take the best other root action the
-         * search scored instead, as long as it scores no worse than doing nothing; otherwise pass.
-         * The next priority searches again, so a passed play can still come later.
-         */
+        /** Chooses this priority's actions, then drops the searches' game copies (AISearchMemory). */
         @Override protected void calculateActions(Game game) {
             searched=false;
-            try { searchAndMaybeErr(game); }
+            try { chooseActions(game); }
             finally {
                 // The plan kept for the next priorities needs abilities and combat only, not the search's copies.
                 List<SimulationNode2> kept=root==null?List.of():List.of(root);
@@ -232,7 +228,12 @@ final class MobileAICancellation {
             if(decisionSearches==null) decisionSearches=new ArrayList<>(); // null in a restored game
             return decisionSearches;
         }
-        private void searchAndMaybeErr(Game game) {
+        /**
+         * After a fresh search that chose to act, sometimes take the best other root action the
+         * search scored instead, as long as it scores no worse than doing nothing; otherwise pass.
+         * The next priority searches again, so a passed play can still come later.
+         */
+        private void chooseActions(Game game) {
             if(expert && !game.isSimulation()) expertSearch(game); else super.calculateActions(game);
             List<ScoredChoice> candidates;
             synchronized(this) { candidates=new ArrayList<>(choices());choices().clear();searchRoot=null; }
