@@ -383,11 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 25 lets removal play out: when an opponent's spell
-                hits your board you see it read and what it removes leave before
-                the game moves on. Choosing several tokens from a pile now pulls
-                each one out with a check, and equipment tabs no longer cover the
-                card above. Same engine as build 24. Android is an early alpha;
+                Android build 29 opens Ranked in the new Ranked Hall with a live
+                leaderboard, lets you message friends from Friends or in the
+                middle of a game, and repeats a combo for you: as many times as
+                you pick, until you can't, or until they lose, with every step
+                still checked by the rules. Token piles stack back up with the
+                Stack chip. Same engine as build 25. Android is an early alpha;
                 physical-phone acceptance is still pending.
               </p>
             </details>
@@ -397,12 +398,13 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 41 lets removal play out: when an opponent's spell hits
-                your board you see it read and what it removes leave before the
-                game moves on. Choosing several tokens from a pile now pulls each
-                one out with a check, and equipment tabs no longer cover the card
-                above. It runs on iPhone and iPad. Apple has approved this build
-                for Internal and External TestFlight.
+                Build 46 opens Ranked in the new Ranked Hall with a live
+                leaderboard, lets you message friends from Friends or in the
+                middle of a game, and repeats a combo for you: as many times as
+                you pick, until you can't, or until they lose, with every step
+                still checked by the rules. Token piles stack back up with the
+                Stack chip. It runs on iPhone and iPad. Apple has approved this
+                build for Internal and External TestFlight.
               </p>
             </details>
             <details>
