@@ -64,6 +64,9 @@ final class MobileAICancellation {
     static final int STACK_THINK_SECS=2;
     /** Expert quick search: one action seen resolved (upstream depth 2), within at most 2 s. */
     static final int QUICK_DEPTH=2,QUICK_SECS=2;
+    /** While the phone running the engine reports it is hot (answer action devicePace), each AI search gets half its
+     *  time, never less than STACK_THINK_SECS. Not saved: the app sends it again with its next answer after a restore. */
+    private volatile boolean hot;
     private static final int NO_PHASE=0,QUICK=1,FULL_SEARCH=2;
     private volatile boolean closing;
     private int simulations;
@@ -76,6 +79,8 @@ final class MobileAICancellation {
     void setRecorder(GameRecorder recorder) { this.recorder=recorder; }
     GameRecorder recorder() { return recorder; }
     boolean isClosing() { return closing; }
+    void setHot(boolean hot) { this.hot=hot; }
+    boolean isHot() { return hot; }
     void bind(Game game) { live=game; }
     void requestConcede(UUID playerId) { if(!concedes.contains(playerId)) concedes.add(playerId); }
     boolean hasConcedeFor(Game game) { return game==live && !concedes.isEmpty(); }
@@ -139,6 +144,10 @@ final class MobileAICancellation {
     }
     static int thinkBudget(int configured,boolean stackEmpty,boolean humansPlaying) {
         return stackEmpty && humansPlaying?configured:Math.min(configured,STACK_THINK_SECS);
+    }
+    static int thinkBudget(int configured,boolean stackEmpty,boolean humansPlaying,boolean hot) {
+        int budget=thinkBudget(configured,stackEmpty,humansPlaying);
+        return hot?Math.min(budget,Math.max(STACK_THINK_SECS,budget/2)):budget;
     }
 
     /** A restored game's AI seats answer to this match's lifecycle; budgets are kept as read. */
@@ -373,7 +382,7 @@ final class MobileAICancellation {
             searched=true;
             int configured=maxThinkTimeSecs;
             Game simulation=root==null?null:root.getGame();
-            int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying());
+            int budget=thinkBudget(configured,simulation==null || simulation.getStack().isEmpty(),cancellation.humansPlaying(),cancellation.isHot());
             if(searchPhase==QUICK) { phaseBudgetSecs=budget;budget=Math.min(budget,QUICK_SECS); }
             else if(searchPhase==FULL_SEARCH) budget=Math.min(budget,phaseBudgetSecs);
             maxThinkTimeSecs=budget;

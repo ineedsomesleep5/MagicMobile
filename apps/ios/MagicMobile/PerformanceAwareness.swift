@@ -4,8 +4,8 @@ import os
 /// Heat and memory awareness (docs/LIGHTER_ENGINE_PLAN.md step 2, app only). While the phone reports heat, board effects
 /// draw at half rate; memory warnings free the app's caches (OnDeviceRootView); every game keeps a small performance
 /// record (memory peak, hottest thermal state, memory warnings) that Diagnostics can share, so builds can be compared on
-/// Caleb's phone. Shorter AI thinking while hot needs the engine and waits for engine release C. Android's DeviceHeat
-/// and GamePerformanceLog match it.
+/// Caleb's phone. While hot, games the engine runs on this phone (not ranked, not online) ask the AI to think for less
+/// time (OnDeviceSession.devicePaceHot, engine release C). Android's DeviceHeat and GamePerformanceLog match it.
 @MainActor
 final class DeviceHeat: ObservableObject {
     static let shared = DeviceHeat()
