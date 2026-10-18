@@ -256,6 +256,40 @@ same objects that dominate allocation.
     become reachable (measured before: H2 3.2 MB, protobuf 1.3 MB, TLS and crypto about 3.5 MB of code). Locale data
     unchanged: the engine formats with the phone's locale, so that needs a non-English device check first.
   - To measure: an Android native build with `native_reports`, then `magicmobile-native-code-sizes.yml` on it.
+- AI search memory status, 2026-10-18 (draft PR #202 on #199, with #197 merged in; JVM-verified, no native build, so
+  no box is ticked):
+  - Built: a cap on the game copies one search keeps alive (`AISearchMemory`: a quarter of the memory available when
+    the search starts, from iOS `os_proc_available_memory` or Android `/proc/meminfo`, over the estimated size of one
+    copy; at the cap the search plays its best line so far, as when time runs out); cards copied on first use in
+    copies of simulations (`GameImpl` patch; copies of the live game, and copies made while a trigger is handled, stay
+    deep); a library search's targets searched one at a time (`ComputerPlayer6` patch); copies dropped after each
+    decision, root alternatives kept only at skills 1–3; a cheaper `Modes` copy. Not done: one listing copy instead
+    of three (playable calculation would run on the node's own game and player, not shown to leave them unchanged)
+    and shared mana-cost options (`getOptions` hands out the live list).
+  - Same decisions: with the changes on and off, three fixture boards (bolt, fetch land, Wood Elves and Flametongue
+    Kavu triggers) give the same move, score, node count and copy count, and 25 real decisions at turns 3–23 (skills
+    4–6, ranked decks and a tutor-heavy Gishath) give the same move, score and node count in all 23 that repeat at
+    all. The 15 game records the old build made replay to their recorded end on the new build; the real-JVM suite
+    passes.
+  - Measured (JVM, 4-CPU container, async-profiler; 10 profiled and 6 memory games on each build, the same seeds): CPU
+    per search node 10.4 → 5.3 ms (skill 4), 11.3 → 7.2 (5), 10.4 → 7.0 (6), 8.4 → 3.9 (tutor-heavy); allocation
+    per node 8.7 → 4.1 MB, 8.8 → 6.0, 9.9 → 6.3, 6.7 → 3.9. The same searches without a time limit took 44% less
+    time. A search's copy keeps 0.53–0.58 MB alive instead of 1.8–1.9 MB. Live heap over the 98 MB baseline at its
+    peak: 80 → 45 MB (skill 5), 74 → 51 (6), 91 → 33 (tutor-heavy); heap during a search at most 521 → 320 MB
+    (skill 6), 466 → 323 (tutor-heavy). Searches held at most 25 copies at once and never reached the cap; the
+    largest fan-out measured held 50 copies before, 8 after. Searches are bounded by time, so the faster engine
+    searches more nodes where a search runs out of time, and per-decision means move less (skill 6: 1.25 → 1.15 s
+    of CPU, 1,184 → 1,038 MB allocated).
+  - Calibration (C3 baseline matrix, 80 games per pairing, phone budget, both builds at once on two workers each):
+    every pairing within its Wilson 95% interval; the largest change is skill 1 against 6, 26% → 18% (p = 0.18).
+    Results and the equivalence probes: `docs/cloud/release-c-ai-memory/`.
+  - Open: 1 of 640 games before and 2 of 640 after ran out of the 2.5 GB calibration heap, each after a run of
+    searches that timed out without a move (big Commander boards, Draconic Destruction in all three). Not the
+    library-search fan-out; the per-search cap does not bound searches that keep running after their timeout or
+    memory outside game copies. A heap dump at such an out-of-memory error is the next step.
+  - Native checks for release C: both images build and link (the iOS-only `os_proc_available_memory` binding in
+    `NativeEntryPoints`), the engine's AI search memory reading on each phone, a long AI game per platform with the
+    performance log against build 46 / Android 29.
 
 ### 4. Toolchain release: GraalVM upgrade
 - [ ] Move from GraalVM 22.1 (JDK 18 static runtime) to Gluon's GraalVM build for JDK 23 (substrate 1.0.24 or later;
@@ -288,3 +322,6 @@ same objects that dominate allocation.
 - 2026-10-18: cloud half of step 1: 45 long AI games on the JVM at skills 4–6 (30 profiled, 15 for memory). Game
   copies are half of engine CPU and three quarters of allocation, cards 60% of each copy; live heap peaks 155–223 MB;
   multi-GB spikes come from library-search fan-out. Results and step 3 recommendations under step 1.
+- 2026-10-18: step 3's AI search memory half on the JVM (draft PR #202): copy cap, cards copied on first use,
+  library searches one target at a time, copies dropped after each decision. Same decisions; CPU per search node
+  down 33–54%, live heap peaks over baseline down 30–64%; calibration unchanged. Native builds still to come.
