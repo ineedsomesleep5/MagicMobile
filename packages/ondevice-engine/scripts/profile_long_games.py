@@ -625,6 +625,8 @@ def main():
     hp.add_argument('dirs', nargs='*', type=Path, default=[OUT / 'memory'])
     hp.add_argument('--mat', default=os.environ.get('MAT_HOME', ''), help='Eclipse MAT directory (ParseHeapDump.sh)')
     args = parser.parse_args()
+    if getattr(args, 'out', None):
+        args.out = args.out.resolve()  # the game JVMs run in build/ai-calibration, so a relative path would land there
     {'run': run, 'report': report, 'heap': heap, 'equivalence': equivalence}[args.command](args)
 
 

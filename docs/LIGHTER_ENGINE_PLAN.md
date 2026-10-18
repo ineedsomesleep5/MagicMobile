@@ -283,10 +283,43 @@ same objects that dominate allocation.
   - Calibration (C3 baseline matrix, 80 games per pairing, phone budget, both builds at once on two workers each):
     every pairing within its Wilson 95% interval; the largest change is skill 1 against 6, 26% → 18% (p = 0.18).
     Results and the equivalence probes: `docs/cloud/release-c-ai-memory/`.
-  - Open: 1 of 640 games before and 2 of 640 after ran out of the 2.5 GB calibration heap, each after a run of
-    searches that timed out without a move (big Commander boards, Draconic Destruction in all three). Not the
-    library-search fan-out; the per-search cap does not bound searches that keep running after their timeout or
-    memory outside game copies. A heap dump at such an out-of-memory error is the next step.
+  - Out-of-memory games, fixed 2026-10-18 (draft PR #205 on #202; JVM-verified, no native build). 1 of 640 games
+    before #202 and 2 of 640 after ran out of the 2.5 GB calibration heap, all with Draconic Destruction. The cause
+    is Loaming Shaman's trigger, which targets "any number" of graveyard cards:
+    - The AI lists up to about 4,000 options (sets of up to 4 of 18 cards) and deep-copies the whole game for each
+      (`SimulatedPlayer2.triggerAbility`). That loop never checks the interrupt.
+    - The copies hang under a node the tree doesn't reach yet, so the cap never counted them.
+    - A search that ran out of time kept copying while the AI's next search ran beside it.
+    - A heap dump at 1.9 GB after GC (#202's engine, skill 4 First Flight against skill 6 Draconic) had 93% in one
+      node's 1,234 copies, held by the abandoned search's thread. That game then ran out of memory.
+
+    The fix: a search the AI has stopped waiting for, or one at its cap, makes no further copy
+    (`AISearchMemory.Stopped`), and the next search waits up to 2 s for abandoned ones to stop. The cap now counts the
+    node being copied, weighs copies that hold every card at their size, and covers every search not yet freed.
+  - Out of memory after the fix:
+    - Calibration: 0 of 640 games (#202: 2 of 640).
+    - The same 66 Draconic games with skill 6 on one side: 0 on this build, 1 on #202. Two searches ran at once in 2
+      of #202's games and in none of this build's.
+    - A full-size Loaming Shaman board with 15 graveyard cards. On #202 the search timed out after 1,534 copies (it
+      counted a peak of 11 against a cap of 465), kept running after the decision, and the next decision ran out of
+      memory. On this build it stopped at its cap after 268 copies, in 3.6 s, with nothing left running.
+  - Same decisions:
+    - The fixture boards give the same move, score, node count and copy count on both builds.
+    - The 15 game records #202's build made replay to their recorded end (13) or question (2).
+    - No search reached the cap in 12 long memory games on either build.
+
+    Decisions change only where a search reaches the cap, which now includes large trigger fan-outs. There the AI
+    plays the best line it had, often a pass, as #202's timed-out searches did.
+  - Calibration (C3 baseline matrix, 80 games per pairing, #202's seeds, 4 workers):
+    - Every pairing's skill-A win rate is inside #202's Wilson 95% interval, over all games, without Draconic games,
+      and over Draconic games alone. The largest change is skill 3 vs 6 without Draconic, 46% → 35% (p = 0.19).
+    - Per deck, 10 of 11 decks are inside #202's interval. Ur-Dragon core went 64% → 53% (p = 0.14).
+    - In this pool Draconic won 45% (#202: 47%). With each skill on each deck equally often, it did not stand in for
+      skill.
+    - Results: `docs/cloud/release-c-ai-memory/calibration-stopped-searches/` and `draconic-skill6/`.
+  - Memory (6 long games per build, same seeds, live heap by a full GC every 2.5 s): the live peak over the 98 MB
+    baseline was 23–50 MB on #202 and 27–47 MB on this build. The exception is one Draconic game on #202 at 1,900 MB
+    (2,475 MB before GC, at the 2.5 GB limit); the same seed on this build peaked at 27 MB.
   - Native checks for release C: both images build and link (the iOS-only `os_proc_available_memory` binding in
     `NativeEntryPoints`), the engine's AI search memory reading on each phone, a long AI game per platform with the
     performance log against build 46 / Android 29.
@@ -325,3 +358,7 @@ same objects that dominate allocation.
 - 2026-10-18: step 3's AI search memory half on the JVM (draft PR #202): copy cap, cards copied on first use,
   library searches one target at a time, copies dropped after each decision. Same decisions; CPU per search node
   down 33–54%, live heap peaks over baseline down 30–64%; calibration unchanged. Native builds still to come.
+- 2026-10-18: release C's rare out-of-memory calibration games fixed on the JVM (draft PR #205 on #202). Cause:
+  Loaming Shaman's trigger made a game copy for each of up to 4,000 options, uncounted and unstopped, and timed-out
+  searches kept copying. Abandoned and capped searches now stop at their next copy; the cap counts every search.
+  0 of 640 calibration games out of memory (#202: 2), win rates within #202's intervals.
