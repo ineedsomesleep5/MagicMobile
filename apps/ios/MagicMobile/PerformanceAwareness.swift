@@ -1,5 +1,6 @@
 import Foundation
 import os
+import SwiftUI
 
 /// Heat and memory awareness (docs/LIGHTER_ENGINE_PLAN.md step 2, app only). While the phone reports heat, board effects
 /// draw at half rate; memory warnings free the app's caches (OnDeviceRootView); every game keeps a small performance
@@ -16,8 +17,11 @@ final class DeviceHeat: ObservableObject {
     var isHot: Bool { Self.isHot(thermal) }
     /// Board effects' frame rate: 60 fps normally, 30 while hot.
     var effectsFrameInterval: Double { isHot ? 1.0 / 30 : 1.0 / 60 }
+    /// The board's slow ambient motion (breathing glows, the inspector's foil): 30 steps a second, 15 while hot.
+    var ambientInterval: Double { Self.ambientInterval(hot: isHot) }
 
     nonisolated static func isHot(_ state: ProcessInfo.ThermalState) -> Bool { state == .serious || state == .critical }
+    nonisolated static func ambientInterval(hot: Bool) -> Double { hot ? 1.0 / 15 : 1.0 / 30 }
 
     private init() {
         thermal = ProcessInfo.processInfo.thermalState
@@ -29,6 +33,75 @@ final class DeviceHeat: ObservableObject {
                 GamePerformanceLog.shared.sample()
             }
         }
+    }
+}
+
+/// One wall-clock grid for the board's ambient motion (BoardBreath, InspectionFoil). Every timeline on it updates in the
+/// same frames, however many are on screen. Each glow used to run its own `.animation(minimumInterval:)` timeline from
+/// the moment it appeared, so a few glows at 30 steps a second kept SwiftUI redrawing the whole board 60 times a second
+/// (Instruments on Caleb's iPhone, 2026-10-18). Grid times are whole multiples of `interval`, computed from an index so
+/// two timelines never disagree by a rounding error. Like BurstTimelineSchedule it answers with the latest grid time at
+/// or before the date asked for, then strictly later ones; starting from "now" would update the view forever. Paused, it
+/// gives that one time and the view draws once.
+struct AmbientTimelineSchedule: TimelineSchedule {
+    var interval: TimeInterval
+    var paused = false
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries {
+        // Always-on displays get one step a second.
+        let step = mode == .lowFrequency ? max(interval, 1) : max(interval, 1.0 / 120)
+        var index = (startDate.timeIntervalSinceReferenceDate / step).rounded(.down)
+        if index * step > startDate.timeIntervalSinceReferenceDate { index -= 1 }
+        return Entries(index: index, step: step, single: paused)
+    }
+
+    struct Entries: Sequence, IteratorProtocol {
+        var index: Double
+        let step: TimeInterval
+        let single: Bool
+        var finished = false
+
+        mutating func next() -> Date? {
+            guard !finished else { return nil }
+            let date = Date(timeIntervalSinceReferenceDate: index * step)
+            index += 1
+            finished = single
+            return date
+        }
+    }
+}
+
+/// Whether anyone is using the board. Once nothing has changed in the game and nobody has touched the screen for
+/// `idleAfter` seconds, the breathing glows rest (lit and still) and the board stops redrawing; the next touch or game
+/// change wakes them. NativeGameView reports both.
+@MainActor
+final class BoardActivity: ObservableObject {
+    static let shared = BoardActivity()
+    nonisolated static let idleAfter: TimeInterval = 15
+    @Published private(set) var isIdle = false
+    private var last = Date()
+    private var watcher: Task<Void, Never>?
+
+    func note(at now: Date = Date()) {
+        last = now
+        if isIdle { isIdle = false }
+        guard watcher == nil else { return }
+        watcher = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                let wait = Self.remaining(lastActivity: self.last, now: Date())
+                if wait <= 0 {
+                    self.isIdle = true
+                    self.watcher = nil
+                    return
+                }
+                try? await Task.sleep(for: .seconds(wait))
+            }
+        }
+    }
+
+    /// Seconds until the board counts as idle; zero or less once it does.
+    nonisolated static func remaining(lastActivity: Date, now: Date) -> TimeInterval {
+        idleAfter - now.timeIntervalSince(lastActivity)
     }
 }
 

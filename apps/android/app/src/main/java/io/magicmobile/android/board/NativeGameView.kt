@@ -487,6 +487,7 @@ fun NativeGameView(
 
     // --- Observation (boardObservation) ---
     LaunchedEffect(BoardFXRevisionKey(board)) {
+        BoardActivity.note()
         ingestBoardFX(board); gameStats.record(board)
         combatLogReasons.observe(board); combatReasons = combatLogReasons.reasons
     }

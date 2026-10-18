@@ -30,6 +30,12 @@ class MainActivity: ComponentActivity() {
         if (savedInstanceState==null) openJoinLink(intent)
     }
 
+    /** Every touch keeps the board's breathing glows awake (BoardActivity); the touch itself goes on unchanged. */
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) io.magicmobile.android.board.BoardActivity.note()
+        return super.dispatchTouchEvent(event)
+    }
+
     /** Memory pressure while running: free the decoded artwork (it reloads from disk), not the sounds or music. */
     @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {

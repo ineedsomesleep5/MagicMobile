@@ -125,6 +125,11 @@ struct DeckStudioPlaytestAccumulator {
     private var timelineRecorder = DeckStudioPublicTimelineRecorder()
     private var detailRevoked = false
 
+    /// All that observing a repeated poll would change: detail switched off during a game still ends its timeline.
+    mutating func revokeDetail() {
+        if game?.end == .inProgress { detailRevoked = true }
+    }
+
     mutating func observe(request: Data, response: Data, enabled: Bool, appBuild: String, now: Date,
                           detailedEnabled: Bool = false, sanitizeLog: ((String) -> String)? = nil) -> Bool {
         guard enabled, now.timeIntervalSince1970.isFinite,

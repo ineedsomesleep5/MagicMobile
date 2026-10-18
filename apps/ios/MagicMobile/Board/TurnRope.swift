@@ -54,8 +54,8 @@ struct TurnClockRing: View {
         let isLocal = seat != nil && seat == feed.localSeat
         ZStack {
             if burning, let seat {
-                // Redrawn at 30 Hz only while the ring burns; nothing ticks before that.
-                TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                // Redrawn at 30 Hz only while the ring burns, on the breathing glows' grid; nothing ticks before that.
+                TimelineView(AmbientTimelineSchedule(interval: 1.0 / 30)) { context in
                     if let rope = board.rope(localSeat: seat, now: ProcessInfo.processInfo.systemUptime) {
                         TurnClockRingFace(rope: rope, isLocal: isLocal, name: feed.seatNames[seat], diameter: diameter,
                                           time: context.date.timeIntervalSinceReferenceDate)

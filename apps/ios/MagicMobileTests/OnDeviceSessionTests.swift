@@ -1002,6 +1002,47 @@ final class OnDeviceSessionTests: XCTestCase {
         try await session.close()
     }
 
+    /// A reply identical to the last applied one comes back as that poll, undecoded; any change in the reply or the
+    /// request is decoded again.
+    func testPollReaderReturnsTheAppliedPollForARepeatedReply() async throws {
+        let poll = try fixture("2p-priority")
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let reader = OnDevicePollReader(transport: transport)
+        let first = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: 0, previous: nil)
+        XCTAssertFalse(first.repeated)
+        XCTAssertEqual(first.exchange.poll, poll)
+        let again = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: 0, previous: first.exchange)
+        XCTAssertTrue(again.repeated)
+        XCTAssertEqual(again.exchange.poll, poll)
+        let otherCursor = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: poll.revision, previous: first.exchange)
+        XCTAssertFalse(otherCursor.repeated, "a different request is decoded even when the reply is the same")
+        await transport.consumePrompt()
+        let changed = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: 0, previous: first.exchange)
+        XCTAssertFalse(changed.repeated)
+        XCTAssertEqual(changed.exchange.poll.revision, poll.revision + 1)
+        XCTAssertNil(changed.exchange.poll.prompt)
+        let pollCount = await transport.pollCount()
+        XCTAssertEqual(pollCount, 4, "every read still asks the engine")
+    }
+
+    @MainActor
+    func testSessionWithPollReaderAppliesChangesAndKeepsRepeatedPolls() async throws {
+        let poll = try fixture("2p-priority")
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 autoPoll: false, pollReader: OnDevicePollReader(transport: transport), close: {})
+        let firstRevision = session.snapshot?.bridgeRevision
+        XCTAssertNotNil(session.snapshot?.legalActions?.first(where: { $0.type == "pass_priority" }))
+        try await session.refresh()
+        XCTAssertEqual(session.snapshot?.bridgeRevision, firstRevision)
+        await transport.consumePrompt()
+        try await session.refresh()
+        XCTAssertEqual(session.snapshot?.bridgeRevision, firstRevision.map { $0 + 1 })
+        XCTAssertNil(session.snapshot?.legalActions?.first(where: { $0.type == "pass_priority" }))
+        try await session.close()
+    }
+
     private func fixture(_ name: String = "2p-initial-player-1") throws -> MatchPoll {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module

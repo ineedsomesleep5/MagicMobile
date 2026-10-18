@@ -679,8 +679,7 @@ enum BoardFXPainter {
         let fade = window(p, fadeIn: 0.08, fadeOut: 0.82)
         guard fade > 0 else { return }
         if tavern {
-            let natural = context.resolve(Text(title).font(.system(size: 19, weight: .heavy, design: .serif)))
-                .measure(in: CGSize(width: 2000, height: 60)).width
+            let natural = RibbonFit.natural(title) { context.resolve(ribbonName($0, size: $1)).measure(in: RibbonFit.bounds).width }
             ribbonBanner(title, subtitle: subtitle, at: point, width: min(max(natural / 0.66 + 12, 220), 360),
                          progress: p, seal: subtitle == "COMMANDER", in: &context)
             return
@@ -1589,33 +1588,17 @@ extension BoardFXPainter {
         var text = layer
         text.opacity = fade * max(0, (unroll - 0.55) / 0.45)
         // The name shrinks to the ribbon's face and, at the smallest size, ends in an ellipsis:
-        // it never runs off the ribbon.
-        let face = w * 0.66
-        func resolved(_ string: String, _ size: CGFloat) -> GraphicsContext.ResolvedText {
-            text.resolve(Text(string).font(.system(size: size, weight: .heavy, design: .serif))
-                .foregroundStyle(Color(red: 0.2, green: 0.1, blue: 0.04)))
+        // it never runs off the ribbon. Nothing is resolved while the name is still hidden.
+        if text.opacity > 0 {
+            let fit = RibbonFit.fit(title, face: w * 0.66) { text.resolve(ribbonName($0, size: $1)).measure(in: RibbonFit.bounds).width }
+            let nameY = subtitle == nil ? rect.midY - h * 0.04 : rect.minY + h * 0.58
+            if let subtitle {
+                let caption = text.resolve(Text(subtitle).font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.5)
+                    .foregroundStyle(Color(red: 0.5, green: 0.16, blue: 0.07)))
+                text.draw(caption, at: CGPoint(x: point.x, y: rect.minY + h * 0.3))
+            }
+            text.draw(text.resolve(ribbonName(fit.text, size: fit.size)), at: CGPoint(x: point.x, y: nameY))
         }
-        func fits(_ resolvedText: GraphicsContext.ResolvedText) -> Bool {
-            resolvedText.measure(in: CGSize(width: 2000, height: 60)).width <= face
-        }
-        var fontSize: CGFloat = 19
-        var shown = title
-        var name = resolved(shown, fontSize)
-        while !fits(name) && fontSize > 10 {
-            fontSize -= 1
-            name = resolved(shown, fontSize)
-        }
-        while !fits(name) && shown.count > 4 {
-            shown = String(shown.dropLast(2)).trimmingCharacters(in: .whitespaces) + "…"
-            name = resolved(shown, fontSize)
-        }
-        let nameY = subtitle == nil ? rect.midY - h * 0.04 : rect.minY + h * 0.58
-        if let subtitle {
-            let caption = text.resolve(Text(subtitle).font(.system(size: 10, weight: .heavy, design: .serif)).tracking(2.5)
-                .foregroundStyle(Color(red: 0.5, green: 0.16, blue: 0.07)))
-            text.draw(caption, at: CGPoint(x: point.x, y: rect.minY + h * 0.3))
-        }
-        text.draw(name, at: CGPoint(x: point.x, y: nameY))
         // The seal presses in once the ribbon is open.
         let press = max(0, min(1, (p - 0.2) / 0.08))
         guard seal, press > 0 else { return }
@@ -1633,5 +1616,53 @@ extension BoardFXPainter {
                       with: .color(Color(red: 0.35, green: 0.03, blue: 0.02).opacity(0.7)), lineWidth: 1)
         emblem.draw(emblem.resolve(Text(Image(systemName: "crown.fill")).font(.system(size: r * 0.8, weight: .bold))
             .foregroundStyle(Color(red: 0.38, green: 0.03, blue: 0.02))), at: seal)
+    }
+}
+
+extension BoardFXPainter {
+    static func ribbonName(_ string: String, size: CGFloat) -> Text {
+        Text(string).font(.system(size: size, weight: .heavy, design: .serif))
+            .foregroundStyle(Color(red: 0.2, green: 0.1, blue: 0.04))
+    }
+}
+
+/// How a ribbon banner's name fits its face, measured once per name and face width (in half points). The ribbon
+/// unrolls over many frames and used to re-measure the name at up to ten sizes on every one of them (Instruments,
+/// 2026-10-18). Only the Canvas on the main thread uses it.
+enum RibbonFit {
+    static let bounds = CGSize(width: 2000, height: 60)
+    private struct Key: Hashable { let title: String; let halfPoints: Int }
+    private static var fits: [Key: (size: CGFloat, text: String)] = [:]
+    private static var naturals: [String: CGFloat] = [:]
+
+    /// The name at 19 pt, as wide as it would like to be.
+    static func natural(_ title: String, measure: (String, CGFloat) -> CGFloat) -> CGFloat {
+        if let width = naturals[title] { return width }
+        if naturals.count > 256 { naturals.removeAll() }
+        let width = measure(title, 19)
+        naturals[title] = width
+        return width
+    }
+
+    /// The largest size from 19 down to 10 at which the name fits `face`, then shortened with an ellipsis if even 10 is
+    /// too wide.
+    static func fit(_ title: String, face: CGFloat, measure: (String, CGFloat) -> CGFloat) -> (size: CGFloat, text: String) {
+        let key = Key(title: title, halfPoints: Int((face * 2).rounded(.down)))
+        if let fit = fits[key] { return fit }
+        let limit = CGFloat(key.halfPoints) / 2
+        var size: CGFloat = 19
+        var shown = title
+        var width = measure(shown, size)
+        while width > limit && size > 10 {
+            size -= 1
+            width = measure(shown, size)
+        }
+        while width > limit && shown.count > 4 {
+            shown = String(shown.dropLast(2)).trimmingCharacters(in: .whitespaces) + "…"
+            width = measure(shown, size)
+        }
+        if fits.count > 1024 { fits.removeAll() }
+        fits[key] = (size, shown)
+        return (size, shown)
     }
 }

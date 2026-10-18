@@ -51,5 +51,38 @@ final class PerformanceAwarenessTests: XCTestCase {
         XCTAssertFalse(DeviceHeat.isHot(.fair))
         XCTAssertTrue(DeviceHeat.isHot(.serious))
         XCTAssertTrue(DeviceHeat.isHot(.critical))
+        XCTAssertEqual(DeviceHeat.ambientInterval(hot: false), 1.0 / 30, accuracy: 1e-9)
+        XCTAssertEqual(DeviceHeat.ambientInterval(hot: true), 1.0 / 15, accuracy: 1e-9)
+    }
+
+    /// Timelines that start at different moments step on the same grid, so the board redraws once per step however
+    /// many glows are on screen; the first entry is never after the date asked for.
+    func testAmbientTimelinesShareOneGrid() {
+        let schedule = AmbientTimelineSchedule(interval: 1.0 / 30)
+        let a = Date(timeIntervalSinceReferenceDate: 782_000_000.0123)
+        let b = a.addingTimeInterval(0.2471)
+        let fromA = Array(schedule.entries(from: a, mode: .normal).prefix(40))
+        let fromB = Array(schedule.entries(from: b, mode: .normal).prefix(10))
+        XCTAssertLessThanOrEqual(fromA[0], a)
+        XCTAssertGreaterThan(fromA[1], a)
+        XCTAssertLessThanOrEqual(fromB[0], b)
+        XCTAssertGreaterThan(fromB[1], b)
+        XCTAssertTrue(zip(fromA, fromA.dropFirst()).allSatisfy { $0 < $1 })
+        XCTAssertTrue(fromB.allSatisfy { fromA.contains($0) }, "both timelines tick at exactly the same times")
+        // The same answer asked again: a fixed grid, never "now".
+        XCTAssertEqual(Array(schedule.entries(from: b, mode: .normal).prefix(10)), fromB)
+    }
+
+    func testPausedAmbientTimelineDrawsOnce() {
+        let date = Date(timeIntervalSinceReferenceDate: 782_000_000.5)
+        let entries = Array(AmbientTimelineSchedule(interval: 1.0 / 30, paused: true).entries(from: date, mode: .normal))
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertLessThanOrEqual(entries[0], date)
+    }
+
+    func testBoardRestsAfterFifteenQuietSeconds() {
+        let touched = Date(timeIntervalSinceReferenceDate: 1_000)
+        XCTAssertEqual(BoardActivity.remaining(lastActivity: touched, now: touched + 5), 10, accuracy: 1e-9)
+        XCTAssertLessThanOrEqual(BoardActivity.remaining(lastActivity: touched, now: touched + 15), 0)
     }
 }

@@ -471,16 +471,18 @@ struct PhaseChip: View {
 
 /// Holographic sheen on the held card image only (never its rules text): a slow
 /// glint sweep with a slight tilt. Full board effects without Reduce Motion only;
-/// the timeline exists only while the inspector is on screen.
+/// the timeline exists only while the inspector is on screen. It steps with the board's breathing glows
+/// (AmbientTimelineSchedule), so the two never alternate frames, and at half rate while the phone is hot.
 struct InspectionFoil: ViewModifier {
     let size: CGSize
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var heat = DeviceHeat.shared
     @State private var start = Date()
 
     func body(content: Content) -> some View {
         if BoardFXLevel(rawValue: level) == .full && !reduceMotion {
-            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+            TimelineView(AmbientTimelineSchedule(interval: heat.ambientInterval)) { timeline in
                 let t = timeline.date.timeIntervalSince(start)
                 content
                     .colorEffect(ShaderLibrary.mmFoil(.float2(size), .float(t * 0.3), .float(0.55)))

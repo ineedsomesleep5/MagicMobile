@@ -311,8 +311,9 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             if (next.matchID != matchID || next.seatID != seatID) throw EngineError.UnboundPeer
             // Submission can change at the same revision. An older in-flight poll must not restore a hidden choice.
             poll?.let { current -> if (next.revision < current.revision || (next.revision == current.revision && sequence <= appliedRefreshSequence)) return }
-            // While the AI thinks, polls repeat the same board; do not re-adapt it every 300 ms.
-            val unchanged = poll?.raw == next.raw && heldAbilitySnapshot == null && snapshot != null && !logChanged
+            // While the AI thinks, polls repeat the same board; do not re-adapt it every 300 ms. A repeated reply comes back
+            // as the very same poll (EngineClient.poll), so the deep comparison is skipped too.
+            val unchanged = (poll === next || poll?.raw == next.raw) && heldAbilitySnapshot == null && snapshot != null && !logChanged
             logChanged = false
             idlePolls = if (unchanged) idlePolls + 1 else 0
             val nextLog = messageLog.copy()
