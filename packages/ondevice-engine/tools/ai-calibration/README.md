@@ -41,3 +41,18 @@ python3 scripts/ai_calibration.py summarize build/ai-calibration/results/*.csv
 
 `AICalibration.java` sits in the adapter's package so it can build matches from the production classes
 (`MobileCommanderMatch`, `MobileAICancellation` players, `DeckLoader`, `XmageEngine`) without changing them.
+
+## Long-game profiles
+
+`LongGameProfile.java` plays one game of the same phone budget and schedule and watches it from outside: AI search
+times, game copies, heap over time and per-turn copy cost, plus async-profiler (profile mode) or live-heap sampling,
+class histograms and a heap dump at the peak (memory mode). `scripts/profile_long_games.py` runs it one JVM at a time
+and reports; async-profiler and Eclipse MAT are downloaded separately (`ASYNC_PROFILER_HOME`, `MAT_HOME`). Results:
+docs/LIGHTER_ENGINE_PLAN.md, step 1.
+
+```sh
+python3 scripts/profile_long_games.py run --mode profile --skills 4,5,6 --games 2 --first-game 4
+python3 scripts/profile_long_games.py run --mode memory --skills 6 --games 1
+python3 scripts/profile_long_games.py report build/profile-long-games/profile
+python3 scripts/profile_long_games.py heap build/profile-long-games/memory
+```

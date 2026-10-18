@@ -111,6 +111,15 @@ contradicting one.
   `resolve_deck.py` builds use some Arena-only printings (AKR, ANB, HA4), so XMage's Commander validator falls back to
   `CardRepository.findCards(name)` and loads the whole card-metadata catalogue (about 87 MB of JVM heap); app decks only
   use eternal-legal printings. Measure with `build/isamaru.json`, or say which deck you used.
+- 2026-10-18 (Claude, lighter engine step 1): JVM memory traps in the long-game profiles. `GcInfo` before/after usage
+  covers every memory pool, Metaspace included (the card classes), so summing it read 550 MB "after GC" while the live
+  heap was 147 MB; heap after a Serial GC also counts dead objects in the old generation. The card catalogue (about
+  100 MB) loads on the first deck validation, so a baseline taken before `DeckLoader.load` is 27 MB, not 115. And
+  AICalibration's schedule plays one deck pair per block of 4 games, so a 4-game run covers one pair. **Rule:** sum only
+  `MemoryType.HEAP` pools, measure live heap with a full GC (or a heap dump), take baselines after loading the decks,
+  and spread runs with `--first-game 0, 4, 8, ...`. async-profiler 4.1 (GitHub release; CPU mode works at
+  `perf_event_paranoid` 2) and Eclipse MAT (download.eclipse.org) both run in the cloud container.
+  Where: `scripts/profile_long_games.py`, docs/LIGHTER_ENGINE_PLAN.md step 1.
 
 - 2026-10-15 (Claude, C4): XMage's AI search is limited by time, not by its 5000-node cap. Calibration
   searches use a median of 12–18 nodes (90th percentile about 600); each node copies the whole Commander
