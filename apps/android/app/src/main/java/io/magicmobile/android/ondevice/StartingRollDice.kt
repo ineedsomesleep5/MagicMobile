@@ -186,9 +186,12 @@ class D20TableLayout(stageWidth: Float, stageHeight: Float, regionMidY: Float, r
     init {
         val count = max(1, seatCount)
         val spacing = if (count <= 2) 3.1f else 2.45f
+        // Dice as big as the width allows and small enough that the whole run fits the height at full length, but
+        // never so big the throw cannot fit at the smallest footprint (iOS D20TableLayout).
         val byWidth = max(regionWidth, 1f) / (spacing * count + 1.4f)
         val byHeight = max(regionHeight, 1f) / ((THROW_DEPTH + 1.6f) * MIN_FOOTPRINT)
-        val ppu = min(min(byWidth, byHeight), 58f)
+        val fullRun = max(max(regionHeight, 1f) / (THROW_DEPTH + 1.6f), MINIMUM_UNIT)
+        val ppu = minOf(byWidth, byHeight, fullRun, MAXIMUM_UNIT)
         footprint = min(1f, max(MIN_FOOTPRINT, max(regionHeight, 1f) / ((THROW_DEPTH + 1.6f) * ppu)))
         pointsPerUnit = ppu
         laneX = (0 until count).map { (it - (count - 1) / 2f) * spacing }
@@ -211,7 +214,11 @@ class D20TableLayout(stageWidth: Float, stageHeight: Float, regionMidY: Float, r
     companion object {
         const val VERTICAL_FOV = 40f * Math.PI.toFloat() / 180f
         const val TILT = 18f * Math.PI.toFloat() / 180f
-        const val THROW_DEPTH = 8.2f
+        /** How much of the throw the camera frames, back from the rail; the throw starts a little further back still. */
+        const val THROW_DEPTH = 11.5f
+        /** Points per die radius: at most this big, never smaller just to fit the whole run. */
+        const val MAXIMUM_UNIT = 50f
+        const val MINIMUM_UNIT = 34f
         const val MIN_FOOTPRINT = 0.5f
         /** The mat's size in die radii (d20-table.json): portrait is tall. */
         fun matSize(landscape: Boolean): Pair<Float, Float> = if (landscape) 15.2f to 9.6f else 9.6f to 15.2f

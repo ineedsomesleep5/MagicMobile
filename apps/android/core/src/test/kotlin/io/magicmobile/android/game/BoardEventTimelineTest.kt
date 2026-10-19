@@ -54,6 +54,31 @@ class BoardEventTimelineTest {
         assertEquals(listOf(BoardFXEvent.Phased("bear", false)), BoardEventDiffer.events(after, back))
     }
 
+    private fun board(a: List<ZoneCard>, b: List<ZoneCard>, revision: Int): GameSnapshot {
+        fun seat(id: String, battlefield: List<ZoneCard>) =
+            PlayerGameState(id, id, 40, 0, 0, null, PlayerZones(emptyList(), emptyList(), battlefield, emptyList(), emptyList(), emptyList(), emptyList()))
+        return GameSnapshot("match", "xmage-ondevice", "a", "main", "main", 3, "a", players = listOf(seat("a", a), seat("b", b)),
+            log = emptyList(), bridgeRevision = revision, viewerPlayerId = "a")
+    }
+
+    /** Mirrors testStolenCardIsHiddenUntilTheChainDragsItHome (iOS). */
+    @Test fun stolenCardIsHiddenUntilTheChainDragsItHome() {
+        val ogre = ZoneCard("ogre", CardIdentity("Grizzly Bears", "Creature", null, manaCost = "{1}{G}"), power = 2, toughness = 2, isCreaturePermanent = true)
+        val start = 2_500_000L
+        val director = BoardFXDirector()
+        director.ingest(board(emptyList(), listOf(ogre), 1), BoardFXLevel.FULL, start)
+        director.ingest(board(listOf(ogre), emptyList(), 2), BoardFXLevel.FULL, start)
+        val steal = director.active.first { it.scheduled.event == BoardFXEvent.ControlChanged("ogre", "b", "a") }.scheduled
+        assertEquals("Grizzly Bears", director.subjects["ogre"]?.card?.name)
+        assertEquals(steal.delay + steal.duration * BoardFXScheduler.stealLandingFraction, steal.landing, 1e-9)
+        assertTrue(BoardFXScheduler.stealHookFraction < BoardFXScheduler.stealLandingFraction)
+        assertEquals(listOf(BoardFXCardMotion.Hidden(start, 0.0, steal.landing)), director.cardMotion("a").hidden["ogre"])
+        val reduced = BoardFXDirector()
+        reduced.ingest(board(emptyList(), listOf(ogre), 1), BoardFXLevel.REDUCED, start)
+        reduced.ingest(board(listOf(ogre), emptyList(), 2), BoardFXLevel.REDUCED, start)
+        assertNull("reduced motion keeps the tile in place", reduced.cardMotion("a").hidden["ogre"])
+    }
+
     @Test fun commanderCastIsItsOnlyCeremony() {
         val inCommand = state(listOf(fxCard("cmd", "a", BoardFXZone.COMMAND, name = "Atraxa")))
         val cast = state(emptyList(), listOf(BoardFXState.StackItem("s", "Atraxa", "a", BoardFXTint.MULTICOLOR, manaValue = 4)))

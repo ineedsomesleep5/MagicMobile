@@ -543,6 +543,8 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
         data class Cast(val from: BoardPoint, val to: BoardPoint, val weight: BoardFXSpellWeight) : Kind()
         /** Wind up, charge the target, hit, and return to the slot. */
         data class Strike(val from: BoardRect, val to: BoardPoint) : Kind()
+        /** Stolen: waits on its old side until the taker's chain hooks it, then is dragged to its new slot. */
+        data class Pulled(val from: BoardRect, val to: BoardRect) : Kind()
     }
 
     data class Placement(val center: BoardPoint, val size: BoardSize, val scale: Double, val rotation: Double, val opacity: Double,
@@ -619,6 +621,18 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
                     Placement(kind.to, size, 1 - 0.45 * t, 0.0, 1 - t, !framed, 1 - t)
                 }
             }
+            is Kind.Pulled -> {
+                if (p >= BoardFXScheduler.stealLandingFraction) return null
+                val t = pullTravel(p)
+                // A jolt as the hook bites, then a lean into the drag.
+                val bite = ((p - BoardFXScheduler.stealHookFraction * 0.85) / 0.12).coerceIn(0.0, 1.0)
+                val jolt = sin(bite * PI * 3) * 4 * (1 - t)
+                val lean = (if (kind.to.midX >= kind.from.midX) 7.0 else -7.0) * sin(t * PI)
+                val size = BoardSize((kind.from.width + (kind.to.width - kind.from.width) * t).toFloat(),
+                    (kind.from.height + (kind.to.height - kind.from.height) * t).toFloat())
+                val center = pulledCenter(kind.from, kind.to, p)
+                Placement(BoardPoint((center.x + jolt).toFloat(), center.y), size, 1 + 0.1 * sin(t * PI), lean, 1.0, lift = sin(t * PI))
+            }
             is Kind.Strike -> {
                 val home = BoardPoint(kind.from.midX, kind.from.midY)
                 val dx = (kind.to.x - home.x).toDouble(); val dy = (kind.to.y - home.y).toDouble()
@@ -673,6 +687,17 @@ class BoardFXFlight(val effect: ActiveBoardFX, val card: ZoneCard, val kind: Kin
 
         fun lerp(a: BoardPoint, b: BoardPoint, t: Double) = BoardPoint((a.x + (b.x - a.x) * t).toFloat(), (a.y + (b.y - a.y) * t).toFloat())
 
+        /** How far a stolen card has been dragged (0 at the hook, 1 in its new slot). */
+        fun pullTravel(p: Double): Double {
+            val hook = BoardFXScheduler.stealHookFraction; val land = BoardFXScheduler.stealLandingFraction
+            val t = ((p - hook) / (land - hook)).coerceIn(0.0, 1.0)
+            return t * t * (3 - 2 * t)
+        }
+
+        /** The stolen card's centre on the chain: the chain painter follows the same path. */
+        fun pulledCenter(from: BoardRect, to: BoardRect, p: Double): BoardPoint =
+            arc(BoardPoint(from.midX, from.midY), BoardPoint(to.midX, to.midY), 24.0, pullTravel(p))
+
         /** Graveyard (or unknown) and exile departures burn away; bounces fly. */
         fun dissolves(destination: BoardFXZone?): Boolean = destination == null || destination == BoardFXZone.GRAVEYARD || destination == BoardFXZone.EXILE
     }
@@ -693,6 +718,20 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
                    /** Walnut Tavern: names on parchment ribbons and the tavern commander moment. */
                    tavern: Boolean = io.magicmobile.android.ui.LocalTavernBoard.current) {
     val lastKnownBounds = remember { HashMap<String, BoardRect>() }
+    // Where each card sat before its latest move, and when: a stolen card is taken from there. The board may move it
+    // before or after the steal arrives, so a move in the last moment is the steal's, otherwise it has not moved yet.
+    val movedFrom = remember { HashMap<String, Pair<BoardRect, Long>>() }
+    val pullOrigins = remember { HashMap<Int, BoardRect>() }
+    val wallClock = System.currentTimeMillis()
+    for ((id, r) in cardBounds) { val before = lastKnownBounds[id]; if (before != null && before != r) movedFrom[id] = before to wallClock }
+    if (movedFrom.size > 400) movedFrom.clear()
+    for (effect in effects) {
+        val event = effect.scheduled.event as? BoardFXEvent.ControlChanged ?: continue
+        if (effect.id in pullOrigins) continue
+        val moved = movedFrom[event.cardID]?.takeIf { wallClock - it.second < 600 }
+        (moved?.first ?: lastKnownBounds[event.cardID])?.let { pullOrigins[effect.id] = it }
+    }
+    pullOrigins.keys.retainAll(effects.map { it.id }.toSet())
     lastKnownBounds.putAll(cardBounds)
     if (lastKnownBounds.size > 400) { lastKnownBounds.clear(); lastKnownBounds.putAll(cardBounds) }
     if (effects.isEmpty()) return
@@ -768,6 +807,10 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
                 val hit = point(event.target) ?: return@mapNotNull null
                 BoardFXFlight(effect, card, BoardFXFlight.Kind.Strike(origin, hit))
             }
+            is BoardFXEvent.ControlChanged -> {
+                val target = rect(event.cardID) ?: return@mapNotNull null
+                BoardFXFlight(effect, card, BoardFXFlight.Kind.Pulled(pullOrigins[effect.id] ?: target, target))
+            }
             else -> null
         }
     }
@@ -776,7 +819,7 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
         Canvas(Modifier.fillMaxSize()) {
             for (effect in effects) {
                 val p = progress(effect) ?: continue
-                drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point, art, sprites)
+                drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point, art, sprites, pullOrigins)
             }
         }
         val placed = flights.mapNotNull { flight -> progress(flight.effect)?.let { p -> flight.placement(p)?.let { Triple(flight, p, it) } } }
@@ -816,7 +859,9 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
 
 private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Double, measurer: TextMeasurer, anchors: BoardFXAnchors,
                                  subjects: Map<String, ZoneCard>, rect: (String) -> BoardRect?, point: (BoardFXStrikeTarget) -> BoardPoint?,
-                                 art: TavernFXArt? = null, sprites: FXSprites? = null) { with(BoardFXPainter) { with(BoardFXCardMoments) {
+                                 art: TavernFXArt? = null, sprites: FXSprites? = null,
+                                 /** Where each steal took its card from (BoardFXOverlay). */
+                                 pullOrigins: Map<Int, BoardRect> = emptyMap()) { with(BoardFXPainter) { with(BoardFXCardMoments) {
     val motion = fx.usesMotion
     val tavern = art != null
     // An opponent's name over the ribbon, so a glance says whose spell it is; nothing for yours.
@@ -964,7 +1009,8 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
         }
         is BoardFXEvent.ControlChanged -> {
             val r = rect(event.cardID) ?: return
-            chainMoment(anchors.playerPoint(event.from), r, p, motion, fx.id)
+            val grab = if (motion) pullOrigins[fx.id] ?: r else r
+            chainMoment(anchors.playerPoint(event.to), grab, r, p, motion, fx.id)
         }
         is BoardFXEvent.AttackDeclared -> {
             val r = rect(event.cardID) ?: return
@@ -1043,7 +1089,7 @@ object BoardFXSound {
             is BoardFXEvent.StatsChanged -> cues += Cue(GameSound.COUNTER, fx.delay, 0.4f)
             is BoardFXEvent.Phased -> cues += Cue(GameSound.EXILE, fx.delay, 0.55f)
             is BoardFXEvent.Transformed -> cues += Cue(GameSound.CARD_PLAY, fx.delay)
-            is BoardFXEvent.ControlChanged -> cues += Cue(GameSound.CARD_PICKUP, fx.delay)
+            is BoardFXEvent.ControlChanged -> cues += Cue(GameSound.CARD_PICKUP, fx.delay + fx.duration * BoardFXScheduler.stealHookFraction)
             is BoardFXEvent.LifeChanged -> if (event.delta > 0) cues += Cue(GameSound.LIFE_GAIN, fx.delay, if (event.playerID == viewerID) 1f else 0.55f)
                 else if (event.playerID == viewerID && !hasStrike) cues += Cue(GameSound.LIFE_LOSS, fx.delay)
         }

@@ -18,6 +18,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import io.magicmobile.android.game.BoardFXCounterKind
+import io.magicmobile.android.game.BoardFXScheduler
 import io.magicmobile.android.game.BoardPoint
 import io.magicmobile.android.game.BoardRect
 import kotlin.math.cos
@@ -176,21 +177,31 @@ object BoardFXCardMoments {
         sparks(on, exileCyan, 18, p, seed + 31, BoardFXPainter.SparkStyle.RISE)
     }
 
-    /** Control change: a brass chain reaches from the old controller to the card, then snaps as the card settles. */
-    fun DrawScope.chainMoment(from: BoardPoint, to: BoardRect, p: Double, motion: Boolean, seed: Int) = with(BoardFXPainter) {
-        val start = Offset(from.x * density, from.y * density)
-        val target = rect(to).center
-        val reach = easeOut(min(1.0, p / 0.45)).toFloat()
-        val end = Offset(start.x + (target.x - start.x) * reach, start.y + (target.y - start.y) * reach)
-        val alpha = if (p > 0.55) max(0.0, 1 - (p - 0.55) / 0.3).toFloat() else 1f
+    /**
+     * A steal: the taker's chain shoots out of their portrait to the card on its old side, hooks it, drags it home
+     * (BoardFXFlight.Kind.Pulled draws the card on the chain) and lets go with a flash where it lands. Without motion
+     * [grab] is the card's new place: the chain only reaches it.
+     */
+    fun DrawScope.chainMoment(taker: BoardPoint, grab: BoardRect, to: BoardRect, p: Double, motion: Boolean, seed: Int) = with(BoardFXPainter) {
+        val hook = BoardFXScheduler.stealHookFraction; val land = BoardFXScheduler.stealLandingFraction
+        val head = if (p < hook) BoardFXFlight.lerp(taker, BoardPoint(grab.midX, grab.midY), easeOut(p / hook))
+            else BoardFXFlight.pulledCenter(grab, to, p)
+        val start = Offset(taker.x * density, taker.y * density)
+        val end = Offset(head.x * density, head.y * density)
+        val alpha = if (p < land) 1f else max(0.0, 1 - (p - land) / 0.16).toFloat()
         val dash = PathEffect.dashPathEffect(floatArrayOf(px(9.0), px(5.0)))
         drawLine(brassChain.copy(alpha = 0.35f * alpha), start, end, strokeWidth = px(10.0), cap = StrokeCap.Round, blendMode = BlendMode.Plus)
         drawLine(brassChain.copy(alpha = alpha), start, end, strokeWidth = px(4.0), cap = StrokeCap.Round, pathEffect = dash, blendMode = BlendMode.Plus)
         drawLine(Color.White.copy(alpha = 0.55f * alpha), start, end, strokeWidth = px(1.2), cap = StrokeCap.Round, pathEffect = dash, blendMode = BlendMode.Plus)
-        if (p > 0.45) {
-            val q = (p - 0.45) / 0.55
+        // The hook at the chain's head.
+        drawCircle(brassChain.copy(alpha = alpha), radius = px(6.0), center = end, style = Stroke(px(2.5)), blendMode = BlendMode.Plus)
+        // It bites: a brass burst on the card where it was taken.
+        val bite = (p - hook * 0.85) / 0.22
+        if (motion && bite > 0 && bite < 1) sparks(grab, brassChain, 10, bite, seed, BoardFXPainter.SparkStyle.BURST)
+        if (p > land) {
+            val q = (p - land) / (1 - land)
             arrivalGlow(to, brassChain, q, motion)
-            if (motion) sparks(to, gold, 14, q, seed, BoardFXPainter.SparkStyle.BURST)
+            if (motion) sparks(to, gold, 14, q, seed + 1, BoardFXPainter.SparkStyle.BURST)
         }
     }
 

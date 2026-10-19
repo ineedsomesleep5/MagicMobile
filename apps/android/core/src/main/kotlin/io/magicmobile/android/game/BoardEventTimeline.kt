@@ -379,11 +379,15 @@ enum class BoardFXLevel(val rawValue: String, val title: String) {
 data class ScheduledBoardFX(val id: Int, val event: BoardFXEvent, val delay: Double, val duration: Double, val usesMotion: Boolean) {
     val end: Double get() = delay + duration
 
-    /** When a card arriving with this effect lands in its slot (the tile appears). */
+    /** When a card arriving with this effect lands in its slot (the tile appears): an arrival's flight,
+     *  or a stolen card dragged home on the taker's chain. */
     val landing: Double get() {
-        val entered = event as? BoardFXEvent.EnteredBattlefield
-        if (!usesMotion || entered == null) return delay
-        return delay + duration * BoardFXScheduler.landingFraction(entered.entrance)
+        if (!usesMotion) return delay
+        return when (val e = event) {
+            is BoardFXEvent.EnteredBattlefield -> delay + duration * BoardFXScheduler.landingFraction(e.entrance)
+            is BoardFXEvent.ControlChanged -> delay + duration * BoardFXScheduler.stealLandingFraction
+            else -> delay
+        }
     }
 
     /** When the next group may begin: showcases finish first, strikes hand over at impact, arrivals once they land. */
@@ -451,6 +455,9 @@ object BoardFXScheduler {
     const val arrivalFlightFraction = 0.42
     /** Share of a strike spent winding up and charging before impact. */
     const val strikeImpactFraction = 0.42
+    /** A steal: the taker's chain reaches the card and hooks it by this share, and has dragged it home by the next. */
+    const val stealHookFraction = 0.28
+    const val stealLandingFraction = 0.72
 
     fun schedule(events: List<BoardFXEvent>, level: BoardFXLevel, firstID: Int = 0, hold: Double = 0.0): List<ScheduledBoardFX> {
         if (level == BoardFXLevel.OFF) return emptyList()
@@ -537,7 +544,7 @@ object BoardFXScheduler {
         is BoardFXEvent.StatsChanged -> if (motion) 1.0 else 0.8
         is BoardFXEvent.Phased -> if (motion) 1.1 else 0.7
         is BoardFXEvent.Transformed -> if (motion) 0.9 else 0.6
-        is BoardFXEvent.ControlChanged -> if (motion) 1.2 else 0.7
+        is BoardFXEvent.ControlChanged -> if (motion) 1.5 else 0.7
         is BoardFXEvent.AttackDeclared -> if (motion) 0.7 else 0.6
         is BoardFXEvent.BlockDeclared -> if (motion) 0.8 else 0.6
         is BoardFXEvent.CombatStrike -> if (motion) 0.95 else 0.6
@@ -619,6 +626,7 @@ class BoardFXDirector {
                 // The flip shows the old face turning over to the new one.
                 is BoardFXEvent.Transformed -> departedFaces[event.cardID]?.let { nextSubjects[event.cardID] = it }
                 is BoardFXEvent.CombatStrike -> (departedFaces[event.attackerID] ?: battlefield[event.attackerID])?.let { nextSubjects[event.attackerID] = it }
+                is BoardFXEvent.ControlChanged -> battlefield[event.cardID]?.let { nextSubjects[event.cardID] = it }
                 is BoardFXEvent.SpellCast -> snapshot.stackTopFirst.firstOrNull { it.id == event.stackID }?.displaySourceCard?.let { nextSubjects[event.stackID] = it }
                 else -> {}
             }
@@ -656,6 +664,9 @@ class BoardFXDirector {
                     lunges[event.cardID] = BoardFXCardMotion.Lunge(effect.id, if (owner == viewerID) -1.0 else 1.0)
                 }
                 is BoardFXEvent.Transformed -> flips[event.cardID] = effect.id
+                // The dragged card stands in for the tile until it lands on the taker's side.
+                is BoardFXEvent.ControlChanged -> if (subjects[event.cardID] != null)
+                    hidden.getOrPut(event.cardID) { mutableListOf() } += BoardFXCardMotion.Hidden(effect.start, 0.0, fx.landing)
                 else -> {}
             }
         }
