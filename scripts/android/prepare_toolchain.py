@@ -82,6 +82,10 @@ def main():
             raise ValueError('Unreviewed native toolchain release: missing ' + line)
     if 'substratevm:' + PINS['graalvm']['substratevm_commit'] not in (home / 'release').read_text():
         raise ValueError('Unreviewed native toolchain release: unexpected substratevm commit')
+    # The Android build passes --libc=bionic (errno through __errno). The driver then puts clibraries/<host>/bionic
+    # on the library path (Substrate 0.0.65 passes no --target) and fails when it is missing. Substrate writes a
+    # relocatable object and links it itself with libvmone.a, so the directory only has to exist.
+    (home / 'lib/svm/clibraries/linux-amd64/bionic').mkdir()
     library = extract_static_jdk(static_archive, build / 'static-jdk')
     manifest = dict(schema=2, platform='linux-host/android-target', graalvmRelease=PINS['graalvm']['release'],
                     officialArchiveSha256=GRAALVM['sha256'], svmJarSha256=sha256(home / 'lib/svm/builder/svm.jar'),
