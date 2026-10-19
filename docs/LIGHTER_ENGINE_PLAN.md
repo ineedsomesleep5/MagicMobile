@@ -371,6 +371,22 @@ same objects that dominate allocation.
 - [ ] Build with `-Os`; use the build report and `-H:+PrintAnalysisCallTree` to find further cuts.
 - Expected: about 15–25% less engine code (cumulative engine about 260–275 MB; iPhone download about 125–135 MB, Android
   APK about 118–125 MB). Watch AI speed: size-optimized code can be slower; heat must not get worse.
+- Status, 2026-10-19 (draft PR #211, engine release D alone; JVM-verified, Android native built and measured, iOS
+  native not built yet, so no box is ticked):
+  - Toolchain: Gluon GraalVM 23+25.1 (GraalVM 24.1.0-dev, JDK 23) with GluonFX 1.0.25 (Substrate 0.0.65) and vmone
+    `gvm-24-2.1`'s `libvmone.a` as the static JDK, checksum-pinned for Linux, Intel Mac and Apple Silicon in
+    `packages/ondevice-engine/native/gluon/toolchain.json`. Not GluonFX 1.0.29: Gluon reverted Substrate's GraalVM 23
+    support in March 2025 (gluonhq/substrate#1310), so Substrate 0.0.66 and later fit only GraalVM 22.1.
+  - Patches: the far-call backport is retired, not ported (GraalVM 24.1 has the upstream
+    `AArch64HostedTrampolineSupport` it copied; the iOS probe now forces upstream trampolines with
+    `-H:+UseDirectCallTrampolinesALot`). The Color patch is retired (JDK 23's `java.awt.Color` has no desktop JNI
+    initializer; the native regression guards the JDK source). `CheckpointSerializationFeature` is ported (registry
+    moved, serialization-target marks, builder-module opens). Not ported: the iOS simulator diagnostics, because vmone
+    ships no simulator library. Android needed `--libc=bionic` again (Substrate 0.0.65 does not pass it) and an empty
+    `clibraries/linux-amd64/bionic` directory in the compiler, and staging allows four more system imports.
+  - JVM: XMage and the adapter build and pass the real-JVM suite on JDK 23 (locally and CI `real-jvm`), including
+    game records replayed from the record alone to the recorded winner, turn and life totals.
+  - Size and AI speed: measurements in progress.
 
 ### 5. Engine releases: cards as data
 - [ ] Proof: the 1,500 simple cards built from catalogue data by one generic card class; an automatic check compares
