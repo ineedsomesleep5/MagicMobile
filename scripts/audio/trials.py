@@ -230,6 +230,20 @@ ROUND6 = {
 }
 
 
+# Round 7 (Caleb: "is there more for the creature and enchantment difference?"): the same blue three-drop with a quiet
+# type accent over the shipped slam + colour layer, so the colour still leads.
+def typed(accent: list) -> list:
+    return game.slam_parts("medium") + game.COLOUR_LAYERS["blue"]() + accent
+
+
+ROUND7 = {
+    "type-1-creature-blue": (lambda: typed([]), -21.0),
+    "type-2-enchantment-blue-glass": (lambda: typed([ks("impactGlass_medium_002", -11.0, 0.02)]), -21.0),
+    "type-3-artifact-blue-metal": (lambda: typed([ks("impactMetal_light_000", -9.0, 0.005)]), -21.0),
+    "type-4-planeswalker-blue-bell": (lambda: typed([ks("impactBell_heavy_002", -12.0, 0.02)]), -21.0),
+}
+
+
 def shipped(path: str) -> np.ndarray:
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "x.wav")
@@ -266,9 +280,11 @@ def main() -> None:
     for name in ("ui-open.m4a", "page-flip.m4a", "menu-play.m4a", "creature-enter.caf", "token-create.m4a", "land-drop.m4a"):
         if not os.path.exists(os.path.join(args.shipped, name)):
             name = name.replace(".caf", ".m4a") if name.endswith(".caf") else name.replace(".m4a", ".caf")
+        if not os.path.exists(os.path.join(args.shipped, name)):
+            continue   # retired since (creature-enter, token-create)
         x = shipped(os.path.join(args.shipped, name))
         wavfile.write(os.path.join(args.out, "before-" + name.rsplit(".", 1)[0] + ".wav"), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
-    for name, (layers, target) in {**ROUND5, **ROUND6}.items():
+    for name, (layers, target) in {**ROUND5, **ROUND6, **ROUND7}.items():
         takes[name] = ((lambda layers=layers: layer(*layers())), target, False)
     for name, (recipe, target, stereo) in takes.items():
         if args.only and name not in wanted:
