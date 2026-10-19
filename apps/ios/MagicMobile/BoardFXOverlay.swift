@@ -44,6 +44,10 @@ struct BoardFXOverlay: View {
 
     /// Cards that just left the battlefield no longer report bounds; keep their last rectangle.
     @State private var lastKnownBounds: [String: CGRect] = [:]
+    /// Where each card sat before its latest move, and when it moved: a stolen card is taken from there.
+    @State private var movedFrom: [String: (rect: CGRect, at: Date)] = [:]
+    /// Where each steal (by effect) took its card from, fixed when the steal begins.
+    @State private var pullOrigins: [Int: CGRect] = [:]
     /// Half the frame rate while the phone is hot (DeviceHeat).
     @ObservedObject private var heat = DeviceHeat.shared
 
@@ -111,9 +115,26 @@ struct BoardFXOverlay: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear { lastKnownBounds = cardBounds }
-        .onChange(of: cardBounds) { _, bounds in
+        .onChange(of: cardBounds) { old, bounds in
+            let now = Date()
+            for (id, rect) in bounds { if let before = old[id], before != rect { movedFrom[id] = (before, now) } }
+            if movedFrom.count > 400 { movedFrom = [:] }
             lastKnownBounds.merge(bounds, uniquingKeysWith: { _, new in new })
             if lastKnownBounds.count > 400 { lastKnownBounds = bounds }
+        }
+        .onChange(of: effects.map(\.id)) { _, ids in
+            // The board may move the stolen card before or after the steal arrives: a move in the last moment is
+            // the one the steal made, otherwise the card has not moved yet.
+            let now = Date()
+            for effect in effects where pullOrigins[effect.id] == nil {
+                guard case let .controlChanged(cardID, _, _) = effect.scheduled.event else { continue }
+                if let moved = movedFrom[cardID], now.timeIntervalSince(moved.at) < 0.6 {
+                    pullOrigins[effect.id] = moved.rect
+                } else if let rect = lastKnownBounds[cardID] {
+                    pullOrigins[effect.id] = rect
+                }
+            }
+            pullOrigins = pullOrigins.filter { ids.contains($0.key) }
         }
     }
 
@@ -169,6 +190,9 @@ struct BoardFXOverlay: View {
             case let .combatStrike(id, target, _, _):
                 guard let origin = rect(id), let hit = point(target) else { return nil }
                 return BoardFXFlight(effect: effect, card: card, kind: .strike(from: origin, to: hit))
+            case let .controlChanged(id, _, _):
+                guard let target = rect(id) else { return nil }
+                return BoardFXFlight(effect: effect, card: card, kind: .pulled(from: pullOrigins[effect.id] ?? target, to: target))
             default:
                 return nil
             }
@@ -343,9 +367,11 @@ struct BoardFXOverlay: View {
         case let .transformed(cardID, _):
             guard let rect = rect(cardID) else { return }
             BoardFXPainter.transformMoment(on: rect, color: BoardFXPainter.gold, progress: p, motion: motion, seed: fx.id, in: &context)
-        case let .controlChanged(cardID, from, _):
+        case let .controlChanged(cardID, _, taker):
             guard let rect = rect(cardID) else { return }
-            BoardFXPainter.chainMoment(from: anchors.playerPoint(from), to: rect, progress: p, motion: motion, seed: fx.id, in: &context)
+            let grab = motion ? pullOrigins[fx.id] ?? rect : rect
+            BoardFXPainter.chainMoment(from: anchors.playerPoint(taker), grab: grab, to: rect, progress: p, motion: motion,
+                                       seed: fx.id, in: &context)
         case let .attackDeclared(cardID, tint):
             guard let rect = rect(cardID) else { return }
             BoardFXPainter.arrivalGlow(rect, color: BoardFXPainter.attackRed, progress: p, motion: motion, tavern: tavern, in: &context)
@@ -872,7 +898,7 @@ enum BoardFXSound {
             case .statsChanged: cues.append(Cue(sound: .counter, at: fx.delay, volume: 0.4))
             case .phased: cues.append(Cue(sound: .exile, at: fx.delay, volume: 0.55))
             case .transformed: cues.append(Cue(sound: .cardPlay, at: fx.delay))
-            case .controlChanged: cues.append(Cue(sound: .cardPickup, at: fx.delay))
+            case .controlChanged: cues.append(Cue(sound: .cardPickup, at: fx.delay + fx.duration * BoardFXScheduler.stealHookFraction))
             case let .lifeChanged(id, delta):
                 if delta > 0 {
                     cues.append(Cue(sound: .lifeGain, at: fx.delay, volume: id == viewerID ? 1 : 0.55))
@@ -992,6 +1018,8 @@ struct BoardFXFlight: Identifiable {
         case cast(from: CGPoint, to: CGPoint, weight: BoardFXSpellWeight)
         /// Wind up, charge the target, hit, and return to the slot.
         case strike(from: CGRect, to: CGPoint)
+        /// Stolen: waits on its old side until the taker's chain hooks it, then is dragged to its new slot.
+        case pulled(from: CGRect, to: CGRect)
     }
 
     struct Placement {
@@ -1044,6 +1072,18 @@ struct BoardFXFlight: Identifiable {
 
     static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
         CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
+    }
+
+    /// How far a stolen card has been dragged (0 at the hook, 1 in its new slot).
+    static func pullTravel(progress p: Double) -> Double {
+        let hook = BoardFXScheduler.stealHookFraction, land = BoardFXScheduler.stealLandingFraction
+        let t = min(max((p - hook) / (land - hook), 0), 1)
+        return t * t * (3 - 2 * t)
+    }
+
+    /// The stolen card's centre on the chain: the chain painter follows the same path.
+    static func pulledCenter(from: CGRect, to: CGRect, progress p: Double) -> CGPoint {
+        arc(CGPoint(x: from.midX, y: from.midY), CGPoint(x: to.midX, y: to.midY), lift: 24, t: pullTravel(progress: p))
     }
 
     enum Shading: Equatable {
@@ -1130,6 +1170,17 @@ struct BoardFXFlight: Identifiable {
             }
             let t = BoardFXPainter.easeIn((p - exit) / (1 - exit))
             return Placement(center: to, size: size, scale: 1 - 0.45 * t, rotation: 0, opacity: 1 - t, fullCard: !framed, lift: 1 - t)
+        case let .pulled(from, to):
+            guard p < BoardFXScheduler.stealLandingFraction else { return nil }
+            let t = Self.pullTravel(progress: p)
+            // A jolt as the hook bites, then a lean into the drag.
+            let bite = min(max((p - BoardFXScheduler.stealHookFraction * 0.85) / 0.12, 0), 1)
+            let jolt = sin(bite * .pi * 3) * 4 * (1 - t)
+            let lean = (to.midX >= from.midX ? 7.0 : -7.0) * sin(t * .pi)
+            let size = CGSize(width: from.width + (to.width - from.width) * t, height: from.height + (to.height - from.height) * t)
+            let center = Self.pulledCenter(from: from, to: to, progress: p)
+            return Placement(center: CGPoint(x: center.x + jolt, y: center.y), size: size, scale: 1 + 0.1 * sin(t * .pi),
+                             rotation: lean, opacity: 1, lift: sin(t * .pi))
         case let .strike(from, to):
             let home = CGPoint(x: from.midX, y: from.midY)
             let dx = to.x - home.x, dy = to.y - home.y

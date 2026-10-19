@@ -330,6 +330,23 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(director.cardMotion(viewerID: "a"), BoardFXCardMotion())
     }
 
+    func testStolenCardIsHiddenUntilTheChainDragsItHome() {
+        let start = Date(timeIntervalSince1970: 2_500)
+        var director = BoardFXDirector()
+        director.ingest(snapshot([player("a"), player("b", battlefield: [card("ogre")])]), level: .full, now: start)
+        director.ingest(snapshot([player("a", battlefield: [card("ogre")]), player("b")], revision: 2), level: .full, now: start)
+        let steal = director.active.first { $0.scheduled.event == .controlChanged(cardID: "ogre", from: "b", to: "a") }!.scheduled
+        XCTAssertEqual(director.subjects["ogre"]?.card.name, "Grizzly Bears", "the dragged card shows the stolen face")
+        XCTAssertEqual(steal.landing, steal.delay + steal.duration * BoardFXScheduler.stealLandingFraction)
+        XCTAssertLessThan(BoardFXScheduler.stealHookFraction, BoardFXScheduler.stealLandingFraction)
+        XCTAssertEqual(director.cardMotion(viewerID: "a").hidden["ogre"],
+                       [BoardFXCardMotion.Hidden(batch: start, from: 0, until: steal.landing)])
+        var reduced = BoardFXDirector()
+        reduced.ingest(snapshot([player("a"), player("b", battlefield: [card("ogre")])]), level: .reduced, now: start)
+        reduced.ingest(snapshot([player("a", battlefield: [card("ogre")]), player("b")], revision: 2), level: .reduced, now: start)
+        XCTAssertNil(reduced.cardMotion(viewerID: "a").hidden["ogre"], "reduced motion keeps the tile in place")
+    }
+
     func testAttackersLungeAndHoldTheirStanceTowardTheOpponent() {
         let start = Date(timeIntervalSince1970: 3_000)
         let old = snapshot([player("a", battlefield: [card("mine")]), player("b", battlefield: [card("theirs")])])

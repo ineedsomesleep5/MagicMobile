@@ -44,10 +44,14 @@ were. Only the presentation changed.
 
 There is no physics in the app. `d20.py` ran a small rigid-body integrator offline (twelve corners against the
 table and the rail, impulse contacts with friction, a soft pull toward the lane's middle) over a few hundred random
-throws, in the launch profile that passes most often, and kept the ones that look right: they leave the near edge,
-bounce at least three times, hit the rail low, come back and stop clear of it within about 0.4 radii of their lane.
-Playback is slowed 1.7 times (`TIME_SCALE`), so a throw lasts 2 to 3 seconds. Each kept throw is stored as 60 fps
-keyframes and ends with some face F up; twelve are kept, preferring different resting faces.
+throws, in the launch profile that passes most often, and kept the ones that look right: they leave the viewer's edge
+of the table 13 to 14.6 radii from the rail (`START_DISTANCE`), bounce at least three times, reach the rail low and
+gently (`RAIL_KISS`), come back and stop 1.5 to 5.8 radii clear of it (`REST_SPOT`) within about 0.4 radii of their lane.
+Playback is slowed 1.7 times (`TIME_SCALE`), so a throw lasts about 2.5 to 3.4 seconds and reaches the rail after about
+a second. Each kept throw is stored as 60 fps keyframes and ends with some face F up; the resting face does not
+matter (the apps turn the die by a symmetry, below), so the twelve that run 2.5 to 3.4 seconds and stop furthest from
+the rail are kept. (Until 2026-10-19 throws
+started 7 to 8.4 radii out and hit the rail at about 0.65 s: Caleb found them abrupt.)
 
 A regular icosahedron looks the same after any of its 60 rotations. To make a recorded throw end with face T up
 instead, turn the body by the symmetry **S** that carries T onto F, then play the recorded motion:
@@ -80,8 +84,9 @@ by conjugating with a -90 degree turn about x.
 The roll area (the transparent spacer between the title plate and the controls, identifier `multiplayerD20.rollArea`)
 tells the table where the dice may go. It stays after the roll ends (silent to VoiceOver), so the dice stay in view under the
 result; its height is 32 % of the stage (240 to 320 points) in portrait and what is left under the one-line title in landscape. The layout makes the dice as big as the area's width allows for the number of
-seats (lane spacing 2.45 radii, 3.1 for two seats, at most 58 points per radius), shortens the throw if the area is
-low, puts the far rail near the top of the area and aims a 40 degree perspective camera, tilted 18 degrees from
+seats (lane spacing 2.45 radii, 3.1 for two seats, at most 50 points per radius) and small enough that the framed
+run (11.5 radii, `throwDepth`) fits at full length, but no smaller than 34 points per radius; below that it shortens
+the throw (a short landscape area), puts the far rail near the top of the area and aims a 40 degree perspective camera, tilted 18 degrees from
 straight down, so the middle of the area stays where it is on the stage. It is a pure function, tested, and the same
 on both platforms.
 
@@ -116,7 +121,7 @@ on both platforms.
 
 - A new look for the die: edit the materials/numerals in `d20.py` (`build_textures`), rerun `--mode model`, install. The
   numbering, normals and corner directions are written to `d20.json` by the same run, so nothing else changes.
-- New or more throws: `--mode throws --candidates N --keep K`; the filters in `build_throws` say what a good throw is.
+- New or more throws: `--mode throws --candidates N --keep K` (the 2026-10-19 bank used `--candidates 15000`); the filters in `build_throws` say what a good throw is.
   Each throw must hit the rail within the lane; keep at least six so neighbours differ.
 - A different table: `--mode table`. The leather is cropped from the tavern plates in the asset catalogue and the
   walnut is `battlefield-wood`; nothing is downloaded.

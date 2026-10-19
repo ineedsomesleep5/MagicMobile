@@ -193,8 +193,13 @@ struct D20TableLayout: Equatable {
     static let verticalFieldOfView: Float = 40 * .pi / 180
     /// The ray through the middle of the roll area meets the table this far from straight down.
     static let tilt: Float = 18 * .pi / 180
-    /// How far from the rail the throw starts and how far its resting places spread (die radii).
-    static let throwDepth: Float = 8.2
+    /// How much of the throw the camera frames, back from the rail (die radii): its run and resting places. The throw
+    /// starts a little further back still (d20.py START_DISTANCE), so it rolls in from the viewer's edge of the table.
+    static let throwDepth: Float = 11.5
+    /// Points per die radius: at most this big, and never smaller than the minimum just to fit the whole run
+    /// (a short landscape roll area compresses the path instead).
+    static let maximumUnit: Float = 50
+    static let minimumUnit: Float = 34
 
     let laneX: [Float]
     let railZ: Float
@@ -210,11 +215,13 @@ struct D20TableLayout: Equatable {
         let count = max(1, input.seatCount)
         let width = Float(max(input.region.width, 1)), height = Float(max(input.region.height, 1))
         let spacing: Float = count <= 2 ? 3.1 : 2.45
-        // Dice as big as the width allows, but never so big the throw cannot fit the height.
+        // Dice as big as the width allows and small enough that the whole run fits the height at full length, but
+        // never so big the throw cannot fit at the smallest footprint.
         let byWidth = width / (spacing * Float(count) + 1.4)
         let minFootprint: Float = 0.5
         let byHeight = height / ((Self.throwDepth + 1.6) * minFootprint)
-        let ppu = min(min(byWidth, byHeight), 58)
+        let fullRun = max(height / (Self.throwDepth + 1.6), Self.minimumUnit)
+        let ppu = min(byWidth, byHeight, fullRun, Self.maximumUnit)
         let footprint = min(1, max(minFootprint, height / ((Self.throwDepth + 1.6) * ppu)))
         pointsPerUnit = ppu
         self.footprint = footprint

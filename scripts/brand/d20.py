@@ -453,7 +453,12 @@ def build_model():
 
 TIME_SCALE = 1.7          # playback slows the simulated tumble by this much (a stylised, weighty table)
 LANE_DRIFT = 0.38          # how far (die radii) a throw may stray from its lane
-DURATION = (1.7, 3.2)     # seconds a kept throw may last, from launch to rest
+DURATION = (2.3, 3.9)     # seconds a kept throw may last, from launch to rest
+# Launched from the viewer's edge of the table (die radii from the far rail), so it rolls the table's length
+# (Caleb, 2026-10-19: thrown from the middle it hit the rail almost at once and stopped short).
+START_DISTANCE = (13.2, 14.6)
+REST_SPOT = (-5.8, -1.5)  # where a kept throw comes to rest, back from the rail it touched
+RAIL_KISS = 10.0          # the hardest first rail impulse kept: it reaches the rail, it does not slam it
 GRAVITY = 62.0            # die radii per second squared: a stylised, slightly floaty table
 DT = 1.0 / 120.0
 TABLE = {"e": 0.46, "mu": 0.55}
@@ -532,17 +537,17 @@ def contact(v, w, rel, normal, material, hard):
 # Launch profiles tried in turn (the best-yielding one makes the bank): throw speed toward the rail, drag along the
 # table, how hard the lane pulls the die back to its middle, and how end-over-end the spin is.
 PROFILES = [
-    {"speed": (15.5, 20.5), "drag": 0.5, "lane": 30.0, "bias": 0.3},
-    {"speed": (13.0, 18.0), "drag": 0.35, "lane": 30.0, "bias": 0.25},
-    {"speed": (17.0, 23.0), "drag": 0.45, "lane": 30.0, "bias": 0.3},
-    {"speed": (11.0, 15.0), "drag": 0.2, "lane": 30.0, "bias": 0.2},
+    {"speed": (20.0, 26.0), "drag": 0.45, "lane": 30.0, "bias": 0.3},
+    {"speed": (19.0, 24.0), "drag": 0.38, "lane": 36.0, "bias": 0.25},
+    {"speed": (21.0, 26.0), "drag": 0.5, "lane": 36.0, "bias": 0.25},
+    {"speed": (18.0, 23.0), "drag": 0.32, "lane": 36.0, "bias": 0.25},
 ]
 
 
 def simulate(rng, profile):
     """One throw from the viewer's side toward the far rail (the plane y = 0, die on y < 0, Blender
     axes). Returns the recorded frames or None when the throw is not worth keeping."""
-    p = [rng.uniform(-0.12, 0.12), -rng.uniform(7.2, 8.4), rng.uniform(1.8, 3.0)]
+    p = [rng.uniform(-0.12, 0.12), -rng.uniform(*START_DISTANCE), rng.uniform(1.8, 3.0)]
     v = (rng.uniform(-0.15, 0.15), rng.uniform(*profile["speed"]), rng.uniform(-1.0, 2.0))
     # Mostly end over end (a spin about the lateral x axis), a little of the others: thrown dice roll forward.
     axis = [rng.choice((-1.0, 1.0)), rng.gauss(0, profile["bias"]), rng.gauss(0, profile["bias"])]
@@ -552,7 +557,7 @@ def simulate(rng, profile):
     q = [rng.gauss(0, 1) for _ in range(4)]
     qn = math.sqrt(sum(a * a for a in q))
     q = [a / qn for a in q]
-    states, rail_hits, bounces = [], [], []
+    states, rail_hits, bounces, rail_impulses = [], [], [], []
     resting = 0
     up = (0.0, 0.0, 1.0)
     toward = (0.0, -1.0, 0.0)
@@ -581,6 +586,7 @@ def simulate(rng, profile):
                         v, w, jn = contact(v, w, rel, toward, RAIL, 1.0)
                         if jn > 0.5:
                             rail_hits.append((step * DT, p[2] + rel[2]))
+                            rail_impulses.append(jn)
                         p[1] -= y * 0.6
         # Light air drag, and the extra rolling drag a faceted die has on felt.
         grounded = low < 0.05
@@ -599,7 +605,8 @@ def simulate(rng, profile):
     else:
         return None
     return {"states": states, "rail": [(t * TIME_SCALE, h) for t, h in rail_hits],
-            "bounces": [(t * TIME_SCALE, j) for t, j in bounces]}
+            "bounces": [(t * TIME_SCALE, j) for t, j in bounces],
+            "rail_strength": max(rail_impulses[:3]) if rail_impulses else 0.0}
 
 
 def resample(states):
@@ -657,12 +664,14 @@ def throw_is_good(result):
     if not DURATION[0] <= duration <= DURATION[1]:
         return False, "duration"
     if not result["rail"] or len(result["rail"]) > 3 or result["rail"][0][1] > 2.0:
-        return False, "rail"           # it must clearly hit the rail, low down, not skim over it
+        return False, "rail"           # it must clearly reach the rail, low down, not skim over it
+    if result["rail_strength"] > RAIL_KISS:
+        return False, "slammed the rail"
     if len(result["bounces"]) < 3:
         return False, "too few bounces"
     if max(abs(x) for x in xs) > LANE_DRIFT:
         return False, "left its lane"
-    if not -3.6 <= end[1] <= -1.35:
+    if not REST_SPOT[0] <= end[1] <= REST_SPOT[1]:
         return False, "rest spot"
     if max(ys) > 0.3:
         return False, "rode the wall"  # it must not ride up the wall either
@@ -713,7 +722,8 @@ def build_throws():
             rejected[why] += 1
             continue
         flat, face = settle(resample(states))
-        kept.append({"frames": flat, "rail": result["rail"], "bounces": result["bounces"], "face": face, "duration": duration})
+        kept.append({"frames": flat, "rail": result["rail"], "bounces": result["bounces"], "face": face, "duration": duration,
+                     "rest": float(end[1])})
     def pct(values, q):
         values = sorted(values)
         return values[min(len(values) - 1, int(q * len(values)))] if values else float("nan")
@@ -722,13 +732,11 @@ def build_throws():
         pct(durations, .1), pct(durations, .5), pct(durations, .9), pct(rail_counts, .5), pct(lanes, .5), pct(lanes, .9),
         pct(ends, .1), pct(ends, .5), pct(ends, .9)))
     print(f"[d20] {len(kept)} usable throws")
-    # Prefer a spread of resting faces, then variety in timing.
-    chosen, seen = [], set()
-    for t in sorted(kept, key=lambda t: (t["face"] in seen, t["duration"])):
-        if len(chosen) >= ARGS.keep:
-            break
-        chosen.append(t)
-        seen.add(t["face"])
+    # Prefer throws that run 2.5 to 3.4 s (long enough to watch, short enough for four seats in turn), then those that
+    # settle furthest back from the rail, toward the middle of the table. The resting face does not matter: the apps
+    # turn the die by one of its symmetries so any throw lands on any number.
+    ranked = sorted(kept, key=lambda t: (not 2.5 <= t["duration"] <= 3.4, t["rest"]))
+    chosen = ranked[:ARGS.keep]
     if len(chosen) < 6:
         raise SystemExit("[d20] too few usable throws; raise --candidates")
     C = Matrix.Rotation(-math.pi / 2, 3, "X")

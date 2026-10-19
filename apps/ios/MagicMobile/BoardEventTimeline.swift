@@ -535,10 +535,15 @@ struct ScheduledBoardFX: Equatable, Identifiable {
 
     var end: TimeInterval { delay + duration }
 
-    /// When a card arriving with this effect lands in its slot (the tile appears).
+    /// When a card arriving with this effect lands in its slot (the tile appears): an arrival's flight,
+    /// or a stolen card dragged home on the taker's chain.
     var landing: TimeInterval {
-        guard usesMotion, case let .enteredBattlefield(_, _, _, _, entrance) = event else { return delay }
-        return delay + duration * BoardFXScheduler.landingFraction(entrance)
+        guard usesMotion else { return delay }
+        switch event {
+        case let .enteredBattlefield(_, _, _, _, entrance): return delay + duration * BoardFXScheduler.landingFraction(entrance)
+        case .controlChanged: return delay + duration * BoardFXScheduler.stealLandingFraction
+        default: return delay
+        }
     }
 
     /// When the next group of effects may begin. Spell showcases finish first,
@@ -685,6 +690,9 @@ enum BoardFXScheduler {
     static let arrivalFlightFraction = 0.42
     /// Share of a strike spent winding up and charging before impact.
     static let strikeImpactFraction = 0.42
+    /// A steal: the taker's chain reaches the card and hooks it by this share, and has dragged it home by the next.
+    static let stealHookFraction = 0.28
+    static let stealLandingFraction = 0.72
 
     static func landingFraction(_ entrance: BoardFXEntrance) -> Double {
         switch entrance {
@@ -717,7 +725,7 @@ enum BoardFXScheduler {
         case .statsChanged: return motion ? 1.0 : 0.8
         case .phased: return motion ? 1.1 : 0.7
         case .transformed: return motion ? 0.9 : 0.6
-        case .controlChanged: return motion ? 1.2 : 0.7
+        case .controlChanged: return motion ? 1.5 : 0.7
         case .attackDeclared: return motion ? 0.7 : 0.6
         case .blockDeclared: return motion ? 0.8 : 0.6
         case .combatStrike: return motion ? 0.95 : 0.6
@@ -785,6 +793,7 @@ struct BoardFXDirector: Equatable {
             // The flip shows the old face turning over to the new one.
             case let .transformed(id, _): subjects[id] = departedFaces[id]
             case let .combatStrike(id, _, _, _): subjects[id] = departedFaces[id] ?? battlefield[id]
+            case let .controlChanged(id, _, _): subjects[id] = battlefield[id]
             case let .spellCast(id, _, _, _, _):
                 subjects[id] = snapshot.stackTopFirst.first { $0.id == id }?.displaySourceCard
             default: break
@@ -830,6 +839,9 @@ struct BoardFXDirector: Equatable {
                 motion.lunges[id] = BoardFXCardMotion.Lunge(token: effect.id, direction: owner == viewerID ? -1 : 1)
             case let .transformed(id, _):
                 motion.flips[id] = effect.id
+            case let .controlChanged(id, _, _) where subjects[id] != nil:
+                // The dragged card stands in for the tile until it lands on the taker's side.
+                motion.hidden[id, default: []].append(BoardFXCardMotion.Hidden(batch: effect.start, from: 0, until: fx.landing))
             default: break
             }
         }
