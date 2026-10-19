@@ -123,6 +123,14 @@ Elements Foliage / `leaves_pile_pick_up_04.wav`, `tree_dead_tree_limb_impact_05.
 Ambience / `swamp_ambience_night_05_120_loop.wav` (the frog, ~38.6 s); GDC 2018 / The Sound Keeper - Small Fire /
 `sm-fire-firewood-small-03-DPAmono.wav`; plus Kenney Impact Sounds.
 
+Round 8 (one sound per card type; colour textures only for lands) adds Sonniss: GDC 2018 / Gibson and Ansell - Got Wood /
+`PineBlock_8x22x100cm_FaceDropped100cmOntoMDF_BeyerdynamicTG137c_Medium.wav`, `BeechPlank_3x27x100cm_EndDropped30cmOntoMDF_SureSM57_Close.wav`;
+GDC 2019 / Baxter Audio - IMPACT / `10 Hit Deep Thud.wav`, `03 Hit Big Drum.wav`; GDC 2020 / SmartSoundFX - Impacts, Hits &
+Whooshes / `IMPACT METAL Short Slam_03.wav`, `IMPACT METAL Scratchy Short Punch_03.wav`, `WHOOSH AIR Steady Smooth_02.wav`;
+GDC 2020 / Sound Spark LLC - Whooshes Impacts and Transitions / `Whoosh_Fast_02.wav`, `Transition_3.wav`; GDC 2017 / SoundBits -
+Whooshes & Impacts 2 / `Whooshes_135.wav`; GDC 2017 / Double Trouble Audio - Wood Impacts and Debris / `Rustles - Pile, Debris
+22.wav`; GDC 2019 / Airborne Sound - Organic Whooshes / `Whoosh,Organic,Fabric,Glove,Airy,Breathy,Punchy.wav`.
+
 `sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
 `e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
 Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).

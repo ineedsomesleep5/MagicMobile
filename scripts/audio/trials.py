@@ -244,6 +244,48 @@ ROUND7 = {
 }
 
 
+# Round 8 (Caleb: water, fire and leaves only for lands; one sound per card type, including instants and sorceries;
+# the creature landing with a colour splash sounded weird and bland). A solid wood thock for creatures, one sound each
+# for artifacts, enchantments and planeswalkers, and a cast sound per spell type instead of per colour.
+def pine() -> tuple:
+    return (sonniss("PineBlock_8x22x100cm_FaceDropped100cmOntoMDF_BeyerdynamicTG137c_Medium", 6.77, 7.15, fade_out=0.12), 0.0, 0.0)
+
+
+def beech(gain: float = 0.0) -> tuple:
+    return (sonniss("BeechPlank_3x27x100cm_EndDropped30cmOntoMDF_SureSM57_Close", 3.26, 3.60, fade_out=0.12), 0.0, gain)
+
+
+def deep_thud(gain: float) -> tuple:
+    return (lowpass(sonniss("10 Hit Deep Thud", 0.08, 0.62, fade_out=0.3), 500), 0.0, gain)
+
+
+ROUND8 = {
+    "creature-A-thock": (lambda: [pine(), deep_thud(-6.0),
+                                  (sonniss("Rustles - Pile, Debris 22", 0.0, 0.25, fade_out=0.12), 0.01, -14.0)], -21.0),
+    "creature-A-heavy": (lambda: [pine(), deep_thud(-5.0),
+                                  (lowpass(sonniss("03 Hit Big Drum", 0.02, 0.9, fade_out=0.45), 900), 0.0, -5.0),
+                                  (sonniss("Rustles - Pile, Debris 22", 0.0, 0.25, fade_out=0.12), 0.01, -12.0)], -20.0),
+    "creature-B-plank-punch": (lambda: [beech(), ks("impactPunch_heavy_000", -6.0),
+                                        (kenney("casino-audio__card-place-1", 0.14, 0.40, fade_out=0.1), 0.0, -12.0)], -21.0),
+    "artifact-A-metal-slam": (lambda: [(pine()[0], 0.0, -6.0),
+                                       (sonniss("IMPACT METAL Short Slam_03", 0.13, 0.65, fade_out=0.25), 0.0, 0.0)], -22.0),
+    "artifact-B-metal-punch": (lambda: [beech(-4.0),
+                                        (sonniss("IMPACT METAL Scratchy Short Punch_03", 0.20, 0.65, fade_out=0.22), 0.0, 0.0)], -22.0),
+    "enchantment-A-creation": (lambda: [beech(-8.0),
+                                        (sonniss("Magic_Spells_Impact_Creation20", 0.06, 0.90, fade_out=0.4), 0.0, 0.0)], -23.0),
+    "enchantment-B-glass-air": (lambda: [beech(-8.0), ks("impactGlass_medium_002", -2.0, 0.01),
+                                         (sonniss("WHOOSH AIR Steady Smooth_02", 0.35, 0.95, fade_in=0.05, fade_out=0.3), 0.0, -10.0)],
+                                -23.0),
+    "planeswalker-A": (lambda: [pine(), deep_thud(-6.0), ks("impactBell_heavy_002", -6.0, 0.01),
+                                (sonniss("Magic_Spells_Impact_Creation20", 0.06, 0.90, fade_out=0.4), 0.02, -12.0)], -21.0),
+    "instant-A-fast-whoosh": (lambda: [(sonniss("Whoosh_Fast_02", 0.05, 0.75, fade_in=0.01, fade_out=0.3), 0.0, 0.0)], -22.0),
+    "instant-B-swipe": (lambda: [(sonniss("Whoosh,Organic,Fabric,Glove,Airy,Breathy,Punchy", 0.0, 0.46, fade_out=0.15), 0.0, 0.0)],
+                        -22.0),
+    "sorcery-A-whoosh-hit": (lambda: [(sonniss("Whooshes_135", 0.90, 2.10, fade_in=0.03, fade_out=0.5), 0.0, 0.0)], -21.0),
+    "sorcery-B-rising": (lambda: [(sonniss("Transition_3", 2.30, 3.90, fade_in=0.05, fade_out=0.6), 0.0, 0.0)], -21.0),
+}
+
+
 def shipped(path: str) -> np.ndarray:
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "x.wav")
@@ -284,15 +326,16 @@ def main() -> None:
             continue   # retired since (creature-enter, token-create)
         x = shipped(os.path.join(args.shipped, name))
         wavfile.write(os.path.join(args.out, "before-" + name.rsplit(".", 1)[0] + ".wav"), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
-    for name, (layers, target) in {**ROUND5, **ROUND6, **ROUND7}.items():
+    for name, (layers, target) in {**ROUND5, **ROUND6, **ROUND7, **ROUND8}.items():
         takes[name] = ((lambda layers=layers: layer(*layers())), target, False)
     for name, (recipe, target, stereo) in takes.items():
         if args.only and name not in wanted:
             continue
         y = match_loudness(highpass(recipe(), 60, order=2), target, -1.0)
-        # Sharp knocks hit the -1 dB ceiling before their loudness target; a fast limiter lets them reach it.
+        # Sharp knocks hit the -1 dB ceiling before their loudness target; a fast limiter lets them reach it. Round 8
+        # keeps its natural transients instead (limiting flattened the thock), and ends up quieter where it must.
         limit = -6.0
-        while loudness(y) < target - 0.5 and limit > -18.0:
+        while loudness(y) < target - 0.5 and limit > -18.0 and name not in ROUND8:
             from pedalboard import Limiter
             y = match_loudness(Limiter(threshold_db=limit, release_ms=50)(y.astype(np.float32), SR), target, -1.0)
             limit -= 3.0
