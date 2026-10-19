@@ -386,7 +386,23 @@ same objects that dominate allocation.
     `clibraries/linux-amd64/bionic` directory in the compiler, and staging allows four more system imports.
   - JVM: XMage and the adapter build and pass the real-JVM suite on JDK 23 (locally and CI `real-jvm`), including
     game records replayed from the record alone to the recorded winner, turn and life totals.
-  - Size and AI speed: measurements in progress.
+  - Android size (CI runs 39210989561 at -O2 and 39214209589 at -Os, against release C's run 39148290469):
+
+    | | Release C (22.1) | D at -O2 | D at -Os |
+    |---|---|---|---|
+    | `libmmengine.so`, stripped | 316.0 MB | 378.1 MB (+20%) | 364.6 MB (+15%) |
+    | Code (function symbols) | 162.4 MB | 170.0 MB (+5%) | 159.4 MB (−2%) |
+    | Image heap | 156.7 MB | 193.9 MB (+24%) | 190.9 MB (+22%) |
+    | `libmmengine.so` compressed in the APK | | 120.1 MB | 116.6 MB |
+
+    The plan's 15–25% less code did not happen. GraalVM 24.1 makes the engine bigger, and `-Os` only brings code back to
+    about release C's size. Card classes are smaller (116.8 → 111.7 MB at -O2, 105.5 at -Os), but the set classes
+    doubled (11.5 → 22.6 MB) and the image heap grew by 37 MB.
+  - The same engine on both toolchains (`scripts/build_native_bench.sh`: an x86-64 executable with the production
+    options, so only the toolchain differs): code 155.5 MB on 22.1, 161.8 at -O2 and 151.7 at -Os; image heap 139.6 →
+    175.4 and 172.6 MB. Set-class code 13.9 → 26.4 MB (not smaller at -Os). In the heap, code metadata 29.3 → 43.2 MB and
+    strings 13.8 → 30.8 MB (1.03 → 1.54 million objects); class objects are unchanged (45.6 → 45.9 MB).
+  - AI speed: measurements in progress.
 
 ### 5. Engine releases: cards as data
 - [ ] Proof: the 1,500 simple cards built from catalogue data by one generic card class; an automatic check compares
