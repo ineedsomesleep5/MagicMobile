@@ -88,6 +88,9 @@ t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
 # User compiler arguments follow the target defaults, so override only Android.
 compiler=config.find('{%s}nativeImageArgs'%ns)
 E.SubElement(compiler,'{%s}arg'%ns).text='-H:+SpawnIsolates'
+# Bionic, not glibc: errno through __errno (glibc's __errno_location does not exist on Android). Substrate 0.0.69
+# passed this for GraalVM 22.1; 0.0.65 does not.
+E.SubElement(compiler,'{%s}arg'%ns).text='--libc=bionic'
 if os.environ.get('MM_NATIVE_REPORTS') == '1':
  for value in ['-H:+PrintHeapHistogram','-H:+PrintImageHeapPartitionSizes','-H:+PrintClassInitialization',
                '-H:DashboardDump='+sys.argv[4]+'/dashboard','-H:+DashboardHeap','-H:+DashboardCode',
