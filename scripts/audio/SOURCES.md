@@ -80,3 +80,16 @@ Stingers (excerpts):
 - Discovery Hit
 - Greta Sting
 - Danse Macabre - Big Hit 1
+
+## Trials (not in the app yet)
+`trial_steal.py` renders a candidate steal sound (see its docstring) next to the current `card-pickup`, into
+`build_output/audio-trials/steal`. It runs in a scratch virtualenv with `numpy scipy pedalboard`
+(`~/.venvs/mm-audio`). Sources:
+
+- Kenney – RPG Audio (CC0, https://kenney.nl/assets/rpg-audio) / `metalLatch`, `beltHandle1`, `beltHandle2`
+- Kenney – Casino Audio (CC0) / `card-place-1`
+- `sfx_synth/` – the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
+  `e627941`, `sfx/`; only `SR` changed to 44.1 kHz): one quiet air whoosh. Its licence sits beside it.
+
+Kenney packs are Ogg Vorbis, which `afconvert` does not read: convert with
+`ffmpeg -i <file>.ogg -ar 44100 -c:a pcm_f32le <pack>__<file>.wav`.

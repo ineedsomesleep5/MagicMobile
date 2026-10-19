@@ -56,6 +56,12 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-19 (Claude, audio): pedalboard's `PitchShift` smears very short foley grains (under ~100 ms) into a faint
+  tonal ring (seen as horizontal lines at 4-6 kHz in the spectrogram). **Rule:** to lower a recording's pitch, slow it
+  down tape-style (`scipy.signal.resample_poly`), which also lengthens it naturally; keep pedalboard for EQ, compression
+  and reverb. Kenney packs are Ogg, which afconvert cannot read: convert them with ffmpeg. Claude cannot listen, so check
+  every render with `showspectrumpic`/`showwavespic` and a short-term loudness envelope before sending it to Caleb.
+  Where: scripts/audio/trial_steal.py, scripts/audio/SOURCES.md.
 - 2026-10-19 (Claude): The dice table's recorded throws (`scripts/brand/d20.py --mode throws`) are tuned offline; the
   apps only play them. To change how a throw feels, change `START_DISTANCE`/`REST_SPOT`/`RAIL_KISS`/`PROFILES` and the
   picker, and check them with a quick harness that runs `simulate` and `throw_is_good` under Blender's bundled Python
