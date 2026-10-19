@@ -20,8 +20,8 @@ import java.util.concurrent.TimeUnit;
  * step 4: GraalVM -O2 against -Os). A measurement tool, never an app path; it runs on the JVM and as a host
  * native image of the same engine (scripts/build_native_bench.sh), so both read process CPU the same way, from
  * /proc/self/stat (Linux). One seeded AI-vs-AI game per run. The game's own AI decisions are limited by nodes, not
- * time, so a slower build plays the same kind of game; at AI decisions (main phases and combat, empty stack, one a
- * turn, something to search) the deciding AI's production search (cards copied on first use, search memory) runs
+ * time, so a slower build plays the same kind of game; at AI decisions (the active player's, main phases and combat,
+ * empty stack, one a turn, something to search) the deciding AI's production search (cards copied on first use, search memory) runs
  * in full (not continuing its last plan) on a copy of the live game with no time limit and a fixed node limit, twice
  * from the same seeded generator; the row keeps the faster run. Positions can differ between builds (the game is not recorded), so compare totals.
  *
@@ -63,19 +63,22 @@ public final class SearchSpeed {
             Map<UUID,String> seats=Map.of(a.getId(),"A",b.getId(),"B");
             Map<UUID,Integer> skills=Map.of(a.getId(),seatA.skill(),b.getId(),seatB.skill());
             Set<Integer> probed=new HashSet<>();
-            int[] probes={0},attempts={0},empty={0},activeEmpty={0};
+            int[] probes={0},attempts={0},empty={0};
             game.addTableEventListener(event->{
                 if(event.getEventType()!=TableEvent.EventType.UPDATE || probes[0]>=maxProbes) return;
-                UUID deciding=game.getPriorityPlayerId();
-                if(deciding==null || !seats.containsKey(deciding) || !game.getStack().isEmpty()
-                        || !MobileAICancellation.searchesAt(game.getTurnStepType()) || probed.contains(game.getTurnNum())) return;
+                // GameImpl.playPriority fires this update after making the active player current and before it
+                // sets the priority player, which then still names the player who last passed.
+                UUID deciding=game.getState().getPlayerList().get();
+                // The player whose turn it is: the other player's empty-stack decisions are nearly all a Pass.
+                if(deciding==null || !seats.containsKey(deciding) || !deciding.equals(game.getActivePlayerId())
+                        || !game.getStack().isEmpty() || !MobileAICancellation.searchesAt(game.getTurnStepType())
+                        || probed.contains(game.getTurnNum())) return;
                 try {
                     long probeSeed=seed+31L*game.getTurnNum();
                     attempts[0]++;
                     Run first=search(game,deciding,probeSeed,probeNodes);
-                    if(first.nodes()==0) { // only Pass: nothing to search (mostly the player whose turn it is not)
+                    if(first.nodes()==0) { // only Pass: nothing to search
                         empty[0]++;
-                        if(deciding.equals(game.getActivePlayerId())) activeEmpty[0]++;
                         return;
                     }
                     Run second=search(game,deciding,probeSeed,probeNodes);
@@ -105,8 +108,7 @@ public final class SearchSpeed {
                 board.append(' ').append(seats.get(player.getId())).append(": life ").append(player.getLife()).append(", ")
                     .append(game.getBattlefield().getAllActivePermanents(player.getId()).size()).append(" permanents");
             System.out.println("BOARD"+board);
-            System.out.println("PROBES "+probes[0]+" ("+attempts[0]+" tried, "+empty[0]+" with nothing to search, "+activeEmpty[0]
-                +" of them on the deciding player's turn) to turn "
+            System.out.println("PROBES "+probes[0]+" ("+attempts[0]+" tried, "+empty[0]+" with nothing to search) to turn "
                 +game.getTurnNum()+" in "
                 +(System.nanoTime()-started)/1_000_000_000+" s, "+Math.round((cpuTicks()-startCpu)*TICK_MS/1000)+" s CPU");
         } finally { engine.close(); }
@@ -130,6 +132,10 @@ public final class SearchSpeed {
         Player searcher=position.getPlayer(deciding);
         limit(searcher,maxNodes);
         ((List<?>)SearchEquivalence.get(searcher,ComputerPlayer6.class,"actions")).clear();
+        // A player copy shares the live player's cache of free actions already taken this turn; the probe's own
+        // pick would otherwise stop the live AI from making it ("don't do it again") and leave it passing.
+        SearchEquivalence.set(searcher,ComputerPlayer6.class,"actionCache",
+            new HashSet<>((Set<?>)SearchEquivalence.get(searcher,ComputerPlayer6.class,"actionCache")));
         // A full search every time: with its last line kept, the AI continues that plan without searching
         // whenever the game's state hash still matches (ComputerPlayer6.getNextAction).
         SearchEquivalence.set(searcher,ComputerPlayer6.class,"root",null);

@@ -129,6 +129,22 @@ contradicting one.
   (the Android job already honours `[android-native]` in the commit message), print results into the log, and remove
   the trigger before review. Method symbols changed too: 24.1 names them `<Class>_<method>_<22-char base-62 digest>`,
   constructors `<Class>_<digest>`, class names cut to their last 40 characters (`native_code_sizes.py` reads both).
+  With a workflow-level `concurrency` group, a second push while a run is still pending replaces it: the pending run
+  is cancelled even when the new run's job is then skipped by its `if:`. Push again only after the run you want has
+  started.
+- 2026-10-19 (Claude, release D toolchain): a change to `magicmobile-issue4-nonsimulator.yml` (even the JDK version)
+  makes every far-calls candidate fail approval ("Cheap workflow differs from trusted policy"); the tooling preflight's
+  `policy-pin` check fails on the PR as soon as the workflow differs. **Rule:** commit the final cheap workflow, then
+  move `TRUSTED_POLICY_SHA` in `magicmobile-far-calls.yml` to that commit in a second commit; later commits must not
+  touch the cheap workflow or `scripts/magicmobile-native-gate`.
+- 2026-10-19 (Claude, release D AI speed): two traps when probing an AI search on a copy of a live game.
+  `GameImpl.playPriority` fires its table update after making the active player current but before setting the
+  priority player, so `getPriorityPlayerId()` in a listener names the player who last passed (read
+  `getState().getPlayerList().get()`). And upstream's `ComputerPlayer6` copy shares `actionCache` with the original:
+  the probe's pick of a free action (a land) lands in the live player's cache, the live AI then refuses to "repeat"
+  it and passes, and the live game stops developing (0 lands by turn 11). **Rule:** give the probed copy its own
+  `actionCache`, and compare a probed game's final board with an unprobed run of the same seed.
+  `SearchEquivalence` still shares the cache: its recorded decisions are unaffected, but its live games are disturbed.
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
