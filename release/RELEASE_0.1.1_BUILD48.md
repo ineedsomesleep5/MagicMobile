@@ -1,7 +1,8 @@
 # iOS 0.1.1 build 48: engine release C (lighter engine)
 
-Apple reports build `3227e75c-22e4-4dfd-919e-181529247b67` as `VALID` with Internal `IN_BETA_TESTING` on October 18,
-2026. External not submitted yet (Caleb plays it first). New native engine from candidate `codex/native-build-c` =
+Apple reports build `3227e75c-22e4-4dfd-919e-181529247b67` as `VALID`, with Internal and External both `IN_BETA_TESTING`
+and Beta App Review `APPROVED`, on October 18, 2026 (External added at Caleb's word to roll it out; his phone report
+comes after). The External invitation remains https://testflight.apple.com/join/2mSHE8rZ. New native engine from candidate `codex/native-build-c` =
 `21a82eb7`, together with Android build 31 (`release/RELEASE_ANDROID_0.1.1_BUILD31.md`). Engine identity
 `sha256:9f06efbe5487c5b29cf62e00f10a937eec06abb114540f1a08c060c0e5f0906f`, registered in `ranked_engine_builds` before
 upload (the R2 engine stays listed for older builds). Tables seat only builds on this engine (Android 31).

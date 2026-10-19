@@ -1,8 +1,9 @@
 # Android 0.1.1 build 31: engine release C (lighter engine)
 
-Published October 18, 2026 as the test prerelease
-[android-v0.1.1-build.31](https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.31) (build 30
-stays the latest release until Caleb plays it), together with iPhone build 48 (`release/RELEASE_0.1.1_BUILD48.md`).
+Published October 18, 2026 as
+[android-v0.1.1-build.31](https://github.com/ineedsomesleep5/MagicMobile/releases/tag/android-v0.1.1-build.31), first as a
+test prerelease and then as the latest release, together with iPhone build 48 (`release/RELEASE_0.1.1_BUILD48.md`). The
+public download re-hashes to the APK below.
 
 ## Signed artifact
 - **Source:** `db33aa9e` (`codex/android-build-31`): candidate `codex/native-build-c` `21a82eb7` plus versionCode
