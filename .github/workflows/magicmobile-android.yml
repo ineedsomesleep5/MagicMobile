@@ -11,6 +11,11 @@ on:
         type: choice
         options: ['2', 's']
         default: '2'
+  # TEMPORARY, release D measurement only (remove before review): the session that built release D cannot
+  # dispatch workflows, so pushes of this branch whose message holds [android-native] run the build;
+  # [native-Os] and [native-reports] in the message stand in for the inputs.
+  push:
+    branches: [claude/gallant-clarke-z9cx2p]
 permissions:
   contents: read
 concurrency:
@@ -61,13 +66,27 @@ jobs:
         timeout-minutes: 45
         env:
           MM_ANDROID_NATIVE_HEAP: 10g
-          MM_NATIVE_REPORTS: ${{ inputs.native_reports && '1' || '0' }}
-          MM_NATIVE_OPTIMIZE: ${{ inputs.optimize || '2' }}
+          MM_NATIVE_REPORTS: ${{ (inputs.native_reports || contains(github.event.head_commit.message, '[native-reports]')) && '1' || '0' }}
+          MM_NATIVE_OPTIMIZE: ${{ inputs.optimize || (contains(github.event.head_commit.message, '[native-Os]') && 's' || '2') }}
         run: |
           set -euo pipefail
           export ANDROID_SDK="$ANDROID_HOME"
           export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
           bash scripts/android/build_native.sh
+      # The same breakdown as magicmobile-native-code-sizes.yml, from this run's unstripped library, in the log.
+      - name: Code size by package (measurement)
+        if: success() && (inputs.native_reports || contains(github.event.head_commit.message, '[native-reports]'))
+        run: |
+          set -euo pipefail
+          GRAALVM_HOME=$(cat build_output/android/JAVA_HOME.txt)
+          OUT=build_output/android/native-reports
+          "$GRAALVM_HOME/bin/jimage" list "$GRAALVM_HOME/lib/modules" | grep '\.class$' | sed 's/^ *//' > "$OUT/jdk-classes.txt"
+          tr ':' '\n' < packages/ondevice-engine/build/runtime-classpath.txt | grep '\.jar$' \
+            | while read -r jar; do unzip -Z1 "$jar" | grep '\.class$' || true; done > "$OUT/jar-classes.txt"
+          python3 packages/ondevice-engine/scripts/native_code_sizes.py build_output/android/unstripped/libmmengine.so \
+            --csv "$OUT/code-sizes.csv" --top 60 --sources packages/ondevice-engine --classes "$OUT/jdk-classes.txt" --classes "$OUT/jar-classes.txt" \
+            | tee "$OUT/code-sizes.md"
+          cat "$OUT/code-sizes.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
