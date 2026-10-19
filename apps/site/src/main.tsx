@@ -383,12 +383,12 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 30 keeps your phone cooler: the board no longer
-                redraws while nothing is happening, so long, token-heavy games
-                use less battery and memory. It also has the Ranked Hall with a
-                live leaderboard, friend messages, and the combo loop shortcut.
-                Same engine as build 25. Android is an early alpha;
-                physical-phone acceptance is still pending.
+                Android build 31 brings a lighter engine: a smaller download,
+                less memory all the time, and an AI that thinks with about half
+                the CPU in long games, just as strong. It keeps build 30's cooler
+                board, the Ranked Hall, friend messages and the combo loop
+                shortcut. Android is an early alpha; physical-phone acceptance is
+                still pending.
               </p>
             </details>
             <details>
@@ -397,12 +397,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 47 keeps your phone cooler: the board no longer redraws
-                while nothing is happening, so long, token-heavy games use less
-                battery and memory. It also has the Ranked Hall with a live
-                leaderboard, friend messages, and the combo loop shortcut. It
-                runs on iPhone and iPad. Apple has approved this build for
-                Internal and External TestFlight.
+                Build 48 brings a lighter engine: less memory all the time and
+                an AI that thinks with about half the CPU in long games, just as
+                strong, on top of build 47's cooler board. It runs on iPhone and
+                iPad. Apple has approved this build for Internal and External
+                TestFlight.
               </p>
             </details>
             <details>
