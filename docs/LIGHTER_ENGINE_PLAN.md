@@ -434,7 +434,9 @@ same objects that dominate allocation.
     heap growth. So D is worth shipping only for its maintenance value (a supported JDK 23 toolchain, two patches
     retired) and together with those cuts; otherwise keep 22.1 and land the set cut there first (about −10 MB on
     22.1). Caleb decides. If D ships, use -Os: −13.5 MB of library against -O2 and no measurable AI cost
-    (per-package optimization levels are not needed, and GraalVM CE does not offer them).
+    (per-package optimization levels are not needed, and GraalVM CE does not offer them). -Os also turns on
+    `ReduceImplicitExceptionStackTraceInformation`, so a null dereference's stack trace loses its top frames in engine
+    crash reports; `-H:-ReduceImplicitExceptionStackTraceInformation` keeps them, at an unmeasured size cost.
   - Native steps left for D: the iOS cheap gate on the candidate, then the far-calls build (first macOS build of
     24.1, Substrate 0.0.65 and `libvmone.a`; forced-trampoline probe; Mach-O layout; `-lvmone` product link), then the
     product-device build, an internal TestFlight and the Android test APK with a long AI game per platform. The
