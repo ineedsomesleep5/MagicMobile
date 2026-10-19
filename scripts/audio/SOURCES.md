@@ -110,6 +110,18 @@ Round 5 (round 4 redone short and dry) uses Kenney Impact Sounds (CC0, https://k
 Interface Sounds (CC0, https://kenney.nl/assets/interface-sounds), named `impact-sounds__…`/`interface-sounds__…`, and
 GDC 2016 / George Karagioules - SFX for Board Games / `Placing Pieces on the Board 2.wav`.
 
+Round 6 (card slam by size, basic lands, colour layers) adds Sonniss: GDC 2016 / Timothy McHugh - Playing Cards &
+Betting Chips / `games - Deck of cards dealt on to felt table surface 43.wav`; GDC 2018 / Bluezone - MOVIE TRAILER /
+`Bluezone_BC0237_impact_017.wav`; GDC 2017 / Hzandbits - Wind In Trees / `Wind,Ext,Gust,Grasslands,Rustle,Buffeting.wav`;
+GDC 2017 / Raconteur Sound - Spring in the Pacific Northwest / `Amb, Field, Birds, Wind, MS_01.wav`; GDC 2017 / West Wolf -
+Nature Sounds / `NS01_007_Forest birds.wav`; GDC 2017 / RedSonic - Water on Rocks /
+`water_lapping_sea_waves_sandy_beach_03.wav`; GDC 2020 / Articulated Sounds - Magic Elements vol.2 / `LIQUID HIT Lake,
+Branch, Splash, Lake, Seaweed in Water, Small, CU 04.wav`; GDC 2016 / Alexander Kopeikin - Rocks / `soil and dirt debris
+heavy 13.wav`, `rock impact medium 26.wav`, `rock tumble down debris long 06.wav`; GDC 2018 / Soundrangers - Foley
+Elements Foliage / `leaves_pile_pick_up_04.wav`, `tree_dead_tree_limb_impact_05.wav`; GDC 2018 / Soundrangers - Nature
+Ambience / `swamp_ambience_night_05_120_loop.wav` (the frog, ~38.6 s); GDC 2018 / The Sound Keeper - Small Fire /
+`sm-fire-firewood-small-03-DPAmono.wav`; plus Kenney Impact Sounds.
+
 `sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
 `e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
 Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).

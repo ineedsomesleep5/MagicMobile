@@ -154,6 +154,82 @@ ROUND5 = {
 }
 
 
+# Round 6 (2026-10-19): what Arena and Hearthstone do (docs: sounds say what the card *is*). One card slam in three
+# sizes by mana value, the five basic lands each sounding like their place (Caleb asked for a frog in the Swamp), and a
+# short colour layer over the medium slam for permanents. Dry, short, recordings only.
+FROG_AT = 38.62   # a single croak in Soundrangers' night swamp (bursts every ~0.5 s around 38-39 s)
+
+
+def card_dealt() -> np.ndarray:
+    return sonniss("games - Deck of cards dealt on to felt table surface 43", 0.42, 0.80, fade_in=0.004, fade_out=0.12)
+
+
+def slam(size: str) -> list:
+    parts = [(card_dealt(), 0.0, 0.0)]
+    if size == "light":
+        parts.append(ks("impactSoft_medium_001", -6.0))
+    else:
+        parts += [ks("impactWood_heavy_002", -3.0), ks("impactSoft_heavy_001", -6.0)]
+    if size == "heavy":
+        boom = lowpass(sonniss("Bluezone_BC0237_impact_017", 0.30, 0.95, fade_in=0.004, fade_out=0.3), 3000)
+        parts.append((boom, 0.0, -8.0))
+    return parts
+
+
+def bed(name: str, at: float, length: float, lo: float | None = None, hi: float | None = None) -> np.ndarray:
+    """A moment of an ambience, faded in quickly and out slowly, optionally band-limited."""
+    x = sonniss(name, at, at + length, fade_in=0.04, fade_out=length * 0.55)
+    if lo:
+        x = highpass(x, lo)
+    if hi:
+        x = lowpass(x, hi)
+    return x
+
+
+def frog() -> np.ndarray:
+    return bed("swamp_ambience_night_05_120_loop", FROG_AT, 0.85, lo=300, hi=3200)
+
+
+ROUND6 = {
+    "slam-1-light": (lambda: slam("light"), -23.0),
+    "slam-2-medium": (lambda: slam("medium"), -22.0),
+    "slam-3-heavy": (lambda: slam("heavy"), -21.0),
+    "land-plains": (lambda: slam("light") + [
+        (bed("Wind,Ext,Gust,Grasslands,Rustle,Buffeting", 56.4, 0.9, lo=150, hi=6000), 0.0, -4.0),
+        (bed("Amb, Field, Birds, Wind, MS_01", 8.3, 0.7, lo=1500), 0.15, -12.0)], -22.0),
+    "land-island": (lambda: slam("light") + [
+        (bed("water_lapping_sea_waves_sandy_beach_03", 0.8, 1.0, lo=120), 0.0, -3.0),
+        (sonniss("LIQUID HIT Lake, Branch, Splash, Lake, Seaweed in Water, Small, CU 04", 0.0, 0.5, fade_out=0.25), 0.02, -8.0)],
+        -22.0),
+    "land-swamp": (lambda: slam("light") + [
+        (lowpass(sonniss("LIQUID HIT Lake, Branch, Splash, Lake, Seaweed in Water, Small, CU 04", 0.0, 0.45, fade_out=0.2),
+                 2500), 0.0, -3.0),
+        (sonniss("soil and dirt debris heavy 13", 0.03, 0.30, fade_out=0.12), 0.02, -12.0),
+        (frog(), 0.18, -4.0)], -22.0),
+    "land-mountain": (lambda: slam("light") + [
+        (sonniss("rock impact medium 26", 0.08, 0.60, fade_out=0.25), 0.0, -2.0),
+        (sonniss("rock tumble down debris long 06", 0.15, 0.85, fade_in=0.02, fade_out=0.35), 0.08, -11.0)], -22.0),
+    "land-forest": (lambda: slam("light") + [
+        (sonniss("leaves_pile_pick_up_04", 0.45, 0.95, fade_in=0.02, fade_out=0.25), 0.0, -6.0),
+        (sonniss("tree_dead_tree_limb_impact_05", 0.20, 0.55, fade_out=0.15), 0.0, -10.0),
+        (bed("NS01_007_Forest birds", 89.8, 0.9, lo=1500), 0.1, -9.0)], -22.0),
+    "colour-white": (lambda: slam("medium") + [ks("impactBell_heavy_003", -9.0, 0.01),
+        (bed("Wind,Ext,Gust,Grasslands,Rustle,Buffeting", 56.4, 0.5, lo=400, hi=6000), 0.0, -14.0)], -21.0),
+    "colour-blue": (lambda: slam("medium") + [
+        (sonniss("LIQUID HIT Lake, Branch, Splash, Lake, Seaweed in Water, Small, CU 04", 0.0, 0.55, fade_out=0.25), 0.0, -5.0)],
+        -21.0),
+    "colour-black": (lambda: slam("medium") + [
+        (lowpass(sonniss("soil and dirt debris heavy 13", 0.03, 0.45, fade_out=0.2), 2500), 0.0, -7.0),
+        (lowpass(sonniss("Bluezone_BC0237_impact_017", 0.30, 0.95, fade_out=0.35), 900), 0.0, -12.0)], -21.0),
+    "colour-red": (lambda: slam("medium") + [
+        (sonniss("sm-fire-firewood-small-03-DPAmono", 1.30, 1.95, fade_in=0.01, fade_out=0.3), 0.0, -5.0)], -21.0),
+    "colour-green": (lambda: slam("medium") + [
+        (sonniss("leaves_pile_pick_up_04", 0.45, 0.85, fade_in=0.02, fade_out=0.2), 0.0, -7.0),
+        (bed("Amb, Field, Birds, Wind, MS_01", 8.3, 0.6, lo=1800), 0.05, -15.0)], -21.0),
+    "colour-colourless": (lambda: slam("medium") + [ks("impactMetal_light_000", -4.0, 0.005)], -21.0),
+}
+
+
 def shipped(path: str) -> np.ndarray:
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "x.wav")
@@ -192,7 +268,7 @@ def main() -> None:
             name = name.replace(".caf", ".m4a") if name.endswith(".caf") else name.replace(".m4a", ".caf")
         x = shipped(os.path.join(args.shipped, name))
         wavfile.write(os.path.join(args.out, "before-" + name.rsplit(".", 1)[0] + ".wav"), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
-    for name, (layers, target) in ROUND5.items():
+    for name, (layers, target) in {**ROUND5, **ROUND6}.items():
         takes[name] = ((lambda layers=layers: layer(*layers())), target, False)
     for name, (recipe, target, stereo) in takes.items():
         if args.only and name not in wanted:
