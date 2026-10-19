@@ -115,7 +115,10 @@ contradicting one.
   GraalVM's C helpers, passed with `-Djavalibspath`), all pinned in `native/gluon/toolchain.json`. download2.gluonhq.com
   is refused from cloud containers; GitHub release assets download fine. 0.0.65's `staticlib` compiles by itself (a
   separate `compile` goal compiles twice), and its Android `compile` runs the NDK clang on Substrate's C launchers
-  first, so a compile-only local run needs a stand-in clang (`ld.lld`, `llvm-objdump` must also exist).
+  first, so a compile-only local run needs a stand-in clang (`ld.lld`, `llvm-objdump` must also exist). 0.0.65 does
+  not pass `--libc=bionic` for Android (the image then imports glibc's `__errno_location`, which staging refuses);
+  with it, GraalVM's driver requires `lib/svm/clibraries/linux-amd64/bionic` (host platform, no `--target`), which
+  `prepare_toolchain.py` creates empty because Substrate links the object itself.
 - 2026-10-19 (Claude, release D toolchain): GraalVM 24.1's `ObjectStreamClass.lookup` reports any Serializable class
   whose hub is not marked as a serialization target. GraalVM's own registration marks it inside
   `addConstructorAccessor`; `CheckpointSerializationFeature`'s shared accessor path skipped that, so it now calls
