@@ -100,6 +100,12 @@ for Caleb to audition before any is wired in (see its docstring). The Play Comma
 - GDC 2018 / Gregor Quendel - Designed Fire / `Designed Fire - Impacts - Large, ignition 03.wav`
 - GDC 2017 / Mononeshot - MEDIEVAL, Smithy / `MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent.wav`
 
+Round 4 (cards entering by type) adds: GDC 2017 / Double Trouble Audio - Medieval Armor and Impacts /
+`Plate_Impact_Hard_02.wav`; GDC 2020 / Articulated Sounds - Magic Elements vol.2 / `MAGIC GENERIC Texture, Shimmer,
+Processed Glass, Reversed Layer, Disturbing, High.wav`, `MAGIC ENERGY Texture, Complex, Particles, Zap, Sparks,
+Short-Circuit, High, Sweetener 03.wav`; GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_Impact_Creation20.wav`
+(already the colorless cast); Kenney Casino `card-fan-1`.
+
 `sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
 `e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
 Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).

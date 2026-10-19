@@ -88,6 +88,45 @@ def play_bellows() -> np.ndarray:
     return sonniss("MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent", 0.05, 1.4, fade_out=0.5, stereo=True)
 
 
+# Round 4 (Caleb: should a card hitting the battlefield sound different for an artifact, enchantment, creature or
+# token?). Today every permanent that isn't a land or token plays creature-enter (a plank drop with a body hit).
+# Each starts on the landing, like creature-enter, so it lines up with the tile arriving.
+ARRIVAL_DB = {"artifact": -22.0, "enchantment": -23.0, "planeswalker": -21.0, "token": -25.0}
+
+
+def card_down(gain: float = 0.0) -> tuple:
+    return (kenney("casino-audio__card-place-1", 0.14, 0.45, fade_out=0.1), 0.0, gain)
+
+
+def enter_artifact() -> np.ndarray:
+    """A heavy brass or iron thing set on the table: the card, then a plate-metal clang, a little lower."""
+    clang = slowed(sonniss("Plate_Impact_Hard_02", 0.02, 0.55, fade_out=0.2), -2)
+    return tavern_room(layer(card_down(-3.0), (clang, 0.01, -2.0)))
+
+
+def enter_enchantment() -> np.ndarray:
+    """The card settles and a soft glassy shimmer blooms off it."""
+    shimmer = sonniss("MAGIC GENERIC Texture, Shimmer, Processed Glass, Reversed Layer, Disturbing, High", 1.25, 2.25,
+                      fade_in=0.06, fade_out=0.45)
+    return tavern_room(layer(card_down(0.0), (shimmer, 0.02, -7.0)))
+
+
+def enter_planeswalker() -> np.ndarray:
+    """Arrives with weight and presence: the card, a deep slowed metal resonance, a magic tail."""
+    weight = slowed(kenney("rpg-audio__bookPlace2", 0.0, 0.30, fade_out=0.08), -4)
+    resonance = slowed(sonniss("Plate_Impact_Hard_02", 0.02, 0.70, fade_out=0.35), -7)
+    tail = sonniss("Magic_Spells_Impact_Creation20", 0.05, 1.20, fade_out=0.5)
+    return tavern_room(layer(card_down(-2.0), (weight, 0.0, -4.0), (resonance, 0.01, -9.0), (tail, 0.03, -6.0)))
+
+
+def enter_token() -> np.ndarray:
+    """A quick card flick out of nowhere, with a few particle sparks as the motes gather."""
+    flick = kenney("casino-audio__card-fan-1", 0.17, 0.45, fade_out=0.1)
+    motes = sonniss("MAGIC ENERGY Texture, Complex, Particles, Zap, Sparks, Short-Circuit, High, Sweetener 03",
+                    0.0, 0.5, fade_in=0.03, fade_out=0.25)
+    return tavern_room(layer((flick, 0.0, 0.0), (lowpass(motes, 8000), 0.0, -11.0)))
+
+
 def shipped(path: str) -> np.ndarray:
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "x.wav")
@@ -109,6 +148,10 @@ def main() -> None:
     if args.only:
         wanted = set(args.only.split(","))
     takes = {
+        "enter-artifact": (enter_artifact, ARRIVAL_DB["artifact"], False),
+        "enter-enchantment": (enter_enchantment, ARRIVAL_DB["enchantment"], False),
+        "enter-planeswalker": (enter_planeswalker, ARRIVAL_DB["planeswalker"], False),
+        "enter-token-new": (enter_token, ARRIVAL_DB["token"], False),
         "play-commander-D-steel-only": (play_steel_only, PLAY_DB, True),
         "book-open-A-book": (lambda: book_open(False), BOOK_DB, False),
         "book-open-B-book-sparkle": (lambda: book_open(True), BOOK_DB, False),
@@ -117,9 +160,11 @@ def main() -> None:
         "play-commander-B-steel": (play_steel, PLAY_DB, True),
         "play-commander-C-bellows": (play_bellows, PLAY_DB, True),
     }
-    for name in ("ui-open.m4a", "page-flip.m4a", "menu-play.m4a"):
+    for name in ("ui-open.m4a", "page-flip.m4a", "menu-play.m4a", "creature-enter.caf", "token-create.m4a", "land-drop.m4a"):
+        if not os.path.exists(os.path.join(args.shipped, name)):
+            name = name.replace(".caf", ".m4a") if name.endswith(".caf") else name.replace(".m4a", ".caf")
         x = shipped(os.path.join(args.shipped, name))
-        wavfile.write(os.path.join(args.out, "before-" + name.replace(".m4a", ".wav")), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
+        wavfile.write(os.path.join(args.out, "before-" + name.rsplit(".", 1)[0] + ".wav"), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
     for name, (recipe, target, stereo) in takes.items():
         if args.only and name not in wanted:
             continue
