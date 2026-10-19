@@ -78,8 +78,7 @@ struct TavernMainMenu: View {
                     .buttonStyle(BrandButtonStyle(kind: .primary))
                     .accessibilityIdentifier("menu.play")
                     Button {
-                        GameAudio.shared.play(.uiOpen)
-                        decks()
+                        decks()   // the spell book opening is heard from its film (GrimoireStage)
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "rectangle.stack.fill")

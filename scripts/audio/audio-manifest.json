@@ -34,6 +34,20 @@
   "peak_db": -1.4,
   "seconds": 0.54
  },
+ "book-close": {
+  "bytes": 22882,
+  "file": "book-close.m4a",
+  "loudness_db": -26.0,
+  "peak_db": -5.0,
+  "seconds": 1.919
+ },
+ "book-open": {
+  "bytes": 21870,
+  "file": "book-open.m4a",
+  "loudness_db": -26.0,
+  "peak_db": -5.9,
+  "seconds": 1.69
+ },
  "card-draw-1": {
   "bytes": 10843,
   "file": "card-draw-1.m4a",
@@ -203,11 +217,11 @@
   "seconds": 0.87
  },
  "menu-play": {
-  "bytes": 27549,
+  "bytes": 11013,
   "file": "menu-play.m4a",
   "loudness_db": -20.0,
-  "peak_db": -7.2,
-  "seconds": 1.4
+  "peak_db": -2.7,
+  "seconds": 0.85
  },
  "music-game-1": {
   "bytes": 1270963,
@@ -307,6 +321,13 @@
   "loudness_db": -21.0,
   "peak_db": -3.1,
   "seconds": 0.95
+ },
+ "steal": {
+  "bytes": 16309,
+  "file": "steal.m4a",
+  "loudness_db": -27.0,
+  "peak_db": -4.5,
+  "seconds": 1.17
  },
  "strike": {
   "bytes": 21734,

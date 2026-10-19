@@ -35,11 +35,12 @@ enum GameSound: String, CaseIterable, Identifiable {
     // Interface
     case uiTap = "ui-tap", uiConfirm = "ui-confirm", uiBack = "ui-back", uiOpen = "ui-open",
          uiClose = "ui-close", uiToggle = "ui-toggle", uiTick = "ui-tick", uiError = "ui-error",
-         responseAlert = "response-alert", menuPlay = "menu-play", pageFlip = "page-flip", emote
+         responseAlert = "response-alert", menuPlay = "menu-play", pageFlip = "page-flip", emote,
+         bookOpen = "book-open", bookClose = "book-close"
     // Cards and board
     case cardDraw = "card-draw", cardPickup = "card-pickup", cardPlay = "card-play", shuffle,
          landDrop = "land-drop", creatureEnter = "creature-enter", tokenCreate = "token-create",
-         counter, ability
+         counter, ability, steal
     // Spells by color identity
     case castWhite = "cast-white", castBlue = "cast-blue", castBlack = "cast-black", castRed = "cast-red",
          castGreen = "cast-green", castColorless = "cast-colorless", castMulti = "cast-multi",
@@ -55,9 +56,9 @@ enum GameSound: String, CaseIterable, Identifiable {
     var category: GameSoundCategory {
         switch self {
         case .uiTap, .uiConfirm, .uiBack, .uiOpen, .uiClose, .uiToggle, .uiTick, .uiError,
-             .responseAlert, .menuPlay, .pageFlip, .emote: return .interface
+             .responseAlert, .menuPlay, .pageFlip, .emote, .bookOpen, .bookClose: return .interface
         case .cardDraw, .cardPickup, .cardPlay, .shuffle, .landDrop, .creatureEnter, .tokenCreate,
-             .counter, .ability: return .cards
+             .counter, .ability, .steal: return .cards
         case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti,
              .spellBig, .commanderCast: return .spells
         case .attack, .block, .strike, .playerHit, .death, .exile, .lifeGain, .lifeLoss: return .combat
@@ -79,6 +80,8 @@ enum GameSound: String, CaseIterable, Identifiable {
         case .responseAlert: return String(localized: "Your decision")
         case .menuPlay: return String(localized: "Play")
         case .pageFlip: return String(localized: "Page turn")
+        case .bookOpen: return String(localized: "Spell book opens")
+        case .bookClose: return String(localized: "Spell book closes")
         case .emote: return String(localized: "Emote")
         case .cardDraw: return String(localized: "Draw a card")
         case .cardPickup: return String(localized: "Pick up a card")
@@ -89,6 +92,7 @@ enum GameSound: String, CaseIterable, Identifiable {
         case .tokenCreate: return String(localized: "Token")
         case .counter: return String(localized: "Counter")
         case .ability: return String(localized: "Your ability")
+        case .steal: return String(localized: "Stolen permanent")
         case .castWhite: return String(localized: "White spell")
         case .castBlue: return String(localized: "Blue spell")
         case .castBlack: return String(localized: "Black spell")
@@ -128,13 +132,13 @@ enum GameSound: String, CaseIterable, Identifiable {
     var volume: Float {
         switch self {
         case .uiTap, .uiTick, .uiToggle, .uiBack, .uiOpen, .uiClose: return 0.5
-        case .uiConfirm, .uiError, .pageFlip, .emote: return 0.65
+        case .uiConfirm, .uiError, .pageFlip, .emote, .bookOpen, .bookClose: return 0.65
         case .responseAlert, .menuPlay: return 0.8
         case .cardDraw, .cardPickup, .counter, .ability: return 0.7
         case .cardPlay, .shuffle, .landDrop, .creatureEnter, .tokenCreate: return 0.85
         case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti: return 0.85
         case .spellBig, .commanderCast, .attack, .block, .strike, .playerHit: return 0.9
-        case .death, .exile, .lifeGain, .lifeLoss: return 0.75
+        case .death, .exile, .lifeGain, .lifeLoss, .steal: return 0.75
         case .turnYou, .versus, .victory, .defeat: return 0.9
         case .diceRoll, .diceLand: return 0.85
         }

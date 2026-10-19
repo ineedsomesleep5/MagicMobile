@@ -30,7 +30,6 @@ Bundle / pack / file:
 - GDC 2020 / David Dumais Audio - Magic Sound FX Pack 1 / `Magic_Explosion_Short19.wav`
 - GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_CastShort_Push14.wav`
 - GDC 2020 / David Dumais Audio - Water Magic 1 / `Magic_Spells_CastShort_Water_General07.wav`
-- GDC 2020 / David Dumais Audio - Air Magic 1 / `Magic_Spells_Impact_Air24.wav`
 - GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_Impact_Creation20.wav`
 - GDC 2020 / David Dumais Audio - Magic Sound FX Pack 1 / `Magic_Transformation03.wav`
 - GDC 2019 / Impact Soundworks - Super FX 8 and 16-bit Video Game SFX / `Misc_Glass_Crystal_Shatter.wav`
@@ -80,3 +79,37 @@ Stingers (excerpts):
 - Discovery Hit
 - Greta Sting
 - Danse Macabre - Big Hit 1
+
+## Kenney – RPG Audio (CC0, https://kenney.nl/assets/rpg-audio)
+Used by `steal` (2026-10-19): `metalLatch`, `beltHandle1`, `beltHandle2` (with Casino `card-place-1`). Kenney packs
+are Ogg Vorbis, which `afconvert` does not read: convert with
+`ffmpeg -i <file>.ogg -ar 44100 -c:a pcm_f32le <pack>__<file>.wav` (`rpg-audio__metalLatch.wav`).
+
+## Play Commander (`menu-play`, 2026-10-19)
+Sonniss: GDC 2015 / Soundopolis - Blades / `Knife_Sword_Shing_Fienup_001.wav`.
+
+## Deck Studio's spell book (`book-open`, `book-close`, 2026-10-19)
+Sonniss: GDC 2019 / PMSFX - Books Alive / `PM_BA_BOOK_0_29 Book, Open, Paper.wav`, `PM_BA_BOOK_2_6 Book, Paper, Page
+Turn.wav`; GDC 2018 / 3maze - Books & Magazines / `shut_small_book_002.wav`. Kenney RPG: `metalClick`, `creak3`,
+`bookPlace2`, `metalLatch`.
+
+## Trials (not in the app yet)
+`trials.py` renders candidates for cues being reworked next to the shipped ones, into `build_output/audio-trials/`,
+for Caleb to audition before any is wired in (see its docstring). The Play Commander candidates use:
+
+- GDC 2018 / Gregor Quendel - Designed Fire / `Designed Fire - Impacts - Large, ignition 03.wav`
+- GDC 2017 / Mononeshot - MEDIEVAL, Smithy / `MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent.wav`
+
+Round 4 (cards entering by type) adds: GDC 2017 / Double Trouble Audio - Medieval Armor and Impacts /
+`Plate_Impact_Hard_02.wav`; GDC 2020 / Articulated Sounds - Magic Elements vol.2 / `MAGIC GENERIC Texture, Shimmer,
+Processed Glass, Reversed Layer, Disturbing, High.wav`, `MAGIC ENERGY Texture, Complex, Particles, Zap, Sparks,
+Short-Circuit, High, Sweetener 03.wav`; GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_Impact_Creation20.wav`
+(already the colorless cast); Kenney Casino `card-fan-1`.
+
+Round 5 (round 4 redone short and dry) uses Kenney Impact Sounds (CC0, https://kenney.nl/assets/impact-sounds) and
+Interface Sounds (CC0, https://kenney.nl/assets/interface-sounds), named `impact-sounds__…`/`interface-sounds__…`, and
+GDC 2016 / George Karagioules - SFX for Board Games / `Placing Pieces on the Board 2.wav`.
+
+`sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
+`e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
+Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).

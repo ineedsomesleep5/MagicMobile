@@ -74,12 +74,16 @@ final class GrimoireStage {
     }
 
     private func film(opening: Bool, change: @escaping () -> Void) {
+        // The book is heard even when its film can't play (Reduce Motion, no window): Deck Studio still opens.
+        let sound: GameSound = opening ? .bookOpen : .bookClose
         guard Self.motionEnabled, !busy, let scene = Self.activeScene, let source = Self.keyWindow(in: scene) else {
+            if !busy { GameAudio.shared.play(sound) }
             Self.withoutAnimation(change); return
         }
         let portrait = source.bounds.height >= source.bounds.width
         let name = "grimoire-\(opening ? "open" : "close")-\(portrait ? "portrait" : "landscape")"
         guard let url = Bundle.main.url(forResource: name, withExtension: "mp4") else {
+            GameAudio.shared.play(sound)
             Self.withoutAnimation(change); return
         }
         busy = true
@@ -115,7 +119,8 @@ final class GrimoireStage {
         let start: () -> Void = {
             guard !started else { return }
             started = true
-            GameAudio.shared.play(.pageFlip)
+            // Timed to the film from here: it fades in for 0.2 s, then plays (build_game_audio.py r_book_open).
+            GameAudio.shared.play(sound)
             UIView.animate(withDuration: 0.2) { view.alpha = 1 } completion: { _ in
                 player.play()
                 // Underneath the film, once it covers the screen: Deck Studio arrives while the book

@@ -31,11 +31,12 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     UI_TICK("ui-tick", GameSoundCategory.INTERFACE, "Slider tick"), UI_ERROR("ui-error", GameSoundCategory.INTERFACE, "Not allowed"),
     RESPONSE_ALERT("response-alert", GameSoundCategory.INTERFACE, "Your decision"), MENU_PLAY("menu-play", GameSoundCategory.INTERFACE, "Play"),
     PAGE_FLIP("page-flip", GameSoundCategory.INTERFACE, "Page turn"), EMOTE("emote", GameSoundCategory.INTERFACE, "Emote"),
+    BOOK_OPEN("book-open", GameSoundCategory.INTERFACE, "Spell book opens"), BOOK_CLOSE("book-close", GameSoundCategory.INTERFACE, "Spell book closes"),
     CARD_DRAW("card-draw", GameSoundCategory.CARDS, "Draw a card"), CARD_PICKUP("card-pickup", GameSoundCategory.CARDS, "Pick up a card"),
     CARD_PLAY("card-play", GameSoundCategory.CARDS, "Play a card"), SHUFFLE("shuffle", GameSoundCategory.CARDS, "Shuffle (mulligan)"),
     LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), CREATURE_ENTER("creature-enter", GameSoundCategory.CARDS, "Creature arrives"),
     TOKEN_CREATE("token-create", GameSoundCategory.CARDS, "Token"), COUNTER("counter", GameSoundCategory.CARDS, "Counter"),
-    ABILITY("ability", GameSoundCategory.CARDS, "Your ability"),
+    ABILITY("ability", GameSoundCategory.CARDS, "Your ability"), STEAL("steal", GameSoundCategory.CARDS, "Stolen permanent"),
     CAST_WHITE("cast-white", GameSoundCategory.SPELLS, "White spell"), CAST_BLUE("cast-blue", GameSoundCategory.SPELLS, "Blue spell"),
     CAST_BLACK("cast-black", GameSoundCategory.SPELLS, "Black spell"), CAST_RED("cast-red", GameSoundCategory.SPELLS, "Red spell"),
     CAST_GREEN("cast-green", GameSoundCategory.SPELLS, "Green spell"), CAST_COLORLESS("cast-colorless", GameSoundCategory.SPELLS, "Colorless spell"),
@@ -55,13 +56,13 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     /** Mix level: interface quiet, the board clear, big moments on top. */
     val volume: Float get() = when (this) {
         UI_TAP, UI_TICK, UI_TOGGLE, UI_BACK, UI_OPEN, UI_CLOSE -> 0.5f
-        UI_CONFIRM, UI_ERROR, PAGE_FLIP, EMOTE -> 0.65f
+        UI_CONFIRM, UI_ERROR, PAGE_FLIP, EMOTE, BOOK_OPEN, BOOK_CLOSE -> 0.65f
         RESPONSE_ALERT, MENU_PLAY -> 0.8f
         CARD_DRAW, CARD_PICKUP, COUNTER, ABILITY -> 0.7f
         CARD_PLAY, SHUFFLE, LAND_DROP, CREATURE_ENTER, TOKEN_CREATE -> 0.85f
         CAST_WHITE, CAST_BLUE, CAST_BLACK, CAST_RED, CAST_GREEN, CAST_COLORLESS, CAST_MULTI -> 0.85f
         SPELL_BIG, COMMANDER_CAST, ATTACK, BLOCK, STRIKE, PLAYER_HIT -> 0.9f
-        DEATH, EXILE, LIFE_GAIN, LIFE_LOSS -> 0.75f
+        DEATH, EXILE, LIFE_GAIN, LIFE_LOSS, STEAL -> 0.75f
         TURN_YOU, VERSUS, VICTORY, DEFEAT -> 0.9f
         DICE_ROLL, DICE_LAND -> 0.85f
     }
