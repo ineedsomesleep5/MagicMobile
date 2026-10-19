@@ -401,7 +401,11 @@ same objects that dominate allocation.
   - The same engine on both toolchains (`scripts/build_native_bench.sh`: an x86-64 executable with the production
     options, so only the toolchain differs): code 155.5 MB on 22.1, 161.8 at -O2 and 151.7 at -Os; image heap 139.6 →
     175.4 and 172.6 MB. Set-class code 13.9 → 26.4 MB (not smaller at -Os). In the heap, code metadata 29.3 → 43.2 MB and
-    strings 13.8 → 30.8 MB (1.03 → 1.54 million objects); class objects are unchanged (45.6 → 45.9 MB).
+    strings 13.8 → 30.8 MB (1.03 → 1.54 million objects); class objects are unchanged (45.6 → 45.9 MB). A dump of
+    24.1's image heap (`--enable-monitoring=heapdump`, `-XX:+DumpHeapAndExit`): frame info is 15.3 MB of the code
+    metadata (3.8 million frames); of 397,000 strings, 125,000 (6.7 MB) duplicate another string's value, held by name
+    tables (a 196,000-slot class-name table for the 75,000 reflection-registered types, 46,000 type names, 25,000
+    method names) and five copies of the locale-tag tables; the method-data tables hold 4 MB of the strings.
   - AI speed (host benchmark of the same engine on 22.1, 24.1 at -O2 and 24.1 at -Os; `profile_long_games.py speed`:
     108 seeded games per build at skills 4–6, each skill playing itself, the decks swapped and both seatings in every
     block of 4, 16 probes a game at the active player's main-phase decisions, each a full production search capped at
@@ -425,9 +429,12 @@ same objects that dominate allocation.
       charsets (0.2 MB). JDK 23's locale data is 8% larger than JDK 17's under `-H:+IncludeAllLocales`.
     - The bulk stays card classes (105–112 MB of code), step 5.
   - Recommendation: release D alone makes both apps bigger (at -Os about +15 MB compressed in the APK, estimated from
-    release C's library at the same compression ratio) for no measured speed change. Ship it only together with the booster-set and method-data cuts, which bring code below release C;
-    otherwise keep 22.1 and land the set cut there first. If D ships, use -Os: −13.5 MB of library against -O2 and no
-    measurable AI cost (per-package optimization levels are not needed and GraalVM CE does not offer them).
+    release C's library at the same compression ratio) for no measured speed change. Even with the booster-set and
+    method-data cuts, an -Os library would be about 340 MB, still above release C's 316 MB, because of the remaining
+    heap growth. So D is worth shipping only for its maintenance value (a supported JDK 23 toolchain, two patches
+    retired) and together with those cuts; otherwise keep 22.1 and land the set cut there first (about −10 MB on
+    22.1). Caleb decides. If D ships, use -Os: −13.5 MB of library against -O2 and no measurable AI cost
+    (per-package optimization levels are not needed, and GraalVM CE does not offer them).
   - Native steps left for D: the iOS cheap gate on the candidate, then the far-calls build (first macOS build of
     24.1, Substrate 0.0.65 and `libvmone.a`; forced-trampoline probe; Mach-O layout; `-lvmone` product link), then the
     product-device build, an internal TestFlight and the Android test APK with a long AI game per platform. The
