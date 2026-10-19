@@ -43,7 +43,6 @@ ARGS = parse_args()
 def brass(name="Brass", tone=1.0):
     """Polished antique brass: bright on raised faces, dark in recesses (AO), like the table's."""
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     n, l = nt.nodes, nt.links
     bsdf = n["Principled BSDF"]
@@ -220,9 +219,8 @@ def reset():
     scene.render.image_settings.color_mode = "RGBA"
     scene.view_settings.view_transform = "AgX"
     world = bpy.data.worlds.new("World")
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.06, 0.04, 0.03, 1)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.06, 0.04, 0.03, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = 0.6
     scene.world = world
     # Key from the upper left and a warm low rim, like the table's sprites.
     for nm, loc, energy, color, size in [("Key", (-60, 70, 110), 0.8e5, (1.0, 0.86, 0.66), 60),

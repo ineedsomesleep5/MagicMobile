@@ -43,7 +43,6 @@ BACK_Y = 3.0
 
 def node_material(name, build):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     for n in list(nt.nodes):
         nt.nodes.remove(n)
@@ -240,7 +239,7 @@ def import_prop(name, height, location, rotation_z=0.0, width=None):
                 dec.ratio = 60000 / faces
                 bpy.ops.object.modifier_apply(modifier=dec.name)
             for slot in o.material_slots:
-                if slot.material and slot.material.use_nodes:
+                if slot.material and slot.material.node_tree:
                     for node in slot.material.node_tree.nodes:
                         if node.type == "TEX_IMAGE" and node.image and max(node.image.size) > 1024:
                             node.image.scale(1024, 1024)
@@ -412,8 +411,7 @@ def build():
     moon = bpy.context.active_object
     moon.data.energy = 0.08; moon.data.color = (0.5, 0.6, 1.0)
     world = bpy.data.worlds.new("world"); scene.world = world
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.03, 0.02, 0.016, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.03, 0.02, 0.016, 1)
 
     return scene, layers, flames, placements
 

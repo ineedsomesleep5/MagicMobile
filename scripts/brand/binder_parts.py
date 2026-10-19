@@ -71,7 +71,7 @@ def import_model(path):
             dec.ratio = 80000 / faces
             bpy.ops.object.modifier_apply(modifier=dec.name)
         for slot in o.material_slots:
-            if slot.material and slot.material.use_nodes:
+            if slot.material and slot.material.node_tree:
                 for node in slot.material.node_tree.nodes:
                     if node.type == "TEX_IMAGE" and node.image and max(node.image.size) > 1024:
                         node.image.scale(1024, 1024)
@@ -152,9 +152,8 @@ def render(name, folder, width_pt, view, roll, out_dir, samples, margin=1.04, fl
 
     # Warm tavern light: a candle-coloured key from the upper left, a cool soft fill, a rim behind.
     world = bpy.data.worlds.new("world")
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs[0].default_value = (0.09, 0.06, 0.04, 1)
-    world.node_tree.nodes["Background"].inputs[1].default_value = 0.6
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs[0].default_value = (0.09, 0.06, 0.04, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs[1].default_value = 0.6
     scene.world = world
     reach = max(size) * 3
     toward = {"front": Vector((0, -1, 0)), "right": Vector((1, 0, 0)), "left": Vector((-1, 0, 0))}.get(view, Vector((0, 0, 1)))

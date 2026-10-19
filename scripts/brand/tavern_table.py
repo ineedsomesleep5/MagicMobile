@@ -68,7 +68,6 @@ def pt(x, y):
 
 def node_mat(name):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -682,9 +681,8 @@ def ortho_camera(scene, span, horizontal):
 def world(scene, strength=0.25):
     w = bpy.data.worlds.new("World")
     scene.world = w
-    w.use_nodes = True
-    w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.012, 0.008, 0.006, 1)
-    w.node_tree.nodes["Background"].inputs["Strength"].default_value = strength
+    next(n for n in w.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.012, 0.008, 0.006, 1)
+    next(n for n in w.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = strength
 
 
 def render_plate():
