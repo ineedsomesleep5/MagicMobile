@@ -127,6 +127,33 @@ def enter_token() -> np.ndarray:
     return tavern_room(layer((flick, 0.0, 0.0), (lowpass(motes, 8000), 0.0, -11.0)))
 
 
+# Round 5 (Caleb: round 4 and today's creature/token "don't really sound good at all"). Round 4 ran 0.75-1.4 s,
+# stacked three or four layers with slowing and a room, and leaned on sci-fi textures ("processed glass, disturbing",
+# "zap, short-circuit") and an armour clang. Now each is short (0.3-0.7 s), dry and simple: a warm wood knock for the
+# card meeting the table plus one accent that says what it is, from Kenney Impact/Interface Sounds (CC0) and the
+# Sonniss board-game pieces. Two takes each.
+def ks(name: str, gain: float = 0.0, at: float = 0.0, end: float | None = None) -> tuple:
+    pack = "interface-sounds" if name.split("_")[0] in {"glass", "drop", "pluck", "bong", "select"} else "impact-sounds"
+    return (kenney(f"{pack}__{name}", 0.0, end, fade_out=0.04), at, gain)
+
+
+ROUND5 = {
+    # name: (layers, loudness target)
+    "creature-A-heavy-knock": (lambda: [ks("impactWood_heavy_002"), ks("impactSoft_heavy_001", -6.0)], -21.0),
+    "creature-B-board-piece": (lambda: [(sonniss("Placing Pieces on the Board 2", 0.0, 0.13), 0.0, 0.0),
+                                        ks("impactSoft_heavy_003", -8.0, 0.005)], -21.0),
+    "artifact-A-metal-clink": (lambda: [ks("impactWood_medium_003"), ks("impactMetal_light_000", -2.0, 0.005)], -22.0),
+    "artifact-B-tin-clink": (lambda: [ks("impactWood_medium_000"), ks("impactTin_medium_001", -3.0, 0.005)], -22.0),
+    "enchantment-A-glass-ring": (lambda: [ks("impactWood_light_001"), ks("impactGlass_medium_002", -3.0, 0.01)], -23.0),
+    "enchantment-B-glass-chime": (lambda: [ks("impactWood_light_001"), ks("glass_001", -5.0, 0.01)], -23.0),
+    "planeswalker-A-bell": (lambda: [ks("impactWood_heavy_002"), ks("impactBell_heavy_002", -6.0, 0.01)], -21.0),
+    "planeswalker-B-thud-bell": (lambda: [ks("impactWood_heavy_000"), ks("impactSoft_heavy_002", -6.0),
+                                          ks("impactBell_heavy_003", -9.0, 0.02)], -21.0),
+    "token-A-tap-pop": (lambda: [ks("impactWood_light_000", -2.0), ks("drop_002", -4.0, 0.01)], -25.0),
+    "token-B-pop-tick": (lambda: [ks("drop_004"), ks("glass_005", -10.0, 0.03)], -25.0),
+}
+
+
 def shipped(path: str) -> np.ndarray:
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "x.wav")
@@ -165,10 +192,18 @@ def main() -> None:
             name = name.replace(".caf", ".m4a") if name.endswith(".caf") else name.replace(".m4a", ".caf")
         x = shipped(os.path.join(args.shipped, name))
         wavfile.write(os.path.join(args.out, "before-" + name.rsplit(".", 1)[0] + ".wav"), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
+    for name, (layers, target) in ROUND5.items():
+        takes[name] = ((lambda layers=layers: layer(*layers())), target, False)
     for name, (recipe, target, stereo) in takes.items():
         if args.only and name not in wanted:
             continue
         y = match_loudness(highpass(recipe(), 60, order=2), target, -1.0)
+        # Sharp knocks hit the -1 dB ceiling before their loudness target; a fast limiter lets them reach it.
+        limit = -6.0
+        while loudness(y) < target - 0.5 and limit > -18.0:
+            from pedalboard import Limiter
+            y = match_loudness(Limiter(threshold_db=limit, release_ms=50)(y.astype(np.float32), SR), target, -1.0)
+            limit -= 3.0
         if y.ndim == 2 and not stereo:
             y = y.mean(axis=1)
         wavfile.write(os.path.join(args.out, name + ".wav"), SR, (np.clip(y, -1, 1) * 32767).astype(np.int16))

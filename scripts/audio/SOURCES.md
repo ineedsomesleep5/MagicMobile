@@ -106,6 +106,10 @@ Processed Glass, Reversed Layer, Disturbing, High.wav`, `MAGIC ENERGY Texture, C
 Short-Circuit, High, Sweetener 03.wav`; GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_Impact_Creation20.wav`
 (already the colorless cast); Kenney Casino `card-fan-1`.
 
+Round 5 (round 4 redone short and dry) uses Kenney Impact Sounds (CC0, https://kenney.nl/assets/impact-sounds) and
+Interface Sounds (CC0, https://kenney.nl/assets/interface-sounds), named `impact-sounds__…`/`interface-sounds__…`, and
+GDC 2016 / George Karagioules - SFX for Board Games / `Placing Pieces on the Board 2.wav`.
+
 `sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
 `e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
 Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).
