@@ -160,6 +160,7 @@
 		6F967DE914F95FC401FBC978 /* HowToPlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E4D5A9D311CB78CA8825E4 /* HowToPlayUITests.swift */; };
 		707F9022D3F7045C138C3B27 /* BoardCardChoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA70C9674983BCF14FFA981 /* BoardCardChoiceView.swift */; };
 		70C0F2E94BBE4E0F1A6E8035 /* music-game-4.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 74EB99E9AF40C4282D158D78 /* music-game-4.m4a */; };
+		70CD83518A339B0B0C7A198E /* steal.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 314B60B2900E2BFA136E9059 /* steal.m4a */; };
 		7162F66856487125319D953F /* OnDeviceMessageSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A375B93EAF5ACD850AD2D2B5 /* OnDeviceMessageSessionTests.swift */; };
 		722C1EF6B35C88CB1ACC17A4 /* OnDeviceRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5892EABA017C78F89597233 /* OnDeviceRootView.swift */; };
 		724CBF8D38F59E0F46E20543 /* DeckStudioReceiptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63ADBE69EDA89404D7104396 /* DeckStudioReceiptStore.swift */; };
@@ -427,6 +428,7 @@
 		2E086F2E985EA59699FD100A /* TurnClockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnClockTests.swift; sourceTree = "<group>"; };
 		2E5F7CD02B1D33DA830FD069 /* GameplayActionDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameplayActionDock.swift; sourceTree = "<group>"; };
 		2F4E6F7237174E453B09E62B /* BoardZoneReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardZoneReferenceTests.swift; sourceTree = "<group>"; };
+		314B60B2900E2BFA136E9059 /* steal.m4a */ = {isa = PBXFileReference; path = steal.m4a; sourceTree = "<group>"; };
 		3252980A326F1BA25D32E758 /* cast-multi.m4a */ = {isa = PBXFileReference; path = "cast-multi.m4a"; sourceTree = "<group>"; };
 		325A347B3CF808C7166B7925 /* DeckStudioReleaseUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioReleaseUITests.swift; sourceTree = "<group>"; };
 		327B6E116B54238C1BF459E0 /* DeckStudioScryfall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioScryfall.swift; sourceTree = "<group>"; };
@@ -1203,6 +1205,7 @@
 				F9AD099BE0D0997A027D58EE /* response-alert.m4a */,
 				0874A2EB2BEDFB73C09B079F /* shuffle.m4a */,
 				027FECE1805BD7CA79FAA7D0 /* spell-big.m4a */,
+				314B60B2900E2BFA136E9059 /* steal.m4a */,
 				BB144ABECF89A55FBAEAFB8C /* strike.caf */,
 				783FC40AC3079A6E58525B89 /* token-create.m4a */,
 				F1D2EE9C5145A605159B46EA /* turn-you.m4a */,
@@ -1420,6 +1423,7 @@
 				A4DEB1C6AAAAB7B01D842625 /* response-alert.m4a in Resources */,
 				54A69CDC4089687732987FF0 /* shuffle.m4a in Resources */,
 				F05949F818870A2788F12448 /* spell-big.m4a in Resources */,
+				70CD83518A339B0B0C7A198E /* steal.m4a in Resources */,
 				D022F212C1951454CA86BD37 /* strike.caf in Resources */,
 				008C07BFF86B3AEE7F3679A2 /* tavern-room.json in Resources */,
 				C0C60EA33C8FDB6D936286A5 /* token-create.m4a in Resources */,

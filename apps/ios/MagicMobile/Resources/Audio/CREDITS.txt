@@ -49,7 +49,7 @@ trimmed and mixed for MagicMobile. Thank you to the contributing sound designers
   Timothy McHugh - Playing Cards & Betting Chips
   Touchdown Audio -The White Stuff
 
-Card handling recordings from Kenney.nl Casino Audio, released under
-Creative Commons Zero (CC0 1.0). Thank you, Kenney (www.kenney.nl).
+Card handling, metal and book recordings from Kenney.nl Casino Audio and RPG Audio,
+released under Creative Commons Zero (CC0 1.0). Thank you, Kenney (www.kenney.nl).
 
 Full source list: scripts/audio/SOURCES.md in the MagicMobile repository.

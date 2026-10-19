@@ -35,7 +35,7 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     CARD_PLAY("card-play", GameSoundCategory.CARDS, "Play a card"), SHUFFLE("shuffle", GameSoundCategory.CARDS, "Shuffle (mulligan)"),
     LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), CREATURE_ENTER("creature-enter", GameSoundCategory.CARDS, "Creature arrives"),
     TOKEN_CREATE("token-create", GameSoundCategory.CARDS, "Token"), COUNTER("counter", GameSoundCategory.CARDS, "Counter"),
-    ABILITY("ability", GameSoundCategory.CARDS, "Your ability"),
+    ABILITY("ability", GameSoundCategory.CARDS, "Your ability"), STEAL("steal", GameSoundCategory.CARDS, "Stolen permanent"),
     CAST_WHITE("cast-white", GameSoundCategory.SPELLS, "White spell"), CAST_BLUE("cast-blue", GameSoundCategory.SPELLS, "Blue spell"),
     CAST_BLACK("cast-black", GameSoundCategory.SPELLS, "Black spell"), CAST_RED("cast-red", GameSoundCategory.SPELLS, "Red spell"),
     CAST_GREEN("cast-green", GameSoundCategory.SPELLS, "Green spell"), CAST_COLORLESS("cast-colorless", GameSoundCategory.SPELLS, "Colorless spell"),
@@ -61,7 +61,7 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
         CARD_PLAY, SHUFFLE, LAND_DROP, CREATURE_ENTER, TOKEN_CREATE -> 0.85f
         CAST_WHITE, CAST_BLUE, CAST_BLACK, CAST_RED, CAST_GREEN, CAST_COLORLESS, CAST_MULTI -> 0.85f
         SPELL_BIG, COMMANDER_CAST, ATTACK, BLOCK, STRIKE, PLAYER_HIT -> 0.9f
-        DEATH, EXILE, LIFE_GAIN, LIFE_LOSS -> 0.75f
+        DEATH, EXILE, LIFE_GAIN, LIFE_LOSS, STEAL -> 0.75f
         TURN_YOU, VERSUS, VICTORY, DEFEAT -> 0.9f
         DICE_ROLL, DICE_LAND -> 0.85f
     }

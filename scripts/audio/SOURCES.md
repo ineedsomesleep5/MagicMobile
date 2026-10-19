@@ -81,15 +81,22 @@ Stingers (excerpts):
 - Greta Sting
 - Danse Macabre - Big Hit 1
 
+## Kenney – RPG Audio (CC0, https://kenney.nl/assets/rpg-audio)
+Used by `steal` (2026-10-19): `metalLatch`, `beltHandle1`, `beltHandle2` (with Casino `card-place-1`). Kenney packs
+are Ogg Vorbis, which `afconvert` does not read: convert with
+`ffmpeg -i <file>.ogg -ar 44100 -c:a pcm_f32le <pack>__<file>.wav` (`rpg-audio__metalLatch.wav`).
+
 ## Trials (not in the app yet)
-`trial_steal.py` renders a candidate steal sound (see its docstring) next to the current `card-pickup`, into
-`build_output/audio-trials/steal`. It runs in a scratch virtualenv with `numpy scipy pedalboard`
-(`~/.venvs/mm-audio`). Sources:
+`trials.py` renders candidates for cues being reworked next to the shipped ones, into `build_output/audio-trials/`,
+for Caleb to audition before any is wired in (see its docstring). Round 2 (Deck Studio's book, Play Commander) uses
+these Sonniss files from the mirror, plus Kenney RPG `metalClick`, `creak3`, `bookPlace2`, `metalLatch`:
 
-- Kenney – RPG Audio (CC0, https://kenney.nl/assets/rpg-audio) / `metalLatch`, `beltHandle1`, `beltHandle2`
-- Kenney – Casino Audio (CC0) / `card-place-1`
-- `sfx_synth/` – the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
-  `e627941`, `sfx/`; only `SR` changed to 44.1 kHz): one quiet air whoosh. Its licence sits beside it.
+- GDC 2019 / PMSFX - Books Alive / `PM_BA_BOOK_0_29 Book, Open, Paper.wav`, `PM_BA_BOOK_2_6 Book, Paper, Page Turn.wav`
+- GDC 2018 / 3maze - Books & Magazines / `shut_small_book_002.wav`
+- GDC 2018 / Gregor Quendel - Designed Fire / `Designed Fire - Impacts - Large, ignition 03.wav`
+- GDC 2015 / Soundopolis - Blades / `Knife_Sword_Shing_Fienup_001.wav`
+- GDC 2017 / Mononeshot - MEDIEVAL, Smithy / `MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent.wav`
 
-Kenney packs are Ogg Vorbis, which `afconvert` does not read: convert with
-`ffmpeg -i <file>.ogg -ar 44100 -c:a pcm_f32le <pack>__<file>.wav`.
+`sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
+`e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
+Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).

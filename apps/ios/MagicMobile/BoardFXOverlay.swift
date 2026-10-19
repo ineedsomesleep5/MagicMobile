@@ -898,7 +898,7 @@ enum BoardFXSound {
             case .statsChanged: cues.append(Cue(sound: .counter, at: fx.delay, volume: 0.4))
             case .phased: cues.append(Cue(sound: .exile, at: fx.delay, volume: 0.55))
             case .transformed: cues.append(Cue(sound: .cardPlay, at: fx.delay))
-            case .controlChanged: cues.append(Cue(sound: .cardPickup, at: fx.delay + fx.duration * BoardFXScheduler.stealHookFraction))
+            case .controlChanged: cues.append(Cue(sound: .steal, at: fx.delay + fx.duration * BoardFXScheduler.stealHookFraction))
             case let .lifeChanged(id, delta):
                 if delta > 0 {
                     cues.append(Cue(sound: .lifeGain, at: fx.delay, volume: id == viewerID ? 1 : 0.55))

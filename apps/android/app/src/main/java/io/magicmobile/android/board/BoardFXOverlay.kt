@@ -1089,7 +1089,7 @@ object BoardFXSound {
             is BoardFXEvent.StatsChanged -> cues += Cue(GameSound.COUNTER, fx.delay, 0.4f)
             is BoardFXEvent.Phased -> cues += Cue(GameSound.EXILE, fx.delay, 0.55f)
             is BoardFXEvent.Transformed -> cues += Cue(GameSound.CARD_PLAY, fx.delay)
-            is BoardFXEvent.ControlChanged -> cues += Cue(GameSound.CARD_PICKUP, fx.delay + fx.duration * BoardFXScheduler.stealHookFraction)
+            is BoardFXEvent.ControlChanged -> cues += Cue(GameSound.STEAL, fx.delay + fx.duration * BoardFXScheduler.stealHookFraction)
             is BoardFXEvent.LifeChanged -> if (event.delta > 0) cues += Cue(GameSound.LIFE_GAIN, fx.delay, if (event.playerID == viewerID) 1f else 0.55f)
                 else if (event.playerID == viewerID && !hasStrike) cues += Cue(GameSound.LIFE_LOSS, fx.delay)
         }

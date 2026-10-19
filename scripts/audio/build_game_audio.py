@@ -6,10 +6,11 @@ synthesized layers (build 19 replaced them after play-testing). Sources and lice
 listed in scripts/audio/SOURCES.md and in the app's Resources/Audio/CREDITS.txt:
   * Sonniss.com GDC Game Audio Bundles 2016-2020 (royalty-free, no attribution required).
     Files are fetched one by one from the official mirror listed on sonniss.com/gameaudiogdc.
-  * Kenney.nl Casino Audio (CC0 1.0) for a few card-handling recordings.
+  * Kenney.nl Casino Audio and RPG Audio (CC0 1.0) for card handling, metal and books.
   * Kevin MacLeod (incompetech.com), CC BY 4.0, for music and orchestral stingers.
 
-Requires numpy and scipy (a scratch virtualenv is enough) plus macOS `afconvert`.
+Requires numpy, scipy and pedalboard (a scratch virtualenv is enough, e.g. ~/.venvs/mm-audio) plus macOS
+`afconvert`. Pedalboard is only a build tool here (EQ, compression, a small room); nothing of it ships.
 Sources are 44.1 kHz float WAVs converted with `afconvert -f WAVE -d LEF32@44100`, named
 after the original files. Usage (from the repo root):
   build_game_audio.py --sonniss DIR --kenney DIR --music DIR \
@@ -25,8 +26,11 @@ import subprocess
 import sys
 import tempfile
 
+from fractions import Fraction
+
 import numpy as np
 from scipy.io import wavfile
+from scipy.signal import resample_poly
 
 sys.path.insert(0, os.path.dirname(__file__))
 from gamedsp import SR, fade, highpass, loudness, lowpass, match_loudness, n_of, normalize  # noqa: E402
@@ -68,6 +72,28 @@ def layer(*parts: tuple[np.ndarray, float, float]) -> np.ndarray:
         s = n_of(at)
         out[s: s + len(x)] += x * 10 ** (gain / 20)
     return out
+
+
+def slowed(x: np.ndarray, semitones: float) -> np.ndarray:
+    """Tape-style: slowed down to lower the pitch (and lengthen it), which keeps foley natural. Pedalboard's
+    PitchShift smears grains this short into a faint ring (docs/LESSONS.md)."""
+    ratio = Fraction(2 ** (semitones / 12)).limit_denominator(200)
+    return resample_poly(x, ratio.denominator, ratio.numerator, axis=0).astype(np.float32)
+
+
+def tavern_room(x: np.ndarray, wet: float = 0.12, tail: float = 0.25) -> np.ndarray:
+    """A little wood warmth, gentle compression and a small wooden room, for layered foley."""
+    from pedalboard import Compressor, HighpassFilter, LowpassFilter, PeakFilter, Pedalboard, Reverb
+    board = Pedalboard([
+        HighpassFilter(cutoff_frequency_hz=90),
+        PeakFilter(cutoff_frequency_hz=260, gain_db=2.0, q=0.8),
+        LowpassFilter(cutoff_frequency_hz=9500),
+        Compressor(threshold_db=-18, ratio=2.5, attack_ms=3, release_ms=80),
+        Reverb(room_size=0.18, damping=0.6, wet_level=wet, dry_level=0.9, width=0.0),
+    ])
+    padded = np.concatenate([x, np.zeros((int(tail * SR),) + x.shape[1:], dtype=np.float32)])
+    y = board(padded.T if padded.ndim == 2 else padded, SR)
+    return fade((y.T if padded.ndim == 2 else y).astype(np.float32), 0.001, 0.12)
 
 
 # ------------------------------------------------------------------ interface
@@ -162,6 +188,25 @@ def r_token_create():
 
 def r_counter():
     return sonniss("Scatter Plops 04", 0.25, 0.36)
+
+
+def r_steal():
+    """The board's steal (BoardFX controlChanged), from the moment the taker's chain hooks the card: the hook
+    bites (a latch, slowed to a heavier brass clink), the chain's links run as the card is dragged (belt-buckle
+    grains, slowed and thinning out), and the card lands 0.66 s later. Caleb picked it dry, 2026-10-19."""
+    from pedalboard import LowpassFilter
+    hook = LowpassFilter(cutoff_frequency_hz=7000)(slowed(kenney("rpg-audio__metalLatch", 0.03, 0.26, fade_out=0.05), -3), SR)
+    grains = [kenney("rpg-audio__beltHandle1", 0.10, 0.17, fade_out=0.02),
+              kenney("rpg-audio__beltHandle2", 0.18, 0.25, fade_out=0.02),
+              kenney("rpg-audio__beltHandle2", 0.265, 0.33, fade_out=0.02)]
+    shifts = [-5.1904, -5.6229, -4.3727, -5.8189, -4.6603, -5.0858, -5.855]   # the trial Caleb heard
+    links, at = [], 0.09
+    for i, shift in enumerate(shifts):
+        links.append((slowed(grains[i % len(grains)], shift), at, -3.0 - 1.0 * i))
+        at += 0.065 + 0.008 * i
+    land = kenney("casino-audio__card-place-1", 0.14, 0.40, fade_out=0.08)
+    chain = LowpassFilter(cutoff_frequency_hz=6000)(layer(*links), SR)
+    return tavern_room(layer((hook, 0.0, 0.0), (chain, 0.0, 0.0), (land, 0.66, -6.0)))
 
 
 def r_ability():
@@ -301,6 +346,7 @@ CUES: dict[str, tuple] = {
     "token-create": (r_token_create, -25, False),
     "counter": (r_counter, -30, False),
     "ability": (r_ability, -27, True),
+    "steal": (r_steal, -27, False),
     "cast-white": (r_cast_white, -22, True),
     "cast-blue": (r_cast_blue, -22, True),
     "cast-black": (r_cast_black, -22, True),
