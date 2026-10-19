@@ -363,3 +363,8 @@ contradicting one.
   attempt's with the same name and `controller.py stage-native` refuses ("Expected one unexpired ... artifact").
   Dispatch a fresh run with the same `candidate_sha` and `cheap_run_id`. stage-native also refuses while
   `apps/ios/NativeEngine` exists: move the old engine into `packages/ondevice-engine/build/` first.
+- 2026-10-14 (Claude): Cormorant SC has no lowercase; it sets lowercase as small caps, so mixed-case
+  proper names like "iPhone" render as "iPHONE". On the site the platform plaques go full caps
+  (`text-transform: uppercase`); keep such names out of Cormorant SC text in the app, or uppercase them.
+  Headless Chrome's `--window-size` can't go below about 500 px wide, so phone-width site screenshots
+  need playwright-core with a real 390 px viewport.
