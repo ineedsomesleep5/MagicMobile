@@ -52,7 +52,7 @@ final class GameAudioTests: XCTestCase {
             fx(.leftBattlefield(cardID: "a", playerID: viewer, to: .exile, tint: .white)),
             fx(.leftBattlefield(cardID: "b", playerID: viewer, to: .graveyard, tint: .black)),
             fx(.leftBattlefield(cardID: "c", playerID: viewer, to: .hand, tint: .blue)),
-            fx(.countersAdded(cardID: "bear", amount: 1)),
+            fx(.countersChanged(cardID: "bear", kind: .plusOne, delta: 1)),
             fx(.lifeChanged(playerID: viewer, delta: 3)),
         ], viewerID: viewer, arrivals: ["land": .init(isLand: true), "token": .init(isToken: true)], hasStrike: false)
         let sounds = cues.map(\.sound)

@@ -145,12 +145,14 @@ object GameBoardPreviewFixtures {
         else -> null
     }
 
-    const val boardFXStepCount = 10
+    const val boardFXStepCount = 16
 
     /**
      * Scripted board FX walkthrough: 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI life -5),
      * 3 Sol Ring enters with a counter on Isamaru, 4 AI casts Kozilek, 5 Kozilek enters, 6 Isamaru attacks,
-     * 7 Kozilek blocks, 8 combat damage, 9 Isamaru dies.
+     * 7 Kozilek blocks, 8 combat damage, 9 Isamaru dies. Card moments (phase 16): 10 Pitiless Plunderer enters and Kozilek
+     * takes two -1/-1 counters, 11 a charge counter on Sol Ring, Plunderer pumped +3/+0 and a Soldier token, 12 Plunderer
+     * phases out, 13 it phases back in, 14 you gain control of Kozilek, 15 Plunderer transforms.
      */
     fun boardFXStep(step: Int): GameSnapshot {
         @Suppress("UNCHECKED_CAST")
@@ -159,7 +161,7 @@ object GameBoardPreviewFixtures {
         root["bridgeRevision"] = 1_000 + step
         root["legalActions"] = mutableListOf<Any?>()
         val steps = mapOf(6 to "declare-attackers", 7 to "declare-blockers", 8 to "combat-damage", 9 to "end-combat")
-        root["phase"] = if (step >= 6) "combat" else "precombat-main"
+        root["phase"] = if (step in 6..9) "combat" else if (step >= 10) "postcombat-main" else "precombat-main"
         root["step"] = steps[step] ?: "precombat-main"
         val players = players(root)
         val costs = mapOf("Swords to Plowshares" to "{W}", "Sol Ring" to "{1}", "Isamaru, Hound of Konda" to "{W}", "Serra Angel" to "{3}{W}{W}",
@@ -224,6 +226,26 @@ object GameBoardPreviewFixtures {
             players[human]["life"] = 37
         }
         if (step >= 9) move("human-commander", human to "battlefield", human to "graveyard")
+        if (step >= 10) {
+            editCard("ai-kozilek", ai) { it["counters"] = mutableMapOf("-1/-1" to 2); it["power"] = 10; it["toughness"] = 10 }
+            val plunderer = mutableMapOf<String, Any?>("instanceId" to "human-plunderer", "tapped" to false, "power" to 1, "toughness" to 4,
+                "isCreaturePermanent" to true, "card" to mutableMapOf("name" to "Pitiless Plunderer", "typeLine" to "Creature - Human Pirate",
+                    "manaCost" to "{3}{B}", "oracleText" to "Whenever another creature you control dies, create a Treasure token."))
+            setZone(human, "battlefield", zone(human, "battlefield") + plunderer)
+        }
+        if (step >= 11) {
+            editCard("human-sol-ring", human) { it["counters"] = mutableMapOf("charge" to 1) }
+            editCard("human-plunderer", human) { it["power"] = 4 }
+            val soldier = mutableMapOf<String, Any?>("instanceId" to "human-fx-soldier", "tapped" to false, "power" to 1, "toughness" to 1,
+                "isCreaturePermanent" to true, "card" to mutableMapOf("name" to "Soldier", "typeLine" to "Token Creature - Soldier",
+                    "isToken" to true, "oracleText" to ""))
+            setZone(human, "battlefield", zone(human, "battlefield") + soldier)
+        }
+        if (step == 12) editCard("human-plunderer", human) { it["phasedIn"] = false }
+        if (step >= 14) move("ai-kozilek", ai to "battlefield", human to "battlefield")
+        if (step >= 15) editCard("human-plunderer", human) {
+            val identity = map(it["card"]); identity["name"] = "Insectile Aberration"; identity["typeLine"] = "Creature - Human Insect"
+        }
         var combat = mutableListOf<Any?>()
         if (step in 6..8) {
             val attacker = zone(human, "battlefield").first { it["instanceId"] == "human-commander" }

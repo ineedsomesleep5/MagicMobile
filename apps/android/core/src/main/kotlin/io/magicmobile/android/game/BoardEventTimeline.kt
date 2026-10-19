@@ -60,7 +60,10 @@ data class BoardFXState(val gameID: String, val step: String, val lives: Map<Str
     /** `keywords`: combat keywords, read only for cards attacking or blocking. */
     data class Card(val id: String, val playerID: String, val zone: BoardFXZone, val name: String, val tint: BoardFXTint, val damage: Int,
                     val counters: Int, val attacking: Boolean, val blocking: List<String> = emptyList(), val isLand: Boolean = false,
-                    val isToken: Boolean = false, val keywords: Set<CombatKeyword> = emptySet())
+                    val isToken: Boolean = false, val keywords: Set<CombatKeyword> = emptySet(),
+                    /** Counters by XMage name ("+1/+1", "loyalty", ...), for the counter moment. */
+                    val counterKinds: Map<String, Int> = emptyMap(), val power: Int? = null, val toughness: Int? = null,
+                    val phasedOut: Boolean = false)
     data class StackItem(val id: String, val name: String, val controllerID: String?, val tint: BoardFXTint, val isAbility: Boolean = false,
                          val manaValue: Int = 0)
 
@@ -78,7 +81,10 @@ data class BoardFXState(val gameID: String, val step: String, val lives: Map<Str
                     if (cards.containsKey(card.instanceId)) continue
                     cards[card.instanceId] = Card(card.instanceId, player.playerId, zone, card.card.name, BoardFXTint.of(card.card), card.damage ?: 0,
                         (card.counters ?: emptyMap()).values.sum(), card.isAttacking == true, card.blocking ?: emptyList(), card.card.isLand,
-                        card.card.isToken == true, if (zone == BoardFXZone.BATTLEFIELD && card.isInCombat) card.combatKeywords.toSet() else emptySet())
+                        card.card.isToken == true, if (zone == BoardFXZone.BATTLEFIELD && card.isInCombat) card.combatKeywords.toSet() else emptySet(),
+                        if (zone == BoardFXZone.BATTLEFIELD) card.counters ?: emptyMap() else emptyMap(),
+                        if (zone == BoardFXZone.BATTLEFIELD) card.power else null, if (zone == BoardFXZone.BATTLEFIELD) card.toughness else null,
+                        zone == BoardFXZone.BATTLEFIELD && card.isPhasedOut)
                 }
                 for (card in z.command) if (card.card.isToken != true) commandNames += card.card.name
             }
@@ -96,6 +102,35 @@ data class BoardFXState(val gameID: String, val step: String, val lives: Map<Str
             }
             return BoardFXState(snapshot.id, (snapshot.step ?: snapshot.phase).lowercase().replace("_", "-"), lives, cards, stack, defenders,
                 commandNames, blocked)
+        }
+    }
+}
+
+/**
+ * Which counter moment plays: a green gem for +1/+1, a violet drop for -1/-1, a blue shield for loyalty, a brass coin for
+ * any other counter (Swift `BoardFXCounterKind`).
+ */
+enum class BoardFXCounterKind {
+    PLUS_ONE, MINUS_ONE, LOYALTY, OTHER;
+
+    /** The power and toughness one counter of this kind adds. */
+    val stats: Int get() = when (this) { PLUS_ONE -> 1; MINUS_ONE -> -1; else -> 0 }
+
+    /** What the counters do, not how many arrived: two -1/-1 counters read "-2/-2", never "+2". */
+    fun label(delta: Int): String {
+        fun signed(value: Int) = if (value >= 0) "+$value" else "$value"
+        return when (this) {
+            PLUS_ONE, MINUS_ONE -> "${signed(stats * delta)}/${signed(stats * delta)}"
+            LOYALTY, OTHER -> signed(delta)
+        }
+    }
+
+    companion object {
+        fun of(name: String): BoardFXCounterKind = when (name.lowercase().replace(" ", "")) {
+            "+1/+1", "p1p1" -> PLUS_ONE
+            "-1/-1", "m1m1" -> MINUS_ONE
+            "loyalty" -> LOYALTY
+            else -> OTHER
         }
     }
 }
@@ -125,20 +160,32 @@ sealed class BoardFXEvent {
     data class DamageMarked(val cardID: String, val amount: Int) : BoardFXEvent()
     data class LeftBattlefield(val cardID: String, val playerID: String, val to: BoardFXZone?, val tint: BoardFXTint) : BoardFXEvent()
     data class EnteredBattlefield(val cardID: String, val playerID: String, val from: BoardFXZone?, val tint: BoardFXTint, val entrance: BoardFXEntrance) : BoardFXEvent()
-    data class CountersAdded(val cardID: String, val amount: Int) : BoardFXEvent()
+    /** Counters of one kind added (`delta` > 0) or removed (`delta` < 0). */
+    data class CountersChanged(val cardID: String, val kind: BoardFXCounterKind, val delta: Int) : BoardFXEvent()
+    /** Power and toughness changed by something other than counters (a pump, an anthem, a shrink). */
+    data class StatsChanged(val cardID: String, val power: Int, val toughness: Int) : BoardFXEvent()
+    /** Phased out (`out`) or back in. The tile shows the phased-out state itself; this is the moment. */
+    data class Phased(val cardID: String, val out: Boolean) : BoardFXEvent()
+    /** The same permanent now shows another face (transform, flip, day/night). */
+    data class Transformed(val cardID: String, val name: String) : BoardFXEvent()
+    /** Another player gained control of the permanent. */
+    data class ControlChanged(val cardID: String, val from: String, val to: String) : BoardFXEvent()
     data class LifeChanged(val playerID: String, val delta: Int) : BoardFXEvent()
 
     /** Presentation order inside one snapshot transition. */
     val order: Int get() = when (this) {
         is SpellCast -> 0; is AttackDeclared -> 1; is BlockDeclared -> 2; FirstStrikeBeat -> 3
         is CombatStrike -> if (firstStrike) 4 else 5; is DamageMarked -> 6
-        is LeftBattlefield -> 7; is EnteredBattlefield -> 8; is CountersAdded -> 9; is LifeChanged -> 10
+        is LeftBattlefield -> 7; is Phased -> if (out) 7 else 8
+        is EnteredBattlefield, is Transformed, is ControlChanged -> 8
+        is CountersChanged, is StatsChanged -> 9; is LifeChanged -> 10
     }
 
     /** Card, stack object or player the effect is about. */
     val subjectID: String get() = when (this) {
         is SpellCast -> stackID; is LeftBattlefield -> cardID; is DamageMarked -> cardID; is EnteredBattlefield -> cardID
-        is CountersAdded -> cardID; is AttackDeclared -> cardID; is BlockDeclared -> cardID; is CombatStrike -> attackerID; is LifeChanged -> playerID
+        is CountersChanged -> cardID; is AttackDeclared -> cardID; is BlockDeclared -> cardID; is CombatStrike -> attackerID; is LifeChanged -> playerID
+        is StatsChanged -> cardID; is Phased -> cardID; is Transformed -> cardID; is ControlChanged -> cardID
         FirstStrikeBeat -> FIRST_STRIKE_SUBJECT
     }
 
@@ -155,6 +202,37 @@ sealed class BoardFXEvent {
 }
 
 object BoardEventDiffer {
+    /**
+     * What changed on a permanent that stayed on the battlefield, besides combat and damage: who controls it, its face,
+     * phasing, counters by kind and power/toughness beyond what the counters explain.
+     */
+    fun permanentChanges(previous: BoardFXState.Card, card: BoardFXState.Card): List<BoardFXEvent> {
+        val events = mutableListOf<BoardFXEvent>()
+        if (card.playerID != previous.playerID) events += BoardFXEvent.ControlChanged(card.id, previous.playerID, card.playerID)
+        if (card.name != previous.name) events += BoardFXEvent.Transformed(card.id, card.name)
+        if (card.phasedOut != previous.phasedOut) events += BoardFXEvent.Phased(card.id, card.phasedOut)
+        val byKind = LinkedHashMap<BoardFXCounterKind, Int>()
+        for (name in previous.counterKinds.keys + card.counterKinds.keys) {
+            val delta = (card.counterKinds[name] ?: 0) - (previous.counterKinds[name] ?: 0)
+            if (delta != 0) byKind[BoardFXCounterKind.of(name)] = (byKind[BoardFXCounterKind.of(name)] ?: 0) + delta
+        }
+        // A snapshot without counter names still shows the total going up (older fixtures).
+        if (byKind.isEmpty() && card.counterKinds.isEmpty() && previous.counterKinds.isEmpty() && card.counters != previous.counters)
+            byKind[BoardFXCounterKind.OTHER] = card.counters - previous.counters
+        for (kind in BoardFXCounterKind.entries) {
+            val delta = byKind[kind] ?: 0
+            if (delta != 0) events += BoardFXEvent.CountersChanged(card.id, kind, delta)
+        }
+        // A new face has new printed stats, so only the same face reports a change.
+        val power = card.power; val toughness = card.toughness; val oldPower = previous.power; val oldToughness = previous.toughness
+        if (card.name == previous.name && power != null && toughness != null && oldPower != null && oldToughness != null) {
+            val fromCounters = byKind.entries.sumOf { it.key.stats * it.value }
+            val dPower = power - oldPower - fromCounters; val dToughness = toughness - oldToughness - fromCounters
+            if (dPower != 0 || dToughness != 0) events += BoardFXEvent.StatsChanged(card.id, dPower, dToughness)
+        }
+        return events
+    }
+
     /** Steps before combat damage; leaving them with attackers present means damage was dealt. */
     val preDamageSteps = setOf("combat", "begin-combat", "declare-attackers", "declare-blockers")
     /** Spells at or above this printed mana value get the big-spell flash. */
@@ -220,7 +298,7 @@ object BoardEventDiffer {
             val attacker = card.blocking.firstOrNull()
             if (attacker != null && previous.blocking.isEmpty()) events += BoardFXEvent.BlockDeclared(card.id, attacker)
             if (card.damage > previous.damage) events += BoardFXEvent.DamageMarked(card.id, card.damage - previous.damage)
-            if (card.counters > previous.counters) events += BoardFXEvent.CountersAdded(card.id, card.counters - previous.counters)
+            events += permanentChanges(previous, card)
         }
         events += combatStrikes(old, new)
         for ((playerID, life) in new.lives.toSortedMap()) {
@@ -455,7 +533,11 @@ object BoardFXScheduler {
         }
         is BoardFXEvent.LeftBattlefield -> if (motion) 0.95 else 0.9
         is BoardFXEvent.DamageMarked -> 0.8
-        is BoardFXEvent.CountersAdded -> 0.7
+        is BoardFXEvent.CountersChanged -> if (motion) 1.0 else 0.7
+        is BoardFXEvent.StatsChanged -> if (motion) 1.0 else 0.8
+        is BoardFXEvent.Phased -> if (motion) 1.1 else 0.7
+        is BoardFXEvent.Transformed -> if (motion) 0.9 else 0.6
+        is BoardFXEvent.ControlChanged -> if (motion) 1.2 else 0.7
         is BoardFXEvent.AttackDeclared -> if (motion) 0.7 else 0.6
         is BoardFXEvent.BlockDeclared -> if (motion) 0.8 else 0.6
         is BoardFXEvent.CombatStrike -> if (motion) 0.95 else 0.6
@@ -472,7 +554,9 @@ data class ActiveBoardFX(val scheduled: ScheduledBoardFX, val start: Long) {
 
 /** `hidden`: windows per card, in the order their effects were scheduled (a double striker flies twice). */
 data class BoardFXCardMotion(val hidden: Map<String, List<Hidden>> = emptyMap(), val lunges: Map<String, Lunge> = emptyMap(),
-                             val stances: Map<String, Stance> = emptyMap()) {
+                             val stances: Map<String, Stance> = emptyMap(),
+                             /** Cards turning over to a new face, keyed to the effect that turns them (one flip per token). */
+                             val flips: Map<String, Int> = emptyMap()) {
     /** -1 moves up the screen (the viewer's creatures), +1 moves down. */
     data class Lunge(val token: Int, val direction: Double)
     /** A window, timed from the batch's first drawn frame, in which a flight draws the card instead of its tile. */
@@ -532,6 +616,8 @@ class BoardFXDirector {
             for (fx in scheduled) when (val event = fx.event) {
                 is BoardFXEvent.EnteredBattlefield -> battlefield[event.cardID]?.let { nextSubjects[event.cardID] = it }
                 is BoardFXEvent.LeftBattlefield -> departedFaces[event.cardID]?.let { nextSubjects[event.cardID] = it }
+                // The flip shows the old face turning over to the new one.
+                is BoardFXEvent.Transformed -> departedFaces[event.cardID]?.let { nextSubjects[event.cardID] = it }
                 is BoardFXEvent.CombatStrike -> (departedFaces[event.attackerID] ?: battlefield[event.attackerID])?.let { nextSubjects[event.attackerID] = it }
                 is BoardFXEvent.SpellCast -> snapshot.stackTopFirst.firstOrNull { it.id == event.stackID }?.displaySourceCard?.let { nextSubjects[event.stackID] = it }
                 else -> {}
@@ -555,6 +641,7 @@ class BoardFXDirector {
         val hidden = HashMap<String, MutableList<BoardFXCardMotion.Hidden>>()
         val lunges = HashMap<String, BoardFXCardMotion.Lunge>()
         val stances = HashMap<String, BoardFXCardMotion.Stance>()
+        val flips = HashMap<String, Int>()
         for (effect in active) {
             if (!effect.scheduled.usesMotion) continue
             val fx = effect.scheduled
@@ -568,6 +655,7 @@ class BoardFXDirector {
                     val owner = previous?.cards?.get(event.cardID)?.playerID
                     lunges[event.cardID] = BoardFXCardMotion.Lunge(effect.id, if (owner == viewerID) -1.0 else 1.0)
                 }
+                is BoardFXEvent.Transformed -> flips[event.cardID] = effect.id
                 else -> {}
             }
         }
@@ -577,7 +665,7 @@ class BoardFXDirector {
             if (card.attacking) stances[card.id] = BoardFXCardMotion.Stance(BoardFXCardMotion.Stance.Kind.ATTACKING, direction, level == BoardFXLevel.FULL)
             else if (card.blocking.isNotEmpty()) stances[card.id] = BoardFXCardMotion.Stance(BoardFXCardMotion.Stance.Kind.BLOCKING, direction, level == BoardFXLevel.FULL)
         }
-        return BoardFXCardMotion(hidden, lunges, stances)
+        return BoardFXCardMotion(hidden, lunges, stances, flips)
     }
 
     val latestEnd: Long? get() = active.maxOfOrNull { it.endDate }

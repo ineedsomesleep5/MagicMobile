@@ -368,3 +368,8 @@ contradicting one.
   (`text-transform: uppercase`); keep such names out of Cormorant SC text in the app, or uppercase them.
   Headless Chrome's `--window-size` can't go below about 500 px wide, so phone-width site screenshots
   need playwright-core with a real 390 px viewport.
+- 2026-10-19 (Claude, card moments): an image set named `tavern-*` in the iOS asset catalogue reaches Android for free
+  (`prepareBrandAssets` copies every `tavern-*.imageset/*.png` into drawable-nodpi, dashes to underscores), so new board
+  art needs no Gradle change if it follows that name. XMage's reported power and toughness already include counters:
+  subtract the counters' share before calling something a pump, or every +1/+1 counter also plays a stats moment. And
+  check the card view before adding a board state look: `ArenaBattlefieldCard` already dims phased-out permanents.

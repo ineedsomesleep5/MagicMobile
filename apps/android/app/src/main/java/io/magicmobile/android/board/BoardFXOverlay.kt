@@ -699,6 +699,11 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
     val measurer = rememberTextMeasurer()
     val ribbon = io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_card_ribbon)
     val art = if (tavern) remember(ribbon) { TavernFXArt(ribbon) } else null
+    val sprites = FXSprites(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_fx_counter_plus),
+        io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_fx_counter_minus),
+        io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_fx_counter_loyalty),
+        io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_fx_counter_coin),
+        io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_fx_exile_ring))
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     // While the phone is hot (DeviceHeat), every other frame: about 30 fps.
     LaunchedEffect(effects) {
@@ -771,7 +776,7 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
         Canvas(Modifier.fillMaxSize()) {
             for (effect in effects) {
                 val p = progress(effect) ?: continue
-                drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point, art)
+                drawEffect(effect.scheduled, p, p * effect.scheduled.duration, measurer, anchors, subjects, ::rect, ::point, art, sprites)
             }
         }
         val placed = flights.mapNotNull { flight -> progress(flight.effect)?.let { p -> flight.placement(p)?.let { Triple(flight, p, it) } } }
@@ -811,7 +816,7 @@ fun BoardFXOverlay(effects: List<ActiveBoardFX>, subjects: Map<String, ZoneCard>
 
 private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Double, measurer: TextMeasurer, anchors: BoardFXAnchors,
                                  subjects: Map<String, ZoneCard>, rect: (String) -> BoardRect?, point: (BoardFXStrikeTarget) -> BoardPoint?,
-                                 art: TavernFXArt? = null) { with(BoardFXPainter) {
+                                 art: TavernFXArt? = null, sprites: FXSprites? = null) { with(BoardFXPainter) { with(BoardFXCardMoments) {
     val motion = fx.usesMotion
     val tavern = art != null
     // An opponent's name over the ribbon, so a glance says whose spell it is; nothing for yours.
@@ -918,6 +923,8 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
                 sparks(r, emberLight, 26, glow, fx.id + 7, BoardFXPainter.SparkStyle.BURST)
                 shockwave(BoardPoint(r.midX, r.maxY - 6), ember.copy(alpha = 0.6f), 110.0, min(1.0, glow * 1.3))
             }
+            // A token gathers out of motes of its colour.
+            if (motion && subjects[event.cardID]?.card?.isToken == true) gather(r, color, 20, glow, fx.id + 3)
             if (motion) {
                 sparks(r, color, if (event.entrance == BoardFXEntrance.COMMANDER) 34 else 16, glow, fx.id, BoardFXPainter.SparkStyle.RISE)
                 if (event.entrance == BoardFXEntrance.COMMANDER) shockwave(BoardPoint(r.midX, r.midY), color, 150.0, glow)
@@ -925,6 +932,8 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
         }
         is BoardFXEvent.LeftBattlefield -> {
             val r = rect(event.cardID) ?: return
+            // Behind the cold burn: a pillar of light and the turning sigil (Path to Exile and friends).
+            if (event.to == BoardFXZone.EXILE) exileMoment(sprites, r, p, motion, elapsed, fx.id)
             if (!(motion && subjects[event.cardID] != null)) departure(r, event.tint.color, event.to, p, motion, tavern)
             if (motion) {
                 val exile = event.to == BoardFXZone.EXILE
@@ -937,10 +946,25 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             if (motion) sparks(r, rgb(1.0, 0.3, 0.2), 12, p, fx.id, BoardFXPainter.SparkStyle.BURST)
             number(measurer, "-${event.amount}", BoardPoint(r.midX, r.midY), rgb(1.0, 0.32, 0.28), 26.0, p, motion)
         }
-        is BoardFXEvent.CountersAdded -> {
+        is BoardFXEvent.CountersChanged -> {
             val r = rect(event.cardID) ?: return
-            if (motion) sparks(r, rgb(0.55, 1.0, 0.55), 10, p, fx.id, BoardFXPainter.SparkStyle.RISE)
-            number(measurer, "+${event.amount}", BoardPoint(r.midX, r.y + 12), rgb(0.55, 1.0, 0.55), 20.0, p, motion)
+            counterMoment(measurer, sprites, event.kind, event.delta, r, p, motion, fx.id)
+        }
+        is BoardFXEvent.StatsChanged -> {
+            val r = rect(event.cardID) ?: return
+            statsMoment(measurer, event.power, event.toughness, r, p, motion)
+        }
+        is BoardFXEvent.Phased -> {
+            val r = rect(event.cardID) ?: return
+            phaseMoment(event.out, r, p, motion, fx.id)
+        }
+        is BoardFXEvent.Transformed -> {
+            val r = rect(event.cardID) ?: return
+            transformMoment(r, gold, p, motion, fx.id)
+        }
+        is BoardFXEvent.ControlChanged -> {
+            val r = rect(event.cardID) ?: return
+            chainMoment(anchors.playerPoint(event.from), r, p, motion, fx.id)
         }
         is BoardFXEvent.AttackDeclared -> {
             val r = rect(event.cardID) ?: return
@@ -973,7 +997,7 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
             number(measurer, if (event.delta < 0) "${event.delta}" else "+${event.delta}", at, color, size, p, motion)
         }
     }
-} }
+} } }
 
 /** Board events to recorded cues (Swift BoardFXSound). */
 object BoardFXSound {
@@ -1015,7 +1039,11 @@ object BoardFXSound {
                     else if (arrival.isLand) GameSound.LAND_DROP else if (arrival.isToken) GameSound.TOKEN_CREATE else GameSound.CREATURE_ENTER
                 cues += Cue(sound, fx.landing)
             }
-            is BoardFXEvent.CountersAdded -> cues += Cue(GameSound.COUNTER, fx.delay)
+            is BoardFXEvent.CountersChanged -> cues += Cue(GameSound.COUNTER, fx.delay, if (event.delta > 0) 1f else 0.5f)
+            is BoardFXEvent.StatsChanged -> cues += Cue(GameSound.COUNTER, fx.delay, 0.4f)
+            is BoardFXEvent.Phased -> cues += Cue(GameSound.EXILE, fx.delay, 0.55f)
+            is BoardFXEvent.Transformed -> cues += Cue(GameSound.CARD_PLAY, fx.delay)
+            is BoardFXEvent.ControlChanged -> cues += Cue(GameSound.CARD_PICKUP, fx.delay)
             is BoardFXEvent.LifeChanged -> if (event.delta > 0) cues += Cue(GameSound.LIFE_GAIN, fx.delay, if (event.playerID == viewerID) 1f else 0.55f)
                 else if (event.playerID == viewerID && !hasStrike) cues += Cue(GameSound.LIFE_LOSS, fx.delay)
         }

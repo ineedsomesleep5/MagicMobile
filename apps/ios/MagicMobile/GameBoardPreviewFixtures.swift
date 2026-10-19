@@ -90,20 +90,22 @@ enum GameBoardPreviewFixtures {
         return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
     }
 
-    static let boardFXStepCount = 10
+    static let boardFXStepCount = 16
 
     /// Scripted board FX walkthrough for `MAGICMOBILE_DESIGN_PREVIEW=board-fx`.
     /// 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI life -5),
     /// 3 Sol Ring enters straight from hand (showcase) with a counter on Isamaru,
     /// 4 AI casts its commander Kozilek, 5 Kozilek enters (commander entrance),
-    /// 6 Isamaru attacks, 7 Kozilek blocks, 8 combat damage (strike), 9 Isamaru dies.
+    /// 6 Isamaru attacks, 7 Kozilek blocks, 8 combat damage (strike), 9 Isamaru dies. Card moments (phase 16):
+    /// 10 Pitiless Plunderer enters and Kozilek takes two -1/-1 counters, 11 a charge counter on Sol Ring, Plunderer pumped +3/+0 and a Soldier token,
+    /// 12 Plunderer phases out, 13 it phases back in, 14 you gain control of Kozilek, 15 Plunderer transforms.
     static func boardFXStep(_ step: Int) -> GameSnapshot {
         var root = try! JSONSerialization.jsonObject(with: Data(json(for: .normalBattlefield).utf8)) as! [String: Any]
         root["id"] = "design-preview-board-fx"
         root["bridgeRevision"] = 1_000 + step
         root["legalActions"] = []
         let steps = [6: "declare-attackers", 7: "declare-blockers", 8: "combat-damage", 9: "end-combat"]
-        root["phase"] = step >= 6 ? "combat" : "precombat-main"
+        root["phase"] = (6...9).contains(step) ? "combat" : step >= 10 ? "postcombat-main" : "precombat-main"
         root["step"] = steps[step] ?? "precombat-main"
         var players = root["players"] as! [[String: Any]]
         let costs = ["Swords to Plowshares": "{W}", "Sol Ring": "{1}", "Isamaru, Hound of Konda": "{W}", "Serra Angel": "{3}{W}{W}",
@@ -176,6 +178,33 @@ enum GameBoardPreviewFixtures {
             players[human]["life"] = 37
         }
         if step >= 9 { move("human-commander", from: (human, "battlefield"), to: (human, "graveyard")) }
+        if step >= 10 {
+            editCard("ai-kozilek", player: ai) { $0["counters"] = ["-1/-1": 2]; $0["power"] = 10; $0["toughness"] = 10 }
+            let plunderer: [String: Any] = [
+                "instanceId": "human-plunderer", "tapped": false, "power": 1, "toughness": 4, "isCreaturePermanent": true,
+                "card": ["name": "Pitiless Plunderer", "typeLine": "Creature - Human Pirate", "manaCost": "{3}{B}",
+                         "oracleText": "Whenever another creature you control dies, create a Treasure token."],
+            ]
+            setZone(human, "battlefield", zone(human, "battlefield") + [plunderer])
+        }
+        if step >= 11 {
+            editCard("human-sol-ring", player: human) { $0["counters"] = ["charge": 1] }
+            editCard("human-plunderer", player: human) { $0["power"] = 4 }
+            let soldier: [String: Any] = [
+                "instanceId": "human-fx-soldier", "tapped": false, "power": 1, "toughness": 1, "isCreaturePermanent": true,
+                "card": ["name": "Soldier", "typeLine": "Token Creature - Soldier", "isToken": true, "oracleText": ""],
+            ]
+            setZone(human, "battlefield", zone(human, "battlefield") + [soldier])
+        }
+        if step == 12 { editCard("human-plunderer", player: human) { $0["phasedIn"] = false } }
+        if step >= 14 { move("ai-kozilek", from: (ai, "battlefield"), to: (human, "battlefield")) }
+        if step >= 15 {
+            editCard("human-plunderer", player: human) { card in
+                var identity = card["card"] as! [String: Any]
+                identity["name"] = "Insectile Aberration"; identity["typeLine"] = "Creature - Human Insect"
+                card["card"] = identity
+            }
+        }
         var combat: [[String: Any]] = []
         if (6...8).contains(step) {
             let attacker = zone(human, "battlefield").first { $0["instanceId"] as? String == "human-commander" }!
