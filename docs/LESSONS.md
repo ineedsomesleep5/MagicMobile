@@ -56,6 +56,13 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-19 (Claude): The dice table's recorded throws (`scripts/brand/d20.py --mode throws`) are tuned offline; the
+  apps only play them. To change how a throw feels, change `START_DISTANCE`/`REST_SPOT`/`RAIL_KISS`/`PROFILES` and the
+  picker, and check them with a quick harness that runs `simulate` and `throw_is_good` under Blender's bundled Python
+  (`/Applications/Blender.app/Contents/Resources/5.2/python/bin/python3.13`; Homebrew's python3 has no numpy) before a
+  Blender run. The resting face does not matter (the apps turn the die by a symmetry), and every throw must still touch
+  the rail: `railTime` is required on both platforms and BoardPolishUITests expects "Rebounded from screen edge".
+  Where: d20.py, `D20TableLayout` (`throwDepth` 11.5, 34–50 points per radius) in StartingRollDice.swift/.kt.
 - 2026-10-19 (Claude): Ranked AI games used the shared "Who goes first?" preference (default "choose", and the
   Ranked lobby has no picker), so a ranked game asked the player to pick the starter instead of rolling the D20.
   **Rule:** a game's starting mode comes from `PlayMode.startingPlayerMode(preference:)` (Ranked always "roll"), not

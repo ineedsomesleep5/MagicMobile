@@ -161,28 +161,37 @@ extension BoardFXPainter {
         sparks(from: rect, color: exileCyan, count: 18, progress: p, seed: seed &+ 31, style: .rise, in: &context)
     }
 
-    /// Control change: a brass chain reaches from the old controller to the card, then snaps as the card settles in its
-    /// new rows.
-    static func chainMoment(from origin: CGPoint, to rect: CGRect, progress p: Double, motion: Bool, seed: Int,
+    /// A steal: the taker's chain shoots out of their portrait to the card on its old side, hooks it, drags it home
+    /// (BoardFXFlight.pulled draws the card on the chain) and lets go with a flash where it lands. Without motion
+    /// `grab` is the card's new place: the chain only reaches it.
+    static func chainMoment(from taker: CGPoint, grab: CGRect, to rect: CGRect, progress p: Double, motion: Bool, seed: Int,
                             in context: inout GraphicsContext) {
+        let hook = BoardFXScheduler.stealHookFraction, land = BoardFXScheduler.stealLandingFraction
         var layer = context
         layer.blendMode = .plusLighter
-        let target = CGPoint(x: rect.midX, y: rect.midY)
-        let reach = easeOut(min(1, p / 0.45))
-        let end = CGPoint(x: origin.x + (target.x - origin.x) * reach, y: origin.y + (target.y - origin.y) * reach)
-        let snap = p > 0.55
-        layer.opacity = snap ? max(0, 1 - (p - 0.55) / 0.3) : 1
+        let grabCenter = CGPoint(x: grab.midX, y: grab.midY)
+        let end = p < hook ? BoardFXFlight.lerp(taker, grabCenter, easeOut(p / hook))
+            : BoardFXFlight.pulledCenter(from: grab, to: rect, progress: p)
+        layer.opacity = p < land ? 1 : max(0, 1 - (p - land) / 0.16)
         var chain = Path()
-        chain.move(to: origin)
+        chain.move(to: taker)
         chain.addLine(to: end)
         layer.stroke(chain, with: .color(brassChain.opacity(0.35)), style: StrokeStyle(lineWidth: 10, lineCap: .round))
         // Links: alternate long ovals, drawn as a dashed double stroke.
         layer.stroke(chain, with: .color(brassChain), style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [9, 5]))
         layer.stroke(chain, with: .color(.white.opacity(0.55)), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [9, 5]))
-        if p > 0.45 {
-            let q = (p - 0.45) / 0.55
+        // The hook at the chain's head.
+        layer.stroke(Path(ellipseIn: CGRect(x: end.x - 6, y: end.y - 6, width: 12, height: 12)), with: .color(brassChain),
+                     style: StrokeStyle(lineWidth: 2.5))
+        // It bites: a brass burst on the card where it was taken.
+        let bite = (p - hook * 0.85) / 0.22
+        if motion, bite > 0, bite < 1 {
+            sparks(from: grab, color: brassChain, count: 10, progress: bite, seed: seed, style: .burst, in: &context)
+        }
+        if p > land {
+            let q = (p - land) / (1 - land)
             arrivalGlow(rect, color: brassChain, progress: q, motion: motion, in: &context)
-            if motion { sparks(from: rect, color: gold, count: 14, progress: q, seed: seed, style: .burst, in: &context) }
+            if motion { sparks(from: rect, color: gold, count: 14, progress: q, seed: seed &+ 1, style: .burst, in: &context) }
         }
     }
 

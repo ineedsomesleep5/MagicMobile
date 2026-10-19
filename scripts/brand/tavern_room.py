@@ -31,10 +31,10 @@ PROPS = arg("--props", os.path.expanduser("~/Movies/motion-assets/magicmobile-br
 OUT = arg("--out-dir", "build_output/tavern/room")
 SAMPLES = int(arg("--samples", "96"))
 PREVIEW = "--preview" in ARGV
-# --look v2 (2026-10-19 art pass, for Caleb's review; v1 stays the default until he picks): a thin warm haze in the
-# back layer only, so the hearth and lanterns throw soft shafts while the parallax layers in front stay clean, and a
-# hotter hearth bounce on the floor and beams.
-LOOK = arg("--look", "v1")
+# --look v2 (2026-10-19 art pass; Caleb picked it, so it is the default): a thin warm haze in the back layer only, so
+# the hearth and lanterns throw soft shafts while the parallax layers in front stay clean, and a hotter hearth bounce
+# on the floor and beams. --look v1 renders the earlier room.
+LOOK = arg("--look", "v2")
 ORIENTATIONS = {"portrait": (1200, 2600), "landscape": (2600, 1200)}
 if PREVIEW:
     ORIENTATIONS = {k: (w // 3, h // 3) for k, (w, h) in ORIENTATIONS.items()}

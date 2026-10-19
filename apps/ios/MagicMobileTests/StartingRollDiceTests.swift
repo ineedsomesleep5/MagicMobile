@@ -93,7 +93,7 @@ final class StartingRollDiceTests: XCTestCase {
                     XCTAssertGreaterThan(pose.position.y, model.inradius - 0.2, "throw \(index) t \(t) is below the table")
                     XCTAssertLessThan(pose.position.y, 8, "throw \(index) t \(t) is out of sight above")
                     XCTAssertLessThan(abs(pose.position.x - 2.45), 0.6)
-                    XCTAssertLessThan(pose.position.z, 1.2, "the die stays this side of the middle of the mat")
+                    XCTAssertLessThan(pose.position.z, 7.6, "the die stays on the mat, inside its near edge")
                     t += 1.0 / 60
                 }
             }
@@ -103,8 +103,9 @@ final class StartingRollDiceTests: XCTestCase {
     func testThrowsStayInTheirLaneAndHitTheRailLow() throws {
         let bank = try bank()
         for recorded in bank.recordings {
-            XCTAssertGreaterThan(recorded.railTime, 0.3)
+            XCTAssertGreaterThan(recorded.railTime, 0.8, "it rolls the table's length before it reaches the rail")
             XCTAssertLessThan(recorded.railTime, recorded.duration)
+            XCTAssertGreaterThan(recorded.position(at: 0).z, 12, "it comes in from the viewer's edge of the table")
             for frame in 0..<recorded.frames {
                 XCTAssertLessThan(abs(recorded.position(at: frame).x), 0.4, "the die stays in its lane")
             }

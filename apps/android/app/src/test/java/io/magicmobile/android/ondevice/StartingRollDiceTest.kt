@@ -71,7 +71,9 @@ class StartingRollDiceTest {
 
     @Test fun throwsStayInTheirLaneAndHitTheRailLow() {
         for (recorded in bank) {
-            assertTrue(recorded.railTime > 0.3f && recorded.railTime < recorded.duration)
+            // It comes in from the viewer's edge of the table and rolls its length before reaching the rail.
+            assertTrue(recorded.railTime > 0.8f && recorded.railTime < recorded.duration)
+            assertTrue(recorded.position(0).z > 12f)
             for (frame in 0 until recorded.frames) assertTrue(abs(recorded.position(frame).x) < 0.4f)
             assertTrue(recorded.position(recorded.frames - 1).z > 1.2f)
         }
