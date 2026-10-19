@@ -136,7 +136,9 @@ def r_response_alert():
 
 
 def r_menu_play():
-    return sonniss("Magic_Spells_Impact_Air24", 0.0, 1.4, fade_out=0.5, stereo=True)
+    """Play Commander (and the other "go" buttons: Ranked, Quick Match, a combo loop): a blade drawn. Caleb picked it
+    without the fire behind it (trials.py round 3), 2026-10-19; until then an airy magic impact."""
+    return sonniss("Knife_Sword_Shing_Fienup_001", 0.05, 0.90, fade_out=0.3, stereo=True)
 
 
 def r_page_flip():

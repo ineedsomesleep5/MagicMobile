@@ -30,7 +30,6 @@ Bundle / pack / file:
 - GDC 2020 / David Dumais Audio - Magic Sound FX Pack 1 / `Magic_Explosion_Short19.wav`
 - GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_CastShort_Push14.wav`
 - GDC 2020 / David Dumais Audio - Water Magic 1 / `Magic_Spells_CastShort_Water_General07.wav`
-- GDC 2020 / David Dumais Audio - Air Magic 1 / `Magic_Spells_Impact_Air24.wav`
 - GDC 2020 / David Dumais Audio - Spells Magic 1 / `Magic_Spells_Impact_Creation20.wav`
 - GDC 2020 / David Dumais Audio - Magic Sound FX Pack 1 / `Magic_Transformation03.wav`
 - GDC 2019 / Impact Soundworks - Super FX 8 and 16-bit Video Game SFX / `Misc_Glass_Crystal_Shatter.wav`
@@ -86,6 +85,9 @@ Used by `steal` (2026-10-19): `metalLatch`, `beltHandle1`, `beltHandle2` (with C
 are Ogg Vorbis, which `afconvert` does not read: convert with
 `ffmpeg -i <file>.ogg -ar 44100 -c:a pcm_f32le <pack>__<file>.wav` (`rpg-audio__metalLatch.wav`).
 
+## Play Commander (`menu-play`, 2026-10-19)
+Sonniss: GDC 2015 / Soundopolis - Blades / `Knife_Sword_Shing_Fienup_001.wav`.
+
 ## Deck Studio's spell book (`book-open`, `book-close`, 2026-10-19)
 Sonniss: GDC 2019 / PMSFX - Books Alive / `PM_BA_BOOK_0_29 Book, Open, Paper.wav`, `PM_BA_BOOK_2_6 Book, Paper, Page
 Turn.wav`; GDC 2018 / 3maze - Books & Magazines / `shut_small_book_002.wav`. Kenney RPG: `metalClick`, `creak3`,
@@ -96,7 +98,6 @@ Turn.wav`; GDC 2018 / 3maze - Books & Magazines / `shut_small_book_002.wav`. Ken
 for Caleb to audition before any is wired in (see its docstring). The Play Commander candidates use:
 
 - GDC 2018 / Gregor Quendel - Designed Fire / `Designed Fire - Impacts - Large, ignition 03.wav`
-- GDC 2015 / Soundopolis - Blades / `Knife_Sword_Shing_Fienup_001.wav`
 - GDC 2017 / Mononeshot - MEDIEVAL, Smithy / `MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent.wav`
 
 `sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
