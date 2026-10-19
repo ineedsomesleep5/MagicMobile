@@ -11,11 +11,6 @@ on:
         type: choice
         options: ['2', 's']
         default: '2'
-  # TEMPORARY, release D measurement only (remove before review): the session that built release D cannot
-  # dispatch workflows, so pushes of this branch whose message holds [android-native] run the build;
-  # [native-Os] and [native-reports] in the message stand in for the inputs.
-  push:
-    branches: [claude/gallant-clarke-z9cx2p]
 permissions:
   contents: read
 concurrency:
@@ -66,8 +61,8 @@ jobs:
         timeout-minutes: 45
         env:
           MM_ANDROID_NATIVE_HEAP: 10g
-          MM_NATIVE_REPORTS: ${{ (inputs.native_reports || contains(github.event.head_commit.message, '[native-reports]')) && '1' || '0' }}
-          MM_NATIVE_OPTIMIZE: ${{ inputs.optimize || (contains(github.event.head_commit.message, '[native-Os]') && 's' || '2') }}
+          MM_NATIVE_REPORTS: ${{ inputs.native_reports && '1' || '0' }}
+          MM_NATIVE_OPTIMIZE: ${{ inputs.optimize || '2' }}
         run: |
           set -euo pipefail
           export ANDROID_SDK="$ANDROID_HOME"
@@ -75,7 +70,7 @@ jobs:
           bash scripts/android/build_native.sh
       # The same breakdown as magicmobile-native-code-sizes.yml, from this run's unstripped library, in the log.
       - name: Code size by package (measurement)
-        if: success() && (inputs.native_reports || contains(github.event.head_commit.message, '[native-reports]'))
+        if: success() && inputs.native_reports
         run: |
           set -euo pipefail
           GRAALVM_HOME=$(cat build_output/android/JAVA_HOME.txt)
