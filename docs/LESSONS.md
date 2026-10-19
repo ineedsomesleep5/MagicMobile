@@ -107,6 +107,29 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-19 (Claude, release D toolchain): GluonFX 1.0.29 (Substrate 0.0.69) is not a GraalVM-23 plugin. Gluon
+  reverted Substrate's JDK 23/24 support in March 2025 (gluonhq/substrate#1310), so 0.0.66 and later default to the
+  JDK 18 static libraries and clibs `ea+27`, which do not fit GraalVM 24.1 (its libchelper adds
+  `checkCPUFeaturesOrExit`, `getThreadId`, and JDK 23's libjava needs new `JVM_*` functions). **Rule:** GluonFX
+  1.0.25 (Substrate 0.0.65) with `libvmone.a` from github.com/gluonhq/vmone `gvm-24-2.1` (JDK static libraries plus
+  GraalVM's C helpers, passed with `-Djavalibspath`), all pinned in `native/gluon/toolchain.json`. download2.gluonhq.com
+  is refused from cloud containers; GitHub release assets download fine. 0.0.65's `staticlib` compiles by itself (a
+  separate `compile` goal compiles twice), and its Android `compile` runs the NDK clang on Substrate's C launchers
+  first, so a compile-only local run needs a stand-in clang (`ld.lld`, `llvm-objdump` must also exist).
+- 2026-10-19 (Claude, release D toolchain): GraalVM 24.1's `ObjectStreamClass.lookup` reports any Serializable class
+  whose hub is not marked as a serialization target. GraalVM's own registration marks it inside
+  `addConstructorAccessor`; `CheckpointSerializationFeature`'s shared accessor path skipped that, so it now calls
+  `registerSerializationTargetClass` for every class. The registry also moved to
+  `com.oracle.svm.core.reflect.serialize`, and the builder runs on the module path, so the pom exports and opens
+  those packages. **Rule:** after a GraalVM upgrade, check the save/resume self-test in a native build
+  (`build_native_bench.sh` prints `SAVE-RESUME`), not just that the image builds.
+- 2026-10-19 (Claude, release D toolchain): cloud sessions cannot dispatch workflows (`workflow_dispatch` is 403
+  "Resource not accessible by integration" through both the GitHub MCP tools and `gh`), but they can read job logs.
+  **Rule:** to run a dispatch-only workflow from a cloud branch, add a temporary `push` trigger limited to that branch
+  (the Android job already honours `[android-native]` in the commit message), print results into the log, and remove
+  the trigger before review. Method symbols changed too: 24.1 names them `<Class>_<method>_<22-char base-62 digest>`,
+  constructors `<Class>_<digest>`, class names cut to their last 40 characters (`native_code_sizes.py` reads both).
+
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
   makes a full deep game copy for every option of a trigger, and Loaming Shaman (Draconic Destruction) targets "any number"

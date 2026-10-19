@@ -79,34 +79,32 @@ The export writes `apps/ios/MagicMobile/Resources/ondevice-catalogue.json`. It r
 
 ## 3. Rebuild with the reviewed native compiler
 
-The full-engine reference is [.github/workflows/magicmobile-far-calls.yml](../../../.github/workflows/magicmobile-far-calls.yml): an Intel macOS builder using a private patched Gluon 22.1.0.1 / Java 17.0.3 compiler, GluonFX 1.0.29 and static JDK `18-ea+prep18-9`. Its configured Xcode path and builder resources must exist on the selected authorized host. Do not substitute the desktop diagnostic or an unpatched default compiler and call it the same candidate.
+The full-engine reference is [.github/workflows/magicmobile-far-calls.yml](../../../.github/workflows/magicmobile-far-calls.yml): an Intel macOS builder using the checksum-pinned Gluon GraalVM 23+25.1 (GraalVM 24.1, JDK 23), GluonFX 1.0.25 and the vmone `gvm-24-2.1` static JDK (`libvmone.a`), all pinned in [native/gluon/toolchain.json](../native/gluon/toolchain.json). Its configured Xcode path and builder resources must exist on the selected authorized host. Do not substitute the desktop diagnostic or another compiler and call it the same candidate.
 
 On that compatible builder, with new result filenames:
 
 ```sh
-bash scripts/test_far_call_planner.sh
 bash scripts/setup_gluon_intel.sh
-python3 scripts/prepare_gluon_far_calls.py --result-file build/maintenance-compiler-home.txt
-export MM_GRAALVM_HOME="$(<build/maintenance-compiler-home.txt)"
-JAVA_TOOL_OPTIONS=-Dmagicmobile.farCallLimit=256 bash scripts/test_ios_toolchain.sh
+set -a; . build/toolchains/ios-toolchain.env; set +a
+MM_FORCE_TRAMPOLINES=1 bash scripts/test_ios_toolchain.sh
 MM_NATIVE_REFLECTION_PROFILE=targeted MM_NATIVE_INIT_PROFILE=reviewed-enums \
-MM_NATIVE_ORM_PROFILE=runtime-defaults MM_NATIVE_NEW_RATIO=7 MM_NATIVE_MAX_HEAP=10g \
+MM_NATIVE_ORM_PROFILE=runtime-defaults MM_NATIVE_MAX_HEAP=10g \
 MM_NATIVE_RESULT_FILE=build/maintenance-native-build.txt bash scripts/build_native_ios.sh
 ```
 
-The 10g setting is the hosted profile and requires at least 12 GiB physical RAM; never use it on the 8 GB development Mac. A resource/profile change needs its own recorded evidence. The forced-distance toolchain probe is not XMage execution; its option must not leak into the full build. `build_native_desktop.sh` is a separate desktop diagnostic, not an iOS artifact.
+The 10g setting is the hosted profile and requires at least 12 GiB physical RAM; never use it on the 8 GB development Mac. A resource/profile change needs its own recorded evidence. The forced-trampoline toolchain probe (`-H:+UseDirectCallTrampolinesALot`) is not XMage execution; its option must not leak into the full build. `build_native_desktop.sh` is a separate desktop diagnostic, not an iOS artifact.
 
-Compiler preparation verifies the official archive hash and [upstream compiler source manifest](../native/gluon/compiler-patches/upstream-sources.json), applies `far-calls.patch` with zero fuzz, checks patched-source hashes, and alters only a private SDK copy. Preserve `compiler-patch-manifest.json`: archive, original/patched JAR, patch, source manifest, planner and replacement-class hashes. A compiler upgrade requires reviewing/rebasing these pins and rerunning compiler and full-engine gates, not bypassing them.
+GraalVM 24.1 places AArch64 direct-call trampolines itself (`AArch64HostedTrampolineSupport`), so no compiler patch is applied; the 22.1 far-call backport is in git history. The candidate's `toolchain-manifest.json` repeats `toolchain.json` and the `libvmone.a` digest, and the verifiers require both to match the source. A compiler upgrade means new pins there, reviewed, and the compiler and full-engine gates rerun, not bypassed.
 
 Freeze inputs during AOT. `build_native_ios.sh` snapshots `build/core` and `build/engine` and records `class-snapshot.sha256`; upstream class directories and dependency JARs remain referenced by the classpath rather than copied into that snapshot. Preserve the exact classpath, dependency/toolchain versions, profiles, generated metadata and build logs alongside the artifact.
 
 ## 4. Preserve and verify candidate provenance
 
-Use the workflow's packaging step to retain the same build's archive, generated headers, Gluon/JDK static libraries, class snapshot, reflection config, registry report, source commit, compiler manifest and `SHA256SUMS`. Select the exact successful same-repository run and artifact ID/digest; developer-side download helpers validate that identity and bytes. Do not mix libraries or headers from other builds.
+Use the workflow's packaging step to retain the same build's archive, generated headers, `vmone/libvmone.a`, class snapshot, reflection config, registry report, source commit, toolchain manifest and `SHA256SUMS`. Select the exact successful same-repository run and artifact ID/digest; developer-side download helpers validate that identity and bytes. Do not mix libraries or headers from other builds.
 
 [verify_native_candidate.py](../scripts/verify_native_candidate.py) checks those files and compares engine inputs between the engine source and app source. Broad engine directories, including their tests, remain conservatively guarded. A changed adapter or engine test requires a new native candidate, even when a test is outside the native runtime classpath. Dirty tracked work fails the guard. Provenance is not execution evidence; untracked inputs must not enter a release build.
 
-Stage only the verified candidate using `prepare_ios_app_native.py` with its explicit archive/header/clib/JDK inputs: dry run first, then authorized `--apply`, then `--verify-installed`. It refuses a different existing destination; preserve the prior candidate and use a fresh release checkout rather than overwriting it. Record generated-project provenance and run `verify_issue4_unsigned_product.py` on the resulting actual app. Its Graal layout check must retain code bytes except verified relocation immediates and decode the long-call targets correctly. Neither staging nor unsigned linkage is signed-app acceptance.
+Stage only the verified candidate using `prepare_ios_app_native.py` with its explicit archive, header and static-library (`--static-lib-dir`, `libvmone.a`) inputs: dry run first, then authorized `--apply`, then `--verify-installed`. It refuses a different existing destination; preserve the prior candidate and use a fresh release checkout rather than overwriting it. Record generated-project provenance and run `verify_issue4_unsigned_product.py` on the resulting actual app. Its Graal layout check must retain code bytes except verified relocation immediates and decode the long-call targets correctly. Neither staging nor unsigned linkage is signed-app acceptance.
 
 ## 5. Keep multiplayer on exact build identity
 

@@ -195,6 +195,14 @@ builder heap, the most a 16 GB hosted runner allows. Growth in upstream cards or
 need more builder memory or a smaller class list. The iOS far-call build uses the same 10 GB heap on
 a different runner and compiler patch; it is a separate gate, not shown by this run.
 
+**Engine release D (GraalVM 24.1).** The same internals exist, with two changes the port follows: the registry
+moved to `com.oracle.svm.core.reflect.serialize.SerializationRegistry` (the pom exports and opens the builder
+packages the feature calls), and `ObjectStreamClass.lookup` now reports a Serializable class whose hub is not
+marked as a serialization target, so the feature marks every listed class (`registerSerializationTargetClass`), as
+GraalVM's own registration does. GraalVM 24.1's own serialization configuration is still heavier than this feature
+(it also registers every member of each field's type). The host native benchmark
+(`scripts/build_native_bench.sh`) builds with the feature and prints the save/resume self-test.
+
 **Risk.** The feature relies on GraalVM internals that are valid for the pinned 22.1.0.1 builder,
 which runs on the classpath: the package-private `SerializationBuilder.addConstructorAccessor`, the
 `SerializationSupport` registry, and SVM's `MethodAccessorGenerator` substitution, which casts the

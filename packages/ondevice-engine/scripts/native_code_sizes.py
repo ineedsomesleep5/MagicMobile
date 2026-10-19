@@ -6,8 +6,9 @@ table (Substrate adds -H:+ExitAfterRelocatableImageWrite), so this reads the fun
 the unstripped library instead (the android-native-symbols-<sha> CI artifact). No dependencies:
 it parses the ELF64 symbol table directly.
 
-GraalVM 22.1 names a method symbol <SimpleClassName>_<method>_<sha1>, without the package, so
-package names come from class inventories given on the command line:
+GraalVM names a method symbol <SimpleClassName>_<method>_<digest>, without the package (22.1: a 40-digit SHA-1;
+24.1: a 22-character base-62 digest, constructors <SimpleClassName>_<digest>, class names over 40 characters cut
+to their last 40), so package names come from class inventories given on the command line:
   --sources DIR    Java sources: every class, interface, enum or record declared in each file
   --classes FILE   one fully qualified class name per line (jimage list, unzip -Z1 of a jar)
 
@@ -42,7 +43,7 @@ def function_symbols(path: str):
             yield data[str_off + name_off:end].decode('utf-8', 'replace'), sym_size
 
 
-HASH = re.compile(r'(?:_[0-9a-f]{40})+$')
+HASH = re.compile(r'(?:_[0-9a-f]{40})+$|_[0-9A-Za-z]{22}$')
 DECLARATION = re.compile(r'^\s*(?:(?:public|protected|private|abstract|final|static|sealed|non-sealed|strictfp)\s+)*'
                          r'(?:class|interface|enum|record|@interface)\s+([A-Za-z_$][\w$]*)', re.M)
 PACKAGE = re.compile(r'^\s*package\s+([\w.]+)\s*;', re.M)
@@ -64,13 +65,14 @@ def split_symbol(name: str) -> tuple[str, str] | None:
         return None
     head = HASH.sub('', name)
     cls, _, method = head.partition('_')
-    return (cls, method) if cls and method else None
+    return (cls, method or 'constructor') if cls else None  # 22.1 named constructors 'constructor'
 
 
 class Inventory:
     """Simple class name to the packages that declare it."""
     def __init__(self):
         self.packages: dict[str, set[str]] = collections.defaultdict(set)
+        self.tails: dict[str, set[str]] | None = None
 
     def add(self, fqcn: str):
         fqcn = fqcn.strip().replace('/', '.')
@@ -99,6 +101,13 @@ class Inventory:
 
     def package(self, simple: str) -> str:
         found = self.packages.get(simple) or self.packages.get(simple.split('$')[0])
+        if not found and len(simple) == 40:  # GraalVM 24.1 keeps a long class name's last 40 characters
+            if self.tails is None:
+                self.tails = collections.defaultdict(set)
+                for name, packages in self.packages.items():
+                    if len(name) > 40:
+                        self.tails[name[-40:]] |= packages
+            found = self.tails.get(simple)
         if not found:
             return '(unknown)'
         if len(found) == 1:

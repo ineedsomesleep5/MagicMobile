@@ -102,12 +102,16 @@ public final class CheckpointSerializationFeature implements Feature {
             generated.setAccessible(true);
             Object registry = ImageSingletons.lookup(singletonKey("com.oracle.svm.core.reflect.serialize.SerializationRegistry"));
             Method add = registry.getClass().getMethod("addConstructorAccessor", Class.class, Class.class, Object.class);
+            // GraalVM 24.1's ObjectStreamClass.lookup reports a Serializable class whose hub is not marked as a
+            // serialization target (GraalVM's own registration marks it in addConstructorAccessor).
+            Method target = registry.getClass().getMethod("registerSerializationTargetClass", Class.class);
             Method allocating = allocatingAccessor();
 
             Set<Class<?>> superclasses = new LinkedHashSet<>();
             int shared = 0, own = 0, fields = 0, hooks = 0;
             for (Class<?> type : classes) {
                 RuntimeReflection.register(type);
+                target.invoke(registry, type);
                 superclasses.add(type.getSuperclass());
                 if (!Enum.class.isAssignableFrom(type)) {
                     Class<?> constructorClass;

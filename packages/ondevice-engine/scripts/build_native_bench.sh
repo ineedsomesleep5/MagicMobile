@@ -2,7 +2,7 @@
 # Measurement only (docs/LIGHTER_ENGINE_PLAN.md step 4): a host (Linux x86-64) native executable of
 # tools/ai-calibration/SearchSpeed.java with the engine's production native-image options at -O2 or -Os, so
 # AI search speed can be compared between optimization levels (`profile_long_games.py speed --native`). Not an
-# app build: x86-64, no Substrate, no checkpoints. Needs about 11 GB of memory and the pinned Gluon GraalVM for
+# app build: x86-64, no Substrate. Needs about 11 GB of memory and the pinned Gluon GraalVM for
 # JDK 23 (native/gluon/toolchain.json, linux-amd64) in GRAALVM_HOME.
 #   bash scripts/build_native_bench.sh 2|s   -> build/native-bench/searchspeed-O<level>
 set -euo pipefail
@@ -25,6 +25,14 @@ TOOL="$WORK/tools"
   "$ROOT/.upstream/mage/Mage/target/classes" "$ROOT/.upstream/mage/Mage.Sets/target/classes" \
   "$ROOT/.upstream/mage/Mage.Common/target/classes" \
   --serialization "$ROOT"/.upstream/mage/Mage.Server.Plugins/*/target/classes "$ROOT/build/engine" > "$WORK/exporter.log"
+# Save/resume checkpoints as the phone builds register them (the tool prints the self-test result).
+"$GRAALVM_HOME/bin/javac" -J-Xmx512m -source 17 -target 17 -nowarn --add-modules org.graalvm.sdk \
+  -cp "$GRAALVM_HOME/lib/svm/builder/svm.jar:$CP" -d "$WORK/native-java" \
+  "$ROOT/native/gluon/src/main/java/io/magicmobile/nativebridge/CheckpointSerializationFeature.java"
+"$GRAALVM_HOME/bin/javac" -J-Xmx256m -source 17 -target 17 -nowarn --patch-module "java.base=$ROOT/native/gluon/src/main/java-base" \
+  -d "$WORK/checkpoint-accessor" "$ROOT/native/gluon/src/main/java-base/jdk/internal/reflect/MobileCheckpointConstructorAccessor.java"
+cp "$WORK/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class" \
+  "$WORK/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
 # What the tool itself reaches by reflection (seat setup, search limits), from one short traced JVM run.
 DECKS="$ROOT/build/ai-calibration/decks"
 (cd "$WORK" && "$GRAALVM_HOME/bin/java" -Xmx2g -XX:+UseSerialGC -Djava.awt.headless=true \
@@ -36,7 +44,13 @@ DECKS="$ROOT/build/ai-calibration/decks"
 AGENT_REFLECTION=$(ls "$WORK"/agent/reflect-config.json 2>/dev/null || true)
 INIT_TYPES=$(paste -sd, "$ROOT/native/gluon/buildtime-enums.txt")
 ARGS=(-O"$OPTIMIZE" --no-fallback -J-Xmx10g -J-XX:-UseParallelGC -J-XX:+UseG1GC -H:+UnlockExperimentalVMOptions
-  -H:NumberOfThreads="${MM_BENCH_THREADS:-4}" -cp "$TOOL:$CP"
+  -H:NumberOfThreads="${MM_BENCH_THREADS:-4}" -cp "$TOOL:$WORK/native-java:$CP"
+  --features=io.magicmobile.nativebridge.CheckpointSerializationFeature
+  "-Dmagicmobile.checkpoint.serialization=$WORK/metadata/serialization-config.json"
+  -J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED
+  -J--add-exports=org.graalvm.nativeimage/org.graalvm.nativeimage.impl=ALL-UNNAMED
+  -J--add-opens=org.graalvm.nativeimage.builder/com.oracle.svm.hosted.reflect.serialize=ALL-UNNAMED
+  -J--add-exports=org.graalvm.nativeimage.builder/com.oracle.svm.core.reflect.serialize=ALL-UNNAMED
   --initialize-at-run-time=io.magicmobile,mage --initialize-at-run-time=java.awt.Color,java.awt.Toolkit
   "--initialize-at-build-time=$INIT_TYPES" --initialize-at-build-time=com.j256.ormlite.field.types
   -H:+IncludeAllLocales "-H:ReflectionConfigurationFiles=$WORK/metadata/reflect-config.json${AGENT_REFLECTION:+,$AGENT_REFLECTION}"

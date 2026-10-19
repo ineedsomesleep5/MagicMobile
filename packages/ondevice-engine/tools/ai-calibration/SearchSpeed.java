@@ -22,8 +22,8 @@ import java.util.concurrent.TimeUnit;
  * /proc/self/stat (Linux). One seeded AI-vs-AI game per run. The game's own AI decisions are limited by nodes, not
  * time, so a slower build plays the same kind of game; at AI decisions (main phases and combat, empty stack, one a
  * turn, something to search) the deciding AI's production search (cards copied on first use, search memory) runs
- * on a copy of the live game with no time limit and a fixed node limit, twice from the same seeded generator; the
- * row keeps the faster run. Positions can differ between builds (the game is not recorded), so compare totals.
+ * in full (not continuing its last plan) on a copy of the live game with no time limit and a fixed node limit, twice
+ * from the same seeded generator; the row keeps the faster run. Positions can differ between builds (the game is not recorded), so compare totals.
  *
  * Usage: SearchSpeed out.csv seed skill_a skill_b a_first(1|0) deck_a.json deck_b.json max_turns max_probes
  *        probe_nodes game_nodes
@@ -41,6 +41,8 @@ public final class SearchSpeed {
         boolean aFirst=args[4].equals("1");
         int maxTurns=Integer.parseInt(args[7]),maxProbes=Integer.parseInt(args[8]);
         int probeNodes=Integer.parseInt(args[9]),gameNodes=Integer.parseInt(args[10]);
+        // The app's save/resume self-test: in a native benchmark, checks the checkpoint metadata and feature.
+        System.out.println("SAVE-RESUME "+Checkpoints.available());
         XmageEngine engine=new XmageEngine("jvm-ai-calibration");
         Map<String,Map<String,Object>> decks=new HashMap<>();
         Map<String,Object> deckA=AICalibration.deck(decks,args[5]),deckB=AICalibration.deck(decks,args[6]);
@@ -61,7 +63,7 @@ public final class SearchSpeed {
             Map<UUID,String> seats=Map.of(a.getId(),"A",b.getId(),"B");
             Map<UUID,Integer> skills=Map.of(a.getId(),seatA.skill(),b.getId(),seatB.skill());
             Set<Integer> probed=new HashSet<>();
-            int[] probes={0};
+            int[] probes={0},attempts={0},empty={0},activeEmpty={0};
             game.addTableEventListener(event->{
                 if(event.getEventType()!=TableEvent.EventType.UPDATE || probes[0]>=maxProbes) return;
                 UUID deciding=game.getPriorityPlayerId();
@@ -69,8 +71,13 @@ public final class SearchSpeed {
                         || !MobileAICancellation.searchesAt(game.getTurnStepType()) || probed.contains(game.getTurnNum())) return;
                 try {
                     long probeSeed=seed+31L*game.getTurnNum();
+                    attempts[0]++;
                     Run first=search(game,deciding,probeSeed,probeNodes);
-                    if(first.nodes()==0) return; // only Pass: nothing to search
+                    if(first.nodes()==0) { // only Pass: nothing to search (mostly the player whose turn it is not)
+                        empty[0]++;
+                        if(deciding.equals(game.getActivePlayerId())) activeEmpty[0]++;
+                        return;
+                    }
                     Run second=search(game,deciding,probeSeed,probeNodes);
                     Run best=second.cpuMs()<first.cpuMs()?second:first;
                     probed.add(game.getTurnNum());
@@ -93,7 +100,14 @@ public final class SearchSpeed {
             long deadline=System.nanoTime()+TimeUnit.HOURS.toNanos(2);
             while(worker.isAlive() && game.getTurnNum()<=maxTurns && probes[0]<maxProbes && System.nanoTime()<deadline) worker.join(200);
             lifecycle.close();players.close();worker.interrupt();worker.join(10_000);
-            System.out.println("PROBES "+probes[0]+" to turn "+game.getTurnNum()+" in "
+            StringBuilder board=new StringBuilder();
+            for(Player player:List.of(game.getPlayer(a.getId()),game.getPlayer(b.getId())))
+                board.append(' ').append(seats.get(player.getId())).append(": life ").append(player.getLife()).append(", ")
+                    .append(game.getBattlefield().getAllActivePermanents(player.getId()).size()).append(" permanents");
+            System.out.println("BOARD"+board);
+            System.out.println("PROBES "+probes[0]+" ("+attempts[0]+" tried, "+empty[0]+" with nothing to search, "+activeEmpty[0]
+                +" of them on the deciding player's turn) to turn "
+                +game.getTurnNum()+" in "
                 +(System.nanoTime()-started)/1_000_000_000+" s, "+Math.round((cpuTicks()-startCpu)*TICK_MS/1000)+" s CPU");
         } finally { engine.close(); }
         System.exit(0); // upstream AI pools are non-daemon threads
@@ -116,6 +130,9 @@ public final class SearchSpeed {
         Player searcher=position.getPlayer(deciding);
         limit(searcher,maxNodes);
         ((List<?>)SearchEquivalence.get(searcher,ComputerPlayer6.class,"actions")).clear();
+        // A full search every time: with its last line kept, the AI continues that plan without searching
+        // whenever the game's state hash still matches (ComputerPlayer6.getNextAction).
+        SearchEquivalence.set(searcher,ComputerPlayer6.class,"root",null);
         RandomUtil.setSeed(seed);
         SimulationNode2.resetCount();
         int copies=GameImpl.COPIED_COUNT.get();
