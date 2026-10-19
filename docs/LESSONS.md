@@ -56,6 +56,11 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-19 (Claude): Ranked AI games used the shared "Who goes first?" preference (default "choose", and the
+  Ranked lobby has no picker), so a ranked game asked the player to pick the starter instead of rolling the D20.
+  **Rule:** a game's starting mode comes from `PlayMode.startingPlayerMode(preference:)` (Ranked always "roll"), not
+  the raw preference, and resuming a ranked game never writes its "roll" back into the player's choice.
+  Where: `OnDeviceRootView.swift`/`.kt` (`startingPlayerMode`), `PlayerRecord.swift`, `Ranked.kt`.
 - 2026-10-15 (Claude, C1): `mm_record_game` now stores the server's standing at the moment a ranked game arrives
   (`20261015180000_ranked_record_points.sql`), but both apps upload a game as soon as it is recorded, racing
   `syncRank`, and `afterRefresh` uploads before it seeds. **Rule:** for ranked games, run `syncRank` first and upload

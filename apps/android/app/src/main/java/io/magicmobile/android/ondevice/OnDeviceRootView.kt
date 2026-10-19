@@ -277,6 +277,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
     var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
     var activeMatch by remember { mutableStateOf<ActiveMatch?>(null) }
+    // Who goes first in this AI game: Ranked always rolls, other games follow the player's choice.
+    fun startingPlayerMode(): String = activeMatch?.mode?.startingPlayerMode(aiStartingPlayerMode) ?: aiStartingPlayerMode
     var rankChange by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
     var ceremony by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
     var showBracketSheet by remember { mutableStateOf(false) }
@@ -396,7 +398,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
         rankChange = null
         if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
-        val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, aiStartingPlayerMode, mode.raw, deckBracket.level)
+        val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, mode.startingPlayerMode(aiStartingPlayerMode), mode.raw, deckBracket.level)
         scope.launch {
             // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
             var seed: Long? = null
@@ -682,7 +684,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 ids.getOrNull(0)?.let { aiPreconID = it }; ids.getOrNull(1)?.let { aiPrecon2ID = it }; ids.getOrNull(2)?.let { aiPrecon3ID = it }
             }
             aiSkill = saved.aiSkill.coerceIn(1, 10)
-            if (saved.startingPlayerMode in setOf("choose", "roll")) aiStartingPlayerMode = saved.startingPlayerMode
+            // A ranked game always rolls, so its saved "roll" is not the player's own choice.
+            if (mode != io.magicmobile.android.game.PlayMode.RANKED && saved.startingPlayerMode in setOf("choose", "roll")) aiStartingPlayerMode = saved.startingPlayerMode
         }
         scope.launch { setup.resumeGame() }
     }
@@ -732,7 +735,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             val roll = table.startingRoll ?: return null
             val winnerName = table.seatNames[roll.winnerSeatID] ?: return null
             OnDeviceStartingPlayerChoice.commandForName(snapshot, winnerName)?.let { it to winnerName }
-        } else if (!setup.usingMultiplayer && aiStartingPlayerMode == "roll") {
+        } else if (!setup.usingMultiplayer && startingPlayerMode() == "roll") {
             val roll = aiStartingRoll ?: return null
             OnDeviceStartingPlayerChoice.command(snapshot, winnerPlayerID = roll.winnerSeatID)?.let { it to (aiRollSeatNames[roll.winnerSeatID] ?: "winner") }
         } else null
@@ -776,7 +779,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     }
 
     fun prepareAIRollIfNeeded() {
-        if (setup.usingMultiplayer || aiStartingPlayerMode != "roll" || session.matchID == null || aiStartingRoll != null || didDismissStartingRoll) return
+        if (setup.usingMultiplayer || startingPlayerMode() != "roll" || session.matchID == null || aiStartingRoll != null || didDismissStartingRoll) return
         val snapshot = session.snapshot ?: return
         val targetIDs = OnDeviceStartingPlayerChoice.candidateIDs(snapshot) ?: return
         try {
@@ -916,13 +919,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // shared roll or its "Who goes first?" panel, or an AI table's local roll.
     val multiplayerRollVisible = setup.usingMultiplayer && table != null && table.endpoint != null && table.isConnected && !didDismissStartingRoll
     val aiRoll = aiStartingRoll
-    val aiRollVisible = !setup.usingMultiplayer && session.matchID != null && aiStartingPlayerMode == "roll" && aiRoll != null && !didDismissStartingRoll
+    val aiRollVisible = !setup.usingMultiplayer && session.matchID != null && startingPlayerMode() == "roll" && aiRoll != null && !didDismissStartingRoll
     val startingRollVisible = multiplayerRollVisible || aiRollVisible
     // The roll's own answer to "Select a starting player" stays quiet while it is on its way.
     val startingChoicePending = session.snapshot?.let { snapshot ->
         val promptID = snapshot.promptEnvelopeV2?.id
         promptID != null && startingChoiceFailedPromptID != promptID && OnDeviceStartingPlayerChoice.candidateIDs(snapshot) != null &&
-            (if (setup.usingMultiplayer) table?.startingRoll != null else aiStartingPlayerMode == "roll" && aiStartingRoll != null)
+            (if (setup.usingMultiplayer) table?.startingRoll != null else startingPlayerMode() == "roll" && aiStartingRoll != null)
     } == true
     val boardQuiet = startingRollVisible || startingChoicePending
 

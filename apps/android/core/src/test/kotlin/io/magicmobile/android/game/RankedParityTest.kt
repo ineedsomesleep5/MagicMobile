@@ -216,4 +216,13 @@ class RankedParityTest {
         assertEquals(RankedSearch.Cancelled, selfCancel.m.search("p", 8, 2))
         assertEquals(RankedMatchmaker.Phase.Idle, selfCancel.m.phase)
     }
+
+    /** Ranked always rolls for the first turn; the other modes keep the player's "Who goes first?" choice (iOS RankedStandingTests.testRankedAlwaysRollsForFirstTurn). */
+    @Test fun rankedAlwaysRollsForFirstTurn() {
+        for (preference in listOf("choose", "roll")) {
+            assertEquals("roll", PlayMode.RANKED.startingPlayerMode(preference))
+            assertEquals(preference, PlayMode.QUICK.startingPlayerMode(preference))
+            assertEquals(preference, PlayMode.CASUAL.startingPlayerMode(preference))
+        }
+    }
 }

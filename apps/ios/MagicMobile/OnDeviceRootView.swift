@@ -235,7 +235,10 @@ struct OnDeviceRootView: View {
             opponentCount = aiIDs.count
         }
         aiSkill = min(10, max(1, saved.aiSkill))
-        if ["choose", "roll"].contains(saved.startingPlayerMode) { aiStartingPlayerMode = saved.startingPlayerMode }
+        // A ranked game always rolls, so its saved "roll" is not the player's own choice.
+        if saved.mode != PlayMode.ranked.rawValue, ["choose", "roll"].contains(saved.startingPlayerMode) {
+            aiStartingPlayerMode = saved.startingPlayerMode
+        }
         playWithFriends = false; playOnline = false
     }
 
@@ -757,9 +760,14 @@ struct OnDeviceRootView: View {
         return multiplayer.endpoint != nil && multiplayer.isConnected && !didDismissStartingRoll
     }
 
+    /// Who goes first in this AI game: Ranked always rolls, other games follow the player's choice.
+    private var startingPlayerMode: String {
+        activeMatch?.mode.startingPlayerMode(preference: aiStartingPlayerMode) ?? aiStartingPlayerMode
+    }
+
     /// An AI table's local roll is up.
     private var aiRollVisible: Bool {
-        !setup.usingMultiplayer && session.matchID != nil && aiStartingPlayerMode == "roll"
+        !setup.usingMultiplayer && session.matchID != nil && startingPlayerMode == "roll"
             && aiStartingRoll != nil && !didDismissStartingRoll
     }
 
@@ -845,7 +853,7 @@ struct OnDeviceRootView: View {
 
     private func prepareAIRollIfNeeded() {
         guard !setup.usingMultiplayer,
-              aiStartingPlayerMode == "roll", session.matchID != nil,
+              startingPlayerMode == "roll", session.matchID != nil,
               aiStartingRoll == nil, !didDismissStartingRoll,
               let snapshot = session.snapshot,
               let targetIDs = OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot) else { return }
@@ -888,7 +896,7 @@ struct OnDeviceRootView: View {
            let roll = multiplayer.startingRoll,
            let name = multiplayer.seatNames[roll.winnerSeatID] {
             return OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerName: name).map { ($0, name) }
-        } else if !setup.usingMultiplayer, aiStartingPlayerMode == "roll", let roll = aiStartingRoll {
+        } else if !setup.usingMultiplayer, startingPlayerMode == "roll", let roll = aiStartingRoll {
             return OnDeviceStartingPlayerChoice.command(snapshot: snapshot, winnerPlayerID: roll.winnerSeatID)
                 .map { ($0, aiRollSeatNames[roll.winnerSeatID] ?? "winner") }
         }
@@ -932,7 +940,7 @@ struct OnDeviceRootView: View {
               startingChoiceFailedPromptID != promptID,
               OnDeviceStartingPlayerChoice.candidateIDs(snapshot: snapshot) != nil else { return false }
         return setup.usingMultiplayer ? setup.multiplayer?.startingRoll != nil
-            : (aiStartingPlayerMode == "roll" && aiStartingRoll != nil)
+            : (startingPlayerMode == "roll" && aiStartingRoll != nil)
     }
 
     private var game: some View {
@@ -1465,7 +1473,8 @@ struct OnDeviceRootView: View {
                 seed = ticket?.seed
             }
             await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
-                                deckID: selectedDeckID, aiDeckIDs: [opponent.id], startingPlayerMode: aiStartingPlayerMode,
+                                deckID: selectedDeckID, aiDeckIDs: [opponent.id],
+                                startingPlayerMode: mode.startingPlayerMode(preference: aiStartingPlayerMode),
                                 mode: mode, deckBracket: deckBracket.rawValue, seed: seed)
             if session.matchID == nil { activeMatch = nil }
         }

@@ -8,6 +8,10 @@ enum PlayMode: String, Codable, Sendable {
     case ranked
     /// The custom table: any AI line-up, Game Center or an online table.
     case casual
+
+    /// Who goes first in this mode: Ranked always rolls, since picking yourself would be an edge on the ladder.
+    /// The other modes use the player's own "Who goes first?" choice ("choose" or "roll").
+    func startingPlayerMode(preference: String) -> String { self == .ranked ? "roll" : preference }
 }
 
 /// One finished game on this phone. Only what the player saw: names, commanders, the result.

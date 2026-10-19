@@ -191,4 +191,14 @@ final class RankedStandingTests: XCTestCase {
         let friends = SocialFixtures.leaderboard(.friends, own: "CalebM")
         XCTAssertEqual(Set(friends.entries.map(\.username)), ["Aria_Blade", "ManaFiend", "DarkMoonDan", "CalebM"])
     }
+
+    /// Ranked always rolls for the first turn; the other modes keep the player's "Who goes first?" choice.
+    /// RankedParityTest.kt checks Android the same way.
+    func testRankedAlwaysRollsForFirstTurn() {
+        for preference in ["choose", "roll"] {
+            XCTAssertEqual(PlayMode.ranked.startingPlayerMode(preference: preference), "roll")
+            XCTAssertEqual(PlayMode.quick.startingPlayerMode(preference: preference), preference)
+            XCTAssertEqual(PlayMode.casual.startingPlayerMode(preference: preference), preference)
+        }
+    }
 }
