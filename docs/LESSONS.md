@@ -56,6 +56,14 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-19 (Claude, audio): AVAudioPlayer takes up to ~50 ms to start the first time, and making a player per
+  play cost ~40 ms, so a card slam and its colour layer started as a smeared flam. **Rule:** sounds meant to land
+  together go through `GameAudio.playTogether` (one `play(atTime:)` on the device clock, set `lead` ahead), players are
+  reused when idle, and `GameAudio.boardSounds` are preloaded when a game appears (`preload` existed on both
+  platforms but was never called; Android's SoundPool skipped a first play still decoding). `simctl io recordVideo`
+  records no audio: run a preview with `MAGICMOBILE_LOG_SOUNDS=1` and give the recording its soundtrack with
+  `scripts/audio/demo_soundtrack.py`; pass `--rec-start` (the recorder's launch), since steps ~3 s apart otherwise sync
+  one step off, and the turn banner crosses the step label. Where: GameAudio.swift/.kt, BoardFXOverlay, demo_soundtrack.py.
 - 2026-10-19 (Claude, audio): pedalboard's `PitchShift` smears very short foley grains (under ~100 ms) into a faint
   tonal ring (seen as horizontal lines at 4-6 kHz in the spectrogram). **Rule:** to lower a recording's pitch, slow it
   down tape-style (`scipy.signal.resample_poly`), which also lengthens it naturally; keep pedalboard for EQ, compression

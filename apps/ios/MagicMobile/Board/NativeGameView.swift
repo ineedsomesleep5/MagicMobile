@@ -570,6 +570,8 @@ struct NativeGameView: View {
             }
             .onAppear {
                 interactionState.mode = derivedInteractionMode
+                // A card's first arrival, cast or hit plays at once instead of after its player is made.
+                GameAudio.shared.preload(GameAudio.boardSounds)
             }
             .onChange(of: snapshot.combatSelectionResetKey) { _, _ in
                 combatSelection.resetIfInactive(snapshot)
@@ -1086,8 +1088,7 @@ struct NativeGameView: View {
             })
             if !arrived.isEmpty {
                 for card in snapshot.players.flatMap(\.zones.battlefield) where arrived.contains(card.instanceId) {
-                    arrivals[card.instanceId] = BoardFXSound.Arrival(isLand: card.card.typeLine.localizedCaseInsensitiveContains("land"),
-                                                                    isToken: card.card.isToken == true)
+                    arrivals[card.instanceId] = BoardFXSound.Arrival(card)
                 }
             }
             BoardFXSound.play(scheduled, viewerID: snapshot.viewerID, arrivals: arrivals)

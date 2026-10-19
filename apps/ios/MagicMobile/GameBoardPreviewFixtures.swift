@@ -92,6 +92,58 @@ enum GameBoardPreviewFixtures {
 
     static let boardFXStepCount = 16
 
+    /// Cards arriving one by one for `MAGICMOBILE_DESIGN_PREVIEW=arrivals`, to hear each arrival sound
+    /// (BoardFXArrivalSound): the five basic lands, a creature of each colour at different sizes, colourless
+    /// artifacts, a two-colour enchantment and a token. Each comes from hand except the token.
+    static let arrivalCards: [(id: String, name: String, type: String, cost: String?, power: Int?, toughness: Int?, token: [String]?)] = [
+        ("arrive-plains", "Plains", "Basic Land — Plains", nil, nil, nil, nil),
+        ("arrive-island", "Island", "Basic Land — Island", nil, nil, nil, nil),
+        ("arrive-swamp", "Swamp", "Basic Land — Swamp", nil, nil, nil, nil),
+        ("arrive-mountain", "Mountain", "Basic Land — Mountain", nil, nil, nil, nil),
+        ("arrive-forest", "Forest", "Basic Land — Forest", nil, nil, nil, nil),
+        ("arrive-lions", "Savannah Lions", "Creature — Cat", "{W}", 2, 1, nil),
+        ("arrive-phantom", "Phantom Warrior", "Creature — Illusion Warrior", "{1}{U}{U}", 2, 2, nil),
+        ("arrive-nighthawk", "Vampire Nighthawk", "Creature — Vampire Shaman", "{1}{B}{B}", 2, 3, nil),
+        ("arrive-goblin", "Goblin Guide", "Creature — Goblin Scout", "{R}", 2, 2, nil),
+        ("arrive-craterhoof", "Craterhoof Behemoth", "Creature — Beast", "{5}{G}{G}{G}", 5, 5, nil),
+        ("arrive-sol-ring", "Sol Ring", "Artifact", "{1}", nil, nil, nil),
+        ("arrive-wurmcoil", "Wurmcoil Engine", "Artifact Creature — Phyrexian Wurm", "{6}", 6, 6, nil),
+        ("arrive-sphere", "Detention Sphere", "Enchantment", "{1}{W}{U}", nil, nil, nil),
+        ("arrive-soldier", "Soldier", "Token Creature — Soldier", nil, 1, 1, ["White"]),
+    ]
+    static var arrivalsStepCount: Int { arrivalCards.count + 1 }
+
+    static func arrivalLabel(_ step: Int) -> String {
+        step == 0 ? "Arrivals: ready" : "Arrives: \(arrivalCards[step - 1].name) (\(step)/\(arrivalCards.count))"
+    }
+
+    static func arrivalsStep(_ step: Int) -> GameSnapshot {
+        var root = try! JSONSerialization.jsonObject(with: Data(json(for: .normalBattlefield).utf8)) as! [String: Any]
+        root["id"] = "design-preview-arrivals"
+        root["bridgeRevision"] = 2_000 + step
+        root["legalActions"] = []
+        root["phase"] = "precombat-main"
+        root["step"] = "precombat-main"
+        var players = root["players"] as! [[String: Any]]
+        func card(_ c: (id: String, name: String, type: String, cost: String?, power: Int?, toughness: Int?, token: [String]?)) -> [String: Any] {
+            var identity: [String: Any] = ["name": c.name, "typeLine": c.type, "oracleText": ""]
+            if let cost = c.cost { identity["manaCost"] = cost }
+            if let token = c.token { identity["isToken"] = true; identity["tokenColors"] = token }
+            var zoneCard: [String: Any] = ["instanceId": c.id, "tapped": false, "card": identity,
+                                           "isCreaturePermanent": c.power != nil, "summoningSickness": false]
+            if let power = c.power, let toughness = c.toughness { zoneCard["power"] = power; zoneCard["toughness"] = toughness }
+            return zoneCard
+        }
+        var zones = players[0]["zones"] as! [String: Any]
+        zones["battlefield"] = arrivalCards.prefix(step).map(card)
+        let next = step < arrivalCards.count ? arrivalCards[step] : nil
+        zones["hand"] = next.flatMap { $0.token == nil ? [card($0)] : nil } ?? []
+        players[0]["zones"] = zones
+        root["players"] = players
+        let data = try! JSONSerialization.data(withJSONObject: root)
+        return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+    }
+
     /// Scripted board FX walkthrough for `MAGICMOBILE_DESIGN_PREVIEW=board-fx`.
     /// 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI life -5),
     /// 3 Sol Ring enters straight from hand (showcase) with a counter on Isamaru,

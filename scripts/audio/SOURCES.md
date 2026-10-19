@@ -110,7 +110,8 @@ Round 5 (round 4 redone short and dry) uses Kenney Impact Sounds (CC0, https://k
 Interface Sounds (CC0, https://kenney.nl/assets/interface-sounds), named `impact-sounds__…`/`interface-sounds__…`, and
 GDC 2016 / George Karagioules - SFX for Board Games / `Placing Pieces on the Board 2.wav`.
 
-Round 6 (card slam by size, basic lands, colour layers) adds Sonniss: GDC 2016 / Timothy McHugh - Playing Cards &
+## Cards arriving (`slam-*`, `land-*` basics, `layer-*`, 2026-10-19; trials round 6)
+Kenney Impact Sounds (CC0) for the slam's thuds and the colorless clink, and Sonniss: GDC 2016 / Timothy McHugh - Playing Cards &
 Betting Chips / `games - Deck of cards dealt on to felt table surface 43.wav`; GDC 2018 / Bluezone - MOVIE TRAILER /
 `Bluezone_BC0237_impact_017.wav`; GDC 2017 / Hzandbits - Wind In Trees / `Wind,Ext,Gust,Grasslands,Rustle,Buffeting.wav`;
 GDC 2017 / Raconteur Sound - Spring in the Pacific Northwest / `Amb, Field, Birds, Wind, MS_01.wav`; GDC 2017 / West Wolf -

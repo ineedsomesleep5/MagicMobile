@@ -55,10 +55,15 @@ final class GameAudioTests: XCTestCase {
             fx(.countersChanged(cardID: "bear", kind: .plusOne, delta: 1)),
             fx(.controlChanged(cardID: "ogre", from: "them", to: viewer)),
             fx(.lifeChanged(playerID: viewer, delta: 3)),
-        ], viewerID: viewer, arrivals: ["land": .init(isLand: true), "token": .init(isToken: true)], hasStrike: false)
+        ], viewerID: viewer, arrivals: [
+            "land": .init(card: CardIdentity(name: "Forest", typeLine: "Basic Land — Forest", oracleText: nil)),
+            "token": .init(card: CardIdentity(name: "Soldier", typeLine: "Token Creature — Soldier", oracleText: nil,
+                                              tokenColors: ["White"]), isToken: true),
+            "bear": .init(card: CardIdentity(name: "Grizzly Bears", typeLine: "Creature — Bear", oracleText: nil, manaCost: "{1}{G}")),
+        ], hasStrike: false)
         let sounds = cues.map(\.sound)
-        XCTAssertEqual(sounds, [.castRed, .castBlue, .spellBig, .ability, .landDrop, .tokenCreate, .creatureEnter,
-                                .exile, .death, .cardPickup, .counter, .steal, .lifeGain])
+        XCTAssertEqual(sounds, [.castRed, .castBlue, .spellBig, .ability, .landForest, .slamLight, .layerWhite,
+                                .slamLight, .layerGreen, .exile, .death, .cardPickup, .counter, .steal, .lifeGain])
     }
 
     func testCombatHitsYouHarderThanACreatureAndLifeLossIsNotDoubled() {

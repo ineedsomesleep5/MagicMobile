@@ -12,20 +12,63 @@ enum class BoardFXTint {
     WHITE, BLUE, BLACK, RED, GREEN, MULTICOLOR, COLORLESS;
 
     companion object {
-        fun of(card: CardIdentity): BoardFXTint {
-            val colors = mutableSetOf<String>()
-            card.manaCost?.uppercase()?.let { cost -> for (symbol in listOf("W", "U", "B", "R", "G")) if (cost.contains(symbol)) colors += symbol }
-            if (colors.isEmpty()) {
+        /** A card's colours in WUBRG order: from its mana cost, else (a token) its printed colours. */
+        fun colors(card: CardIdentity): List<String> {
+            val order = listOf("W", "U", "B", "R", "G")
+            val found = mutableSetOf<String>()
+            card.manaCost?.uppercase()?.let { cost -> for (symbol in order) if (cost.contains(symbol)) found += symbol }
+            if (found.isEmpty()) {
                 for (color in card.tokenColors ?: emptyList()) when (color.lowercase()) {
-                    "w", "white" -> colors += "W"; "u", "blue" -> colors += "U"; "b", "black" -> colors += "B"
-                    "r", "red" -> colors += "R"; "g", "green" -> colors += "G"
+                    "w", "white" -> found += "W"; "u", "blue" -> found += "U"; "b", "black" -> found += "B"
+                    "r", "red" -> found += "R"; "g", "green" -> found += "G"
                 }
             }
+            return order.filter { it in found }
+        }
+
+        fun of(card: CardIdentity): BoardFXTint {
+            val colors = colors(card)
             return when (colors.size) {
                 0 -> COLORLESS
                 1 -> when (colors.first()) { "W" -> WHITE; "U" -> BLUE; "B" -> BLACK; "R" -> RED; else -> GREEN }
                 else -> MULTICOLOR
             }
+        }
+    }
+}
+
+/**
+ * What a card arriving on the battlefield sounds like (BoardFXSound plays it; Swift BoardFXArrivalSound). Like MTG Arena,
+ * a basic land sounds like its place; anything else lands with a card slam sized by mana value plus a short layer for each
+ * of its colours (the first two). Caleb picked this from audio trials round 6, 2026-10-19.
+ */
+sealed class BoardFXArrivalSound {
+    enum class Size { LIGHT, MEDIUM, HEAVY }
+
+    /** "plains", "island", "swamp", "mountain" or "forest". */
+    data class BasicLand(val kind: String) : BoardFXArrivalSound()
+    /** A land with no basic land type. */
+    object OtherLand : BoardFXArrivalSound()
+    /** Colours as WUBRG letters, at most two; none is colourless. */
+    data class Permanent(val size: Size, val colors: List<String>) : BoardFXArrivalSound()
+
+    companion object {
+        val basicLandTypes = listOf("plains", "island", "swamp", "mountain", "forest")
+        private val letters = Regex("[^a-z]+")
+
+        fun plan(card: CardIdentity, isToken: Boolean, commander: Boolean): BoardFXArrivalSound {
+            val typeLine = card.typeLine.lowercase()
+            if ("land" in typeLine.split(letters)) {
+                // The subtypes after the dash: "Land — Forest Island" sounds like a Forest.
+                val subtypes = typeLine.replace(" - ", "—").split("—").drop(1).joinToString(" ").split(letters)
+                return subtypes.firstOrNull { it in basicLandTypes }?.let { BasicLand(it) } ?: OtherLand
+            }
+            val size = when {
+                commander -> Size.HEAVY
+                isToken -> Size.LIGHT
+                else -> BoardFXManaValue.of(card.manaCost).let { if (it <= 2) Size.LIGHT else if (it <= 4) Size.MEDIUM else Size.HEAVY }
+            }
+            return Permanent(size, BoardFXTint.colors(card).take(2))
         }
     }
 }

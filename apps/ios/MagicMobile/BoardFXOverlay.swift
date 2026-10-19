@@ -836,10 +836,40 @@ struct BoardHitVignette: View {
 enum BoardFXSound {
     static let key = GameAudio.effectsKey
 
-    /// What arrived, so a land thuds, a token pops and a creature lands with weight.
+    /// What arrived, so it can sound like what it is (BoardFXArrivalSound).
     struct Arrival: Equatable {
-        var isLand = false
+        var card = CardIdentity(name: "", typeLine: "", oracleText: nil)
         var isToken = false
+
+        init(card: CardIdentity = CardIdentity(name: "", typeLine: "", oracleText: nil), isToken: Bool = false) {
+            self.card = card
+            self.isToken = isToken
+        }
+
+        init(_ zoneCard: ZoneCard) {
+            self.init(card: zoneCard.card, isToken: zoneCard.card.isToken == true)
+        }
+    }
+
+    /// The sounds for one arrival: a basic land's place, or a slam by size with a layer per colour (two layers share
+    /// the level one would have, so a two-colour card is not louder).
+    static func arrivalCues(_ plan: BoardFXArrivalSound) -> [(sound: GameSound, volume: Float)] {
+        switch plan {
+        case let .basicLand(kind):
+            let land: [String: GameSound] = ["plains": .landPlains, "island": .landIsland, "swamp": .landSwamp,
+                                             "mountain": .landMountain, "forest": .landForest]
+            return [(land[kind] ?? .landDrop, 1)]
+        case .otherLand:
+            return [(.landDrop, 1)]
+        case let .permanent(size, colors):
+            let slam: GameSound = size == .light ? .slamLight : size == .medium ? .slamMedium : .slamHeavy
+            let layers: [String: GameSound] = ["W": .layerWhite, "U": .layerBlue, "B": .layerBlack, "R": .layerRed,
+                                               "G": .layerGreen]
+            let tints = colors.compactMap { layers[$0] }
+            guard !tints.isEmpty else { return [(slam, 1), (.layerColorless, 1)] }
+            let share: Float = tints.count > 1 ? 0.71 : 1
+            return [(slam, 1)] + tints.map { ($0, share) }
+        }
     }
 
     /// Sounds for one board transition, each timed to the effect it accompanies. Casts use
@@ -847,8 +877,20 @@ enum BoardFXSound {
     @MainActor
     static func play(_ scheduled: [ScheduledBoardFX], viewerID: String, arrivals: [String: Arrival] = [:]) {
         let hasStrike = scheduled.contains { if case .combatStrike = $0.event { return true }; return false }
-        for cue in cues(scheduled, viewerID: viewerID, arrivals: arrivals, hasStrike: hasStrike) {
-            GameAudio.shared.play(cue.sound, after: cue.at, volume: cue.volume)
+        // Cues due at the same moment (a slam and its colour layers) start together from one timer: separate timers
+        // drifted ~50 ms apart and smeared the hit.
+        let due = Dictionary(grouping: cues(scheduled, viewerID: viewerID, arrivals: arrivals, hasStrike: hasStrike)) { cue in
+            (cue.at * 1000).rounded()
+        }
+        for (_, together) in due {
+            let delay = together[0].at, group = together.map { (sound: $0.sound, volume: $0.volume) }
+            guard together.count > 1 else { GameAudio.shared.play(together[0].sound, after: delay, volume: together[0].volume); continue }
+            // The group's start is set `lead` ahead, so it is readied that much early and still lands on the frame.
+            let lead = min(0.1, max(delay, 0.02))
+            Task { @MainActor in
+                if delay - lead > 0.005 { try? await Task.sleep(for: .seconds(delay - lead)) }
+                GameAudio.shared.playTogether(group, lead: lead)
+            }
         }
     }
 
@@ -891,9 +933,8 @@ enum BoardFXSound {
                 }
             case let .enteredBattlefield(id, _, _, _, entrance):
                 let arrival = arrivals[id] ?? Arrival()
-                let sound: GameSound = entrance == .commander ? .creatureEnter
-                    : arrival.isLand ? .landDrop : arrival.isToken ? .tokenCreate : .creatureEnter
-                cues.append(Cue(sound: sound, at: fx.landing))
+                let plan = BoardFXArrivalSound.plan(card: arrival.card, isToken: arrival.isToken, commander: entrance == .commander)
+                for cue in arrivalCues(plan) { cues.append(Cue(sound: cue.sound, at: fx.landing, volume: cue.volume)) }
             case let .countersChanged(_, _, delta): cues.append(Cue(sound: .counter, at: fx.delay, volume: delta > 0 ? 1 : 0.5))
             case .statsChanged: cues.append(Cue(sound: .counter, at: fx.delay, volume: 0.4))
             case .phased: cues.append(Cue(sound: .exile, at: fx.delay, volume: 0.55))

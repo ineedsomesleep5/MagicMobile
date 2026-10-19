@@ -61,6 +61,25 @@ class BoardEventTimelineTest {
             log = emptyList(), bridgeRevision = revision, viewerPlayerId = "a")
     }
 
+    /** Mirrors testArrivalSoundsFollowLandTypesManaValueAndColors (iOS). */
+    @Test fun arrivalSoundsFollowLandTypesManaValueAndColors() {
+        fun plan(type: String, cost: String? = null, token: List<String>? = null, isToken: Boolean = false, commander: Boolean = false) =
+            BoardFXArrivalSound.plan(CardIdentity("x", type, null, manaCost = cost, tokenColors = token), isToken, commander)
+        assertEquals(BoardFXArrivalSound.BasicLand("forest"), plan("Basic Land — Forest"))
+        assertEquals(BoardFXArrivalSound.BasicLand("swamp"), plan("Basic Land - Swamp"))
+        assertEquals("a dual sounds like its first basic type", BoardFXArrivalSound.BasicLand("island"), plan("Land — Island Mountain"))
+        assertEquals(BoardFXArrivalSound.BasicLand("forest"), plan("Land Creature — Forest Dryad"))
+        assertEquals(BoardFXArrivalSound.OtherLand, plan("Land"))
+        assertEquals(BoardFXArrivalSound.Permanent(BoardFXArrivalSound.Size.LIGHT, listOf("G")), plan("Creature — Bear", "{1}{G}"))
+        assertEquals(BoardFXArrivalSound.Permanent(BoardFXArrivalSound.Size.MEDIUM, emptyList()), plan("Artifact", "{3}"))
+        assertEquals(BoardFXArrivalSound.Permanent(BoardFXArrivalSound.Size.MEDIUM, listOf("W", "U")), plan("Enchantment", "{2}{W}{U}"))
+        assertEquals("the first two colours", BoardFXArrivalSound.Permanent(BoardFXArrivalSound.Size.HEAVY, listOf("B", "R")),
+            plan("Creature — Dragon", "{4}{B}{R}{G}"))
+        assertEquals(BoardFXArrivalSound.Permanent(BoardFXArrivalSound.Size.HEAVY, listOf("G")), plan("Legendary Creature — Elf", "{1}{G}", commander = true))
+        assertEquals(BoardFXArrivalSound.Permanent(BoardFXArrivalSound.Size.LIGHT, listOf("W")),
+            plan("Token Creature — Soldier", token = listOf("White"), isToken = true))
+    }
+
     /** Mirrors testStolenCardIsHiddenUntilTheChainDragsItHome (iOS). */
     @Test fun stolenCardIsHiddenUntilTheChainDragsItHome() {
         val ogre = ZoneCard("ogre", CardIdentity("Grizzly Bears", "Creature", null, manaCost = "{1}{G}"), power = 2, toughness = 2, isCreaturePermanent = true)

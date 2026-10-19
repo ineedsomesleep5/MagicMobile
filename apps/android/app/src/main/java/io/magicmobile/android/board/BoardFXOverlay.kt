@@ -43,6 +43,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import io.magicmobile.android.game.BoardFXArrivalSound
+import io.magicmobile.android.game.CardIdentity
 import io.magicmobile.android.game.ActiveBoardFX
 import io.magicmobile.android.game.BoardFXBannerPlan
 import io.magicmobile.android.game.BoardFXEntrance
@@ -1047,12 +1049,37 @@ private fun DrawScope.drawEffect(fx: ScheduledBoardFX, p: Double, elapsed: Doubl
 
 /** Board events to recorded cues (Swift BoardFXSound). */
 object BoardFXSound {
-    data class Arrival(val isLand: Boolean = false, val isToken: Boolean = false)
+    /** What arrived, so it can sound like what it is (BoardFXArrivalSound). */
+    data class Arrival(val card: CardIdentity = CardIdentity("", ""), val isToken: Boolean = false)
+
+    /** The sounds for one arrival: a basic land's place, or a slam by size with a layer per colour (two layers share
+     *  the level one would have, so a two-colour card is not louder). */
+    fun arrivalCues(plan: BoardFXArrivalSound): List<Pair<GameSound, Float>> = when (plan) {
+        is BoardFXArrivalSound.BasicLand -> listOf((when (plan.kind) {
+            "plains" -> GameSound.LAND_PLAINS; "island" -> GameSound.LAND_ISLAND; "swamp" -> GameSound.LAND_SWAMP
+            "mountain" -> GameSound.LAND_MOUNTAIN; "forest" -> GameSound.LAND_FOREST; else -> GameSound.LAND_DROP
+        }) to 1f)
+        BoardFXArrivalSound.OtherLand -> listOf(GameSound.LAND_DROP to 1f)
+        is BoardFXArrivalSound.Permanent -> {
+            val slam = when (plan.size) {
+                BoardFXArrivalSound.Size.LIGHT -> GameSound.SLAM_LIGHT
+                BoardFXArrivalSound.Size.MEDIUM -> GameSound.SLAM_MEDIUM
+                BoardFXArrivalSound.Size.HEAVY -> GameSound.SLAM_HEAVY
+            }
+            val layers = plan.colors.mapNotNull { mapOf("W" to GameSound.LAYER_WHITE, "U" to GameSound.LAYER_BLUE,
+                "B" to GameSound.LAYER_BLACK, "R" to GameSound.LAYER_RED, "G" to GameSound.LAYER_GREEN)[it] }
+            if (layers.isEmpty()) listOf(slam to 1f, GameSound.LAYER_COLORLESS to 1f)
+            else listOf(slam to 1f) + layers.map { it to if (layers.size > 1) 0.71f else 1f }
+        }
+    }
     data class Cue(val sound: GameSound, val at: Double, val volume: Float = 1f)
 
     fun play(scheduled: List<ScheduledBoardFX>, viewerID: String, arrivals: Map<String, Arrival> = emptyMap()) {
         val hasStrike = scheduled.any { it.event is BoardFXEvent.CombatStrike }
-        for (cue in cues(scheduled, viewerID, arrivals, hasStrike)) GameAudio.play(cue.sound, cue.at, cue.volume)
+        // Cues due at the same moment (a slam and its colour layers) start together from one timer, not one each.
+        for ((_, together) in cues(scheduled, viewerID, arrivals, hasStrike).groupBy { Math.round(it.at * 1000) }) {
+            GameAudio.playTogether(together.map { it.sound to it.volume }, together[0].at)
+        }
     }
 
     fun cues(scheduled: List<ScheduledBoardFX>, viewerID: String, arrivals: Map<String, Arrival>, hasStrike: Boolean): List<Cue> {
@@ -1081,9 +1108,8 @@ object BoardFXSound {
             }
             is BoardFXEvent.EnteredBattlefield -> {
                 val arrival = arrivals[event.cardID] ?: Arrival()
-                val sound = if (event.entrance == BoardFXEntrance.COMMANDER) GameSound.CREATURE_ENTER
-                    else if (arrival.isLand) GameSound.LAND_DROP else if (arrival.isToken) GameSound.TOKEN_CREATE else GameSound.CREATURE_ENTER
-                cues += Cue(sound, fx.landing)
+                val plan = BoardFXArrivalSound.plan(arrival.card, arrival.isToken, event.entrance == BoardFXEntrance.COMMANDER)
+                for ((sound, volume) in arrivalCues(plan)) cues += Cue(sound, fx.landing, volume)
             }
             is BoardFXEvent.CountersChanged -> cues += Cue(GameSound.COUNTER, fx.delay, if (event.delta > 0) 1f else 0.5f)
             is BoardFXEvent.StatsChanged -> cues += Cue(GameSound.COUNTER, fx.delay, 0.4f)

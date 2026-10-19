@@ -39,8 +39,13 @@ enum GameSound: String, CaseIterable, Identifiable {
          bookOpen = "book-open", bookClose = "book-close"
     // Cards and board
     case cardDraw = "card-draw", cardPickup = "card-pickup", cardPlay = "card-play", shuffle,
-         landDrop = "land-drop", creatureEnter = "creature-enter", tokenCreate = "token-create",
-         counter, ability, steal
+         landDrop = "land-drop", counter, ability, steal,
+         // A card arriving (BoardFXArrivalSound): a slam by size, a layer per colour on top, or a basic land's place.
+         slamLight = "slam-light", slamMedium = "slam-medium", slamHeavy = "slam-heavy",
+         layerWhite = "layer-white", layerBlue = "layer-blue", layerBlack = "layer-black", layerRed = "layer-red",
+         layerGreen = "layer-green", layerColorless = "layer-colorless",
+         landPlains = "land-plains", landIsland = "land-island", landSwamp = "land-swamp", landMountain = "land-mountain",
+         landForest = "land-forest"
     // Spells by color identity
     case castWhite = "cast-white", castBlue = "cast-blue", castBlack = "cast-black", castRed = "cast-red",
          castGreen = "cast-green", castColorless = "cast-colorless", castMulti = "cast-multi",
@@ -57,8 +62,9 @@ enum GameSound: String, CaseIterable, Identifiable {
         switch self {
         case .uiTap, .uiConfirm, .uiBack, .uiOpen, .uiClose, .uiToggle, .uiTick, .uiError,
              .responseAlert, .menuPlay, .pageFlip, .emote, .bookOpen, .bookClose: return .interface
-        case .cardDraw, .cardPickup, .cardPlay, .shuffle, .landDrop, .creatureEnter, .tokenCreate,
-             .counter, .ability, .steal: return .cards
+        case .cardDraw, .cardPickup, .cardPlay, .shuffle, .landDrop, .counter, .ability, .steal, .slamLight, .slamMedium,
+             .slamHeavy, .layerWhite, .layerBlue, .layerBlack, .layerRed, .layerGreen, .layerColorless, .landPlains,
+             .landIsland, .landSwamp, .landMountain, .landForest: return .cards
         case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti,
              .spellBig, .commanderCast: return .spells
         case .attack, .block, .strike, .playerHit, .death, .exile, .lifeGain, .lifeLoss: return .combat
@@ -88,11 +94,23 @@ enum GameSound: String, CaseIterable, Identifiable {
         case .cardPlay: return String(localized: "Play a card")
         case .shuffle: return String(localized: "Shuffle (mulligan)")
         case .landDrop: return String(localized: "Land")
-        case .creatureEnter: return String(localized: "Creature arrives")
-        case .tokenCreate: return String(localized: "Token")
         case .counter: return String(localized: "Counter")
         case .ability: return String(localized: "Your ability")
         case .steal: return String(localized: "Stolen permanent")
+        case .slamLight: return String(localized: "Small card lands")
+        case .slamMedium: return String(localized: "Card lands")
+        case .slamHeavy: return String(localized: "Big card lands")
+        case .layerWhite: return String(localized: "White card")
+        case .layerBlue: return String(localized: "Blue card")
+        case .layerBlack: return String(localized: "Black card")
+        case .layerRed: return String(localized: "Red card")
+        case .layerGreen: return String(localized: "Green card")
+        case .layerColorless: return String(localized: "Colorless card")
+        case .landPlains: return String(localized: "Plains")
+        case .landIsland: return String(localized: "Island")
+        case .landSwamp: return String(localized: "Swamp")
+        case .landMountain: return String(localized: "Mountain")
+        case .landForest: return String(localized: "Forest")
         case .castWhite: return String(localized: "White spell")
         case .castBlue: return String(localized: "Blue spell")
         case .castBlack: return String(localized: "Black spell")
@@ -135,7 +153,9 @@ enum GameSound: String, CaseIterable, Identifiable {
         case .uiConfirm, .uiError, .pageFlip, .emote, .bookOpen, .bookClose: return 0.65
         case .responseAlert, .menuPlay: return 0.8
         case .cardDraw, .cardPickup, .counter, .ability: return 0.7
-        case .cardPlay, .shuffle, .landDrop, .creatureEnter, .tokenCreate: return 0.85
+        case .cardPlay, .shuffle, .landDrop, .slamLight, .slamMedium, .slamHeavy, .layerWhite, .layerBlue, .layerBlack,
+             .layerRed, .layerGreen, .layerColorless, .landPlains, .landIsland, .landSwamp, .landMountain, .landForest:
+            return 0.85
         case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti: return 0.85
         case .spellBig, .commanderCast, .attack, .block, .strike, .playerHit: return 0.9
         case .death, .exile, .lifeGain, .lifeLoss, .steal: return 0.75
@@ -148,8 +168,8 @@ enum GameSound: String, CaseIterable, Identifiable {
     /// cues stay in tune.
     var pitchVariation: Float {
         switch self {
-        case .cardDraw, .cardPickup, .cardPlay, .landDrop, .creatureEnter, .strike, .playerHit,
-             .death, .attack, .block, .counter, .tokenCreate, .shuffle, .diceLand:
+        case .cardDraw, .cardPickup, .cardPlay, .landDrop, .strike, .playerHit, .death, .attack, .block, .counter, .shuffle,
+             .diceLand, .slamLight, .slamMedium, .slamHeavy:
             return 0.04
         default: return 0
         }
@@ -158,7 +178,8 @@ enum GameSound: String, CaseIterable, Identifiable {
     /// Simultaneous copies allowed (a board wipe plays several deaths at once).
     var voices: Int {
         switch self {
-        case .strike, .death, .cardDraw, .tokenCreate, .creatureEnter: return 3
+        case .strike, .death, .cardDraw, .slamLight, .slamMedium, .slamHeavy, .layerWhite, .layerBlue, .layerBlack, .layerRed,
+             .layerGreen, .layerColorless: return 3
         case .victory, .defeat, .versus, .turnYou, .menuPlay, .responseAlert: return 1
         default: return 2
         }
@@ -170,7 +191,8 @@ enum GameSound: String, CaseIterable, Identifiable {
         switch self {
         case .uiTick: return 0.08
         case .cardDraw, .uiTap: return 0.1
-        case .strike, .death, .tokenCreate, .creatureEnter, .landDrop: return 0.12
+        case .strike, .death, .landDrop, .slamLight, .slamMedium, .slamHeavy, .landPlains, .landIsland, .landSwamp,
+             .landMountain, .landForest: return 0.12
         case .counter, .lifeGain: return 0.3
         case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti: return 0.25
         case .ability: return 0.8
@@ -289,6 +311,9 @@ final class GameAudio {
     private func player(for sound: GameSound) -> AVAudioPlayer? {
         let file = sound.variants > 1 ? "\(sound.rawValue)-\(Int.random(in: 1...sound.variants))" : sound.rawValue
         var pool = pools[file] ?? []
+        // An idle voice first: making and preparing another player costs ~40 ms, which smeared a slam and its colour
+        // layer apart when both played at once.
+        if let idle = pool.first(where: { !$0.isPlaying }) { return idle }
         if pool.count < sound.voices, let url = url(file), let player = try? AVAudioPlayer(contentsOf: url) {
             player.enableRate = sound.pitchVariation > 0
             player.prepareToPlay()
@@ -296,12 +321,15 @@ final class GameAudio {
             pools[file] = pool
         }
         guard !pool.isEmpty else { return nil }
-        // Prefer an idle voice; otherwise steal the oldest in round-robin order.
         if let idle = pool.first(where: { !$0.isPlaying }) { return idle }
+        // Every voice busy: steal the oldest in round-robin order.
         let index = (nextVoice[file] ?? 0) % pool.count
         nextVoice[file] = index + 1
         return pool[index]
     }
+
+    /// The board's sounds (cards, spells, combat), warmed up when a game appears (NativeGameView).
+    static let boardSounds = GameSound.allCases.filter { [.cards, .spells, .combat].contains($0.category) }
 
     /// Warm up the players used in the first seconds of a game so the first cast is instant.
     func preload(_ sounds: [GameSound]) {
@@ -320,18 +348,54 @@ final class GameAudio {
             }
             return
         }
+        guard let player = ready(sound, volume: scale, audition: audition) else { return }
+        player.play()
+        logPlay(sound, player)
+    }
+
+    /// Several cues due at the same moment (a card slam and its colour layers), started on the same sample: each
+    /// AVAudioPlayer takes a while to start the first time, which smeared them up to ~50 ms apart.
+    /// `lead` is how far ahead the shared start is set: long enough to ready every voice first (a few at ~30 ms each).
+    func playTogether(_ cues: [(sound: GameSound, volume: Float)], lead: TimeInterval = 0.1) {
+        guard !isTesting, effectsEnabled, effectsVolume > 0 else { return }
+        let players = cues.filter { isEnabled($0.sound.category) }.compactMap { cue in
+            ready(cue.sound, volume: cue.volume, audition: false).map { (cue.sound, $0) }
+        }
+        guard let clock = players.first?.1.deviceCurrentTime else { return }
+        for (sound, player) in players {
+            player.play(atTime: clock + lead)
+            logPlay(sound, player)
+        }
+    }
+
+    /// A voice for this cue, levelled and pitched, unless it played too recently.
+    private func ready(_ sound: GameSound, volume scale: Float, audition: Bool) -> AVAudioPlayer? {
         let now = ProcessInfo.processInfo.systemUptime
-        if !audition, let last = lastPlayed[sound], now - last < sound.cooldown { return }
+        if !audition, let last = lastPlayed[sound], now - last < sound.cooldown { return nil }
         lastPlayed[sound] = now
         prepareSession()
-        guard let player = player(for: sound) else { return }
+        guard let player = player(for: sound) else { return nil }
         player.volume = min(1, sound.volume * max(effectsVolume, audition ? 0.6 : 0) * scale)
         if sound.pitchVariation > 0 {
             player.rate = 1 + Float.random(in: -sound.pitchVariation...sound.pitchVariation)
         }
         player.currentTime = 0
-        player.play()
+        return player
     }
+
+    private func logPlay(_ sound: GameSound, _ player: AVAudioPlayer) {
+        #if DEBUG
+        // Visual QA: MAGICMOBILE_LOG_SOUNDS=1 prints each cue as it plays (its start on the device clock too), so a
+        // silent simulator recording can be given its soundtrack afterwards.
+        if Self.logsPlays {
+            print("MMSOUND \(Date().timeIntervalSince1970) \(sound.rawValue) \(player.volume) \(player.rate) \(player.deviceCurrentTime)")
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private static let logsPlays = ProcessInfo.processInfo.environment["MAGICMOBILE_LOG_SOUNDS"] == "1"
+    #endif
 
     // MARK: Music
 

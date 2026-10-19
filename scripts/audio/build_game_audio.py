@@ -197,18 +197,6 @@ def r_land_drop():
     return layer((kenney("casino-audio__card-place-3"), 0.0, -3), (piece, 0.0, -2), (plank, 0.01, -8))
 
 
-def r_creature_enter():
-    plank = sonniss("Drop Soft - Single Plank, Drop 02", 0.0, 0.45, fade_out=0.1)
-    body = sonniss("punch_general_body_impact_03", 0.0, 0.2, fade_out=0.06)
-    return layer((kenney("casino-audio__card-place-1"), 0.0, -4), (plank, 0.01, 0), (body, 0.01, -7))
-
-
-def r_token_create():
-    plop = sonniss("Scatter Plops 04", 0.14, 0.26)
-    sparkle = sonniss("collect_item_14", 0.0, 0.5, fade_out=0.2)
-    return layer((plop, 0.0, 0), (sparkle, 0.02, -11))
-
-
 def r_counter():
     return sonniss("Scatter Plops 04", 0.25, 0.36)
 
@@ -230,6 +218,122 @@ def r_steal():
     land = kenney("casino-audio__card-place-1", 0.14, 0.40, fade_out=0.08)
     chain = LowpassFilter(cutoff_frequency_hz=6000)(layer(*links), SR)
     return tavern_room(layer((hook, 0.0, 0.0), (chain, 0.0, 0.0), (land, 0.66, -6.0)))
+
+
+# ------------------------------------------------------------------ cards arriving (Caleb picked round 6, 2026-10-19)
+# Like Arena and Hearthstone, an arrival says what the card is: a card slam sized by mana value, the basic lands each
+# sounding like their place, and a short colour layer that the apps play over the slam (one per colour, up to two).
+FROG_AT = 38.62   # a single croak in Soundrangers' night swamp (bursts every ~0.5 s around 38-39 s)
+
+
+def ks(name: str, gain: float = 0.0, at: float = 0.0, end: float | None = None) -> tuple:
+    """A Kenney Impact or Interface Sounds take as a (signal, start, gain dB) layer."""
+    pack = "interface-sounds" if name.split("_")[0] in {"glass", "drop", "pluck", "bong", "select"} else "impact-sounds"
+    return (kenney(f"{pack}__{name}", 0.0, end, fade_out=0.04), at, gain)
+
+
+def card_dealt() -> np.ndarray:
+    return sonniss("games - Deck of cards dealt on to felt table surface 43", 0.42, 0.80, fade_in=0.004, fade_out=0.12)
+
+
+def slam_parts(size: str) -> list:
+    """A card dealt onto felt with a thud under it; medium adds a wood knock, heavy a low boom."""
+    parts = [(card_dealt(), 0.0, 0.0)]
+    if size == "light":
+        parts.append(ks("impactSoft_medium_001", -6.0))
+    else:
+        parts += [ks("impactWood_heavy_002", -3.0), ks("impactSoft_heavy_001", -6.0)]
+    if size == "heavy":
+        parts.append((lowpass(sonniss("Bluezone_BC0237_impact_017", 0.30, 0.95, fade_in=0.004, fade_out=0.3), 3000), 0.0, -8.0))
+    return parts
+
+
+def bed(name: str, at: float, length: float, lo: float | None = None, hi: float | None = None) -> np.ndarray:
+    """A moment of an ambience, faded in quickly and out slowly, optionally band-limited."""
+    x = sonniss(name, at, at + length, fade_in=0.04, fade_out=length * 0.55)
+    if lo:
+        x = highpass(x, lo)
+    if hi:
+        x = lowpass(x, hi)
+    return x
+
+
+def splash(end: float = 0.5, fade_out: float = 0.25) -> np.ndarray:
+    return sonniss("LIQUID HIT Lake, Branch, Splash, Lake, Seaweed in Water, Small, CU 04", 0.0, end, fade_out=fade_out)
+
+
+LAND_LAYERS = {
+    "plains": lambda: [(bed("Wind,Ext,Gust,Grasslands,Rustle,Buffeting", 56.4, 0.9, lo=150, hi=6000), 0.0, -4.0),
+                       (bed("Amb, Field, Birds, Wind, MS_01", 8.3, 0.7, lo=1500), 0.15, -12.0)],
+    "island": lambda: [(bed("water_lapping_sea_waves_sandy_beach_03", 0.8, 1.0, lo=120), 0.0, -3.0), (splash(), 0.02, -8.0)],
+    "swamp": lambda: [(lowpass(splash(0.45, 0.2), 2500), 0.0, -3.0),
+                      (sonniss("soil and dirt debris heavy 13", 0.03, 0.30, fade_out=0.12), 0.02, -12.0),
+                      (bed("swamp_ambience_night_05_120_loop", FROG_AT, 0.85, lo=300, hi=3200), 0.18, -4.0)],
+    "mountain": lambda: [(sonniss("rock impact medium 26", 0.08, 0.60, fade_out=0.25), 0.0, -2.0),
+                         (sonniss("rock tumble down debris long 06", 0.15, 0.85, fade_in=0.02, fade_out=0.35), 0.08, -11.0)],
+    "forest": lambda: [(sonniss("leaves_pile_pick_up_04", 0.45, 0.95, fade_in=0.02, fade_out=0.25), 0.0, -6.0),
+                       (sonniss("tree_dead_tree_limb_impact_05", 0.20, 0.55, fade_out=0.15), 0.0, -10.0),
+                       (bed("NS01_007_Forest birds", 89.8, 0.9, lo=1500), 0.1, -9.0)],
+}
+
+COLOUR_LAYERS = {
+    "white": lambda: [ks("impactBell_heavy_003", -9.0, 0.01),
+                      (bed("Wind,Ext,Gust,Grasslands,Rustle,Buffeting", 56.4, 0.5, lo=400, hi=6000), 0.0, -14.0)],
+    "blue": lambda: [(splash(0.55), 0.0, -5.0)],
+    "black": lambda: [(lowpass(sonniss("soil and dirt debris heavy 13", 0.03, 0.45, fade_out=0.2), 2500), 0.0, -7.0),
+                      (lowpass(sonniss("Bluezone_BC0237_impact_017", 0.30, 0.95, fade_out=0.35), 900), 0.0, -12.0)],
+    "red": lambda: [(sonniss("sm-fire-firewood-small-03-DPAmono", 1.30, 1.95, fade_in=0.01, fade_out=0.3), 0.0, -5.0)],
+    "green": lambda: [(sonniss("leaves_pile_pick_up_04", 0.45, 0.85, fade_in=0.02, fade_out=0.2), 0.0, -7.0),
+                      (bed("Amb, Field, Birds, Wind, MS_01", 8.3, 0.6, lo=1800), 0.05, -15.0)],
+    "colorless": lambda: [ks("impactMetal_light_000", -4.0, 0.005)],
+}
+SLAM_DB = {"light": -23.0, "medium": -22.0, "heavy": -21.0}
+
+
+def reach(x: np.ndarray, target: float) -> np.ndarray:
+    """Match loudness; sharp knocks hit the -1 dB ceiling first, so a fast limiter lets them reach the target (the same
+    steps trials.py used for what Caleb auditioned)."""
+    from pedalboard import Limiter
+    y, limit = match_loudness(x, target, -1.0), -6.0
+    while loudness(y) < target - 0.5 and limit > -18.0:
+        y = match_loudness(Limiter(threshold_db=limit, release_ms=50)(y.astype(np.float32), SR), target, -1.0)
+        limit -= 3.0
+    return y
+
+
+def r_slam(size: str):
+    return lambda: layer(*slam_parts(size))
+
+
+def r_land(kind: str):
+    return lambda: layer(*slam_parts("light"), *LAND_LAYERS[kind]())
+
+
+def r_colour_layer(colour: str):
+    """The colour layer alone, which the apps play over the slam. Caleb auditioned slam + layer levelled together as one
+    mix at -21 dB; here the layer gets the level at which the shipped medium slam plus this layer is that loud again.
+    Already levelled: CUES gives it no loudness target."""
+    def recipe() -> np.ndarray:
+        slam = reach(highpass(layer(*slam_parts("medium")), 60, order=2), SLAM_DB["medium"])
+        texture = highpass(layer(*COLOUR_LAYERS[colour]()), 60, order=2)
+        n = max(len(slam), len(texture))
+
+        def together(gain: float) -> float:
+            mix = np.zeros(n, dtype=np.float32)
+            mix[:len(slam)] += slam
+            mix[:len(texture)] += texture * gain
+            return loudness(mix)
+
+        lo, hi = 0.0, 4.0
+        for _ in range(40):   # loudness grows with the layer's gain
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if together(mid) < -21.0 else (lo, mid)
+        return texture * lo
+    return recipe
+
+
+ARRIVAL_CUES = {"slam-light", "slam-medium", "slam-heavy", "land-plains", "land-island", "land-swamp", "land-mountain",
+                "land-forest"}
 
 
 def r_ability():
@@ -367,11 +471,23 @@ CUES: dict[str, tuple] = {
     "card-play": (r_card_play, -23, False),
     "shuffle": (r_shuffle, -24, False),
     "land-drop": (r_land_drop, -22, False),
-    "creature-enter": (r_creature_enter, -21, False),
-    "token-create": (r_token_create, -25, False),
     "counter": (r_counter, -30, False),
     "ability": (r_ability, -27, True),
     "steal": (r_steal, -27, False),
+    "slam-light": (r_slam("light"), SLAM_DB["light"], False),
+    "slam-medium": (r_slam("medium"), SLAM_DB["medium"], False),
+    "slam-heavy": (r_slam("heavy"), SLAM_DB["heavy"], False),
+    "land-plains": (r_land("plains"), -22, False),
+    "land-island": (r_land("island"), -22, False),
+    "land-swamp": (r_land("swamp"), -22, False),
+    "land-mountain": (r_land("mountain"), -22, False),
+    "land-forest": (r_land("forest"), -22, False),
+    "layer-white": (r_colour_layer("white"), None, False),
+    "layer-blue": (r_colour_layer("blue"), None, False),
+    "layer-black": (r_colour_layer("black"), None, False),
+    "layer-red": (r_colour_layer("red"), None, False),
+    "layer-green": (r_colour_layer("green"), None, False),
+    "layer-colorless": (r_colour_layer("colorless"), None, False),
     "cast-white": (r_cast_white, -22, True),
     "cast-blue": (r_cast_blue, -22, True),
     "cast-black": (r_cast_black, -22, True),
@@ -478,7 +594,10 @@ def main() -> None:
         x = recipe()
         # Nothing below ~60 Hz survives a phone speaker; it would only eat headroom.
         x = highpass(x, 60, order=2)
-        x = match_loudness(x, target, -1.0)
+        if name in ARRIVAL_CUES:
+            x = reach(x, target)
+        elif target is not None:   # colour layers arrive already levelled against the slam they sit on
+            x = match_loudness(x, target, -1.0)
         replace(name)
         report[name] = write(name, x, args.out, want_stereo)
         print(f"{name:18s} {report[name]}")

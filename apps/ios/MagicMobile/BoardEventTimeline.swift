@@ -12,24 +12,7 @@ enum BoardFXTint: String, Equatable {
     case white, blue, black, red, green, multicolor, colorless
 
     init(card: CardIdentity) {
-        var colors = Set<String>()
-        if let manaCost = card.manaCost?.uppercased() {
-            for symbol in ["W", "U", "B", "R", "G"] where manaCost.contains(symbol) {
-                colors.insert(symbol)
-            }
-        }
-        if colors.isEmpty, let tokenColors = card.tokenColors {
-            for color in tokenColors {
-                switch color.lowercased() {
-                case "w", "white": colors.insert("W")
-                case "u", "blue": colors.insert("U")
-                case "b", "black": colors.insert("B")
-                case "r", "red": colors.insert("R")
-                case "g", "green": colors.insert("G")
-                default: break
-                }
-            }
-        }
+        let colors = Self.colors(of: card)
         switch colors.count {
         case 0: self = .colorless
         case 1:
@@ -42,6 +25,68 @@ enum BoardFXTint: String, Equatable {
             }
         default: self = .multicolor
         }
+    }
+}
+
+extension BoardFXTint {
+    /// A card's colours in WUBRG order: from its mana cost, else (a token) its printed colours.
+    static func colors(of card: CardIdentity) -> [String] {
+        let order = ["W", "U", "B", "R", "G"]
+        var found = Set<String>()
+        if let manaCost = card.manaCost?.uppercased() {
+            for symbol in order where manaCost.contains(symbol) { found.insert(symbol) }
+        }
+        if found.isEmpty, let tokenColors = card.tokenColors {
+            for color in tokenColors {
+                switch color.lowercased() {
+                case "w", "white": found.insert("W")
+                case "u", "blue": found.insert("U")
+                case "b", "black": found.insert("B")
+                case "r", "red": found.insert("R")
+                case "g", "green": found.insert("G")
+                default: break
+                }
+            }
+        }
+        return order.filter(found.contains)
+    }
+}
+
+/// What a card arriving on the battlefield sounds like (BoardFXSound plays it). Like MTG Arena, a basic land sounds like
+/// its place; anything else lands with a card slam sized by mana value plus a short layer for each of its colours (the
+/// first two). Caleb picked this from audio trials round 6, 2026-10-19.
+enum BoardFXArrivalSound: Equatable {
+    enum Size: Equatable { case light, medium, heavy }
+
+    /// "plains", "island", "swamp", "mountain" or "forest".
+    case basicLand(String)
+    /// A land with no basic land type.
+    case otherLand
+    /// Colours as WUBRG letters, at most two; none is colourless.
+    case permanent(Size, colors: [String])
+
+    static let basicLandTypes = ["plains", "island", "swamp", "mountain", "forest"]
+
+    static func plan(card: CardIdentity, isToken: Bool, commander: Bool) -> BoardFXArrivalSound {
+        let typeLine = card.typeLine.lowercased()
+        let words = typeLine.split(whereSeparator: { !$0.isLetter }).map(String.init)
+        if words.contains("land") {
+            // The subtypes after the dash: "Land — Forest Island" sounds like a Forest.
+            let subtypes = typeLine.replacingOccurrences(of: " - ", with: "—").components(separatedBy: "—").dropFirst()
+                .joined(separator: " ")
+                .split(whereSeparator: { !$0.isLetter }).map(String.init)
+            return subtypes.first(where: basicLandTypes.contains).map(BoardFXArrivalSound.basicLand) ?? .otherLand
+        }
+        let size: Size
+        if commander {
+            size = .heavy
+        } else if isToken {
+            size = .light
+        } else {
+            let value = BoardFXManaValue.of(card.manaCost)
+            size = value <= 2 ? .light : value <= 4 ? .medium : .heavy
+        }
+        return .permanent(size, colors: Array(BoardFXTint.colors(of: card).prefix(2)))
     }
 }
 

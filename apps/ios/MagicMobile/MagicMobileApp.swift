@@ -329,7 +329,8 @@ private struct DesignPreviewFixtureScreen: View {
     init(fixture: String) {
         self.fixture = fixture
         let state = GameBoardDesignPreviewState(rawValue: fixture) ?? .normalBattlefield
-        let snapshot = fixture == "board-fx" ? GameBoardPreviewFixtures.boardFXStep(0) : GameBoardPreviewFixtures.snapshot(state)
+        let snapshot = fixture == "board-fx" ? GameBoardPreviewFixtures.boardFXStep(0)
+            : fixture == "arrivals" ? GameBoardPreviewFixtures.arrivalsStep(0) : GameBoardPreviewFixtures.snapshot(state)
         var inspected = GameBoardPreviewFixtures.inspectedCard(for: state, snapshot: snapshot)
         if let id = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_INSPECT"] {
             inspected = snapshot.visibleBattlefield.first { $0.instanceId == id }
@@ -406,6 +407,19 @@ private struct DesignPreviewFixtureScreen: View {
 
     /// Scripted beats for the animated fixtures; each replays unless MAGICMOBILE_BOARD_FX_FREEZE holds it.
     @ViewBuilder private var previewControls: some View {
+        if fixture == "arrivals" {
+            Button(GameBoardPreviewFixtures.arrivalLabel(boardFXPreviewStep)) { advanceArrivals() }
+                .font(.caption.weight(.bold)).padding(8).background(.black)
+                .padding(.top, 24).accessibilityIdentifier("preview.arrivals.next")
+                .task {
+                    // Visual QA: MAGICMOBILE_BOARD_FX_AUTOPLAY=1 deals the next card every 3 s.
+                    guard ProcessInfo.processInfo.environment["MAGICMOBILE_BOARD_FX_AUTOPLAY"] == "1" else { return }
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(3.0))
+                        advanceArrivals()
+                    }
+                }
+        }
         if fixture == "board-fx" {
             Button("Next board FX step (\(boardFXPreviewStep))") { advanceBoardFX() }
                 .font(.caption).padding(8).background(.black)
@@ -462,6 +476,14 @@ private struct DesignPreviewFixtureScreen: View {
         case "first-strike": return (.firstStrike, "Replay first strike", 3.6)
         case "ability-showcase": return (.abilityShowcase, "Replay ability", 2.4)
         default: return nil
+        }
+    }
+
+    private func advanceArrivals() {
+        boardFXPreviewStep = (boardFXPreviewStep + 1) % GameBoardPreviewFixtures.arrivalsStepCount
+        snapshot = GameBoardPreviewFixtures.arrivalsStep(boardFXPreviewStep)
+        if ProcessInfo.processInfo.environment["MAGICMOBILE_LOG_SOUNDS"] == "1" {
+            print("MMSTEP \(Date().timeIntervalSince1970) \(boardFXPreviewStep)")
         }
     }
 

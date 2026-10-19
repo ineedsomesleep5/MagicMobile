@@ -34,8 +34,16 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     BOOK_OPEN("book-open", GameSoundCategory.INTERFACE, "Spell book opens"), BOOK_CLOSE("book-close", GameSoundCategory.INTERFACE, "Spell book closes"),
     CARD_DRAW("card-draw", GameSoundCategory.CARDS, "Draw a card"), CARD_PICKUP("card-pickup", GameSoundCategory.CARDS, "Pick up a card"),
     CARD_PLAY("card-play", GameSoundCategory.CARDS, "Play a card"), SHUFFLE("shuffle", GameSoundCategory.CARDS, "Shuffle (mulligan)"),
-    LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), CREATURE_ENTER("creature-enter", GameSoundCategory.CARDS, "Creature arrives"),
-    TOKEN_CREATE("token-create", GameSoundCategory.CARDS, "Token"), COUNTER("counter", GameSoundCategory.CARDS, "Counter"),
+    LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), COUNTER("counter", GameSoundCategory.CARDS, "Counter"),
+    // A card arriving (BoardFXArrivalSound): a slam by size, a layer per colour on top, or a basic land's place.
+    SLAM_LIGHT("slam-light", GameSoundCategory.CARDS, "Small card lands"), SLAM_MEDIUM("slam-medium", GameSoundCategory.CARDS, "Card lands"),
+    SLAM_HEAVY("slam-heavy", GameSoundCategory.CARDS, "Big card lands"),
+    LAYER_WHITE("layer-white", GameSoundCategory.CARDS, "White card"), LAYER_BLUE("layer-blue", GameSoundCategory.CARDS, "Blue card"),
+    LAYER_BLACK("layer-black", GameSoundCategory.CARDS, "Black card"), LAYER_RED("layer-red", GameSoundCategory.CARDS, "Red card"),
+    LAYER_GREEN("layer-green", GameSoundCategory.CARDS, "Green card"), LAYER_COLORLESS("layer-colorless", GameSoundCategory.CARDS, "Colorless card"),
+    LAND_PLAINS("land-plains", GameSoundCategory.CARDS, "Plains"), LAND_ISLAND("land-island", GameSoundCategory.CARDS, "Island"),
+    LAND_SWAMP("land-swamp", GameSoundCategory.CARDS, "Swamp"), LAND_MOUNTAIN("land-mountain", GameSoundCategory.CARDS, "Mountain"),
+    LAND_FOREST("land-forest", GameSoundCategory.CARDS, "Forest"),
     ABILITY("ability", GameSoundCategory.CARDS, "Your ability"), STEAL("steal", GameSoundCategory.CARDS, "Stolen permanent"),
     CAST_WHITE("cast-white", GameSoundCategory.SPELLS, "White spell"), CAST_BLUE("cast-blue", GameSoundCategory.SPELLS, "Blue spell"),
     CAST_BLACK("cast-black", GameSoundCategory.SPELLS, "Black spell"), CAST_RED("cast-red", GameSoundCategory.SPELLS, "Red spell"),
@@ -59,7 +67,8 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
         UI_CONFIRM, UI_ERROR, PAGE_FLIP, EMOTE, BOOK_OPEN, BOOK_CLOSE -> 0.65f
         RESPONSE_ALERT, MENU_PLAY -> 0.8f
         CARD_DRAW, CARD_PICKUP, COUNTER, ABILITY -> 0.7f
-        CARD_PLAY, SHUFFLE, LAND_DROP, CREATURE_ENTER, TOKEN_CREATE -> 0.85f
+        CARD_PLAY, SHUFFLE, LAND_DROP, SLAM_LIGHT, SLAM_MEDIUM, SLAM_HEAVY, LAYER_WHITE, LAYER_BLUE, LAYER_BLACK, LAYER_RED, LAYER_GREEN,
+        LAYER_COLORLESS, LAND_PLAINS, LAND_ISLAND, LAND_SWAMP, LAND_MOUNTAIN, LAND_FOREST -> 0.85f
         CAST_WHITE, CAST_BLUE, CAST_BLACK, CAST_RED, CAST_GREEN, CAST_COLORLESS, CAST_MULTI -> 0.85f
         SPELL_BIG, COMMANDER_CAST, ATTACK, BLOCK, STRIKE, PLAYER_HIT -> 0.9f
         DEATH, EXILE, LIFE_GAIN, LIFE_LOSS, STEAL -> 0.75f
@@ -69,13 +78,15 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
 
     /** A little pitch variation keeps repeated foley from sounding mechanical; musical cues stay in tune. */
     val pitchVariation: Float get() = when (this) {
-        CARD_DRAW, CARD_PICKUP, CARD_PLAY, LAND_DROP, CREATURE_ENTER, STRIKE, PLAYER_HIT, DEATH, ATTACK, BLOCK, COUNTER, TOKEN_CREATE, SHUFFLE, DICE_LAND -> 0.04f
+        CARD_DRAW, CARD_PICKUP, CARD_PLAY, LAND_DROP, STRIKE, PLAYER_HIT, DEATH, ATTACK, BLOCK, COUNTER, SHUFFLE, DICE_LAND,
+        SLAM_LIGHT, SLAM_MEDIUM, SLAM_HEAVY -> 0.04f
         else -> 0f
     }
 
     /** Simultaneous copies allowed (a board wipe plays several deaths at once). */
     val voices: Int get() = when (this) {
-        STRIKE, DEATH, CARD_DRAW, TOKEN_CREATE, CREATURE_ENTER -> 3
+        STRIKE, DEATH, CARD_DRAW, SLAM_LIGHT, SLAM_MEDIUM, SLAM_HEAVY, LAYER_WHITE, LAYER_BLUE, LAYER_BLACK, LAYER_RED, LAYER_GREEN,
+        LAYER_COLORLESS -> 3
         VICTORY, DEFEAT, VERSUS, TURN_YOU, MENU_PLAY, RESPONSE_ALERT -> 1
         else -> 2
     }
@@ -84,7 +95,7 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     val cooldown: Double get() = when (this) {
         UI_TICK -> 0.08
         CARD_DRAW, UI_TAP -> 0.1
-        STRIKE, DEATH, TOKEN_CREATE, CREATURE_ENTER, LAND_DROP -> 0.12
+        STRIKE, DEATH, LAND_DROP, SLAM_LIGHT, SLAM_MEDIUM, SLAM_HEAVY, LAND_PLAINS, LAND_ISLAND, LAND_SWAMP, LAND_MOUNTAIN, LAND_FOREST -> 0.12
         COUNTER, LIFE_GAIN -> 0.3
         CAST_WHITE, CAST_BLUE, CAST_BLACK, CAST_RED, CAST_GREEN, CAST_COLORLESS, CAST_MULTI -> 0.25
         ABILITY -> 0.8
@@ -184,6 +195,16 @@ object GameAudio {
         for (sound in sounds) {
             if (sound.variants > 1) (1..sound.variants).forEach { sample("${sound.rawValue}-$it") } else sample(sound.rawValue)
         }
+    }
+
+    /** The board's sounds (cards, spells, combat), loaded when a game appears (NativeGameView) so a first arrival is not
+     *  late while SoundPool decodes it. */
+    val boardSounds: List<GameSound> get() = GameSound.entries.filter { it.category in setOf(GameSoundCategory.CARDS, GameSoundCategory.SPELLS, GameSoundCategory.COMBAT) }
+
+    /** Several cues due at the same moment (a slam and its colour layers), started from one timer. */
+    fun playTogether(cues: List<Pair<GameSound, Float>>, after: Double) {
+        if (after > 0.005) main.postDelayed({ cues.forEach { (sound, volume) -> play(sound, 0.0, volume) } }, (after * 1000).toLong())
+        else cues.forEach { (sound, volume) -> play(sound, 0.0, volume) }
     }
 
     /** `audition` plays a sound from the Sound Lab even when its category is off. */

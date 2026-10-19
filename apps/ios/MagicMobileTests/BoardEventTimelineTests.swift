@@ -330,6 +330,26 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(director.cardMotion(viewerID: "a"), BoardFXCardMotion())
     }
 
+    /// Arrivals sound like what they are (BoardFXArrivalSound): BoardEventTimelineTest.kt checks Android the same way.
+    func testArrivalSoundsFollowLandTypesManaValueAndColors() {
+        func plan(_ type: String, _ cost: String? = nil, token: [String]? = nil, isToken: Bool = false,
+                  commander: Bool = false) -> BoardFXArrivalSound {
+            BoardFXArrivalSound.plan(card: CardIdentity(name: "x", typeLine: type, oracleText: nil, manaCost: cost, tokenColors: token),
+                                     isToken: isToken, commander: commander)
+        }
+        XCTAssertEqual(plan("Basic Land — Forest"), .basicLand("forest"))
+        XCTAssertEqual(plan("Basic Land - Swamp"), .basicLand("swamp"))
+        XCTAssertEqual(plan("Land — Island Mountain"), .basicLand("island"), "a dual sounds like its first basic type")
+        XCTAssertEqual(plan("Land Creature — Forest Dryad"), .basicLand("forest"))
+        XCTAssertEqual(plan("Land"), .otherLand)
+        XCTAssertEqual(plan("Creature — Bear", "{1}{G}"), .permanent(.light, colors: ["G"]))
+        XCTAssertEqual(plan("Artifact", "{3}"), .permanent(.medium, colors: []))
+        XCTAssertEqual(plan("Enchantment", "{2}{W}{U}"), .permanent(.medium, colors: ["W", "U"]))
+        XCTAssertEqual(plan("Creature — Dragon", "{4}{B}{R}{G}"), .permanent(.heavy, colors: ["B", "R"]), "the first two colours")
+        XCTAssertEqual(plan("Legendary Creature — Elf", "{1}{G}", commander: true), .permanent(.heavy, colors: ["G"]))
+        XCTAssertEqual(plan("Token Creature — Soldier", token: ["White"], isToken: true), .permanent(.light, colors: ["W"]))
+    }
+
     func testStolenCardIsHiddenUntilTheChainDragsItHome() {
         let start = Date(timeIntervalSince1970: 2_500)
         var director = BoardFXDirector()

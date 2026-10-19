@@ -449,7 +449,7 @@ fun NativeGameView(
         if (boardSoundsEnabled) {
             val arrived = scheduled.mapNotNull { (it.event as? BoardFXEvent.EnteredBattlefield)?.cardID }.toSet()
             val arrivals = snap.players.flatMap { it.zones.battlefield }.filter { it.instanceId in arrived }
-                .associate { it.instanceId to BoardFXSound.Arrival(it.card.typeLine.contains("land", ignoreCase = true), it.card.isToken == true) }
+                .associate { it.instanceId to BoardFXSound.Arrival(it.card, it.card.isToken == true) }
             BoardFXSound.play(scheduled, snap.viewerID, arrivals)
         }
         if (level != BoardFXLevel.FULL) return
@@ -493,6 +493,8 @@ fun NativeGameView(
     }
     // The tracker starts over by itself when the game changes.
     LaunchedEffect(BoardFocusTracker.observationKey(board, followTurns)) { focusTracker = focusTracker.observe(board, followTurns) }
+    // A card's first arrival, cast or hit plays at once instead of waiting on SoundPool to decode it.
+    LaunchedEffect(Unit) { GameAudio.preload(GameAudio.boardSounds) }
     LaunchedEffect(Unit) {
         updateAIWaitStart(board)
         isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null

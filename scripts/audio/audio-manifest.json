@@ -146,13 +146,6 @@
   "peak_db": -16.9,
   "seconds": 0.11
  },
- "creature-enter": {
-  "bytes": 12832,
-  "file": "creature-enter.m4a",
-  "loudness_db": -21.4,
-  "peak_db": -3.3,
-  "seconds": 0.689
- },
  "death": {
   "bytes": 12472,
   "file": "death.m4a",
@@ -201,6 +194,83 @@
   "loudness_db": -22.6,
   "peak_db": -1.9,
   "seconds": 0.883
+ },
+ "land-forest": {
+  "bytes": 16564,
+  "file": "land-forest.m4a",
+  "loudness_db": -22.3,
+  "peak_db": -2.6,
+  "seconds": 1.0
+ },
+ "land-island": {
+  "bytes": 16673,
+  "file": "land-island.m4a",
+  "loudness_db": -22.2,
+  "peak_db": -2.8,
+  "seconds": 1.0
+ },
+ "land-mountain": {
+  "bytes": 14454,
+  "file": "land-mountain.m4a",
+  "loudness_db": -22.1,
+  "peak_db": -5.8,
+  "seconds": 0.78
+ },
+ "land-plains": {
+  "bytes": 14831,
+  "file": "land-plains.m4a",
+  "loudness_db": -22.1,
+  "peak_db": -2.3,
+  "seconds": 0.9
+ },
+ "land-swamp": {
+  "bytes": 14926,
+  "file": "land-swamp.m4a",
+  "loudness_db": -22.3,
+  "peak_db": -2.1,
+  "seconds": 1.03
+ },
+ "layer-black": {
+  "bytes": 9886,
+  "file": "layer-black.m4a",
+  "loudness_db": -29.1,
+  "peak_db": -2.1,
+  "seconds": 0.65
+ },
+ "layer-blue": {
+  "bytes": 11183,
+  "file": "layer-blue.m4a",
+  "loudness_db": -28.0,
+  "peak_db": -4.8,
+  "seconds": 0.55
+ },
+ "layer-colorless": {
+  "bytes": 37430,
+  "file": "layer-colorless.caf",
+  "loudness_db": -27.6,
+  "peak_db": -8.5,
+  "seconds": 0.378
+ },
+ "layer-green": {
+  "bytes": 11633,
+  "file": "layer-green.m4a",
+  "loudness_db": -28.1,
+  "peak_db": -11.2,
+  "seconds": 0.65
+ },
+ "layer-red": {
+  "bytes": 12714,
+  "file": "layer-red.m4a",
+  "loudness_db": -26.8,
+  "peak_db": -9.8,
+  "seconds": 0.65
+ },
+ "layer-white": {
+  "bytes": 10502,
+  "file": "layer-white.m4a",
+  "loudness_db": -28.0,
+  "peak_db": -9.8,
+  "seconds": 0.664
  },
  "life-gain": {
   "bytes": 18971,
@@ -315,6 +385,27 @@
   "peak_db": -2.0,
   "seconds": 1.62
  },
+ "slam-heavy": {
+  "bytes": 11416,
+  "file": "slam-heavy.m4a",
+  "loudness_db": -21.1,
+  "peak_db": -3.6,
+  "seconds": 0.65
+ },
+ "slam-light": {
+  "bytes": 37614,
+  "file": "slam-light.caf",
+  "loudness_db": -23.0,
+  "peak_db": -6.6,
+  "seconds": 0.38
+ },
+ "slam-medium": {
+  "bytes": 9796,
+  "file": "slam-medium.m4a",
+  "loudness_db": -22.1,
+  "peak_db": -3.5,
+  "seconds": 0.569
+ },
  "spell-big": {
   "bytes": 20179,
   "file": "spell-big.m4a",
@@ -335,13 +426,6 @@
   "loudness_db": -22.0,
   "peak_db": -3.3,
   "seconds": 0.2
- },
- "token-create": {
-  "bytes": 9921,
-  "file": "token-create.m4a",
-  "loudness_db": -25.0,
-  "peak_db": -6.7,
-  "seconds": 0.52
  },
  "turn-you": {
   "bytes": 33951,

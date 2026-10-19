@@ -24,8 +24,10 @@ trimmed and mixed for MagicMobile. Thank you to the contributing sound designers
   3maze - UI FX
   Airborne Sound - Crisis Accents
   Airborne Sound - Eclectic Whooshes
+  Alexander Kopeikin - Rocks
   Articulated Sounds - Dice
   Articulated Sounds - Magic Elements vol.1
+  Articulated Sounds - Magic Elements vol.2
   Bluezone - Switch And Button Sound Effects
   Bluezone Corporation - MOVIE TRAILER
   David Dumais Audio - Magic Sound FX Pack 1
@@ -37,20 +39,27 @@ trimmed and mixed for MagicMobile. Thank you to the contributing sound designers
   Gamemaster Audio - Punch Sound Pack
   George Karagioules - SFX for Board Games
   Glitchedtones - User Interface
+  Hzandbits - Wind In Trees
   Impact Soundworks - Super FX 8 and 16-bit Video Game SFX
   InspectorJ - UI - Mechanical
   Kpow Sounds - UI SOUNDPACKS
   L.A. Sounds - Game & UI Interface 001
-  PMSFX - Books Alive
   Mechanical Wave - Hits Whoosh
+  PMSFX - Books Alive
+  Raconteur Sound - Spring in the Pacific Northwest- Ambiences
+  RedSonic - Water on Rocks
   Scoba Sounds – Scoba Ui Essentials
   Sound Ex Machina - PAPER & CARDBOARD
-  Soundopolis - Blades
   Sound Spark LLC – Magic Spells, Buffs and Attacks
+  Soundopolis - Blades
+  Soundrangers - Foley Elements Foliage
+  Soundrangers - Nature Ambience
+  The Sound Keeper - Small Fire
   Timothy McHugh - Playing Cards & Betting Chips
   Touchdown Audio -The White Stuff
+  West Wolf - Nature Sounds
 
-Card handling, metal and book recordings from Kenney.nl Casino Audio and RPG Audio,
+Card handling, metal, book and impact recordings from Kenney.nl Casino Audio, RPG Audio and Impact Sounds,
 released under Creative Commons Zero (CC0 1.0). Thank you, Kenney (www.kenney.nl).
 
 Full source list: scripts/audio/SOURCES.md in the MagicMobile repository.

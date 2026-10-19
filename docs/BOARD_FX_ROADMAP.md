@@ -595,3 +595,10 @@ single MIT file with its license header when that is enough.
   glow. Reduced keeps the chain reaching the card's new place and the glow. Tests on both platforms; the simulator
   walkthrough (step 14) shows the pull. Seen in passing: every flight (strikes too) shows ArenaBattlefieldCard's dark art
   placeholder for its first ~0.2 s in the fixture, before the art draws; not new, not yet chased.
+- 2026-10-19 (Claude): Arrival sounds say what the card is (Caleb, after looking at Arena and Hearthstone):
+  `BoardFXArrivalSound.plan` (BoardEventTimeline, both platforms) gives a basic land its place (Plains wind and a
+  bird, Island water, Swamp mud and a frog, Mountain rock, Forest leaves and birds), and anything else a card slam by
+  mana value (0-2 light, 3-4 medium, 5+ heavy; commanders heavy, tokens light) with a colour layer per colour (the
+  first two, sharing one layer's level; none is a metal clink). Cues due together start on the same audio frame
+  (`playTogether`). Preview `MAGICMOBILE_DESIGN_PREVIEW=arrivals` deals 14 cards one by one; its demo video
+  (`build_output/animation-clips/8-arrival-sounds-demo.mp4`) was made with `scripts/audio/demo_soundtrack.py`.
