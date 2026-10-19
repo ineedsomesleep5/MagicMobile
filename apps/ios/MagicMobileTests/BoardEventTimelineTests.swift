@@ -4,12 +4,14 @@ import XCTest
 final class BoardEventTimelineTests: XCTestCase {
     private func card(_ id: String, _ name: String = "Grizzly Bears", cost: String? = "{1}{G}", type: String = "Creature — Bear",
                       damage: Int? = nil, counters: [String: Int]? = nil, attacking: Bool? = nil,
-                      blocking: [String]? = nil) -> ZoneCard {
+                      blocking: [String]? = nil, power: Int = 2, toughness: Int = 2, phasedOut: Bool = false) -> ZoneCard {
         var identity = CardIdentity(name: name, typeLine: type, oracleText: nil)
         identity.manaCost = cost
-        return ZoneCard(instanceId: id, card: identity, tapped: nil, summoningSickness: nil, cardIcons: nil,
-                        counters: counters, power: 2, toughness: 2, isCreaturePermanent: true, damage: damage,
-                        isAttacking: attacking, blocking: blocking, attachedToInstanceId: nil)
+        var zoneCard = ZoneCard(instanceId: id, card: identity, tapped: nil, summoningSickness: nil, cardIcons: nil,
+                                counters: counters, power: power, toughness: toughness, isCreaturePermanent: true, damage: damage,
+                                isAttacking: attacking, blocking: blocking, attachedToInstanceId: nil)
+        if phasedOut { zoneCard.phasedIn = false }
+        return zoneCard
     }
 
     private func player(_ id: String, life: Int = 40, hand: [ZoneCard] = [], battlefield: [ZoneCard] = [],
@@ -78,8 +80,58 @@ final class BoardEventTimelineTests: XCTestCase {
 
     func testCountersAndLifeGainAreReported() {
         let old = snapshot([player("a", battlefield: [card("bear")]), player("b")])
-        let new = snapshot([player("a", life: 43, battlefield: [card("bear", counters: ["+1/+1": 2])]), player("b")], revision: 2)
-        XCTAssertEqual(events(old, new), [.countersAdded(cardID: "bear", amount: 2), .lifeChanged(playerID: "a", delta: 3)])
+        let new = snapshot([player("a", life: 43, battlefield: [card("bear", counters: ["+1/+1": 2], power: 4, toughness: 4)]),
+                            player("b")], revision: 2)
+        // The counters explain the bigger stats, so there is no separate stats moment.
+        XCTAssertEqual(events(old, new), [.countersChanged(cardID: "bear", kind: .plusOne, delta: 2),
+                                          .lifeChanged(playerID: "a", delta: 3)])
+    }
+
+    func testCounterKindsAreReportedSeparatelyAndRemovalsToo() {
+        let old = snapshot([player("a", battlefield: [card("walker", "Liliana", type: "Legendary Planeswalker — Liliana",
+                                                           counters: ["loyalty": 5]),
+                                                      card("bear")]), player("b")])
+        let new = snapshot([player("a", battlefield: [card("walker", "Liliana", type: "Legendary Planeswalker — Liliana",
+                                                           counters: ["loyalty": 3]),
+                                                      card("bear", counters: ["-1/-1": 1, "shield": 1], power: 1, toughness: 1)]),
+                            player("b")], revision: 2)
+        XCTAssertEqual(events(old, new), [
+            .countersChanged(cardID: "bear", kind: .minusOne, delta: 1),
+            .countersChanged(cardID: "bear", kind: .other, delta: 1),
+            .countersChanged(cardID: "walker", kind: .loyalty, delta: -2),
+        ])
+    }
+
+    func testCounterLabelsSayWhatTheCountersDo() {
+        XCTAssertEqual(BoardFXCounterKind.minusOne.label(delta: 2), "-2/-2")
+        XCTAssertEqual(BoardFXCounterKind.plusOne.label(delta: 3), "+3/+3")
+        XCTAssertEqual(BoardFXCounterKind.plusOne.label(delta: -1), "-1/-1")
+        XCTAssertEqual(BoardFXCounterKind.loyalty.label(delta: -3), "-3")
+        XCTAssertEqual(BoardFXCounterKind(name: "charge").label(delta: 1), "+1")
+    }
+
+    func testPumpIsAStatsChangeBeyondWhatCountersExplain() {
+        let old = snapshot([player("a", battlefield: [card("bear")]), player("b")])
+        let new = snapshot([player("a", battlefield: [card("bear", counters: ["+1/+1": 1], power: 6, toughness: 3)]), player("b")],
+                           revision: 2)
+        XCTAssertEqual(events(old, new), [
+            .countersChanged(cardID: "bear", kind: .plusOne, delta: 1),
+            .statsChanged(cardID: "bear", power: 3, toughness: 0),
+        ])
+    }
+
+    func testPhasingTransformAndControlChange() {
+        let old = snapshot([player("a", battlefield: [card("bear"), card("delver", "Delver of Secrets"), card("ogre")]), player("b")])
+        let new = snapshot([player("a", battlefield: [card("bear", phasedOut: true), card("delver", "Insectile Aberration", power: 3)]),
+                            player("b", battlefield: [card("ogre")])], revision: 2)
+        XCTAssertEqual(events(old, new), [
+            .phased(cardID: "bear", out: true),
+            .transformed(cardID: "delver", name: "Insectile Aberration"),
+            .controlChanged(cardID: "ogre", from: "a", to: "b"),
+        ])
+        let back = snapshot([player("a", battlefield: [card("bear"), card("delver", "Insectile Aberration", power: 3)]),
+                             player("b", battlefield: [card("ogre")])], revision: 3)
+        XCTAssertEqual(events(new, back), [.phased(cardID: "bear", out: false)])
     }
 
     func testDifferentGameIsACutWithoutEvents() {

@@ -73,6 +73,15 @@ fun Modifier.boardFXCardMotion(cardID: String): Modifier = composed {
     val scale by animateFloatAsState(if (stance?.moves == true) 1.05f else 1f, stanceSpring, label = "stanceScale")
     val stanceAlpha by animateFloatAsState(if (stance != null) 1f else 0f, tween(200), label = "stanceGlow")
     val lungeOffset = remember { Animatable(0f) }
+    // A new face: the tile turns away edge-on and comes back showing it.
+    val flip = motion.flips[cardID]
+    val flipAngle = remember { Animatable(0f) }
+    LaunchedEffect(flip ?: -1) {
+        if (flip == null) { flipAngle.snapTo(0f); return@LaunchedEffect }
+        flipAngle.animateTo(90f, tween(200))
+        flipAngle.snapTo(-90f)
+        flipAngle.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 380f))
+    }
 
     LaunchedEffect(lunge?.token ?: -1) {
         if (lunge == null) { lungeOffset.snapTo(0f); return@LaunchedEffect }
@@ -109,6 +118,8 @@ fun Modifier.boardFXCardMotion(cardID: String): Modifier = composed {
     this.graphicsLayer {
         translationY = (forward + lungeOffset.value * direction) * density
         scaleX = scale; scaleY = scale
+        rotationY = flipAngle.value
+        cameraDistance = 9f * density
         alpha = if (hidden) 0f else 1f
     }.then(glow)
 }

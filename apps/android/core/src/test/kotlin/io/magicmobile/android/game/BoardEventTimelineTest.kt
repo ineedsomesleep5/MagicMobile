@@ -14,6 +14,46 @@ class BoardEventTimelineTest {
     private fun fxCard(id: String, player: String, zone: BoardFXZone = BoardFXZone.BATTLEFIELD, name: String = "Bear") =
         BoardFXState.Card(id, player, zone, name, BoardFXTint.GREEN, 0, 0, false)
 
+    private fun moment(id: String, player: String = "a", name: String = "Bear", counters: Map<String, Int> = emptyMap(),
+                       power: Int = 2, toughness: Int = 2, phasedOut: Boolean = false) =
+        BoardFXState.Card(id, player, BoardFXZone.BATTLEFIELD, name, BoardFXTint.GREEN, 0, counters.values.sum(), false,
+            counterKinds = counters, power = power, toughness = toughness, phasedOut = phasedOut)
+
+    /** Mirrors testCountersAndLifeGainAreReported / testCounterKindsAreReportedSeparatelyAndRemovalsToo (iOS). */
+    @Test fun counterKindsAddedAndRemoved() {
+        val before = state(listOf(moment("bear"), moment("walker", name = "Liliana", counters = mapOf("loyalty" to 5))))
+        val after = state(listOf(moment("bear", counters = mapOf("-1/-1" to 1, "shield" to 1), power = 1, toughness = 1),
+            moment("walker", name = "Liliana", counters = mapOf("loyalty" to 3))))
+        assertEquals(listOf(BoardFXEvent.CountersChanged("bear", BoardFXCounterKind.MINUS_ONE, 1),
+            BoardFXEvent.CountersChanged("bear", BoardFXCounterKind.OTHER, 1),
+            BoardFXEvent.CountersChanged("walker", BoardFXCounterKind.LOYALTY, -2)), BoardEventDiffer.events(before, after))
+        val grown = state(listOf(moment("bear", counters = mapOf("+1/+1" to 2), power = 4, toughness = 4)))
+        assertEquals(listOf(BoardFXEvent.CountersChanged("bear", BoardFXCounterKind.PLUS_ONE, 2)),
+            BoardEventDiffer.events(state(listOf(moment("bear"))), grown))
+    }
+
+    /** Mirrors testPumpIsAStatsChangeBeyondWhatCountersExplain and testCounterLabelsSayWhatTheCountersDo (iOS). */
+    @Test fun pumpAndLabels() {
+        val pumped = state(listOf(moment("bear", counters = mapOf("+1/+1" to 1), power = 6, toughness = 3)))
+        assertEquals(listOf(BoardFXEvent.CountersChanged("bear", BoardFXCounterKind.PLUS_ONE, 1), BoardFXEvent.StatsChanged("bear", 3, 0)),
+            BoardEventDiffer.events(state(listOf(moment("bear"))), pumped))
+        assertEquals("-2/-2", BoardFXCounterKind.MINUS_ONE.label(2))
+        assertEquals("+3/+3", BoardFXCounterKind.PLUS_ONE.label(3))
+        assertEquals("-1/-1", BoardFXCounterKind.PLUS_ONE.label(-1))
+        assertEquals("-3", BoardFXCounterKind.LOYALTY.label(-3))
+        assertEquals("+1", BoardFXCounterKind.of("charge").label(1))
+    }
+
+    /** Mirrors testPhasingTransformAndControlChange (iOS). */
+    @Test fun phasingTransformAndControl() {
+        val before = state(listOf(moment("bear"), moment("delver", name = "Delver of Secrets"), moment("ogre")))
+        val after = state(listOf(moment("bear", phasedOut = true), moment("delver", name = "Insectile Aberration", power = 3), moment("ogre", player = "b")))
+        assertEquals(listOf(BoardFXEvent.Phased("bear", true), BoardFXEvent.Transformed("delver", "Insectile Aberration"),
+            BoardFXEvent.ControlChanged("ogre", "a", "b")), BoardEventDiffer.events(before, after))
+        val back = state(listOf(moment("bear"), moment("delver", name = "Insectile Aberration", power = 3), moment("ogre", player = "b")))
+        assertEquals(listOf(BoardFXEvent.Phased("bear", false)), BoardEventDiffer.events(after, back))
+    }
+
     @Test fun commanderCastIsItsOnlyCeremony() {
         val inCommand = state(listOf(fxCard("cmd", "a", BoardFXZone.COMMAND, name = "Atraxa")))
         val cast = state(emptyList(), listOf(BoardFXState.StackItem("s", "Atraxa", "a", BoardFXTint.MULTICOLOR, manaValue = 4)))

@@ -300,6 +300,10 @@ struct BoardFXOverlay: View {
                 BoardFXPainter.shockwave(at: CGPoint(x: rect.midX, y: rect.maxY - 6), color: BoardFXPainter.ember.opacity(0.6),
                                          maxRadius: 110, progress: min(1, glow * 1.3), in: &context)
             }
+            if motion && subjects[cardID]?.card.isToken == true {
+                // A token gathers out of motes of its colour.
+                BoardFXPainter.gather(into: rect, color: color, count: 20, progress: glow, seed: fx.id &+ 3, in: &context)
+            }
             if motion {
                 BoardFXPainter.sparks(from: rect, color: color, count: entrance == .commander ? 34 : 16, progress: glow,
                                       seed: fx.id, style: .rise, in: &context)
@@ -310,6 +314,10 @@ struct BoardFXOverlay: View {
             }
         case let .leftBattlefield(cardID, _, destination, tint):
             guard let rect = rect(cardID) else { return }
+            if destination == .exile {
+                // Behind the cold burn: a pillar of light and the turning sigil (Path to Exile and friends).
+                BoardFXPainter.exileMoment(on: rect, progress: p, motion: motion, elapsed: elapsed, seed: fx.id, in: &context)
+            }
             if !(motion && subjects[cardID] != nil) {
                 BoardFXPainter.departure(rect, color: tint.color, destination: destination, progress: p, motion: motion, tavern: tavern, in: &context)
             }
@@ -323,10 +331,21 @@ struct BoardFXOverlay: View {
             BoardFXPainter.flash(rect, color: .red, progress: p, in: &context)
             if motion { BoardFXPainter.sparks(from: rect, color: Color(red: 1, green: 0.3, blue: 0.2), count: 12, progress: p, seed: fx.id, style: .burst, in: &context) }
             BoardFXPainter.number("-\(amount)", at: CGPoint(x: rect.midX, y: rect.midY), color: Color(red: 1, green: 0.32, blue: 0.28), size: 26, progress: p, motion: motion, in: &context)
-        case let .countersAdded(cardID, amount):
+        case let .countersChanged(cardID, kind, delta):
             guard let rect = rect(cardID) else { return }
-            if motion { BoardFXPainter.sparks(from: rect, color: Color(red: 0.55, green: 1, blue: 0.55), count: 10, progress: p, seed: fx.id, style: .rise, in: &context) }
-            BoardFXPainter.number("+\(amount)", at: CGPoint(x: rect.midX, y: rect.minY + 12), color: Color(red: 0.55, green: 1, blue: 0.55), size: 20, progress: p, motion: motion, in: &context)
+            BoardFXPainter.counterMoment(kind, delta: delta, on: rect, progress: p, motion: motion, seed: fx.id, in: &context)
+        case let .statsChanged(cardID, power, toughness):
+            guard let rect = rect(cardID) else { return }
+            BoardFXPainter.statsMoment(power: power, toughness: toughness, on: rect, progress: p, motion: motion, in: &context)
+        case let .phased(cardID, out):
+            guard let rect = rect(cardID) else { return }
+            BoardFXPainter.phaseMoment(out: out, on: rect, progress: p, motion: motion, seed: fx.id, in: &context)
+        case let .transformed(cardID, _):
+            guard let rect = rect(cardID) else { return }
+            BoardFXPainter.transformMoment(on: rect, color: BoardFXPainter.gold, progress: p, motion: motion, seed: fx.id, in: &context)
+        case let .controlChanged(cardID, from, _):
+            guard let rect = rect(cardID) else { return }
+            BoardFXPainter.chainMoment(from: anchors.playerPoint(from), to: rect, progress: p, motion: motion, seed: fx.id, in: &context)
         case let .attackDeclared(cardID, tint):
             guard let rect = rect(cardID) else { return }
             BoardFXPainter.arrivalGlow(rect, color: BoardFXPainter.attackRed, progress: p, motion: motion, tavern: tavern, in: &context)
@@ -849,7 +868,11 @@ enum BoardFXSound {
                 let sound: GameSound = entrance == .commander ? .creatureEnter
                     : arrival.isLand ? .landDrop : arrival.isToken ? .tokenCreate : .creatureEnter
                 cues.append(Cue(sound: sound, at: fx.landing))
-            case .countersAdded: cues.append(Cue(sound: .counter, at: fx.delay))
+            case let .countersChanged(_, _, delta): cues.append(Cue(sound: .counter, at: fx.delay, volume: delta > 0 ? 1 : 0.5))
+            case .statsChanged: cues.append(Cue(sound: .counter, at: fx.delay, volume: 0.4))
+            case .phased: cues.append(Cue(sound: .exile, at: fx.delay, volume: 0.55))
+            case .transformed: cues.append(Cue(sound: .cardPlay, at: fx.delay))
+            case .controlChanged: cues.append(Cue(sound: .cardPickup, at: fx.delay))
             case let .lifeChanged(id, delta):
                 if delta > 0 {
                     cues.append(Cue(sound: .lifeGain, at: fx.delay, volume: id == viewerID ? 1 : 0.55))
@@ -1227,6 +1250,14 @@ struct BoardFXCardMotionModifier: ViewModifier {
             } keyframes: { _ in
                 SpringKeyframe(CGFloat(22), duration: 0.18, spring: .snappy)
                 SpringKeyframe(CGFloat.zero, duration: 0.34, spring: .bouncy)
+            }
+            // A new face: the tile turns away edge-on and comes back showing it.
+            .keyframeAnimator(initialValue: 0.0, trigger: motion.flips[cardID] ?? -1) { view, angle in
+                view.rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.55)
+            } keyframes: { _ in
+                CubicKeyframe(90.0, duration: 0.2)
+                MoveKeyframe(-90.0)
+                SpringKeyframe(0.0, duration: 0.42, spring: .bouncy)
             }
             .task(id: windows) {
                 revealed.formIntersection(windows)

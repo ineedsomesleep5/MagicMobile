@@ -94,6 +94,11 @@ struct BoardFXState: Equatable {
         var isToken = false
         /// Combat keywords, read only for cards attacking or blocking.
         var keywords: Set<CombatKeyword> = []
+        /// Counters by XMage name ("+1/+1", "loyalty", ...), for the counter moment.
+        var counterKinds: [String: Int] = [:]
+        var power: Int?
+        var toughness: Int?
+        var phasedOut = false
     }
 
     struct StackItem: Equatable {
@@ -152,7 +157,11 @@ struct BoardFXState: Equatable {
                         blocking: card.blocking ?? [],
                         isLand: card.card.isLand,
                         isToken: card.card.isToken == true,
-                        keywords: zone == .battlefield && card.isInCombat ? Set(card.combatKeywords) : [])
+                        keywords: zone == .battlefield && card.isInCombat ? Set(card.combatKeywords) : [],
+                        counterKinds: zone == .battlefield ? (card.counters ?? [:]) : [:],
+                        power: zone == .battlefield ? card.power : nil,
+                        toughness: zone == .battlefield ? card.toughness : nil,
+                        phasedOut: zone == .battlefield && card.isPhasedOut)
                 }
             }
             for card in player.zones.command where card.card.isToken != true {
@@ -182,6 +191,39 @@ struct BoardFXState: Equatable {
     }
 }
 
+/// Which counter moment plays: a green gem for +1/+1, a violet drip for -1/-1, a blue shield for loyalty, a brass coin
+/// for any other counter.
+enum BoardFXCounterKind: Equatable, Hashable {
+    case plusOne, minusOne, loyalty, other
+
+    init(name: String) {
+        switch name.lowercased().replacingOccurrences(of: " ", with: "") {
+        case "+1/+1", "p1p1": self = .plusOne
+        case "-1/-1", "m1m1": self = .minusOne
+        case "loyalty": self = .loyalty
+        default: self = .other
+        }
+    }
+
+    /// What the counters do, not how many arrived: two -1/-1 counters read "-2/-2", never "+2".
+    func label(delta: Int) -> String {
+        func signed(_ value: Int) -> String { value >= 0 ? "+\(value)" : "\(value)" }
+        switch self {
+        case .plusOne, .minusOne: return "\(signed(stats * delta))/\(signed(stats * delta))"
+        case .loyalty, .other: return signed(delta)
+        }
+    }
+
+    /// The power and toughness one counter of this kind adds.
+    var stats: Int {
+        switch self {
+        case .plusOne: return 1
+        case .minusOne: return -1
+        default: return 0
+        }
+    }
+}
+
 /// How much ceremony a stack object gets.
 enum BoardFXSpellWeight: Equatable {
     case ability, spell, big, commander
@@ -208,7 +250,16 @@ enum BoardFXEvent: Equatable {
     case damageMarked(cardID: String, amount: Int)
     case leftBattlefield(cardID: String, playerID: String, to: BoardFXZone?, tint: BoardFXTint)
     case enteredBattlefield(cardID: String, playerID: String, from: BoardFXZone?, tint: BoardFXTint, entrance: BoardFXEntrance)
-    case countersAdded(cardID: String, amount: Int)
+    /// Counters of one kind added (`delta` > 0) or removed (`delta` < 0).
+    case countersChanged(cardID: String, kind: BoardFXCounterKind, delta: Int)
+    /// Power and toughness changed by something other than counters (a pump, an anthem, a shrink).
+    case statsChanged(cardID: String, power: Int, toughness: Int)
+    /// Phased out (`out`) or back in. The tile shows the phased-out state itself; this is the moment.
+    case phased(cardID: String, out: Bool)
+    /// The same permanent now shows another face (transform, flip, day/night).
+    case transformed(cardID: String, name: String)
+    /// Another player gained control of the permanent.
+    case controlChanged(cardID: String, from: String, to: String)
     case lifeChanged(playerID: String, delta: Int)
 
     /// Presentation order inside one snapshot transition.
@@ -221,8 +272,9 @@ enum BoardFXEvent: Equatable {
         case let .combatStrike(_, _, _, firstStrike): return firstStrike ? 4 : 5
         case .damageMarked: return 6
         case .leftBattlefield: return 7
-        case .enteredBattlefield: return 8
-        case .countersAdded: return 9
+        case let .phased(_, out): return out ? 7 : 8
+        case .enteredBattlefield, .transformed, .controlChanged: return 8
+        case .countersChanged, .statsChanged: return 9
         case .lifeChanged: return 10
         }
     }
@@ -234,8 +286,9 @@ enum BoardFXEvent: Equatable {
     var subjectID: String {
         switch self {
         case let .spellCast(id, _, _, _, _), let .leftBattlefield(id, _, _, _), let .damageMarked(id, _),
-             let .enteredBattlefield(id, _, _, _, _), let .countersAdded(id, _), let .attackDeclared(id, _),
-             let .blockDeclared(id, _), let .combatStrike(id, _, _, _), let .lifeChanged(id, _):
+             let .enteredBattlefield(id, _, _, _, _), let .countersChanged(id, _, _), let .attackDeclared(id, _),
+             let .blockDeclared(id, _), let .combatStrike(id, _, _, _), let .lifeChanged(id, _),
+             let .statsChanged(id, _, _), let .phased(id, _), let .transformed(id, _), let .controlChanged(id, _, _):
             return id
         case .firstStrikeBeat:
             return Self.firstStrikeSubject
@@ -334,9 +387,7 @@ enum BoardEventDiffer {
             if card.damage > previous.damage {
                 events.append(.damageMarked(cardID: card.id, amount: card.damage - previous.damage))
             }
-            if card.counters > previous.counters {
-                events.append(.countersAdded(cardID: card.id, amount: card.counters - previous.counters))
-            }
+            events += permanentChanges(from: previous, to: card)
         }
 
         events += combatStrikes(from: old, to: new)
@@ -381,6 +432,44 @@ enum BoardEventDiffer {
         let firstStrikes = strikes(first, firstStrike: true)
         if firstStrikes.isEmpty { return strikes(attackers, firstStrike: false) }
         return [.firstStrikeBeat] + firstStrikes + strikes(regular, firstStrike: false)
+    }
+
+    /// What changed on a permanent that stayed on the battlefield, besides combat and damage: who controls it, its face,
+    /// phasing, counters by kind and power/toughness beyond what the counters explain.
+    static func permanentChanges(from previous: BoardFXState.Card, to card: BoardFXState.Card) -> [BoardFXEvent] {
+        var events: [BoardFXEvent] = []
+        if card.playerID != previous.playerID {
+            events.append(.controlChanged(cardID: card.id, from: previous.playerID, to: card.playerID))
+        }
+        if card.name != previous.name {
+            events.append(.transformed(cardID: card.id, name: card.name))
+        }
+        if card.phasedOut != previous.phasedOut {
+            events.append(.phased(cardID: card.id, out: card.phasedOut))
+        }
+        var byKind: [BoardFXCounterKind: Int] = [:]
+        for name in Set(previous.counterKinds.keys).union(card.counterKinds.keys) {
+            let delta = (card.counterKinds[name] ?? 0) - (previous.counterKinds[name] ?? 0)
+            if delta != 0 { byKind[BoardFXCounterKind(name: name), default: 0] += delta }
+        }
+        // A snapshot without counter names still shows the total going up (older fixtures).
+        if byKind.isEmpty && card.counterKinds.isEmpty && previous.counterKinds.isEmpty && card.counters != previous.counters {
+            byKind[.other] = card.counters - previous.counters
+        }
+        let kinds: [BoardFXCounterKind] = [.plusOne, .minusOne, .loyalty, .other]
+        for kind in kinds {
+            if let delta = byKind[kind], delta != 0 { events.append(.countersChanged(cardID: card.id, kind: kind, delta: delta)) }
+        }
+        // A new face has new printed stats, so only the same face reports a change.
+        if card.name == previous.name, let power = card.power, let toughness = card.toughness,
+           let oldPower = previous.power, let oldToughness = previous.toughness {
+            let fromCounters = byKind.reduce(0) { $0 + $1.key.stats * $1.value }
+            let dPower = power - oldPower - fromCounters, dToughness = toughness - oldToughness - fromCounters
+            if dPower != 0 || dToughness != 0 {
+                events.append(.statsChanged(cardID: card.id, power: dPower, toughness: dToughness))
+            }
+        }
+        return events
     }
 
     /// XMage's first-strike combat damage step, normalized like `BoardFXState.step`.
@@ -624,7 +713,11 @@ enum BoardFXScheduler {
             }
         case .leftBattlefield: return motion ? 0.95 : 0.9
         case .damageMarked: return 0.8
-        case .countersAdded: return 0.7
+        case .countersChanged: return motion ? 1.0 : 0.7
+        case .statsChanged: return motion ? 1.0 : 0.8
+        case .phased: return motion ? 1.1 : 0.7
+        case .transformed: return motion ? 0.9 : 0.6
+        case .controlChanged: return motion ? 1.2 : 0.7
         case .attackDeclared: return motion ? 0.7 : 0.6
         case .blockDeclared: return motion ? 0.8 : 0.6
         case .combatStrike: return motion ? 0.95 : 0.6
@@ -689,6 +782,8 @@ struct BoardFXDirector: Equatable {
             switch fx.event {
             case let .enteredBattlefield(id, _, _, _, _): subjects[id] = battlefield[id]
             case let .leftBattlefield(id, _, _, _): subjects[id] = departedFaces[id]
+            // The flip shows the old face turning over to the new one.
+            case let .transformed(id, _): subjects[id] = departedFaces[id]
             case let .combatStrike(id, _, _, _): subjects[id] = departedFaces[id] ?? battlefield[id]
             case let .spellCast(id, _, _, _, _):
                 subjects[id] = snapshot.stackTopFirst.first { $0.id == id }?.displaySourceCard
@@ -733,6 +828,8 @@ struct BoardFXDirector: Equatable {
             case let .attackDeclared(id, _):
                 let owner = previous?.cards[id]?.playerID
                 motion.lunges[id] = BoardFXCardMotion.Lunge(token: effect.id, direction: owner == viewerID ? -1 : 1)
+            case let .transformed(id, _):
+                motion.flips[id] = effect.id
             default: break
             }
         }
@@ -799,4 +896,6 @@ struct BoardFXCardMotion: Equatable {
     var hidden: [String: [Hidden]] = [:]
     var lunges: [String: Lunge] = [:]
     var stances: [String: Stance] = [:]
+    /// Cards turning over to a new face, keyed to the effect that turns them (one flip per token).
+    var flips: [String: Int] = [:]
 }
