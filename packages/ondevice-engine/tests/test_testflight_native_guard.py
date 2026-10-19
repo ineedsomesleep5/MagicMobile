@@ -105,8 +105,7 @@ class ReleaseGuardTests(unittest.TestCase):
     def test_paired_library_and_headers_are_all_required(self):
         mapping = {'lib/libmmengine.a': 'libmmengine.a', 'include/libmmengine.h': 'include/io.magicmobile.nativebridge.ioslibrarymain.h',
                    'include/graal_isolate.h': 'include/graal_isolate.h'}
-        for group, names in [('clib', guard.CLIBS), ('jdk', guard.JDKLIBS)]:
-            mapping.update({f'lib/lib{name}.a': f'{group}/lib{name}.a' for name in names})
+        mapping.update({f'lib/lib{name}.a': f'vmone/lib{name}.a' for name in guard.STATIC_LIBS})
         hashes = {name: str(i) for i, name in enumerate(mapping.values())}
         manifest = {'files': {name: {'sha256': hashes[source]} for name, source in mapping.items()}}
         guard.paired_staging(manifest, hashes)

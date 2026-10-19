@@ -2,7 +2,7 @@
 # Real desktop AOT dependency probe, never an XMage or iOS backend.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-export JAVA_HOME="$ROOT/build/toolchains/graalvm-svm-java17-darwin-m1-gluon-22.1.0.1-Final/Contents/Home"
+export JAVA_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-java23-darwin-aarch64-gluon-23+25.1-dev/Contents/Home}"
 export PATH="$JAVA_HOME/bin:$PATH"
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 mkdir -p "$ROOT/build" "$ROOT/evidence"

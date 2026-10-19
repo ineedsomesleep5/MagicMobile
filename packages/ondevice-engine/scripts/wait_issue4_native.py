@@ -38,18 +38,17 @@ REQUIRED_STEPS = {
         'Validate explicit candidate and completed cheap evidence',
     ),
     'compiler-probe': (
-        'Record source and run actual layout-planner tests',
-        'Fetch checksum-pinned compiler',
-        'Build private compiler backport',
+        'Record source',
+        'Fetch checksum-pinned compiler and iOS static JDK',
         'Verify bounded builder-heap regression (not engine execution)',
-        'Force veneers in a separate unsigned ARM64 toolchain-only probe',
+        'Force upstream trampolines in a separate unsigned ARM64 toolchain-only probe',
         'Compile full pinned engine including AI',
         # No far-calls real-JVM step: approve-candidate above already requires the
         # same-SHA Issue 4 real-jvm job (scripts/test_real_engine.sh) to have succeeded.
-        'Reproduce and verify native Color compatibility (not iPhone acceptance)',
+        'Verify native Color compatibility (not iPhone acceptance)',
         'Verify real token repository resource inclusion (not iPhone acceptance)',
         'Verify bundled catalogue native decoding (not engine or iPhone acceptance)',
-        'Build full ARM64 engine using verified compiler backport',
+        'Build full ARM64 engine with the pinned compiler',
         'Preserve successful archive and paired build inputs',
         # Both existing uploads have the same default Actions step name.
         'Run actions/upload-artifact@v4',

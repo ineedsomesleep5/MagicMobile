@@ -23,19 +23,15 @@ INPUT_PATHS = tuple(ENGINE + name for name in (
     'scripts/build_card_metadata.sh', 'scripts/prepare_mobile_repository.py',
     'scripts/prepare_upstream.py', 'scripts/generate_registry.py',
     'scripts/generate_native_metadata.py', 'scripts/setup_gluon_intel.sh',
-    'scripts/prepare_gluon_far_calls.py', 'scripts/prepare_ios_orm.py',
+    'scripts/prepare_ios_orm.py',
     'scripts/prepare_native_orm.py', 'scripts/test_ios_toolchain.sh', 'scripts/test_ios_link.sh',
 ))
 REQUIRED_FILES = {
     'libmmengine.a', 'include/io.magicmobile.nativebridge.ioslibrarymain.h', 'include/graal_isolate.h',
     'class-snapshot.sha256', 'reflect-config.json', 'serialization-config.json', 'registry-report.json',
-    'commit.txt', 'compiler-patch-manifest.json',
-    'color-patch/src/java/awt/Color.java', 'color-patch/classes/java/awt/Color.class',
-    'color-patch/color-patch-manifest.json',
+    'commit.txt', 'toolchain-manifest.json', 'vmone/libvmone.a',
     'catalogue/card-metadata-report.json', 'catalogue/card-metadata.jsonl.gz',
     'catalogue/card-names.json.gz', 'repository-patch-manifest.json',
-} | {'clib/lib' + name + '.a' for name in ('jvm', 'libchelper', 'ffi', 'darwin')} | {
-    'jdk/lib' + name + '.a' for name in ('java', 'nio', 'zip', 'net', 'prefs', 'fdlibm', 'j2pkcs11', 'jaas', 'extnet')
 }
 
 
@@ -75,6 +71,17 @@ def validate_receipt(root: Path, expected_commit: str) -> dict[str, str]:
     if not REQUIRED_FILES <= hashes.keys() or actual - hashes.keys() - {'SHA256SUMS', 'SCOPE.txt'}:
         raise ValueError('Missing required inputs or unhashed artifact files')
     return hashes
+
+
+def check_toolchain(artifact: Path, repo: Path = ROOT) -> dict:
+    """The artifact's compiler, plugin and static JDK pins must equal the source's toolchain.json."""
+    manifest = json.loads((artifact / 'toolchain-manifest.json').read_text())
+    pins = json.loads((repo / ENGINE / 'native/gluon/toolchain.json').read_text())
+    if manifest.get('schema') != 1 or manifest.get('toolchain') != pins:
+        raise ValueError('Artifact toolchain differs from source native/gluon/toolchain.json')
+    if manifest.get('libvmoneSha256') != digest(artifact / 'vmone/libvmone.a'):
+        raise ValueError('Artifact static JDK differs from its toolchain manifest')
+    return manifest
 
 
 def source_identity(repo: Path, source: str) -> dict:
@@ -130,9 +137,7 @@ def main():
             raise ValueError('Invalid GitHub artifact identity')
         hashes = validate_receipt(args.directory, args.engine_commit)
         identity = source_identity(ROOT, args.engine_commit)
-        compiler = json.loads((args.directory / 'compiler-patch-manifest.json').read_text())
-        if compiler.get('patchSha256') != digest(ROOT / ENGINE / 'native/gluon/compiler-patches/far-calls.patch'):
-            raise ValueError('Artifact compiler patch differs from source')
+        check_toolchain(args.directory)
         receipt = {'schema': 1, 'repository': 'ineedsomesleep5/MagicMobile', **identity,
                    'workflowRunID': args.run_id, 'artifactID': args.artifact_id,
                    'artifactDigest': args.artifact_digest, 'files': hashes,

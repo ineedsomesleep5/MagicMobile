@@ -2,9 +2,9 @@
 # 256 MiB HotSpot retention regression; not a full compiler or phone-engine test.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-export JAVA_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-svm-java17-darwin-m1-gluon-22.1.0.1-Final/Contents/Home}"
+export JAVA_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-java23-darwin-aarch64-gluon-23+25.1-dev/Contents/Home}"
 PROBE_BUILD=$(mktemp -d "$ROOT/build/builder-heap-XXXXXX")
-grep -qx 'JAVA_VERSION="17.0.3"' "$JAVA_HOME/release"
+grep -qx 'JAVA_VERSION="23"' "$JAVA_HOME/release"
 "$JAVA_HOME/bin/javac" -J-Xmx128m -d "$PROBE_BUILD" "$ROOT/native/gluon/probes/BuilderHeapProbe.java"
 python3 - "$ROOT" "$PROBE_BUILD" "$JAVA_HOME" <<'PY'
 import pathlib, subprocess, sys, xml.etree.ElementTree as ET

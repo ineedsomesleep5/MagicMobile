@@ -29,15 +29,9 @@ class PrepareNativeTests(unittest.TestCase):
                           'void mm_engine_free(graal_isolatethread_t*, char*);\n'
                           'int mm_engine_shutdown_v2(graal_isolatethread_t*);\n')
         (self.root / 'graal_isolate.h').write_text('/* SDK header fixture only */')
-        for name in ('clib', 'jdk'):
-            (self.root / name).mkdir()
-        for directory, names in (
-                ('clib', ('jvm', 'libchelper', 'ffi', 'darwin')),
-                ('jdk', ('java', 'nio', 'zip', 'net', 'prefs', 'fdlibm',
-                         'j2pkcs11', 'jaas', 'extnet'))):
-            for name in names:
-                (self.root / directory / f'lib{name}.a').write_bytes(self.archive.read_bytes())
-        (self.root / 'jdk/not-needed.a').write_text('do not copy')
+        (self.root / 'vmone').mkdir()
+        (self.root / 'vmone/libvmone.a').write_bytes(self.archive.read_bytes())
+        (self.root / 'vmone/not-needed.a').write_text('do not copy')
         self.header = header
         self.destination = self.root / 'app/NativeEngine'
         # The only mocked seam is Apple's inspection process output. Fixture
@@ -49,7 +43,7 @@ class PrepareNativeTests(unittest.TestCase):
         self.inspection = patch.object(self.native, 'xcrun', side_effect=inspect)
         self.inspection.start()
         self.addCleanup(self.inspection.stop)
-        return (self.archive, header, self.root / 'clib', self.root / 'jdk', self.destination)
+        return (self.archive, header, self.root / 'vmone', self.destination)
 
     def test_dry_run_then_apply_copies_only_required_inputs_with_hashes(self):
         args = self.packaging_fixture()
@@ -63,7 +57,7 @@ class PrepareNativeTests(unittest.TestCase):
 
     def test_missing_runtime_library_copies_nothing(self):
         args = self.packaging_fixture()
-        (self.root / 'clib/libffi.a').unlink()
+        (self.root / 'vmone/libvmone.a').unlink()
         with self.assertRaisesRegex(ValueError, 'Missing input'):
             self.native.prepare(*args, apply=True)
         self.assertFalse(self.destination.exists())
@@ -72,7 +66,7 @@ class PrepareNativeTests(unittest.TestCase):
         args = self.packaging_fixture()
         original = self.native.xcrun.side_effect
         def inspect(*command):
-            if command[0] == 'lipo' and command[-1].name == 'libjava.a':
+            if command[0] == 'lipo' and command[-1].name == 'libvmone.a':
                 return 'x86_64'
             return original(*command)
         self.native.xcrun.side_effect = inspect
@@ -125,7 +119,7 @@ class PrepareNativeTests(unittest.TestCase):
 
     def test_modified_installed_file_fails_hash_check(self):
         self.native.prepare(*self.packaging_fixture(), apply=True)
-        (self.destination / 'lib/libjava.a').write_bytes(b'changed fixture')
+        (self.destination / 'lib/libvmone.a').write_bytes(b'changed fixture')
         with self.assertRaisesRegex(ValueError, 'hash mismatch'):
             self.native.verify_installed(self.destination)
 
@@ -144,10 +138,10 @@ class PrepareNativeTests(unittest.TestCase):
     def test_symlink_destination_does_not_modify_target(self):
         args = self.packaging_fixture()
         self.destination.parent.mkdir()
-        self.destination.symlink_to(self.root / 'jdk', target_is_directory=True)
+        self.destination.symlink_to(self.root / 'vmone', target_is_directory=True)
         with self.assertRaisesRegex(ValueError, 'symlink destination'):
             self.native.prepare(*args, apply=True)
-        self.assertFalse((self.root / 'jdk/manifest.json').exists())
+        self.assertFalse((self.root / 'vmone/manifest.json').exists())
 
     def test_cli_requires_all_explicit_inputs(self):
         result = subprocess.run([sys.executable, '-B', str(SCRIPT), '--apply'],

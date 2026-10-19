@@ -34,15 +34,14 @@ class ReceiptTests(unittest.TestCase):
         (self.root / 'SHA256SUMS').write_text('\n'.join(lines) + '\n')
     def test_consistent_receipt(self):
         self.assertEqual(set(candidate.validate_receipt(self.root, SHA)), candidate.REQUIRED_FILES)
-    def test_color_patch_is_a_required_hash_covered_build_input(self):
-        names = {'color-patch/src/java/awt/Color.java', 'color-patch/classes/java/awt/Color.class',
-                 'color-patch/color-patch-manifest.json'}
-        self.assertTrue(names <= candidate.REQUIRED_FILES)
+    def test_static_jdk_and_toolchain_are_required_hash_covered_build_inputs(self):
+        self.assertTrue({'vmone/libvmone.a', 'toolchain-manifest.json'} <= candidate.REQUIRED_FILES)
+        self.assertFalse(any(n.startswith(('clib/', 'jdk/', 'color-patch/')) for n in candidate.REQUIRED_FILES))
     def test_missing_required_file(self):
         (self.root / 'libmmengine.a').unlink()
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, SHA)
     def test_changed_library(self):
-        (self.root / 'jdk/libjava.a').write_text('changed fixture')
+        (self.root / 'vmone/libvmone.a').write_text('changed fixture')
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, SHA)
     def test_different_source(self):
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, 'b' * 40)
@@ -61,10 +60,36 @@ class ReceiptTests(unittest.TestCase):
         p.write_text(p.read_text() + p.read_text().splitlines()[0] + '\n')
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, SHA)
     def test_symlink(self):
-        p = self.root / 'clib/libffi.a'; p.unlink(); p.symlink_to('../libmmengine.a')
+        p = self.root / 'vmone/libvmone.a'; p.unlink(); p.symlink_to('../libmmengine.a')
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, SHA)
     def test_unpinned_source(self):
         with self.assertRaises(ValueError): candidate.validate_receipt(self.root, 'main')
+
+
+class ToolchainTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        (self.root / 'vmone').mkdir()
+        (self.root / 'vmone/libvmone.a').write_text('static JDK fixture')
+        self.pins = json.loads((ROOT / 'native/gluon/toolchain.json').read_text())
+    def write(self, **changes):
+        manifest = {'schema': 1, 'toolchain': self.pins,
+                    'libvmoneSha256': candidate.digest(self.root / 'vmone/libvmone.a'), **changes}
+        (self.root / 'toolchain-manifest.json').write_text(json.dumps(manifest))
+    def test_matching_toolchain(self):
+        self.write()
+        candidate.check_toolchain(self.root)
+    def test_other_compiler_refused(self):
+        pins = json.loads(json.dumps(self.pins))
+        pins['graalvm']['archives']['darwin-amd64']['sha256'] = '0' * 64
+        self.write(toolchain=pins)
+        with self.assertRaisesRegex(ValueError, 'toolchain differs'): candidate.check_toolchain(self.root)
+    def test_changed_static_jdk_refused(self):
+        self.write()
+        (self.root / 'vmone/libvmone.a').write_text('changed fixture')
+        with self.assertRaisesRegex(ValueError, 'static JDK'): candidate.check_toolchain(self.root)
 
 
 class SourceTests(unittest.TestCase):
