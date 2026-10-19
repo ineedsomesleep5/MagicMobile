@@ -52,7 +52,6 @@ def reset():
 
 def node_mat(name):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -338,9 +337,8 @@ def build():
     # glow at opposite corners, and a faint cool fill keeps the shadows from going flat.
     world = bpy.data.worlds.new("World")
     scene.world = world
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.010, 0.007, 0.005, 1)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.3
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.010, 0.007, 0.005, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = 0.3
 
     def light(name, kind, loc, energy, color, size=None):
         data = bpy.data.lights.new(name, kind)

@@ -31,6 +31,10 @@ PROPS = arg("--props", os.path.expanduser("~/Movies/motion-assets/magicmobile-br
 OUT = arg("--out-dir", "build_output/tavern/room")
 SAMPLES = int(arg("--samples", "96"))
 PREVIEW = "--preview" in ARGV
+# --look v2 (2026-10-19 art pass, for Caleb's review; v1 stays the default until he picks): a thin warm haze in the
+# back layer only, so the hearth and lanterns throw soft shafts while the parallax layers in front stay clean, and a
+# hotter hearth bounce on the floor and beams.
+LOOK = arg("--look", "v1")
 ORIENTATIONS = {"portrait": (1200, 2600), "landscape": (2600, 1200)}
 if PREVIEW:
     ORIENTATIONS = {k: (w // 3, h // 3) for k, (w, h) in ORIENTATIONS.items()}
@@ -43,7 +47,6 @@ BACK_Y = 3.0
 
 def node_material(name, build):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     for n in list(nt.nodes):
         nt.nodes.remove(n)
@@ -240,7 +243,7 @@ def import_prop(name, height, location, rotation_z=0.0, width=None):
                 dec.ratio = 60000 / faces
                 bpy.ops.object.modifier_apply(modifier=dec.name)
             for slot in o.material_slots:
-                if slot.material and slot.material.use_nodes:
+                if slot.material and slot.material.node_tree:
                     for node in slot.material.node_tree.nodes:
                         if node.type == "TEX_IMAGE" and node.image and max(node.image.size) > 1024:
                             node.image.scale(1024, 1024)
@@ -323,9 +326,14 @@ def build():
     flames.append((fire_glow, "back", "hearth", 0.9))
     bpy.ops.object.light_add(type="AREA", location=(0, BACK_Y - 0.9, 0.6), rotation=(math.radians(-80), 0, 0))
     hearth = bpy.context.active_object
-    hearth.data.energy = 420
+    hearth.data.energy = 420 if LOOK == "v1" else 560
     hearth.data.color = (1.0, 0.5, 0.2)
     hearth.data.size = 1.6
+    if LOOK == "v2":
+        # The fire's light reaching the floor and the rug: a low, wide warm bounce in front of the hearth.
+        bpy.ops.object.light_add(type="AREA", location=(0, BACK_Y + 1.6, 0.05), rotation=(math.radians(180), 0, 0))
+        bounce = bpy.context.active_object
+        bounce.data.energy = 90; bounce.data.color = (1.0, 0.55, 0.25); bounce.data.size = 3.0
 
     # Candles on the mantel.
     for i, x in enumerate((-0.9, 0.9)):
@@ -412,8 +420,7 @@ def build():
     moon = bpy.context.active_object
     moon.data.energy = 0.08; moon.data.color = (0.5, 0.6, 1.0)
     world = bpy.data.worlds.new("world"); scene.world = world
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.03, 0.02, 0.016, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.03, 0.02, 0.016, 1)
 
     return scene, layers, flames, placements
 
@@ -468,7 +475,23 @@ def show(objs, camera_visible):
             o.visible_camera = camera_visible
 
 
+def haze(scene, on):
+    """v2: a thin warm volume in the world for the back layer only (light shafts from the hearth and lanterns)."""
+    nt = scene.world.node_tree
+    output = next(n for n in nt.nodes if n.type == "OUTPUT_WORLD")
+    for link in list(output.inputs["Volume"].links):
+        nt.links.remove(link)
+    if not on:
+        return
+    scatter = next((n for n in nt.nodes if n.type == "VOLUME_PRINCIPLED"), None) or nt.nodes.new("ShaderNodeVolumePrincipled")
+    scatter.inputs["Color"].default_value = (1.0, 0.86, 0.7, 1)
+    scatter.inputs["Density"].default_value = 0.008
+    scatter.inputs["Anisotropy"].default_value = 0.35
+    nt.links.new(scatter.outputs["Volume"], output.inputs["Volume"])
+
+
 def render_layer(scene, layers, which, path):
+    haze(scene, LOOK == "v2" and which == "back")
     for name, objs in layers.items():
         show(objs, name == which)
     scene.render.film_transparent = which != "back"

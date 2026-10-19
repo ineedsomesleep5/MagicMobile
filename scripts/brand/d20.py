@@ -777,7 +777,6 @@ def prepare_leather(orientation):
 
 def make_material(name, nodes_builder):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     for n in list(nt.nodes):
         nt.nodes.remove(n)
@@ -931,9 +930,8 @@ def render_table(orientation):
     scene.collection.objects.link(fill_obj)
     fill_obj.location = (0, 0, 9)
     world = bpy.data.worlds.new("room")
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.09, 0.05, 0.03, 1)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.9
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.09, 0.05, 0.03, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = 0.9
     scene.world = world
 
     cam = bpy.data.cameras.new("top")
@@ -1043,9 +1041,8 @@ def build_preview():
         bpy.ops.mesh.primitive_plane_add(size=12)
         floor = bpy.context.active_object
         mat = bpy.data.materials.new("floor")
-        mat.use_nodes = True
-        mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.35, 0.17, 0.07, 1)
-        mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.6
+        next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.35, 0.17, 0.07, 1)
+        next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Roughness"].default_value = 0.6
         floor.data.materials.append(mat)
         sun = bpy.data.lights.new("sun", "SUN")
         sun.energy = 3.0
@@ -1054,9 +1051,8 @@ def build_preview():
         scene.collection.objects.link(so)
         so.rotation_euler = (math.radians(52), 0, math.radians(-35))
         world = bpy.data.worlds.new("w")
-        world.use_nodes = True
-        world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.45, 0.3, 0.2, 1)
-        world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.8
+        next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.45, 0.3, 0.2, 1)
+        next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = 0.8
         scene.world = world
         cam = bpy.data.cameras.new("c")
         co = bpy.data.objects.new("c", cam)
