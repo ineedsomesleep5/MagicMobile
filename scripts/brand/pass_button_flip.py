@@ -48,7 +48,6 @@ def face_material(name, image_path, glow):
     """The painted face shown as painted (emission at `glow`, Standard view transform), under
     a clear glossy coat that catches the key light as the disc turns."""
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     n, l = nt.nodes, nt.links
     n.remove(n["Principled BSDF"])
@@ -76,8 +75,7 @@ def face_material(name, image_path, glow):
 
 def copper_material():
     mat = bpy.data.materials.new("CopperEdge")
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Base Color"].default_value = (0.92, 0.52, 0.30, 1)
     bsdf.inputs["Metallic"].default_value = 1.0
     bsdf.inputs["Roughness"].default_value = 0.3
@@ -147,9 +145,8 @@ def main():
     scene.render.image_settings.color_mode = "RGBA"
     scene.view_settings.view_transform = "Standard"  # painted faces keep their colours
     world = bpy.data.worlds.new("World")
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.05, 0.035, 0.025, 1)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.5
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.05, 0.035, 0.025, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = 0.5
     scene.world = world
 
     disc = build_disc()

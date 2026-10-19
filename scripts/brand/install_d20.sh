@@ -18,4 +18,7 @@ for f in $files; do
   [[ -f $SRC/$f ]] || { print -u2 "missing $SRC/$f (run scripts/brand/d20.py --mode all first)"; exit 1; }
   cp $SRC/$f $DEST/$f
 done
+# The die's maps at most 1024 px on their longer side: a face covers 150-200 px on screen, and 1600 px maps took 31 MB of
+# graphics memory for one small die (2026-10-19 art pass; the numerals read the same in d20.py --mode preview).
+python3 $REPO/scripts/brand/glb_textures.py $DEST/d20.glb $DEST/d20.glb --max 1024 >/dev/null
 ls -l $DEST | awk 'NR>1 {printf "%7.0f KB  %s\n", $5/1024, $9}'

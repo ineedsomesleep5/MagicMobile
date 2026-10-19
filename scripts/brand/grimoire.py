@@ -50,7 +50,6 @@ HINGE_Z = T / 2                      # the cover swings about the middle of the 
 
 def node_material(name, build):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
     nt = mat.node_tree
     for n in list(nt.nodes):
         nt.nodes.remove(n)
@@ -463,8 +462,7 @@ def build():
 
     world = bpy.data.worlds.new("world")
     scene.world = world
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.012, 0.008, 0.006, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.012, 0.008, 0.006, 1)
 
     return scene, hinge, clasp_hinge, leaves, glow, reading, motes, spine_base
 
