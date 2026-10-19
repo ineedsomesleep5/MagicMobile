@@ -30,15 +30,17 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 ## The ladder (`RankLadder.swift`, `Ranked.kt`)
 
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
-- Win +1 pip. Loss −1 pip; with none left you drop a division or tier. Bronze IV with no pips can't fall.
-- Bonuses: a third straight win below Gold (+1), and a win with a deck below the tier's opponent brackets
-  (+1, "underdog"). Draws change nothing and end the streak.
+- Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
+  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A loss never takes you out of your tier
+  (Mythic can fall back to Diamond, never below Diamond IV).
+- Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
+  gone (two-pip wins replace it). Draws change nothing and end the streak.
 - Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 
 | Tier | Opponent decks | Your deck up to | AI skill |
 |---|---|---|---|
-| Bronze | Official precons only (Core) | 2 | 1 |
+| Bronze | The three gentlest official precons (Core): Chaos Incarnate, Grave Danger, Token Triumph | 2 | 1 |
 | Silver | 2 | 2 | 2 |
 | Gold | 2–3 | 3 | 3 |
 | Platinum | 3 | 3 | 4 |
@@ -47,11 +49,31 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 In tiers with two opponent brackets, divisions IV–III face the lower one and II–I the upper.
 
+Bronze's three precons come from C3's equal-skill round-robin of all five (2026-10-15, 200 games, docs/cloud/reports/c3.md):
+Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%, First Flight 56%, Draconic Destruction 62%. Going first won 65%
+of those games, a bigger effect than any deck.
+
 Why this curve (2026-10-11): the XMage AI searches `max(4, skill)` moves deep and thinks `skill × 3` s,
 so skills 1–4 differ only in thinking time and depth grows from Diamond. Ranked never asks for Bracket 1:
 the Exhibition AI decks are tuned tribal lists (the bracket check only screens Game Changers, land
 denial, extra turns and combos), so Bronze faces the precons instead. Skill 7 would mean 21 s AI turns
 on a phone, so Mythic stops at 6.
+
+Engine release A (2026-10-15, cloud session C2): skills 1 and 2 now search depth 2 and 3 (one and two
+actions ahead; upstream depth 1 never casts a spell), skill 3 keeps depth 4, and skills 1–3 make a
+deliberate mistake at 15%, 10% and 5% of their decisions (a weaker play or a pass, a held-back attack,
+a skipped block, each with a safety guard). Skill 4 and up are unchanged. The numbers live in
+`AIDifficulty.java` and each seat can override them (`aiSearchDepth`, `aiMistakePercent`, `aiSeed`;
+packages/ondevice-engine/docs/PROTOCOL.md) for the C3 calibration, which decides the final values.
+
+Expert tier (2026-10-15, cloud session C4): C3 found that skill made no measurable difference, because
+XMage's search runs out of time long before its node cap, and attacks and blocks are fixed rules it never
+searches. From skill 5 (Diamond) up the AI now plans its attacks against the defender's likely blocks and
+the swing back, chooses all its blocks together (double blocks, chumps only when they matter), scores
+life on Commander's 40-life scale (XMage's scores assume 20), and keeps a quick search's move when its
+full search runs out of time. Think time is unchanged. On the Core pool, skill 6 beat skill 3 in 62% of
+318 decided games (95% CI 57–67%) and skill 4 in 59% of 160 (52–67%); before, 53% and 50%. Skill 5
+against 4 is 53% (45–60%), not yet a measurable step (docs/cloud/reports/c4.md).
 
 ## Play modes
 
@@ -151,6 +173,69 @@ accounts were made; a live two-phone challenge has not been played.
 ones and anonymous callers none (a signed-out REST call gets `permission denied`), the three tables have RLS
 on with no grants, and the security advisor shows only the same RPC-only notices as the social tables. No
 test accounts were made on the live project. A live two-phone ranked match has not been played.
+
+### The server keeps score (2026-10-14)
+
+`supabase/migrations/20261015120000_ranked_referee.sql`. Before it, each phone computed its own rank and
+`mm_ranked_publish` stored whatever it was sent, so a modified app (or a direct REST call with the app's public key)
+could publish any rank. Now the server is the referee, using the existing database (no new server, no game simulation):
+
+- `ranked_standings` is the source of truth (points = step × 4 + pips, Mythic past 80), with the same ladder rules
+  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, monthly rollover into `ranked_season_history`.
+  `ranked_results` records every change and why. `ranked_profiles` stays the public card; the server writes its
+  rank fields and `mm_ranked_publish` now only sets the title and favourite commander (older builds keep working).
+- **Person vs person:** `mm_ranked_report` settles a match when both sides agree (win/loss or draw/draw).
+  Disagreements change nothing. A lone report settles after an hour (the side that never reported left: a loss). The
+  same two players count at most three matches a day (win trading with spare accounts).
+- **Against the AI** (the phone runs the game, so the server can only bound it): `mm_ranked_ai_start` hands out a
+  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A win needs four minutes since the
+  ticket, at most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a loss.
+- `mm_ranked_standing` returns the caller's standing (settling anything stale first) plus `unsettled`, the matches
+  they reported that the other side hasn't yet. `mm_ranked_seed` lets a player with no server standing bring their
+  phone's earlier progress once, capped at Gold IV. Standings published before the migration carried over as they were.
+- **Apps:** the phone still counts each result at once (result screen, ceremony), sends AI results with their
+  ticket (queued and retried, `PlayerRecordStore.pendingRankedResults`), then adopts the server's standing
+  (`RankedStanding`, `PlayerRecordStore.adopt` / `PlayerRecordFile.adopting`). While a result is still on its way
+  the phone keeps its own number, so a pip never flickers away. Without a profile name, ranked stays on the phone.
+- **Limits:** a modified app can still claim AI wins within the caps, and two colluding accounts can trade wins
+  within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
+- Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
+  functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
+
+- **Status: applied to the live project on 2026-10-15 UTC** (migration `ranked_referee`, file SHA-256 `a87d4431…a9ea`,
+  with Caleb's go-ahead). Checked afterwards: the four new public functions plus `mm_ranked_report`/`publish` are
+  callable by signed-in players and not anonymous callers; `mm_ranked_mirror/current/apply/settle` by neither; the four
+  new tables have RLS on with no grants; all 3 published standings were carried over as `imported`; the security
+  advisor shows only the usual RPC-only notices. No live game has been played against it yet.
+
+### AI wins backed by the game record (R3, migration `20261016120000_ranked_ai_records.sql`)
+
+- `mm_ranked_ai_start2` hands out the same ticket plus a server seed (text, 64-bit) and remembers the tier's AI
+  skill. The app waits up to four seconds for it before starting the game and passes the seed to the engine's `create`
+  (only on engines advertising `gameRecord`), so one seed is one game.
+- When a solo game ends the app fetches the engine's `record` before saving the result, keeps it on the phone
+  (`Profile/GameRecords`, the last 50, no backups) and sends it with the result: `mm_ranked_ai_result2(game, result,
+  record)`. Only seeded tickets use it; older builds keep `mm_ranked_ai_start` / `mm_ranked_ai_result` unchanged.
+- Before a win on a seeded ticket counts, `mm_ranked_ai_record_check` runs the cheap checks of
+  docs/cloud/game-record.md: hash chain equals `head`, the ticket's seed, an engine build listed in
+  `ranked_engine_builds`, one human and one AI seat, an AI skill no more than one tier below the ticket's with the
+  engine's depth and mistake chance for that skill (`mm_ai_engine_depth` / `mm_ai_engine_mistakes`, keep them in step
+  with `AIDifficulty.java`), an end where the human alone won and the AI lost, increasing turn marks, the entry
+  grammar with no concede, at least four turns and five seconds a turn since the ticket. A failed check settles the win
+  as `unverified` (no rank change, `ranked_ai_games.record_check` says why). Every win's record is kept in
+  `ranked_ai_records` for review and can be replayed with `scripts/dev/replay_record.sh`.
+- **Release step:** every release whose engine records games registers its engine build before it goes out, or its
+  ranked AI wins settle as `unverified`:
+  `insert into public.ranked_engine_builds (engine_build, label) values ('<sha256:… from python3
+  packages/ondevice-engine/scripts/engine_build_identity.py>', 'TestFlight NN / Android NN');` The identity is a hash
+  of the engine sources, the same on both platforms (print it with `python3 -c 'import sys; sys.path.insert(0,
+  "packages/ondevice-engine/scripts"); import engine_build_identity as e; print(e.identity())'`).
+- **Limits:** the checks prove a record is well formed, unaltered, made for this ticket and consistent with the claimed
+  win; a modified app can still write a consistent record by hand, and the AI's choices are recorded, not recomputed.
+  The older entry points stay open for older builds until they are retired.
+- Tests: `supabase/tests/ranked_ai_records.sql` (records built by `verify-ranked.mjs` with node's SHA-256),
+  `RankedStandingTests.swift`, `RankedStandingTest.kt`, the guest-refusal tests in `SafetyTests.swift` and
+  `HostRouterPrivacyTest.kt`.
 
 ## Tests
 

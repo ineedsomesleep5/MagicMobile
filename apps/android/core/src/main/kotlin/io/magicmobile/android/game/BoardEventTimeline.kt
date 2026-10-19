@@ -286,8 +286,12 @@ enum class BoardFXLevel(val rawValue: String, val title: String) {
         const val key = "magicmobile.boardEffectsLevel"
         val defaultValue = FULL.rawValue
         fun of(raw: String?): BoardFXLevel? = entries.firstOrNull { it.rawValue == raw }
+        /** Effects are skipped while a combo loop repeats (ComboLoop); the board shows where it ends. */
+        @Volatile var suppressedForLoop = false
+
         /** System reduced motion always caps the level at REDUCED. */
         fun resolved(stored: String, reduceMotion: Boolean): BoardFXLevel {
+            if (suppressedForLoop) return OFF
             val level = of(stored) ?: FULL
             return if (reduceMotion && level == FULL) REDUCED else level
         }
@@ -315,10 +319,26 @@ data class ScheduledBoardFX(val id: Int, val event: BoardFXEvent, val delay: Dou
     }
 
     /**
-     * Until when a later snapshot's effects wait: a showcase until it hands off, and the
-     * first-strike beat until it ends, so the regular damage never overlaps it.
+     * When the effects after this one may begin (the next group in its batch, or a later snapshot's). A spell is read to
+     * the end and a card leaving play finishes before anything else moves (Caleb, 2026-10-15: an opponent's Path to Exile
+     * flashed by while the next plays already ran behind it); everything else hands off as before.
      */
-    val holdsLaterBatchesUntil: Double? get() = if (event == BoardFXEvent.FirstStrikeBeat) end else if (isSequential) handoff else null
+    val release: Double get() = when (event) {
+        is BoardFXEvent.SpellCast -> if (event.weight != BoardFXSpellWeight.ABILITY) end else handoff
+        is BoardFXEvent.LeftBattlefield -> end
+        else -> handoff
+    }
+
+    /**
+     * Until when a later snapshot's effects wait: a spell read and a departure until they end ([release]), a showcase
+     * until it hands off, and the first-strike beat until it ends, so the regular damage never overlaps it.
+     */
+    val holdsLaterBatchesUntil: Double? get() = when {
+        event == BoardFXEvent.FirstStrikeBeat -> end
+        release != handoff -> release
+        isSequential -> handoff
+        else -> null
+    }
 
     /** Showcases share the center of the board, so they play one after another. */
     val isSequential: Boolean get() {
@@ -329,14 +349,26 @@ data class ScheduledBoardFX(val id: Int, val event: BoardFXEvent, val delay: Dou
             else -> false
         }
     }
+
+    /**
+     * Smart auto-pass waits for this effect before the game moves on (Caleb, 2026-10-14): a spell read at
+     * the centre, a showcase arrival, a card leaving play, a combat hit. Abilities and triggers, life, damage
+     * and counters never wait, so a stack of repeated triggers still resolves at full speed.
+     */
+    val holdsSmartPass: Boolean get() = when (event) {
+        is BoardFXEvent.SpellCast -> event.weight != BoardFXSpellWeight.ABILITY
+        is BoardFXEvent.EnteredBattlefield -> event.entrance != BoardFXEntrance.PLAIN
+        is BoardFXEvent.LeftBattlefield, is BoardFXEvent.CombatStrike, BoardFXEvent.FirstStrikeBeat -> true
+        else -> false
+    }
 }
 
 object BoardFXScheduler {
     /** Decorative effects per transition; board wipes collapse to the first few. */
     const val decorativeLimit = 10
     const val stagger = 0.07
-    /** Effects never wait more than this for a showcase from an earlier snapshot. */
-    const val maximumHold = 3.0
+    /** Effects never wait more than this for a showcase from an earlier snapshot (a spell read, then what it removed). */
+    const val maximumHold = 4.0
     /** Share of a plain arrival spent flying before the card lands (Full level only). */
     const val arrivalFlightFraction = 0.42
     /** Share of a strike spent winding up and charging before impact. */
@@ -358,7 +390,7 @@ object BoardFXScheduler {
         var indexInGroup = 0
         for (event in kept) {
             if (previousOrder != null && previousOrder != event.order) {
-                groupStart = result.maxOfOrNull { it.handoff } ?: groupStart
+                groupStart = result.maxOfOrNull { it.release } ?: groupStart
                 // Regular damage waits a short beat after the first strikers' hits.
                 if (event.isRegularStrike) firstStrikeBeatEnd(result, motion)?.let { groupStart = maxOf(groupStart, it) }
                 sequentialCursor = groupStart
@@ -461,8 +493,14 @@ class BoardFXDirector {
     private var previousBattlefield: Map<String, ZoneCard> = emptyMap()
     private var nextID = 0
 
-    /** Until when a showcase holds the centre of the board, so the turn banner waits its turn. */
-    val centreBusyUntil: Long? get() = active.filter { it.scheduled.isSequential }.maxOfOrNull { it.endDate }
+    /**
+     * Until when a showcase holds the centre of the board, or a spell, departure or hit is still playing, so the turn
+     * banner waits its turn and never covers what just happened to the board.
+     */
+    val centreBusyUntil: Long? get() = active.filter { it.scheduled.isSequential || it.scheduled.holdsSmartPass }.maxOfOrNull { it.endDate }
+
+    /** Until when smart auto-pass waits, so the board finishes what it is showing first. */
+    val smartPassHoldUntil: Long? get() = active.filter { it.scheduled.holdsSmartPass }.maxOfOrNull { it.endDate }
 
     /**
      * Returns only the newly scheduled effects, for haptics and sound. `holdUntil`: the centre of the board
@@ -545,4 +583,30 @@ class BoardFXDirector {
     val latestEnd: Long? get() = active.maxOfOrNull { it.endDate }
 
     companion object { const val renderGrace = 2.0 }
+}
+
+/**
+ * What the board is still showing, for smart auto-pass to wait on (Swift `BoardPresentationHold`). The board
+ * records each snapshot it takes in; the session only reads. Both run on the main thread.
+ */
+class BoardPresentationHold {
+    /** The last snapshot the board took in, and until when (epoch ms) its held effects play. */
+    @Volatile var ingested: BoardFXRevisionKey? = null; private set
+    @Volatile var until: Long? = null; private set
+
+    fun record(key: BoardFXRevisionKey?, until: Long?) {
+        ingested = key
+        this.until = until
+    }
+
+    companion object {
+        val shared = BoardPresentationHold()
+        /** Smart pass never waits longer than this for one prompt, so the board can't stall the game. */
+        const val MAXIMUM_WAIT_MS = 5_000L
+        /**
+         * How long smart pass gives the board to take in a newly published snapshot. A busy frame can take longer than a
+         * tenth of a second, and passing before the board has seen the snapshot skips its hold.
+         */
+        const val INGEST_WAIT_MS = 1_000L
+    }
 }

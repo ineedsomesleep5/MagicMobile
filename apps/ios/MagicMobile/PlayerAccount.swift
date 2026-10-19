@@ -18,6 +18,9 @@ enum PlayerAccountRules {
         case "no_username": return String(localized: "Choose your name first.")
         case "too_many_requests": return String(localized: "You have too many friend requests waiting.")
         case "too_many_reports": return String(localized: "You've sent a lot of reports. Try again later.")
+        case "not_friends": return String(localized: "You can only message friends.")
+        case "invalid_message": return String(localized: "Write something first (500 characters at most).")
+        case "too_many_messages": return String(localized: "You're sending messages fast. Wait a moment and try again.")
         case "anonymous_provider_disabled", "anonymous_disabled": return String(localized: "Profiles aren't available right now. You can still play.")
         case "feature_unavailable": return String(localized: "That part of the profile server isn't ready yet. Try again after the next update.")
         case "invalid_visibility": return String(localized: "Choose Public, Friends only or Private.")
@@ -147,6 +150,10 @@ final class PlayerAccount: ObservableObject {
     /// False once the server has said it has no player search / public profiles yet: the screens fall back gently.
     @Published private(set) var searchAvailable = true
     @Published private(set) var profilesAvailable = true
+    /// Unread messages from friends: the badge on the Friends button.
+    @Published private(set) var unreadMessages = 0
+    /// False on a server without friend messages yet.
+    @Published private(set) var messagesAvailable = true
     @Published var notice: String?
     /// Google or Apple sign-ins on this account; empty while the profile lives only on this phone (anonymous).
     @Published private(set) var linkedIdentities: [LinkedIdentity] = []
@@ -168,8 +175,13 @@ final class PlayerAccount: ObservableObject {
     var incomingCount: Int { friends.filter(\.isIncoming).count }
 
     #if DEBUG
+    /// The fixture account's conversations, changed as the player sends.
+    private var fixtureMessages: [String: [FriendMessage]] = [:]
+
     /// Development fixtures (SocialFixtures): a signed-in account with friends, instead of the server.
     private func applyFixtureAccount() {
+        fixtureMessages = SocialFixtures.messages()
+        unreadMessages = fixtureMessages.values.joined().filter { !$0.fromMe && !$0.read }.count
         phase = .ready
         username = SocialFixtures.ownName
         friends = SocialFixtures.startingFriends()
@@ -264,7 +276,7 @@ final class PlayerAccount: ObservableObject {
     /// until the player signs in again.
     func signOut() async {
         api.forgetSession()
-        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []
+        username = nil; friends = []; blocked = []; friendRanks = [:]; linkedIdentities = []; unreadMessages = 0
         visibility = .public; visibilityKnown = false
         phase = .idle
         await start()
@@ -281,6 +293,11 @@ final class PlayerAccount: ObservableObject {
             blocked = rows.compactMap { $0["username"] as? String }
         } catch {
             notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error))
+        }
+        // Messages are extra too: a server without them leaves the badge off.
+        if let data = try? await api.rpc("mm_message_unread"),
+           let count = (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) as? Int {
+            unreadMessages = count
         }
         // Ranks are extra: a server without them leaves the badges off.
         if let data = try? await api.rpc("mm_friend_ranks"),
@@ -300,13 +317,163 @@ final class PlayerAccount: ObservableObject {
     /// Friend challenges, once the player has a profile name.
     var challenges: FriendChallengeService? { phase == .ready && username != nil ? SupabaseFriendChallenges(api: api) : nil }
 
-    /// Shares this season's standing with friends. Quiet on failure: ranks still count on the phone.
+    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2).
+    struct RankedAITicket: Equatable {
+        let id: UUID
+        let seed: Int64
+    }
+
+    /// Starts a ranked game against the AI on the server, so its result counts there. Nil offline or without a
+    /// profile name: that game then counts on this phone only. Waits at most `timeout`, since the game waits for it.
+    func startRankedAIGame(deckBracket: Int, timeout: Duration = .seconds(4)) async -> RankedAITicket? {
+        guard phase == .ready, username != nil else { return nil }
+        let api = api
+        return await withTaskGroup(of: RankedAITicket?.self) { group in
+            group.addTask {
+                guard let data = try? await api.rpc("mm_ranked_ai_start2", ["p_deck_bracket": deckBracket]) else { return nil }
+                return Self.rankedAITicket(data)
+            }
+            group.addTask { try? await Task.sleep(for: timeout); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53).
+    nonisolated static func rankedAITicket(_ data: Data) -> RankedAITicket? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
+              let seed = (object["seed"] as? String).flatMap(Int64.init) else { return nil }
+        return RankedAITicket(id: id, seed: seed)
+    }
+
+    /// Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the
+    /// server has none yet). Quiet on failure: the phone's own count stands until the next try.
+    func syncRank(_ record: PlayerRecordStore) async {
+        guard phase == .ready, username != nil else { return }
+        for pending in record.pendingRankedResults {
+            do {
+                let data: Data
+                if pending.seeded == true {
+                    // The game record backs the result; without one a win settles as unverified.
+                    let record = pending.recordFile.flatMap(record.gameRecord(named:)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
+                    data = try await api.rpc("mm_ranked_ai_result2", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue,
+                                                                     "p_record": record ?? NSNull()])
+                } else {
+                    data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
+                }
+                record.resolvePendingRankedResult(pending.ticket)
+                if let standing = try? RankedStanding.parse(data) { record.adopt(standing) }
+            } catch {
+                // A ticket the server doesn't know never will be; anything else waits for the next sync.
+                if SupabaseLite.code(of: error) == "not_found" { record.resolvePendingRankedResult(pending.ticket) }
+            }
+        }
+        guard let data = try? await api.rpc("mm_ranked_standing"), var standing = try? RankedStanding.parse(data) else { return }
+        let local = record.rank
+        if !standing.seeded, local.position > .start || local.wins + local.losses > 0,
+           let seeded = try? await api.rpc("mm_ranked_seed", ["p_points": local.position.points, "p_peak_points": local.peak.points,
+                                                             "p_wins": local.wins, "p_losses": local.losses]),
+           let parsed = try? RankedStanding.parse(seeded) {
+            standing = parsed
+        }
+        record.adopt(standing)
+    }
+
+    /// Shares the title and favourite commander with friends. The server keeps the rank itself and ignores the
+    /// rank numbers sent here (they stay for older servers). Quiet on failure.
     func publishRank(_ rank: RankState, stats: PlayerStats, title: Achievement?, commander: String?) async {
         guard phase == .ready, username != nil else { return }
         _ = try? await api.rpc("mm_ranked_publish", [
             "p_season": rank.season, "p_rank_step": rank.position.step, "p_pips": rank.position.pips,
             "p_peak_step": rank.peak.step, "p_wins": rank.wins, "p_losses": rank.losses,
             "p_title": title?.title ?? NSNull(), "p_favorite_commander": commander ?? NSNull()])
+    }
+
+    // MARK: Messages between friends
+
+    /// Just the unread count (checked more often during a game).
+    func refreshUnread() async {
+        #if DEBUG
+        if SocialFixtures.isActive { return }
+        #endif
+        guard phase == .ready, username != nil, messagesAvailable else { return }
+        do {
+            let data = try await api.rpc("mm_message_unread")
+            if let count = (try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) as? Int { unreadMessages = count }
+        } catch {
+            if SupabaseLite.code(of: error) == "feature_unavailable" { messagesAvailable = false }
+        }
+    }
+
+    /// Conversations with friends, newest first; nil offline or on a server without messages.
+    func conversations() async -> [MessageConversation]? {
+        #if DEBUG
+        if SocialFixtures.isActive {
+            return fixtureMessages.compactMap { name, messages in
+                messages.last.map { MessageConversation(username: name, unread: messages.filter { !$0.fromMe && !$0.read }.count, last: $0) }
+            }.sorted { $0.last.id > $1.last.id }
+        }
+        #endif
+        guard phase == .ready, username != nil else { return nil }
+        do {
+            let list = try FriendMessageRules.parseConversations(try await api.rpc("mm_message_conversations"))
+            messagesAvailable = true
+            return list
+        } catch {
+            if SupabaseLite.code(of: error) == "feature_unavailable" { messagesAvailable = false }
+            return nil
+        }
+    }
+
+    /// A page of a conversation (the newest, or the messages before `before`). Reading the newest marks theirs read.
+    func thread(with name: String, before: Int64? = nil) async throws -> MessageThread {
+        #if DEBUG
+        if SocialFixtures.isActive {
+            let all = fixtureMessages[name] ?? []
+            if before == nil {
+                fixtureMessages[name] = all.map { $0.fromMe || $0.read ? $0 : FriendMessage(id: $0.id, body: $0.body, sentAt: $0.sentAt, fromMe: false, read: true) }
+                unreadMessages = fixtureMessages.values.joined().filter { !$0.fromMe && !$0.read }.count
+            }
+            return MessageThread(username: name, messages: (fixtureMessages[name] ?? []).filter { before == nil || $0.id < before! }, hasMore: false)
+        }
+        #endif
+        let thread = try FriendMessageRules.parseThread(try await api.rpc("mm_message_thread", ["p_username": name, "p_before": before.map { NSNumber(value: $0) } ?? NSNull(), "p_limit": 50]))
+        if before == nil, let data = try? await api.rpc("mm_message_unread"),
+           let count = (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) as? Int {
+            unreadMessages = count
+        }
+        return thread
+    }
+
+    /// Sends a message to a friend; nil (with a notice) when it couldn't be sent.
+    func sendMessage(to name: String, _ raw: String) async -> FriendMessage? {
+        guard let body = FriendMessageRules.sanitize(raw) else { return nil }
+        #if DEBUG
+        if SocialFixtures.isActive {
+            let next = (fixtureMessages.values.joined().map(\.id).max() ?? 0) + 1
+            let message = FriendMessage(id: next, body: body, sentAt: Date(), fromMe: true, read: false)
+            fixtureMessages[name, default: []].append(message)
+            return message
+        }
+        #endif
+        do {
+            return try FriendMessageRules.parseMessage(try await api.rpc("mm_message_send", ["p_username": name, "p_body": body]))
+        } catch {
+            notice = PlayerAccountRules.message(for: SupabaseLite.code(of: error))
+            return nil
+        }
+    }
+
+    /// The season leaderboard (mm_ranked_leaderboard), or nil offline or without a profile name.
+    func rankedLeaderboard(_ scope: RankedLeaderboard.Scope, limit: Int = 50) async -> RankedLeaderboard? {
+        #if DEBUG
+        if SocialFixtures.isActive { return SocialFixtures.leaderboard(scope, own: username ?? SocialFixtures.ownName, limit: limit) }
+        #endif
+        guard phase == .ready, username != nil,
+              let data = try? await api.rpc("mm_ranked_leaderboard", ["p_scope": scope.rawValue, "p_limit": limit]) else { return nil }
+        return try? RankedLeaderboard.parse(data)
     }
 
     /// Another player's ranked card, or nil when they have none (or can't be seen).

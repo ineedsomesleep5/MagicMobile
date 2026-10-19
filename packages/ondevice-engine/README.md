@@ -29,7 +29,7 @@ The unlinked Swift package deliberately returns `nativeEngineNotLinked`. It neve
 |---|---|
 | Actual XMage integration source | In-process Commander factory, human-player input channel, query adapter, upstream per-seat GameView projections, compiled-printing deck resolution, lifecycle and capabilities |
 | Engine/UI boundary | Strict JSON, prompt tokens/revisions, actor binding, command idempotency, bounded viewer-scoped events, terminal states and cleanup |
-| Static card/set registration | Pinned source patches; build-time constructor discovery; sharded direct-call Java factories; direct set singleton registration; catalogue and provisional reflection metadata |
+| Static card/set registration | Pinned source patches; build-time constructor discovery; sharded direct-call Java factories; sets and printings from a build-time set catalogue; catalogue and provisional reflection metadata |
 | Swift package | Native C bridge actor, typed engine client, exact-prompt responses, build identity matching, host-side peer router, chunking and quota-limited reassembly |
 | Apple-only source | Existing portrait/landscape product setup, native session/prompt/snapshot adapters, authenticated Game Center lobby/transport; separate diagnostic harness |
 | Native work | C lifetime wrapper, Graal entrypoints, retryable isolate lifecycle, full ARM64 build/compiler backport, verified product long calls and signed-binary layout inspection |

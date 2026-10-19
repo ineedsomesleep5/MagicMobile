@@ -100,6 +100,20 @@ final class DeckStudioReplayTests: XCTestCase {
         }
     }
 
+    /// The recording transport skips a poll reply identical to the last one (it cannot advance the record) and only
+    /// passes on that detail was switched off meanwhile; the timeline then stops as if the poll had been observed.
+    func testRevokingDetailOnASkippedRepeatStopsTheTimeline() throws {
+        var recorder = DeckStudioPlaytestAccumulator()
+        let (start, accepted) = created()
+        XCTAssertTrue(try observe(start, accepted, using: &recorder, time: 1_000))
+        let first = poll(revision: 1, turn: 1)
+        XCTAssertTrue(try observe(first.0, first.1, using: &recorder, time: 1_010))
+        recorder.revokeDetail()
+        let second = poll(revision: 2, turn: 2, life: 37)
+        XCTAssertTrue(try observe(second.0, second.1, using: &recorder, time: 1_020))
+        XCTAssertEqual(recorder.game?.timeline?.samples.map(\.turn) ?? [], [1])
+    }
+
     func testWrongSeatAndMalformedHistoryCannotAdvanceTimeline() throws {
         var recorder = DeckStudioPlaytestAccumulator()
         let (start, accepted) = created()

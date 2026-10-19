@@ -1,0 +1,15 @@
+ai-duel ended matches 620 / 620 sameBuild False
+ai-experts ended matches 1053 / 1053 sameBuild False
+ai-precons ended matches 1003 / 1003 sameBuild False
+human-vs-3ai exhausted matches 869 / 869 sameBuild False
+human-vs-ai ended matches 390 / 390 sameBuild False
+human-vs-expert ended matches 405 / 405 sameBuild False
+soak-0 ended matches 1173 / 1173 sameBuild False
+soak-1 ended matches 532 / 532 sameBuild False
+soak-2 ended matches 665 / 665 sameBuild False
+soak-3 ended matches 2295 / 2295 sameBuild False
+soak-4 ended matches 1109 / 1109 sameBuild False
+soak-5 ended matches 537 / 537 sameBuild False
+soak-6 ended matches 2218 / 2218 sameBuild False
+soak-7 exhausted matches 1187 / 1187 sameBuild False
+two-humans ended matches 479 / 479 sameBuild False

@@ -26,6 +26,7 @@ struct PublicProfileView: View {
     @State private var confirmBlock = false
     @State private var confirmReport = false
     @State private var showAllGames = false
+    @State private var messageWith: String?
 
     private var shown: String { stack.last ?? username }
 
@@ -53,6 +54,9 @@ struct PublicProfileView: View {
             }
         }
         .task(id: shown) { await reload() }
+        .fullScreenCover(item: Binding(get: { messageWith.map(ConversationTarget.init) }, set: { messageWith = $0?.name })) { target in
+            FriendConversationView(account: account, username: target.name) { messageWith = nil }
+        }
         .onAppear { if stack.isEmpty { stack = [username] } }
         .tavernConfirmation(active: true, title: String(localized: "Block \(shown)?"),
                             message: String(localized: "They're removed from your friends and can't send you requests. You can unblock them in Friends later."),
@@ -182,6 +186,11 @@ struct PublicProfileView: View {
                 switch profile.relation {
                 case "friend":
                     if let challenge, profile.online == true { challengeMenu(profile, challenge) }
+                    if account.messagesAvailable {
+                        Button { messageWith = profile.username } label: { Label(String(localized: "Message"), systemImage: "bubble.left.fill") }
+                            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                            .accessibilityIdentifier("publicProfile.message")
+                    }
                 case "outgoing":
                     Button(String(localized: "Request sent")) {}.buttonStyle(TavernButtonStyle(kind: .secondary, compact: true)).disabled(true)
                         .accessibilityIdentifier("publicProfile.requested")
@@ -313,4 +322,9 @@ struct PublicProfileView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("publicProfile.history")
     }
+}
+
+private struct ConversationTarget: Identifiable {
+    let name: String
+    var id: String { name }
 }

@@ -232,9 +232,20 @@ private fun Header(profile: PublicProfile) {
 private fun Actions(profile: PublicProfile, account: PlayerAccount, scope: kotlinx.coroutines.CoroutineScope, reload: () -> Unit,
                     challenge: ((String, PlayMode) -> Unit)?, myRankStep: Int?, report: () -> Unit, block: () -> Unit, close: () -> Unit) {
     if (profile.isSelf) return
+    var conversation by remember { mutableStateOf<String?>(null) }
+    conversation?.let { name ->
+        androidx.compose.ui.window.Dialog({ conversation = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+            androidx.activity.compose.BackHandler { conversation = null }
+            io.magicmobile.android.social.FriendConversationScreen(account, name) { conversation = null }
+        }
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         when (profile.relation) {
-            "friend" -> if (challenge != null && profile.online == true) {
+            "friend" -> if (challenge != null && profile.online == true || account.messagesAvailable) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (account.messagesAvailable) TavernPlaqueButton("Message", { conversation = profile.username }, Modifier.testTag("publicProfile.message"),
+                    kind = TavernButtonKind.SECONDARY, systemImage = "bubble.left.fill")
+                if (challenge != null && profile.online == true) {
                 val mayRank = myRankStep?.let { FriendChallengeRules.mayRank(it, profile.rank?.position?.step) } ?: false
                 TavernMenu(Modifier.testTag("publicProfile.challenge"), TavernMenuEdge.BELOW, contentDescription = "Challenge ${profile.username}", label = {
                     TavernFacePlaque("Challenge")
@@ -242,6 +253,7 @@ private fun Actions(profile: PublicProfile, account: PlayerAccount, scope: kotli
                     TavernMenuItem("Quick Match", { challenge(profile.username, PlayMode.QUICK); close() }, systemImage = "bolt.fill")
                     TavernMenuItem(if (mayRank) "Ranked" else "Ranked · same tier only", { if (mayRank) { challenge(profile.username, PlayMode.RANKED); close() } },
                         systemImage = "shield.lefthalf.filled")
+                }
                 }
             }
             "outgoing" -> TavernPlaqueButton("Request sent", {}, Modifier.testTag("publicProfile.requested"), kind = TavernButtonKind.SECONDARY, enabled = false)

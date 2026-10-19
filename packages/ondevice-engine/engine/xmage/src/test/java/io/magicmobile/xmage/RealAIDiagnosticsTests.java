@@ -78,6 +78,11 @@ public final class RealAIDiagnosticsTests {
         check(MobileAICancellation.thinkBudget(6,false,true)==MobileAICancellation.STACK_THINK_SECS,"stack responses are capped");
         check(MobileAICancellation.thinkBudget(1,false,true)==1,"cap never raises a lower configured budget");
         check(MobileAICancellation.thinkBudget(6,true,false)==MobileAICancellation.STACK_THINK_SECS,"AI-only games play at watching pace");
+        check(MobileAICancellation.thinkBudget(18,true,true,true)==9,"a hot phone halves the think time");
+        check(MobileAICancellation.thinkBudget(6,true,true,true)==3,"a hot phone halves skill 2's think time");
+        check(MobileAICancellation.thinkBudget(3,true,true,true)==MobileAICancellation.STACK_THINK_SECS,"never below the stack cap");
+        check(MobileAICancellation.thinkBudget(1,true,true,true)==1,"never raises a lower budget");
+        check(MobileAICancellation.thinkBudget(18,true,true,false)==18,"a cool phone keeps the configured time");
         check(new MobileAICancellation().humansPlaying(),"an unbound match never assumes it is AI-only");
         for(PhaseStep step:PhaseStep.values()) {
             boolean upstreamSearches=step==PhaseStep.PRECOMBAT_MAIN || step==PhaseStep.DECLARE_ATTACKERS

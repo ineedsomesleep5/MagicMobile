@@ -9,9 +9,7 @@ import mage.ObjectColor;
 import mage.abilities.SpellAbility;
 import mage.cards.Card;
 import mage.cards.CardSetInfo;
-import mage.cards.ExpansionSet;
 import mage.cards.MobileCardFactories;
-import mage.cards.Sets;
 import mage.cards.d.DelverOfSecrets;
 import mage.cards.decks.Deck;
 import mage.cards.i.IsamaruHoundOfKonda;
@@ -319,11 +317,8 @@ public final class RealPortraitProjectionTests {
                 new SimpleCardView(id, "MRD", "", false), new SimpleCardView(id, "missing-set", "16", false),
                 new SimpleCardView(id, "MRD", "missing-number", false)))
             eq(print(unknown), Json.parseObject(new Gson().toJson(unknown)));
-        ExpansionSet set = Sets.getInstance().get("MRD");
-        ExpansionSet.SetCardInfo info = set.getSetCardInfo().stream().filter(c -> c.getCardNumber().equals("16")).findFirst().orElseThrow();
-        set.getSetCardInfo().add(info); // Test-only catalogue ambiguity; restore before any other test.
-        try { eq(print(known), Json.parseObject(new Gson().toJson(known))); }
-        finally { set.getSetCardInfo().remove(set.getSetCardInfo().size() - 1); }
+        // An ambiguous collector number stays unknown: RealSetCatalogueTests runs that case on a catalogue
+        // copy that lists MRD 16 twice (the bundled set catalogue cannot be changed in place).
     }
 
     private static Map<String,Object> print(SimpleCardView simple) {

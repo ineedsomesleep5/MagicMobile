@@ -80,11 +80,22 @@ They were measured on the iPhone 17 Pro Max simulator and the API 35 emulator, n
   both platforms). A tap returns to 0.3 s at once. Online tables keep their own schedule.
 - **No idle redraws.** A poll whose answer is unchanged publishes nothing: the iOS session sends
   `objectWillChange` only when the snapshot, status or error changed.
+- **Unchanged polls are not decoded.** A reply byte-for-byte equal to the previous one, for the same request, comes
+  back as the previous poll without JSON decoding (iOS `OnDevicePollReader` over the runtime manager's
+  `clientTransport`, Android `EngineClient.poll`), and Deck Studio's recorder skips it too (it cannot advance the
+  record). The engine still answers every poll in full.
 - **Ambient motion.** Slow glows step on the wall clock instead of at the display's rate (iOS `BoardBreath`,
   30 a second; Android `rememberBoardBreath`, 20 a second), and brief glints draw only while they show
-  (`BurstTimelineSchedule`). A custom
+  (`BurstTimelineSchedule`). On iOS every ambient timeline (glows, the inspector's foil, the turn rope) steps on one
+  grid (`AmbientTimelineSchedule`), so any number of them redraw the board in the same frames: separate
+  `.animation(minimumInterval:)` timelines each start on their own phase, and a few 30 Hz glows redrew the board 60
+  times a second. Glows step at half rate while the phone is hot and rest, lit and still, after 15 s without a touch
+  or a game change (`BoardActivity` on both platforms). The AI's thinking ring turns in Core Animation on iOS and as a
+  layer rotation on Android, never as a per-frame redraw. A custom
   `TimelineSchedule` must return a fixed grid of dates: the latest one at or before the date asked for, then
   strictly later ones. Returning "now" first makes the view update forever.
+- **Layout work.** iOS `BattlefieldRow` derives its groups, sizes and rows once per change (`BattlefieldRowLayout`),
+  not on every read of the card width; ribbon banners measure a name's fit once per width (`RibbonFit`, both apps).
 - **Shared data.** The card catalogue and deck resolver decode once and are shared (`BundledResourceCache`);
   the catalogue is dropped when the app goes to the background. The resolver is still read before the first
   screen is usable (about 0.2 s): reading it in the background left the menu tappable before the build

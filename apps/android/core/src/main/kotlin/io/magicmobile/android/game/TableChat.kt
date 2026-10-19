@@ -9,9 +9,10 @@ object TableChatText {
 
     /**
      * One line of chat: control characters, tabs and line breaks become spaces, runs of spaces
-     * collapse, and the result is trimmed and capped. Nothing is left: nothing is sent.
+     * collapse, and the result is trimmed and capped (at [limit] code points; friend messages allow more). Nothing is
+     * left: nothing is sent.
      */
-    fun sanitize(raw: String): String? {
+    fun sanitize(raw: String, limit: Int = MAX_CODE_POINTS): String? {
         val out = StringBuilder()
         var pendingSpace = false
         var index = 0
@@ -28,7 +29,7 @@ object TableChatText {
             }
         }
         val text = out.toString()
-        val capped = if (text.codePointCount(0, text.length) > MAX_CODE_POINTS) text.substring(0, text.offsetByCodePoints(0, MAX_CODE_POINTS)) else text
+        val capped = if (text.codePointCount(0, text.length) > limit) text.substring(0, text.offsetByCodePoints(0, limit)) else text
         val trimmed = capped.removeSuffix(" ")
         return trimmed.ifEmpty { null }
     }

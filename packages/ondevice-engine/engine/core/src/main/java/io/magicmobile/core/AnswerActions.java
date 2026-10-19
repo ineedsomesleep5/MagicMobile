@@ -13,7 +13,7 @@ import java.util.*;
  */
 public final class AnswerActions {
     public static final List<String> TYPES=List.of("rememberAnswer","rememberTriggerFirst","passUntilStackResolved",
-        "resetRememberedAnswers","resetTriggerOrder","autoPassAfterCast");
+        "resetRememberedAnswers","resetTriggerOrder","autoPassAfterCast","devicePace");
     private static final int MAX_ACTIONS=TYPES.size();
     private AnswerActions() {}
 
@@ -62,6 +62,11 @@ public final class AnswerActions {
                 case "autoPassAfterCast":
                     only(action,"type","enabled");
                     out.add(Json.map("type",type,"enabled",Json.bool(action.get("enabled"))));
+                    break;
+                case "devicePace":
+                    // The phone running the engine is hot: AI seats think for less time. No rule or answer changes.
+                    only(action,"type","hot");
+                    out.add(Json.map("type",type,"hot",Json.bool(action.get("hot"))));
                     break;
                 default: // the two resets
                     only(action,"type");

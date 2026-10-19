@@ -15,7 +15,8 @@ object NativeCardArtworkPolicy {
 object CompactPromptPopup {
     fun shouldShow(snapshot: GameSnapshot, pendingActionId: String?): Boolean {
         if (InlinePaymentPromptState.isActive(snapshot)) return false
-        if (pendingActionId != null) return true
+        // An automatic pass answers a prompt that asked nothing, so it shows no waiting pop-up.
+        if (pendingActionId != null && !OnDeviceYieldPolicy.isAutomaticPass(pendingActionId)) return true
         snapshot.promptEnvelopeV2?.let { prompt ->
             val presentation = MobilePromptPresentation.make(snapshot, snapshot.legalActions ?: emptyList())
             if (presentation?.kind == MobilePromptKind.PAYMENT || isManaPaymentPrompt(prompt)) return false

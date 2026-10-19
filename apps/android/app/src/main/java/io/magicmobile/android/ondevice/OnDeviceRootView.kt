@@ -238,6 +238,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var guidedGame by rememberSaveable { mutableStateOf(false) }
     var guidedTipID by rememberSaveable { mutableStateOf<String?>(null) }
     var showFriends by remember { mutableStateOf(false) }
+    // A friend's message during a game (the banner) and the Messages sheet it opens (a name, or "" for the list).
+    var messageBanner by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var messagesHub by remember { mutableStateOf<String?>(null) }
     var chatProfile by remember { mutableStateOf<String?>(null) }
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
@@ -265,7 +268,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     LaunchedEffect(Unit) {
         when (io.magicmobile.android.ranked.SocialFixtures.openScreen?.substringBefore(":")) {
             "profile" -> lobby = "profile"
-            "friends", "public", "search" -> showFriends = true
+            "rankedHall" -> lobby = "rankedHall"
+            "leaderboard" -> lobby = "leaderboard"
+            "friends", "public", "search", "messages", "conversation" -> showFriends = true
         }
     }
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
@@ -294,8 +299,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         // Finished games go to the profile server too: now, and again whenever the app is open and online (GameUploader).
         val uploader = io.magicmobile.android.game.GameUploader(java.io.File(context.filesDir, "Profile/uploaded-games.json"))
         val upload: suspend () -> Unit = { uploader.flush(record.file.matches) { vm.account.recordGame(it) } }
-        record.didRecord = { scope.launch { upload() } }
-        vm.account.afterRefresh = upload
+        // A ranked game goes up after its result counts on the server, which records its rank points then.
+        record.didRecord = { match -> if (match.mode != io.magicmobile.android.game.PlayMode.RANKED) scope.launch { upload() } }
+        vm.account.afterRefresh = { vm.account.syncRank(record); upload() }
         // Debug: MAGICMOBILE_UI_TEST_CEREMONY=tierUp|tierDown|divisionUp|divisionDown plays a rank moment (as on iOS).
         val P = io.magicmobile.android.game.RankPosition
         val win = io.magicmobile.android.game.RankOutcome.WIN; val loss = io.magicmobile.android.game.RankOutcome.LOSS
@@ -389,9 +395,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
         rankChange = null
+        if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, aiStartingPlayerMode, mode.raw, deckBracket.level)
         scope.launch {
-            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID)
+            // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
+            var seed: Long? = null
+            if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
+                val ticket = vm.account.startRankedAIGame(deckBracket.level)
+                record.beginRankedAIGame(ticket?.id, seeded = ticket != null)
+                seed = ticket?.seed
+            }
+            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID, seed = seed)
             if (session.matchID == null) activeMatch = null
         }
     }
@@ -443,7 +457,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
         val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
-            preconsOnly = position.tier.preconOpponentsOnly) ?: return
+            preconsOnly = position.tier.preconOpponentsOnly,
+            onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
         startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
     }
 
@@ -570,12 +585,18 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         }
     }
 
-    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+    fun saveResult(match: ActiveMatch, outcome: io.magicmobile.android.game.RankOutcome, turns: Int, snapshot: GameSnapshot?,
+                   gameRecordFile: String? = null) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
         rankChange = change
-        match.rankedMatchID?.let { id -> scope.launch { matchmaker.report(id, outcome) } }
+        scope.launch {
+            match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
+            // then upload the game so its rank history point is the standing after it.
+            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.afterRefresh?.invoke()
+        }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
 
@@ -596,8 +617,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             snapshot.isCompleted && winners.isEmpty() -> io.magicmobile.android.game.RankOutcome.DRAW
             else -> io.magicmobile.android.game.RankOutcome.LOSS
         }
-        saveResult(current, outcome, snapshot.turn, snapshot)
         activeMatch = current.copy(recorded = true)
+        // The engine's game record first (solo games, before the match is destroyed), so a ranked result goes with it.
+        scope.launch {
+            val file = setup.finishedGameRecord()?.let(record::keepGameRecord)
+            saveResult(current, outcome, snapshot.turn, snapshot, file)
+        }
     }
 
     /** Leaving a ranked game before it ends counts as a loss. */
@@ -795,8 +820,34 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     }
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }
+    LaunchedEffect(session.snapshot?.turn) { io.magicmobile.android.ui.GamePerformanceRecorder.noteTurn(session.snapshot?.turn) }
+    // During a game, friends' messages are checked every 15 seconds (the menu's heartbeat is slower), and a new one shows a banner.
+    LaunchedEffect(activeGame, vm.account.messagesAvailable) {
+        if (!activeGame || !vm.account.messagesAvailable) return@LaunchedEffect
+        var seen = vm.account.unreadMessages
+        while (true) {
+            delay(15_000)
+            if (!appForeground) continue
+            vm.account.refreshUnread()
+            if (vm.account.unreadMessages > seen && messagesHub == null) {
+                vm.account.conversations()?.firstOrNull { it.unread > 0 && !it.last.fromMe }?.let {
+                    messageBanner = it.username to io.magicmobile.android.game.FriendMessageRules.shown(it.last)
+                }
+            }
+            seen = vm.account.unreadMessages
+        }
+    }
+    // A hot phone shortens AI thinking in games its engine runs: never ranked (the same AI for everyone) or online.
+    LaunchedEffect(activeGame, io.magicmobile.android.ui.DeviceHeat.isHot, activeMatch?.mode) {
+        session.devicePaceHot = activeGame && !setup.usingMultiplayer && activeMatch?.mode != io.magicmobile.android.game.PlayMode.RANKED &&
+            io.magicmobile.android.ui.DeviceHeat.isHot
+    }
     LaunchedEffect(activeGame) {
+        // The combo loop shortcut: solo games only.
+        session.comboLoopsAllowed = activeGame && !setup.usingMultiplayer
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
+        if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
+        else io.magicmobile.android.ui.GamePerformanceRecorder.end()
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
         // A resumed game is not a new matchup: no versus intro.
         if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
@@ -858,7 +909,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     BackHandler(enabled = activeGame) { requestLeave() }
 
     val turnControl = NativeTurnControl(session.canEndTurn, session.canEndTurnSkippingResponses, session.canSkipToMyTurn, session.isAutoPassing,
-        session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() })
+        session.autoPassStatus, { session.endTurn() }, { session.endTurnSkippingResponses() }, { session.skipToMyTurn() }, { session.stopAutoPass() },
+        session.isFullControl, { session.toggleFullControl() })
 
     // One flag for everything the starting roll covers (iOS startingRollVisible): a relay table's
     // shared roll or its "Who goes first?" panel, or an AI table's local roll.
@@ -933,6 +985,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalEmoteCenter provides vm.emotes,
+                        // Messages from friends inside a game too: the game menu's Messages button.
+                        io.magicmobile.android.social.LocalFriendMessages provides
+                            if (vm.account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && vm.account.username != null && vm.account.messagesAvailable)
+                                io.magicmobile.android.social.FriendMessagesEntry(vm.account.unreadMessages) { messagesHub = "" } else null,
                         io.magicmobile.android.board.LocalBoardAnswerActions provides io.magicmobile.android.board.BoardAnswerActions(
                             session.supportedAnswerActions, session.rememberedAnswers, session.rememberedTriggerOrders,
                             { session.forgetRememberedAnswers() }, { session.forgetTriggerOrder() }),
@@ -946,14 +1002,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         val smartAutoPass by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.ENABLED_KEY, true)
                         val phaseStops by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
                             io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops))
-                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops) {
+                        val stopForOwnSpells by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
+                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops, stopForOwnSpells) {
                             session.setSmartPass(io.magicmobile.android.game.OnDeviceSmartPass.Settings(smartAutoPass,
-                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops)))
+                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops), stopForOwnSpells))
                         }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)
                             .then(if (boardQuiet) Modifier.clearAndSetSemantics {} else Modifier)) {
-                            NativeGameView(session.snapshot, selection, session.pendingActionID, session.pendingCardID,
+                            NativeGameView(session.presentedSnapshot, selection, session.pendingActionID, session.pendingCardID,
                                 CardChoiceCommandFailure.of(setup.errorMessage ?: session.errorMessage,
                                     if (setup.errorMessage != null) CardChoiceCommandFailure.Source.SETUP else CardChoiceCommandFailure.Source.SESSION),
                                 setup.liveStatus, { setup.feedback = it },
@@ -980,6 +1037,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 step.newlyShown?.let { guidedShownTips = GuidedGameLaunch.remember(it, guidedShownTips) }
                                 guidedTipID = step.current?.id
                                 if (snapshot.isCompleted) guidedActive = false
+                            }
+                            // The combo loop shortcut: the offer, the repeats and their result.
+                            if (!boardQuiet) ComboLoopOverlay(session)
+                            // A friend's new message: a banner at the top for a few seconds; a tap opens the conversation.
+                            androidx.compose.animation.AnimatedVisibility(messageBanner != null && !boardQuiet,
+                                Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 16.dp).padding(top = 6.dp)) {
+                                messageBanner?.let { (name, text) ->
+                                    io.magicmobile.android.social.FriendMessageBanner(name, text, { messageBanner = null; messagesHub = name }, { messageBanner = null })
+                                    LaunchedEffect(name, text) { delay(6_000); if (messageBanner == name to text) messageBanner = null }
+                                }
                             }
                             val tip = guidedTipID?.let(GuidedGameTip::fromId)
                             androidx.compose.animation.AnimatedVisibility(guidedGame && tip != null && !boardQuiet,
@@ -1014,24 +1081,30 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             selectedDeckID.startsWith("local:"), selectedDeckID, deckPickerSections, { selectedDeckID = it }, ::openDecks,
                             { showBracketSheet = true }, enabled = !setup.isBusy && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle)
                     }
-                    BackHandler { GameAudio.play(GameSound.UI_BACK); lobby = if (lobby == "chooser" || lobby == "profile") null else "chooser" }
+                    BackHandler {
+                        GameAudio.play(GameSound.UI_BACK)
+                        lobby = when (lobby) { "chooser", "profile" -> null; "ranked", "leaderboard" -> "rankedHall"; else -> "chooser" }
+                    }
                     when (lobby) {
                         "quick" -> io.magicmobile.android.ranked.QuickMatchScreen(selectedDeckBracket, quickBracket, { quickBracket = it }, quickDeckID,
                             { quickDeckID = it }, quickSkill, { quickSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it }, aiPool, mayStartSolo,
                             if (setup.identity == null) setup.status else null, ::startQuickMatch, { lobby = "chooser" }, deckSlot)
                         "ranked" -> io.magicmobile.android.ranked.RankedLobbyScreen(record.file.rank, selectedDeckBracket, vm.account.rankedQueue != null,
-                            mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "chooser" }, deckSlot)
+                            mayStartSolo, if (setup.identity == null) setup.status else null, ::findRankedMatch, { lobby = "profile" }, { lobby = "rankedHall" }, deckSlot)
+                        "rankedHall" -> io.magicmobile.android.ranked.RankedHallScreen(vm.account, record.file.rank, play = { lobby = "ranked" },
+                            leaderboard = { lobby = "leaderboard" }, profile = { lobby = "profile" }, back = { lobby = "chooser" })
+                        "leaderboard" -> io.magicmobile.android.ranked.RankedLeaderboardScreen(vm.account) { lobby = "rankedHall" }
                         "profile" -> io.magicmobile.android.ranked.PlayerProfileScreen(record, vm.account, vm.account.username ?: playerDisplayName,
                             setup.localDecks.mapNotNull { saved -> saved.deck.entries.firstOrNull { it.section == "commander" }?.name } + setup.aiPool.map { it.commander },
                             loadMetadata = { runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { io.magicmobile.android.studio.NativeDeckMetadataCatalogue(setup.awaitCatalogue()) } }.getOrNull() }) { lobby = null }
                         else -> io.magicmobile.android.ranked.PlayModeChooser(record.file.rank.position, io.magicmobile.android.game.RankLadder.seasonName(record.file.rank.season),
-                            quick = { lobby = "quick" }, ranked = { lobby = "ranked" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
+                            quick = { lobby = "quick" }, ranked = { lobby = "rankedHall" }, custom = { lobby = null; showSetup = true }, back = { lobby = null })
                     }
                 } else {
                     TavernMainMenu(selectedDeck?.name ?: "Choose a deck", playerDisplayName, play = { lobby = "chooser" },
                         decks = ::openDecks, settings = { showAppearance = true }, news = { showUpdates = true },
                         commanderName = selectedDeck?.commanderName, downloads = { showDownloads = true }, howToPlay = { showHowToPlay = true },
-                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount,
+                        friends = { showFriends = true }, friendsBadge = vm.account.onlineFriendCount + vm.account.incomingCount + vm.account.unreadMessages,
                         profile = { lobby = "profile" }, rank = record.file.rank.position)
                 }
 
@@ -1201,6 +1274,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         ?: if (selectedDeckID.startsWith("precon:")) io.magicmobile.android.game.CommanderBracket.CORE else null
                     io.magicmobile.android.ranked.DeckBracketSheet(deck.name, report, run { bracketRevision; declaredBracket(selectedDeckID) }, fixed,
                         if (fixed == null) { b -> setDeclaredBracket(selectedDeckID, b) } else null) { showBracketSheet = false }
+                }
+            }
+            messagesHub?.let { initial ->
+                androidx.compose.ui.window.Dialog({ messagesHub = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                    BackHandler { messagesHub = null }
+                    io.magicmobile.android.social.FriendMessagesHub(vm.account, initial.ifEmpty { null }) { messagesHub = null }
                 }
             }
             if (showFriends) BoardSheet({ showFriends = false }, skipPartiallyExpanded = true) {
@@ -1532,6 +1612,7 @@ private fun AppearanceSettings(portraitModeEnabled: Boolean, setPortraitModeEnab
             io.magicmobile.android.board.AutoPassAfterCastToggle()
             io.magicmobile.android.board.SmartAutoPassToggle()
             BoardEffectsPicker()
+            GamePerformancePanel()
             SupportSettingsPanel()
         }
     }
@@ -1550,6 +1631,10 @@ private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
                 upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
             }
             IosListSection("What's new") {
+                IosListRow("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage = "bubble.left.and.bubble.right.fill")
+                IosListRow("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it, as many times as you pick, until you can't, or until they lose. It waits for your triggers and keeps choosing the same kind of target.", systemImage = "arrow.triangle.2.circlepath")
+                IosListRow("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage = "trophy.fill")
+                IosListRow("Spread-out token piles stack back up with the Stack chip.", systemImage = "square.stack.3d.up.fill")
                 IosListRow("Keep your profile: sign in with Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage = "person.crop.circle.badge.checkmark")
                 IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
                 IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")

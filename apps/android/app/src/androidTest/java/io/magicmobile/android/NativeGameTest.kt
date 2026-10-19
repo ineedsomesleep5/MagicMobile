@@ -96,6 +96,73 @@ class NativeGameTest {
         }
     }
 
+    /**
+     * The packaged engine plays a ranked AI game's server seed and keeps the game record its result is checked against
+     * (docs/PROTOCOL.md "Game record"). Fetched mid-game, so the game need not finish.
+     */
+    @Test fun packagedEngineKeepsASeededGameRecord() {
+        assertTrue("This test requires -PwithNative=true", BuildConfig.NATIVE_ENGINE)
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val catalogue=Catalogue(context.assets.open("catalogue.jsonl"))
+        val decks=Wire.decode(context.assets.open("precons.json").use {it.readBytes()})
+            .array("decks").map {Deck.decode(Wire.objectValue(it))}
+        val human=decks.first {it.name.contains("Token Triumph",true)}
+        val opponent=decks.first {it.name.contains("Grave Danger",true)}
+        val token=NativeBridge.open()
+        assertTrue("Native isolate opens",token!=0L)
+        fun request(op:String,vararg fields:Pair<String,Any?>)=Wire.result(NativeBridge.request(token,Wire.request(op,*fields)))
+        try {
+            assertEquals(1L,request("capabilities").number("gameRecord"))
+            val created=request("create","configuration" to mapOf("seed" to -4123456789012345678L,"seats" to listOf(
+                mapOf("seatId" to "player-1","name" to "You","controller" to "human","deck" to catalogue.resolve(human,false)),
+                mapOf("seatId" to "player-2","name" to "AI","controller" to "ai","aiSkill" to 1,"deck" to catalogue.resolve(opponent,false)))))
+            val match=Wire.string(created["matchId"])
+            val state=PollState(match,"player-1")
+            val deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(10)
+            var turn=0L
+            while(System.nanoTime()<deadline && turn<3) {
+                val poll=GamePoll.parse(request("poll","matchId" to match,"viewerId" to "player-1","after" to (state.current?.revision ?: 0L)),match,"player-1")
+                state.publish(poll)
+                turn=maxOf(turn,poll.snapshot?.obj("gameView")?.number("turn") ?: 0L)
+                // A new game opens in its setup phases before "running"; only an ended or failed game stops early.
+                if(poll.phase=="ended" || poll.phase=="failed") break
+                val prompt=state.current?.decision
+                if(prompt!=null && !prompt.submitted) {
+                    val choices=Decisions.choices(prompt,poll.snapshot)
+                    val choice=when(prompt.kind) {
+                        "ASK"->choices.firstOrNull {it.type=="boolean" && it.value==false}
+                        "SELECT"->choices.firstOrNull {it.type=="boolean" && it.value==true}
+                        else->choices.firstOrNull {it.type=="uuid"} ?: choices.firstOrNull()
+                    }
+                    val command=when {
+                        choice!=null->state.prepare(choice.type,choice.value)
+                        "integer" in prompt.responseTypes->state.prepare("integer",maxOf(0L,prompt.minimum ?: 0L).coerceAtMost(prompt.maximum ?: Int.MAX_VALUE.toLong()))
+                        else->error("Unhandled real prompt ${prompt.kind}; accepted types=${prompt.responseTypes}")
+                    }
+                    request("respond","matchId" to match,"viewerId" to "player-1","command" to command)
+                    state.acknowledged()
+                }
+                Thread.sleep(30)
+            }
+            assertTrue("The game reached turn 3 (turn=$turn)",turn>=3)
+            val record=request("record","matchId" to match)
+            assertEquals("magicmobile-game-record",record.text("format"))
+            assertEquals(1L,record.number("version"))
+            assertNull("Recording never stopped",record["broken"])
+            assertTrue("SHA-256 head",Regex("[0-9a-f]{64}").matches(record.text("head") ?: ""))
+            val setup=Wire.decode((record.text("setup") ?: "").toByteArray())
+            assertEquals("The server's seed","-4123456789012345678",setup.text("seed"))
+            assertTrue("Engine build identity",setup.obj("engine")?.text("engineBuild")?.startsWith("sha256:")==true)
+            val end=Wire.decode((record.text("end") ?: "").toByteArray())
+            assertTrue("Decisions recorded",(end.number("entries") ?: 0L)>0L && record.array("entries").size.toLong()==end.number("entries"))
+            android.util.Log.i("MagicMobileAcceptance","Game record: ${end.number("entries")} entries by turn $turn, engine ${setup.obj("engine")?.text("engineBuild")}")
+        } finally {
+            var status=NativeBridge.close(token)
+            repeat(30){if(status!=0){Thread.sleep(100);status=NativeBridge.close(token)}}
+            assertEquals("Native runtime releases after the record check",0,status)
+        }
+    }
+
     @Test fun nativeRuntimeAcceptsThreeDistinctAiDecks() {
         assertTrue("This test requires -PwithNative=true",BuildConfig.NATIVE_ENGINE)
         val context=InstrumentationRegistry.getInstrumentation().targetContext

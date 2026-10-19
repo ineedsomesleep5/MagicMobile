@@ -216,7 +216,7 @@ struct TavernMainMenu: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(BrandButtonStyle(kind: .secondary))
-            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online or waiting" : "")
+            .accessibilityValue(friendsBadge > 0 ? "\(friendsBadge) online, waiting or unread" : "")
             .accessibilityIdentifier("menu.friends")
         }
         if let profile {
@@ -302,7 +302,7 @@ private struct FitsHeightKey: PreferenceKey {
 enum BoardAppearancePreference {
     static let key = "magicmobile.boardAppearance"
     /// Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
-    /// the other backdrops stay for UI tests that pin one with a launch argument.
+    /// `arena` (the classic layout) stays for UI tests that pin it with a launch argument.
     static let defaultValue = "tavern"
     static let options = BattlefieldBackdrop.allCases.map(\.rawValue)
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
@@ -322,6 +322,7 @@ struct AppearanceSettingsView: View {
                     AutoPassAfterCastToggle()
                     SmartAutoPassToggle()
                     BoardEffectsPicker()
+                    GamePerformancePanel()
                     SupportSettingsPanel()
                 }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
             }
@@ -329,6 +330,86 @@ struct AppearanceSettingsView: View {
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }.preferredColorScheme(.dark)
+    }
+}
+
+/// Recent games' memory and heat (GamePerformanceLog), always reachable here so the player can share it to compare app
+/// versions. Numbers only: no cards or player names. Android's GamePerformancePanel matches it.
+struct GamePerformancePanel: View {
+    @State private var entries: [GamePerformanceEntry] = []
+    @State private var showReport = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TavernPanelTitle(text: "Game Performance")
+            Text("Memory and heat from your recent games, to compare app versions. Numbers only, no cards or names. Nothing is sent unless you share it.")
+                .font(.system(size: 12, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(entries.last.map { String(localized: "Last game: \($0.line)") } ?? String(localized: "Finish a game to record one."))
+                .font(.system(size: 12, weight: .semibold, design: .serif))
+                .foregroundStyle(TavernPalette.parchment.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("settings.performance.last")
+            Button { showReport = true } label: {
+                Label("View and Share", systemImage: "chart.bar.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+            .disabled(entries.isEmpty)
+            .accessibilityIdentifier("settings.performance")
+        }
+        .modifier(TavernSettingsPanel())
+        .onAppear {
+            entries = GamePerformanceLog.shared.entries
+            #if DEBUG
+            // UI tests: two recorded games without playing them.
+            if ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PERFORMANCE"] != nil {
+                let start = Date().addingTimeInterval(-7_200)
+                entries = [GamePerformanceEntry(started: start, mode: "quick", aiSkill: 3, minutes: 18, turns: 11, peakFootprintMB: 612, hottest: 1),
+                           GamePerformanceEntry(started: start.addingTimeInterval(3_600), mode: "ranked", aiSkill: 4, minutes: 34, turns: 19,
+                                                peakFootprintMB: 845, lowestAvailableMB: 410, hottest: 2, hotMinutes: 6, memoryWarnings: 1)]
+            }
+            #endif
+        }
+        .sheet(isPresented: $showReport) { GamePerformanceSheet(report: GamePerformanceLog.section(entries) ?? "") }
+    }
+}
+
+/// The full performance report on a tavern sheet, with Share.
+struct GamePerformanceSheet: View {
+    let report: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                TavernPanelTitle(text: "Game Performance")
+                Spacer()
+                Button { dismiss() } label: { TavernSealLabel() }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Close")
+                    .accessibilityIdentifier("performance.close")
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 12)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ShareLink(item: report) { Label("Share Report", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
+                        .buttonStyle(TavernButtonStyle(kind: .primary, compact: true))
+                        .accessibilityIdentifier("performance.share")
+                    Text(report)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(TavernPalette.parchment)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("performance.report")
+                }
+                .padding(18)
+            }
+        }
+        .background { TavernSheetBackground() }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -370,12 +451,16 @@ struct AutoPassAfterCastToggle: View {
 /// Smart auto-pass (OnDeviceSmartPass, on by default) and the button to its phase stops.
 struct SmartAutoPassToggle: View {
     @AppStorage(OnDeviceSmartPass.enabledKey) private var isOn = true
+    @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwn = false
     @State private var showStops = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TavernToggle(title: "Smart Auto-Pass", isOn: $isOn, identifier: "settings.smartAutoPass",
                          subtitle: "Passes for you when you have nothing to play, and skips steps you don’t stop at.")
+            TavernToggle(title: "Stop for My Own Spells", isOn: $stopForOwn, identifier: "settings.stopForOwnSpells",
+                         subtitle: "Off: your own spells and triggers resolve without a stop, as on Arena.")
+                .disabled(!isOn)
             Button { showStops = true } label: {
                 Label("Phase Stops", systemImage: "hand.raised.fill").frame(maxWidth: .infinity)
             }
@@ -419,7 +504,7 @@ struct PhaseStopsGrid: View {
     @AppStorage(OnDeviceSmartPass.stopsKey) private var raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
 
     private var explanation: String {
-        enabled ? "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It always stops when you can answer a spell on the stack."
+        enabled ? "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
                 : "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops."
     }
 

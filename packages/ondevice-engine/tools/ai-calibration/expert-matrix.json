@@ -1,0 +1,6 @@
+{
+  "description": "C4 expert tier (skill 5 and up): Platinum (4) against Diamond (5) and Mythic (6), lower skill is A. Core bracket pool, so skill is the only difference. Skill 3 against 6 runs separately (run --skill-a 3 --skill-b 6 --games 320).",
+  "pool": "core+precon",
+  "games": 160,
+  "pairings": [[4, 5], [4, 6]]
+}

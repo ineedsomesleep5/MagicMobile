@@ -224,8 +224,9 @@ struct PortraitOpponentStatusBar: View {
     private func opponentMedallion(diameter: CGFloat) -> some View {
         let medallion = TavernMedallion(diameter: diameter, life: opponent.isOut ? nil : opponent.life,
                                         active: snapshot.activePlayerId == opponent.playerId, targetable: combatTargetable) {
-            PlayerPortrait(player: opponent, size: diameter, active: false,
-                           thinking: snapshot.thinkingPlayerID == opponent.playerId)
+            // No thinking ring: the medallion clips the portrait to its circle, which hid the ring while it still
+            // redrew the board every frame (2026-10-18). The bar says who is thinking.
+            PlayerPortrait(player: opponent, size: diameter, active: false)
         }
         .opacity(opponent.isOut ? 0.45 : 1)
         .frame(width: diameter + 8, height: diameter + 8)
@@ -392,6 +393,7 @@ struct PortraitBattlefieldPermanentGroup: View {
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
     let targetableIds: Set<String>
+    var chosenIds: Set<String> = []
     let combatHighlightIds: Set<String>
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
@@ -409,7 +411,7 @@ struct PortraitBattlefieldPermanentGroup: View {
     var body: some View {
         BattlefieldRow(
             title: title, cards: cards, legalActions: legalActions,
-            targetableIds: targetableIds, combatHighlightIds: combatHighlightIds,
+            targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlightIds,
             selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: flipped,
             cardWidth: cardWidth, cardHeight: cardHeight, rowWidth: rowWidth, adaptsToDensity: true,
             availableHeight: availableHeight, arrangement: .portraitPermanents,
@@ -704,6 +706,9 @@ struct NativeTurnControl {
     let skipResponses: () -> Void
     let skipToMyTurn: () -> Void
     let stop: () -> Void
+    /// Full control: smart pass stops at every priority until the turn ends (long-press Pass, or the controls menu).
+    var isFullControl = false
+    var toggleFullControl: () -> Void = {}
 }
 
 struct BoardZoneInspectionActionKey: EnvironmentKey {

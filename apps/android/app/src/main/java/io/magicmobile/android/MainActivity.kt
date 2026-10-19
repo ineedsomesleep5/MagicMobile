@@ -18,6 +18,8 @@ class MainActivity: ComponentActivity() {
         // Walnut Tavern is the only table (Caleb, 2026-10-11): a board saved from the retired picker goes back to it.
         io.magicmobile.android.ui.AppPreferences.remove(io.magicmobile.android.board.BoardAppearancePreference.key)
         io.magicmobile.android.ui.GameAudio.init(this)
+        io.magicmobile.android.ui.DeviceHeat.init(this)
+        io.magicmobile.android.ui.GamePerformanceRecorder.init(this)
         // Local crash and ANR summaries for the report sheet (background thread); nothing is uploaded.
         if (savedInstanceState==null) io.magicmobile.android.ondevice.OnDeviceSystemReports.recordAtStartup(this)
         // Menus and the board are always dark, like the iOS app.
@@ -26,6 +28,22 @@ class MainActivity: ComponentActivity() {
         if(DesignPreview.active) setContent { DesignPreviewHost() }
         else setContent { io.magicmobile.android.ondevice.OnDeviceRoot(onDevice) }
         if (savedInstanceState==null) openJoinLink(intent)
+    }
+
+    /** Every touch keeps the board's breathing glows awake (BoardActivity); the touch itself goes on unchanged. */
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) io.magicmobile.android.board.BoardActivity.note()
+        return super.dispatchTouchEvent(event)
+    }
+
+    /** Memory pressure while running: free the decoded artwork (it reloads from disk), not the sounds or music. */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            io.magicmobile.android.ui.GamePerformanceRecorder.noteMemoryWarning()
+            io.magicmobile.android.Artwork.releaseMemory()
+        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {

@@ -87,7 +87,8 @@ struct SafetyTests {
         await #expect(throws:(any Error).self) { try await r.handle(PeerFrame(epoch:e,sequence:2,operation:"destroy",payload:.object([:])),authenticatedPeerID:"peer") }
     }
     @Test func diagnosticsNeverReachEngineFromPeer() async throws {
-        for operation in ["diagnostics", "clearDiagnostics"] {
+        // The game record shows every hand and library order: never to a peer (docs/PROTOCOL.md "Game record").
+        for operation in ["diagnostics", "clearDiagnostics", "record"] {
             let (router, transport, _, epoch) = try await setup()
             await #expect(throws: (any Error).self) {
                 try await router.handle(PeerFrame(epoch: epoch, sequence: 2, operation: operation, payload: .object([:])), authenticatedPeerID: "peer")

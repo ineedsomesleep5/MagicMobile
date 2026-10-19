@@ -46,6 +46,15 @@ public final class RealAILifecycleTests {
             }
             Map<String,Object> humanSkill=seat("human","human");humanSkill.put("aiSkill",2);
             expect("invalid_ai_skill",()->engine.create(Json.map("seats",List.of(humanSkill,seat("ai","ai")))));
+            for(Object[] invalid:new Object[][]{{"aiSearchDepth",0},{"aiSearchDepth",11},{"aiMistakePercent",-1},
+                    {"aiMistakePercent",101},{"aiMistakePercent","5"},{"aiSeed",new java.math.BigDecimal("1.5")}}) {
+                Map<String,Object> ai=seat("ai","ai");ai.put((String)invalid[0],invalid[1]);
+                expect("invalid_ai_skill",()->engine.create(Json.map("seats",List.of(seat("human","human"),ai))));
+            }
+            for(String setting:List.of("aiSearchDepth","aiMistakePercent","aiSeed")) {
+                Map<String,Object> human=seat("human","human");human.put(setting,1);
+                expect("invalid_ai_skill",()->engine.create(Json.map("seats",List.of(human,seat("ai","ai")))));
+            }
             List<Object> maximum=new ArrayList<>(Json.array(configuration.get("seats")));
             for(int n=maximum.size();n<4;n++)maximum.add(seat("extra"+n,"ai"));
             String four=Json.requiredString(engine.create(Json.map("seats",maximum)),"matchId");
@@ -90,13 +99,13 @@ public final class RealAILifecycleTests {
             int parsed=XmageEngine.aiSkill(Json.map("aiSkill",skill));
             var player=cancellation.player("AI",parsed);
             for(Object current:List.of(player,player.copy())) {
-                check(aiField(current,"maxDepth")==Math.max(4,skill),"upstream depth and copies at skill "+skill);
+                check(aiField(current,"maxDepth")==(skill<=2?skill+1:Math.max(4,skill)),"search depth and copies at skill "+skill);
                 check(aiField(current,"maxThinkTimeSecs")==skill*3,"upstream think budget and copies at skill "+skill);
                 check(aiField(current,"maxNodes")==aiField(player,"maxNodes"),"node budget preserved");
             }
         }
         check(XmageEngine.aiSkill(Json.map("aiSkill",new java.math.BigDecimal("10")))==10,"JSON integer decoding");
-        System.out.println("PASS all ten upstream AI skill budgets and copied-player settings");
+        System.out.println("PASS all ten AI skill budgets (depth 2/3 at skills 1/2, upstream from 3) and copied-player settings");
     }
     private static int aiField(Object player,String name)throws Exception {
         Field field=ComputerPlayer6.class.getDeclaredField(name);field.setAccessible(true);

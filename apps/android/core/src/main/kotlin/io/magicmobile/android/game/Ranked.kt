@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
@@ -121,8 +122,9 @@ object DeckBracketPreference {
 
 /**
  * Bracket 1 is never asked for: the Exhibition AI decks are tribal lists no weaker than Core, so Bronze plays
- * precons instead. The AI searches max(4, skill) moves deep and thinks skill × 3 s, so skills 1–4 differ only in
- * thinking time; depth grows from Diamond. Mythic stops at 6: skill 7 means 21 s turns on a phone.
+ * precons instead. AI skill (AIDifficulty.java): Bronze to Gold look fewer moves ahead and make deliberate mistakes,
+ * Platinum plays upstream's full strength, Diamond and Mythic play as experts (combat planner). It thinks skill × 3 s.
+ * Mythic stops at 6: skill 7 means 21 s turns on a phone.
  */
 enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSkill: Int) {
     BRONZE("Bronze", 2..2, 1), SILVER("Silver", 2..2, 2), GOLD("Gold", 2..3, 3),
@@ -134,6 +136,10 @@ enum class RankTier(val label: String, val opponentBrackets: IntRange, val aiSki
     val key: String get() = name.lowercase()
     /** The strongest deck you may queue with here. */
     val maxDeckBracket: Int get() = opponentBrackets.last
+    /** Pips a ranked win earns here (Arena's Bo1 steps; ladder option B, Caleb 2026-10-15): two up to Gold, one from Platinum. */
+    val winPips: Int get() = if (this <= GOLD) 2 else 1
+    /** Pips a ranked loss costs here: none in Bronze. */
+    val lossPips: Int get() = if (this == BRONZE) 0 else 1
     /** The badge art: tavern_rank_<tier> (from the iOS asset catalogue). */
     val drawableName: String get() = "tavern_rank_$key"
 
@@ -234,14 +240,15 @@ object RankLadder {
         var wins = state.wins; var losses = state.losses; var draws = state.draws; var streak = state.winStreak
         when (outcome) {
             RankOutcome.WIN -> {
-                wins++; streak++; delta = 1
-                if (state.position.tier < RankTier.GOLD && streak >= 3) { delta++; bonuses += RankBonus.STREAK }
+                wins++; streak++; delta = state.position.tier.winPips
                 if (deckBracket < state.position.tier.opponentBrackets.first) { delta++; bonuses += RankBonus.UNDERDOG }
             }
-            RankOutcome.LOSS -> { losses++; streak = 0; delta = -1 }
+            RankOutcome.LOSS -> { losses++; streak = 0; delta = -state.position.tier.lossPips }
             RankOutcome.DRAW -> { draws++; streak = 0 }
         }
-        val position = RankPosition.ofPoints(state.position.points + delta)
+        // A loss never takes you out of your tier (Mythic can fall back to Diamond, never below Diamond IV).
+        val floor = minOf(state.position.tier, RankTier.DIAMOND).ordinal * RankPosition.DIVISIONS * RankPosition.PIPS_PER_DIVISION
+        val position = RankPosition.ofPoints(maxOf(state.position.points + delta, floor))
         val next = state.copy(position = position, peak = maxOf(state.peak, position), wins = wins, losses = losses, draws = draws, winStreak = streak)
         return next to RankChange(outcome, state.position, position, bonuses)
     }
@@ -281,10 +288,18 @@ object AIDeckPool {
         return decks
     }
 
-    /** `preconsOnly` keeps to the official precons. */
+    /**
+     * The softest precons in the AI's hands, for Bronze ranked (AIDeckPool.gentlestPrecons in AIDeckPool.swift): an
+     * equal-skill round-robin (C3, 2026-10-15, 200 games) put Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%,
+     * First Flight 56% and Draconic Destruction 62%.
+     */
+    val gentlestPrecons: Set<String> = setOf("chaos-incarnate", "grave-danger", "token-triumph")
+
+    /** `preconsOnly` keeps to the official precons; `onlyPrecons` narrows them further when any of those are present. */
     fun pick(bracket: Int, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>, preconsOnly: Boolean = false,
-             roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
-        val precons = decks.filter { it.isPrecon }
+             onlyPrecons: Set<String>? = null, roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
+        val allPrecons = decks.filter { it.isPrecon }
+        val precons = if (onlyPrecons != null && allPrecons.any { it.id in onlyPrecons }) allPrecons.filter { it.id in onlyPrecons } else allPrecons
         var candidates = pool(bracket, if (preconsOnly && precons.isNotEmpty()) precons else decks)
         if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
         val fresh = candidates.filter { it.id !in recent }
@@ -401,16 +416,105 @@ enum class Achievement(val title: String, val detail: String) {
     }
 }
 
+/**
+ * The ladder as the server keeps it (mm_ranked_standing, RankedStanding in RankLadder.swift; Caleb 2026-10-14). Once the
+ * player has a profile the server decides rank: the phone shows its own result at once, then takes this.
+ */
+data class RankedStanding(
+    /** False only for a new server standing that has never counted a result: the phone may seed it once. */
+    val seeded: Boolean,
+    /** Matches this player reported that the other side hasn't yet. */
+    val unsettled: Int,
+    val season: String, val points: Int, val peakPoints: Int, val wins: Int, val losses: Int, val draws: Int, val winStreak: Int,
+    val history: List<Season> = emptyList(),
+    /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned. */
+    val settlement: String? = null,
+) {
+    data class Season(val season: String, val finalPoints: Int, val peakPoints: Int, val wins: Int, val losses: Int)
+
+    companion object {
+        fun parse(value: JsonObject): RankedStanding {
+            fun i(o: JsonObject, key: String) = o[key]?.jsonPrimitive?.int ?: 0
+            return RankedStanding(value["seeded"]?.jsonPrimitive?.boolean ?: true, i(value, "unsettled"),
+                value["season"]?.jsonPrimitive?.content ?: "", i(value, "points"), i(value, "peakPoints"), i(value, "wins"),
+                i(value, "losses"), i(value, "draws"), i(value, "winStreak"),
+                (value["history"] as? JsonArray).orEmpty().mapNotNull { row ->
+                    (row as? JsonObject)?.let { Season(it["season"]?.jsonPrimitive?.content ?: return@let null, i(it, "finalPoints"),
+                        i(it, "peakPoints"), i(it, "wins"), i(it, "losses")) }
+                },
+                value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content)
+        }
+    }
+}
+
+/**
+ * The season leaderboard from the server's standings (mm_ranked_leaderboard; RankedLeaderboard in RankLadder.swift): everyone
+ * or friends, private profiles and blocked players already left out by the server, plus the caller's own row.
+ */
+data class RankedLeaderboard(val season: String, val scope: String, val total: Int, val online: Int, val entries: List<Entry>, val me: Entry?) {
+    enum class Scope(val raw: String) { EVERYONE("everyone"), FRIENDS("friends") }
+
+    data class Entry(val position: Int, val username: String, val title: String?, val commander: String?, val points: Int,
+                     val wins: Int, val losses: Int, val online: Boolean, val you: Boolean) {
+        val rank: RankPosition get() = RankPosition.ofPoints(points)
+    }
+
+    /** The caller's row is pinned at the foot when it isn't among the shown entries. */
+    val pinnedMe: Entry? get() = me?.takeIf { mine -> entries.none { it.username == mine.username } }
+
+    companion object {
+        fun parse(value: JsonObject): RankedLeaderboard {
+            fun entry(o: JsonObject?): Entry? {
+                o ?: return null
+                fun s(key: String) = o[key]?.jsonPrimitive?.takeIf { it.isString }?.content
+                fun i(key: String) = o[key]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+                return Entry(i("position"), s("username") ?: return null, s("title"), s("commander"), i("points"), i("wins"), i("losses"),
+                    o["online"]?.jsonPrimitive?.content == "true", o["you"]?.jsonPrimitive?.content == "true")
+            }
+            return RankedLeaderboard(value["season"]?.jsonPrimitive?.content ?: "", value["scope"]?.jsonPrimitive?.content ?: "everyone",
+                value["total"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0, value["online"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
+                (value["entries"] as? JsonArray).orEmpty().mapNotNull { entry(it as? JsonObject) }, entry(value["me"] as? JsonObject))
+        }
+    }
+}
+
+/** A ranked game against the AI whose result the server hasn't confirmed yet (mm_ranked_ai_result). */
+@Serializable
+data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val date: Long,
+                               /** The ticket carried a server seed (mm_ranked_ai_start2): the result goes with the game record. */
+                               val seeded: Boolean = false,
+                               /** The game record's file in GameRecords, when the engine kept one. */
+                               val recordFile: String? = null)
+
+/** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
+data class RankedAITicket(val id: String, val seed: Long) {
+    companion object {
+        /** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+        fun parse(text: String): RankedAITicket? = runCatching {
+            val value = kotlinx.serialization.json.Json.parseToJsonElement(text) as JsonObject
+            val id = value["id"]!!.jsonPrimitive.also { require(it.isString) }.content
+            val seed = value["seed"]!!.jsonPrimitive.also { require(it.isString) }.content.toLong()
+            RankedAITicket(java.util.UUID.fromString(id).toString(), seed)
+        }.getOrNull()
+    }
+}
+
 /** The profile file: ranked standing, match history, title and favorite commander (PlayerRecordStore). */
 @Serializable
 data class PlayerRecordFile(
     val rank: RankState, val matches: List<MatchRecord> = emptyList(), val title: Achievement? = null,
     val favoriteCommander: String? = null, val recentAIDecks: List<String> = emptyList(),
+    /** The server's ticket for the ranked AI game being played (mm_ranked_ai_start); kept across a resume. */
+    val rankedTicket: String? = null,
+    /** That ticket carried a server seed. */
+    val rankedTicketSeeded: Boolean = false,
+    /** Finished ranked AI games still to send, oldest first. */
+    val pendingRankedResults: List<PendingRankedResult> = emptyList(),
 ) {
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null, engineMatchID: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
@@ -418,7 +522,28 @@ data class PlayerRecordFile(
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
             turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
-        return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent) to change
+        val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
+        val pending = if (ticket == null) pendingRankedResults
+            else (pendingRankedResults + PendingRankedResult(ticket, outcome, now, rankedTicketSeeded, gameRecordFile)).takeLast(20)
+        return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent,
+            rankedTicket = if (ticket == null) rankedTicket else null, rankedTicketSeeded = ticket == null && rankedTicketSeeded,
+            pendingRankedResults = pending) to change
+    }
+
+    /**
+     * Takes the server's standing. Kept back while a result is still on its way (a friend match the other side hasn't
+     * reported, or an AI result not sent yet), so a pip just earned never flickers away.
+     */
+    fun adopting(standing: RankedStanding): PlayerRecordFile {
+        if (standing.unsettled != 0 || pendingRankedResults.isNotEmpty() || standing.season < rank.season) return this
+        val base = if (standing.season == rank.season) rank else RankLadder.rollover(rank, standing.season)
+        val position = RankPosition.ofPoints(standing.points)
+        // The server's past seasons replace the phone's for the same month.
+        val history = (base.history.filter { local -> standing.history.none { it.season == local.season } } +
+            standing.history.map { SeasonRecord(it.season, RankPosition.ofPoints(it.finalPoints), RankPosition.ofPoints(it.peakPoints), it.wins, it.losses) })
+            .sortedByDescending { it.season }.take(24)
+        return copy(rank = base.copy(position = position, peak = maxOf(RankPosition.ofPoints(standing.peakPoints), position),
+            wins = standing.wins, losses = standing.losses, draws = standing.draws, winStreak = standing.winStreak, history = history))
     }
 
     companion object {

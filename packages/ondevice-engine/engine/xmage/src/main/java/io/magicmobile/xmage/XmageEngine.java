@@ -37,6 +37,10 @@ public final class XmageEngine implements EnginePort {
         final Path checkpointPath;
         final List<Map<String,Object>> seatSummary;
         final boolean resumed;
+        /** This match's game record and its seeded generator (docs/cloud/game-record.md). */
+        final GameRecorder recorder;
+        final GameRandom random;
+        final List<String> seatIds;
         private long checkpointSequence; // GAME thread
         private long failedCheckpoints; // GAME thread
         volatile Map<String,Object> checkpointInfo,checkpointFailure;
@@ -48,8 +52,11 @@ public final class XmageEngine implements EnginePort {
         private long safePointGeneration,savedGeneration=-1,writeAttempts;
         private String stopped; // ended, failed or closed
         Running(MobileCommanderMatch match,LinkedHashMap<String,Player> players,LinkedHashMap<String,MobileHumanPlayer> seats,
-                MobileAICancellation cancellation,Path checkpointPath,List<Map<String,Object>> seatSummary,long checkpointSequence,boolean resumed) {
+                MobileAICancellation cancellation,Path checkpointPath,List<Map<String,Object>> seatSummary,long checkpointSequence,boolean resumed,
+                GameRecorder recorder,GameRandom random) {
             this.match=match;this.game=match.getGame();this.players=players;this.seats=seats;
+            this.recorder=recorder;this.random=random;this.seatIds=new ArrayList<>(players.keySet());
+            cancellation.setRecorder(recorder);
             this.checkpointPath=checkpointPath;this.seatSummary=seatSummary;this.checkpointSequence=checkpointSequence;this.resumed=resumed;
             this.cancellation=cancellation;((MobileCommanderGame)game).setCancellation(cancellation);
             mailbox=new MatchMailbox(game.getId().toString(),seats.keySet());
@@ -80,7 +87,7 @@ public final class XmageEngine implements EnginePort {
         }
         void snapshot() {
             if(cancellation.isClosing()) return;
-            Map<String,Map<String,Object>> views=ViewProjector.project(game,seats);
+            Map<String,Map<String,Object>> views=recorder.presenting(()->ViewProjector.project(game,seats));
             // A seat whose player left (conceded or lost in a pod) only watches from here on.
             List<String> left=new ArrayList<>();
             for(Map.Entry<String,MobileHumanPlayer> s:seats.entrySet()) {
@@ -124,7 +131,8 @@ public final class XmageEngine implements EnginePort {
                 checkpoint();
             }
             snapshot();
-            cancellation.runIfOpen(()->mailbox.ask(seat,QueryEncoder.encode(e,game),
+            DecisionSpec spec=recorder.presenting(()->QueryEncoder.encode(e,game));
+            cancellation.runIfOpen(()->mailbox.ask(seat,spec,
                 answer->cancellation.runIfOpen(()->seats.get(seat).offer(answer))));
         }
         /** GAME thread, before a question to the human seat is published. */
@@ -154,7 +162,7 @@ public final class XmageEngine implements EnginePort {
                 LinkedHashMap<String,UUID> seatPlayers=new LinkedHashMap<>();
                 players.forEach((seat,player)->seatPlayers.put(seat,player.getId()));
                 Checkpoints.Written written=Checkpoints.write(checkpointPath,(MobileCommanderGame)game,seatPlayers,
-                    new ArrayList<>(seats.keySet()),seatSummary,checkpointSequence+1);
+                    new ArrayList<>(seats.keySet()),seatSummary,checkpointSequence+1,recorder.record);
                 checkpointSequence=written.sequence;
                 checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",written.sequence,"savedAtMillis",written.savedAtMillis,
                     "turn",written.turn,"bytes",written.bytes,"writeMillis",written.writeMillis));
@@ -234,12 +242,15 @@ public final class XmageEngine implements EnginePort {
             game.addPlayerQueryEventListener(new QueryListener());
             task=worker.submit(()->{
                 try {
+                    // Rules code on this thread draws the seeded stream; decisions are recorded here.
+                    random.bind(Thread.currentThread(),recorder);
+                    recorder.bind(game,Thread.currentThread());
                     // A restored game re-asks the checkpointed priority decision (upstream
                     // GameImpl.resume -> playPriority(resuming=true)).
                     if(resumed) game.resume();
                     else game.start(seats.values().iterator().next().getId());
                     if(cancellation.isClosing()) return;
-                    if(game.hasEnded()) {match.endGame();snapshot();mailbox.finish();stop("ended");}
+                    if(game.hasEnded()) {match.endGame();recorder.finish(game,seatIds);snapshot();mailbox.finish();stop("ended");}
                     else mailbox.fail("engine_stopped","XMage returned before ending the match");
                 } catch(CancellationException ignored) {
                 } catch(Throwable e) {
@@ -266,9 +277,14 @@ public final class XmageEngine implements EnginePort {
     }
     public XmageEngine(String execution) {
         this.execution=Objects.requireNonNull(execution);
+        installCards();
+    }
+    static void installCards() {
         MobileCardFactories.install(GeneratedCardFactory::create);
         GeneratedSetRegistry.install();
     }
+    /** The platform's reading of memory the app still has, in bytes, for AI search memory caps (DeviceMemory). */
+    public static void useAvailableMemory(java.util.function.LongSupplier reader) { DeviceMemory.install(reader); }
     /** Same compiled loader/Commander validator as create, without starting a game or AI. */
     @Override public synchronized Map<String,Object> validateDeck(Map<String,Object> deck) {
         if(closed) throw new BridgeException("engine_closed","Engine is closed");
@@ -279,7 +295,7 @@ public final class XmageEngine implements EnginePort {
     }
     @Override public synchronized Map<String,Object> create(Map<String,Object> configuration) {
         if(closed) throw new BridgeException("engine_closed","Engine is closed");
-        Json.onlyKeys(configuration,Set.of("seats","checkpoint"));
+        Json.onlyKeys(configuration,Set.of("seats","checkpoint","seed"));
         if(!matches.isEmpty()) throw new BridgeException("match_limit","Destroy the active match before starting another");
         List<Object> configSeats=Json.array(configuration.get("seats"));
         if(configSeats.size()<2 || configSeats.size()>4) throw new BridgeException("invalid_seats","Need 2–4 seats");
@@ -292,33 +308,87 @@ public final class XmageEngine implements EnginePort {
             if(humans!=1) throw new BridgeException("invalid_configuration","Checkpoints need exactly one human seat");
             if(!Checkpoints.available()) throw new BridgeException("checkpoint_unavailable","This engine build cannot save games");
         }
-        LinkedHashMap<String,MobileHumanPlayer> seats=new LinkedHashMap<>();
-        LinkedHashMap<String,Player> players=new LinkedHashMap<>();
-        List<Map<String,Object>> seatSummary=new ArrayList<>();
+        long seed;
+        try { seed=configuration.containsKey("seed")?Json.integer(configuration.get("seed")):java.util.concurrent.ThreadLocalRandom.current().nextLong(); }
+        catch(BridgeException e) { throw new BridgeException("invalid_configuration","seed must be a 64-bit integer"); }
         MobileAICancellation cancellation=new MobileAICancellation();
-        MobileCommanderMatch match=new MobileCommanderMatch();
-        for(Object value:configSeats) {
-            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck","aiSkill"));String id=Json.requiredString(s,"seatId");
-            if(id.isEmpty() || id.length()>128 || players.containsKey(id)) throw new BridgeException("invalid_seat","Seat IDs must be unique and nonempty");
-            String controller=Json.optionalString(s,"controller","human");
-            Player player;
-            if(controller.equals("human")) {
-                if(s.containsKey("aiSkill")) throw new BridgeException("invalid_ai_skill","AI skill applies only to AI seats");
-                MobileHumanPlayer human=new MobileHumanPlayer(Json.requiredString(s,"name"));
-                player=human;seats.put(id,human);
-            } else if(controller.equals("ai")) {
-                player=cancellation.player(Json.requiredString(s,"name"),aiSkill(s));
-            } else throw new BridgeException("invalid_controller","Controller must be human or ai");
-            match.addPlayer(player,DeckLoader.load(Json.object(s.get("deck"))));players.put(id,player);
-            seatSummary.add(Json.map("seatId",id,"name",player.getName(),"controller",controller));
-        }
-        if(seats.isEmpty()) throw new BridgeException("invalid_seats","Need at least one human seat");
-        try {match.startMatch();match.startGame();}
-        catch(GameException e) {throw new BridgeException("match_initialization_failed","XMage could not initialize this match");}
-        Running running=new Running(match,players,seats,cancellation,checkpointPath,seatSummary,0,false);
+        Built built=build(configSeats,cancellation,seed,null);
+        Running running=new Running(built.match,built.players,built.seats,cancellation,checkpointPath,built.seatSummary,0,false,
+            GameRecorder.recording(built.record),built.random);
+        MobileCommanderMatch match=built.match;
         String id=match.getGame().getId().toString();
         matches.put(id,running);running.start();
-        return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities());
+        return Json.map("matchId",id,"seats",new ArrayList<>(built.players.keySet()),"engine",capabilities());
+    }
+    /** A match as create and GameReplay build it, with its record setup. */
+    static final class Built {
+        final MobileCommanderMatch match=new MobileCommanderMatch();
+        final LinkedHashMap<String,Player> players=new LinkedHashMap<>();
+        final LinkedHashMap<String,MobileHumanPlayer> seats=new LinkedHashMap<>();
+        final List<Map<String,Object>> seatSummary=new ArrayList<>();
+        GameRandom random;
+        GameRecord record;
+    }
+    /**
+     * Seats, decks and the started match. XMage's generator becomes this match's seeded one first, so a
+     * replay built from the same seed and seats shuffles and draws exactly the same.
+     */
+    static Built build(List<Object> configSeats,MobileAICancellation cancellation,long seed,List<UUID> replayPlayerIds) {
+        Built built=new Built();
+        built.random=new GameRandom(seed);
+        built.random.bind(Thread.currentThread(),null);
+        mage.util.RandomUtil.restoreRandom(built.random);
+        List<mage.cards.decks.Deck> decks=new ArrayList<>();
+        List<Object> recordSeats=new ArrayList<>();
+        for(Object value:configSeats) {
+            Map<String,Object> s=Json.object(value);Json.onlyKeys(s,Set.of("seatId","name","controller","deck","aiSkill",
+                "aiSearchDepth","aiMistakePercent","aiSeed"));String id=Json.requiredString(s,"seatId");
+            if(id.isEmpty() || id.length()>128 || built.players.containsKey(id)) throw new BridgeException("invalid_seat","Seat IDs must be unique and nonempty");
+            String controller=Json.optionalString(s,"controller","human");
+            Player player;
+            Map<String,Object> recordSeat=Json.map("seatId",id,"name",Json.requiredString(s,"name"),"controller",controller);
+            if(controller.equals("human")) {
+                for(String key:AI_SETTINGS) if(s.containsKey(key)) throw new BridgeException("invalid_ai_skill","AI settings apply only to AI seats");
+                MobileHumanPlayer human=new MobileHumanPlayer(Json.requiredString(s,"name"));
+                player=human;built.seats.put(id,human);
+            } else if(controller.equals("ai")) {
+                int skill=aiSkill(s);
+                AIDifficulty difficulty=aiDifficulty(s,skill);
+                player=cancellation.player(Json.requiredString(s,"name"),skill,difficulty);
+                // The settings the AI played with, for the ranked server's tier check; never its seed.
+                recordSeat.put("aiSkill",skill);recordSeat.put("aiSearchDepth",difficulty.searchDepth);
+                recordSeat.put("aiMistakePercent",difficulty.mistakePercent);
+            } else throw new BridgeException("invalid_controller","Controller must be human or ai");
+            // A replay gives each player its recorded ID: XMage orders some per-player steps by hash sets of player IDs.
+            if(replayPlayerIds!=null) GameReplay.usePlayerId(player,replayPlayerIds.get(built.players.size()));
+            Map<String,Object> deckConfig=Json.object(s.get("deck"));
+            mage.cards.decks.Deck deck=DeckLoader.load(deckConfig);
+            built.match.addPlayer(player,deck);built.players.put(id,player);decks.add(deck);
+            recordSeat.put("deck",deckConfig);recordSeats.add(recordSeat);
+            built.seatSummary.add(Json.map("seatId",id,"name",player.getName(),"controller",controller));
+        }
+        if(built.seats.isEmpty()) throw new BridgeException("invalid_seats","Need at least one human seat");
+        try {built.match.startMatch();built.match.startGame();}
+        catch(GameException e) {throw new BridgeException("match_initialization_failed","XMage could not initialize this match");}
+        // XMage fills each library from a hash set (Deck.getMaindeckCards), so before the opening shuffle
+        // its order changes from run to run. Deck order makes the seeded shuffle deal the same cards.
+        Game game=built.match.getGame();
+        int deckIndex=0;
+        for(Player player:built.players.values()) {
+            Set<mage.cards.Card> ordered=new LinkedHashSet<>();
+            for(mage.cards.Card card:decks.get(deckIndex++).getCards()) if(!card.isExtraDeckCard()) ordered.add(card);
+            player.getLibrary().clear();
+            player.getLibrary().addAll(ordered,game);
+        }
+        List<UUID> playerIds=new ArrayList<>();
+        for(Player player:built.players.values()) playerIds.add(player.getId());
+        String setup=Json.write(Json.map("engine",Json.map("protocol",EngineService.PROTOCOL,"upstream",UPSTREAM,
+                "catalogueHash",GeneratedCardFactory.CATALOGUE_HASH,"engineBuild",io.magicmobile.generated.EngineBuildIdentity.VALUE),
+            "seed",Long.toString(seed),"seats",recordSeats,"players",playerIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList())));
+        built.record=new GameRecord(setup,playerIds,GameRecorder.cardIds(decks));
+        // The record names cards by load order: every one must be the game's own object.
+        for(UUID id:built.record.cards) if(game.getCard(id)==null) built.record.broken="card load order differs from the game";
+        return built;
     }
     /** Absolute file path inside an existing directory. The app owns the file; the engine never deletes it. */
     private static Path checkpointPath(Object value,String code) {
@@ -362,7 +432,7 @@ public final class XmageEngine implements EnginePort {
         MobileAICancellation cancellation=new MobileAICancellation();
         MobileCommanderMatch match;
         try {
-            if(game==null || payload.seats==null || payload.humanSeats==null || payload.random==null
+            if(game==null || payload.seats==null || payload.humanSeats==null || !(payload.random instanceof GameRandom) || payload.record==null
                     || payload.humanSeats.size()!=1 || payload.seats.size()<2 || payload.seats.size()>4 || game.hasEnded())
                 throw new IllegalStateException("Checkpoint does not describe a live solo match");
             List<Object> headerSeats=Json.array(loaded.header.get("seats"));
@@ -385,7 +455,10 @@ public final class XmageEngine implements EnginePort {
         } catch(RuntimeException | LinkageError e) {
             throw Checkpoints.corrupt("The checkpoint could not be restored",e);
         }
-        Running running=new Running(match,players,seats,cancellation,path,seatSummary,loaded.sequence(),true);
+        GameRecorder recorder=GameRecorder.recording(payload.record);
+        // A replay saves and resumes at this point too, so the record stays replayable.
+        recorder.resumed();
+        Running running=new Running(match,players,seats,cancellation,path,seatSummary,loaded.sequence(),true,recorder,(GameRandom)payload.random);
         // The file just read is the latest checkpoint until a requested save writes the next one.
         running.checkpointInfo=Collections.unmodifiableMap(Json.map("sequence",loaded.sequence(),"savedAtMillis",loaded.savedAtMillis(),
             "turn",(long)loaded.turn(),"bytes",loaded.bytes,"writeMillis",0L));
@@ -396,6 +469,25 @@ public final class XmageEngine implements EnginePort {
         running.start();
         return Json.map("matchId",id,"seats",new ArrayList<>(players.keySet()),"engine",capabilities(),
             "restored",Json.map("turn",loaded.turn(),"savedAtMillis",loaded.savedAtMillis(),"sequence",loaded.sequence()));
+    }
+    private static final List<String> AI_SETTINGS=List.of("aiSkill","aiSearchDepth","aiMistakePercent","aiSeed");
+    /**
+     * Skill's defaults (AIDifficulty), each overridable for calibration: `aiSearchDepth` 1–10 (upstream
+     * depth units), `aiMistakePercent` 0–100 and `aiSeed` (any 64-bit integer; omitted means unseeded).
+     */
+    static AIDifficulty aiDifficulty(Map<String,Object> seat,int skill) {
+        int depth=(int)aiSetting(seat,"aiSearchDepth",AIDifficulty.searchDepth(skill),1,10);
+        int mistakes=(int)aiSetting(seat,"aiMistakePercent",AIDifficulty.mistakePercent(skill),0,100);
+        long seed=aiSetting(seat,"aiSeed",java.util.concurrent.ThreadLocalRandom.current().nextLong(),Long.MIN_VALUE,Long.MAX_VALUE);
+        return new AIDifficulty(depth,mistakes,seed,AIDifficulty.expert(skill));
+    }
+    private static long aiSetting(Map<String,Object> seat,String key,long fallback,long min,long max) {
+        if(!seat.containsKey(key)) return fallback;
+        long value;
+        try { value=Json.integer(seat.get(key)); }
+        catch(BridgeException invalid) { throw new BridgeException("invalid_ai_skill",key+" must be an integer from "+min+" to "+max); }
+        if(value<min || value>max) throw new BridgeException("invalid_ai_skill",key+" must be an integer from "+min+" to "+max);
+        return value;
     }
     static int aiSkill(Map<String,Object> seat) {
         if(!seat.containsKey("aiSkill")) return 1; // Preserve existing callers' upstream budget.
@@ -429,6 +521,11 @@ public final class XmageEngine implements EnginePort {
         return Json.map("cancelled",true);
     }
     @Override public void concede(String id,String seat) {match(id).concede(seat);}
+    /** The match's game record so far, or complete once it ended (docs/cloud/game-record.md). */
+    @Override public Map<String,Object> record(String id) {
+        Running running=match(id);
+        return running.recorder.export(running.game,running.seatIds);
+    }
     @Override public synchronized void destroy(String id) {
         Running r=matches.get(id);if(r==null) throw new BridgeException("unknown_match","Match does not exist");
         if(!r.close()) throw new BridgeException("engine_busy_shutdown","The old game or AI simulation has not stopped; retry destroy before creating another match");
@@ -441,7 +538,7 @@ public final class XmageEngine implements EnginePort {
             // True only when this build passes its checkpoint round trip (native needs serialization metadata).
             // It saves only when asked (the checkpoint op), never at every decision.
             "saveResume",Checkpoints.available(),"checkpointOnDemand",Checkpoints.available(),
-            "concede",true,"experimental",true,
+            "concede",true,"experimental",true,"gameRecord",GameRecord.VERSION,
             // Optional standing instructions an answer may carry (AnswerActions, docs/PROTOCOL.md).
             "answerActions",AnswerActions.TYPES);
     }

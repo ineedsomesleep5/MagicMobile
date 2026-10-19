@@ -13,6 +13,7 @@ One UTF-8 JSON request per native call. Maximum input/output 4 MiB, bounded nest
 {"protocol":1,"op":"poll","matchId":"...","viewerId":"player-1","after":0}
 {"protocol":1,"op":"respond","matchId":"...","viewerId":"player-1","command":{...}}
 {"protocol":1,"op":"concede","matchId":"...","viewerId":"player-1"}
+{"protocol":1,"op":"record","matchId":"..."}
 {"protocol":1,"op":"destroy","matchId":"..."}
 {"protocol":1,"op":"shutdown"}
 {"protocol":1,"op":"diagnostics"}
@@ -28,8 +29,9 @@ It is never included in polls, events, regular failure replies, or guest RPC.
 `clearDiagnostics` releases that in-memory report. The diagnostic iOS build
 persists only the latest report plus app/OS/time/status metadata, capped at
 64 KiB, protected on iOS and excluded from backup. The user reviews, shares or
-deletes it explicitly; no automatic upload is added. No game state or action
-payload recorder is enabled. Temporary capture is tagged `[DEBUG-native-failure]`.
+deletes it explicitly; no automatic upload is added. Diagnostics hold no game state
+or action payload; the separate game record ("Game record" below) is the only record of
+a game's decisions. Temporary capture is tagged `[DEBUG-native-failure]`.
 
 `concede` concedes the authenticated human seat (`unauthorized_seat` for AI or unknown
 seats; `match_unavailable` once the match ended). The request is queued on the match and
@@ -46,9 +48,48 @@ normally also leaves this way. Once only AI seats remain, AI think time is cappe
 A configuration has 2–4 unique seats with `seatId`, `name`, `controller: "human"` or `"ai"`, and `deck`, with at least one human. AI seats use actual upstream MAD and are not poll/response recipients. Deck keys are `name`, `main`, `commanders` and optional `companions`. Card rows have `count`, `setCode`, `collectorNumber`, optional exact `name`. They do **not** accept `className`, caller-supplied rules or rarity.
 
 AI seats additionally accept optional `aiSkill`, an integer from 1 to 10 matching the pinned
-XMage desktop Skill control. Omission preserves the prior level-1 engine behavior; the app's
-new setup control defaults to desktop level 2. The value goes directly to the upstream MAD
-constructor (search depth `max(4, skill)` and thinking budget `skill * 3` seconds per calculation).
+XMage desktop Skill control. Omission means level 1; the app's setup control defaults to level 2.
+The thinking budget is upstream's `skill * 3` seconds per calculation. Since engine release A the
+mobile AI wrapper (`MobileAICancellation`, `AIDifficulty`) also sets, per skill:
+
+| Skill | Search depth (upstream units) | Deliberate mistake chance |
+|---|---|---|
+| 1 | 2 (sees one action resolve) | 15% |
+| 2 | 3 (two actions) | 10% |
+| 3 | 4 (upstream) | 5% |
+| 4–10 | `max(4, skill)` (upstream) | 0% |
+
+Upstream depth counts one unit per action and scores the last one before it resolves, so depth 1
+would judge every spell while it is still on the stack and never cast one; N plies are depth N+1.
+Before release A every skill from 1 to 4 searched depth 4. A mistake is rolled at each fresh
+priority search that chose to act (the AI then takes the best other play its search scored that is
+no worse than doing nothing, or passes and searches again at its next priority), at each attack
+declaration (it holds every creature back, never when its available attackers could be lethal) and
+at each block declaration (it blocks nothing, only while the attack would cost under half its
+life). The rolls come from a SplitMix64 generator per seat, saved with a checkpoint.
+
+From skill 5 (Diamond) up the AI plays as an expert (`AIDifficulty.expert`, saved with a checkpoint):
+- **Attacks** come from `CombatPlanner` instead of upstream's rule (attack only with creatures no single
+  blocker can kill). Against a single opponent it scores every attack (every subset up to ten available
+  attackers, hill-climbing above that) on the blocks the defender is predicted to make and on the
+  crack-back of the defender's whole team on the next turn, in upstream's own life and permanent values,
+  and declares the best. With several opponents, attackable planeswalkers or battles, infect, or a
+  defender who can't lose, upstream's rule decides.
+- **Blocks** start from upstream's, then add chump blocks while the unblocked attack would still be
+  lethal, then double blocks on an unblocked attacker that two spare creatures kill while losing less
+  value than it is worth.
+- **Searches** run a quick two-ply search (at most 2 s) before the full one; when the full search runs out
+  of time before scoring any move, the quick search's move stands instead of a pass. The total stays
+  within the seat's think time.
+Every decision still goes through upstream's legal declarations; nothing reads hidden information.
+
+For calibration, AI seats also accept optional overrides: `aiSearchDepth` (1–10), `aiMistakePercent`
+(0–100) and `aiSeed` (any 64-bit integer; omitted means a random seed drawn outside XMage's own
+random generator, so shuffles are unaffected). `aiSeed` makes only the mistake rolls repeatable; the
+match `seed` ("Game record") seeds the shuffles and every other rules-code draw. AI search choices
+still depend on time, so two games with the same seeds can differ; a game record replays one exactly.
+The apps send only `aiSkill`. Any of
+these on a human seat, or out of range, fails with `invalid_ai_skill`.
 Higher levels allow more thinking, not different rules or access to additional private information.
 While a stack resolves, an AI that already searched and chose to pass with an opponent's ability (not a
 spell) on top passes again without a new search, as long as the turn, step and its instant-speed options
@@ -209,6 +250,7 @@ answers its own later questions. None decides a rule or answers for another play
 | `{"type":"passUntilStackResolved"}` | priority `SELECT`, `boolean` pass | Keeps passing until the current stack resolves; stops when an opponent adds to it (F10). |
 | `{"type":"autoPassAfterCast","enabled":true}` | any | Passes priority right after this player casts a spell (XMage's pass-after-cast setting). |
 | `{"type":"resetRememberedAnswers"}` / `{"type":"resetTriggerOrder"}` | any | Forgets every remembered answer, or trigger order. |
+| `{"type":"devicePace","hot":true}` | any | Not an XMage action: the phone running the engine is hot, so every AI seat in this match gets half its think time per search (never below the 2 s stack cap) until an answer sends `hot: false`. No rule changes; not saved and not in the game record (a replay runs no AI search). Apps send it only for games the engine runs on that phone, never in ranked games. |
 
 A remembered answer's key is never taken from the client: the engine builds it from the pending prompt's
 own `originalId` and `autoAnswerMessage` options, exactly as the desktop client sends them. Unknown or
@@ -234,6 +276,71 @@ ability, additional cost, or color. Old payloads safely identify only
 `basicManaAbilities` as mana during payment. Playability is upstream's offered
 action estimate, not proof that a complete payment sequence exists.
 
+The same rows also carry `respondsToStack: boolean` (new in engine release A). It says whether that
+play could answer what is pending right now: the stack, or attacks that have not dealt their combat
+damage yet (declare attackers, declare blockers and first-strike damage steps). It is a hint for
+smart-pass stops, like Arena's "you have a response", never a legality check: every row stays
+playable whatever it says. Built from the current ability, target and effect objects
+(`StackResponses.java`), never from rules text. A play counts as a response when:
+
+- it can target a stack object, a stack object's source, or a non-player object a stack object
+  targets (counters, copies, killing the source, pumping or protecting the target);
+- it can target a player a stack object targets and has a protective effect (gain life, prevent or
+  redirect damage, protection);
+- its source is targeted by a stack object, or it has a sacrifice cost while a stack object targets
+  a permanent its controller controls (sacrifice, blink or regenerate in response);
+- an untargeted stack object would harm permanents (a sweeper, an edict; drains, discard and cast
+  limits do not count) and the play can target any permanent;
+- attacks are pending and it is a permanent spell (a flash blocker) or can target an attacking or
+  blocking creature;
+- it is a permanent spell outside combat with a triggered or non-keyword static ability of its own
+  (an enters trigger, a lord);
+- it has no targets and an effect other than drawing cards, adding mana or putting a land onto the
+  battlefield (unsure, so it counts).
+
+Land plays and mana abilities are never responses, except a mana ability whose source is targeted
+or that sacrifices while something threatens its controller's permanents. With an empty stack and
+no attack pending every row is `false`. Anything the engine cannot judge (an exception, a row it
+cannot match to an offered ability) is `true` while something is pending. Only the seat whose
+priority it is gets `canPlayObjects`, so only that seat sees the flag. Older engines omit the field;
+clients must then treat every non-mana play as a possible response (today's behaviour).
+
+### Game record
+
+Every match keeps a compact record of its decisions: the seed, seats and decks, every human answer,
+every AI choice, concedes and save/resume points (format, names, sizes and server checks:
+`docs/cloud/game-record.md` at the repository root). Engines with it advertise `"gameRecord": 1` in
+`capabilities` (the record format version); older engines answer `unknown_operation` to `record`.
+
+- **Seed.** `create`'s `configuration` accepts an optional `"seed"`: any 64-bit JSON integer (anything
+  else fails with `invalid_configuration`). Omitted, the engine draws one. XMage's process-wide
+  generator becomes this match's seeded generator; only rules code on the match's GAME thread draws
+  from it (shuffles, coin flips, dice, random choices, the opening player), and libraries start in
+  deck order before the opening shuffle. AI reasoning draws from a separate, unseeded source. So the
+  same seed and seats deal the same opening hands. For ranked AI games the app should pass the seed
+  the server issued with the game's ticket.
+- **`record`.** Returns the record as JSON: `format` (`"magicmobile-game-record"`), `version` (1),
+  `setup` and `end` (JSON strings), `entries` and `marks` (string arrays), `head` (SHA-256 hash chain,
+  lowercase hex), and `broken` only when recording had to stop (the game itself is unaffected). It
+  works during the game (`end.state` `"running"`, a best-effort snapshot) and after it ends
+  (`"ended"`, complete), until `destroy`. Fetch it after the `ended` phase and before `destroy`.
+  A typical game is 0.5–6 k entries, 6–66 KB of JSON and 1–8 KB gzipped; store it gzipped.
+- **Privacy.** The record and its seed reveal every hand and library order. It is local-only like
+  `diagnostics`: `HostRouter` refuses it for guests, and it must never reach the other side of a
+  running online game. The app may keep it with the finished game and upload it with a ranked AI
+  result.
+- **Checkpoints.** A checkpoint holds the record so far (a few KB more per file). A restored game keeps
+  recording and marks the restore point, so a resumed game's record still replays.
+- **Replay** runs on the JVM only (`GameReplay`, see the doc above); there is no replay op.
+
+### Stack controllers
+
+Each per-seat snapshot carries `stackControllers`, an object from stack object ID (the same keys as
+`gameView.stack` and `stackOrder`) to the engine player ID of that object's controller (the same IDs
+as `gameView.players[].playerId` and `enginePlayerId`). Controllers of stack objects are public, so
+every seat, including spectating and controlled-player views, gets the same map. It is `{}` with an
+empty stack. Older engines omit it; clients then keep their current controller inference.
+
 Visible battlefield CardViews may carry the additive `ABILITY_MENACE` icon with
 category `ABILITY` and text `Menace`, derived only from current permanent
 abilities. It is omitted for face-down permanents and does not parse printed
@@ -248,7 +355,7 @@ costs remain absent, not guessed as zero. Split halves remain separate.
 
 ## Untrusted multiplayer boundary
 
-The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence; every other operation, including `validateDeck`, `restore`, `checkpoint` and `cancelCheckpoint`, is refused before it reaches the engine. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
+The trusted API above must **not** be exposed raw to guests. `HostRouter` accepts a framed `hello`, `poll`, `respond` or `concede` (empty payload, allowed even while the host is suspended), with epoch and monotonically increasing sequence; every other operation, including `validateDeck`, `restore`, `checkpoint`, `cancelCheckpoint` and `record`, is refused before it reaches the engine. Its peer ID is supplied by authenticated GameKit transport, outside the JSON body. The host's binding supplies the seat. Guests cannot create/destroy/shutdown the host engine or select another viewer.
 
 Build identity includes protocol version, upstream commit, catalogue fingerprint and adapter version. It must match before player input. The fingerprint covers constructor/set inventory, so commit+adapter identity must also match; do not treat the catalogue hash alone as all-code equivalence.
 

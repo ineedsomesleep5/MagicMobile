@@ -2,12 +2,8 @@ package io.magicmobile.android.board
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -157,17 +153,30 @@ fun PlayerPortrait(player: PlayerGameState, size: Dp = 44.dp, active: Boolean = 
     }
 }
 
-/** A short arc orbiting a portrait while that player decides. */
+/**
+ * A short arc orbiting a portrait while that player decides. The arc is drawn once and only its layer turns, so a
+ * frame changes one layer property instead of redrawing the arc; while the phone is hot it turns about 30 times a
+ * second. (iOS turns it in Core Animation: the SwiftUI animation redrew the whole board every frame.)
+ */
 @Composable
 fun ThinkingRing(color: Color, still: Boolean, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "thinking")
-    val angle by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "thinkingAngle")
-    Canvas(modifier) {
+    val angle = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    if (!still) LaunchedEffect(Unit) {
+        val start = androidx.compose.runtime.withFrameMillis { it }
+        var drawn = 0L
+        while (true) androidx.compose.runtime.withFrameMillis { frame ->
+            if (!io.magicmobile.android.ui.DeviceHeat.isHot || frame - drawn >= 33) {
+                drawn = frame
+                angle.floatValue = ((frame - start) % 1100L) / 1100f * 360f
+            }
+        }
+    }
+    Canvas(modifier.graphicsLayer { if (!still) rotationZ = angle.floatValue }) {
         val stroke = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round)
         val inset = stroke.width / 2
         val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke.width, size.height - stroke.width)
         if (still) drawArc(color.copy(alpha = 0.7f), 0f, 360f, false, Offset(inset, inset), arcSize, style = stroke)
-        else drawArc(color, angle - 90f, 108f, false, Offset(inset, inset), arcSize, style = stroke)
+        else drawArc(color, -90f, 108f, false, Offset(inset, inset), arcSize, style = stroke)
     }
 }
 
@@ -485,7 +494,9 @@ private fun TavernOpponentMedallion(diameter: Dp, snapshot: GameSnapshot, oppone
     val medallion: @Composable () -> Unit = {
         TavernMedallion(diameter, if (opponent.isOut) null else opponent.life, Modifier.alpha(if (opponent.isOut) 0.45f else 1f),
             active = snapshot.activePlayerId == opponent.playerId, targetable = combatTargetable) {
-            PlayerPortrait(opponent, diameter, active = false, thinking = snapshot.thinkingPlayerID == opponent.playerId)
+            // No thinking ring: the medallion clips the portrait to its circle, which hid the ring while it still
+            // redrew every frame (2026-10-18). The bar says who is thinking.
+            PlayerPortrait(opponent, diameter, active = false)
         }
     }
     Box {

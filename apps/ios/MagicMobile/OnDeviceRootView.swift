@@ -12,6 +12,9 @@ struct OnDeviceRootView: View {
     @State private var showFriends = false
     /// A player opened from the table chat: their public profile covers the chat.
     @State private var chatProfile: ChatProfileTarget?
+    /// A friend's message that arrived during a game (the banner), and the Messages sheet it opens.
+    @State private var messageBanner: MessageBannerItem?
+    @State private var messagesHub: MessagesHubTarget?
     @AppStorage(PortraitModePreference.key) private var portraitModeEnabled = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -38,6 +41,7 @@ struct OnDeviceRootView: View {
     @AppStorage(AutoPassAfterCast.key) private var autoPassAfterCast = true
     @AppStorage(OnDeviceSmartPass.enabledKey) private var smartAutoPass = true
     @AppStorage(OnDeviceSmartPass.stopsKey) private var phaseStops = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
+    @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwnSpells = false
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
@@ -94,7 +98,7 @@ struct OnDeviceRootView: View {
     @State private var bracketRevision = 0
     @State private var rankedConnectTask: Task<Void, Never>?
 
-    private enum LobbyScreen: Equatable { case chooser, quick, ranked, profile }
+    private enum LobbyScreen: Equatable { case chooser, quick, rankedHall, leaderboard, ranked, profile }
 
     private struct ActiveMatch: Equatable {
         let mode: PlayMode
@@ -333,7 +337,8 @@ struct OnDeviceRootView: View {
             canSkipToMyTurn: session.canSkipToMyTurn, isAutoPassing: session.isAutoPassing,
             status: session.autoPassStatus, endTurn: { session.endTurn() },
             skipResponses: { session.endTurnSkippingResponses() }, skipToMyTurn: { session.skipToMyTurn() },
-            stop: { session.stopAutoPass() }
+            stop: { session.stopAutoPass() },
+            isFullControl: session.isFullControl, toggleFullControl: { session.toggleFullControl() }
         )
     }
 
@@ -357,7 +362,7 @@ struct OnDeviceRootView: View {
                                    commanderNamespace: reduceMotion ? nil : commanderTransition,
                                    downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true },
                                    friends: { showFriends = true },
-                                   friendsBadge: account.onlineFriendCount + account.incomingCount,
+                                   friendsBadge: account.onlineFriendCount + account.incomingCount + account.unreadMessages,
                                    profile: { lobby = .profile }, rank: profileRecord.rank.position)
                 }
             }
@@ -604,7 +609,9 @@ struct OnDeviceRootView: View {
         .task {
             switch SocialFixtures.openScreen?.split(separator: ":").first.map(String.init) {
             case "profile": lobby = .profile
-            case "friends", "public", "search": showFriends = true
+            case "rankedHall": lobby = .rankedHall
+            case "leaderboard": lobby = .leaderboard
+            case "friends", "public", "search", "messages", "conversation": showFriends = true
             default: break
             }
         }
@@ -621,6 +628,14 @@ struct OnDeviceRootView: View {
             if let code = pendingJoinCode { pendingJoinCode = nil; openJoinLink(code) }
         }
         .onOpenURL { url in if let code = TableJoinLink.code(from: url) { openJoinLink(code) } }
+        .onChange(of: session.snapshot?.turn) { _, turn in GamePerformanceLog.shared.noteTurn(turn) }
+        // Memory warnings free the caches that reload by themselves (not the sounds or music, which would cut out).
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            GamePerformanceLog.shared.noteMemoryWarning()
+            NativeDeckArtwork.purgeMemoryCaches()
+            NativeArtworkMemory.shared.purge()
+            NativeDeckMetadataCatalogue.purgeShared()
+        }
         .task(id: menuIsFree) { if menuIsFree { await showHowToPlayIfFirstLaunch() } }
         // Friends' challenges arrive while the menu or lobby is open (never during a game).
         .task(id: watchesChallenges) {
@@ -631,6 +646,14 @@ struct OnDeviceRootView: View {
         .onAppear { GameAudio.shared.setScene(activeGame ? .game : .menu) }
         .onChange(of: activeGame) { _, playing in
             GameAudio.shared.setScene(playing ? .game : .menu)
+            session.comboLoopsAllowed = playing && !setup.usingMultiplayer
+            updateDevicePace()
+            if playing {
+                GamePerformanceLog.shared.begin(mode: activeMatch?.mode.rawValue ?? (setup.usingMultiplayer ? "online" : "custom"),
+                                                aiSkill: activeMatch?.aiSkill)
+            } else {
+                GamePerformanceLog.shared.end()
+            }
             if playing { matchmaker.finish(); rankedConnectTask?.cancel() }
             guard playing else { versusIntro = nil; return }
             if skipNextVersusIntro { skipNextVersusIntro = false; return }
@@ -689,8 +712,12 @@ struct OnDeviceRootView: View {
             let upload: () async -> Void = { [account, profileRecord] in
                 await GameUploader.shared.flush(matches: profileRecord.matches) { await account.recordGame($0) }
             }
-            profileRecord.didRecord = { _ in Task { await upload() } }
-            account.afterRefresh = upload
+            // A ranked game goes up after its result counts on the server, which records its rank points then.
+            profileRecord.didRecord = { match in if match.mode != .ranked { Task { await upload() } } }
+            account.afterRefresh = { [account, profileRecord] in
+                await account.syncRank(profileRecord)
+                await upload()
+            }
         }
         .onChange(of: setup.isBusy) { _, busy in
             if !busy { submitStartingChoiceIfNeeded() }
@@ -910,7 +937,8 @@ struct OnDeviceRootView: View {
 
     private var game: some View {
         ImmersivePlayShell(
-            snapshot: session.snapshot,
+            // While a combo loop repeats, the board shows its quiet copy: no flickering prompts.
+            snapshot: session.presentedSnapshot,
             selectedCard: $selectedCard, inspectedCard: $inspectedCard,
             playerDisplayName: playerDisplayName, avatarData: nil,
             pendingActionId: session.pendingActionID, pendingCardInstanceId: session.pendingCardID,
@@ -965,10 +993,48 @@ struct OnDeviceRootView: View {
             rememberedTriggerOrders: session.rememberedTriggerOrders,
             forgetAnswers: { session.forgetRememberedAnswers() }, forgetTriggerOrder: { session.forgetTriggerOrder() }))
         .onChange(of: autoPassAfterCast) { _, enabled in session.setAutoPassAfterCast(enabled) }
+        .onReceive(DeviceHeat.shared.$thermal) { _ in updateDevicePace() }
         .onChange(of: smartAutoPass) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: phaseStops) { _, _ in session.setSmartPass(.load()) }
+        .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
+        // Messages from friends inside a game too: the game menu's Messages button, and a banner for a new one.
+        .environment(\.friendMessages, account.phase == .ready && account.username != nil && account.messagesAvailable
+                     ? FriendMessagesEntry(unread: account.unreadMessages, hub: { [account] in AnyView(FriendMessagesHub(account: account)) })
+                     : nil)
+        .overlay(alignment: .top) {
+            if let banner = messageBanner {
+                FriendMessageBanner(name: banner.name, text: banner.text,
+                                    open: { messageBanner = nil; messagesHub = MessagesHubTarget(name: banner.name) },
+                                    dismiss: { messageBanner = nil })
+                    .padding(.horizontal, 16).padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task(id: banner.id) {
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        if messageBanner?.id == banner.id { withAnimation { messageBanner = nil } }
+                    }
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.25), value: messageBanner?.id)
+        // The combo loop shortcut (solo games): the offer, the repeats and their result.
+        .overlay(alignment: .top) { ComboLoopOverlay(session: session) }
+        .sheet(item: $messagesHub) { target in FriendMessagesHub(account: account, initial: target.name) }
+        // Checked more often during a game than the menu's heartbeat, so a friend's message shows within seconds.
+        .task(id: activeGame && account.messagesAvailable) {
+            guard activeGame, account.messagesAvailable else { return }
+            var seen = account.unreadMessages
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard UIApplication.shared.applicationState == .active else { continue }
+                await account.refreshUnread()
+                if account.unreadMessages > seen, messagesHub == nil,
+                   let newest = await account.conversations()?.first(where: { $0.unread > 0 && !$0.last.fromMe }) {
+                    withAnimation { messageBanner = MessageBannerItem(name: newest.username, text: FriendMessageRules.shown(newest.last)) }
+                }
+                seen = account.unreadMessages
+            }
+        }
         .sheet(isPresented: $emotes.isChatOpen) {
             TableChatPanel(center: emotes, snapshot: session.snapshot,
                            report: account.phase == .ready ? { line in
@@ -1081,17 +1147,22 @@ struct OnDeviceRootView: View {
         switch screen {
         case .chooser:
             PlayModeChooser(rank: profileRecord.rank.position, seasonName: RankLadder.seasonName(profileRecord.rank.season),
-                            quick: { lobby = .quick }, ranked: { lobby = .ranked },
+                            quick: { lobby = .quick }, ranked: { lobby = .rankedHall },
                             custom: { lobby = nil; showSetup = true }, back: { lobby = nil })
         case .quick:
             QuickMatchView(deckBracket: selectedDeckBracket, opponentBracket: $quickBracket, opponentDeckID: $quickDeckID,
                            aiSkill: $quickSkill, startingPlayerMode: $aiStartingPlayerMode, mayStart: mayStartSolo,
                            status: setup.identity == nil ? setup.status : nil, start: startQuickMatch,
                            back: { lobby = .chooser }) { playDeckSlot }
+        case .rankedHall:
+            RankedHallView(account: account, rank: profileRecord.rank, play: { lobby = .ranked }, leaderboard: { lobby = .leaderboard },
+                           profile: { lobby = .profile }, back: { lobby = .chooser })
+        case .leaderboard:
+            RankedLeaderboardView(account: account, back: { lobby = .rankedHall })
         case .ranked:
             RankedLobbyView(rank: profileRecord.rank, deckBracket: selectedDeckBracket, canSearchPeople: account.rankedQueue != nil,
                             mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
-                            profile: { lobby = .profile }, back: { lobby = .chooser }) { playDeckSlot }
+                            profile: { lobby = .profile }, back: { lobby = .rankedHall }) { playDeckSlot }
         case .profile:
             PlayerProfileView(record: profileRecord, account: account, playerName: account.username ?? playerDisplayName,
                               deckCommanders: library.decks.compactMap { $0.deckList.commander?.cardName } + AIDeckPool.all.map(\.commander),
@@ -1160,7 +1231,8 @@ struct OnDeviceRootView: View {
         let position = profileRecord.rank.position
         guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
                                              recent: profileRecord.recentAIDecks,
-                                             preconsOnly: position.tier.preconOpponentsOnly) else { return }
+                                             preconsOnly: position.tier.preconOpponentsOnly,
+                                             onlyPrecons: position.tier.preconOpponentsOnly ? AIDeckPool.gentlestPrecons : nil) else { return }
         startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
     }
 
@@ -1383,10 +1455,18 @@ struct OnDeviceRootView: View {
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: skill, aiDeckID: opponent.id)
         rankChange = nil
+        if mode == .ranked { profileRecord.beginRankedAIGame(ticket: nil) }
         Task {
+            // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
+            var seed: Int64?
+            if mode == .ranked {
+                let ticket = await account.startRankedAIGame(deckBracket: deckBracket.rawValue)
+                profileRecord.beginRankedAIGame(ticket: ticket?.id, seeded: ticket != nil)
+                seed = ticket?.seed
+            }
             await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
                                 deckID: selectedDeckID, aiDeckIDs: [opponent.id], startingPlayerMode: aiStartingPlayerMode,
-                                mode: mode, deckBracket: deckBracket.rawValue)
+                                mode: mode, deckBracket: deckBracket.rawValue, seed: seed)
             if session.matchID == nil { activeMatch = nil }
         }
     }
@@ -1402,6 +1482,11 @@ struct OnDeviceRootView: View {
     }
 
     /// Records a finished game once: every game goes into the profile, ranked games move the ladder.
+    /// A hot phone shortens AI thinking in games its engine runs: never ranked (the same AI for everyone) or online.
+    private func updateDevicePace() {
+        session.devicePaceHot = activeGame && !setup.usingMultiplayer && activeMatch?.mode != .ranked && DeviceHeat.shared.isHot
+    }
+
     private func recordFinishedGameIfNeeded() {
         guard let snapshot = session.snapshot, snapshot.isCompleted || session.isOverForSeat else { return }
         var match = activeMatch ?? casualMatch(snapshot)
@@ -1409,9 +1494,13 @@ struct OnDeviceRootView: View {
         let winners = snapshot.winnerPlayerIds ?? []
         let outcome: RankOutcome = winners.contains(snapshot.viewerID) ? .win
             : (snapshot.isCompleted && winners.isEmpty ? .draw : .loss)
-        saveResult(current, outcome: outcome, turns: snapshot.turn, snapshot: snapshot)
         match?.recorded = true
         activeMatch = match
+        // The engine's game record first (solo games, before the match is destroyed), so a ranked result goes with it.
+        Task {
+            let file = await setup.finishedGameRecord().flatMap(profileRecord.keepGameRecord)
+            saveResult(current, outcome: outcome, turns: snapshot.turn, snapshot: snapshot, gameRecordFile: file)
+        }
     }
 
     /// Leaving a ranked game before it ends counts as a loss.
@@ -1422,14 +1511,20 @@ struct OnDeviceRootView: View {
         activeMatch = match
     }
 
-    private func saveResult(_ match: ActiveMatch, outcome: RankOutcome, turns: Int, snapshot: GameSnapshot?) {
+    private func saveResult(_ match: ActiveMatch, outcome: RankOutcome, turns: Int, snapshot: GameSnapshot?, gameRecordFile: String? = nil) {
         let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
         let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
                                    aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
                                    colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
-                                   engineMatchID: session.matchID)
+                                   engineMatchID: session.matchID, gameRecordFile: gameRecordFile)
         rankChange = change
-        if let id = match.rankedMatchID { Task { await matchmaker.report(match: id, outcome: outcome) } }
+        let rankedMatchID = match.rankedMatchID, ranked = match.mode == .ranked
+        Task { [account] in
+            if let rankedMatchID { await matchmaker.report(match: rankedMatchID, outcome: outcome) }
+            // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
+            // then upload the game so its rank history point is the standing after it.
+            if ranked { await account.afterRefresh?() }
+        }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
             // After the result screen's own reveal.
             Task { try? await Task.sleep(for: .milliseconds(1500)); if rankChange == change { ceremony = change } }
@@ -1766,6 +1861,22 @@ struct OnDeviceRootView: View {
                     } else if diagnostics.errorMessage == nil {
                         Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.")
                     }
+                    // Developer replays (scripts/dev/replay_record.sh): the record shows every hand and library order.
+                    if let latest = profileRecord.gameRecordFiles().first {
+                        Divider()
+                        Text("Your last game's record lists every decision so it can be replayed on a computer. It shows your hands and library order.")
+                            .font(.footnote)
+                        ShareLink(item: latest) { Label("Share last game record", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("ondevice.shareGameRecord")
+                    }
+                    // Memory peak and heat per game, to compare builds on this phone. Nothing about cards or players.
+                    if let performance = GamePerformanceLog.section(GamePerformanceLog.shared.entries) {
+                        Divider()
+                        Text("Recent games' memory and heat, to compare app versions on this phone.").font(.footnote)
+                        ShareLink(item: performance) { Label("Share game performance", systemImage: "square.and.arrow.up") }
+                            .accessibilityIdentifier("ondevice.sharePerformance")
+                        Text(performance).font(.caption.monospaced()).textSelection(.enabled)
+                    }
                 }.padding()
             }
             .navigationTitle("Engine error report").navigationBarTitleDisplayMode(.inline)
@@ -1931,7 +2042,7 @@ private final class OnDeviceSetupModel: ObservableObject {
 
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
                  deckID: String, aiDeckIDs: [String], startingPlayerMode: String,
-                 mode: PlayMode? = nil, deckBracket: Int? = nil) async {
+                 mode: PlayMode? = nil, deckBracket: Int? = nil, seed: Int64? = nil) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
@@ -1943,8 +2054,11 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDecks: opponentDecks, aiSkill: aiSkill)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
+            // A ranked game's server seed, on engines that keep a game record (docs/PROTOCOL.md "Game record").
+            var configuration: [String: MagicMobileOnDevice.JSONValue] = ["seats": .array(seats)]
+            if let seed, runtime.capabilities?["gameRecord"] != nil { configuration["seed"] = .integer(seed) }
             // Checkpointed only when this engine advertises saveResume; otherwise sent unchanged.
-            let plan = resume.planSoloGame(configuration: .object(["seats": .array(seats)]), capabilities: runtime.capabilities)
+            let plan = resume.planSoloGame(configuration: .object(configuration), capabilities: runtime.capabilities)
             let created = try await runtime.create(client: client, configuration: plan.configuration)
             guard let matchID = created["matchId"]?.string, !matchID.isEmpty else {
                 throw EngineError.invalidMessage("XMage did not return a match ID. Close the runtime before trying again.")
@@ -1955,7 +2069,8 @@ private final class OnDeviceSetupModel: ObservableObject {
                 aiDeckIDs: aiDeckIDs, aiSkill: aiSkill, startingPlayerMode: startingPlayerMode,
                 mode: mode?.rawValue, deckBracket: deckBracket), playerDeckName: deck.name)
             updateSessionForeground()
-            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, allowsSeatScopedAutoYield: true,
+            try await session.attach(client: client, matchID: matchID, seatID: Self.soloSeatID, pollReader: runtime.clientTransport.map { OnDevicePollReader(transport: $0) },
+                                     allowsSeatScopedAutoYield: true,
                                      answerActions: engineAnswerActions, autoPassAfterCast: autoPassAfterCastSetting, smartPass: .load(), close: { [self] in try await closeAI() })
             status = "Game started"
             // XMage checked every deck when it created the game: the player's deck passed.
@@ -1974,6 +2089,16 @@ private final class OnDeviceSetupModel: ObservableObject {
         }
     }
 
+    /// The finished solo game's record (the engine's `record` op), fetched before the match is destroyed. Nil on engines
+    /// without game records, outside a solo game, or when recording stopped (`broken`). Local only: never sent to an
+    /// online opponent; a ranked AI result uploads it.
+    func finishedGameRecord() async -> Data? {
+        guard runtime.capabilities?["gameRecord"] != nil, let aiClient, let aiMatchID,
+              let record = try? await aiClient.call("record", fields: ["matchId": .string(aiMatchID)]),
+              record["format"]?.string == "magicmobile-game-record", record["broken"] == nil else { return nil }
+        return try? record.encoded()
+    }
+
     /// Restores a saved solo game. On any failure the save is deleted, the player is told,
     /// and the app stays on the menu.
     func resumeAI(_ record: GameResumeRecord) async -> Bool {
@@ -1989,6 +2114,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             aiMatchID = restored.matchID
             updateSessionForeground()
             try await session.attach(client: client, matchID: restored.matchID, seatID: record.setup.seatID,
+                                     pollReader: runtime.clientTransport.map { OnDevicePollReader(transport: $0) },
                                      allowsSeatScopedAutoYield: true, answerActions: engineAnswerActions,
                                      autoPassAfterCast: autoPassAfterCastSetting, smartPass: .load(), close: { [self] in try await closeAI() })
             status = "Game resumed"
@@ -2485,6 +2611,17 @@ private enum ResumeBackgroundTask {
 }
 
 /// A player whose profile is open over the table chat.
+private struct MessageBannerItem: Equatable {
+    let id = UUID()
+    let name: String
+    let text: String
+}
+
+private struct MessagesHubTarget: Identifiable {
+    let name: String?
+    let id = UUID()
+}
+
 private struct ChatProfileTarget: Identifiable {
     let name: String
     var id: String { name }

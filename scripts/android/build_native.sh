@@ -69,8 +69,13 @@ export MAVEN_OPTS="-Xmx512m -Duser.home=$OUT/home"
 # Gluon 1.0.29 staticlib is a no-op for this Android target. Use its
 # reviewed shared-library path (compile + link), not an empty successful task.
 # Generate an Android-only POM so no iOS build/link options are changed.
-python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" "$STUB" <<'PY'
-import sys, xml.etree.ElementTree as E
+# MM_NATIVE_REPORTS=1 (measurement only, the library is unchanged): heap histogram and partition sizes
+# in full-native.log, a class-initialization report, and a dashboard dump with heap and code size per
+# class and method in $OUT/native-reports. GraalVM 22.1 has no --emit build-report, and cross-compiles
+# stop before the usual "Top 10" breakdown (docs/cloud/engine-size.md).
+mkdir -p "$OUT/native-reports"
+python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" "$STUB" "$OUT/native-reports" <<'PY'
+import os, sys, xml.etree.ElementTree as E
 ns='http://maven.apache.org/POM/4.0.0'; E.register_namespace('',ns)
 t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
 # Substrate disables isolate spawning for ordinary Android executables. This is
@@ -78,6 +83,11 @@ t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
 # User compiler arguments follow the target defaults, so override only Android.
 compiler=config.find('{%s}nativeImageArgs'%ns)
 E.SubElement(compiler,'{%s}arg'%ns).text='-H:+SpawnIsolates'
+if os.environ.get('MM_NATIVE_REPORTS') == '1':
+ for value in ['-H:+PrintHeapHistogram','-H:+PrintImageHeapPartitionSizes','-H:+PrintClassInitialization',
+               '-H:DashboardDump='+sys.argv[4]+'/dashboard','-H:+DashboardHeap','-H:+DashboardCode',
+               '-H:+DashboardJson','-H:-DashboardBgv']:
+  E.SubElement(compiler,'{%s}arg'%ns).text=value
 args=E.SubElement(config,'{%s}linkerArgs'%ns)
 # Android-packed relocations shrink millions of image-heap RELATIVE entries (API 23+; minSdk
 # 26 rules out RELR, which needs API 28). stage_native.py requires them.

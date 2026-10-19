@@ -59,6 +59,7 @@ public final class RealQueryTests {
         run("real HumanPlayer remembered yes/no by ability and by text",RealQueryTests::rememberedAnswers);
         run("real HumanPlayer remembered trigger order",RealQueryTests::rememberedTriggerOrder);
         run("auto-pass after cast preference",RealQueryTests::autoPassPreference);
+        run("device pace: a hot phone shortens AI thinking",RealQueryTests::devicePace);
         run("AI repeats a pass only while the stack resolves",RealQueryTests::aiRepeatPass);
         System.out.println("RealQueryTests: "+passed+" passed, "+failed+" failed");
         if(failed!=0) throw new AssertionError("Real-upstream query tests failed");
@@ -394,6 +395,10 @@ public final class RealQueryTests {
         expectCode("invalid_response",()->priority.validate(withActions(answer("uuid",UUID.randomUUID().toString()),Json.map("type","passUntilStackResolved"))));
         expectCode("invalid_response",()->priority.validate(withActions(answer("boolean",false),Json.map("type","rememberAnswer","scope","text"))));
         expectCode("invalid_response",()->priority.validate(withActions(answer("boolean",false),Json.map("type","rememberTriggerFirst"))));
+        // The phone's heat rides on any answer and only carries a yes or no.
+        eq(Json.object(Json.array(ask.validate(withActions(answer("boolean",true),Json.map("type","devicePace","hot",true))).get("actions")).get(0)),
+            Json.map("type","devicePace","hot",true));
+        expectCode("invalid_response",()->ask.validate(withActions(answer("boolean",true),Json.map("type","devicePace","hot",true,"seconds",1))));
     }
 
     private static void rememberedAnswers() {
@@ -455,6 +460,19 @@ public final class RealQueryTests {
             f.answer(s->withActions(answer("boolean",false),Json.map("type","autoPassAfterCast","enabled",false)));
             check(!f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"answer still applied");
             check(!f.player.getUserData().isPassPriorityCast(),"auto-pass after cast off");
+            f.drained();
+        }
+    }
+
+    private static void devicePace() {
+        try(Fixture f=new Fixture()) {
+            check(!f.game.cancellation().isHot(),"a match starts cool");
+            f.answer(s->withActions(answer("boolean",true),Json.map("type","devicePace","hot",true)));
+            check(f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"answer still applied");
+            check(f.game.cancellation().isHot(),"the match's AI thinks at the hot pace");
+            f.answer(s->withActions(answer("boolean",false),Json.map("type","devicePace","hot",false)));
+            check(!f.player.chooseUse(Outcome.Benefit,"Keep this hand?",null,f.game),"answer still applied");
+            check(!f.game.cancellation().isHot(),"back to the full pace");
             f.drained();
         }
     }

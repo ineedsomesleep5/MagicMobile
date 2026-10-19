@@ -220,6 +220,35 @@ object TavernCardParts {
 /** Eight or more identical tokens stay one pile even while they can be chosen (Caleb, 2026-10-02). */
 object BattlefieldTokenStack {
     const val threshold = 8
+
+    /**
+     * The tiles a group shows (BattlefieldRow.displayGroups on iOS): every card when it is open; otherwise one pile, with the
+     * cards already chosen from it pulled out beside it as their own tiles (Caleb, 2026-10-15), so the pile's next tap chooses
+     * another one and a tap on a pulled-out card takes it back.
+     */
+    fun displayGroups(group: BattlefieldCardGroup, expanded: Boolean, chosenIds: Set<String>): List<BattlefieldCardGroup> {
+        fun single(card: ZoneCard) = BattlefieldCardGroup("card:" + card.instanceId, listOf(card))
+        if (expanded) return group.cards.map(::single)
+        if (group.count <= 1 || group.id.startsWith("attachment:")) return listOf(group)
+        val chosen = group.cards.filter { isChosen(it, chosenIds) }
+        if (chosen.isEmpty()) return listOf(group)
+        val rest = group.cards.filter { !isChosen(it, chosenIds) }
+        return (if (rest.isEmpty()) emptyList() else listOf(BattlefieldCardGroup(group.id, rest))) + chosen.map(::single)
+    }
+
+    /** The card a tap on a pile chooses next: the first that can be targeted and isn't chosen yet. */
+    fun nextTargetable(group: BattlefieldCardGroup, targetableIds: Set<String>, chosenIds: Set<String>): ZoneCard? =
+        group.cards.firstOrNull { !it.isPhasedOut && !isChosen(it, chosenIds) && (targetableIds.contains(it.instanceId) || targetableIds.contains(it.id)) }
+
+    fun isChosen(card: ZoneCard, chosenIds: Set<String>): Boolean = chosenIds.contains(card.instanceId) || chosenIds.contains(card.id)
+
+    /** The piles still open once a choice or combat has ended: the ones opened only to look (Caleb, 2026-10-16). */
+    fun openAfterChoice(expanded: Set<String>, openedForChoice: Set<String>): Set<String> = expanded - openedForChoice
+
+    /** The last card of each pile the player opened, keyed to that pile: it carries the Stack chip. */
+    fun stackChipPiles(groups: List<BattlefieldCardGroup>, expanded: Set<String>): Map<String, String> =
+        groups.filter { it.count > 1 && it.id in expanded && !it.id.startsWith("attachment:") }
+            .associate { it.cards.last().instanceId to it.id }
 }
 
 /**

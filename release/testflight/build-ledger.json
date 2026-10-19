@@ -3,9 +3,9 @@
   "bundleId": "com.calebfeliciano.magicmobile",
   "marketingVersion": "0.1.1",
   "nextBuildFloor": "5000000000",
-  "lastPreparedBuild": "37",
+  "lastPreparedBuild": "48",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "37",
+  "lastUploadedBuild": "48",
   "uploads": [
     {
       "build": "2026062701",
@@ -434,9 +434,86 @@
       "uploadedAt": "2026-10-14T01:16:43.027Z",
       "deliveryUuid": "5390eee2-1f17-4d1d-9b7d-1da37d36181f",
       "ipaPath": "build_output/testflight/native-release.bwe0la/export/MagicMobile.ipa"
+    },
+    {
+      "build": "38",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-15T00:06:34.591Z",
+      "deliveryUuid": "4e8512c4-4dd0-4c10-a64b-eea507422e4e",
+      "ipaPath": "build_output/testflight/native-release.Srxnm9/export/MagicMobile.ipa"
+    },
+    {
+      "build": "39",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-15T11:20:05.831Z",
+      "deliveryUuid": "bf686669-ac08-4bb8-b050-74a5a7219ae0",
+      "ipaPath": "build_output/testflight/native-release.AxAdsJ/export/MagicMobile.ipa"
+    },
+    {
+      "build": "40",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-15T20:05:44.680Z",
+      "deliveryUuid": "6fc5463e-68a4-47fe-a7a9-94712c069042",
+      "ipaPath": "build_output/testflight/native-release.z7QF13/export/MagicMobile.ipa"
+    },
+    {
+      "build": "41",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-16T04:08:23.102Z",
+      "deliveryUuid": "000ab666-8cb1-4feb-93c7-72c6a4b18941",
+      "ipaPath": "build_output/testflight/native-release.bfzJX7/export/MagicMobile.ipa"
+    },
+    {
+      "build": "42",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-17T04:30:55.690Z",
+      "deliveryUuid": "2772c269-b239-4661-82e1-bbe7019d95bc",
+      "ipaPath": "build_output/testflight/native-release.M5kFWp/export/MagicMobile.ipa"
+    },
+    {
+      "build": "43",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-17T18:16:21.759Z",
+      "deliveryUuid": "bcbc733c-5530-4788-baa3-82ba5f8410a8",
+      "ipaPath": "build_output/testflight/native-release.Fm5ZdX/export/MagicMobile.ipa"
+    },
+    {
+      "build": "44",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-17T22:25:25.806Z",
+      "deliveryUuid": "9d981fb4-4d0d-4139-a2fc-1d48ba4d60a7",
+      "ipaPath": "build_output/testflight/native-release.pyyW30/export/MagicMobile.ipa"
+    },
+    {
+      "build": "45",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-17T22:51:44.369Z",
+      "deliveryUuid": "f0666149-c4c9-4d85-8742-eb7ccac169c0",
+      "ipaPath": "build_output/testflight/native-release.hjWC3m/export/MagicMobile.ipa"
+    },
+    {
+      "build": "46",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-18T00:06:53.239Z",
+      "deliveryUuid": "6a77fe6d-71c8-4f3d-8b51-cca25cc05fcb",
+      "ipaPath": "build_output/testflight/native-release.e55h2k/export/MagicMobile.ipa"
+    },
+    {
+      "build": "47",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-18T12:13:54.406Z",
+      "deliveryUuid": "6de1933e-5d40-42cd-8052-3f6fddea0881",
+      "ipaPath": "build_output/testflight/native-release.lRFxk0/export/MagicMobile.ipa"
+    },
+    {
+      "build": "48",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-18T23:26:01.159Z",
+      "deliveryUuid": "3227e75c-22e4-4dfd-919e-181529247b67",
+      "ipaPath": "build_output/testflight/native-release.cZAbVS/export/MagicMobile.ipa"
     }
   ],
-  "lastPreparedAt": "2026-10-14T01:02:26.501Z",
+  "lastPreparedAt": "2026-10-18T23:09:38.087Z",
   "lastPreparedMarketingVersion": "0.1.1",
   "lastUploadedMarketingVersion": "0.1.1",
   "lastInstalledMarketingVersion": "0.1.0",

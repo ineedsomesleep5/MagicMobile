@@ -31,7 +31,9 @@ contradicting one.
   tavern. **Rule:** UI tests that need another board still pin it with the
   `-magicmobile.boardAppearance arena` launch argument (iOS argument domain, untouched by the reset)
   or `MAGICMOBILE_UI_TEST_BOARD_APPEARANCE` (set after the reset). Where: `MagicMobileApp.swift`,
-  Android `MainActivity.kt`.
+  Android `MainActivity.kt`. Updated 2026-10-14 (Claude): the other boards' textures are gone; `arena`
+  (the classic layout on a plain gradient) is the only other value, and anything else resolves to the
+  tavern.
 - 2026-10-11 (Claude): Android screens drift back to plain Material, `IosAlert` or `IosListRow`
   when a port reaches for whatever control is handy. **Rule:** follow `docs/TAVERN_STYLE.md` and use
   the `Tavern*` counterpart of the iOS piece; port the piece into `ui/TavernKit.kt` first if it is
@@ -54,6 +56,14 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-15 (Claude, C1): `mm_record_game` now stores the server's standing at the moment a ranked game arrives
+  (`20261015180000_ranked_record_points.sql`), but both apps upload a game as soon as it is recorded, racing
+  `syncRank`, and `afterRefresh` uploads before it seeds. **Rule:** for ranked games, run `syncRank` first and upload
+  after, or the rank history charts the points from before the game. A ladder floor can read only the current points:
+  you can't fall out of a tier, so "start of your tier" equals "highest tier reached", and a stored peak can sit above
+  the points (imported or seeded standings). Ladder SQL waiting for Caleb lives in `supabase/pending/`, outside
+  `migrations/`, and is tested with `npm run test:ranked-pending --prefix supabase/tests`. Where: `docs/cloud/reports/c1.md`.
+
 - 2026-10-11 (Claude): Arena-style smart auto-pass and phase stops needed no engine change. The poll
   already carries XMage's own playable list (`gameView.canPlayObjects`, with `manaAbility` marks) and
   the step, so the session sends the same `pass_priority` a tap sends. **Rule:** client-side pass
@@ -65,6 +75,17 @@ contradicting one.
 
 ## Performance
 
+- 2026-10-18 (Claude): Instruments on Caleb's iPhone showed the board redrawing 30–60 times a second with nothing
+  happening. Each glow's `TimelineView(.animation(minimumInterval: 1/30))` started on its own phase, so a few 30 Hz glows
+  (plus the inspector's foil) drove SwiftUI at 60 Hz, and the AI thinking ring's `repeatForever` animation redrew every
+  frame. Every update re-walks the whole board's display list (shadowed shapes even rebuild their shadow paths), so the
+  cost follows the board's size, not the glow's; the app's own code barely shows in the samples. **Rule:** ambient
+  timelines use `AmbientTimelineSchedule` (one grid, heat-aware, paused when `BoardActivity` says idle); a spinner that
+  turns forever runs in Core Animation (`OrbitingArcView`). To name a ticker, export the time profile and run
+  `scripts/ios/time_profile_summary.py`: gaps of 33.3 ms between display-link updates mean one 30 Hz timeline, 16.7 ms
+  mean 60 Hz. Separately, `JSONValue.init(from:)` probes types with `try?`, and building those errors' coding paths was a
+  quarter of the polling thread: skip decoding repeated replies (`OnDevicePollReader`) rather than editing the engine
+  package's decoder, which ships with the engine.
 - 2026-10-03 (Claude): a quiet Android tavern board used about 105% CPU on the emulator because
   breathing glows redrew every frame. **Fix:** one shared 20 Hz clock (`rememberBoardBreath` in
   `board/BoardSupport.kt`), read at draw time; it now uses about 45% CPU, and 0.6% with
@@ -81,18 +102,126 @@ contradicting one.
   `NativeUpdateNewsView.swift` (`SupportProject`), Android `ondevice/SupportViews.kt`.
 - 2026-10-11 (Claude): `pkill -f "vite preview"` inside a Bash call also matches that call's own shell
   and kills it (exit 144). **Rule:** stop a preview server by port or PID, or just start the next one on
-  a new port.
+  a new port. Same for calibration workers (C4, 2026-10-15): anchor the pattern, e.g.
+  `pgrep -f '^java .*AICalibration'`.
 
 ## Native engine and releases
 
+- 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
+  (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
+  makes a full deep game copy for every option of a trigger, and Loaming Shaman (Draconic Destruction) targets "any number"
+  of graveyard cards: up to about 4,000 options (upstream's limit is 4 of 18 cards). A timed-out search kept copying while
+  the AI's next search ran beside it, 1.9 GB in one node's children. Those copies also hang under a node the tree does not
+  reach yet (`simulatePriority` handles triggers before it attaches the new node), so #202's copy count never saw them.
+  **Rule:** stop searches at their game copies (`AISearchMemory.Stopped`), count the node being copied, and take a live
+  heap dump before tuning budgets (MAT's leak suspects named the thread and the node). An out-of-memory error on a search
+  thread is swallowed by its cancelled task (calibration only shows `engine-stopped`); `-XX:OnOutOfMemoryError=touch <file>`
+  marks it. A watcher that flags search threads busy while the GAME thread is idle misses an orphan that overlaps the next
+  search: count busy search threads instead. Where: `AISearchMemory.java`, `RealSearchMemoryTests` (`trigger-fan-out`).
+- 2026-10-18 (Claude, release C AI memory): sharing card objects between game copies (`GameImpl`
+  `MOBILE_LAZY_CARDS`) is exact only while a source is not changed again while a copy that shares its cards is alive.
+  The AI's search sources are frozen once copied, or their copies are dropped before the source goes on, except
+  `SimulatedPlayer2.triggerAbility`, which copies the game for each trigger option in the middle of
+  `checkStateAndTriggered` and lets rules processing go on; copies made while a trigger is handled stay deep. Copies
+  of the live game are always deep, so a late search thread never shares objects with it. **Rule:** a new game copy
+  in AI code needs a frozen source or a copy that dies first; check it with `RealSearchMemoryTests` and
+  `profile_long_games.py equivalence` (the switches `GameImpl.mobileLazyCards`, `ComputerPlayer6.mobileSearchMemory`).
+- 2026-10-18 (Claude, release C AI memory): the engine ships no log4j configuration, so reload4j's root logger is
+  DEBUG with no appender: on phones every `isInfoEnabled()`/`isDebugEnabled()` block runs and its output is dropped
+  (in `ComputerPlayer6`, a score for every step of each root action's line, a board printout at each priority). The
+  calibration and profile tools set WARN (`tools/ai-calibration/log4j.properties`), so their CPU numbers leave that out.
+  Not changed yet. Also: memory readings in engine code avoid `java.lang.management`, which would make JMX reachable in
+  the native image; `DeviceMemory` uses `os_proc_available_memory` (iOS), `/proc/meminfo` and a JVM property.
+- 2026-10-18 (Claude, release C size cuts): GraalVM 22.1 compiles the static initializer of every reachable class
+  that initializes at run time (`DynamicHubInitializer.buildRuntimeInitializationInfo`), and registering a class for
+  checkpoint serialization or reflection makes it reachable. That kept all 589 set classes with their card lists in the
+  image, and `mage.db.EntityManager` (a Serializable enum whose initializer opens H2 through ORMLite JDBC) pulled in H2.
+  **Rule:** packages that are never game state stay out of the checkpoint list (`NOT_CHECKPOINTED` in
+  `NativeReflectionExporter`); read the pinned toolchain's own sources (`lib/svm/builder/svm.src.zip` in the Gluon
+  archive `scripts/android/prepare_toolchain.py` downloads) rather than guessing what makes code reachable. Gluon always
+  adds `-H:EnableURLProtocols=http,https` (`allowHttps()` returns true); `-H:DisableURLProtocols` overrides it.
+- 2026-10-18 (Claude): the JVM verifier loads every class a method returns where a supertype is expected, so a
+  generated `switch` of `return X.getInstance();` loaded all 95 listed set classes the first time the engine started.
+  **Fix:** `return (ExpansionSet)(Object)X.getInstance();` checks at run time instead (`GeneratedBoosterSets`).
+  `test_real_engine.sh` fails if a game loads any `mage.sets` class. Also for memory readings: the test decks that
+  `resolve_deck.py` builds use some Arena-only printings (AKR, ANB, HA4), so XMage's Commander validator falls back to
+  `CardRepository.findCards(name)` and loads the whole card-metadata catalogue (about 87 MB of JVM heap); app decks only
+  use eternal-legal printings. Measure with `build/isamaru.json`, or say which deck you used.
+- 2026-10-18 (Claude, lighter engine step 1): JVM memory traps in the long-game profiles. `GcInfo` before/after usage
+  covers every memory pool, Metaspace included (the card classes), so summing it read 550 MB "after GC" while the live
+  heap was 147 MB; heap after a Serial GC also counts dead objects in the old generation. The card catalogue (about
+  100 MB) loads on the first deck validation, so a baseline taken before `DeckLoader.load` is 27 MB, not 115. And
+  AICalibration's schedule plays one deck pair per block of 4 games, so a 4-game run covers one pair. **Rule:** sum only
+  `MemoryType.HEAP` pools, measure live heap with a full GC (or a heap dump), take baselines after loading the decks,
+  and spread runs with `--first-game 0, 4, 8, ...`. async-profiler 4.1 (GitHub release; CPU mode works at
+  `perf_event_paranoid` 2) and Eclipse MAT (download.eclipse.org) both run in the cloud container.
+  Where: `scripts/profile_long_games.py`, docs/LIGHTER_ENGINE_PLAN.md step 1.
+
+- 2026-10-15 (Claude, C4): XMage's AI search is limited by time, not by its 5000-node cap. Calibration
+  searches use a median of 12–18 nodes (90th percentile about 600); each node copies the whole Commander
+  game, about 20 ms. Attacks and blocks are fixed rules in `ComputerPlayer6` and never searched. **Rule:**
+  more depth or nodes buys nothing; strengthen the AI in its decisions (`CombatPlanner`, `AIDifficulty.expert`).
+  Where: docs/cloud/reports/c4.md.
+- 2026-10-15 (Claude, C4): C3's calibration harness built `AIDifficulty` itself by reflection, so a new
+  per-skill setting silently never reached calibration seats and a first run measured the old AI. **Rule:**
+  calibration seats go through `XmageEngine.aiDifficulty`, the production seat parser.
+  Where: `tools/ai-calibration/AICalibration.java`.
+- 2026-10-15 (Claude, C4): GraalVM 22.1 has no `--emit build-report`, and Gluon's cross-compiles
+  (`-H:+ExitAfterRelocatableImageWrite`) stop before the "Top 10" size table prints. The cloud container
+  also can't download Actions artifacts (the blob host is refused). **Rule:** break code down with
+  `magicmobile-native-code-sizes.yml` (symbols artifact, runs in Actions, about a minute); for the heap,
+  dispatch the Android build with `native_reports`. Where: docs/cloud/engine-size.md.
+- 2026-10-15 (Claude, C5): a seeded `RandomUtil` alone does not make an XMage game repeat. Libraries are
+  filled from `Deck.getMaindeckCards()` (a `HashSet` in identity-hash order) before the opening shuffle;
+  "in a random order" library placement uses `Collections.shuffle`'s own generator; AI reasoning draws
+  from the same generator on the GAME thread; and a commander cast from the command zone uses the
+  command object's copy of the spell ability (same ID as the card's, but with commander tax). Name
+  checks also hide instance differences: test decks of 99 identical basics compare equal by name.
+  **Rule:** compare card instances (the record's `c<n>` names), not names; when a replay diverges, run
+  `RealGameRecordTests` with `-Dmagicmobile.recordOnly=<scenario>` and diff the per-entry traces it
+  writes. Where: `GameRandom.java`, `GameRecorder.java`, `XmageEngine.build`, docs/cloud/game-record.md.
+- 2026-10-15 (Claude, C5): a game replay that matched inside the recording JVM failed in a fresh one
+  (simultaneous tokens enter in identity-hash order), and an exception in replay code inside an AI's
+  `priority()` vanished: `GameImpl.playPriority` catches `Exception`, rolls back and asks again, which
+  looked like an unrelated mismatch two entries later. **Rule:** verify replays in a fresh JVM
+  (`GameReplay` command line); turn any replay-side exception into `GameRecorder.Stop` (an `Error`),
+  never let it reach XMage's error recovery. A human's UUID answer is often not an object at all (a
+  mode, or a triggered ability to order): name it by its place in the question's options first.
+- 2026-10-15 (Claude, C5): `RealControlPrivacyTests` builds `XmageEngine.Running` by reflection with its
+  exact constructor signature, so a new `Running` parameter compiles everywhere and then fails ten
+  checks at run time with `NoSuchMethodException`. **Rule:** when `Running`'s constructor changes,
+  update that rig too, and run `test_real_engine.sh`, not just the suite you touched.
+
+- 2026-10-15 (Claude, C2): RELR packing needs Android API 28 only with lld's
+  `--use-android-relr-tags` (`android+relr`); `-z pack-relative-relocs` uses the official tags and needs
+  API 30. Packing only shrinks the table: bionic still applies all 4.5 M `libmmengine.so` relocations.
+  GraalVM 22.1 has no option to remove them (`-H:+RelativeCodePointers` arrives in GraalVM 25).
+  **Rule:** keep `--pack-dyn-relocs=android` at minSdk 26; measure before changing anything.
+  Where: docs/cloud/c2-relocations.md.
+- 2026-10-14 (Claude): build 38's privacy manifest declared only UserDefaults, but the executable also
+  calls file-timestamp, boot-time and disk-space APIs, some from Swift (`systemUptime`,
+  `contentModificationDate`, `systemFreeSize`) and some from the engine's static JDK libraries (`stat`,
+  `fstat`, `lstat`, `fstatfs`, `fstatvfs`, `mach_absolute_time`). App Store Connect refuses that at App
+  Store submission, though TestFlight let it through. **Rule:** `PrivacyManifestTests` (#155) scans the
+  Swift sources only. After an engine update, check the executable's imports (REA `inspect_macho`, or
+  `nm -u`) against `PrivacyInfo.xcprivacy`. Where: docs/audits/APP_AUDIT_2026-10.md.
 - 2026-10-11 (Claude): a game froze at combat damage when trample killed the planeswalker being
   attacked. XMage then keeps the attackers in combat with a null `defenderId` (rule 506.4,
   `PlayerImpl.removeFromBattlefield` → `Combat.removeDefendingPermanentFromCombat`; phasing out and
   control changes do the same), and both snapshot adapters threw "Missing combat defender" on every
   poll. **Rule:** a missing field the rules allow is state, not corruption; the adapters now emit
   `defenderKind: "none"`. Before rejecting engine data, check upstream for when it can be null.
+- 2026-10-15 (Claude, C2): upstream MAD depth counts one unit per action and scores the last unit
+  before that action resolves, so at depth 1 the AI judges a spell while it is still on the stack and
+  never casts anything; depth 2 is the shallowest useful search (one action seen resolved).
+  **Rule:** N plies of lookahead is depth N+1. AI board fixtures must also call
+  `game.getPlayerList().setCurrent(aiId)`: the search simulates whoever that cursor points at, and
+  otherwise about half the runs search the human's priority and only ever see Pass.
+  Where: `AIDifficulty.java`, `RealAIDifficultyTests.java`.
 - 2026-10-11 (Claude): XMage AI skill sets search depth `max(4, skill)` and think time `skill × 3` s,
   so skills 1–4 play at the same depth. Tune difficulty with decks first (docs/RANKED.md).
+  Corrected 2026-10-15 (Claude, C2): engine release A gives skills 1 and 2 depth 2 and 3 and adds
+  seeded mistakes at skills 1–3 (`AIDifficulty.java`); skill 4 and up still use upstream's depth.
 - 2026-09-27 (Claude): `verify_native.py` compares the whole engine package, including the iOS-only
   Swift wrapper, so Android build 10 had to ship with the package restored to the native library's
   source commit (`2c32482`). **Rule:** when the Android native library and the package source
@@ -100,6 +229,14 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-14 (Claude): REA on our own builds: `inspect_binary_layout` handles only Linux x86-64 ELF, and
+  `decode_android_resources` / `inspect_android_package` need apktool or JADX, which aren't installed. For
+  the arm64 engine use REA `inspect_with_objdump` (section headers) and the NDK's `llvm-readelf`
+  (`/opt/homebrew/share/android-commandlinetools/ndk/*/toolchains/llvm/prebuilt/darwin-x86_64/bin`).
+  For the manifest use build-tools `aapt2 dump xmltree|badging`; `aapt2 dump resources` maps a release
+  APK's shortened `res/xx.webp` names back to drawables. Separately, `rg` in Claude's Bash is a shell
+  function, so a `zsh script.sh` that calls it finds nothing, and with `2>/dev/null` it prints no error
+  either. **Rule:** scripts use `grep` (or a real binary path), and get checked against a known hit first.
 - 2026-10-14 (Claude): Cormorant's old-style figures are on by default in both the SC and Garamond
   files, so "1v1" reads "ivi" unless `lnum` is set (`UIFontDescriptor` feature settings on iOS,
   `fontFeatureSettings = "lnum"` in Compose). Its x-height is 0.386 em against about 0.475 for New
@@ -150,6 +287,82 @@ contradicting one.
   On Android the ring's `LocalTurnClock` holds lambdas that read the table's state, not the values,
   so a clock tick recomposes only the rings instead of the whole board under the provider. Cloud
   containers have no Android SDK; the PR's Android app CI job is the compile check.
+- 2026-10-15 (Claude, R2): `Data.write(options: .completeFileProtection)` passed in the iOS simulator tests but
+  failed in preflight's `presentation-contracts`, which runs `apps/ios/Package.swift` tests on macOS, where file
+  protection isn't supported and the write throws. CI's `swift` job didn't catch it. **Rule:** guard iOS-only write
+  options with `#if os(iOS)`, and run `swift test --package-path apps/ios` (or preflight `ios-fast`) after
+  touching code the package compiles. Where: `PlayerRecordStore.keepGameRecord`.
+- 2026-10-15 (Claude): a test added to `BoardEventTimelineTests.swift` that used `BattlefieldRow` passed in the Xcode
+  test target but broke CI's `swift` job, because `apps/ios/Package.swift` compiles that test file without the `Board/`
+  views. **Rule:** tests of board views go in a file the package excludes (`PortraitPolishTests.swift`), and run
+  `swift test --package-path apps/ios` (macOS, no simulator, ~1 min) before pushing iOS test changes.
+- 2026-10-16 (Claude, release A): after Xcode updated itself to 27.1, local `xcodebuild` failed with "missing Metal
+  Toolchain" and "CoreSimulator is out of date" (simulator support disabled), although `xcodebuild -showComponent
+  MetalToolchain` still listed the 27.0 toolchain as installed. The new Xcode needs its own first-launch components
+  (`sudo xcodebuild -runFirstLaunch`, then `xcodebuild -downloadComponent MetalToolchain`), which need Caleb's password.
+  Until then `swift test --package-path apps/ios` still works locally, and the PR's `swift` CI job (Xcode 27.0, installs
+  its own Metal toolchain) is the iOS compile check; Android emulator screenshots stand in for simulator ones.
+- 2026-10-16 (Claude, release A): fixtures must honour the same limits as the server function they stand in for. The
+  leaderboard fixture ignored `p_limit`, so the Ranked Hall's three-badge teaser drew all ten players and overflowed;
+  only an emulator screenshot showed it. `SocialFixtures.leaderboard` now takes `limit` on both platforms.
+- 2026-10-16 (Claude, release A): build 42's archive failed with "cannot find type 'SocialFixtures'" because a new
+  extension was appended after `SocialFixtures.swift`'s closing `#endif` (the fixtures are DEBUG-only). Package tests,
+  the simulator UI tests and CI's `swift` job all build Debug, so only the Release archive saw it; nothing reached Apple.
+  **Rule:** when adding to a `#if DEBUG` file, add inside the guard, and before a release run a Release compile
+  (`xcodebuild build -configuration Release -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO`). A failed
+  archive leaves the controller run `uncertain`: confirm with `asc builds list` that nothing uploaded, then plan a new
+  run ID with the same build number.
+- 2026-10-17 (Claude): release A put the per-game performance report inside the "Engine error report" sheet, whose
+  button only appears after an engine error, so on a healthy phone the report was unreachable (Caleb couldn't find it).
+  **Rule:** a feature the player is meant to use needs a path a tester can actually walk on a normal install; check it
+  on the simulator/emulator from the main menu, not just the sheet in isolation. The report now has its own panel in
+  Settings on both apps (`GamePerformancePanel`; iOS UI fixture `MAGICMOBILE_UI_TEST_PERFORMANCE=1`).
+- 2026-10-17 (Claude, release B): in Postgres, `row_value IS NOT NULL` is true only when every field of the row is
+  non-null, so `where c.last is not null` (a whole `friend_messages` row) dropped every conversation whose last message
+  was unread (`read_at` null). Test a row's key instead (`(c.last).id is not null`). The PGlite suite caught it.
+- 2026-10-17 (Claude, release B): a SwiftUI `Button` whose `.background`/`.overlay` sit outside the label only takes taps
+  on the label's text; put the capsule inside the label with `.contentShape`. Synthesized UI-test taps on small targets
+  can also be swallowed under load: find results by their label text and allow one retry, rather than fixed ids.
+- 2026-10-17 (Claude, release B): the combo loop records only the player's own answers (`OnDeviceSession.send`), never
+  smart pass, auto-yield or ability follow-ups (they call `submit` with their own action-id prefixes), and replays by
+  card name, action text and target names, because tokens made by a loop get new ids every round.
+- 2026-10-17 (Claude, release B): TestFlight 44 crashed on the player's first action in any solo game:
+  `ComboLoop.cycle(in:)` looped over `1...min(12, history.count / 3)`, which is `1...0` with one or two steps, and a
+  Swift closed range whose upper bound is below its lower bound traps (Kotlin's `1..0` is just empty, so Android was
+  fine). The parity cases all had three or more steps. **Rule:** guard the bounds before building a `...` range from a
+  computed value, and put the empty and smallest inputs in shared parity cases ("", "A", "AT" now are).
+- 2026-10-17 (Claude, combo loop 2): exact replay was too strict for real loops. Chatterfang's round sacrifices
+  Squirrel tokens, makes new ones and keeps shrinking one creature, so matching by card name and stopping on an
+  unchanged life/zone digest stopped after 2 rounds. Record each choice as *kind* (whose, creature/artifact/…, token or
+  card; options by name), prefer last round's pick, and put power, toughness, damage and tapped state in the digest.
+  Passes are not round steps: record whether the stack was empty when a step was taken and pass for the player's own
+  triggers before it. In the parity fixture, separate targets with `;`: card names like "Zacama, Primal Calamity"
+  contain commas. Test snapshots that include `xmage` need every `panels` field or decoding fails.
+- 2026-10-17 (Claude, TestFlight 46): the release controller distributes to External only from the exact commit it
+  uploaded (`sourceCommit` is part of the run identity), with at most the upload's `build-ledger.json` change left
+  uncommitted. Committing the ledger first and then running the second `resume` would invalidate the run. If the
+  ledger is already committed: `git reset <upload commit>` (keeps the ledger as an unstaged change), run `resume` with
+  the same fingerprint, then `git reset <ledger commit>` to return to the pushed branch. No force push needed.
+- 2026-10-18 (Claude): CI's `swift` job also runs `packages/ondevice-engine/scripts/test_runtime_manager.sh`, which
+  compiles `OnDeviceRuntimeManager.swift` with a fixed list of app files (not `OnDeviceSession.swift`), so a new app type
+  used there fails only in CI ("cannot find type in scope") after every package test passed. **Rule:** keep the runtime
+  manager's API in engine-package types (it now exposes `clientTransport`; the root view builds the
+  `OnDevicePollReader`), and run that script locally after touching the manager.
+- 2026-10-18 (Claude): `xcodebuild build -destination generic/platform=iOS` fails at "Verify staged native input
+  hashes (device only)" ("Installed file set differs from owned native inputs") in a worktree without the staged engine.
+  **Rule:** for a compile check, build `-destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`; device
+  and Release builds need the engine staged (a release worktree).
+- 2026-10-17 (Claude): main has a ruleset ("main: CI must pass", id 25329787) requiring `Download site build`, `app`,
+  `boundary-tests`, `swift` and `real-jvm`, and the repo allows auto-merge (`gh pr merge N --auto --merge`). GitHub's
+  auto-merge waits only for required checks, and a required check that never reports blocks the PR forever, so never
+  put `paths:` on the `pull_request` trigger of a workflow with a required job. Filter inside the workflow instead: the
+  `changes` job in magicmobile-ondevice.yml and magicmobile-android-app.yml decides, and a job skipped by `if:` counts
+  as passing. A new required job needs the same pattern before it is added to the ruleset.
+- 2026-10-18 (Claude, release C): a far-calls run can finish every step and still end `cancelled` when GitHub's runner
+  hangs in "Complete job" until the 3 h job limit. Don't `gh run rerun` it: the rerun's artifact sits beside the first
+  attempt's with the same name and `controller.py stage-native` refuses ("Expected one unexpired ... artifact").
+  Dispatch a fresh run with the same `candidate_sha` and `cheap_run_id`. stage-native also refuses while
+  `apps/ios/NativeEngine` exists: move the old engine into `packages/ondevice-engine/build/` first.
 - 2026-10-14 (Claude): Cormorant SC has no lowercase; it sets lowercase as small caps, so mixed-case
   proper names like "iPhone" render as "iPHONE". On the site the platform plaques go full caps
   (`text-transform: uppercase`); keep such names out of Cormorant SC text in the app, or uppercase them.

@@ -32,6 +32,8 @@
             </array>
         </dict>
     </array>
+    <!-- Every required-reason category the binary calls, from the app or the statically linked engine.
+         PrivacyManifestTests checks this list against the Swift sources. -->
     <key>NSPrivacyAccessedAPITypes</key>
     <array>
         <dict>
@@ -40,6 +42,34 @@
             <key>NSPrivacyAccessedAPITypeReasons</key>
             <array>
                 <string>CA92.1</string>
+            </array>
+        </dict>
+        <!-- Cache pruning by modification date (card art, Scryfall and Spellbook caches); the engine's
+             JDK reads its own files' metadata (stat, fstat, lstat). All inside the app container. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <!-- systemUptime and mach_absolute_time time the turn clock, audio ducking and retry back-off. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+        <!-- Card art downloads pause when less than 1 GB would stay free (NativeAssetDownloads). -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
             </array>
         </dict>
     </array>

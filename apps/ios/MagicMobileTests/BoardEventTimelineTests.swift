@@ -165,6 +165,37 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(later.addingTimeInterval(second[0].delay).timeIntervalSince1970, landed.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    /// Smart pass waits for spells read at the centre and for removal, never for ability resolutions or
+    /// life changes, so a stack of repeated triggers still resolves at full speed.
+    func testSmartPassHoldsForSpellsAndRemovalButNotTriggers() {
+        let held: [BoardFXEvent] = [
+            .spellCast(stackID: "s", name: "Path to Exile", controllerID: "b", tint: .white, weight: .spell),
+            .leftBattlefield(cardID: "bear", playerID: "a", to: .exile, tint: .green),
+            .enteredBattlefield(cardID: "angel", playerID: "b", from: .hand, tint: .white, entrance: .showcase),
+        ]
+        let quick: [BoardFXEvent] = [
+            .spellCast(stackID: "t", name: "Soul Warden", controllerID: "b", tint: .white, weight: .ability),
+            .lifeChanged(playerID: "b", delta: 1),
+            .enteredBattlefield(cardID: "land", playerID: "a", from: .hand, tint: .colorless, entrance: .plain),
+        ]
+        for level in [BoardFXLevel.full, .reduced] {
+            XCTAssertTrue(BoardFXScheduler.schedule(held, level: level).allSatisfy(\.holdsSmartPass), "\(level)")
+            XCTAssertFalse(BoardFXScheduler.schedule(quick, level: level).contains(where: \.holdsSmartPass), "\(level)")
+        }
+
+        let start = Date(timeIntervalSince1970: 7_000)
+        var director = BoardFXDirector()
+        let bear = card("bear")
+        director.ingest(snapshot([player("a", battlefield: [bear]), player("b")]), level: .full, now: start)
+        XCTAssertNil(director.smartPassHoldUntil)
+        let exiled = director.ingest(snapshot([player("a", exile: [bear]), player("b")], revision: 2), level: .full, now: start)
+        let departure = try? XCTUnwrap(exiled.first { if case .leftBattlefield = $0.event { return true }; return false })
+        XCTAssertEqual(director.smartPassHoldUntil, departure.map { start.addingTimeInterval($0.end) })
+        director.ingest(snapshot([player("a", life: 41, exile: [bear]), player("b")], revision: 3), level: .full,
+                        now: start.addingTimeInterval(5))
+        XCTAssertNil(director.smartPassHoldUntil, "a life change alone holds nothing")
+    }
+
     func testCombatDamageStrikesTheBlockerThenDamageLandsOnImpact() {
         let blockers = state(step: "declare-blockers", cards: [
             fxCard("atk", "a", attacking: true), fxCard("blk", "b", blocking: ["atk"]),
@@ -367,4 +398,46 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(planned.first?.event, .firstStrikeBeat)
         XCTAssertEqual(planned.count, BoardFXScheduler.decorativeLimit + 1)
     }
+
+    /// Caleb, 2026-10-15: an opponent's Path to Exile flashed by while the next plays ran behind it. A spell is read to
+    /// the end, then what it removed leaves, and only then does anything else play, in one batch or across snapshots.
+    func testRemovalPlaysInOrderBeforeAnythingElse() {
+        for level in [BoardFXLevel.full, .reduced] {
+            let batch = BoardFXScheduler.schedule([
+                .spellCast(stackID: "s", name: "Path to Exile", controllerID: "b", tint: .white, weight: .spell),
+                .leftBattlefield(cardID: "commander", playerID: "a", to: .exile, tint: .green),
+                .enteredBattlefield(cardID: "plains", playerID: "b", from: .hand, tint: .white, entrance: .plain),
+                .lifeChanged(playerID: "b", delta: 1),
+            ], level: level)
+            XCTAssertGreaterThanOrEqual(batch[1].delay, batch[0].end, "\(level): the exile waits for the whole read")
+            XCTAssertGreaterThanOrEqual(batch[2].delay, batch[1].end, "\(level): the next play waits for the exile")
+            XCTAssertEqual(batch[0].holdsLaterBatchesUntil, batch[0].end)
+            XCTAssertEqual(batch[1].holdsLaterBatchesUntil, batch[1].end)
+        }
+        // Abilities still hand off quickly, so a stack of repeated triggers keeps its pace.
+        let triggers = BoardFXScheduler.schedule([
+            .spellCast(stackID: "t", name: "Trigger", controllerID: "b", tint: .white, weight: .ability),
+            .lifeChanged(playerID: "b", delta: 1),
+        ], level: .full)
+        XCTAssertLessThan(triggers[1].delay, triggers[0].end)
+    }
+
+    /// A later snapshot waits for a departure still playing, and the turn banner waits for it too.
+    func testLaterSnapshotAndTurnBannerWaitForADeparture() {
+        let start = Date(timeIntervalSince1970: 9_000)
+        var director = BoardFXDirector()
+        let commander = card("commander"), bear = card("bear")
+        director.ingest(snapshot([player("a", battlefield: [commander]), player("b", hand: [bear])]), level: .full, now: start)
+        let exiled = director.ingest(snapshot([player("a", exile: [commander]), player("b", hand: [bear])], revision: 2),
+                                     level: .full, now: start)
+        let departure = try? XCTUnwrap(exiled.first { if case .leftBattlefield = $0.event { return true }; return false })
+        let departureEnd = departure.map { start.addingTimeInterval($0.end) }
+        XCTAssertEqual(director.centreBusyUntil, departureEnd, "the turn banner waits for the exile")
+        let later = start.addingTimeInterval(0.2)
+        let next = director.ingest(snapshot([player("a", exile: [commander]), player("b", battlefield: [bear])], revision: 3),
+                                   level: .full, now: later)
+        XCTAssertEqual(later.addingTimeInterval(next[0].delay).timeIntervalSince1970,
+                       departureEnd?.timeIntervalSince1970 ?? 0, accuracy: 0.001)
+    }
+
 }

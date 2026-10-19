@@ -1,6 +1,11 @@
 name: Android native development
 on:
   workflow_dispatch:
+    inputs:
+      native_reports:
+        description: 'Measurement only: heap histogram, class-init report and per-method code and heap sizes (docs/cloud/engine-size.md)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -43,6 +48,7 @@ jobs:
         timeout-minutes: 45
         env:
           MM_ANDROID_NATIVE_HEAP: 10g
+          MM_NATIVE_REPORTS: ${{ inputs.native_reports && '1' || '0' }}
           # Host JDK17.0.3 MXBean crashes on newer cgroup layouts. Heap/CPU limits
           # are explicit in the build; this is NOT an Android runtime option.
           JAVA_TOOL_OPTIONS: -XX:-UseContainerSupport
@@ -60,6 +66,8 @@ jobs:
             build_output/android/*.json
             build_output/android/*.txt
             build_output/android/native-*/gluonfx/**/log/**
+            build_output/android/native-*/gluonfx/**/reports/**
+            build_output/android/native-reports/**
             build_output/android/native-*/builder-gc.log*
             packages/ondevice-engine/evidence/
           retention-days: 7
@@ -82,13 +90,12 @@ jobs:
           compression-level: 6
           retention-days: 14
           if-no-files-found: error
+      # Gradle comes from the wrapper (apps/android/gradlew, pinned with a checksum).
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
       - name: Build the actual native-linked test APK
         run: |
           set -euo pipefail
-          gradle -p apps/android --no-daemon -PwithNative=true :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
+          apps/android/gradlew -p apps/android --no-daemon -PwithNative=true :core:contractChecks :core:deckStudioChecks :core:providerChecks :core:insightChecks :app:assembleDebug :app:lintDebug
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 apps/android/app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose apps/android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4

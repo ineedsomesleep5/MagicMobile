@@ -94,5 +94,16 @@ class OnDeviceYieldPolicy {
         fun ordinaryPriority(prompt: Prompt, viewer: String): Boolean =
             prompt.id.isNotEmpty() && prompt.revision >= 0 && prompt.kind == "SELECT" && prompt.selectMode == "priority" &&
                 prompt.allowsBoolean && prompt.manaPlayerID == viewer
+
+        /** Action IDs of the passes the session sends on the player's behalf: smart pass, and the End Turn / Skip yields. */
+        const val SMART_PASS_ACTION_PREFIX = "smart-pass-"
+        const val YIELD_PASS_ACTION_PREFIX = "auto-pass-"
+
+        /**
+         * A pass the player didn't tap. It answers only ordinary priority, which asks nothing, so the board shows no
+         * "Waiting for the table" pop-up for it (Caleb, 2026-10-14: it flashed on every smart pass).
+         */
+        fun isAutomaticPass(actionID: String?): Boolean =
+            actionID != null && (actionID.startsWith(SMART_PASS_ACTION_PREFIX) || actionID.startsWith(YIELD_PASS_ACTION_PREFIX))
     }
 }

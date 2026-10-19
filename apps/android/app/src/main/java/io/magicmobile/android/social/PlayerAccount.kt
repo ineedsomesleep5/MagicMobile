@@ -79,6 +79,12 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     /** False once the server has said it has no player search / public profiles yet: the screens fall back gently. */
     var searchAvailable by mutableStateOf(true); private set
     var profilesAvailable by mutableStateOf(true); private set
+    /** Unread messages from friends: the badge on the Friends button. */
+    var unreadMessages by mutableStateOf(0); private set
+    /** False on a server without friend messages yet. */
+    var messagesAvailable by mutableStateOf(true); private set
+    /** The fixture account's conversations, changed as the player sends. */
+    private var fixtureMessages: Map<String, List<io.magicmobile.android.game.FriendMessage>> = emptyMap()
     var notice by mutableStateOf<String?>(null)
     /** Google sign-ins on this account; empty while the profile lives only on this phone (anonymous). */
     var linkedIdentities by mutableStateOf<List<LinkedIdentity>>(emptyList()); private set
@@ -140,7 +146,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     /** Signs out on this phone. The profile stays on the account; this phone starts a fresh one until the player signs in again. */
     suspend fun signOut() {
         api.forgetSession()
-        username = null; friends = emptyList(); blocked = emptyList(); friendRanks = emptyMap(); linkedIdentities = emptyList()
+        username = null; friends = emptyList(); blocked = emptyList(); friendRanks = emptyMap(); linkedIdentities = emptyList(); unreadMessages = 0
         visibility = ProfileVisibility.PUBLIC; visibilityKnown = false
         phase = Phase.IDLE
         start()
@@ -164,6 +170,8 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
             blocked = (Json.parseToJsonElement(api.rpc("mm_blocked")) as? JsonArray).orEmpty()
                 .mapNotNull { ((it as? JsonObject)?.get("username") as? JsonPrimitive)?.contentOrNull }
         } catch (error: Exception) { notice = PlayerAccountRules.message(SupabaseLite.code(error)) }
+        // Messages are extra too: a server without them leaves the badge off.
+        runCatching { unreadMessages = api.rpc("mm_message_unread").trim().toInt() }
         // Ranks are extra: a server without them leaves the badges off.
         runCatching {
             val season = RankLadder.season(System.currentTimeMillis())
@@ -183,7 +191,61 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
     val challenges: io.magicmobile.android.game.FriendChallengeService? get() =
         if (phase == Phase.READY && username != null) SupabaseFriendChallenges(api) else null
 
-    /** Shares this season's standing with friends. Quiet on failure: ranks still count on the phone. */
+    /**
+     * Starts a ranked game against the AI on the server (mm_ranked_ai_start2), so its result counts there, with the seed the
+     * engine deals it with. Null offline or without a profile name: that game then counts on this phone only. Waits at most
+     * [timeoutMillis], since the game waits for it.
+     */
+    suspend fun startRankedAIGame(deckBracket: Int, timeoutMillis: Long = 4_000): io.magicmobile.android.game.RankedAITicket? {
+        if (phase != Phase.READY || username == null) return null
+        return kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+            runCatching { api.rpc("mm_ranked_ai_start2", mapOf("p_deck_bracket" to JsonPrimitive(deckBracket))) }.getOrNull()
+                ?.let(io.magicmobile.android.game.RankedAITicket::parse)
+        }
+    }
+
+    /**
+     * Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the server
+     * has none yet). Quiet on failure: the phone's own count stands until the next try.
+     */
+    suspend fun syncRank(record: io.magicmobile.android.ranked.PlayerRecordStore) {
+        if (phase != Phase.READY || username == null) return
+        fun parse(text: String) = runCatching { io.magicmobile.android.game.RankedStanding.parse(Json.parseToJsonElement(text) as JsonObject) }.getOrNull()
+        for (pending in record.file.pendingRankedResults) {
+            try {
+                val text = if (pending.seeded) {
+                    // The game record backs the result; without one a win settles as unverified.
+                    val gameRecord = pending.recordFile?.let(record::gameRecord)
+                        ?.let { runCatching { Json.parseToJsonElement(it.decodeToString()) }.getOrNull() } ?: kotlinx.serialization.json.JsonNull
+                    api.rpc("mm_ranked_ai_result2", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw),
+                        "p_record" to gameRecord))
+                } else {
+                    api.rpc("mm_ranked_ai_result", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw)))
+                }
+                record.resolvePendingRankedResult(pending.ticket)
+                parse(text)?.let(record::adopt)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // A ticket the server doesn't know never will be; anything else waits for the next sync.
+                if (SupabaseLite.code(error) == "not_found") record.resolvePendingRankedResult(pending.ticket)
+            }
+        }
+        var standing = runCatching { api.rpc("mm_ranked_standing") }.getOrNull()?.let(::parse) ?: return
+        val local = record.file.rank
+        if (!standing.seeded && (local.position > io.magicmobile.android.game.RankPosition.START || local.wins + local.losses > 0)) {
+            runCatching {
+                api.rpc("mm_ranked_seed", mapOf("p_points" to JsonPrimitive(local.position.points), "p_peak_points" to JsonPrimitive(local.peak.points),
+                    "p_wins" to JsonPrimitive(local.wins), "p_losses" to JsonPrimitive(local.losses)))
+            }.getOrNull()?.let(::parse)?.let { standing = it }
+        }
+        record.adopt(standing)
+    }
+
+    /**
+     * Shares the title and favourite commander with friends. The server keeps the rank itself and ignores the rank numbers
+     * sent here (they stay for older servers). Quiet on failure.
+     */
     suspend fun publishRank(rank: RankState, title: Achievement?, commander: String?) {
         if (phase != Phase.READY || username == null) return
         runCatching {
@@ -192,6 +254,16 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
                 "p_losses" to JsonPrimitive(rank.losses), "p_title" to (title?.title?.let(::JsonPrimitive) ?: JsonNull),
                 "p_favorite_commander" to (commander?.let(::JsonPrimitive) ?: JsonNull)))
         }
+    }
+
+    /** The season leaderboard (mm_ranked_leaderboard), or null offline or without a profile name. */
+    suspend fun rankedLeaderboard(scope: io.magicmobile.android.game.RankedLeaderboard.Scope, limit: Int = 50): io.magicmobile.android.game.RankedLeaderboard? {
+        if (SocialFixtures.isActive) return SocialFixtures.leaderboard(scope, username ?: SocialFixtures.OWN_NAME, limit)
+        if (phase != Phase.READY || username == null) return null
+        return runCatching {
+            io.magicmobile.android.game.RankedLeaderboard.parse(Json.parseToJsonElement(api.rpc("mm_ranked_leaderboard",
+                mapOf("p_scope" to JsonPrimitive(scope.raw), "p_limit" to JsonPrimitive(limit)))) as JsonObject)
+        }.getOrNull()
     }
 
     /** Another player's public ranked card, or null when they have none or can't be seen. */
@@ -291,6 +363,60 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         friends = SocialFixtures.startingFriends()
         friendRanks = friends.mapNotNull { friend -> SocialFixtures.rank(friend.username)?.let { friend.username to it } }.toMap()
         visibilityKnown = true
+        fixtureMessages = SocialFixtures.messages()
+        unreadMessages = fixtureMessages.values.flatten().count { !it.fromMe && !it.read }
+    }
+
+    // MARK: Messages between friends
+
+    /** Just the unread count (checked more often during a game). */
+    suspend fun refreshUnread() {
+        if (SocialFixtures.isActive || phase != Phase.READY || username == null || !messagesAvailable) return
+        try { unreadMessages = api.rpc("mm_message_unread").trim().toInt() }
+        catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: Exception) { if (SupabaseLite.code(error) == "feature_unavailable") messagesAvailable = false }
+    }
+
+    /** Conversations with friends, newest first; null offline or on a server without messages. */
+    suspend fun conversations(): List<io.magicmobile.android.game.MessageConversation>? {
+        if (SocialFixtures.isActive) return fixtureMessages.mapNotNull { (name, messages) ->
+            messages.lastOrNull()?.let { io.magicmobile.android.game.MessageConversation(name, messages.count { !it.fromMe && !it.read }, it) }
+        }.sortedByDescending { it.last.id }
+        if (phase != Phase.READY || username == null) return null
+        return try {
+            io.magicmobile.android.game.FriendMessageRules.parseConversations(api.rpc("mm_message_conversations")).also { messagesAvailable = true }
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: Exception) { if (SupabaseLite.code(error) == "feature_unavailable") messagesAvailable = false; null }
+    }
+
+    /** A page of a conversation (the newest, or the messages before [before]). Reading the newest marks theirs read. */
+    suspend fun thread(name: String, before: Long? = null): io.magicmobile.android.game.MessageThread {
+        if (SocialFixtures.isActive) {
+            if (before == null) {
+                fixtureMessages = fixtureMessages + (name to fixtureMessages[name].orEmpty().map { if (it.fromMe) it else it.copy(read = true) })
+                unreadMessages = fixtureMessages.values.flatten().count { !it.fromMe && !it.read }
+            }
+            return io.magicmobile.android.game.MessageThread(name, fixtureMessages[name].orEmpty().filter { before == null || it.id < before }, false)
+        }
+        val thread = io.magicmobile.android.game.FriendMessageRules.parseThread(api.rpc("mm_message_thread", mapOf("p_username" to JsonPrimitive(name),
+            "p_before" to (before?.let(::JsonPrimitive) ?: JsonNull), "p_limit" to JsonPrimitive(50)))) ?: throw SupabaseLite.Failure("error")
+        if (before == null) runCatching { unreadMessages = api.rpc("mm_message_unread").trim().toInt() }
+        return thread
+    }
+
+    /** Sends a message to a friend; null (with a notice) when it couldn't be sent. */
+    suspend fun sendMessage(name: String, raw: String): io.magicmobile.android.game.FriendMessage? {
+        val body = io.magicmobile.android.game.FriendMessageRules.sanitize(raw) ?: return null
+        if (SocialFixtures.isActive) {
+            val message = io.magicmobile.android.game.FriendMessage((fixtureMessages.values.flatten().maxOfOrNull { it.id } ?: 0) + 1, body,
+                System.currentTimeMillis(), fromMe = true, read = false)
+            fixtureMessages = fixtureMessages + (name to fixtureMessages[name].orEmpty() + message)
+            return message
+        }
+        return try {
+            io.magicmobile.android.game.FriendMessageRules.parseMessage(api.rpc("mm_message_send", mapOf("p_username" to JsonPrimitive(name), "p_body" to JsonPrimitive(body))))
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: Exception) { notice = PlayerAccountRules.message(SupabaseLite.code(error)); null }
     }
 
     /** The friend actions on the fixture: they change the local list the way the server would. */

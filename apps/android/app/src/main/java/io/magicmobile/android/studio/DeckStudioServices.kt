@@ -2,18 +2,10 @@ package io.magicmobile.android.studio
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.exifinterface.media.ExifInterface
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import io.magicmobile.android.BuildConfig
-import io.magicmobile.android.core.readBounded
 import io.magicmobile.android.game.BuildIdentity
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EngineJson
@@ -32,7 +24,6 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -47,8 +38,6 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /** Deck Studio's small string payloads live in the app's preferences, as UserDefaults on iOS. */
 class AndroidStudioDefaults(private val prefs: () -> SharedPreferences?) : StudioDefaults {
@@ -130,6 +119,11 @@ class DeckStudioRecordingTransport(private val base: EngineTransport, private va
     private var admission: DeckStudioPlaytestStore.Admission? = null
     private val accumulator = DeckStudioPlaytestAccumulator()
     private var lastSaved = 0L
+    /**
+     * The last poll seen. A reply identical to it has the same revision, so it can never advance the record and is not
+     * decoded again: while the AI thinks most polls repeat (Instruments, 2026-10-18).
+     */
+    private var lastPoll: Pair<ByteArray, ByteArray>? = null
 
     override suspend fun request(data: ByteArray): ByteArray {
         val request = runCatching { EngineJson.decode(data) }.getOrNull()
@@ -142,6 +136,12 @@ class DeckStudioRecordingTransport(private val base: EngineTransport, private va
                 lock.withLock {
                     val now = System.currentTimeMillis()
                     val detailed = admission.detailedEnabled && store.detailedEnabled()
+                    val previous = lastPoll
+                    if (op == "poll" && previous != null && previous.second.contentEquals(reply) && previous.first.contentEquals(data)) {
+                        if (!detailed) accumulator.revokeDetail()
+                        return@withLock
+                    }
+                    if (op == "poll") lastPoll = data to reply
                     val response = EngineJson.decode(reply)
                     if (accumulator.observe(request, response, true, appBuild, now, detailed) { io.magicmobile.android.core.Decisions.plain(it) }) {
                         val game = accumulator.game
@@ -470,38 +470,6 @@ suspend fun OnDeviceDeckLinkImporter.archidektDecks(username: String, page: Int 
     catch (failure: StudioHTTP.HttpFailure) { throw OnDeviceDeckLinkImporter.ImportError("Archidekt unavailable (HTTP ${failure.status}).") }
     catch (failure: Exception) { throw OnDeviceDeckLinkImporter.ImportError("Archidekt unavailable, timed out, or returned an unsupported response.") }
     return OnDeviceDeckLinkImporter.decodeArchidektDeckPage(text)
-}
-
-/** On-device text recognition for a decklist photo. The image never leaves the phone. */
-object DeckStudioOCR {
-    suspend fun recognize(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { readBounded(it, 20 * 1024 * 1024) }
-            ?: throw ResolutionError("Could not read the chosen image.")
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth !in 1..20_000 || bounds.outHeight !in 1..20_000 || bounds.outWidth.toLong() * bounds.outHeight > 80_000_000L) {
-            throw ResolutionError("The image is unsupported or too large to read safely.")
-        }
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 3000) sample *= 2
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
-            ?: throw ResolutionError("The image is unsupported or too large to read safely.")
-        val exif = runCatching { ExifInterface(bytes.inputStream()) }.getOrNull()
-        val transform = Matrix().apply { if (exif?.isFlipped == true) postScale(-1f, 1f); postRotate((exif?.rotationDegrees ?: 0).toFloat()) }
-        val oriented = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, transform, true)
-        if (oriented !== bitmap) bitmap.recycle()
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val text = suspendCancellableCoroutine<String> { continuation ->
-            recognizer.process(InputImage.fromBitmap(oriented, 0))
-                .addOnSuccessListener { result -> if (continuation.isActive) continuation.resume(result.text) }
-                .addOnFailureListener { failure -> if (continuation.isActive) continuation.resumeWithException(failure) }
-                .addOnCompleteListener { recognizer.close(); oriented.recycle() }
-        }
-        if (text.isBlank() || text.toByteArray().size > OnDeviceDeckLinkImporter.maximumBytes) {
-            throw ResolutionError("No usable decklist text was found. Try a clearer image or paste an export.")
-        }
-        text
-    }
 }
 
 /** A long-lived scope for store writes that must finish after a screen closes. */

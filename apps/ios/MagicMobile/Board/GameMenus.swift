@@ -269,8 +269,10 @@ struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.gameConcede) private var gameConcede
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.friendMessages) private var friendMessages
     @State private var confirmingConcede = false
     @State private var showHowToPlay = false
+    @State private var showMessages = false
     let snapshot: GameSnapshot
     let concedeAction: LegalAction?
     let runAction: (LegalAction) -> Void
@@ -331,6 +333,25 @@ struct GameManagementMenu: View {
                     .buttonStyle(CompactActionButtonStyle(isPrimary: false))
                     .accessibilityIdentifier("board.menu.howToPlay")
 
+                    // Friends' messages without leaving the game.
+                    if let friendMessages {
+                        Button { showMessages = true } label: {
+                            HStack(spacing: 8) {
+                                Label("Messages", systemImage: "bubble.left.and.bubble.right.fill")
+                                if friendMessages.unread > 0 {
+                                    Text("\(friendMessages.unread)")
+                                        .font(.system(size: 11, weight: .black)).monospacedDigit().foregroundStyle(.white)
+                                        .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
+                                        .background(TavernPalette.ember, in: Capsule())
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                        .accessibilityValue(friendMessages.unread > 0 ? "\(friendMessages.unread) unread" : "")
+                        .accessibilityIdentifier("board.menu.messages")
+                    }
+
                     RememberedChoicesPanel()
 
                     GameMenuSectionLabel(text: "Options")
@@ -357,6 +378,7 @@ struct GameManagementMenu: View {
             if tavern && TavernUIKit.available { Color.clear } else { BattlefieldSurface().ignoresSafeArea() }
         }
         .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
+        .sheet(isPresented: $showMessages) { friendMessages?.hub() }
         .tavernConfirmation(
             active: tavern,
             title: "Concede this game?",
@@ -449,16 +471,18 @@ struct PhaseChip: View {
 
 /// Holographic sheen on the held card image only (never its rules text): a slow
 /// glint sweep with a slight tilt. Full board effects without Reduce Motion only;
-/// the timeline exists only while the inspector is on screen.
+/// the timeline exists only while the inspector is on screen. It steps with the board's breathing glows
+/// (AmbientTimelineSchedule), so the two never alternate frames, and at half rate while the phone is hot.
 struct InspectionFoil: ViewModifier {
     let size: CGSize
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var heat = DeviceHeat.shared
     @State private var start = Date()
 
     func body(content: Content) -> some View {
         if BoardFXLevel(rawValue: level) == .full && !reduceMotion {
-            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+            TimelineView(AmbientTimelineSchedule(interval: heat.ambientInterval)) { timeline in
                 let t = timeline.date.timeIntervalSince(start)
                 content
                     .colorEffect(ShaderLibrary.mmFoil(.float2(size), .float(t * 0.3), .float(0.55)))

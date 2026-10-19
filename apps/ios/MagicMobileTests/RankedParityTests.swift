@@ -192,7 +192,7 @@ final class PlayerRecordStoreTests: XCTestCase {
         XCTAssertNil(play(store, .quick, .win))
         XCTAssertEqual(store.rank.position, .start)
         let change = play(store, .ranked, .win)
-        XCTAssertEqual(change?.after, RankPosition(tier: .bronze, division: 4, pips: 1))
+        XCTAssertEqual(change?.after, RankPosition(tier: .bronze, division: 4, pips: 2))
         XCTAssertEqual(store.rank.wins, 1)
         XCTAssertEqual(store.matches.count, 2)
         XCTAssertEqual(store.recentAIDecks, ["ai-edgar-markov-core"])

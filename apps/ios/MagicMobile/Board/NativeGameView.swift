@@ -309,6 +309,7 @@ struct NativeGameView: View {
             let metrics = BattlefieldLayoutMetrics(proxy: proxy,
                 centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil))
             let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
+            let chosenIds = GameBoardInteractionState.boardChosenTargetIds(for: snapshot)
             let combatHighlights = CombatHighlightSet(
                 selection: combatSelection,
                 actions: snapshot.legalActions ?? [],
@@ -322,11 +323,11 @@ struct NativeGameView: View {
             )
 
             ZStack {
-                BattlefieldRow(title: "Opponent board", cards: landscapePermanents(opponent.zones.battlefield, resources: false), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.opponentBattlefieldRect.height, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                BattlefieldRow(title: "Opponent board", cards: landscapePermanents(opponent.zones.battlefield, resources: false), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.opponentBattlefieldRect.height, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
                     .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
 
-                BattlefieldRow(title: "Opponent lands", cards: landscapePermanents(opponent.zones.battlefield, resources: true), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, adaptsToDensity: true, availableHeight: metrics.opponentLandsRect.height, arrangement: .landscapeResources, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                BattlefieldRow(title: "Opponent lands", cards: landscapePermanents(opponent.zones.battlefield, resources: true), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, adaptsToDensity: true, availableHeight: metrics.opponentLandsRect.height, arrangement: .landscapeResources, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
                     .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
 
@@ -337,11 +338,11 @@ struct NativeGameView: View {
                         .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
                 }
 
-                BattlefieldRow(title: "Your board", cards: landscapePermanents(human.zones.battlefield, resources: false), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.playerBattlefieldRect.height, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                BattlefieldRow(title: "Your board", cards: landscapePermanents(human.zones.battlefield, resources: false), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, adaptsToDensity: true, availableHeight: metrics.playerBattlefieldRect.height, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
                     .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                BattlefieldRow(title: "Your lands", cards: landscapePermanents(human.zones.battlefield, resources: true), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, adaptsToDensity: true, availableHeight: metrics.playerLandsRect.height, arrangement: .landscapeResources, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                BattlefieldRow(title: "Your lands", cards: landscapePermanents(human.zones.battlefield, resources: true), legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, adaptsToDensity: true, availableHeight: metrics.playerLandsRect.height, arrangement: .landscapeResources, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                     .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 
@@ -1075,6 +1076,7 @@ struct NativeGameView: View {
     private func ingestBoardFX(_ snapshot: GameSnapshot) {
         let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
         let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt)
+        BoardPresentationHold.shared.record(BoardFXRevisionKey(snapshot: snapshot), until: boardFX.smartPassHoldUntil)
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
         if boardSoundsEnabled {
@@ -1139,6 +1141,8 @@ struct NativeGameView: View {
 
     private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
+            // Touches and game changes keep the breathing glows awake (BoardActivity).
+            .background { BoardTouchActivity() }
             .modifier(BoardImpactShake(animatableData: boardShake, amplitude: boardShakeAmplitude))
             .overlay { if hitVignette > 0 { BoardHitVignette(strength: hitVignette) } }
             .environment(\.boardFXCardMotion, boardFX.cardMotion(viewerID: snapshot.viewerID))
@@ -1146,6 +1150,7 @@ struct NativeGameView: View {
             .environment(\.boardHUDPulse, hudPulse)
             .environment(\.boardZoneInspectionAction, inspectBoardZone)
             .onChange(of: BoardFXRevisionKey(snapshot: snapshot), initial: true) { _, _ in
+                BoardActivity.shared.note()
                 ingestBoardFX(snapshot)
                 gameStats.record(snapshot)
                 combatLogReasons.observe(snapshot)
@@ -1449,6 +1454,7 @@ struct NativeGameView: View {
                 tavernDock: isTavernBoard)
             let actions = snapshot.legalActions ?? []
             let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
+            let chosenIds = GameBoardInteractionState.boardChosenTargetIds(for: snapshot)
             let combatHighlights = CombatHighlightSet(
                 selection: combatSelection,
                 actions: actions,
@@ -1480,11 +1486,11 @@ struct NativeGameView: View {
                 .frame(width: metrics.topHUDRect.width, height: metrics.topHUDRect.height)
                 .position(x: metrics.topHUDRect.midX, y: metrics.topHUDRect.midY)
 
-                PortraitBattlefieldPermanentGroup(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, availableHeight: metrics.opponentBattlefieldRect.height, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                PortraitBattlefieldPermanentGroup(title: "Opponent board", cards: nonLandPermanents(opponent.zones.battlefield), legalActions: actions, targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.opponentBattlefieldRect.width, availableHeight: metrics.opponentBattlefieldRect.height, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.opponentBattlefieldRect.width, height: metrics.opponentBattlefieldRect.height)
                     .position(x: metrics.opponentBattlefieldRect.midX, y: metrics.opponentBattlefieldRect.midY)
 
-                BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                BattlefieldRow(title: "Opponent lands", cards: landPermanents(opponent.zones.battlefield), legalActions: actions, targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, flipped: true, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.opponentLandsRect.width, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.opponentLandsRect.width, height: metrics.opponentLandsRect.height)
                     .position(x: metrics.opponentLandsRect.midX, y: metrics.opponentLandsRect.midY)
 
@@ -1527,11 +1533,11 @@ struct NativeGameView: View {
                 .frame(width: metrics.centerStripRect.width, height: metrics.centerStripRect.height)
                 .position(x: metrics.centerStripRect.midX, y: metrics.centerStripRect.midY)
 
-                PortraitBattlefieldPermanentGroup(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, availableHeight: metrics.playerBattlefieldRect.height, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                PortraitBattlefieldPermanentGroup(title: "Your board", cards: nonLandPermanents(human.zones.battlefield), legalActions: actions, targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.permanentCardWidth, cardHeight: metrics.permanentCardHeight, rowWidth: metrics.playerBattlefieldRect.width, availableHeight: metrics.playerBattlefieldRect.height, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.playerBattlefieldRect.width, height: metrics.playerBattlefieldRect.height)
                     .position(x: metrics.playerBattlefieldRect.midX, y: metrics.playerBattlefieldRect.midY)
 
-                BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: actions, targetableIds: targetableIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+                BattlefieldRow(title: "Your lands", cards: landPermanents(human.zones.battlefield), legalActions: actions, targetableIds: targetableIds, chosenIds: chosenIds, combatHighlightIds: combatHighlights.cardIds, selectedCard: $selectedCard, inspectedCard: $inspectedCard, cardWidth: metrics.landCardWidth, cardHeight: metrics.landCardHeight, rowWidth: metrics.playerLandsRect.width, allowsManaUndo: true, manaPaymentActive: snapshot.manaPayment?.active == true, runAction: runAction, runTargetAction: { submitTarget($0, snapshot: snapshot) }, runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
                     .frame(width: metrics.playerLandsRect.width, height: metrics.playerLandsRect.height)
                     .position(x: metrics.playerLandsRect.midX, y: metrics.playerLandsRect.midY)
 

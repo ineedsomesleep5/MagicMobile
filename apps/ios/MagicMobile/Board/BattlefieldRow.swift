@@ -128,6 +128,8 @@ struct BattlefieldRow: View {
     let cards: [ZoneCard]
     let legalActions: [LegalAction]
     let targetableIds: Set<String>
+    /// Already chosen in a multi-card target prompt (GameBoardInteractionState.boardChosenTargetIds).
+    var chosenIds: Set<String> = []
     let combatHighlightIds: Set<String>
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
@@ -144,15 +146,78 @@ struct BattlefieldRow: View {
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
     @State private var expandedGroupIds: Set<String> = []
+    /// Piles opened with a hold while choosing from them: they stack again once the choice or combat ends. A pile opened
+    /// just to look stays open until its Stack chip (Caleb, 2026-10-16).
+    @State private var choiceOpenedGroupIds: Set<String> = []
     @State private var scrollOffsets = BattlefieldRowScrollOffsets()
+    @State private var layoutCache = BattlefieldRowLayoutCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
 
-    private var visibleCards: [ZoneCard] {
-        cardGroups.flatMap { group in
-            isExpanded(group) ? group.cards : [group.representative]
-        }
+    /// The row's groups, sizes and arrangement, recomputed only when an input changes.
+    private var layout: BattlefieldRowLayout {
+        layoutCache.layout(BattlefieldRowLayout.Input(
+            flipped: flipped, adaptsToDensity: adaptsToDensity, arrangement: arrangement, rowWidth: rowWidth,
+            cardWidth: cardWidth, cardHeight: cardHeight, availableHeight: availableHeight,
+            expandedGroupIds: expandedGroupIds, chosenIds: chosenIds, targetableIds: targetableIds,
+            combatHighlightIds: combatHighlightIds, cards: cards), make: makeLayout)
     }
+
+    private func makeLayout() -> BattlefieldRowLayout {
+        let groups = BattlefieldAttachments.groups(cards)
+        let rendered = groups.flatMap(displayGroups)
+        let permanent = availableHeight.map { height in
+            let proposed = arrangement.rows(rendered, flipped: flipped,
+                twoRows: arrangement == .landscapeResources || rendered.count > 5)
+            return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
+                height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
+        }
+        let width: CGFloat
+        if let permanent {
+            width = permanent.cardWidth
+        } else if adaptsToDensity {
+            width = BattlefieldAdaptiveSizing.cardWidth(
+                availableRowWidth: rowWidth, maxCardWidth: cardWidth,
+                heightRatio: 1,
+                tappedSlots: Array(repeating: false, count: min(5, rendered.count)))
+        } else {
+            width = cardWidth
+        }
+        return BattlefieldRowLayout(
+            groups: groups, rendered: rendered, permanent: permanent, cardWidth: width,
+            cardHeight: cardHeight * width / max(cardWidth, 1),
+            arranged: arrangement.rows(rendered, flipped: flipped, twoRows: (permanent?.rows ?? 1) == 2),
+            stackChips: expandedGroupIds.isEmpty ? [:] : Self.stackChipPiles(groups, expanded: expandedGroupIds))
+    }
+
+    /// The tiles a group shows: every card when it is open; otherwise one pile, with the cards already chosen from it
+    /// pulled out beside it as their own tiles (Caleb, 2026-10-15), so the pile's next tap chooses another one and a
+    /// tap on a pulled-out card takes it back.
+    private func displayGroups(_ group: BattlefieldCardGroup) -> [BattlefieldCardGroup] {
+        Self.displayGroups(group, expanded: isExpanded(group), chosenIds: chosenIds)
+    }
+
+    static func displayGroups(_ group: BattlefieldCardGroup, expanded: Bool, chosenIds: Set<String>) -> [BattlefieldCardGroup] {
+        func single(_ card: ZoneCard) -> BattlefieldCardGroup { BattlefieldCardGroup(id: "card:" + card.instanceId, cards: [card]) }
+        if expanded { return group.cards.map(single) }
+        guard group.count > 1, !group.id.hasPrefix("attachment:") else { return [group] }
+        let chosen = group.cards.filter { isChosen($0, chosenIds) }
+        guard !chosen.isEmpty else { return [group] }
+        let rest = group.cards.filter { !isChosen($0, chosenIds) }
+        return (rest.isEmpty ? [] : [BattlefieldCardGroup(id: group.id, cards: rest)]) + chosen.map(single)
+    }
+
+    /// The card a tap on a pile chooses next: the first that can be targeted and isn't chosen yet.
+    static func nextTargetable(in group: BattlefieldCardGroup, targetableIds: Set<String>, chosenIds: Set<String>) -> ZoneCard? {
+        group.cards.first { !$0.isPhasedOut && !isChosen($0, chosenIds) &&
+                            (targetableIds.contains($0.instanceId) || targetableIds.contains($0.id)) }
+    }
+
+    static func isChosen(_ card: ZoneCard, _ chosenIds: Set<String>) -> Bool {
+        chosenIds.contains(card.instanceId) || chosenIds.contains(card.id)
+    }
+
+    private func isChosen(_ card: ZoneCard) -> Bool { Self.isChosen(card, chosenIds) }
 
     private func isExpanded(_ group: BattlefieldCardGroup) -> Bool {
         guard !group.id.hasPrefix("attachment:") else { return false }
@@ -167,10 +232,32 @@ struct BattlefieldRow: View {
     /// From this many identical cards a group stays stacked while it can be chosen.
     static let stackThreshold = 8
 
+    /// The piles still open once a choice or combat has ended: the ones opened only to look.
+    static func openAfterChoice(expanded: Set<String>, openedForChoice: Set<String>) -> Set<String> {
+        expanded.subtracting(openedForChoice)
+    }
+
+    /// The last card of each pile the player opened, keyed to that pile: it carries the Stack chip.
+    static func stackChipPiles(_ groups: [BattlefieldCardGroup], expanded: Set<String>) -> [String: String] {
+        var piles: [String: String] = [:]
+        for group in groups where group.count > 1 && expanded.contains(group.id) && !group.id.hasPrefix("attachment:") {
+            if let last = group.cards.last { piles[last.instanceId] = group.id }
+        }
+        return piles
+    }
+
+    private func restack(_ groupId: String) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82)) {
+            expandedGroupIds.remove(groupId)
+            choiceOpenedGroupIds.remove(groupId)
+        }
+        GameHaptics.selection()
+    }
+
     /// The card a tap on a stack acts on: the first that can be targeted, then the first that
     /// combat highlights; nil when the stack simply opens.
     private func nextChoosable(in group: BattlefieldCardGroup) -> (card: ZoneCard, targetable: Bool)? {
-        if let card = group.cards.first(where: { !$0.isPhasedOut && (targetableIds.contains($0.instanceId) || targetableIds.contains($0.id)) }) {
+        if let card = Self.nextTargetable(in: group, targetableIds: targetableIds, chosenIds: chosenIds) {
             return (card, true)
         }
         if let card = group.cards.first(where: { combatHighlightIds.contains($0.instanceId) || combatHighlightIds.contains($0.id) }) {
@@ -186,43 +273,19 @@ struct BattlefieldRow: View {
         }
     }
 
-    private var renderedCardWidth: CGFloat {
-        if let permanentLayout { return permanentLayout.cardWidth }
-        guard adaptsToDensity else { return cardWidth }
-        return BattlefieldAdaptiveSizing.cardWidth(
-            availableRowWidth: rowWidth, maxCardWidth: cardWidth,
-            heightRatio: 1,
-            tappedSlots: Array(repeating: false, count: min(5, visibleCards.count)))
-    }
-
-    private var renderedCardHeight: CGFloat {
-        cardHeight * renderedCardWidth / max(cardWidth, 1)
-    }
-
-    private var permanentLayout: ArenaPermanentLayout? {
-        availableHeight.map { height in
-            let proposed = arrangement.rows(renderedGroups, flipped: flipped,
-                twoRows: arrangement == .landscapeResources || visibleCardCount > 5)
-            return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
-                height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
-        }
-    }
-
-    private var renderedGroups: [BattlefieldCardGroup] {
-        cardGroups.flatMap { group in
-            isExpanded(group) ? group.cards.map { BattlefieldCardGroup(id: "card:" + $0.instanceId, cards: [$0]) } : [group]
-        }
-    }
+    private var renderedCardWidth: CGFloat { layout.cardWidth }
+    private var renderedCardHeight: CGFloat { layout.cardHeight }
+    private var permanentLayout: ArenaPermanentLayout? { layout.permanent }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             let rows = permanentLayout?.rows ?? 1
-            let arranged = arrangement.rows(renderedGroups, flipped: flipped, twoRows: rows == 2)
+            let arranged = layout.arranged
             if arrangement == .landscapeResources && rows == 2 {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(0..<2, id: \.self) { row in
                         ScrollView(.horizontal, showsIndicators: rowContentWidth(arranged[row]) > rowWidth) {
-                            rowTiles(arranged[row])
+                            rowTiles(arranged[row], tucked: row > 0)
                                 .padding(.horizontal, 8)
                                 .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
                                 .reportsBattlefieldRowOffset(row)
@@ -237,7 +300,7 @@ struct BattlefieldRow: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: showsOverflowIndicator) {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row]) }
+                        ForEach(0..<rows, id: \.self) { row in rowTiles(arranged[row], tucked: row > 0) }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
@@ -250,6 +313,13 @@ struct BattlefieldRow: View {
             }
         }
         .animation(GameBoardMotion.reduced(reduceMotion) ? nil : .easeInOut(duration: 0.2), value: renderedCardWidth)
+        .onChange(of: targetableIds.isEmpty && combatHighlightIds.isEmpty) { _, settled in
+            guard settled, !choiceOpenedGroupIds.isEmpty else { return }
+            withAnimation(GameBoardMotion.reduced(reduceMotion) ? nil : .spring(response: 0.4, dampingFraction: 0.82)) {
+                expandedGroupIds = Self.openAfterChoice(expanded: expandedGroupIds, openedForChoice: choiceOpenedGroupIds)
+                choiceOpenedGroupIds = []
+            }
+        }
     }
 
     private func rowContentWidth(_ groups: [BattlefieldCardGroup]) -> CGFloat {
@@ -267,35 +337,54 @@ struct BattlefieldRow: View {
     }
 
     @ViewBuilder
-    private func rowTiles(_ groups: [BattlefieldCardGroup]) -> some View {
+    /// `tucked`: a row sits above this one in the lane, so attachment tabs stay inside their creature.
+    private func rowTiles(_ groups: [BattlefieldCardGroup], tucked: Bool = false) -> some View {
         HStack(alignment: .center, spacing: 4) {
             ForEach(groups) { group in
-                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group) }
+                if group.id.hasPrefix("attachment:") { attachmentGroupTile(group, tucked: tucked) }
                 else if group.count > 1 { collapsedGroupTile(group) }
                 else { battlefieldCardTile(group.representative) }
             }
         }
     }
 
-    private var cardGroups: [BattlefieldCardGroup] {
-        BattlefieldAttachments.groups(cards)
-    }
-
-    private var visibleCardCount: Int {
-        cardGroups.reduce(0) { count, group in
-            count + (isExpanded(group) ? group.count : 1)
-        }
-    }
+    private var cardGroups: [BattlefieldCardGroup] { layout.groups }
 
     /// Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab
     /// above it. The creature keeps its full size (Caleb, 2026-10-02): the tabs rise above it,
-    /// over the gap or the row above, since the lanes do not clip.
+    /// over the gap. In a lower row (`tucked`) they would cover the power and toughness of the card
+    /// above (Caleb, 2026-10-15), so there they sit inside the creature's top edge instead.
     @ViewBuilder
-    private func attachmentGroupTile(_ group: BattlefieldCardGroup) -> some View {
+    private func attachmentGroupTile(_ group: BattlefieldCardGroup, tucked: Bool = false) -> some View {
         let attachments = Array(group.cards.dropFirst())
         // Two tabs at most; the rest count on the top tab.
         let shown = Array(attachments.prefix(2))
         let peek = max(11, min(14, renderedCardHeight * 0.13))
+        if tucked {
+            battlefieldCardTile(group.representative)
+                .overlay(alignment: .top) {
+                    VStack(spacing: 1) {
+                        ForEach(Array(shown.enumerated()), id: \.element.id) { index, card in
+                            AttachmentNameTab(card: card, height: peek,
+                                              more: index == shown.count - 1 ? attachments.count - shown.count : 0)
+                                .contentShape(Rectangle())
+                                .onCardInteraction(tap: {
+                                    let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
+                                    handleCardTap(card, action: legalAction(for: card), targetable: targetable, combatHighlighted: false)
+                                }, inspect: {
+                                    inspectedCard = card
+                                    GameHaptics.impact()
+                                }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(card.card.name)
+                                .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
+                        }
+                    }
+                    .padding(.top, peek * 0.35)
+                }
+                .frame(width: renderedCardWidth, height: renderedCardHeight)
+                .accessibilityElement(children: .contain)
+        } else {
         ZStack(alignment: .bottom) {
             ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
                 battlefieldCardTile(card)
@@ -310,6 +399,7 @@ struct BattlefieldRow: View {
         }
         .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
         .accessibilityElement(children: .contain)
+        }
     }
 
     @ViewBuilder
@@ -370,8 +460,9 @@ struct BattlefieldRow: View {
             }
         }, inspect: {
             if nextChoosable(in: group) != nil {
-                // Hold to open the pile and pick a particular card.
+                // Hold to open the pile and pick a particular card; it stacks again when the choice ends.
                 expandedGroupIds.insert(group.id)
+                choiceOpenedGroupIds.insert(group.id)
                 GameHaptics.impact()
             } else {
                 inspectedCard = card
@@ -392,13 +483,14 @@ struct BattlefieldRow: View {
 
     @ViewBuilder
     private func battlefieldCardTile(_ card: ZoneCard) -> some View {
+        let pile = layout.stackChips[card.instanceId]
         let action = legalAction(for: card)
         let targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
         let combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
 
         ArenaBattlefieldCard(
             card: card,
-            selected: selectedCard?.id == card.id,
+            selected: selectedCard?.id == card.id || isChosen(card),
             legal: action != nil,
             targetable: targetable || combatHighlighted,
             zoneName: title,
@@ -406,15 +498,34 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
+        .overlay(alignment: .topTrailing) {
+            // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
+            if isChosen(card) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: max(9, renderedCardWidth * 0.11), weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: max(18, renderedCardWidth * 0.22), height: max(18, renderedCardWidth * 0.22))
+                    .background(TavernPalette.ember, in: Circle())
+                    .overlay(Circle().stroke(MagicPalette.antiqueGold, lineWidth: 1.2))
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .offset(x: 3, y: -3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { [card.instanceId: $0] }
         .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
+        .accessibilityAddTraits(isChosen(card) ? .isSelected : [])
         .onCardInteraction(tap: {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
         }, inspect: {
             inspectedCard = card
             GameHaptics.impact()
         }, release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+        .overlay(alignment: .bottomTrailing) {
+            if let pile { BattlefieldStackChip(cardWidth: renderedCardWidth) { restack(pile) } }
+        }
         .offset(y: card.tapped == true && (permanentLayout?.rows ?? 1) == 1 ? 5 : 0)
         .accessibilityAction(named: Text(targetable ? "Choose target" : "Select")) {
             handleCardTap(card, action: action, targetable: targetable, combatHighlighted: combatHighlighted)
@@ -444,7 +555,8 @@ struct BattlefieldRow: View {
     private var showsOverflowIndicator: Bool {
         if cardGroups.contains(where: { $0.id.hasPrefix("attachment:") }) { return true }
         if let permanentLayout { return permanentLayout.contentWidth > rowWidth }
-        let contentWidth = 16 + CGFloat(visibleCards.count) * renderedCardWidth + CGFloat(max(visibleCardCount - 1, 0)) * 4
+        let visible = layout.rendered.count
+        let contentWidth = 16 + CGFloat(visible) * renderedCardWidth + CGFloat(max(visible - 1, 0)) * 4
         return contentWidth > rowWidth
     }
 
@@ -465,6 +577,85 @@ struct BattlefieldRow: View {
 
     private static let tapRunnableActionTypes = Set(["make_mana", "undo_mana"])
     private static let manaUndoActionTypes = Set(["undo_mana"])
+}
+
+/// Everything BattlefieldRow derives from its cards, sizes and selection. The tile builders read the card width about a
+/// dozen times per tile, and every read used to group the whole row again; Instruments on Caleb's iPhone (2026-10-18)
+/// put that grouping at about a tenth of the main thread, during scrolls and animations as well as new snapshots.
+struct BattlefieldRowLayout {
+    /// Cheap fields first: the synthesized == stops at the first difference, and the sets and the card array compare by
+    /// storage before contents.
+    struct Input: Equatable {
+        let flipped: Bool
+        let adaptsToDensity: Bool
+        let arrangement: BattlefieldRowArrangement
+        let rowWidth: CGFloat
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        let availableHeight: CGFloat?
+        let expandedGroupIds: Set<String>
+        let chosenIds: Set<String>
+        let targetableIds: Set<String>
+        let combatHighlightIds: Set<String>
+        let cards: [ZoneCard]
+    }
+
+    let groups: [BattlefieldCardGroup]
+    /// The tiles in order: open piles spread out, chosen cards pulled out of theirs.
+    let rendered: [BattlefieldCardGroup]
+    let permanent: ArenaPermanentLayout?
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    /// `rendered` split into the rows the row shows.
+    let arranged: [[BattlefieldCardGroup]]
+    /// The last card of each opened pile, keyed to that pile (it carries the Stack chip).
+    let stackChips: [String: String]
+}
+
+/// Holds the last BattlefieldRowLayout. A reference type on purpose: it is written while the body is evaluated and must
+/// not invalidate the view.
+final class BattlefieldRowLayoutCache {
+    private var input: BattlefieldRowLayout.Input?
+    private var cached: BattlefieldRowLayout?
+
+    func layout(_ input: BattlefieldRowLayout.Input, make: () -> BattlefieldRowLayout) -> BattlefieldRowLayout {
+        if let cached, self.input == input {
+            // Keep the newest storage, so the next comparison is by identity.
+            self.input = input
+            return cached
+        }
+        let made = make()
+        self.input = input
+        cached = made
+        return made
+    }
+}
+
+/// The brass chip on the last card of a pile the player spread out: tap to stack it back together.
+struct BattlefieldStackChip: View {
+    let cardWidth: CGFloat
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: "square.stack.3d.down.right.fill").font(.system(size: 9, weight: .black))
+                if cardWidth >= 44 { Text("Stack").font(.system(size: 10, weight: .heavy, design: .serif)) }
+            }
+            .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04))
+            .padding(.horizontal, 6)
+            .frame(minHeight: 20)
+            .background(Capsule().fill(BrandTheme.brassGradient))
+            .overlay(Capsule().strokeBorder(Color.black.opacity(0.45), lineWidth: 1))
+            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+            .padding(8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .offset(x: 10, y: 10)
+        .accessibilityLabel("Stack the group")
+        .accessibilityIdentifier("battlefield.restack")
+    }
 }
 
 enum HandFanLayout {

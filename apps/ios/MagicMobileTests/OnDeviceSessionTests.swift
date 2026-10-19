@@ -291,6 +291,66 @@ final class OnDeviceSessionTests: XCTestCase {
         }
     }
 
+    /// Smart pass lets the board finish an effect it is showing (an opponent's removal spell) before
+    /// passing, and passes that same prompt once the effect is over.
+    @MainActor
+    func testSmartPassWaitsForTheBoardToFinishShowingAnEffect() async throws {
+        let poll = try fixture("2p-priority")
+        var bare = poll.raw.object!
+        var root = bare["snapshot"]!.object!; var view = root["gameView"]!.object!
+        view["canPlayObjects"] = .object(["objects": .object([:])])
+        root["gameView"] = .object(view); bare["snapshot"] = .object(root)
+        let transport = SessionFixtureTransport(poll: .object(bare))
+        let session = OnDeviceSession()
+        let hold = BoardPresentationHold()
+        session.presentationHold = hold
+        hold.record(nil, until: Date().addingTimeInterval(0.8))
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true,
+                                 smartPass: .init(), close: {})
+        try await Task.sleep(for: .milliseconds(400))
+        let early = await transport.responses()
+        XCTAssertTrue(early.isEmpty, "no pass while the board is still showing the effect")
+        try await waitForResponses(1, transport: transport)
+        try await waitUntilIdle(session)
+        let sent = await transport.responses()
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?["command"]?["promptId"]?.string, poll.prompt?.id)
+        try await session.close()
+    }
+
+    /// Full control (long-press Pass): smart pass stops at every priority until it is turned off or the turn ends,
+    /// and a pass it makes is noted in the game log.
+    @MainActor
+    func testFullControlHoldsSmartPassAndPassesAreLogged() async throws {
+        let poll = try fixture("2p-priority")
+        var bare = poll.raw.object!
+        var root = bare["snapshot"]!.object!; var view = root["gameView"]!.object!
+        view["canPlayObjects"] = .object(["objects": .object([:])])
+        root["gameView"] = .object(view); bare["snapshot"] = .object(root)
+        let transport = SessionFixtureTransport(poll: .object(bare))
+        let session = OnDeviceSession()
+        session.presentationHold = BoardPresentationHold()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID,
+                                 seatID: poll.seatID, autoPoll: false, allowsSeatScopedAutoYield: true,
+                                 smartPass: .init(), close: {})
+        // Before the board-ingest wait ends: the pass not yet sent is called off.
+        session.toggleFullControl()
+        XCTAssertTrue(session.isFullControl)
+        try await Task.sleep(for: .milliseconds(400))
+        let held = await transport.responses()
+        XCTAssertTrue(held.isEmpty, "full control let smart pass answer")
+        session.toggleFullControl()
+        XCTAssertFalse(session.isFullControl)
+        try await waitForResponses(1, transport: transport)
+        try await waitUntilIdle(session)
+        let sent = await transport.responses()
+        XCTAssertEqual(sent.count, 1)
+        try await session.refresh()
+        XCTAssertTrue(session.snapshot?.log.contains { $0.message.hasPrefix("Auto-passed:") } == true)
+        try await session.close()
+    }
+
     /// Regression: Skip tapped while a poll is in flight used to be disabled for that
     /// instant and silently ignored. It now arms and passes once the poll finishes.
     @MainActor
@@ -939,6 +999,47 @@ final class OnDeviceSessionTests: XCTestCase {
         await transport.loseHostAnswers(1)
         for _ in 0..<200 where session.errorMessage == nil { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(session.status, "Updates interrupted. Refresh to retry.")
+        try await session.close()
+    }
+
+    /// A reply identical to the last applied one comes back as that poll, undecoded; any change in the reply or the
+    /// request is decoded again.
+    func testPollReaderReturnsTheAppliedPollForARepeatedReply() async throws {
+        let poll = try fixture("2p-priority")
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let reader = OnDevicePollReader(transport: transport)
+        let first = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: 0, previous: nil)
+        XCTAssertFalse(first.repeated)
+        XCTAssertEqual(first.exchange.poll, poll)
+        let again = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: 0, previous: first.exchange)
+        XCTAssertTrue(again.repeated)
+        XCTAssertEqual(again.exchange.poll, poll)
+        let otherCursor = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: poll.revision, previous: first.exchange)
+        XCTAssertFalse(otherCursor.repeated, "a different request is decoded even when the reply is the same")
+        await transport.consumePrompt()
+        let changed = try await reader.poll(matchID: poll.matchID, seatID: poll.seatID, after: 0, previous: first.exchange)
+        XCTAssertFalse(changed.repeated)
+        XCTAssertEqual(changed.exchange.poll.revision, poll.revision + 1)
+        XCTAssertNil(changed.exchange.poll.prompt)
+        let pollCount = await transport.pollCount()
+        XCTAssertEqual(pollCount, 4, "every read still asks the engine")
+    }
+
+    @MainActor
+    func testSessionWithPollReaderAppliesChangesAndKeepsRepeatedPolls() async throws {
+        let poll = try fixture("2p-priority")
+        let transport = SessionFixtureTransport(poll: poll.raw)
+        let session = OnDeviceSession()
+        try await session.attach(client: EngineClient(transport: transport), matchID: poll.matchID, seatID: poll.seatID,
+                                 autoPoll: false, pollReader: OnDevicePollReader(transport: transport), close: {})
+        let firstRevision = session.snapshot?.bridgeRevision
+        XCTAssertNotNil(session.snapshot?.legalActions?.first(where: { $0.type == "pass_priority" }))
+        try await session.refresh()
+        XCTAssertEqual(session.snapshot?.bridgeRevision, firstRevision)
+        await transport.consumePrompt()
+        try await session.refresh()
+        XCTAssertEqual(session.snapshot?.bridgeRevision, firstRevision.map { $0 + 1 })
+        XCTAssertNil(session.snapshot?.legalActions?.first(where: { $0.type == "pass_priority" }))
         try await session.close()
     }
 

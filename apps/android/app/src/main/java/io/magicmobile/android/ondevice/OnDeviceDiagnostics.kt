@@ -407,6 +407,31 @@ fun OnDeviceDiagnosticsEntry(setup: OnDeviceSetupModel) {
                 if (report != null) Text(report, color = MagicPalette.parchment, style = SfText.caption(design = SfDesign.MONOSPACED))
                 else if (store.errorMessage == null) Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.",
                     color = MagicPalette.parchment, style = SfText.footnote())
+                // Developer replays (scripts/dev/replay_record.sh): the record shows every hand and library order.
+                val latestRecord = remember { java.io.File(context.filesDir, "Profile/GameRecords")
+                    .listFiles { file -> file.name.endsWith(".json") }.orEmpty().maxByOrNull { it.name } }
+                if (latestRecord != null) {
+                    Text("Your last game's record lists every decision so it can be replayed on a computer. It shows your hands and library order.",
+                        color = MagicPalette.parchment, style = SfText.footnote())
+                    IosTextButton("Share last game record", {
+                        val text = runCatching { latestRecord.readText() }.getOrNull() ?: return@IosTextButton
+                        val send = Intent(Intent.ACTION_SEND).apply { type = "application/json"; putExtra(Intent.EXTRA_TEXT, text) }
+                        runCatching { context.startActivity(Intent.createChooser(send, "Share last game record")) }
+                    }, Modifier.semantics { contentDescription = "ondevice.shareGameRecord" }, color = BrandTheme.ember)
+                }
+                // Memory peak and heat per game, to compare builds on this phone. Nothing about cards or players.
+                val performance = remember {
+                    io.magicmobile.android.game.GamePerformanceLog.section(io.magicmobile.android.ui.GamePerformanceRecorder.entries,
+                        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).let { "${it.versionName} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(it)})" } }.getOrDefault("unknown"))
+                }
+                if (performance != null) {
+                    Text("Recent games' memory and heat, to compare app versions on this phone.", color = MagicPalette.parchment, style = SfText.footnote())
+                    IosTextButton("Share game performance", {
+                        val send = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, performance) }
+                        runCatching { context.startActivity(Intent.createChooser(send, "Share game performance")) }
+                    }, Modifier.semantics { contentDescription = "ondevice.sharePerformance" }, color = BrandTheme.ember)
+                    Text(performance, color = MagicPalette.parchment, style = SfText.caption(design = SfDesign.MONOSPACED))
+                }
                 IosTextButton("Done", { open = false }, color = BrandTheme.ember, bold = true)
             }
         }

@@ -38,12 +38,17 @@ enum RankTier: Int, CaseIterable, Codable, Comparable, Sendable {
     /// The strongest deck you may queue with here. A weaker deck is allowed and earns an extra pip per win.
     var maxDeckBracket: Int { opponentBrackets.upperBound }
 
+    /// Pips a ranked win earns here (Arena's Bo1 steps; ladder option B, Caleb 2026-10-15): two up to Gold, one from Platinum.
+    var winPips: Int { self <= .gold ? 2 : 1 }
+    /// Pips a ranked loss costs here: none in Bronze.
+    var lossPips: Int { self == .bronze ? 0 : 1 }
+
     /// Bronze AI opponents play only the official precons, the gentlest decks in the pool.
     var preconOpponentsOnly: Bool { self == .bronze }
 
-    /// XMage AI skill for AI opponents at this tier. The AI searches max(4, skill) moves deep and
-    /// thinks skill × 3 s, so skills 1–4 differ only in thinking time; depth grows from Diamond.
-    /// Mythic stops at 6: skill 7 means 21 s turns on a phone.
+    /// XMage AI skill for AI opponents at this tier (AIDifficulty.java): Bronze to Gold look fewer moves ahead
+    /// and make deliberate mistakes, Platinum plays upstream's full strength, Diamond and Mythic play as experts
+    /// (combat planner). It thinks skill × 3 s. Mythic stops at 6: skill 7 means 21 s turns on a phone.
     var aiSkill: Int {
         switch self {
         case .bronze: return 1
@@ -213,21 +218,51 @@ enum RankLadder {
         case .win:
             next.wins += 1
             next.winStreak += 1
-            delta = 1
-            if state.position.tier < .gold, next.winStreak >= 3 { delta += 1; bonuses.append(.streak) }
+            delta = state.position.tier.winPips
             if deckBracket < state.position.tier.opponentBrackets.lowerBound { delta += 1; bonuses.append(.underdog) }
         case .loss:
             next.losses += 1
             next.winStreak = 0
-            delta = -1
+            delta = -state.position.tier.lossPips
         case .draw:
             next.draws += 1
             next.winStreak = 0
         }
-        next.position = RankPosition(points: state.position.points + delta)
+        // A loss never takes you out of your tier (Mythic can fall back to Diamond, never below Diamond IV).
+        let floor = RankPosition.atStep(min(state.position.tier, .diamond).rawValue * RankPosition.divisions).points
+        next.position = RankPosition(points: max(state.position.points + delta, floor))
         next.peak = max(next.peak, next.position)
         return (next, RankChange(outcome: outcome, before: state.position, after: next.position, bonuses: bonuses))
     }
+}
+
+/// The ladder as the server keeps it (mm_ranked_standing, Caleb 2026-10-14). Once the player has a profile the
+/// server decides rank: the phone shows its own result at once, then takes this.
+struct RankedStanding: Decodable, Equatable, Sendable {
+    struct Season: Decodable, Equatable, Sendable {
+        let season: String
+        let finalPoints: Int
+        let peakPoints: Int
+        let wins: Int
+        let losses: Int
+    }
+
+    /// False only for a new server standing that has never counted a result: the phone may seed it once.
+    let seeded: Bool
+    /// Matches this player reported that the other side hasn't yet.
+    let unsettled: Int
+    let season: String
+    let points: Int
+    let peakPoints: Int
+    let wins: Int
+    let losses: Int
+    let draws: Int
+    let winStreak: Int
+    let history: [Season]?
+    /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned.
+    let settlement: String?
+
+    static func parse(_ data: Data) throws -> RankedStanding { try JSONDecoder().decode(RankedStanding.self, from: data) }
 }
 
 extension RankPosition {
@@ -235,5 +270,41 @@ extension RankPosition {
     static func published(step: Int, pips: Int) -> RankPosition {
         let base = RankPosition.atStep(step)
         return RankPosition(tier: base.tier, division: base.division, pips: pips)
+    }
+}
+
+/// The season leaderboard from the server's standings (mm_ranked_leaderboard): everyone or friends, private profiles
+/// and blocked players already left out by the server, plus the caller's own row.
+struct RankedLeaderboard: Decodable, Equatable, Sendable {
+    enum Scope: String, CaseIterable, Sendable { case everyone, friends }
+
+    struct Entry: Decodable, Equatable, Identifiable, Sendable {
+        let position: Int
+        let username: String
+        let title: String?
+        let commander: String?
+        let points: Int
+        let wins: Int
+        let losses: Int
+        let online: Bool
+        let you: Bool
+
+        var id: String { username }
+        var rank: RankPosition { RankPosition(points: points) }
+    }
+
+    let season: String
+    let scope: String
+    let total: Int
+    let online: Int
+    let entries: [Entry]
+    let me: Entry?
+
+    static func parse(_ data: Data) throws -> RankedLeaderboard { try JSONDecoder().decode(RankedLeaderboard.self, from: data) }
+
+    /// The caller's row is pinned at the foot when it isn't among the shown entries.
+    var pinnedMe: Entry? {
+        guard let me, !entries.contains(where: { $0.username == me.username }) else { return nil }
+        return me
     }
 }

@@ -1,0 +1,26 @@
+game_seed,turn,step,seat,skill,repeatable,equal,nodes,copies_upstream,copies_new,alive_upstream,alive_new,ms_upstream,ms_new,decision_upstream,decision_new
+3144662784818472193,10,Precombat Main,A,4,1,1,4,12,12,6,6,44,25,Pass; score -2133 nodes 4,Pass; score -2133 nodes 4
+3144662784818472193,13,Precombat Main,B,4,1,1,15,42,42,8,10,164,92,Pass; score 4742 nodes 15,Pass; score 4742 nodes 15
+3144662784818472193,14,Precombat Main,A,4,1,1,2,8,8,4,4,26,15,Pass; score -3483 nodes 2,Pass; score -3483 nodes 2
+3144662784818472193,16,Precombat Main,A,4,0,0,77,163,166,8,12,630,420,Pass; score -5366 nodes 77,Pass; score -5366 nodes 80
+4867994132830285850,5,Precombat Main,A,4,1,1,2,10,10,4,4,38,25,Pass; score -1425 nodes 2,Pass; score -1425 nodes 2
+4867994132830285850,7,Precombat Main,A,4,1,1,2,11,11,4,4,33,30,Pass; score -3459 nodes 2,Pass; score -3459 nodes 2
+2822317385404628738,9,Precombat Main,B,4,1,1,50,124,124,50,8,932,353,Pass; score 1305 nodes 50,Pass; score 1305 nodes 50
+2822317385404628738,17,Postcombat Main,B,4,0,0,31,78,78,32,8,975,408,"{2}: Search your library for a Dragon permanent card and put it into your graveyard. If you do, {this} becomes a copy of that card until end of turn. Then shuffle.; score 34864 nodes 31","{2}: Search your library for a Dragon permanent card and put it into your graveyard. If you do, {this} becomes a copy of that card until end of turn. Then shuffle.; score 35444 nodes 31"
+583819096828393905,15,Precombat Main,A,4,1,1,45,104,104,40,9,1338,706,Pass; score 4490 nodes 45,Pass; score 4490 nodes 45
+3339263946766833105,9,Precombat Main,B,5,1,1,54,161,161,8,11,805,417,Pass; score 174 nodes 54,Pass; score 174 nodes 54
+3339263946766833105,19,Precombat Main,B,5,1,1,7,24,24,9,9,97,40,Pass; score 645 nodes 7,Pass; score 645 nodes 7
+3339263946766833105,21,Precombat Main,B,5,1,1,7,24,24,9,9,102,52,Pass; score 1845 nodes 7,Pass; score 1845 nodes 7
+3339263946766833105,23,Precombat Main,B,5,1,1,56,176,176,20,20,1060,899,Pass; score -3316 nodes 56,Pass; score -3316 nodes 56
+411406309729782275,4,Precombat Main,B,5,1,1,9,26,26,9,9,84,56,Pass; score 495 nodes 9,Pass; score 495 nodes 9
+411406309729782275,6,Precombat Main,B,5,1,1,7,21,21,8,8,102,34,Pass; score 1759 nodes 7,Pass; score 1759 nodes 7
+411406309729782275,14,Precombat Main,B,5,1,1,25,72,72,9,12,265,198,Pass; score 21795 nodes 25,Pass; score 21795 nodes 25
+718743674374396186,9,Precombat Main,B,6,1,1,22,65,65,9,12,340,227,Pass; score 3649 nodes 22,Pass; score 3649 nodes 22
+718743674374396186,11,Precombat Main,B,6,1,1,42,121,121,10,14,996,432,Pass; score 3919 nodes 42,Pass; score 3919 nodes 42
+718743674374396186,17,Precombat Main,A,6,1,1,11,50,50,12,12,345,288,Cast Bonehoard Dracosaur; score 19369 nodes 11,Cast Bonehoard Dracosaur; score 19369 nodes 11
+5761595429570574361,15,Precombat Main,A,6,1,1,2,10,10,4,4,60,57,Pass; score 6015 nodes 2,Pass; score 6015 nodes 2
+3339263946766833105,3,Precombat Main,B,5,1,1,36,104,104,9,15,454,220,Pass; score -60 nodes 36,Pass; score -60 nodes 36
+3339263946766833105,12,Precombat Main,A,5,1,1,24,77,77,9,12,246,193,Pass; score -2162 nodes 24,Pass; score -2162 nodes 24
+718743674374396186,3,Precombat Main,B,6,1,1,2,8,8,4,4,35,33,Pass; score 290 nodes 2,Pass; score 290 nodes 2
+718743674374396186,5,Precombat Main,B,6,1,1,52,156,156,10,14,477,262,Pass; score 101 nodes 52,Pass; score 101 nodes 52
+718743674374396186,9,Precombat Main,B,6,1,1,60,167,167,9,13,649,300,Pass; score 2275 nodes 60,Pass; score 2275 nodes 60

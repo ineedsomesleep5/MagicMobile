@@ -6,8 +6,9 @@ import com.j256.ormlite.dao.Dao;
 import com.j256.ormlite.jdbc.JdbcConnectionSource;
 import io.magicmobile.core.Json;
 import io.magicmobile.generated.GeneratedCardFactory;
-import io.magicmobile.generated.GeneratedSetRegistry;
+import mage.cards.ExpansionSet;
 import mage.cards.MobileCardFactories;
+import mage.cards.MobileExpansionSet;
 import mage.cards.Sets;
 import mage.cards.repository.*;
 import java.io.*;
@@ -36,7 +37,9 @@ public final class CardMetadataExporter {
         Path output = Path.of(args[0]);
         Files.createDirectories(output);
         MobileCardFactories.install(GeneratedCardFactory::create);
-        GeneratedSetRegistry.install();
+        // CardScanner reads each set's card list: register the real set classes, in the runtime registry's order.
+        for (MobileExpansionSet set : MobileExpansionSet.load(GeneratedCardFactory.CATALOGUE_HASH, code -> null))
+            Sets.getInstance().addSet((ExpansionSet) Class.forName(set.getClassName()).getMethod("getInstance").invoke(null));
         List<String> errors = new ArrayList<>();
         CardScanner.scan(errors);
         if (!errors.isEmpty()) throw new IllegalStateException("XMage metadata export failed: " + errors);

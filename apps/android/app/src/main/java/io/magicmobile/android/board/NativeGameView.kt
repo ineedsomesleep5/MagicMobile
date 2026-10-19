@@ -72,6 +72,7 @@ import io.magicmobile.android.game.AIWaitRecoveryPolicy
 import io.magicmobile.android.game.BattlefieldAttachments
 import io.magicmobile.android.game.BoardDecisionPresentation
 import io.magicmobile.android.game.BoardFXDirector
+import io.magicmobile.android.game.BoardPresentationHold
 import io.magicmobile.android.game.BoardFXEntrance
 import io.magicmobile.android.game.BoardFXEvent
 import io.magicmobile.android.game.BoardFXLevel
@@ -441,6 +442,7 @@ fun NativeGameView(
     fun ingestBoardFX(snap: GameSnapshot) {
         val level = BoardFXLevel.resolved(boardFXLevel, BoardMotion.reduceMotion)
         val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis(), turnBannerEndsAt)
+        BoardPresentationHold.shared.record(BoardFXRevisionKey(snap), boardFX.smartPassHoldUntil)
         fxVersion += 1
         if (scheduled.isEmpty()) return
         playBoardFXHaptics(scope, view, scheduled, snap.viewerID)
@@ -485,6 +487,7 @@ fun NativeGameView(
 
     // --- Observation (boardObservation) ---
     LaunchedEffect(BoardFXRevisionKey(board)) {
+        BoardActivity.note()
         ingestBoardFX(board); gameStats.record(board)
         combatLogReasons.observe(board); combatReasons = combatLogReasons.reasons
     }
@@ -612,7 +615,7 @@ fun NativeGameView(
             lastTurnBannerKey = turnKey
             if (!firstBanner || board.turn > 1) {
                 // A showcase at the centre finishes first, so the banner and a cast never stack.
-                boardFX.centreBusyUntil?.let { busy -> val wait = busy - System.currentTimeMillis(); if (wait > 0) delay(minOf(wait, 3000L)) }
+                boardFX.centreBusyUntil?.let { busy -> val wait = busy - System.currentTimeMillis(); if (wait > 0) delay(minOf(wait, (io.magicmobile.android.game.BoardFXScheduler.maximumHold * 1000).toLong())) }
                 if (board.isViewer(board.activePlayerId)) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                 turnBannerEndsAt = System.currentTimeMillis() + 1950
                 showsTurnBanner = true; showsTurnCue = !isTavernBoard

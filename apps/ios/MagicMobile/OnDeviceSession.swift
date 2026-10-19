@@ -120,6 +120,56 @@ enum OnDeviceLocalPollSchedule {
     }
 }
 
+/// Polls a local engine, and hands back the previous poll undecoded when the engine answered the same request with
+/// exactly the same bytes. While the AI thinks most polls repeat the board, and decoding the whole game view was about
+/// half of the polling thread's work (Instruments on Caleb's iPhone, 2026-10-18). The engine package's EngineClient
+/// still decodes every reply that changed. Android: EngineClient.poll keeps the same memo.
+struct OnDevicePollReader: Sendable {
+    /// One poll as sent and answered, and its decoded result.
+    struct Exchange: Sendable {
+        let request: Data
+        let reply: Data
+        let poll: MatchPoll
+    }
+
+    let transport: any EngineTransport
+
+    /// `previous` is the exchange whose poll the session last applied; `repeated` means it came back unchanged.
+    func poll(matchID: String, seatID: String, after: Int64, previous: Exchange?) async throws -> (exchange: Exchange, repeated: Bool) {
+        let tap = Tap(base: transport, previous: previous)
+        do {
+            let poll = try await EngineClient(transport: tap).poll(matchID: matchID, seatID: seatID, after: after)
+            guard let sent = tap.sent else { throw EngineError.invalidMessage("The engine was not asked for this poll") }
+            return (Exchange(request: sent.request, reply: sent.reply, poll: poll), false)
+        } catch is Tap.Repeated {
+            guard let previous else { throw EngineError.invalidMessage("A repeated poll has no previous poll") }
+            return (previous, true)
+        }
+    }
+
+    /// Passes the poll through, keeps the bytes, and stops before decoding a reply that repeats `previous`.
+    private final class Tap: EngineTransport, @unchecked Sendable {
+        struct Repeated: Error {}
+        private let base: any EngineTransport
+        private let previous: Exchange?
+        private let lock = NSLock()
+        private var exchanged: (request: Data, reply: Data)?
+        var sent: (request: Data, reply: Data)? { lock.withLock { exchanged } }
+
+        init(base: any EngineTransport, previous: Exchange?) {
+            self.base = base
+            self.previous = previous
+        }
+
+        func request(_ data: Data) async throws -> Data {
+            let reply = try await base.request(data)
+            lock.withLock { exchanged = (data, reply) }
+            if let previous, previous.reply == reply, previous.request == data { throw Repeated() }
+            return reply
+        }
+    }
+}
+
 /// A guest retries a poll a few times when its host stops answering, then gives up with the
 /// usual message. Only polls and hello are retried: an answer keeps its exact request ID for
 /// the player's explicit retry, and a host that left ends the table through the roster.
@@ -176,6 +226,9 @@ final class OnDeviceSession: ObservableObject {
     private var yieldGeneration = UUID()
     private var client: EngineClient?
     private var poll: MatchPoll?
+    /// Local games: polls whose reply repeats `pollExchange` (the exchange behind `poll`) are not decoded again.
+    private var pollReader: OnDevicePollReader?
+    private var pollExchange: OnDevicePollReader.Exchange?
     private var messageLog = OnDeviceMessageLog()
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
@@ -216,17 +269,28 @@ final class OnDeviceSession: ObservableObject {
     private var smartPassGeneration = UUID()
     /// The last prompt smart pass answered: each prompt is passed at most once, never retried.
     private var smartPassedPromptID: String?
+    /// What the board is still showing; smart pass lets it finish before passing.
+    lazy var presentationHold: BoardPresentationHold = .shared
+    /// Full control (long-press Pass, or the controls menu): smart pass stops at every priority until this turn ends.
+    @Published private(set) var fullControlTurn: Int64?
+    /// A local log line was added since the last snapshot: the next poll republishes even if the game didn't change.
+    private var logChanged = false
 
+    /// `pollReader` reads polls through the same transport as `client` (local games).
     func attach(client: EngineClient, matchID: String, seatID: String, autoPoll: Bool = true,
+                pollReader: OnDevicePollReader? = nil,
                 allowsSeatScopedAutoYield: Bool = false, table: OnDeviceTableLink? = nil,
                 answerActions: Set<String> = [], autoPassAfterCast: Bool? = nil,
                 smartPass: OnDeviceSmartPass.Settings? = nil,
                 close: @escaping @MainActor () async throws -> Void) async throws {
         guard self.client == nil, !isWorking else { throw EngineError.invalidMessage("Close the active game first") }
         self.client = client; self.matchID = matchID; self.seatID = seatID
+        self.pollReader = pollReader; pollExchange = nil
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
+        comboHistory = []; comboOffer = nil; comboDeclined = nil; comboResult = nil
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
-        self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil
+        if devicePaceHot { queueDevicePace() }
+        self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil; fullControlTurn = nil
         // Only trusted routes opt in. Every pass still uses this seat's authenticated prompt.
         self.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         self.table = table; lastActionAt = nil
@@ -259,8 +323,16 @@ final class OnDeviceSession: ObservableObject {
         refreshSequence += 1
         let sequence = refreshSequence
         let next: MatchPoll
+        var exchange: OnDevicePollReader.Exchange?
         do {
-            next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+            if let pollReader {
+                let read = try await pollReader.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0,
+                                                     previous: pollExchange)
+                next = read.exchange.poll
+                exchange = read.exchange
+            } else {
+                next = try await client.poll(matchID: matchID, seatID: seatID, after: poll?.revision ?? 0)
+            }
         } catch {
             // Obsolete reads must not interrupt a replacement or resumed session.
             guard epoch == token, visibilityEpoch == visibility, isForeground,
@@ -276,7 +348,8 @@ final class OnDeviceSession: ObservableObject {
             (next.revision == poll.revision && sequence <= appliedRefreshSequence) { return }
         // While the AI thinks, polls repeat the same board. Re-adapting and republishing
         // it every 300 ms only competes with the engine's search for the CPU.
-        let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil
+        let unchanged = poll?.raw == next.raw && heldAbilitySnapshot == nil && snapshot != nil && !logChanged
+        logChanged = false
         idlePolls = unchanged ? idlePolls + 1 : 0
         // A real change redraws whatever reads this session, including values derived from private
         // state. An unchanged poll publishes nothing (it used to redraw the whole game screen).
@@ -302,6 +375,7 @@ final class OnDeviceSession: ObservableObject {
         }
         messageLog = nextLog
         poll = next
+        pollExchange = exchange
         if let saved = next.checkpoint, saved != checkpoint { checkpoint = saved }
         let over = GameResumePolicy.isOver(next)
         if over != isOverForSeat { isOverForSeat = over }
@@ -346,17 +420,35 @@ final class OnDeviceSession: ObservableObject {
         scheduleSmartPass()
     }
 
+    private var currentTurn: Int64? { poll?.snapshot?["gameView"]?["turn"]?.integer }
+
+    /// Full control is on for the turn being played.
+    var isFullControl: Bool { fullControlTurn != nil && fullControlTurn == currentTurn }
+
+    /// Turns full control for this turn on or off. Turning it on stops a smart pass that hasn't been sent yet.
+    func toggleFullControl() {
+        if isFullControl {
+            fullControlTurn = nil
+            scheduleSmartPass()
+        } else {
+            fullControlTurn = currentTurn
+            smartPassTask?.cancel(); smartPassTask = nil; smartPassGeneration = UUID()
+        }
+    }
+
     private var smartPassSituation: OnDeviceSmartPass.Situation? {
         guard let context = yieldContext, let root = poll?.snapshot, let view = root["gameView"],
               let owner = view["players"]?.array?.first(where: { $0["playerId"]?.string == context.viewerID }) else { return nil }
         let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
-        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating)
+        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
+                     topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: context.viewerID),
+                     hasResponse: OnDeviceSmartPass.hasResponse(view))
     }
 
     /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.
     /// The same pass a tap sends, once per prompt; a failure is left to the player, never retried.
     private func scheduleSmartPass() {
-        guard let settings = smartPass, smartPassTask == nil, !isAutoPassing, pending == nil, pendingActionID == nil,
+        guard let settings = smartPass, smartPassTask == nil, !isAutoPassing, !isFullControl, pending == nil, pendingActionID == nil,
               errorMessage == nil, heldAbilitySnapshot == nil, abilityAutoAnswer == nil, !isClosing,
               let situation = smartPassSituation,
               let prompt = OnDeviceSmartPass.passPrompt(situation, settings: settings),
@@ -367,9 +459,10 @@ final class OnDeviceSession: ObservableObject {
             guard let self else { return }
             // The response lane frees right after the answer that led here.
             for _ in 0..<150 where self.isWorking || self.activeRefreshes > 0 { try? await Task.sleep(for: .milliseconds(20)) }
+            await self.waitForBoardPresentation()
             // Re-check against the poll applied meanwhile: the same prompt, still a pass.
             guard !Task.isCancelled, self.epoch == token, !self.isWorking, let settings = self.smartPass,
-                  self.pending == nil, self.pendingActionID == nil, !self.isAutoPassing,
+                  self.pending == nil, self.pendingActionID == nil, !self.isAutoPassing, !self.isFullControl,
                   let situation = self.smartPassSituation,
                   let current = OnDeviceSmartPass.passPrompt(situation, settings: settings),
                   current.id == prompt.id, current.revision == prompt.revision,
@@ -378,14 +471,40 @@ final class OnDeviceSession: ObservableObject {
                 return
             }
             self.smartPassedPromptID = current.id
+            self.messageLog.noteAutoPass(self.autoPassLabel(situation, snapshot: snapshot), id: current.id)
+            self.logChanged = true
             let command = GameCommand(type: "pass_priority", gameId: situation.context.matchID,
                                       playerId: situation.context.viewerID, promptId: current.id,
                                       messageId: Int(current.revision), expectedBridgeRevision: snapshot.bridgeRevision)
-            let sent = (try? await self.submit(command, label: String(localized: "Pass priority"), actionID: "smart-pass-\(current.id)")) != nil
+            let sent = (try? await self.submit(command, label: String(localized: "Pass priority"), actionID: OnDeviceYieldPolicy.smartPassActionPrefix + current.id)) != nil
             guard self.smartPassGeneration == generation else { return }
             self.smartPassTask = nil
             // The answer's own refresh may already show the next routine priority.
             if sent { self.scheduleSmartPass() }
+        }
+    }
+
+    /// What a smart pass let go by, for the game log: the top of the stack, else the step.
+    private func autoPassLabel(_ situation: OnDeviceSmartPass.Situation, snapshot: GameSnapshot) -> String {
+        if let top = snapshot.stackTopFirst.first { return top.displayName }
+        return OnDeviceSmartPass.Step(engine: situation.step)?.title ?? String(localized: "Priority")
+    }
+
+    /// Lets the board finish what it is showing (an opponent's removal spell read at the centre, the
+    /// creature it exiles) before smart pass moves the game on: first the board takes in the published
+    /// snapshot, then its held effects play out, never longer than BoardPresentationHold.maximumWait.
+    private func waitForBoardPresentation() async {
+        // A long combo loop shows the board once a round, so there's nothing to wait for between its steps.
+        guard !comboFastMode, let snapshot else { return }
+        let key = BoardFXRevisionKey(snapshot: snapshot)
+        let start = ProcessInfo.processInfo.systemUptime
+        func elapsed() -> TimeInterval { ProcessInfo.processInfo.systemUptime - start }
+        while presentationHold.ingested != key, elapsed() < BoardPresentationHold.ingestWait, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        while let until = presentationHold.until, until.timeIntervalSinceNow > 0,
+              elapsed() < BoardPresentationHold.maximumWait, !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(min(until.timeIntervalSinceNow, 0.1)))
         }
     }
 
@@ -449,7 +568,7 @@ final class OnDeviceSession: ObservableObject {
                         let command = GameCommand(type: "pass_priority", gameId: context.matchID,
                                                   playerId: context.viewerID, promptId: prompt.id,
                                                   messageId: Int(prompt.revision), expectedBridgeRevision: snapshot.bridgeRevision)
-                        try await self.submit(command, label: String(localized: "Pass priority"), actionID: "auto-pass-\(prompt.id)")
+                        try await self.submit(command, label: String(localized: "Pass priority"), actionID: OnDeviceYieldPolicy.yieldPassActionPrefix + prompt.id)
                     }
                 }
             } catch {
@@ -500,18 +619,7 @@ final class OnDeviceSession: ObservableObject {
         guard let snapshot, let current = snapshot.legalActions?.first(where: { $0.id == action.id }) else {
             throw EngineError.invalidMessage("This action is no longer available")
         }
-        let command = GameCommand(
-            type: current.type, gameId: snapshot.id, playerId: current.playerId,
-            cardInstanceId: current.cardInstanceId, sourceInstanceId: current.sourceInstanceId,
-            abilityId: current.abilityId, promptId: current.promptId, messageId: current.messageId,
-            choiceIds: current.choiceIds, targetIds: current.targetIds, cardInstanceIds: current.cardInstanceIds,
-            modeIds: current.modeIds, pile: current.pile?.value, amount: current.amount, amounts: current.amounts,
-            orderedIds: current.orderedIds, useCommandZone: current.useCommandZone,
-            manaType: current.manaType, manaTypes: current.manaTypes, playerIds: current.playerIds,
-            confirmed: current.confirmed, pay: current.pay, sourceZone: current.sourceZone,
-            fromZone: current.sourceZone, cardName: current.cardName, attackers: current.attackers,
-            blockers: current.blockers, expectedBridgeRevision: snapshot.bridgeRevision
-        )
+        let command = GameCommand(action: current, gameId: snapshot.id, bridgeRevision: snapshot.bridgeRevision)
         try await send(command, label: current.label, actionID: current.id)
     }
 
@@ -519,6 +627,15 @@ final class OnDeviceSession: ObservableObject {
     func setAutoPassAfterCast(_ enabled: Bool) {
         guard supportedAnswerActions.contains("autoPassAfterCast") else { return }
         standingActions["autoPassAfterCast"] = .object(["type": .string("autoPassAfterCast"), "enabled": .bool(enabled)])
+    }
+
+    /// The phone is hot and the engine runs on it: AI seats think for less time (answer action devicePace, engine
+    /// release C). The root sets it from DeviceHeat; it rides on the next answer, and again after every attach.
+    var devicePaceHot = false { didSet { if devicePaceHot != oldValue { queueDevicePace() } } }
+
+    private func queueDevicePace() {
+        guard supportedAnswerActions.contains("devicePace") else { return }
+        standingActions["devicePace"] = .object(["type": .string("devicePace"), "hot": .bool(devicePaceHot)])
     }
 
     /// Forget every remembered answer (asked again from the next one).
@@ -537,7 +654,194 @@ final class OnDeviceSession: ObservableObject {
 
     func send(_ command: GameCommand, label: String, actionID: String) async throws {
         stopAutoPass()
+        let decision = snapshot
         try await submit(command, label: label, actionID: actionID)
+        noteComboStep(command, label: label, actionID: actionID, decision: decision)
+    }
+
+    // MARK: Combo loop shortcut (ComboLoop)
+
+    /// Solo games only: the root turns it on for games against the AI.
+    var comboLoopsAllowed = false { didSet { if !comboLoopsAllowed { comboHistory = []; comboOffer = nil } } }
+    /// A round the player has made three times in a row this turn, offered for repeating.
+    @Published private(set) var comboOffer: [ComboStep]?
+    /// Repeating a round: how far it has got, and the last few rounds and notes.
+    @Published private(set) var comboRun: ComboRun?
+    /// The line shown when repeating stops: rounds, life changes and why.
+    @Published var comboResult: String?
+    /// What the board shows while a loop repeats: the game without the prompts the repeats answer, updated after every
+    /// step for a short run (so its effects play) and once a round for a long one.
+    @Published private(set) var comboPresented: GameSnapshot?
+    struct ComboRun: Equatable {
+        var round: [ComboStep]
+        var mode: ComboRepeat
+        var done: Int
+        var lines: [String] = []
+    }
+    /// The board's snapshot: the live game, or the repeats' quiet copy while a loop runs.
+    var presentedSnapshot: GameSnapshot? { comboRun == nil ? snapshot : (comboPresented ?? snapshot?.withoutPrompts) }
+    private var comboHistory: [(step: ComboStep, turn: Int)] = []
+    private var comboDeclined: [ComboStep]?
+    private var comboStopRequested = false
+    private var comboFastMode = false
+    private var comboTask: Task<Void, Never>?
+
+    private func noteComboStep(_ command: GameCommand, label: String, actionID: String, decision: GameSnapshot?) {
+        guard comboLoopsAllowed, comboRun == nil else { return }
+        switch ComboLoop.note(command: command, label: label, actionID: actionID, snapshot: decision) {
+        case .ignore:
+            return
+        case .breaks:
+            comboHistory = []; comboOffer = nil
+        case .step(let step):
+            let turn = decision?.turn ?? 0
+            // A loop is offered only for rounds made in one turn.
+            if let last = comboHistory.last, last.turn != turn { comboHistory = [] }
+            comboHistory.append((step, turn))
+            if comboHistory.count > ComboLoop.historyLimit { comboHistory.removeFirst(comboHistory.count - ComboLoop.historyLimit) }
+            let round = ComboLoop.cycle(in: comboHistory.map(\.step))
+            comboOffer = round != nil && round != comboDeclined ? round : nil
+        }
+    }
+
+    /// The player said no to this round: it isn't offered again until they make a different one.
+    func declineComboLoop() {
+        comboDeclined = comboOffer
+        comboOffer = nil
+    }
+
+    /// Repeats the offered round: a number of times, until a step can't be taken, or until every opponent has lost (at
+    /// most ComboLoop.maxRepeats rounds).
+    func startComboLoop(_ mode: ComboRepeat) {
+        guard let round = comboOffer, comboRun == nil, let start = snapshot else { return }
+        comboOffer = nil
+        comboResult = nil
+        comboStopRequested = false
+        comboPresented = start.withoutPrompts
+        comboRun = ComboRun(round: round, mode: mode, done: 0)
+        comboTask = Task { [weak self] in await self?.runComboLoop(round, mode: mode, start: start) }
+    }
+
+    func stopComboLoop() { comboStopRequested = true }
+
+    private enum ComboWait {
+        case ready(ComboReplay)
+        case stop(ComboLoopStop)
+    }
+
+    private func noteComboLine(_ line: String) {
+        guard var run = comboRun else { return }
+        run.lines = Array((run.lines + [line]).suffix(3))
+        comboRun = run
+    }
+
+    private func runComboLoop(_ round: [ComboStep], mode: ComboRepeat, start: GameSnapshot) async {
+        // A long run skips the board's effects and shows the board once a round; a short one plays them at a pace you can follow.
+        let watch = mode.watchable
+        comboFastMode = !watch
+        BoardFXLevel.suppressedForLoop = !watch
+        defer { BoardFXLevel.suppressedForLoop = false; comboFastMode = false }
+        let limit = min(mode.count ?? ComboLoop.maxRepeats, ComboLoop.maxRepeats)
+        var rounds = 0, unchanged = 0
+        var lastDigest = ComboLoop.digest(start)
+        var prefer: [Int: [String]] = [:]
+        var stop = ComboLoopStop.finished
+        repeating: while rounds < limit {
+            var chosen: [String] = []
+            for (index, step) in round.enumerated() {
+                switch await waitForComboStep(step, prefer: prefer[index] ?? []) {
+                case .stop(let reason):
+                    stop = reason
+                    break repeating
+                case .ready(let replay):
+                    do { try await submit(replay.command, label: replay.label, actionID: replay.actionID) }
+                    catch { stop = .failed(error.localizedDescription); break repeating }
+                    if !replay.chosenNames.isEmpty {
+                        prefer[index] = replay.chosenNames
+                        if chosen.isEmpty || step.targets.contains(where: { $0.controller == "opponent" }) { chosen = replay.chosenNames }
+                    }
+                    if let swap = replay.retargeted { noteComboLine(String(localized: "\(swap.from) is gone, now \(swap.to)")) }
+                    if watch, let current = snapshot { comboPresented = current.withoutPrompts }
+                }
+            }
+            rounds += 1
+            comboRun?.done = rounds
+            noteComboLine(ComboLoop.roundLine(rounds, round, chosen: chosen))
+            guard let current = snapshot else { break }
+            comboPresented = current.withoutPrompts
+            if current.isCompleted { stop = .gameOver; break }
+            if watch {
+                await waitForBoardPresentation()
+                try? await Task.sleep(for: .milliseconds(450))
+            }
+            // Open-ended repeats stop a loop that has stopped doing anything visible; a count simply runs out.
+            if mode.count == nil {
+                let digest = ComboLoop.digest(current)
+                unchanged = digest == lastDigest ? unchanged + 1 : 0
+                lastDigest = digest
+                if unchanged >= ComboLoop.unchangedRoundsToStop { stop = .nothingChanged; break }
+            }
+        }
+        if mode.count == nil, stop == .finished { stop = .reachedLimit }
+        let summary = ComboLoop.summary(rounds: rounds, before: start, after: snapshot ?? start)
+        switch stop {
+        case .finished, .gameOver:
+            comboResult = summary
+        case .stepMissing(let why) where mode == .untilCant && rounds > 0:
+            comboResult = String(localized: "\(summary), until it couldn't go on: \(why).")
+        default:
+            comboResult = "\(summary). \(stop.message)"
+        }
+        comboRun = nil
+        comboPresented = nil
+        comboHistory = []
+        comboDeclined = round
+        comboTask = nil
+    }
+
+    /// Waits for this step's answer to be possible: the session idle, the player's own triggers resolved when the step
+    /// was taken with an empty stack (passing priority for them), and the step among the choices. Stops when the game
+    /// ends, an opponent responds, the player is asked something the round doesn't answer, or nothing comes.
+    private func waitForComboStep(_ step: ComboStep, prefer: [String]) async -> ComboWait {
+        let started = Date()
+        var askedSince: Date?
+        var passedFor: String?
+        while Date().timeIntervalSince(started) < 45 {
+            if comboStopRequested || Task.isCancelled || isClosing { return .stop(.stoppedByPlayer) }
+            if let current = snapshot {
+                if current.isCompleted || isOverForSeat { return .stop(.gameOver) }
+                let idle = !isWorking && !isAutoPassing && pendingActionID == nil && pending == nil && smartPassTask == nil
+                    && heldAbilitySnapshot == nil && abilityAutoAnswer == nil
+                if idle {
+                    if ComboLoop.opponentResponded(current) { return .stop(.opponentResponded) }
+                    let asked = current.legalActions?.isEmpty == false || current.promptEnvelopeV2.map { current.isViewer($0.playerId) } == true
+                    if ComboLoop.waitsForStack(step, in: current) {
+                        // The round's own triggers are still resolving: pass for them, once per prompt.
+                        let key = current.promptEnvelopeV2?.id ?? "\(current.bridgeRevision ?? 0)"
+                        if let pass = ComboLoop.pass(in: current), passedFor != key {
+                            passedFor = key
+                            askedSince = nil
+                            do { try await submit(pass.command, label: pass.label, actionID: "combo-loop-pass-\(key)") }
+                            catch { return .stop(.failed(error.localizedDescription)) }
+                            continue
+                        }
+                        if asked, ComboLoop.pass(in: current) == nil {
+                            askedSince = askedSince ?? Date()
+                            if Date().timeIntervalSince(askedSince!) > 3 { return .stop(.stepMissing(String(localized: "a choice the loop doesn't make came up"))) }
+                        }
+                    } else if let replay = ComboLoop.command(for: step, in: current, prefer: prefer) {
+                        return .ready(replay)
+                    } else if asked {
+                        askedSince = askedSince ?? Date()
+                        if Date().timeIntervalSince(askedSince!) > 3 { return .stop(.stepMissing(ComboLoop.missing(step))) }
+                    } else {
+                        askedSince = nil
+                    }
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(120))
+        }
+        return .stop(.stepMissing(ComboLoop.missing(step)))
     }
 
     private func submit(_ command: GameCommand, label: String, actionID: String) async throws {
@@ -711,6 +1015,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func close() async throws {
+        comboStopRequested = true; comboTask?.cancel(); comboHistory = []; comboOffer = nil
         stopAutoPass()
         smartPassTask?.cancel(); smartPassTask = nil
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil
@@ -730,6 +1035,7 @@ final class OnDeviceSession: ObservableObject {
         isClosing = false
         refreshSequence = 0; appliedRefreshSequence = 0
         epoch = UUID(); client = nil; matchID = nil; seatID = nil; poll = nil; snapshot = nil
+        pollReader = nil; pollExchange = nil
         table = nil; lastActionAt = nil; checkpoint = nil; isOverForSeat = false
         messageLog = OnDeviceMessageLog()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"

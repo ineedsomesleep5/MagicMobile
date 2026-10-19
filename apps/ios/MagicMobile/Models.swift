@@ -66,17 +66,17 @@ struct GameSnapshot: Decodable {
     let promptText: String?
     let players: [PlayerGameState]
     let log: [GameLogEntry]
-    let legalActions: [LegalAction]?
-    let choicePrompt: ChoicePrompt?
-    let promptEnvelope: PromptEnvelope?
-    let promptEnvelopeV2: PromptEnvelopeV2?
+    var legalActions: [LegalAction]?
+    var choicePrompt: ChoicePrompt?
+    var promptEnvelope: PromptEnvelope?
+    var promptEnvelopeV2: PromptEnvelopeV2?
     let startupOpeningPrompts: [StartupOpeningPrompt]?
     let xmage: XmageMobileSnapshot?
     let engineHealth: EngineHealth?
     let bridgeRevision: Int?
     let xmageCycle: Int?
     let pendingStatus: String?
-    let manaPayment: ManaPayment?
+    var manaPayment: ManaPayment?
     let gameStatus: GameStatus?
     let winnerPlayerIds: [String]?
     let endReason: String?

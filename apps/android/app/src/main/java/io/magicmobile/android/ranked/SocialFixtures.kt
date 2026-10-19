@@ -170,4 +170,35 @@ object SocialFixtures {
         return PublicProfile(player.name, false, player.visibility, relation, if (relation == "friend") player.online else null, player.title, player.commander,
             PublicProfile.Rank(RankLadder.season(now), player.step, player.pips, minOf(20, player.step + 1), summary.wins / 2, summary.losses / 2), summary, games.take(30))
     }
+
+    /** mm_ranked_leaderboard on the fixture (SocialFixtures.leaderboard in Swift): private players left out, friends-only ones only for friends. */
+    fun leaderboard(scope: io.magicmobile.android.game.RankedLeaderboard.Scope, own: String, limit: Int = 50,
+                    friends: List<PlayerFriend> = startingFriends()): io.magicmobile.android.game.RankedLeaderboard {
+        data class Row(val name: String, val points: Int, val title: String?, val commander: String?, val online: Boolean, val wins: Int, val losses: Int)
+        val friendNames = friends.filter { it.isFriend }.map { it.username }.toSet()
+        val rows = players
+            .filter { it.visibility == ProfileVisibility.PUBLIC || (it.visibility == ProfileVisibility.FRIENDS && it.name in friendNames) }
+            .filter { scope == io.magicmobile.android.game.RankedLeaderboard.Scope.EVERYONE || it.name in friendNames }
+            .map { Row(it.name, RankPosition.published(it.step, it.pips).points, it.title, it.commander, it.online, 8 + it.step, 4 + it.name.length % 7) } +
+            Row(own, RankPosition.published(10, 2).points, "Contender", "Edgar Markov", true, 14, 9)
+        val entries = rows.sortedWith(compareByDescending<Row> { it.points }.thenBy { it.name.lowercase() }).mapIndexed { index, row ->
+            io.magicmobile.android.game.RankedLeaderboard.Entry(index + 1, row.name, row.title, row.commander, row.points, row.wins, row.losses, row.online, row.name == own)
+        }
+        return io.magicmobile.android.game.RankedLeaderboard(RankLadder.season(System.currentTimeMillis()), scope.raw, entries.size,
+            entries.count { it.online }, entries.take(limit), entries.firstOrNull { it.you })
+    }
+
+    /** mm_message_* on the fixture (SocialFixtures.messages in Swift): a conversation with unread messages and a quiet one. */
+    fun messages(now: Long = System.currentTimeMillis()): Map<String, List<io.magicmobile.android.game.FriendMessage>> {
+        fun at(minutesAgo: Long) = now - minutesAgo * 60_000
+        return mapOf(
+            "Aria_Blade" to listOf(
+                io.magicmobile.android.game.FriendMessage(1, "Your Krenko deck was brutal last night", at(190), fromMe = false, read = true),
+                io.magicmobile.android.game.FriendMessage(2, "Ha, thanks! Rematch soon?", at(185), fromMe = true, read = true),
+                io.magicmobile.android.game.FriendMessage(5, "I'm hosting a table now", at(6), fromMe = false, read = false),
+                io.magicmobile.android.game.FriendMessage(6, "Want to play?", at(5), fromMe = false, read = false)),
+            "ManaFiend" to listOf(
+                io.magicmobile.android.game.FriendMessage(3, "Good game!", at(1500), fromMe = false, read = true),
+                io.magicmobile.android.game.FriendMessage(4, "Well played!", at(1490), fromMe = true, read = true)))
+    }
 }

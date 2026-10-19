@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,7 +58,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -78,6 +79,7 @@ import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.FitText
 import io.magicmobile.android.ui.MagicPalette
+import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
@@ -88,16 +90,13 @@ import io.magicmobile.android.ui.glow
 import io.magicmobile.android.game.BattlefieldTokenStack
 import androidx.compose.ui.draw.drawBehind
 
-/** BattlefieldBackdrop (GameBoardTheme.swift). Persisted identifiers are shared with iOS. */
-enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
-    ARENA("arena", "Stone Arena"), MIDNIGHT("midnight", "Midnight"), WOOD("wood", "Classic Wood"),
-    MOSS("moss", "Moss Sanctuary"), EMBER("ember", "Obsidian Ember"), TIDE("tide", "Tidal Slate"), TAVERN("tavern", "Walnut Tavern");
-
-    /** Square material, center-cropped for either orientation. */
-    val drawable: Int? get() = when (this) {
-        ARENA -> R.drawable.battlefield_arena; WOOD -> R.drawable.battlefield_wood; MOSS -> R.drawable.battlefield_moss
-        EMBER -> R.drawable.battlefield_ember; TIDE -> R.drawable.battlefield_tide; MIDNIGHT, TAVERN -> null
-    }
+/**
+ * BattlefieldBackdrop (GameBoardTheme.swift). Persisted identifiers are shared with iOS. Walnut Tavern is the only
+ * table players get; ARENA is the classic board layout on the plain gradient, kept for previews and tests. The old
+ * moss, wood, ember, tide and stone textures were removed on 2026-10-14 and their stored values resolve to the tavern.
+ */
+enum class BattlefieldBackdrop(val rawValue: String) {
+    ARENA("arena"), TAVERN("tavern");
 
     /**
      * A composed table rendered for each orientation (scripts/brand/tavern_table.py): its frame and play mat
@@ -118,30 +117,22 @@ enum class BattlefieldBackdrop(val rawValue: String, val title: String) {
 object BoardAppearancePreference {
     const val key = "magicmobile.boardAppearance"
     /** Walnut Tavern is the only board players can choose since 2026-10-11 (the picker is gone);
-     *  the other backdrops stay for previews and tests. */
+     *  "arena" (the classic layout) stays for previews and tests. */
     const val defaultValue = "tavern"
     fun normalized(value: String): String = if (BattlefieldBackdrop.entries.any { it.rawValue == value }) value else defaultValue
-}
-
-object MenuAppearancePreference {
-    const val key = "magicmobile.menuAppearance"
-    const val defaultValue = "tavern"
-    val options = listOf("tavern", "arena", "midnight")
-    fun normalized(value: String): String = if (value in options) value else defaultValue
 }
 
 val midnightGradient: Brush get() = Brush.verticalGradient(listOf(rgb(0.055, 0.085, 0.10), rgb(0.10, 0.16, 0.16)))
 
 /**
- * A square material crop keeps both orientations independent of painted slots. Composed tables pick the
- * render made for the orientation and fill the screen exactly: the controls sit on its sockets through
- * the same both-axes mapping (TavernFrame), so a phone a little taller or wider than the 440 x 956 design
- * canvas stretches the plate by a few percent instead of cropping its sockets away.
+ * Composed tables pick the render made for the orientation and fill the screen exactly: the controls sit on its
+ * sockets through the same both-axes mapping (TavernFrame), so a phone a little taller or wider than the 440 x 956
+ * design canvas stretches the plate by a few percent instead of cropping its sockets away. The classic board draws
+ * the plain gradient.
  */
 @Composable
 fun BattlefieldBackdropArt(theme: BattlefieldBackdrop, modifier: Modifier = Modifier) {
     val composed = theme.composedDrawables
-    val drawable = theme.drawable
     if (composed != null) {
         BoxWithConstraints(modifier) {
             val portrait = maxHeight >= maxWidth
@@ -150,8 +141,7 @@ fun BattlefieldBackdropArt(theme: BattlefieldBackdrop, modifier: Modifier = Modi
             val plate = remember(id) { io.magicmobile.android.ui.TavernImages.decode(resources, id) }
             Image(androidx.compose.ui.graphics.painter.BitmapPainter(plate), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
         }
-    } else if (drawable != null) Image(painterResource(drawable), null, modifier, contentScale = ContentScale.Crop)
-    else Box(modifier.background(midnightGradient))
+    } else Box(modifier.background(midnightGradient))
 }
 
 @Composable
@@ -223,16 +213,41 @@ fun AttachmentNameTab(card: ZoneCard, height: Dp, modifier: Modifier = Modifier,
     }
 }
 
+/** The brass chip on the last card of a spread-out pile (BattlefieldStackChip in BattlefieldRow.swift): tap to stack it back together. */
+@Composable
+fun BattlefieldStackChip(cardWidth: Float, modifier: Modifier = Modifier, action: () -> Unit) {
+    Box(modifier.size(44.dp).clickable(onClick = action).semantics { contentDescription = "Stack the group"; testTag = "battlefield.restack" },
+        contentAlignment = Alignment.Center) {
+        Row(Modifier.defaultMinSize(minHeight = 20.dp).glow(Color.Black.copy(alpha = 0.6f), 2.dp, 10.dp)
+            .background(Brush.verticalGradient(listOf(rgb(1.0, 0.88, 0.56), rgb(0.80, 0.56, 0.22))), CircleShape)
+            .border(1.dp, Color.Black.copy(alpha = 0.45f), CircleShape).padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+            SfImage("square.stack.3d.up.fill", rgb(0.25, 0.12, 0.04), 9.dp)
+            if (cardWidth >= 44f) Text("Stack", color = rgb(0.25, 0.12, 0.04), style = sf(10f, SfWeight.heavy, SfDesign.SERIF))
+        }
+    }
+}
+
 /** A battlefield lane (Board/BattlefieldRow.swift BattlefieldRow): grouped, attachment-stacked, density-sized permanents. */
 @Composable
 fun BattlefieldRow(
-    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, combatHighlightIds: Set<String>,
+    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, chosenIds: Set<String>, combatHighlightIds: Set<String>,
     selection: BoardSelection, cardWidth: Float, cardHeight: Float, rowWidth: Float,
     runAction: (LegalAction) -> Unit, runTargetAction: (ZoneCard) -> Unit, runCombatCardAction: (ZoneCard) -> Boolean,
     modifier: Modifier = Modifier, flipped: Boolean = false, adaptsToDensity: Boolean = false, availableHeight: Float? = null,
     arrangement: BattlefieldRowArrangement = BattlefieldRowArrangement.AUTOMATIC, allowsManaUndo: Boolean = false, manaPaymentActive: Boolean = false,
 ) {
     var expandedGroupIds by rememberSaveable(title) { mutableStateOf(setOf<String>()) }
+    // Piles opened with a hold while choosing from them stack again once the choice or combat ends; a pile opened just to look
+    // stays open until its Stack chip (Caleb, 2026-10-16).
+    var choiceOpenedGroupIds by rememberSaveable(title) { mutableStateOf(setOf<String>()) }
+    val settled = targetableIds.isEmpty() && combatHighlightIds.isEmpty()
+    LaunchedEffect(settled) {
+        if (settled && choiceOpenedGroupIds.isNotEmpty()) {
+            expandedGroupIds = BattlefieldTokenStack.openAfterChoice(expandedGroupIds, choiceOpenedGroupIds)
+            choiceOpenedGroupIds = emptySet()
+        }
+    }
     val haptics = rememberHaptics()
     val cardGroups = remember(cards) { BattlefieldAttachments.groups(cards) }
 
@@ -249,16 +264,15 @@ fun BattlefieldRow(
 
     /** The card a tap on a stack acts on: the first that can be targeted, then the first that combat highlights; null when the stack simply opens. */
     fun nextChoosable(group: BattlefieldCardGroup): Pair<ZoneCard, Boolean>? {
-        group.cards.firstOrNull { !it.isPhasedOut && (targetableIds.contains(it.instanceId) || targetableIds.contains(it.id)) }?.let { return it to true }
+        BattlefieldTokenStack.nextTargetable(group, targetableIds, chosenIds)?.let { return it to true }
         group.cards.firstOrNull { combatHighlightIds.contains(it.instanceId) || combatHighlightIds.contains(it.id) }?.let { return it to false }
         return null
     }
 
-    val visibleCards = cardGroups.flatMap { if (isExpanded(it)) it.cards else listOf(it.representative) }
-    val visibleCardCount = cardGroups.sumOf { if (isExpanded(it)) it.count else 1 }
-    val renderedGroups = cardGroups.flatMap { group ->
-        if (isExpanded(group)) group.cards.map { BattlefieldCardGroup("card:" + it.instanceId, listOf(it)) } else listOf(group)
-    }
+    // A pile shows the cards already chosen from it beside it (BattlefieldTokenStack.displayGroups).
+    val renderedGroups = cardGroups.flatMap { BattlefieldTokenStack.displayGroups(it, isExpanded(it), chosenIds) }
+    val visibleCards = renderedGroups.map { it.representative }
+    val visibleCardCount = renderedGroups.size
     val permanentLayout = availableHeight?.let { height ->
         val proposed = arrangement.rows(renderedGroups, flipped, arrangement == BattlefieldRowArrangement.LANDSCAPE_RESOURCES || visibleCardCount > 5)
         ArenaPermanentLayout.of(proposed.map { it.size }, rowWidth, height, cardWidth, cardHeight / maxOf(cardWidth, 1f))
@@ -295,14 +309,16 @@ fun BattlefieldRow(
     }
 
     val tappedOffset = { card: ZoneCard -> if (card.tapped == true && rows == 1) 5.dp else 0.dp }
+    val stackChips = if (expandedGroupIds.isEmpty()) emptyMap() else BattlefieldTokenStack.stackChipPiles(cardGroups, expandedGroupIds)
 
     @Composable
     fun cardTile(card: ZoneCard) {
         val action = legalAction(card)
         val targetable = !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id))
         val combatHighlighted = combatHighlightIds.contains(card.instanceId) || combatHighlightIds.contains(card.id)
+        Box(Modifier.offset(y = tappedOffset(card))) {
         ArenaBattlefieldCard(card, title, renderedCardWidth.dp, renderedCardHeight.dp,
-            Modifier.offset(y = tappedOffset(card))
+            Modifier
                 .cardBounds(card.instanceId)
                 .boardFXCardMotion(card.instanceId)
                 .alpha(if (targetableIds.isNotEmpty() && !targetable) 0.54f else 1f)
@@ -310,7 +326,25 @@ fun BattlefieldRow(
                     selection.inspectedCard = card
                     GameHaptics.impact(haptics)
                 }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
-            selected = selection.selectedCard?.id == card.id, legal = action != null, targetable = targetable || combatHighlighted)
+            selected = selection.selectedCard?.id == card.id || BattlefieldTokenStack.isChosen(card, chosenIds), legal = action != null,
+            targetable = targetable || combatHighlighted)
+        // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
+        if (BattlefieldTokenStack.isChosen(card, chosenIds)) {
+            Box(Modifier.align(Alignment.TopEnd).offset(3.dp, (-3).dp).size(maxOf(18f, renderedCardWidth * 0.22f).dp)
+                .background(io.magicmobile.android.ui.TavernPalette.ember, CircleShape).border(1.2.dp, MagicPalette.antiqueGold, CircleShape),
+                contentAlignment = Alignment.Center) {
+                SfImage("checkmark", Color.White, maxOf(9f, renderedCardWidth * 0.11f).dp)
+            }
+        }
+        // The last card of a pile the player spread out: tap to stack it back together.
+        stackChips[card.instanceId]?.let { pile ->
+            BattlefieldStackChip(renderedCardWidth, Modifier.align(Alignment.BottomEnd).offset(10.dp, 10.dp)) {
+                expandedGroupIds = expandedGroupIds - pile
+                choiceOpenedGroupIds = choiceOpenedGroupIds - pile
+                GameHaptics.selection(haptics)
+            }
+        }
+        }
     }
 
     @Composable
@@ -340,8 +374,9 @@ fun BattlefieldRow(
                 }
             }, inspect = {
                 if (nextChoosable(group) != null) {
-                    // Hold to open the pile and pick a particular card.
+                    // Hold to open the pile and pick a particular card; it stacks again when the choice ends.
                     expandedGroupIds = expandedGroupIds + group.id
+                    choiceOpenedGroupIds = choiceOpenedGroupIds + group.id
                 } else selection.inspectedCard = card
                 GameHaptics.impact(haptics)
             }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null })) {
@@ -364,14 +399,34 @@ fun BattlefieldRow(
 
     /**
      * Arena-style: Auras and Equipment tuck behind their creature, each showing a named tab above it. The creature
-     * keeps its full size (Caleb, 2026-10-02): the tabs rise above it, over the gap or the row above.
+     * keeps its full size (Caleb, 2026-10-02): the tabs rise above it, over the gap. In a lower row ([tucked]) they would
+     * cover the power and toughness of the card above (Caleb, 2026-10-15), so there they sit inside the creature's top edge.
      */
     @Composable
-    fun attachmentGroupTile(group: BattlefieldCardGroup) {
+    fun attachmentGroupTile(group: BattlefieldCardGroup, tucked: Boolean = false) {
         val attachments = group.cards.drop(1)
         // Two tabs at most; the rest count on the top tab.
         val shown = attachments.take(2)
         val peek = maxOf(11f, minOf(14f, renderedCardHeight * 0.13f))
+        if (tucked) {
+            Box(Modifier.requiredSize(renderedCardWidth.dp, renderedCardHeight.dp), contentAlignment = Alignment.TopCenter) {
+                cardTile(group.representative)
+                Column(Modifier.padding(top = (peek * 0.35f).dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    shown.withIndex().forEach { (index, card) ->
+                        AttachmentNameTab(card, peek.dp, Modifier.width(renderedCardWidth.dp)
+                            .semantics { contentDescription = "${card.card.name}. Attached to ${group.representative.card.name}. Tap to select; hold to inspect." }
+                            .onCardInteraction(tap = {
+                                handleCardTap(card, !card.isPhasedOut && (targetableIds.contains(card.instanceId) || targetableIds.contains(card.id)), false)
+                            }, inspect = {
+                                selection.inspectedCard = card
+                                GameHaptics.impact(haptics)
+                            }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
+                            more = if (index == shown.size - 1) attachments.size - shown.size else 0)
+                    }
+                }
+            }
+            return
+        }
         Box(Modifier.requiredSize(renderedCardWidth.dp, renderedCardHeight.dp), contentAlignment = Alignment.BottomCenter) {
             shown.withIndex().reversed().forEach { (index, card) ->
                 Box(Modifier.offset(y = (-peek * (index + 1)).dp)) {
@@ -385,11 +440,12 @@ fun BattlefieldRow(
     }
 
     @Composable
-    fun rowTiles(groups: List<BattlefieldCardGroup>) {
+    /** [tucked]: a row sits above this one in the lane, so attachment tabs stay inside their creature. */
+    fun rowTiles(groups: List<BattlefieldCardGroup>, tucked: Boolean = false) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             for (group in groups) androidx.compose.runtime.key(group.id) {
                 when {
-                    group.id.startsWith("attachment:") -> attachmentGroupTile(group)
+                    group.id.startsWith("attachment:") -> attachmentGroupTile(group, tucked)
                     group.count > 1 -> collapsedGroupTile(group)
                     else -> cardTile(group.representative)
                 }
@@ -409,7 +465,7 @@ fun BattlefieldRow(
                     BattlefieldRowScroller(scroll, title, rowWidth, targetRenderedWidth, listOf(arranged[row].map { it.count }),
                         showsIndicator = rowContentWidth(arranged[row]) > rowWidth) {
                         Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (((availableHeight ?: 0f) - 4) / 2).dp), contentAlignment = Alignment.Center) {
-                            Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row]) }
+                            Box(Modifier.padding(horizontal = 8.dp)) { rowTiles(arranged[row], tucked = row > 0) }
                         }
                     }
                 }
@@ -421,7 +477,7 @@ fun BattlefieldRow(
                 // Rows keep their leading edges together; the block is centered in the lane.
                 Box(Modifier.defaultMinSize(minWidth = rowWidth.dp, minHeight = (availableHeight ?: maxOf(cardHeight + 6, 44f)).dp), contentAlignment = Alignment.Center) {
                     Column(Modifier.padding(horizontal = 8.dp, vertical = if (availableHeight == null) 0.dp else 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() })
+                        for (row in 0 until rows) rowTiles(arranged.getOrElse(row) { emptyList() }, tucked = row > 0)
                     }
                 }
             }
@@ -505,12 +561,12 @@ fun requiresIndividualCombatCards(group: BattlefieldCardGroup, highlightedIDs: S
 /** Board/PortraitBoardViews.swift PortraitBattlefieldPermanentGroup: creatures and other permanents in portrait's two-row lane. */
 @Composable
 fun PortraitBattlefieldPermanentGroup(
-    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, combatHighlightIds: Set<String>,
+    title: String, cards: List<ZoneCard>, legalActions: List<LegalAction>, targetableIds: Set<String>, chosenIds: Set<String>, combatHighlightIds: Set<String>,
     selection: BoardSelection, cardWidth: Float, cardHeight: Float, rowWidth: Float, availableHeight: Float,
     runAction: (LegalAction) -> Unit, runTargetAction: (ZoneCard) -> Unit, runCombatCardAction: (ZoneCard) -> Boolean,
     modifier: Modifier = Modifier, flipped: Boolean = false, allowsManaUndo: Boolean = false, manaPaymentActive: Boolean = false,
 ) {
-    BattlefieldRow(title, cards, legalActions, targetableIds, combatHighlightIds, selection, cardWidth, cardHeight, rowWidth,
+    BattlefieldRow(title, cards, legalActions, targetableIds, chosenIds, combatHighlightIds, selection, cardWidth, cardHeight, rowWidth,
         runAction, runTargetAction, runCombatCardAction, modifier, flipped, adaptsToDensity = true, availableHeight = availableHeight,
         arrangement = BattlefieldRowArrangement.PORTRAIT_PERMANENTS, allowsManaUndo = allowsManaUndo, manaPaymentActive = manaPaymentActive)
 }

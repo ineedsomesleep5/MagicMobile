@@ -4,6 +4,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.magicmobile.android.game.BoardFXRevisionKey
+import io.magicmobile.android.game.BoardPresentationHold
+import io.magicmobile.android.game.ComboLoop
+import io.magicmobile.android.game.ComboLoopStop
+import io.magicmobile.android.game.ComboNote
+import io.magicmobile.android.game.ComboRepeat
+import io.magicmobile.android.game.ComboReplay
+import io.magicmobile.android.game.ComboStep
 import io.magicmobile.android.game.EngineClient
 import io.magicmobile.android.game.EngineError
 import io.magicmobile.android.game.EnginePrompt
@@ -24,6 +32,7 @@ import io.magicmobile.android.game.integer
 import io.magicmobile.android.game.jsonObject
 import io.magicmobile.android.game.obj
 import io.magicmobile.android.game.string
+import io.magicmobile.android.game.withoutPrompts
 import io.magicmobile.android.ondevice.OnDeviceHostUnavailable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -227,6 +236,12 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     private var smartPassGeneration = UUID.randomUUID()
     /** The last prompt smart pass answered: each prompt is passed at most once, never retried. */
     private var smartPassedPromptID: String? = null
+    /** What the board is still showing; smart pass lets it finish before passing. */
+    var presentationHold: BoardPresentationHold = BoardPresentationHold.shared
+    /** Full control (long-press Pass, or the controls menu): smart pass stops at every priority until this turn ends. */
+    var fullControlTurn by mutableStateOf<Long?>(null); private set
+    /** A local log line was added since the last snapshot: the next poll republishes even if the game didn't change. */
+    private var logChanged = false
 
     /** The stack is resolving shortly after this seat's own answer (OnDeviceLocalPollSchedule.CHAIN_MILLIS). */
     private val inStackChain: Boolean get() {
@@ -246,8 +261,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         if (this.client != null || isWorking) throw EngineError.InvalidMessage("Close the active game first")
         this.client = client; this.matchID = matchID; this.seatID = seatID; observer = observe
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = emptyMap()
+        comboHistory = emptyList(); comboOffer = null; comboDeclined = null; comboResult = null
         autoPassAfterCast?.let(::setAutoPassAfterCast)
-        this.smartPass = smartPass; smartPassJob?.cancel(); smartPassJob = null; smartPassedPromptID = null
+        if (devicePaceHot) queueDevicePace()
+        this.smartPass = smartPass; smartPassJob?.cancel(); smartPassJob = null; smartPassedPromptID = null; fullControlTurn = null
         this.allowsSeatScopedAutoYield = allowsSeatScopedAutoYield
         this.reconnectsAutomatically = reconnectsAutomatically
         this.table = table; lastActionAt = null
@@ -295,8 +312,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             if (next.matchID != matchID || next.seatID != seatID) throw EngineError.UnboundPeer
             // Submission can change at the same revision. An older in-flight poll must not restore a hidden choice.
             poll?.let { current -> if (next.revision < current.revision || (next.revision == current.revision && sequence <= appliedRefreshSequence)) return }
-            // While the AI thinks, polls repeat the same board; do not re-adapt it every 300 ms.
-            val unchanged = poll?.raw == next.raw && heldAbilitySnapshot == null && snapshot != null
+            // While the AI thinks, polls repeat the same board; do not re-adapt it every 300 ms. A repeated reply comes back
+            // as the very same poll (EngineClient.poll), so the deep comparison is skipped too.
+            val unchanged = (poll === next || poll?.raw == next.raw) && heldAbilitySnapshot == null && snapshot != null && !logChanged
+            logChanged = false
             idlePolls = if (unchanged) idlePolls + 1 else 0
             val nextLog = messageLog.copy()
             if (!unchanged) nextLog.ingest(next)
@@ -365,11 +384,32 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         scheduleSmartPass()
     }
 
+    private val currentTurn: Long? get() = poll?.snapshot?.get("gameView")?.get("turn")?.integer
+
+    /** Full control is on for the turn being played. */
+    val isFullControl: Boolean get() = fullControlTurn != null && fullControlTurn == currentTurn
+
+    /** Turns full control for this turn on or off. Turning it on stops a smart pass that hasn't been sent yet. */
+    fun toggleFullControl() {
+        if (isFullControl) {
+            fullControlTurn = null
+            scheduleSmartPass()
+        } else {
+            fullControlTurn = currentTurn
+            smartPassGeneration = UUID.randomUUID(); smartPassJob?.cancel(); smartPassJob = null
+        }
+    }
+
+    /** What a smart pass let go by, for the game log: the top of the stack, else the step. */
+    private fun autoPassLabel(situation: OnDeviceSmartPass.Situation, shown: GameSnapshot): String =
+        shown.stackTopFirst.firstOrNull()?.displayName ?: OnDeviceSmartPass.Step.fromEngine(situation.step)?.title ?: "Priority"
+
     private val smartPassSituation: OnDeviceSmartPass.Situation? get() {
         val context = yieldContext ?: return null
         val view = poll?.snapshot?.get("gameView") ?: return null
         val owner = view["players"].array?.firstOrNull { it["playerId"].string == context.viewerID } ?: return null
-        return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner))
+        return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner),
+            OnDeviceSmartPass.topStackIsMine(poll?.snapshot, context.viewerID), OnDeviceSmartPass.hasResponse(view))
     }
 
     private fun smartPassPrompt(): OnDeviceYieldPolicy.Prompt? {
@@ -383,7 +423,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
      * The same pass a tap sends, once per prompt; a failure is left to the player, never retried.
      */
     private fun scheduleSmartPass() {
-        if (smartPassJob != null || isAutoPassing || pending != null || pendingActionID != null || errorMessage != null ||
+        if (smartPassJob != null || isAutoPassing || isFullControl || pending != null || pendingActionID != null || errorMessage != null ||
             heldAbilitySnapshot != null || abilityAutoAnswer != null || isClosing) return
         val prompt = smartPassPrompt() ?: return
         val token = epoch
@@ -395,16 +435,19 @@ class OnDeviceSession(private val scope: CoroutineScope) {
             try {
                 // The response lane frees right after the answer that led here.
                 repeat(150) { if (isWorking || activeRefreshes != 0) delay(20) }
+                waitForBoardPresentation()
                 // Re-check against the poll applied meanwhile: the same prompt, still a pass.
                 val current = smartPassPrompt()
                 val shown = snapshot
                 val situation = smartPassSituation
-                if (epoch != token || isWorking || pending != null || pendingActionID != null || isAutoPassing ||
+                if (epoch != token || isWorking || pending != null || pendingActionID != null || isAutoPassing || isFullControl ||
                     current == null || current.id != prompt.id || current.revision != prompt.revision || shown == null || situation == null) return@launch
                 smartPassedPromptID = current.id
+                messageLog.noteAutoPass(autoPassLabel(situation, shown), current.id)
+                logChanged = true
                 val command = GameCommand(type = "pass_priority", gameId = situation.context.matchID, playerId = situation.context.viewerID,
                     promptId = current.id, messageId = current.revision.toInt(), expectedBridgeRevision = shown.bridgeRevision)
-                try { submit(command, "Pass priority", "smart-pass-${current.id}"); sent = true }
+                try { submit(command, "Pass priority", OnDeviceYieldPolicy.SMART_PASS_ACTION_PREFIX + current.id); sent = true }
                 catch (error: CancellationException) { throw error }
                 catch (_: Exception) { }
             } finally {
@@ -415,6 +458,25 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         }
         smartPassJob = job
         job.start()
+    }
+
+    /**
+     * Lets the board finish what it is showing (an opponent's removal spell read at the centre, the creature
+     * it exiles) before smart pass moves the game on: first the board takes in the published snapshot, then
+     * its held effects play out, never longer than [BoardPresentationHold.MAXIMUM_WAIT_MS].
+     */
+    private suspend fun waitForBoardPresentation() {
+        // A long combo loop shows the board once a round, so there's nothing to wait for between its steps.
+        if (comboFastMode) return
+        val key = BoardFXRevisionKey(snapshot ?: return)
+        val start = System.currentTimeMillis()
+        fun elapsed() = System.currentTimeMillis() - start
+        while (presentationHold.ingested != key && elapsed() < BoardPresentationHold.INGEST_WAIT_MS) delay(20)
+        while (elapsed() < BoardPresentationHold.MAXIMUM_WAIT_MS) {
+            val left = (presentationHold.until ?: return) - System.currentTimeMillis()
+            if (left <= 0) return
+            delay(minOf(left, 100L))
+        }
     }
 
     val canEndTurn: Boolean get() = canStartYield(OnDeviceYieldPolicy.Mode.SAFE_END_TURN)
@@ -465,7 +527,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                             yieldPolicy.recordPass(decision.prompt)
                             val command = GameCommand(type = "pass_priority", gameId = current.matchID, playerId = current.viewerID,
                                 promptId = prompt.id, messageId = prompt.revision.toInt(), expectedBridgeRevision = shown.bridgeRevision)
-                            submit(command, "Pass priority", "auto-pass-${prompt.id}")
+                            submit(command, "Pass priority", OnDeviceYieldPolicy.YIELD_PASS_ACTION_PREFIX + prompt.id)
                         }
                     }
                 }
@@ -517,26 +579,206 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val snapshot = snapshot
         val current = snapshot?.legalActions?.firstOrNull { it.id == action.id }
             ?: throw EngineError.InvalidMessage("This action is no longer available")
-        val command = GameCommand(type = current.type, gameId = snapshot.id, playerId = current.playerId,
-            cardInstanceId = current.cardInstanceId, sourceInstanceId = current.sourceInstanceId, abilityId = current.abilityId,
-            promptId = current.promptId, messageId = current.messageId, choiceIds = current.choiceIds, targetIds = current.targetIds,
-            cardInstanceIds = current.cardInstanceIds, modeIds = current.modeIds, pile = current.pile?.value, amount = current.amount,
-            amounts = current.amounts, orderedIds = current.orderedIds, useCommandZone = current.useCommandZone, manaType = current.manaType,
-            manaTypes = current.manaTypes, playerIds = current.playerIds, confirmed = current.confirmed, pay = current.pay,
-            sourceZone = current.sourceZone, fromZone = current.sourceZone, cardName = current.cardName, attackers = current.attackers,
-            blockers = current.blockers, expectedBridgeRevision = snapshot.bridgeRevision)
-        send(command, current.label, current.id)
+        send(ComboLoop.commandFrom(current, snapshot.id, snapshot.bridgeRevision), current.label, current.id)
     }
 
     suspend fun send(command: GameCommand, label: String, actionID: String) {
         stopAutoPass()
+        val decision = snapshot
         submit(command, label, actionID)
+        noteComboStep(command, label, actionID, decision)
+    }
+
+    // MARK: Combo loop shortcut (ComboLoop)
+
+    /** Solo games only: the root turns it on for games against the AI. */
+    var comboLoopsAllowed = false
+        set(value) { field = value; if (!value) { comboHistory = emptyList(); comboOffer = null } }
+    /** A round the player has made three times in a row this turn, offered for repeating. */
+    var comboOffer by mutableStateOf<List<ComboStep>?>(null); private set
+    /** Repeating a round: how far it has got, and the last few rounds and notes. */
+    var comboRun by mutableStateOf<ComboRun?>(null); private set
+    /** The line shown when repeating stops: rounds, life changes and why. */
+    var comboResult by mutableStateOf<String?>(null)
+    /**
+     * What the board shows while a loop repeats: the game without the prompts the repeats answer, updated after every step for a
+     * short run (so its effects play) and once a round for a long one.
+     */
+    private var comboPresented by mutableStateOf<GameSnapshot?>(null)
+    data class ComboRun(val round: List<ComboStep>, val mode: ComboRepeat, val done: Int, val lines: List<String> = emptyList())
+    /** The board's snapshot: the live game, or the repeats' quiet copy while a loop runs. */
+    val presentedSnapshot: GameSnapshot? get() = if (comboRun == null) snapshot else comboPresented ?: snapshot?.withoutPrompts()
+    private var comboHistory: List<Pair<ComboStep, Int>> = emptyList()
+    private var comboDeclined: List<ComboStep>? = null
+    @Volatile private var comboStopRequested = false
+    @Volatile private var comboFastMode = false
+    private var comboJob: Job? = null
+
+    private fun noteComboStep(command: GameCommand, label: String, actionID: String, decision: GameSnapshot?) {
+        if (!comboLoopsAllowed || comboRun != null) return
+        when (val note = ComboLoop.note(command, label, actionID, decision)) {
+            ComboNote.Ignore -> return
+            ComboNote.Breaks -> { comboHistory = emptyList(); comboOffer = null }
+            is ComboNote.Step -> {
+                val turn = decision?.turn ?: 0
+                // A loop is offered only for rounds made in one turn.
+                if (comboHistory.lastOrNull()?.second?.let { it != turn } == true) comboHistory = emptyList()
+                comboHistory = (comboHistory + (note.step to turn)).takeLast(ComboLoop.HISTORY_LIMIT)
+                val round = ComboLoop.cycle(comboHistory.map { it.first })
+                comboOffer = if (round != null && round != comboDeclined) round else null
+            }
+        }
+    }
+
+    /** The player said no to this round: it isn't offered again until they make a different one. */
+    fun declineComboLoop() { comboDeclined = comboOffer; comboOffer = null }
+
+    /**
+     * Repeats the offered round: a number of times, until a step can't be taken, or until every opponent has lost (at most
+     * ComboLoop.MAX_REPEATS rounds).
+     */
+    fun startComboLoop(mode: ComboRepeat) {
+        val round = comboOffer ?: return
+        val start = snapshot ?: return
+        if (comboRun != null) return
+        comboOffer = null; comboResult = null; comboStopRequested = false
+        comboPresented = start.withoutPrompts()
+        comboRun = ComboRun(round, mode, 0)
+        comboJob = scope.launch { runComboLoop(round, mode, start) }
+    }
+
+    fun stopComboLoop() { comboStopRequested = true }
+
+    private fun noteComboLine(line: String) { comboRun = comboRun?.let { it.copy(lines = (it.lines + line).takeLast(3)) } }
+
+    private suspend fun runComboLoop(round: List<ComboStep>, mode: ComboRepeat, start: GameSnapshot) {
+        // A long run skips the board's effects and shows the board once a round; a short one plays them at a pace you can follow.
+        val watch = mode.watchable
+        comboFastMode = !watch
+        io.magicmobile.android.game.BoardFXLevel.suppressedForLoop = !watch
+        var rounds = 0
+        var stop: ComboLoopStop = ComboLoopStop.Finished
+        try {
+            val limit = minOf(mode.count ?: ComboLoop.MAX_REPEATS, ComboLoop.MAX_REPEATS)
+            var unchanged = 0
+            var lastDigest = ComboLoop.digest(start)
+            val prefer = HashMap<Int, List<String>>()
+            repeating@ while (rounds < limit) {
+                var chosen = emptyList<String>()
+                for ((index, step) in round.withIndex()) {
+                    val replay = when (val wait = waitForComboStep(step, prefer[index].orEmpty())) {
+                        is ComboWait.Stop -> { stop = wait.reason; break@repeating }
+                        is ComboWait.Ready -> wait.replay
+                    }
+                    try { submit(replay.command, replay.label, replay.actionID) }
+                    catch (error: CancellationException) { throw error }
+                    catch (error: Exception) { stop = ComboLoopStop.Failed(error.message ?: "The game didn't take that step."); break@repeating }
+                    if (replay.chosenNames.isNotEmpty()) {
+                        prefer[index] = replay.chosenNames
+                        if (chosen.isEmpty() || step.targets.any { it.controller == "opponent" }) chosen = replay.chosenNames
+                    }
+                    replay.retargeted?.let { (from, to) -> noteComboLine("$from is gone, now $to") }
+                    if (watch) snapshot?.let { comboPresented = it.withoutPrompts() }
+                }
+                rounds += 1
+                comboRun = comboRun?.copy(done = rounds)
+                noteComboLine(ComboLoop.roundLine(rounds, round, chosen))
+                val current = snapshot ?: break
+                comboPresented = current.withoutPrompts()
+                if (current.isCompleted) { stop = ComboLoopStop.GameOver; break }
+                if (watch) { waitForBoardPresentation(); delay(450) }
+                // Open-ended repeats stop a loop that has stopped doing anything visible; a count simply runs out.
+                if (mode.count == null) {
+                    val digest = ComboLoop.digest(current)
+                    unchanged = if (digest == lastDigest) unchanged + 1 else 0
+                    lastDigest = digest
+                    if (unchanged >= ComboLoop.UNCHANGED_ROUNDS_TO_STOP) { stop = ComboLoopStop.NothingChanged; break }
+                }
+            }
+            if (mode.count == null && stop == ComboLoopStop.Finished) stop = ComboLoopStop.ReachedLimit
+        } finally {
+            io.magicmobile.android.game.BoardFXLevel.suppressedForLoop = false
+            comboFastMode = false
+            val summary = ComboLoop.summary(rounds, start, snapshot ?: start)
+            val last = stop
+            comboResult = when {
+                last == ComboLoopStop.Finished || last == ComboLoopStop.GameOver -> summary
+                last is ComboLoopStop.StepMissing && mode == ComboRepeat.UntilCant && rounds > 0 -> "$summary, until it couldn't go on: ${last.why}."
+                else -> "$summary. ${last.message}"
+            }
+            comboRun = null; comboPresented = null; comboHistory = emptyList(); comboDeclined = round; comboJob = null
+        }
+    }
+
+    private sealed class ComboWait {
+        data class Ready(val replay: ComboReplay) : ComboWait()
+        data class Stop(val reason: ComboLoopStop) : ComboWait()
+    }
+
+    /**
+     * Waits for this step's answer to be possible: the session idle, the player's own triggers resolved when the step was taken
+     * with an empty stack (passing priority for them), and the step among the choices. Stops when the game ends, an opponent
+     * responds, the player is asked something the round doesn't answer, or nothing comes.
+     */
+    private suspend fun waitForComboStep(step: ComboStep, prefer: List<String>): ComboWait {
+        val started = System.currentTimeMillis()
+        var askedSince: Long? = null
+        var passedFor: String? = null
+        fun askedTooLong(): Boolean {
+            val since = askedSince ?: System.currentTimeMillis().also { askedSince = it }
+            return System.currentTimeMillis() - since > 3_000
+        }
+        while (System.currentTimeMillis() - started < 45_000) {
+            if (comboStopRequested || isClosing) return ComboWait.Stop(ComboLoopStop.StoppedByPlayer)
+            val current = snapshot
+            if (current != null) {
+                if (current.isCompleted || current.isSpectating) return ComboWait.Stop(ComboLoopStop.GameOver)
+                val idle = !isWorking && !isAutoPassing && pendingActionID == null && pending == null && smartPassJob == null &&
+                    heldAbilitySnapshot == null && abilityAutoAnswer == null
+                if (idle) {
+                    if (ComboLoop.opponentResponded(current)) return ComboWait.Stop(ComboLoopStop.OpponentResponded)
+                    val asked = current.legalActions?.isNotEmpty() == true || current.promptEnvelopeV2?.let { current.isViewer(it.playerId) } == true
+                    val pass = ComboLoop.pass(current)
+                    if (ComboLoop.waitsForStack(step, current)) {
+                        // The round's own triggers are still resolving: pass for them, once per prompt.
+                        val key = current.promptEnvelopeV2?.id ?: "${current.bridgeRevision ?: 0}"
+                        if (pass != null && passedFor != key) {
+                            passedFor = key; askedSince = null
+                            try { submit(pass.command, pass.label, "combo-loop-pass-$key") }
+                            catch (error: CancellationException) { throw error }
+                            catch (error: Exception) { return ComboWait.Stop(ComboLoopStop.Failed(error.message ?: "The game didn't take that step.")) }
+                            continue
+                        }
+                        if (asked && pass == null && askedTooLong()) return ComboWait.Stop(ComboLoopStop.StepMissing("a choice the loop doesn't make came up"))
+                    } else {
+                        val replay = ComboLoop.command(step, current, prefer)
+                        if (replay != null) return ComboWait.Ready(replay)
+                        if (asked) { if (askedTooLong()) return ComboWait.Stop(ComboLoopStop.StepMissing(ComboLoop.missing(step))) }
+                        else askedSince = null
+                    }
+                }
+            }
+            delay(120)
+        }
+        return ComboWait.Stop(ComboLoopStop.StepMissing(ComboLoop.missing(step)))
     }
 
     /** Passing priority after casting a spell (Settings), sent with this seat's next answer. */
     fun setAutoPassAfterCast(enabled: Boolean) {
         if ("autoPassAfterCast" !in supportedAnswerActions) return
         standingActions = standingActions + ("autoPassAfterCast" to jsonObject("type" to JsonPrimitive("autoPassAfterCast"), "enabled" to JsonPrimitive(enabled)))
+    }
+
+    /**
+     * The phone is hot and the engine runs on it: AI seats think for less time (answer action devicePace, engine release C).
+     * The root sets it from DeviceHeat; it rides on the next answer, and again after every attach.
+     */
+    var devicePaceHot = false
+        set(value) { if (field != value) { field = value; queueDevicePace() } }
+
+    private fun queueDevicePace() {
+        if ("devicePace" !in supportedAnswerActions) return
+        standingActions = standingActions + ("devicePace" to jsonObject("type" to JsonPrimitive("devicePace"), "hot" to JsonPrimitive(devicePaceHot)))
     }
 
     /** Forget every remembered answer (asked again from the next one). */
@@ -724,6 +966,7 @@ class OnDeviceSession(private val scope: CoroutineScope) {
     }
 
     suspend fun close() {
+        comboStopRequested = true; comboJob?.cancel(); comboHistory = emptyList(); comboOffer = null
         stopAutoPass()
         smartPassJob?.cancel(); smartPassJob = null
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = null

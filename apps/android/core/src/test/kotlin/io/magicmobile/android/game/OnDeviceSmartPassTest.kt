@@ -70,4 +70,40 @@ class OnDeviceSmartPassTest {
         // The stored keys are the iOS raw values, so both apps read the same words.
         assertEquals("mine.declareAttackers", OnDeviceSmartPass.stopKey(OnDeviceSmartPass.Step.DECLARE_ATTACKERS, true))
     }
+
+    /** Mirrors testOnlyPassesSentForThePlayerCountAsAutomatic: passes sent for the player show no waiting pop-up. */
+    @Test fun onlyPassesSentForThePlayerCountAsAutomatic() {
+        assertTrue(OnDeviceYieldPolicy.isAutomaticPass(OnDeviceYieldPolicy.SMART_PASS_ACTION_PREFIX + "p1"))
+        assertTrue(OnDeviceYieldPolicy.isAutomaticPass(OnDeviceYieldPolicy.YIELD_PASS_ACTION_PREFIX + "p1"))
+        for (tapped in listOf(null, "pass_priority-p1", "cast-spell-42", "auto-ability-7", "starting-roll-p1")) {
+            assertFalse("$tapped", OnDeviceYieldPolicy.isAutomaticPass(tapped))
+        }
+    }
+
+    /** Engine release A: your own spell or trigger on top resolves (unless you asked to stop for those); an opponent's
+     *  stops only with a play that answers it; an attack with nothing that answers it passes even at a stop. */
+    @Test fun usesStackControllersAndResponses() {
+        fun value(step: String = "UPKEEP", empty: Boolean = false, mine: Boolean?, response: Boolean, myTurn: Boolean = true) =
+            situation(true, step, myTurn, empty).copy(topStackIsMine = mine, hasResponse = response)
+        assertNotNull("own trigger resolves", OnDeviceSmartPass.passPrompt(value(mine = true, response = true), settings))
+        assertNull(OnDeviceSmartPass.passPrompt(value(mine = true, response = true), settings.copy(stopForOwnSpells = true)))
+        assertNull("an answer to their spell stops", OnDeviceSmartPass.passPrompt(value(mine = false, response = true), settings))
+        assertNotNull("nothing answers it", OnDeviceSmartPass.passPrompt(value(mine = false, response = false), settings))
+        assertNull("older engine: today's stop", OnDeviceSmartPass.passPrompt(value(mine = null, response = true), settings))
+        assertNull(OnDeviceSmartPass.passPrompt(value("DECLARE_ATTACKERS", true, null, true, myTurn = false), settings))
+        assertNotNull(OnDeviceSmartPass.passPrompt(value("DECLARE_ATTACKERS", true, null, false, myTurn = false), settings))
+        assertNull(OnDeviceSmartPass.passPrompt(value("PRECOMBAT_MAIN", true, null, false), settings))
+    }
+
+    @Test fun readsEngineControllersAndResponseFlags() {
+        val root = Json.parseToJsonElement("""{"stackOrder":["s2","s1"],"stackControllers":{"s2":"viewer","s1":"other"}}""")
+        assertEquals(true, OnDeviceSmartPass.topStackIsMine(root, "viewer"))
+        assertEquals(false, OnDeviceSmartPass.topStackIsMine(root, "other"))
+        assertNull(OnDeviceSmartPass.topStackIsMine(Json.parseToJsonElement("""{"stackOrder":["s2"]}"""), "viewer"))
+        fun view(rows: String) = Json.parseToJsonElement("""{"canPlayObjects":{"objects":{"c1":{"spells":$rows}}}}""")
+        assertFalse(OnDeviceSmartPass.hasResponse(view("""[{"respondsToStack":false}]""")))
+        assertTrue(OnDeviceSmartPass.hasResponse(view("""[{"respondsToStack":false},{"respondsToStack":true}]""")))
+        assertTrue("a missing flag counts as a response", OnDeviceSmartPass.hasResponse(view("[{}]")))
+        assertFalse("mana abilities never count", OnDeviceSmartPass.hasResponse(view("""[{"manaAbility":true}]""")))
+    }
 }

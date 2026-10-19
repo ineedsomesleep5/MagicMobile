@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import mage.cards.ExpansionSet;
+import mage.cards.MobileExpansionSet;
 import mage.cards.Sets;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -174,8 +175,12 @@ public final class MobileCardCatalogue {
         return sets().stream().filter(ExpansionInfo::hasBasicLands)
                 .sorted(Comparator.comparing(ExpansionInfo::getReleaseDate).reversed()).collect(Collectors.toList());
     }
+    private static boolean hasPrintings(ExpansionSet set) {
+        // Catalogue sets answer without building their card list.
+        return set instanceof MobileExpansionSet ? ((MobileExpansionSet) set).hasPrintings() : !set.getSetCardInfo().isEmpty();
+    }
     public static ExpansionInfo[] boosterSets() {
-        return registeredSets().stream().filter(set -> set.hasBoosters() && !set.getSetCardInfo().isEmpty())
+        return registeredSets().stream().filter(set -> set.hasBoosters() && hasPrintings(set))
                 .map(ExpansionInfo::new).sorted(Comparator.comparing(ExpansionInfo::getReleaseDate).reversed())
                 .toArray(ExpansionInfo[]::new);
     }

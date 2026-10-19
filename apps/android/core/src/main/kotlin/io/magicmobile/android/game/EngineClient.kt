@@ -12,10 +12,20 @@ fun interface EngineTransport {
 }
 
 class EngineClient(private val transport: EngineTransport) {
-    suspend fun call(operation: String, fields: Map<String, J> = emptyMap()): J {
+    /** The last poll this client decoded, with the exact bytes sent and received (see [poll]). */
+    private class PollExchange(val request: ByteArray, val reply: ByteArray, val poll: MatchPoll)
+    @Volatile private var lastPoll: PollExchange? = null
+
+    suspend fun call(operation: String, fields: Map<String, J> = emptyMap()): J =
+        result(EngineJson.decode(transport.request(request(operation, fields))))
+
+    private fun request(operation: String, fields: Map<String, J>): ByteArray {
         if (fields.containsKey("op") || fields.containsKey("protocol")) throw EngineError.InvalidMessage("Reserved request keys")
         val request = LinkedHashMap(fields).apply { put("protocol", JsonPrimitive(1)); put("op", JsonPrimitive(operation)) }
-        val reply = EngineJson.decode(transport.request(EngineJson.encode(JsonObject(request))))
+        return EngineJson.encode(JsonObject(request))
+    }
+
+    private fun result(reply: J): J {
         val success = reply["ok"].bool
         if (reply["protocol"].integer != 1L || success == null) throw EngineError.InvalidMessage("Invalid engine response envelope")
         if (!success) {
@@ -67,12 +77,20 @@ class EngineClient(private val transport: EngineTransport) {
         call("cancelCheckpoint", mapOf("matchId" to JsonPrimitive(matchID)))
     }
 
+    /**
+     * A reply identical to the previous poll's, for the identical request, returns that poll again without decoding it.
+     * While the AI thinks most polls repeat the board, and decoding the whole game view was about half of the polling
+     * work (Instruments on Caleb's iPhone, 2026-10-18). iOS: OnDevicePollReader.
+     */
     suspend fun poll(matchID: String, seatID: String, after: Long = 0): MatchPoll {
         if (matchID.isEmpty() || seatID.isEmpty() || after < 0) throw EngineError.InvalidMessage("Invalid poll identity or revision")
-        val value = call("poll", mapOf("matchId" to JsonPrimitive(matchID), "viewerId" to JsonPrimitive(seatID), "after" to JsonPrimitive(after)))
-        val poll = MatchPoll(value)
+        val request = request("poll", mapOf("matchId" to JsonPrimitive(matchID), "viewerId" to JsonPrimitive(seatID), "after" to JsonPrimitive(after)))
+        val reply = transport.request(request)
+        lastPoll?.let { if (it.reply.contentEquals(reply) && it.request.contentEquals(request)) return it.poll }
+        val poll = MatchPoll(result(EngineJson.decode(reply)))
         // Do not let a stale/misrouted response enter another match's presentation.
         if (poll.matchID != matchID || poll.seatID != seatID) throw EngineError.InvalidMessage("Poll response identity mismatch")
+        lastPoll = PollExchange(request, reply, poll)
         return poll
     }
 

@@ -15,11 +15,11 @@ import sys
 import zipfile
 from pathlib import Path
 
-# Read at runtime (docs/NATIVE_METADATA.md, "Embedded resources"): the card catalogue and the token
-# database. pennydreadful.properties is read only by upstream's PennyDreadfulCommander validator,
+# Read at runtime (docs/NATIVE_METADATA.md, "Embedded resources"): the card catalogue, the set
+# catalogue (sets and printings, instead of the set classes) and the token database. pennydreadful.properties is read only by upstream's PennyDreadfulCommander validator,
 # which the image contains but the app does not use; it stays (199 KB) so that path cannot fail.
 REQUIRED = ('mage/mobile/card-names.json.gz', 'mage/mobile/card-metadata.jsonl.gz',
-            'tokens-database.txt', 'pennydreadful.properties')
+            'mage/mobile/set-catalogue.tsv.gz', 'tokens-database.txt', 'pennydreadful.properties')
 
 
 def resources(entry):

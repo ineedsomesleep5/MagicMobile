@@ -1,24 +1,37 @@
-# Battlefield material backgrounds
+# Battlefield backgrounds
 
-Six stable preferences: `arena`, `midnight`, `wood`, `moss`, `ember`, `tide`. Midnight preserves the existing native gradient. Five raster materials replace the old painted stone/wood treatment and add moss, obsidian and tidal slate. The old stone and painted menu/board backgrounds (`commander-stone-arena`, `mage-mobile-*-background`) were removed from the iOS asset catalog on 2026-09-27 with the legacy menu that used them.
+Walnut Tavern (`tavern`) is the only table players get (the picker went on 2026-10-11). `arena` stays as
+the classic board layout for the UI tests that pin it (`-magicmobile.boardAppearance arena`); it draws the
+plain dark gradient. Both apps share these identifiers (`GameBoardTheme.swift`, Android `BattlefieldViews.kt`).
+
+## Retired materials (2026-10-14)
+
+The five square materials (stone `arena`, `wood`, `moss`, `ember`, `tide`) and the `midnight` choice were
+removed from both apps on 2026-10-14: about 2.7 MB of the iOS asset catalog and 1.7 MB of the Android APK
+that no player could reach any more (docs/audits/APP_AUDIT_2026-10.md). Saved values for them resolve to the
+tavern. To bring one back, restore it from git history: the generated PNGs are in `791198b`
+(`apps/ios/MagicMobile/Assets.xcassets/battlefield-{id}.imageset/battlefield-{id}.png`) and the shipped
+encodes (iOS JPEG at quality 85, Android `cwebp -q 90 -m 6 -sharp_yuv`) in `1586a02d`. Re-encode from the
+PNGs, never from the lossy files. The older stone and painted menu/board backgrounds (`commander-stone-arena`,
+`mage-mobile-*-background`) left iOS on 2026-09-27 and Android in #156.
 
 ## Walnut Tavern (composed)
 
-`tavern` is the exception to the square-material rule: a composed table rendered per orientation (`battlefield-tavern-portrait`, `battlefield-tavern-landscape`) by `scripts/brand/tavern_table.py` from `scripts/brand/tavern_layout.json`, with sockets placed under the tavern controls. It carries its own lighting, so `BattlefieldSurface` skips the generic shading (`hasBakedLighting`). See docs/BOARD_FX_ROADMAP.md phase 12. Android does not have it yet and resolves it to the default.
+`tavern` is a composed table rendered per orientation (`battlefield-tavern-portrait`,
+`battlefield-tavern-landscape`, plus `battlefield-tavern-pad` on iPad) by `scripts/brand/tavern_table.py` from
+`scripts/brand/tavern_layout.json`, with sockets placed under the tavern controls. It carries its own
+lighting, so `BattlefieldSurface` skips the generic shading (`hasBakedLighting`). See
+docs/BOARD_FX_ROADMAP.md phase 12. Android copies the same JPEGs from the iOS catalogue at build time.
 
 ## Integration
 
-Use `BattlefieldBackdrop.allCases` for the selector and `BattlefieldBackdropArt(theme: .resolved(value))` for both the selector preview and battlefield. Frame and clip at the consumer. Each image is square, with a quiet center and no artwork encoding seats, cards, health or legal actions. Existing saved `arena`, `midnight`, `wood` preferences remain valid. New enum and artwork view are in `GameBoardTheme.swift`. Android should use identical identifiers and the same art.
+Use `BattlefieldBackdropArt(theme: .resolved(value))`. Frame and clip at the consumer.
+`BattlefieldBackdropTests` checks the two remaining values, the fallback for retired ones, that the retired
+textures stay out of the bundle, and that the composed tables ship both orientations.
 
-Assets: `Assets.xcassets/battlefield-{arena,wood,moss,ember,tide}.imageset/battlefield-{id}.jpg` and, on Android, `apps/android/app/src/main/res/drawable/battlefield_{id}.webp`. Actual output is 1254×1254 for each. The generation request suggested 1536×1536; no claim of that requested resolution is made. The generated PNGs (approximately 12.3 MB combined) are kept in git history before the lossy re-encode (`git show 791198b:apps/ios/MagicMobile/Assets.xcassets/battlefield-{id}.imageset/battlefield-{id}.png`). The shipped files are lossy encodes of those PNGs: JPEG from ImageIO at quality 0.85 (`sips -s format jpeg -s formatOptions 85`) for iOS, and WebP from `cwebp -q 90 -m 6 -sharp_yuv -metadata icc` for Android. Re-encode from the PNGs, never from the lossy files.
+## Provenance and exact prompts (retired materials)
 
-## Verification
-
-Inspected all five generated outputs: no text, symbols, painted controls, avatars, life circles, card slots or borders. Material detail stays subordinate to cards. Both center-crop directions retain the quiet center; this is an asset composition assessment, not a simulator board acceptance. Checked PNG dimensions and asset-catalog JSON names. Added `BattlefieldBackdropTests` for preserved preference IDs and bundled square assets; these UIKit tests need the app test target, not the portable package. No Xcode build or simulator was run by this subtask.
-
-## Provenance and exact prompts
-
-Created with the built-in image generation tool on 2026-09-19. No API/paid CLI fallback. Original generated files remain under `/Users/calebfeliciano/.codex/generated_images/01a0bb12-bae8-79b0-b2d5-5514db7a5b49/`; final copies are inside the app asset catalog.
+Created with the built-in image generation tool on 2026-09-19. No API/paid CLI fallback. Original generated files remain under `/Users/calebfeliciano/.codex/generated_images/01a0bb12-bae8-79b0-b2d5-5514db7a5b49/`; the encoded copies were in the app asset catalog until 2026-10-14.
 
 ### arena
 
