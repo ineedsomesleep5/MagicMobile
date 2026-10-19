@@ -64,9 +64,8 @@ def setup_scene():
     # The painted texture keeps its colours; light adds shape and a moving glint.
     scene.view_settings.view_transform = "Standard"
     world = bpy.data.worlds.new("World")
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.32, 0.26, 0.22, 1)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 1.1
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Color"].default_value = (0.32, 0.26, 0.22, 1)
+    next(n for n in world.node_tree.nodes if n.type == "BACKGROUND").inputs["Strength"].default_value = 1.1
     scene.world = world
     light(scene, "Key", (-1.8, 2.0, 3.0), 220, (1.0, 0.9, 0.76), 2.0)
     light(scene, "Fill", (2.2, 0.6, 2.4), 80, (0.85, 0.88, 1.0), 2.5)
