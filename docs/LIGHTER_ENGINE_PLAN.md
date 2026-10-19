@@ -402,7 +402,36 @@ same objects that dominate allocation.
     options, so only the toolchain differs): code 155.5 MB on 22.1, 161.8 at -O2 and 151.7 at -Os; image heap 139.6 →
     175.4 and 172.6 MB. Set-class code 13.9 → 26.4 MB (not smaller at -Os). In the heap, code metadata 29.3 → 43.2 MB and
     strings 13.8 → 30.8 MB (1.03 → 1.54 million objects); class objects are unchanged (45.6 → 45.9 MB).
-  - AI speed: measurements in progress.
+  - AI speed (host benchmark of the same engine on 22.1, 24.1 at -O2 and 24.1 at -Os; `profile_long_games.py speed`:
+    108 seeded games per build at skills 4–6, each skill playing itself, the decks swapped and both seatings in every
+    block of 4, 16 probes a game at the active player's main-phase decisions, each a full production search capped at
+    600 nodes; about 1,500 probes and 200,000 nodes per build). CPU per search node: release C 8.58 ms, -O2 8.55, -Os
+    8.25; per-game medians 7.50, 7.69 and 7.99. 95% bootstrap intervals over games: -O2 / C 0.83–1.17, -Os / C
+    0.80–1.11, -Os / -O2 0.87–1.06. The first 36 games alone had release D 8–10% slower, and the 72 run side by side
+    after them had it 3–8% faster. No difference shows at this resolution (about ±10%), in either direction or per deck
+    (per-deck means move 7–12 ms between builds with the positions). The games do not repeat between runs (XMage's
+    random UUIDs change iteration order and so the AI's moves), so no position is measured twice; probing positions
+    replayed from game records would compare like for like. The phone check (a long AI game and its performance log)
+    stays part of the release.
+  - Further cuts found (call tree, build output, disassembly):
+    - Set classes, 21–23 MB of code on 24.1: 82 booster sets' constructors (15.3 MB) plus 139 collators, parents and
+      bonus sheets (7.3 MB), kept for Booster Tutor. 24.1 builds each `cards.add(new SetCardInfo(...))` from four-
+      instruction constants and a remembered-set check per store, about 650 bytes a card. Building the booster sets'
+      card lists from the set catalogue (step 3 already has set, number and rarity) removes most of it.
+    - `-H:-IncludeMethodData`: 24.1 by default records every reachable method and field for run-time inspection; 22.1
+      did not. Off, the image heap is 6.1 MB smaller (strings −4 MB, reflection metadata −2.7 MB) and the native
+      save/resume self-test passes. Release C behaved this way already; it still needs the native real-engine checks.
+    - Small: the SunJCE provider (0.4 MB) through the provider list behind the checkpoints' SHA-256 digests; extended
+      charsets (0.2 MB). JDK 23's locale data is 8% larger than JDK 17's under `-H:+IncludeAllLocales`.
+    - The bulk stays card classes (105–112 MB of code), step 5.
+  - Recommendation: release D alone makes both apps bigger (at -Os about +15 MB compressed in the APK, estimated from
+    release C's library at the same compression ratio) for no measured speed change. Ship it only together with the booster-set and method-data cuts, which bring code below release C;
+    otherwise keep 22.1 and land the set cut there first. If D ships, use -Os: −13.5 MB of library against -O2 and no
+    measurable AI cost (per-package optimization levels are not needed and GraalVM CE does not offer them).
+  - Native steps left for D: the iOS cheap gate on the candidate, then the far-calls build (first macOS build of
+    24.1, Substrate 0.0.65 and `libvmone.a`; forced-trampoline probe; Mach-O layout; `-lvmone` product link), then the
+    product-device build, an internal TestFlight and the Android test APK with a long AI game per platform. The
+    far-calls gate's policy pin moved to 0e4eae0 in this PR, because the cheap workflow changed.
 
 ### 5. Engine releases: cards as data
 - [ ] Proof: the 1,500 simple cards built from catalogue data by one generic card class; an automatic check compares
@@ -436,3 +465,7 @@ same objects that dominate allocation.
   Loaming Shaman's trigger made a game copy for each of up to 4,000 options, uncounted and unstopped, and timed-out
   searches kept copying. Abandoned and capped searches now stop at their next copy; the cap counts every search.
   0 of 640 calibration games out of memory (#202: 2), win rates within #202's intervals.
+- 2026-10-19: step 4 built (draft PR #211, engine release D): Gluon GraalVM for JDK 23 with GluonFX 1.0.25 and
+  `libvmone.a`, far-call and Color patches retired, JVM suite green on JDK 23, Android built at -O2 and -Os. The engine
+  got bigger, not smaller (stripped library 316 → 378 / 365 MB; set-class code doubled, image heap +37 MB), with no
+  measurable AI speed change; recommendation and the iOS runs it still needs under step 4.
