@@ -7,7 +7,7 @@ package jdk.internal.reflect;
  *
  * One instance per checkpoint class whose first non-Serializable superclass is java.lang.Object.
  * Java serialization would allocate the class and run Object(), which does nothing, so allocation
- * alone is the same object. GraalVM 22.1 otherwise generates one accessor class per class: 43,000
+ * alone is the same object. GraalVM otherwise generates one accessor class per class: 43,000
  * extra classes for the checkpoint types, which exhausted the 10 GB builder heap
  * (docs/NATIVE_METADATA.md). Classes with another non-Serializable superclass keep GraalVM's
  * generated accessor, which runs that constructor.

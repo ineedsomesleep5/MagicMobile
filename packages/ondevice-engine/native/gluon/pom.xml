@@ -17,6 +17,7 @@
     <native.init.arg>--initialize-at-run-time=io.magicmobile,mage</native.init.arg>
     <native.orm.arg>--initialize-at-run-time=io.magicmobile</native.orm.arg>
     <native.max.heap>4g</native.max.heap>
+    <native.optimize>2</native.optimize>
   </properties>
   <build>
     <directory>${native.build}</directory>
@@ -25,17 +26,23 @@
       <plugin>
         <groupId>com.gluonhq</groupId>
         <artifactId>gluonfx-maven-plugin</artifactId>
-        <version>1.0.29</version>
+        <!-- The last GluonFX whose Substrate (0.0.65) supports GraalVM for JDK 23; pins in toolchain.json. -->
+        <version>1.0.25</version>
         <configuration>
           <target>${native.target}</target>
           <mainClass>io.magicmobile.nativebridge.IosLibraryMain</mainClass>
-          <javaStaticSdkVersion>18-ea+prep18-9</javaStaticSdkVersion>
+          <!-- Builds pass the checksum-verified libvmone.a with -Djavalibspath; this names the same release. -->
+          <javaStaticSdkVersion>24-2.1</javaStaticSdkVersion>
           <nativeImageArgs>
+            <!-- GraalVM 24.1 marks several -H options below experimental. -->
+            <arg>-H:+UnlockExperimentalVMOptions</arg>
             <!-- Keep patched class directories ahead of original XMage jars. -->
             <arg>-cp</arg>
             <arg>${native.classpath}</arg>
             <arg>--no-fallback</arg>
             <arg>-J-Xmx${native.max.heap}</arg>
+            <!-- -O2 (GraalVM's default) or -Os (optimize for size); docs/LIGHTER_ENGINE_PLAN.md step 4. -->
+            <arg>-O${native.optimize}</arg>
             <!-- Builder only: avoid a fixed old-generation ceiling near retained-data peak. -->
             <arg>-J-XX:-UseParallelGC</arg>
             <arg>-J-XX:+UseG1GC</arg>
@@ -43,19 +50,22 @@
             <arg>-J-Xlog:gc*:file=${native.build}/builder-gc.log:time,uptime,level,tags:filecount=2,filesize=8M</arg>
             <arg>-H:NumberOfThreads=2</arg>
             <arg>--initialize-at-run-time=io.magicmobile,mage</arg>
-            <!-- Isolated, source-pinned Color patch removes only desktop JNI bootstrap.
-                 Preserve the iOS Toolkit runtime constraint and all original value methods. -->
-            <arg>-J--patch-module=java.desktop=${native.color.patch}</arg>
+            <!-- JDK 23's Color no longer loads desktop JNI in its initializer, so the JDK 17 Color patch is
+                 retired (docs/NATIVE_COLOR_COMPATIBILITY.md). Keep the iOS Toolkit runtime constraint. -->
             <arg>--initialize-at-run-time=java.awt.Color,java.awt.Toolkit</arg>
             <arg>${native.init.arg}</arg>
             <arg>${native.orm.arg}</arg>
             <arg>-H:+IncludeAllLocales</arg>
             <arg>-H:ReflectionConfigurationFiles=${native.reflection.config}</arg>
-            <!-- Not -H:SerializationConfigurationFiles: GraalVM 22.1 would also make every declared
+            <!-- Not -H:SerializationConfigurationFiles: GraalVM 22.1 and 24.1 would also make every declared
                  method of the 48,723 checkpoint types invocable (docs/NATIVE_METADATA.md). -->
             <arg>-Dmagicmobile.checkpoint.serialization=${native.serialization.config}</arg>
-            <!-- CheckpointSerializationFeature defines its shared constructor accessor here. -->
+            <!-- CheckpointSerializationFeature defines its shared constructor accessor in java.base and
+                 calls GraalVM's serialization registry (builder module). -->
             <arg>-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=org.graalvm.nativeimage/org.graalvm.nativeimage.impl=ALL-UNNAMED</arg>
+            <arg>-J--add-opens=org.graalvm.nativeimage.builder/com.oracle.svm.hosted.reflect.serialize=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=org.graalvm.nativeimage.builder/com.oracle.svm.core.reflect.serialize=ALL-UNNAMED</arg>
             <arg>${native.checkpoint.feature}</arg>
             <arg>-H:ResourceConfigurationFiles=${engine.root}/native/resource-config.json</arg>
             <!-- The engine opens no network connection. Gluon always adds -H:EnableURLProtocols=http,https;

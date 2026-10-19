@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "note": "Engine release D toolchain (docs/LIGHTER_ENGINE_PLAN.md step 4). Digests were computed from the official release assets on 2026-10-19; neither release publishes its own.",
+  "graalvm": {
+    "release": "gluon-23+25.1-dev-2409082136",
+    "url": "https://github.com/gluonhq/graal/releases/download/gluon-23%2B25.1-dev-2409082136/",
+    "release_lines": [
+      "GRAALVM_VERSION=\"24.1.0-dev\"",
+      "JAVA_VERSION=\"23\"",
+      "VENDOR=Gluon"
+    ],
+    "substratevm_commit": "f3da2b22a86e350e979ed94a96583d5561c9040f",
+    "archives": {
+      "linux-amd64": {
+        "name": "graalvm-java23-linux-amd64-gluon-23+25.1-dev.tar.gz",
+        "sha256": "fcdc8cbad9f7a53e1928bda99333dd059821c60d0444ae552766c5405d1505f5"
+      },
+      "darwin-amd64": {
+        "name": "graalvm-java23-darwin-amd64-gluon-23+25.1-dev.tar.gz",
+        "sha256": "4faeac4094659736dc095261f230eec3171e8bb6c15f22f2c880ab4ab67a0924"
+      },
+      "darwin-aarch64": {
+        "name": "graalvm-java23-darwin-aarch64-gluon-23+25.1-dev.tar.gz",
+        "sha256": "5081e4fc7c17019710200f9ff10e997f813eeec9c82f3bf4279617a4c45e2f61"
+      }
+    }
+  },
+  "gluonfx": {
+    "plugin": "1.0.25",
+    "substrate": "0.0.65",
+    "why": "The last GluonFX release whose Substrate supports GraalVM for JDK 23; Substrate 0.0.66 and later (GluonFX 1.0.26+) went back to GraalVM 22.1 (gluonhq/substrate#1310)."
+  },
+  "static_jdk": {
+    "release": "gvm-24-2.1",
+    "version": "24-2.1",
+    "url": "https://github.com/gluonhq/vmone/releases/download/gvm-24-2.1/",
+    "contents": "libvmone.a: the JDK's static native libraries plus GraalVM's C helpers (JvmFuncs, cpuid, getThreadId, ...), replacing Substrate's JDK 18 static JDK and clibs ea+27.",
+    "archives": {
+      "android-linux-aarch64": {
+        "name": "vmone-android-linux-aarch64.zip",
+        "sha256": "9152e6ebaab24ea543179426c455dffaf36aff3d8d1d5e15061ed66150fea32a"
+      },
+      "ios-macos-aarch64": {
+        "name": "vmone-ios-macos-aarch64.zip",
+        "sha256": "9a1df1b1666cf0e520dd6de9d3338c3df596b79b4991e96a3fe521fb70a34580"
+      }
+    }
+  }
+}

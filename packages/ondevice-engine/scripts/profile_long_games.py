@@ -13,6 +13,9 @@ A measurement tool, not an app path. Run build_jvm.sh and `ai_calibration.py dec
   equivalence  engine release C's AI search memory changes (card copies on first use, library searches one target
           at a time) against upstream's way: at real AI decisions of seeded games, the same search without a time
           limit, twice the upstream way and once the new way (tools/ai-calibration/SearchEquivalence.java).
+  speed   CPU per AI search node at real decisions (tools/ai-calibration/SearchSpeed.java): seeded games whose AIs
+          search by nodes, not time, probed with a fixed node limit, on the JVM or on a host native image of the same
+          engine (scripts/build_native_bench.sh, -O2 or -Os). speed-report compares runs overall, by skill and by deck.
 
 Output goes to build/profile-long-games/<mode>/skill<S>-g<N>/ (outside git): result.json, searches.csv,
 turns.csv, timeline.csv, gc.csv, worker.log; profile.jfr in profile mode; hist-*.txt and heap-peak.hprof in
@@ -585,6 +588,85 @@ def equivalence(args: argparse.Namespace) -> None:
               f"time: upstream {total('ms_upstream') / 1000:.0f} s, new {total('ms_new') / 1000:.0f} s")
 
 
+def speed(args: argparse.Namespace) -> None:
+    """CPU per search node of one build: SearchSpeed on the JVM, or a native benchmark from build_native_bench.sh."""
+    if args.native:
+        command = [str(args.native.resolve()), f'-Xmx{args.heap}']
+    else:
+        classpath = compile_tool()
+        subprocess.run(['javac', '-J-Xmx512m', '--release', '17', '-nowarn', '-cp', classpath, '-d', str(BUILD / 'classes'),
+                        str(TOOL / 'SearchEquivalence.java'), str(TOOL / 'SearchSpeed.java')], check=True)
+        command = ['java', f'-Xmx{args.heap}', '-XX:+UseSerialGC', '-cp', classpath]
+    command += ['-Djava.awt.headless=true', '-Dlog4j.configuration=file:' + str(TOOL / 'log4j.properties')]
+    if not args.native:
+        command.append('io.magicmobile.xmage.SearchSpeed')
+    args.out.mkdir(parents=True, exist_ok=True)
+    table = args.out / 'speed.csv'
+    games_table = args.out / 'games.csv'
+    done = {row['game_seed'] for row in read_csv(games_table)}
+    decks = [d for pool in args.pool.split('+') for d in pool_decks(pool)]
+    for skill in [int(s) for s in args.skills.split(',')]:
+        for row in schedule(skill, skill, decks, args.first_game + args.games, args.seed, 'phone')[args.first_game:]:
+            if str(row['game_seed']) in done:
+                continue
+            started = time.monotonic()
+            with (args.out / f"speed-skill{skill}-g{row['game']}.log").open('w') as log:
+                subprocess.run(command + [str(table), str(row['game_seed']), str(skill), str(skill), '1' if row['a_first'] else '0',
+                                          str(DECKS / f"{row['deck_a']}.json"), str(DECKS / f"{row['deck_b']}.json"),
+                                          str(args.max_turns), str(args.probes), str(args.probe_nodes), str(args.game_nodes)],
+                               stdout=log, stderr=subprocess.STDOUT, cwd=BUILD, check=False)
+            new = not games_table.exists()
+            with games_table.open('a') as out:
+                if new:
+                    out.write('game_seed,skill,deck_a,deck_b,a_first\n')
+                out.write(f"{row['game_seed']},{skill},{row['deck_a']},{row['deck_b']},{int(row['a_first'])}\n")
+            print(f"skill {skill} game {row['game']} ({row['deck_a']} vs {row['deck_b']}): {time.monotonic() - started:.0f} s",
+                  flush=True)
+    speed_report(argparse.Namespace(dirs=[args.out]))
+
+
+def speed_report(args: argparse.Namespace) -> None:
+    """CPU per search node of each speed run directory, overall, by skill and by the deciding seat's deck."""
+    runs = []
+    for base in args.dirs:
+        games_by_seed = {g['game_seed']: g for g in read_csv(base / 'games.csv')}
+        rows = []
+        for r in read_csv(base / 'speed.csv'):
+            game = games_by_seed.get(r['game_seed'])
+            if game:
+                rows.append({**r, 'deck': game['deck_a'] if r['seat'] == 'A' else game['deck_b']})
+        runs.append((base.name, rows))
+    def per_node(rows, key='cpu_ms'):
+        nodes = sum(int(r['nodes']) for r in rows)
+        return sum(int(r[key]) for r in rows) / nodes if nodes else float('nan')
+    print('| Run | Probes | Nodes | CPU ms per node | Wall ms per node | Slower repeat, CPU ms per node | Copies per node |')
+    print('|---|---|---|---|---|---|---|')
+    for name, rows in runs:
+        nodes = sum(int(r['nodes']) for r in rows)
+        print(f"| {name} | {len(rows)} | {nodes:,} | {per_node(rows):.2f} | {per_node(rows, 'wall_ms'):.2f} | "
+              f"{per_node(rows, 'repeat_cpu_ms'):.2f} | {sum(int(r['copies']) for r in rows) / max(nodes, 1):.2f} |")
+    for label, key in (('skill', 'skill'), ('deck (deciding seat)', 'deck')):
+        values = sorted({r[key] for _, rows in runs for r in rows})
+        print(f'\nCPU ms per node by {label}:\n')
+        print('| ' + label.capitalize() + ' | ' + ' | '.join(name for name, _ in runs) + ' |')
+        print('|---|' + '---|' * len(runs))
+        for value in values:
+            cells = []
+            for _, rows in runs:
+                subset = [r for r in rows if r[key] == value]
+                cells.append(f"{per_node(subset):.2f} ({len(subset)})" if subset else '-')
+            print(f'| {value} | ' + ' | '.join(cells) + ' |')
+    # Positions both runs reached with the same decision (same move, score and node count): a paired comparison.
+    if len(runs) >= 2:
+        base_name, base_rows = runs[0]
+        index = {(r['game_seed'], r['turn'], r['decision']): r for r in base_rows}
+        for name, rows in runs[1:]:
+            pairs = [(index[k], r) for r in rows if (k := (r['game_seed'], r['turn'], r['decision'])) in index]
+            if pairs:
+                ratio = sum(int(b['cpu_ms']) for _, b in pairs) / max(1, sum(int(a['cpu_ms']) for a, _ in pairs))
+                print(f'\nSame positions and decisions in {base_name} and {name}: {len(pairs)}; CPU {name}/{base_name} = {ratio:.3f}')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -621,13 +703,29 @@ def main():
     eq.add_argument('--probes', type=int, default=12, help='decisions probed per game')
     eq.add_argument('--max-nodes', type=int, default=600, help="each probe search's node limit (it has no time limit)")
     eq.add_argument('--out', type=Path, default=OUT / 'equivalence')
+    sp = sub.add_parser('speed', help='CPU per AI search node at real decisions, on the JVM or a native benchmark')
+    sp.add_argument('--native', type=Path, help='a build_native_bench.sh executable (default: the JVM)')
+    sp.add_argument('--skills', default='4,5,6')
+    sp.add_argument('--games', type=int, default=4, help='games per skill (each block of 4 plays one deck pair both ways)')
+    sp.add_argument('--first-game', type=int, default=0)
+    sp.add_argument('--pool', default='upgraded+optimized')
+    sp.add_argument('--seed', type=int, default=20261015)
+    sp.add_argument('--heap', default='2g')
+    sp.add_argument('--max-turns', type=int, default=20)
+    sp.add_argument('--probes', type=int, default=10, help='decisions probed per game')
+    sp.add_argument('--probe-nodes', type=int, default=600, help="each probe search's node limit (no time limit)")
+    sp.add_argument('--game-nodes', type=int, default=50, help="the game's own AI searches' node limit")
+    sp.add_argument('--out', type=Path, default=OUT / 'speed')
+    sr = sub.add_parser('speed-report', help='compare speed runs (the first is the base of the paired comparison)')
+    sr.add_argument('dirs', nargs='+', type=Path)
     hp = sub.add_parser('heap', help='Eclipse MAT retained sizes at each memory-mode heap dump')
     hp.add_argument('dirs', nargs='*', type=Path, default=[OUT / 'memory'])
     hp.add_argument('--mat', default=os.environ.get('MAT_HOME', ''), help='Eclipse MAT directory (ParseHeapDump.sh)')
     args = parser.parse_args()
     if getattr(args, 'out', None):
         args.out = args.out.resolve()  # the game JVMs run in build/ai-calibration, so a relative path would land there
-    {'run': run, 'report': report, 'heap': heap, 'equivalence': equivalence}[args.command](args)
+    {'run': run, 'report': report, 'heap': heap, 'equivalence': equivalence, 'speed': speed,
+     'speed-report': speed_report}[args.command](args)
 
 
 if __name__ == '__main__':

@@ -30,7 +30,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: packages/ondevice-engine
-      - name: Class inventories (pinned XMage sources, JDK 17 classes, library jars)
+      # The class library engine release D builds with (native/gluon/toolchain.json); release C's JDK 17 names the
+      # same packages for the classes both have.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '23'
+      - name: Class inventories (pinned XMage sources, JDK 23 classes, library jars)
         run: |
           sha=$(python3 -c 'import json;print(json.load(open("packages/ondevice-engine/upstream.lock.json"))["commit"])')
           git init -q xmage && cd xmage
@@ -38,7 +44,7 @@ jobs:
           git sparse-checkout set Mage/src Mage.Sets/src Mage.Common/src Mage.Server.Plugins
           git fetch -q --depth 1 --filter=blob:none origin "$sha" && git checkout -q FETCH_HEAD
           cd ..
-          "$JAVA_HOME_17_X64/bin/jimage" list "$JAVA_HOME_17_X64/lib/modules" | grep '\.class$' | sed 's/^ *//' > jdk-classes.txt
+          "$JAVA_HOME/bin/jimage" list "$JAVA_HOME/lib/modules" | grep '\.class$' | sed 's/^ *//' > jdk-classes.txt
           mkdir jars && cd jars
           for c in com/google/guava/guava/33.4.8-jre com/google/code/gson/gson/2.13.2 org/jsoup/jsoup/1.21.2 \
                    com/google/protobuf/protobuf-java/3.25.8 ch/qos/reload4j/reload4j/1.2.22 org/slf4j/slf4j-api/2.0.17 \
