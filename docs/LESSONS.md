@@ -119,6 +119,12 @@ contradicting one.
   not pass `--libc=bionic` for Android (the image then imports glibc's `__errno_location`, which staging refuses);
   with it, GraalVM's driver requires `lib/svm/clibraries/linux-amd64/bionic` (host platform, no `--target`), which
   `prepare_toolchain.py` creates empty because Substrate links the object itself.
+- 2026-10-19 (Claude, release D size): GraalVM 24.1 doubles code made of constants and stores, so `-Os` does not help
+  it. On AArch64 each object constant is four `mov`/`movk` instructions off the heap base, and each reference store
+  into a new object gets a remembered-set header check with an out-of-line slow path. A set class's
+  `cards.add(new SetCardInfo(...))` costs about 650 bytes (Modern Horizons 3: 340 KB for 524 cards), and set-class
+  code went 13.9 → 26.4 MB on the same engine. **Rule:** measure a toolchain move on the same engine with
+  `build_native_bench.sh` before expecting size gains, and treat long constant lists in code as data to move out.
 - 2026-10-19 (Claude, release D toolchain): GraalVM 24.1's `ObjectStreamClass.lookup` reports any Serializable class
   whose hub is not marked as a serialization target. GraalVM's own registration marks it inside
   `addConstructorAccessor`; `CheckpointSerializationFeature`'s shared accessor path skipped that, so it now calls
