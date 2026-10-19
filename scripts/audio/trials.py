@@ -77,6 +77,12 @@ def play_steel() -> np.ndarray:
     return layer((shing, 0.0, 0.0), (fire, 0.08, -9.0))
 
 
+def play_steel_only() -> np.ndarray:
+    """Round 3 (Caleb: B, but just the steel, no flame behind it): the blade drawn on its own. Its ring has died
+    away by 0.75 s, so it ends there instead of carrying silence."""
+    return sonniss("Knife_Sword_Shing_Fienup_001", 0.05, 0.90, fade_out=0.3, stereo=True)
+
+
 def play_bellows() -> np.ndarray:
     """The smithy's bellows breathing on the coals: a warm flare."""
     return sonniss("MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent", 0.05, 1.4, fade_out=0.5, stereo=True)
@@ -96,10 +102,14 @@ def main() -> None:
     parser.add_argument("--kenney", required=True)
     parser.add_argument("--shipped", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--only", default="")
     args = parser.parse_args()
     game.SONNISS, game.KENNEY = args.sonniss, args.kenney
     os.makedirs(args.out, exist_ok=True)
+    if args.only:
+        wanted = set(args.only.split(","))
     takes = {
+        "play-commander-D-steel-only": (play_steel_only, PLAY_DB, True),
         "book-open-A-book": (lambda: book_open(False), BOOK_DB, False),
         "book-open-B-book-sparkle": (lambda: book_open(True), BOOK_DB, False),
         "book-close-A": (book_close, BOOK_DB, False),
@@ -111,6 +121,8 @@ def main() -> None:
         x = shipped(os.path.join(args.shipped, name))
         wavfile.write(os.path.join(args.out, "before-" + name.replace(".m4a", ".wav")), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
     for name, (recipe, target, stereo) in takes.items():
+        if args.only and name not in wanted:
+            continue
         y = match_loudness(highpass(recipe(), 60, order=2), target, -1.0)
         if y.ndim == 2 and not stereo:
             y = y.mean(axis=1)

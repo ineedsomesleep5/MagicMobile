@@ -86,13 +86,15 @@ Used by `steal` (2026-10-19): `metalLatch`, `beltHandle1`, `beltHandle2` (with C
 are Ogg Vorbis, which `afconvert` does not read: convert with
 `ffmpeg -i <file>.ogg -ar 44100 -c:a pcm_f32le <pack>__<file>.wav` (`rpg-audio__metalLatch.wav`).
 
+## Deck Studio's spell book (`book-open`, `book-close`, 2026-10-19)
+Sonniss: GDC 2019 / PMSFX - Books Alive / `PM_BA_BOOK_0_29 Book, Open, Paper.wav`, `PM_BA_BOOK_2_6 Book, Paper, Page
+Turn.wav`; GDC 2018 / 3maze - Books & Magazines / `shut_small_book_002.wav`. Kenney RPG: `metalClick`, `creak3`,
+`bookPlace2`, `metalLatch`.
+
 ## Trials (not in the app yet)
 `trials.py` renders candidates for cues being reworked next to the shipped ones, into `build_output/audio-trials/`,
-for Caleb to audition before any is wired in (see its docstring). Round 2 (Deck Studio's book, Play Commander) uses
-these Sonniss files from the mirror, plus Kenney RPG `metalClick`, `creak3`, `bookPlace2`, `metalLatch`:
+for Caleb to audition before any is wired in (see its docstring). The Play Commander candidates use:
 
-- GDC 2019 / PMSFX - Books Alive / `PM_BA_BOOK_0_29 Book, Open, Paper.wav`, `PM_BA_BOOK_2_6 Book, Paper, Page Turn.wav`
-- GDC 2018 / 3maze - Books & Magazines / `shut_small_book_002.wav`
 - GDC 2018 / Gregor Quendel - Designed Fire / `Designed Fire - Impacts - Large, ignition 03.wav`
 - GDC 2015 / Soundopolis - Blades / `Knife_Sword_Shing_Fienup_001.wav`
 - GDC 2017 / Mononeshot - MEDIEVAL, Smithy / `MEDIEVAL, Smithy - 24 - Bellows - Fire, oven accent.wav`

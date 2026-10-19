@@ -488,7 +488,7 @@ struct OnDeviceRootView: View {
     /// its first page; Done closes it again (GrimoireStage).
     private func openDecks() {
         guard !showImport else { return }
-        GameAudio.shared.play(.uiOpen)
+        // The book makes its own sound as it opens (GrimoireStage).
         GrimoireStage.shared.open { showImport = true }
     }
 

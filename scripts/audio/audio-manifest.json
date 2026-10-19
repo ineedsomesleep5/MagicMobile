@@ -34,6 +34,20 @@
   "peak_db": -1.4,
   "seconds": 0.54
  },
+ "book-close": {
+  "bytes": 22882,
+  "file": "book-close.m4a",
+  "loudness_db": -26.0,
+  "peak_db": -5.0,
+  "seconds": 1.919
+ },
+ "book-open": {
+  "bytes": 21870,
+  "file": "book-open.m4a",
+  "loudness_db": -26.0,
+  "peak_db": -5.9,
+  "seconds": 1.69
+ },
  "card-draw-1": {
   "bytes": 10843,
   "file": "card-draw-1.m4a",

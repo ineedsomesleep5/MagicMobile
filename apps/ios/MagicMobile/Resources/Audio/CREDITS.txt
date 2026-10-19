@@ -42,6 +42,7 @@ trimmed and mixed for MagicMobile. Thank you to the contributing sound designers
   InspectorJ - UI - Mechanical
   Kpow Sounds - UI SOUNDPACKS
   L.A. Sounds - Game & UI Interface 001
+  PMSFX - Books Alive
   Mechanical Wave - Hits Whoosh
   Scoba Sounds – Scoba Ui Essentials
   Sound Ex Machina - PAPER & CARDBOARD

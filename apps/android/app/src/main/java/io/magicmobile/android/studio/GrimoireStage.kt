@@ -497,7 +497,9 @@ class GrimoireFilm {
     fun close(dismiss: () -> Unit) = play(false, dismiss)
 
     private fun play(opening: Boolean, change: () -> Unit) {
-        if (!GrimoireStage.motionEnabled || playing != null) { change(); return }
+        // The book is heard even when its film can't play (animations off): Deck Studio still opens.
+        if (!GrimoireStage.motionEnabled) { GameAudio.play(if (opening) GameSound.BOOK_OPEN else GameSound.BOOK_CLOSE); change(); return }
+        if (playing != null) { change(); return }
         playing = Playing(opening, change)
     }
 }
@@ -526,8 +528,10 @@ fun GrimoireFilmLayer(film: GrimoireFilm) {
             // Never strand the player behind a film that fails to load or end: a decoder that will not start
             // (the emulator's) fails the first frame at once, and a slow one gives up after a moment.
             val shown = withTimeoutOrNull(1200) { runCatching { firstFrame.await() }.isSuccess } ?: false
-            if (!shown) return@LaunchedEffect
-            GameAudio.play(GameSound.PAGE_FLIP)
+            val sound = if (playing.opening) GameSound.BOOK_OPEN else GameSound.BOOK_CLOSE
+            if (!shown) { GameAudio.play(sound); return@LaunchedEffect }
+            // Timed to the film from here: it fades in for 0.2 s, then plays (build_game_audio.py r_book_open).
+            GameAudio.play(sound)
             alpha.animateTo(1f, tween(200))
             // Closing: Deck Studio leaves underneath once the film covers it.
             if (!playing.opening) { playing.change(); changed = true }

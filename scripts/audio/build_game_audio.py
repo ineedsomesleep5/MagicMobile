@@ -143,6 +143,27 @@ def r_page_flip():
     return sonniss("CATALOGUE_Page_Turn_9", 0.38, 0.78, fade_in=0.01, fade_out=0.08)
 
 
+def r_book_open():
+    """Deck Studio's spell book opening (Resources/Grimoire film, 1.43 s; the cue starts 0.2 s before the film plays):
+    the clasp clicks, the cover creaks as it lifts, the book opens and its pages riffle as the parchment fills the
+    screen. Caleb picked it (trials.py round 2, take A), 2026-10-19."""
+    clasp = slowed(kenney("rpg-audio__metalClick", 0.05, 0.20, fade_out=0.04), -2)
+    hinge = slowed(kenney("rpg-audio__creak3", 0.04, 0.34, fade_out=0.08), -3)
+    cover = sonniss("PM_BA_BOOK_0_29 Book, Open, Paper", 0.10, 1.30, fade_in=0.01, fade_out=0.25)
+    pages = sonniss("PM_BA_BOOK_2_6 Book, Paper, Page Turn", 0.10, 0.75, fade_in=0.01, fade_out=0.15)
+    return tavern_room(layer((clasp, 0.30, -8.0), (hinge, 0.36, -14.0), (cover, 0.24, 0.0), (pages, 0.70, -7.0)))
+
+
+def r_book_close():
+    """The book closing again on the same film timing: the pages riffle shut, the cover lands on the table, the
+    clasp latches."""
+    pages = sonniss("PM_BA_BOOK_2_6 Book, Paper, Page Turn", 0.10, 0.70, fade_in=0.01, fade_out=0.12)
+    cover = sonniss("shut_small_book_002", 0.0, 0.29, fade_out=0.06)
+    table = slowed(kenney("rpg-audio__bookPlace2", 0.0, 0.30, fade_out=0.08), -3)
+    clasp = slowed(kenney("rpg-audio__metalLatch", 0.02, 0.26, fade_out=0.05), -2)
+    return tavern_room(layer((pages, 0.52, -6.0), (cover, 1.12, 0.0), (table, 1.19, -6.0), (clasp, 1.40, -9.0)))
+
+
 def r_emote():
     return sonniss("User Interface Notification Bubbles 04", 0.0, 0.34, fade_out=0.1, stereo=True)
 
@@ -334,6 +355,8 @@ CUES: dict[str, tuple] = {
     "response-alert": (r_response_alert, -25, True),
     "menu-play": (r_menu_play, -20, True),
     "page-flip": (r_page_flip, -28, False),
+    "book-open": (r_book_open, -26, False),
+    "book-close": (r_book_close, -26, False),
     "emote": (r_emote, -26, True),
     "card-draw-1": (lambda: r_card_draw(0), -25, False),
     "card-draw-2": (lambda: r_card_draw(1), -25, False),

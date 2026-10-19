@@ -1352,7 +1352,7 @@ fun TavernMainMenu(deckName: String, playerName: String, play: () -> Unit, decks
                                 style = sf(19f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))
                             SfImage("chevron.right", LocalContentColor.current, 15.dp)
                         }
-                        BrandButton({ GameAudio.play(GameSound.UI_OPEN); decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
+                        BrandButton({ decks() }, Modifier.semantics { contentDescription = "Decks" }, kind = BrandButtonKind.SECONDARY) {
                             SfImage("rectangle.stack.fill", LocalContentColor.current, 17.dp)
                             Text("Decks", Modifier.weight(1f).padding(start = 4.dp), color = LocalContentColor.current,
                                 style = sf(17f, SfWeight.heavy, SfDesign.SERIF).engraved(0.75f))

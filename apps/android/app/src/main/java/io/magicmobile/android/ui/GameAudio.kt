@@ -31,6 +31,7 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     UI_TICK("ui-tick", GameSoundCategory.INTERFACE, "Slider tick"), UI_ERROR("ui-error", GameSoundCategory.INTERFACE, "Not allowed"),
     RESPONSE_ALERT("response-alert", GameSoundCategory.INTERFACE, "Your decision"), MENU_PLAY("menu-play", GameSoundCategory.INTERFACE, "Play"),
     PAGE_FLIP("page-flip", GameSoundCategory.INTERFACE, "Page turn"), EMOTE("emote", GameSoundCategory.INTERFACE, "Emote"),
+    BOOK_OPEN("book-open", GameSoundCategory.INTERFACE, "Spell book opens"), BOOK_CLOSE("book-close", GameSoundCategory.INTERFACE, "Spell book closes"),
     CARD_DRAW("card-draw", GameSoundCategory.CARDS, "Draw a card"), CARD_PICKUP("card-pickup", GameSoundCategory.CARDS, "Pick up a card"),
     CARD_PLAY("card-play", GameSoundCategory.CARDS, "Play a card"), SHUFFLE("shuffle", GameSoundCategory.CARDS, "Shuffle (mulligan)"),
     LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), CREATURE_ENTER("creature-enter", GameSoundCategory.CARDS, "Creature arrives"),
@@ -55,7 +56,7 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     /** Mix level: interface quiet, the board clear, big moments on top. */
     val volume: Float get() = when (this) {
         UI_TAP, UI_TICK, UI_TOGGLE, UI_BACK, UI_OPEN, UI_CLOSE -> 0.5f
-        UI_CONFIRM, UI_ERROR, PAGE_FLIP, EMOTE -> 0.65f
+        UI_CONFIRM, UI_ERROR, PAGE_FLIP, EMOTE, BOOK_OPEN, BOOK_CLOSE -> 0.65f
         RESPONSE_ALERT, MENU_PLAY -> 0.8f
         CARD_DRAW, CARD_PICKUP, COUNTER, ABILITY -> 0.7f
         CARD_PLAY, SHUFFLE, LAND_DROP, CREATURE_ENTER, TOKEN_CREATE -> 0.85f
