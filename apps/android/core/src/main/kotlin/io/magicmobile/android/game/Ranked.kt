@@ -311,7 +311,13 @@ object AIDeckPool {
 
 // MARK: - Profile (PlayerRecord.swift)
 
-enum class PlayMode(val raw: String) { QUICK("quick"), RANKED("ranked"), CASUAL("casual") }
+enum class PlayMode(val raw: String) {
+    QUICK("quick"), RANKED("ranked"), CASUAL("casual");
+
+    /** Who goes first in this mode: Ranked always rolls, since picking yourself would be an edge on the ladder.
+     *  The other modes use the player's own "Who goes first?" choice ("choose" or "roll"). */
+    fun startingPlayerMode(preference: String): String = if (this == RANKED) "roll" else preference
+}
 
 @Serializable
 data class MatchOpponent(val name: String, val commander: String? = null, val isAI: Boolean)
