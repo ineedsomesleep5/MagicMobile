@@ -360,6 +360,48 @@ struct BattlefieldRow: View {
     /// above (Caleb, 2026-10-15), so there they sit inside the creature's top edge instead.
     @ViewBuilder
     private func attachmentGroupTile(_ group: BattlefieldCardGroup, tucked: Bool = false) -> some View {
+        if arena {
+            arenaAttachmentTile(group, tucked: tucked)
+        } else {
+            tabbedAttachmentTile(group, tucked: tucked)
+        }
+    }
+
+    /// The Arena board (the reference's): each Aura and Equipment is its own card tucked behind the creature, its top
+    /// edge peeking out above, one step higher per card; a tap on the visible edge acts on it, a hold reads it. Three or
+    /// more show the rest as a count. In a lower row they step sideways instead, clear of the row above.
+    private func arenaAttachmentTile(_ group: BattlefieldCardGroup, tucked: Bool) -> some View {
+        let attachments = Array(group.cards.dropFirst())
+        let shown = Array(attachments.prefix(3))
+        let step = renderedCardHeight * (tucked ? 0.06 : 0.2)
+        let side = renderedCardWidth * (tucked ? 0.16 : 0.07)
+        return ZStack(alignment: .bottom) {
+            ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
+                battlefieldCardTile(card)
+                    .brightness(-0.06 * Double(index + 1))
+                    .offset(x: side * CGFloat(index + 1), y: -step * CGFloat(index + 1))
+                    .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
+            }
+            battlefieldCardTile(group.representative)
+                .overlay(alignment: .topTrailing) {
+                    if attachments.count > shown.count {
+                        Text("+\(attachments.count - shown.count)")
+                            .font(.system(size: max(9, renderedCardWidth * 0.13), weight: .heavy, design: .serif))
+                            .foregroundStyle(TavernPalette.label)
+                            .padding(.horizontal, 4)
+                            .background(TavernPalette.leather, in: Capsule())
+                            .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1))
+                            .offset(x: 4, y: -step * CGFloat(shown.count) - 6)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+        .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func tabbedAttachmentTile(_ group: BattlefieldCardGroup, tucked: Bool) -> some View {
         let attachments = Array(group.cards.dropFirst())
         // Two tabs at most; the rest count on the top tab.
         let shown = Array(attachments.prefix(2))

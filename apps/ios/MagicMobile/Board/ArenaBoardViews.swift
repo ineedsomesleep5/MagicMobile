@@ -652,17 +652,18 @@ struct ArenaFloatingMana: View {
     var body: some View {
         let values: [(String, Int)] = [("W", pool?.W ?? 0), ("U", pool?.U ?? 0), ("B", pool?.B ?? 0),
                                        ("R", pool?.R ?? 0), ("G", pool?.G ?? 0), ("C", pool?.C ?? 0)].filter { $0.1 > 0 }
-        HStack(spacing: 1) {
+        HStack(spacing: 2) {
             ForEach(values, id: \.0) { symbol, count in
-                let symbols = HStack(spacing: -4) {
-                    ForEach(0..<min(count, 3), id: \.self) { _ in
-                        ManaSymbolView(symbol: symbol, size: 18).shadow(color: .black.opacity(0.7), radius: 1.5, y: 1)
+                let symbols = ManaSymbolView(symbol: symbol, size: 20)
+                    .shadow(color: .black.opacity(0.75), radius: 1.5, y: 1)
+                    .overlay(alignment: .bottomTrailing) {
+                        if count > 1 {
+                            Text("\(count)").font(.system(size: 10, weight: .black, design: .serif)).monospacedDigit()
+                                .foregroundStyle(.white).padding(.horizontal, 3)
+                                .background(Capsule().fill(Color.black.opacity(0.85)))
+                                .offset(x: 5, y: 4)
+                        }
                     }
-                    if count > 3 {
-                        Text("+\(count - 3)").font(.system(size: 10, weight: .heavy, design: .serif))
-                            .foregroundStyle(TavernPalette.parchment).shadow(color: .black, radius: 1).padding(.leading, 5)
-                    }
-                }
                 if payable.contains(symbol) {
                     Button { spend(symbol) } label: {
                         symbols.padding(.horizontal, 4).frame(minHeight: 44).contentShape(Rectangle())
@@ -678,7 +679,8 @@ struct ArenaFloatingMana: View {
                 }
             }
         }
-        .padding(.horizontal, 4)
-        .background(Capsule().fill(Color.black.opacity(0.35)).frame(height: 26))
+        .padding(.horizontal, 5)
+        .background(Capsule().fill(Color.black.opacity(0.45)).frame(height: 28))
+        .overlay(Capsule().strokeBorder(TavernPalette.brass.opacity(0.55), lineWidth: 1).frame(height: 28))
     }
 }

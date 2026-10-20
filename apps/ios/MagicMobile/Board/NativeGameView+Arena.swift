@@ -260,9 +260,10 @@ extension NativeGameView {
                 }
             }
             .fixedSize()
-            // Landscape: beside your graveyard, clear of the hand; portrait: on the table just above a resting hand.
-            .position(canvas.point(layout.floatingMana))
-            .zIndex(66)
+            // The reference keeps the mana pool right above your avatar; it is tapped there to spend it.
+            .position(x: canvas.point(layout.viewerMedallion).x + (layout.landscape ? 0 : 6),
+                      y: canvas.point(layout.viewerMedallion).y - canvas.length(layout.viewerMedallionDiameter) / 2 - 15)
+            .zIndex(67)
         }
     }
 
@@ -293,11 +294,14 @@ extension NativeGameView {
         }
         .overlay(alignment: .top) {
             if let emoteCenter {
+                // Above the floating mana when there is some (it sits right over the medallion).
+                let pool = human.manaPool
+                let floating = (pool?.W ?? 0) + (pool?.U ?? 0) + (pool?.B ?? 0) + (pool?.R ?? 0) + (pool?.G ?? 0) + (pool?.C ?? 0) > 0
                 HStack(spacing: 4) {
                     EmoteBubbleSlot(center: emoteCenter, playerID: human.playerId).fixedSize()
                     TableChatButton(center: emoteCenter)
                 }
-                .offset(y: -diameter * 0.85)
+                .offset(y: -diameter * 0.85 - (floating ? 30 : 0))
             }
         }
     }
