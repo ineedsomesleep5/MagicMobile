@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.game.BoardFXArrivalSound
+import io.magicmobile.android.game.BoardFXCastSound
 import io.magicmobile.android.game.CardIdentity
 import io.magicmobile.android.game.ActiveBoardFX
 import io.magicmobile.android.game.BoardFXBannerPlan
@@ -1052,48 +1053,52 @@ object BoardFXSound {
     /** What arrived, so it can sound like what it is (BoardFXArrivalSound). */
     data class Arrival(val card: CardIdentity = CardIdentity("", ""), val isToken: Boolean = false)
 
-    /** The sounds for one arrival: a basic land's place, or a slam by size with a layer per colour (two layers share
-     *  the level one would have, so a two-colour card is not louder). */
-    fun arrivalCues(plan: BoardFXArrivalSound): List<Pair<GameSound, Float>> = when (plan) {
-        is BoardFXArrivalSound.BasicLand -> listOf((when (plan.kind) {
+    /** The sound for one arrival: a basic land's place; a creature's voice, or a card placed on the table when its type
+     *  has none; or the one sound for its kind of card. */
+    fun arrivalCues(plan: BoardFXArrivalSound): List<Pair<GameSound, Float>> = listOf(when (plan) {
+        is BoardFXArrivalSound.BasicLand -> when (plan.kind) {
             "plains" -> GameSound.LAND_PLAINS; "island" -> GameSound.LAND_ISLAND; "swamp" -> GameSound.LAND_SWAMP
             "mountain" -> GameSound.LAND_MOUNTAIN; "forest" -> GameSound.LAND_FOREST; else -> GameSound.LAND_DROP
-        }) to 1f)
-        BoardFXArrivalSound.OtherLand -> listOf(GameSound.LAND_DROP to 1f)
-        is BoardFXArrivalSound.Permanent -> {
-            val slam = when (plan.size) {
-                BoardFXArrivalSound.Size.LIGHT -> GameSound.SLAM_LIGHT
-                BoardFXArrivalSound.Size.MEDIUM -> GameSound.SLAM_MEDIUM
-                BoardFXArrivalSound.Size.HEAVY -> GameSound.SLAM_HEAVY
-            }
-            val layers = plan.colors.mapNotNull { mapOf("W" to GameSound.LAYER_WHITE, "U" to GameSound.LAYER_BLUE,
-                "B" to GameSound.LAYER_BLACK, "R" to GameSound.LAYER_RED, "G" to GameSound.LAYER_GREEN)[it] }
-            if (layers.isEmpty()) listOf(slam to 1f, GameSound.LAYER_COLORLESS to 1f)
-            else listOf(slam to 1f) + layers.map { it to if (layers.size > 1) 0.71f else 1f }
         }
-    }
-    data class Cue(val sound: GameSound, val at: Double, val volume: Float = 1f)
+        BoardFXArrivalSound.OtherLand -> GameSound.LAND_DROP
+        // The voice alone; a creature with no voice yet lands as a card placed on the table (Caleb, round 13).
+        is BoardFXArrivalSound.Creature -> plan.voice?.let(GameSound::voice)
+            ?: if (plan.heavy) GameSound.ARRIVE_CREATURE_HEAVY else GameSound.ARRIVE_CREATURE
+        BoardFXArrivalSound.Artifact -> GameSound.ARRIVE_ARTIFACT
+        BoardFXArrivalSound.Enchantment -> GameSound.ARRIVE_ENCHANTMENT
+        BoardFXArrivalSound.Planeswalker -> GameSound.ARRIVE_PLANESWALKER
+        BoardFXArrivalSound.Other -> GameSound.ARRIVE_CREATURE
+    } to 1f)
+    /** A creature's voice plays while its card comes in and finishes as it lands (Caleb, 2026-10-19): `at` is when the
+     *  card starts entering, `endsBy` when it lands. A voice longer than the entry starts with it. */
+    data class Cue(val sound: GameSound, val at: Double, val volume: Float = 1f, val endsBy: Double? = null)
 
-    fun play(scheduled: List<ScheduledBoardFX>, viewerID: String, arrivals: Map<String, Arrival> = emptyMap()) {
+    /** Casts sound like their card type (`casts`: stack object id to its card). */
+    fun play(scheduled: List<ScheduledBoardFX>, viewerID: String, arrivals: Map<String, Arrival> = emptyMap(),
+             casts: Map<String, CardIdentity> = emptyMap()) {
         val hasStrike = scheduled.any { it.event is BoardFXEvent.CombatStrike }
-        // Cues due at the same moment (a slam and its colour layers) start together from one timer, not one each.
-        for ((_, together) in cues(scheduled, viewerID, arrivals, hasStrike).groupBy { Math.round(it.at * 1000) }) {
+        // Cues due at the same moment start together from one timer, not one each.
+        val all = cues(scheduled, viewerID, arrivals, hasStrike, casts)
+        for (cue in all) cue.endsBy?.let { GameAudio.play(cue.sound, cue.at, cue.volume, endingWithin = it - cue.at) }
+        for ((_, together) in all.filter { it.endsBy == null }.groupBy { Math.round(it.at * 1000) }) {
             GameAudio.playTogether(together.map { it.sound to it.volume }, together[0].at)
         }
     }
 
-    fun cues(scheduled: List<ScheduledBoardFX>, viewerID: String, arrivals: Map<String, Arrival>, hasStrike: Boolean): List<Cue> {
+    fun cues(scheduled: List<ScheduledBoardFX>, viewerID: String, arrivals: Map<String, Arrival>, hasStrike: Boolean,
+             casts: Map<String, CardIdentity> = emptyMap()): List<Cue> {
         val cues = mutableListOf<Cue>()
         for (fx in scheduled) when (val event = fx.event) {
             is BoardFXEvent.SpellCast -> {
                 // Opponents' spells sit a little further back in the mix.
                 val level = if (event.controllerID == viewerID) 1f else 0.75f
+                val cast = GameSound.cast(BoardFXCastSound.of(casts[event.stackID]))
                 when (event.weight) {
                     // Only your own abilities chime; a pod's triggers would otherwise chatter.
                     BoardFXSpellWeight.ABILITY -> if (event.controllerID == viewerID) cues += Cue(GameSound.ABILITY, fx.delay)
                     BoardFXSpellWeight.COMMANDER -> cues += Cue(GameSound.COMMANDER_CAST, fx.delay, level)
-                    BoardFXSpellWeight.BIG -> { cues += Cue(GameSound.cast(event.tint), fx.delay, level); cues += Cue(GameSound.SPELL_BIG, fx.delay + 0.05, level) }
-                    BoardFXSpellWeight.SPELL -> cues += Cue(GameSound.cast(event.tint), fx.delay, level)
+                    BoardFXSpellWeight.BIG -> { cues += Cue(cast, fx.delay, level); cues += Cue(GameSound.SPELL_BIG, fx.delay + 0.05, level) }
+                    BoardFXSpellWeight.SPELL -> cues += Cue(cast, fx.delay, level)
                 }
             }
             is BoardFXEvent.AttackDeclared -> cues += Cue(GameSound.ATTACK, fx.delay)
@@ -1109,7 +1114,9 @@ object BoardFXSound {
             is BoardFXEvent.EnteredBattlefield -> {
                 val arrival = arrivals[event.cardID] ?: Arrival()
                 val plan = BoardFXArrivalSound.plan(arrival.card, arrival.isToken, event.entrance == BoardFXEntrance.COMMANDER)
-                for ((sound, volume) in arrivalCues(plan)) cues += Cue(sound, fx.landing, volume)
+                for ((sound, volume) in arrivalCues(plan)) {
+                    cues += if (sound.isCreatureVoice) Cue(sound, fx.delay, volume, endsBy = fx.landing) else Cue(sound, fx.landing, volume)
+                }
             }
             is BoardFXEvent.CountersChanged -> cues += Cue(GameSound.COUNTER, fx.delay, if (event.delta > 0) 1f else 0.5f)
             is BoardFXEvent.StatsChanged -> cues += Cue(GameSound.COUNTER, fx.delay, 0.4f)

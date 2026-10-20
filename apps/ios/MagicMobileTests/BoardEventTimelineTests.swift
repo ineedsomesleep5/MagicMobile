@@ -331,10 +331,9 @@ extension BoardEventTimelineTests {
     }
 
     /// Arrivals sound like what they are (BoardFXArrivalSound): BoardEventTimelineTest.kt checks Android the same way.
-    func testArrivalSoundsFollowLandTypesManaValueAndColors() {
-        func plan(_ type: String, _ cost: String? = nil, token: [String]? = nil, isToken: Bool = false,
-                  commander: Bool = false) -> BoardFXArrivalSound {
-            BoardFXArrivalSound.plan(card: CardIdentity(name: "x", typeLine: type, oracleText: nil, manaCost: cost, tokenColors: token),
+    func testArrivalSoundsFollowLandTypesCardTypesAndCreatureTypes() {
+        func plan(_ type: String, _ cost: String? = nil, isToken: Bool = false, commander: Bool = false) -> BoardFXArrivalSound {
+            BoardFXArrivalSound.plan(card: CardIdentity(name: "x", typeLine: type, oracleText: nil, manaCost: cost),
                                      isToken: isToken, commander: commander)
         }
         XCTAssertEqual(plan("Basic Land — Forest"), .basicLand("forest"))
@@ -342,12 +341,43 @@ extension BoardEventTimelineTests {
         XCTAssertEqual(plan("Land — Island Mountain"), .basicLand("island"), "a dual sounds like its first basic type")
         XCTAssertEqual(plan("Land Creature — Forest Dryad"), .basicLand("forest"))
         XCTAssertEqual(plan("Land"), .otherLand)
-        XCTAssertEqual(plan("Creature — Bear", "{1}{G}"), .permanent(.light, colors: ["G"]))
-        XCTAssertEqual(plan("Artifact", "{3}"), .permanent(.medium, colors: []))
-        XCTAssertEqual(plan("Enchantment", "{2}{W}{U}"), .permanent(.medium, colors: ["W", "U"]))
-        XCTAssertEqual(plan("Creature — Dragon", "{4}{B}{R}{G}"), .permanent(.heavy, colors: ["B", "R"]), "the first two colours")
-        XCTAssertEqual(plan("Legendary Creature — Elf", "{1}{G}", commander: true), .permanent(.heavy, colors: ["G"]))
-        XCTAssertEqual(plan("Token Creature — Soldier", token: ["White"], isToken: true), .permanent(.light, colors: ["W"]))
+        XCTAssertEqual(plan("Creature — Merfolk Wizard", "{1}{U}"), .creature(heavy: false, voice: "wizard"))
+        XCTAssertEqual(plan("Creature — Merfolk", "{1}{U}"), .creature(heavy: false, voice: nil), "no voice yet: a card placed")
+        XCTAssertEqual(plan("Creature — Spirit", "{6}"), .creature(heavy: true, voice: nil))
+        XCTAssertEqual(plan("Creature — Bear", "{1}{G}"), .creature(heavy: false, voice: "bear"))
+        XCTAssertEqual(plan("Creature — Human Soldier", "{1}{W}"), .creature(heavy: false, voice: "human"))
+        XCTAssertEqual(plan("Creature — Human Wizard", "{U}"), .creature(heavy: false, voice: "human"), "the first subtype with a voice")
+        XCTAssertEqual(plan("Creature — Elf Druid", "{G}"), .creature(heavy: false, voice: "elf"))
+        XCTAssertEqual(plan("Creature — Dragon", "{4}{R}{R}"), .creature(heavy: true, voice: "dragon"))
+        XCTAssertEqual(plan("Creature — Drake", "{1}{U}"), .creature(heavy: false, voice: "dragon"))
+        XCTAssertEqual(plan("Legendary Creature — Goblin Shaman", "{R}", commander: true), .creature(heavy: true, voice: "goblin"))
+        XCTAssertEqual(plan("Token Creature — Squirrel", isToken: true), .creature(heavy: false, voice: "squirrel"))
+        XCTAssertEqual(plan("Artifact Creature — Sliver", "{6}"), .creature(heavy: true, voice: "sliver"), "a creature first")
+        XCTAssertEqual(plan("Creature — Ogre Warrior", "{3}{R}"), .creature(heavy: false, voice: "orc"))
+        XCTAssertEqual(plan("Creature — Giant", "{5}{R}"), .creature(heavy: true, voice: "giant"))
+        XCTAssertEqual(plan("Creature — Hydra", "{X}{G}{G}"), .creature(heavy: false, voice: "beast"))
+        XCTAssertEqual(plan("Creature — Dinosaur", "{5}{G}"), .creature(heavy: true, voice: "dinosaur"))
+        XCTAssertEqual(plan("Creature — Demon", "{3}{B}{B}"), .creature(heavy: true, voice: "horror"))
+        XCTAssertEqual(plan("Creature — Rat", "{B}"), .creature(heavy: false, voice: "rat"))
+        XCTAssertEqual(plan("Creature — Fox", "{W}"), .creature(heavy: false, voice: "critter"))
+        XCTAssertEqual(plan("Legendary Creature — Eldrazi", "{11}"), .creature(heavy: true, voice: "eldrazi"))
+        XCTAssertEqual(plan("Token Creature — Spider", isToken: true), .creature(heavy: false, voice: "insect"))
+        XCTAssertEqual(plan("Creature — Werewolf", "{2}{G}"), .creature(heavy: false, voice: "wolf"))
+        XCTAssertEqual(plan("Artifact", "{1}"), .artifact)
+        XCTAssertEqual(plan("Enchantment — Aura", "{1}{W}{U}"), .enchantment)
+        XCTAssertEqual(plan("Legendary Planeswalker — Liliana", "{1}{B}{B}"), .planeswalker)
+        XCTAssertEqual(plan("Legendary Planeswalker — Ajani", "{4}{W}"), .planeswalker, "one sound for every planeswalker")
+        XCTAssertEqual(plan("Battle — Siege", "{2}{R}"), .other)
+    }
+
+    func testCastSoundsFollowTheSpellsType() {
+        func cast(_ type: String) -> BoardFXCastSound { BoardFXCastSound.of(CardIdentity(name: "x", typeLine: type, oracleText: nil)) }
+        XCTAssertEqual(cast("Instant"), .instant)
+        XCTAssertEqual(cast("Tribal Instant — Goblin"), .instant)
+        XCTAssertEqual(cast("Sorcery"), .sorcery)
+        XCTAssertEqual(cast("Creature — Elf"), .permanent)
+        XCTAssertEqual(cast("Artifact"), .permanent)
+        XCTAssertEqual(BoardFXCastSound.of(nil), .permanent)
     }
 
     func testStolenCardIsHiddenUntilTheChainDragsItHome() {

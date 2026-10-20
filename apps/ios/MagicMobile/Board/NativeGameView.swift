@@ -1091,7 +1091,10 @@ struct NativeGameView: View {
                     arrivals[card.instanceId] = BoardFXSound.Arrival(card)
                 }
             }
-            BoardFXSound.play(scheduled, viewerID: snapshot.viewerID, arrivals: arrivals)
+            // What each spell on the stack is, so a cast sounds like its card type.
+            var casts: [String: CardIdentity] = [:]
+            for object in snapshot.stackTopFirst { if let card = object.displaySourceCard?.card { casts[object.id] = card } }
+            BoardFXSound.play(scheduled, viewerID: snapshot.viewerID, arrivals: arrivals, casts: casts)
         }
         guard level == .full else { return }
         // Shake when the hit lands, scaled to it: the viewer losing life, a big hit on an

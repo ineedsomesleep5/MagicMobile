@@ -450,7 +450,9 @@ fun NativeGameView(
             val arrived = scheduled.mapNotNull { (it.event as? BoardFXEvent.EnteredBattlefield)?.cardID }.toSet()
             val arrivals = snap.players.flatMap { it.zones.battlefield }.filter { it.instanceId in arrived }
                 .associate { it.instanceId to BoardFXSound.Arrival(it.card, it.card.isToken == true) }
-            BoardFXSound.play(scheduled, snap.viewerID, arrivals)
+            // Casts sound like their card type (BoardFXCastSound): the stack object's card.
+            val casts = snap.stackTopFirst.mapNotNull { item -> item.displaySourceCard?.card?.let { item.id to it } }.toMap()
+            BoardFXSound.play(scheduled, snap.viewerID, arrivals, casts)
         }
         if (level != BoardFXLevel.FULL) return
         // Shake when the hit lands, scaled to it: the viewer losing life, a big hit on an

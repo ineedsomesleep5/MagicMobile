@@ -38,6 +38,9 @@ from gamedsp import SR, fade, highpass, loudness, lowpass, match_loudness, n_of,
 SONNISS: str = ""
 KENNEY: str = ""
 MUSIC: str = ""
+# Free clips found for Caleb's Sound Bin (build_output/audio-sources): pixabay-raw (Pixabay licence) and oga-raw
+# (OpenGameArt CC0). Paths below are relative to it.
+LIBRARY: str = ""
 
 
 def load(directory: str, name: str, start: float = 0.0, end: float | None = None, fade_in: float = 0.002,
@@ -63,6 +66,29 @@ def kenney(name: str, start: float = 0.0, end: float | None = None, fade_out: fl
     return load(KENNEY, name, start, end, 0.001, fade_out)
 
 
+def library(rel: str, longest: float, start: float = 0.0, gentle: bool = False) -> np.ndarray:
+    """A Sound Bin clip (mp3, ogg or wav) from just before its first strong onset, up to `longest` seconds or until it
+    falls quiet, faded; the same cut Caleb auditioned (scripts/audio/round12.py). `gentle` (creature voices) keeps the
+    quiet tail and fades over longer: Caleb found the voices cut off too fast."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = os.path.join(tmp, "x.wav")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", os.path.join(LIBRARY, rel), "-ac", "1", "-ar", str(SR),
+                        "-f", "wav", wav], check=True)
+        x = wavfile.read(wav)[1].astype(np.float32) / 32768.0
+    x = x[n_of(start):] if start else x
+    env = np.convolve(np.abs(x), np.ones(441) / 441, mode="same")
+    first = max(0, int(np.argmax(env > env.max() * 0.08)) - n_of(0.01))
+    seg = x[first:first + n_of(longest)].copy()
+    loud = np.where(env[first:first + len(seg)] > env.max() * (0.012 if gentle else 0.03))[0]
+    if len(loud):
+        seg = seg[: loud[-1] + n_of(0.15 if gentle else 0.08)]
+    n = len(seg)
+    fi, fo = min(n_of(0.004), n // 4), (min(n_of(0.35), n // 2) if gentle else min(n_of(0.15), n // 3))
+    seg[:fi] *= np.linspace(0, 1, fi)
+    seg[n - fo:] *= np.linspace(1, 0, fo)
+    return normalize(seg, -1.0)
+
+
 def layer(*parts: tuple[np.ndarray, float, float]) -> np.ndarray:
     """(signal, start seconds, gain dB) layers of the same channel count."""
     end = max(n_of(at) + len(x) for x, at, _ in parts)
@@ -75,7 +101,8 @@ def layer(*parts: tuple[np.ndarray, float, float]) -> np.ndarray:
 
 
 def slowed(x: np.ndarray, semitones: float) -> np.ndarray:
-    """Tape-style: slowed down to lower the pitch (and lengthen it), which keeps foley natural. Pedalboard's
+    """Tape-style speed change: negative semitones slow it down, lower and longer; positive speed it up, higher and
+    shorter. Keeps foley natural. Pedalboard's
     PitchShift smears grains this short into a faint ring (docs/LESSONS.md)."""
     ratio = Fraction(2 ** (semitones / 12)).limit_denominator(200)
     return resample_poly(x, ratio.denominator, ratio.numerator, axis=0).astype(np.float32)
@@ -171,23 +198,8 @@ def r_emote():
 
 
 # ------------------------------------------------------------------ cards
-def r_card_draw(variant: int):
-    if variant == 2:
-        return sonniss("Gathering a pile of small cards 05", 2.59, 3.1, fade_in=0.01, fade_out=0.12)
-    return kenney(["casino-audio__card-slide-1", "casino-audio__card-slide-3"][variant])
-
-
 def r_card_pickup():
     return kenney("casino-audio__card-slide-4", 0.0, 0.16, fade_out=0.06)
-
-
-def r_card_play():
-    tap = sonniss("games - Deck of cards handled, shuffled and tapped onto table 1", 1.46, 1.66, fade_out=0.06)
-    return layer((kenney("casino-audio__card-shove-4"), 0.0, -2), (tap, 0.04, -4))
-
-
-def r_shuffle():
-    return sonniss("games - Deck of cards handled, shuffled and tapped onto table 1", 0.18, 1.8, fade_out=0.2)
 
 
 # ------------------------------------------------------------------ board
@@ -276,18 +288,7 @@ LAND_LAYERS = {
                        (bed("NS01_007_Forest birds", 89.8, 0.9, lo=1500), 0.1, -9.0)],
 }
 
-COLOUR_LAYERS = {
-    "white": lambda: [ks("impactBell_heavy_003", -9.0, 0.01),
-                      (bed("Wind,Ext,Gust,Grasslands,Rustle,Buffeting", 56.4, 0.5, lo=400, hi=6000), 0.0, -14.0)],
-    "blue": lambda: [(splash(0.55), 0.0, -5.0)],
-    "black": lambda: [(lowpass(sonniss("soil and dirt debris heavy 13", 0.03, 0.45, fade_out=0.2), 2500), 0.0, -7.0),
-                      (lowpass(sonniss("Bluezone_BC0237_impact_017", 0.30, 0.95, fade_out=0.35), 900), 0.0, -12.0)],
-    "red": lambda: [(sonniss("sm-fire-firewood-small-03-DPAmono", 1.30, 1.95, fade_in=0.01, fade_out=0.3), 0.0, -5.0)],
-    "green": lambda: [(sonniss("leaves_pile_pick_up_04", 0.45, 0.85, fade_in=0.02, fade_out=0.2), 0.0, -7.0),
-                      (bed("Amb, Field, Birds, Wind, MS_01", 8.3, 0.6, lo=1800), 0.05, -15.0)],
-    "colorless": lambda: [ks("impactMetal_light_000", -4.0, 0.005)],
-}
-SLAM_DB = {"light": -23.0, "medium": -22.0, "heavy": -21.0}
+LAND_DB = -22
 
 
 def reach(x: np.ndarray, target: float) -> np.ndarray:
@@ -301,39 +302,166 @@ def reach(x: np.ndarray, target: float) -> np.ndarray:
     return y
 
 
-def r_slam(size: str):
-    return lambda: layer(*slam_parts(size))
-
-
 def r_land(kind: str):
     return lambda: layer(*slam_parts("light"), *LAND_LAYERS[kind]())
 
 
-def r_colour_layer(colour: str):
-    """The colour layer alone, which the apps play over the slam. Caleb auditioned slam + layer levelled together as one
-    mix at -21 dB; here the layer gets the level at which the shipped medium slam plus this layer is that loud again.
-    Already levelled: CUES gives it no loudness target."""
-    def recipe() -> np.ndarray:
-        slam = reach(highpass(layer(*slam_parts("medium")), 60, order=2), SLAM_DB["medium"])
-        texture = highpass(layer(*COLOUR_LAYERS[colour]()), 60, order=2)
-        n = max(len(slam), len(texture))
-
-        def together(gain: float) -> float:
-            mix = np.zeros(n, dtype=np.float32)
-            mix[:len(slam)] += slam
-            mix[:len(texture)] += texture * gain
-            return loudness(mix)
-
-        lo, hi = 0.0, 4.0
-        for _ in range(40):   # loudness grows with the layer's gain
-            mid = (lo + hi) / 2
-            lo, hi = (mid, hi) if together(mid) < -21.0 else (lo, mid)
-        return texture * lo
-    return recipe
+# One sound per kind of card (Caleb, 2026-10-19: water, fire and leaves only for lands; trials round 8, take A each).
+# Hits keep their natural transients: limiting flattened the creature thock (round 8), so these only match loudness.
+def pine() -> tuple:
+    return (sonniss("PineBlock_8x22x100cm_FaceDropped100cmOntoMDF_BeyerdynamicTG137c_Medium", 6.77, 7.15, fade_out=0.12), 0.0, 0.0)
 
 
-ARRIVAL_CUES = {"slam-light", "slam-medium", "slam-heavy", "land-plains", "land-island", "land-swamp", "land-mountain",
-                "land-forest"}
+def beech(gain: float = 0.0) -> tuple:
+    return (sonniss("BeechPlank_3x27x100cm_EndDropped30cmOntoMDF_SureSM57_Close", 3.26, 3.60, fade_out=0.12), 0.0, gain)
+
+
+def deep_thud(gain: float) -> tuple:
+    return (lowpass(sonniss("10 Hit Deep Thud", 0.08, 0.62, fade_out=0.3), 500), 0.0, gain)
+
+
+def creature_parts(heavy: bool) -> list:
+    """A pine block dropped flat (the thock), a deep thud and a little dust; big creatures add a drum hit."""
+    dust = (sonniss("Rustles - Pile, Debris 22", 0.0, 0.25, fade_out=0.12), 0.01, -12.0 if heavy else -14.0)
+    parts = [pine(), deep_thud(-5.0 if heavy else -6.0), dust]
+    if heavy:
+        parts.append((lowpass(sonniss("03 Hit Big Drum", 0.02, 0.9, fade_out=0.45), 900), 0.0, -5.0))
+    return parts
+
+
+# The targets round 8 asked for: match_loudness softly saturates past -1 dB, so these land at about -22.2 and -21.3,
+# exactly the takes Caleb heard.
+CREATURE_DB = {False: -21.0, True: -20.0}
+
+
+def creature_sound(heavy: bool) -> np.ndarray:
+    return match_loudness(highpass(layer(*creature_parts(heavy)), 60, order=2), CREATURE_DB[heavy], -1.0)
+
+
+# Round 13 (Caleb): no wood knock under anything. A creature with a voice plays the voice alone; one without lands as
+# a card placed on the table (a soft thud under it for big ones); artifacts, enchantments and planeswalkers play their
+# own sound alone. creature_parts and creature_sound above stay for the trials scripts.
+PX, OGA = "pixabay-raw", "oga-raw"
+
+
+def card_placed():
+    return library(f"{PX}/cards/oxidvideos-placing-playing-card-522514.mp3", 0.35)
+
+
+def r_creature(heavy: bool):
+    if not heavy:
+        return card_placed
+    return lambda: layer((card_placed(), 0.0, 0.0), (deep_thud(0.0)[0], 0.0, -12.0))
+
+
+def r_arrive_artifact():
+    return sonniss("IMPACT METAL Short Slam_03", 0.13, 0.65, fade_out=0.25)
+
+
+def r_arrive_enchantment():
+    return library(f"{PX}/enchantment/u_jt9vdte8nd-magic-church-bell-293423.mp3", 1.0)
+
+
+def r_arrive_planeswalker():
+    return layer(ks("impactBell_heavy_002", 0.0, 0.0),
+                 (sonniss("Magic_Spells_Impact_Creation20", 0.06, 0.90, fade_out=0.4), 0.02, -6.0))
+
+
+def r_cast_instant():
+    return sonniss("Whoosh_Fast_02", 0.05, 0.75, fade_in=0.01, fade_out=0.3)
+
+
+def r_cast_sorcery():
+    return sonniss("Whooshes_135", 0.90, 2.10, fade_in=0.03, fade_out=0.5)
+
+
+def r_cast_permanent():
+    """A creature, artifact or other permanent spell going on the stack: a soft swipe; it lands with its own sound."""
+    return sonniss("Whoosh,Organic,Fabric,Glove,Airy,Breathy,Punchy", 0.0, 0.46, fade_out=0.15)
+
+
+# A creature type's voice, played alone when the creature arrives (Caleb, round 13: no knock under it). The apps map
+# card subtypes to these slots in BoardFXArrivalSound; add a slot here, there and in GameSound to grow the list.
+# Slots with several voices ship as numbered files and the apps pick one at random.
+# Rounds 9-11 (Sonniss): human B (armour and a sword drawn), dragon B (a roar), the sliver hiss, the elf's singing bowl
+# an octave up, the squirrel's chirp slowed three semitones.
+SONNISS_VOICES = {
+    # Round 14 (Caleb: a bit longer, not cut off so fast): each slice runs on into its natural tail.
+    "human": lambda: layer((sonniss("LeatherArmor_Rustle_03", 0.22, 0.93, fade_in=0.01, fade_out=0.3), 0.0, 0.0),
+                           (sonniss("Sword Scrapes Multiple, Battle, Metal, Slash, Draw", 0.12, 0.90, fade_in=0.01,
+                                    fade_out=0.35), 0.06, 0.0)),
+    "dragon": lambda: sonniss("Creature_Dragon_Roar_01", 0.04, 2.0, fade_in=0.01, fade_out=0.7),
+    "elf": lambda: highpass(slowed(sonniss("SINGING_BOWL_Strike_Sustain_D_02", 3.40, 6.60, fade_out=1.6), 12.0), 600),
+    "sliver": lambda: layer((sonniss("MR - Insect Creature Attack VO 02", 0.0, 0.88, fade_in=0.01, fade_out=0.3), 0.0, 0.0),
+                            (sonniss("Bluezone_BC0263_creature_crab_organic_texture_carapace_crack_squishy_003", 0.0,
+                                     0.45, fade_in=0.01, fade_out=0.2), 0.0, -4.0)),
+    "squirrel": lambda: highpass(slowed(sonniss("Squirrel 2017 Lookout Hood Dawn Loud Squirrel 3", 7.76, 8.30,
+                                                fade_in=0.01, fade_out=0.25), -3.0), 700),
+}
+
+
+def lib(rel: str, longest: float, start: float = 0.0):
+    """A creature voice from the Sound Bin library, run on into its tail (round 14: up to 1.6x the auditioned cut)."""
+    return lambda: library(rel, min(2.0, longest * 1.6), start, gentle=True)
+
+
+# slot: its voices, in file order (creature-<slot>-<n> when there are several). Round 13 picks (the Sound Bin).
+CREATURE_VOICES = {
+    "human": [SONNISS_VOICES["human"]],
+    "goblin": [lib(f"{PX}/goblin/applehillstudios-mad-goblin-laughter-1-543569.mp3", 0.8)],
+    "elf": [SONNISS_VOICES["elf"]],
+    "dragon": [SONNISS_VOICES["dragon"], lib(f"{PX}/dragon/freesound_community-dragon-growl-37570.mp3", 1.1),
+               lib(f"{PX}/dragon/dragon-studio-epic-dragon-roar-364481.mp3", 1.1)],
+    "sliver": [SONNISS_VOICES["sliver"]],
+    "squirrel": [SONNISS_VOICES["squirrel"], lib(f"{PX}/chipmunk/freesound_community-046634_chipmunk-63290.mp3", 0.6),
+                 lib(f"{PX}/squirrel/freesound_community-squirrel-89831.mp3", 0.6)],
+    # Orc, Ogre, Troll; Giant uses the first two (Caleb: the large monster attack is not for giants)
+    "orc": [lib(f"{PX}/orc/magiaz-ogre-387364.mp3", 0.9), lib(f"{OGA}/creatures1/grunt_01.ogg", 0.7),
+            lib(f"{PX}/orc/daviddumaisaudio-large-monster-attack-195713.mp3", 0.8)],
+    "bear": [lib(f"{PX}/beast/dragon-studio-beast-growl-sound-376873.mp3", 1.0)],
+    "dinosaur": [lib(f"{PX}/beast/dragon-studio-dinosaur-growl-487679.mp3", 1.0)],
+    "beast": [lib(f"{PX}/beast/dragon-studio-growl-of-the-beast-504021.mp3", 1.0)],
+    "horror": [lib(f"{PX}/beast/dragon-studio-beast-growl-494304.mp3", 1.0),
+               lib(f"{PX}/beast/dragon-studio-monster-growl-376892.mp3", 1.0),
+               lib(f"{PX}/beast/the-vampires-monster-weretiger-yarik-roar-6-321637.mp3", 1.0)],
+    "critter": [lib(f"{OGA}/creatures1/cute_01.ogg", 0.6)],
+    # Round 14 (Caleb): a real rat for Rat and Mouse; the cute critter stays for Fox, Rabbit, Otter and the like
+    "rat": [lib(f"{PX}/rat/u_3yocsblk00-rat-squeaking-sound-effecthd-570216.mp3", 0.75)],
+    "eldrazi": [lib(f"{PX}/eldrazi/brvhrtz-creature-01-brvhrtz-232041.mp3", 1.19)],
+    "faerie": [lib(f"{PX}/fairy/humordome-fairy-sparkle-451414.mp3", 0.9),
+               lib(f"{PX}/fairy/freesound_community-fairy-flyby-2-106731.mp3", 0.9)],
+    "angel": [lib(f"{PX}/angel/freesound_community-ahhhh-37191.mp3", 1.1)],
+    "vampire": [lib(f"{PX}/vampire/alesiadavina-female-vampire-attack-hiss-sound-effect-dark-sfx-552124.mp3", 0.8)],
+    "zombie": [lib(f"{PX}/zombie/dragon-studio-zombie-sound-2-357976.mp3", 1.0),
+               lib(f"{PX}/zombie/freesound_community-zombie-groan-95051.mp3", 1.0)],
+    "wolf": [lib(f"{PX}/wolf/dragon-studio-spooky-wolf-howl-410547.mp3", 1.2)],
+    "cat": [lib(f"{PX}/cat/soundreality-cat-meow-fx-461188.mp3", 0.8), lib(f"{PX}/cat/dragon-studio-cute-cat-meow-472372.mp3", 0.8)],
+    # The chirp comes 0.62 s into the recording (Caleb: it started too early and cut the chirp off)
+    "bird": [lib(f"{PX}/bird/loswin23-bird-chirp-485390.mp3", 0.8, start=0.62)],
+    "ooze": [lib(f"{OGA}/creatures1/burble_01.ogg", 0.7), lib(f"{OGA}/creatures2/slime_01.ogg", 0.7)],
+    "wizard": [lib(f"{PX}/wizard/daviddumaisaudio-magical-spell-cast-190272.mp3", 1.0),
+               lib(f"{PX}/wizard/universfield-spell-casting-229208.mp3", 1.0)],
+    "insect": [lib(f"{OGA}/creatures1/bug_04.ogg", 0.6), lib(f"{PX}/insect/yodguard-giant-insect-footsteps-1-482548.mp3", 0.7)],
+}
+# Voices of big creatures sit a dB louder than small ones (the round 8 arrival levels).
+BIG_VOICES = {"dragon", "orc", "bear", "dinosaur", "beast", "horror", "zombie", "wolf", "angel", "eldrazi"}
+VOICE_DB = {False: -21.0, True: -20.0}
+
+
+# Peaky voices meet the -1 dB ceiling first and land quieter than asked: these targets bring them to their level.
+VOICE_TARGET = {"creature-insect-2": -15.5}
+
+
+def voice_cues() -> dict:
+    cues = {}
+    for slot, voices in CREATURE_VOICES.items():
+        for i, recipe in enumerate(voices, start=1):
+            name = f"creature-{slot}" if len(voices) == 1 else f"creature-{slot}-{i}"
+            cues[name] = (recipe, VOICE_TARGET.get(name, VOICE_DB[slot in BIG_VOICES]), False)
+    return cues
+
+
+ARRIVAL_CUES = {"land-plains", "land-island", "land-swamp", "land-mountain", "land-forest"}
 
 
 def r_ability():
@@ -341,35 +469,6 @@ def r_ability():
 
 
 # ------------------------------------------------------------------ spells by color
-def r_cast_white():
-    return sonniss("Ice_Spell_Ice_Spell_Buff_Positive_02", 0.0, 0.85, fade_out=0.3, stereo=True)
-
-
-def r_cast_blue():
-    return sonniss("Magic_Spells_CastShort_Water_General07", 0.1, 1.6, fade_in=0.04, fade_out=0.5, stereo=True)
-
-
-def r_cast_black():
-    return sonniss("Dark_Spell_Life_Tap_03", 0.05, 1.5, fade_out=0.5, stereo=True)
-
-
-def r_cast_red():
-    return sonniss("Fire_Spell_Dragon_Trap_03", 0.3, 1.7, fade_in=0.03, fade_out=0.5, stereo=True)
-
-
-def r_cast_green():
-    return sonniss("MAGIC AIR Large Whoosh, Swirl, Wind Gust, Foliage 01", 0.3, 1.7, fade_in=0.05, fade_out=0.4,
-                   stereo=True)
-
-
-def r_cast_colorless():
-    return sonniss("Magic_Spells_Impact_Creation20", 0.0, 1.1, fade_out=0.35, stereo=True)
-
-
-def r_cast_multi():
-    return sonniss("Magic_Transformation03", 0.15, 1.8, fade_in=0.05, fade_out=0.5, stereo=True)
-
-
 def r_spell_big():
     return sonniss("Magic_Explosion_Short19", 0.0, 0.95, fade_out=0.3, stereo=True)
 
@@ -464,37 +563,30 @@ CUES: dict[str, tuple] = {
     "book-open": (r_book_open, -26, False),
     "book-close": (r_book_close, -26, False),
     "emote": (r_emote, -26, True),
-    "card-draw-1": (lambda: r_card_draw(0), -25, False),
-    "card-draw-2": (lambda: r_card_draw(1), -25, False),
-    "card-draw-3": (lambda: r_card_draw(2), -25, False),
+    # Round 13 (Caleb): a card taken off the pile, a card placed on the table, a riffle shuffle
+    "card-draw": (lambda: library(f"{PX}/cards/oxidvideos-taking-playing-card-522520.mp3", 0.4), -25, False),
     "card-pickup": (r_card_pickup, -29, False),
-    "card-play": (r_card_play, -23, False),
-    "shuffle": (r_shuffle, -24, False),
+    "card-play": (card_placed, -23, False),
+    "shuffle": (lambda: library(f"{PX}/cards/freesound_community-card-shuffle-94662.mp3", 1.3), -24, False),
     "land-drop": (r_land_drop, -22, False),
     "counter": (r_counter, -30, False),
     "ability": (r_ability, -27, True),
     "steal": (r_steal, -27, False),
-    "slam-light": (r_slam("light"), SLAM_DB["light"], False),
-    "slam-medium": (r_slam("medium"), SLAM_DB["medium"], False),
-    "slam-heavy": (r_slam("heavy"), SLAM_DB["heavy"], False),
-    "land-plains": (r_land("plains"), -22, False),
-    "land-island": (r_land("island"), -22, False),
-    "land-swamp": (r_land("swamp"), -22, False),
-    "land-mountain": (r_land("mountain"), -22, False),
-    "land-forest": (r_land("forest"), -22, False),
-    "layer-white": (r_colour_layer("white"), None, False),
-    "layer-blue": (r_colour_layer("blue"), None, False),
-    "layer-black": (r_colour_layer("black"), None, False),
-    "layer-red": (r_colour_layer("red"), None, False),
-    "layer-green": (r_colour_layer("green"), None, False),
-    "layer-colorless": (r_colour_layer("colorless"), None, False),
-    "cast-white": (r_cast_white, -22, True),
-    "cast-blue": (r_cast_blue, -22, True),
-    "cast-black": (r_cast_black, -22, True),
-    "cast-red": (r_cast_red, -22, True),
-    "cast-green": (r_cast_green, -22, True),
-    "cast-colorless": (r_cast_colorless, -22, True),
-    "cast-multi": (r_cast_multi, -22, True),
+    # The target the Sound Bin used: a sharp card snap meets the -1 dB ceiling first and lands near -25, as Caleb heard
+    "arrive-creature": (r_creature(False), -22.2, False),
+    "arrive-creature-heavy": (r_creature(True), -22.2, False),
+    "arrive-artifact": (r_arrive_artifact, -22, False),
+    "arrive-enchantment": (r_arrive_enchantment, -23, False),
+    "arrive-planeswalker": (r_arrive_planeswalker, -21.0, False),
+    "cast-instant": (r_cast_instant, -22, False),
+    "cast-sorcery": (r_cast_sorcery, -21, False),
+    "cast-permanent": (r_cast_permanent, -25, False),
+    **voice_cues(),
+    "land-plains": (r_land("plains"), LAND_DB, False),
+    "land-island": (r_land("island"), LAND_DB, False),
+    "land-swamp": (r_land("swamp"), LAND_DB, False),
+    "land-mountain": (r_land("mountain"), LAND_DB, False),
+    "land-forest": (r_land("forest"), LAND_DB, False),
     "spell-big": (r_spell_big, -21, True),
     "commander-cast": (r_commander_cast, -19, True),
     "attack-1": (lambda: r_attack(0), -22, False),
@@ -574,10 +666,12 @@ def main() -> None:
     parser.add_argument("--sonniss", required=True)
     parser.add_argument("--kenney", required=True)
     parser.add_argument("--music", required=True)
+    parser.add_argument("--library", required=True, help="build_output/audio-sources (pixabay-raw, oga-raw)")
     parser.add_argument("--out", required=True)
     parser.add_argument("--only", default="")
     args = parser.parse_args()
-    SONNISS, KENNEY, MUSIC = args.sonniss, args.kenney, args.music
+    global LIBRARY
+    SONNISS, KENNEY, MUSIC, LIBRARY = args.sonniss, args.kenney, args.music, args.library
     os.makedirs(args.out, exist_ok=True)
     only = set(filter(None, args.only.split(",")))
     report = {}
@@ -608,9 +702,13 @@ def main() -> None:
         report[name] = write(name, render_track(title), args.out, True, is_music=True)
         report[name]["title"] = title
         print(f"{name:18s} {report[name]}")
-    if not only:
-        with open(os.path.join(os.path.dirname(__file__), "audio-manifest.json"), "w") as f:
-            json.dump(report, f, indent=1, sort_keys=True)
+    # A partial run (--only) updates its entries in the manifest; retired cues drop out either way.
+    path = os.path.join(os.path.dirname(__file__), "audio-manifest.json")
+    manifest = json.load(open(path)) if only and os.path.exists(path) else {}
+    manifest.update(report)
+    manifest = {k: v for k, v in manifest.items() if k in CUES or k in TRACKS}
+    with open(path, "w") as f:
+        json.dump(manifest, f, indent=1, sort_keys=True)
 
 
 if __name__ == "__main__":

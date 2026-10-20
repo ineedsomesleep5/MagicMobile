@@ -20,19 +20,24 @@ http://creativecommons.org/licenses/by/4.0/
 SOUND EFFECTS
 Recordings from the Sonniss.com GDC Game Audio Bundles 2015-2020 (royalty-free),
 trimmed and mixed for MagicMobile. Thank you to the contributing sound designers:
+  344 Audio - Medieval Battle
   3maze - Books & Magazines
   3maze - UI FX
   Airborne Sound - Crisis Accents
   Airborne Sound - Eclectic Whooshes
+  Airborne Sound - Organic Whooshes
   Alexander Kopeikin - Rocks
   Articulated Sounds - Dice
   Articulated Sounds - Magic Elements vol.1
   Articulated Sounds - Magic Elements vol.2
+  Baxter Audio - IMPACT
+  Bluezone - Crab - Creature
   Bluezone - Switch And Button Sound Effects
   Bluezone Corporation - MOVIE TRAILER
   David Dumais Audio - Magic Sound FX Pack 1
   David Dumais Audio - Spells Magic 1
   David Dumais Audio - Water Magic 1
+  Discover Oregon - Forest Meadow Birds
   Double Trouble Audio - Medieval Armor and Impacts
   Double Trouble Audio - Wood Impacts and Debris
   Gamemaster Audio - Fun Casual Sounds
@@ -44,13 +49,19 @@ trimmed and mixed for MagicMobile. Thank you to the contributing sound designers
   InspectorJ - UI - Mechanical
   Kpow Sounds - UI SOUNDPACKS
   L.A. Sounds - Game & UI Interface 001
+  MatiasMacSD - CREATURES ZONE
   Mechanical Wave - Hits Whoosh
+  Phase 4 Libraries - Monster Roars
   PMSFX - Books Alive
+  Prismo Sound - Singing Bowls
   Raconteur Sound - Spring in the Pacific Northwest- Ambiences
   RedSonic - Water on Rocks
   Scoba Sounds – Scoba Ui Essentials
+  SmartSoundFX - Impacts, Hits & Whooshes
   Sound Ex Machina - PAPER & CARDBOARD
+  Sound Spark LLC - Whooshes Impacts and Transitions
   Sound Spark LLC – Magic Spells, Buffs and Attacks
+  SoundBits - Whooshes & Impacts 2
   Soundopolis - Blades
   Soundrangers - Foley Elements Foliage
   Soundrangers - Nature Ambience
@@ -61,5 +72,28 @@ trimmed and mixed for MagicMobile. Thank you to the contributing sound designers
 
 Card handling, metal, book and impact recordings from Kenney.nl Casino Audio, RPG Audio and Impact Sounds,
 released under Creative Commons Zero (CC0 1.0). Thank you, Kenney (www.kenney.nl).
+
+Creature voices, card handling and an enchantment bell from Pixabay (pixabay.com, Pixabay Content License: free to
+use, no attribution required). Thank you to their creators:
+  applehillstudios - Mad Goblin Laughter 1 (543569)
+  dragon-studio - Epic Dragon Roar (364481), Beast Growl Sound (376873), Dinosaur Growl (487679),
+    Growl of the Beast (504021), Beast Growl (494304), Monster Growl (376892), Zombie Sound 2 (357976),
+    Spooky Wolf Howl (410547), Cute Cat Meow (472372)
+  daviddumaisaudio - Large Monster Attack (195713), Magical Spell Cast (190272)
+  magiaz - Ogre (387364)
+  alesiadavina - Female Vampire Attack Hiss (552124)
+  humordome - Fairy Sparkle (451414)
+  soundreality - Cat Meow FX (461188)
+  loswin23 - Bird Chirp (485390)
+  universfield - Spell Casting (229208)
+  u_3yocsblk00 - Rat Squeaking - Sound Effect (HD) (570216)
+  BRVHRTZ - Creature 01 (232041)
+  oxidvideos - Taking Playing Card (522520), Placing Playing Card (522514)
+  Uploaders not named on Pixabay: Weretiger Yarik Roar 6 (321637), Magic Church Bell (293423)
+  freesound community - Dragon Growl (37570), AHHHH (37191), Chipmunk (63290), Squirrel (89831),
+    Zombie Groan (95051), Fairy FlyBy 2 (106731), Card Shuffle (94662)
+
+Creature sounds from OpenGameArt.org, released under Creative Commons Zero (CC0 1.0):
+  rubberduck - 80 CC0 creature SFX and 80 CC0 creature SFX #2 (grunt, cute, bug, burble and slime sounds)
 
 Full source list: scripts/audio/SOURCES.md in the MagicMobile repository.

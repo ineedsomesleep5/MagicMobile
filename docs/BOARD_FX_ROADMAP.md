@@ -602,3 +602,19 @@ single MIT file with its license header when that is enough.
   first two, sharing one layer's level; none is a metal clink). Cues due together start on the same audio frame
   (`playTogether`). Preview `MAGICMOBILE_DESIGN_PREVIEW=arrivals` deals 14 cards one by one; its demo video
   (`build_output/animation-clips/8-arrival-sounds-demo.mp4`) was made with `scripts/audio/demo_soundtrack.py`.
+- 2026-10-19 (Claude): Arrival sounds, round 13 (Caleb rejected the colour layers and then the wood knock). Lands keep
+  their places; nothing else has a knock or a colour. A creature plays its type's voice alone
+  (`BoardFXArrivalSound.creatureVoices`: 47 subtypes onto 23 slots, the first listed subtype wins, so a Human Wizard is
+  a Human). Several voices in one slot are random variants (`GameSound.variants`, files `creature-<slot>-<n>`; Giants
+  share the first two orc files via `fileBase`). A creature with no voice yet lands as a card placed on the table
+  (`arrive-creature`, with a soft thud at 5+ mana or a commander). Artifacts, enchantments and planeswalkers have one
+  sound each; planeswalkers deliberately get no race (their subtype is a name). Casts sound by card type
+  (`BoardFXCastSound`). Picks came from the Tavern Sound Bin artifact (marks in its `picks` db); new voices are
+  Pixabay and OpenGameArt CC0 clips under `build_output/audio-sources` (`build_game_audio.py --library`). Next: voices
+  for Spirit, Merfolk, Elemental and Soldier tokens, the most common types still on the card sound.
+- 2026-10-19 (Claude): Voices lead into the landing (round 14, Caleb: they should play as the card comes in and stop as it
+  hits the board, and not be cut off so fast). `BoardFXSound.Cue.endsBy`: a creature voice is due when its card starts
+  entering (`fx.delay`) and `GameAudio.play(_:after:endingWithin:)` starts it late enough to finish at `fx.landing`
+  (a showcased card from hand lands ~2.05 s in; a voice longer than the entry starts with it). Android reads each
+  file's length with MediaMetadataRetriever. Card and land sounds still play at the landing. Voices rebuilt longer
+  (`library(gentle:)`, Sonniss slices run into their tails): 0.6-2.0 s instead of 0.4-1.2 s.

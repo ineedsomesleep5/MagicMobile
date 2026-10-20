@@ -286,6 +286,91 @@ ROUND8 = {
 }
 
 
+# Round 9 (Caleb: a generic creature landing, then a sound per creature type - Human, Goblin, Dragon, Elf, Sliver,
+# Squirrel - growing to more types). The creature thock from round 8, and a short voice for the type 50 ms after it.
+VOICE_AT = 0.05
+
+
+def creature(voice: list) -> list:
+    return [pine(), deep_thud(-6.0), (sonniss("Rustles - Pile, Debris 22", 0.0, 0.25, fade_out=0.12), 0.01, -14.0)] + [
+        (x, VOICE_AT + at, gain) for x, at, gain in voice]
+
+
+ROUND9 = {
+    "type-human-A-shout": (lambda: creature([
+        (sonniss("voice_male_b_battle_shout_short_09", 0.02, 0.62, fade_out=0.15), 0.0, -7.0),
+        (sonniss("LeatherArmor_Rustle_03", 0.22, 0.65, fade_out=0.15), 0.0, -12.0)]), -20.0),
+    "type-human-B-armour-sword": (lambda: creature([
+        (sonniss("LeatherArmor_Rustle_03", 0.22, 0.65, fade_out=0.15), 0.0, -8.0),
+        (sonniss("Sword Scrapes Multiple, Battle, Metal, Slash, Draw", 0.12, 0.45, fade_out=0.15), 0.06, -8.0)]), -20.0),
+    "type-goblin-A-cheeky": (lambda: creature([
+        (sonniss("FUN MONSTER Cheeky sneaky find object 04", 0.10, 0.55, fade_out=0.12), 0.0, -4.0)]), -20.0),
+    "type-goblin-B-gibberish": (lambda: creature([
+        (sonniss("FUN MONSTER Jaja silly talk gibberish 10", 1.21, 1.70, fade_out=0.12), 0.0, -4.0)]), -20.0),
+    "type-dragon-A-huff": (lambda: creature([
+        (sonniss("Dragon Short Huff", 0.14, 1.00, fade_out=0.35), 0.0, -3.0)]), -19.0),
+    "type-dragon-B-roar": (lambda: creature([
+        (sonniss("Creature_Dragon_Roar_01", 0.04, 1.10, fade_out=0.45), 0.0, -4.0)]), -19.0),
+    "type-elf-chime": (lambda: creature([
+        (highpass(sonniss("SINGING_BOWL_Strike_Sustain_D_02", 3.40, 4.30, fade_out=0.55), 300), 0.0, -8.0)]), -20.0),
+    "type-sliver-hiss": (lambda: creature([
+        (sonniss("MR - Insect Creature Attack VO 02", 0.0, 0.58, fade_out=0.18), 0.0, -5.0),
+        (sonniss("Bluezone_BC0263_creature_crab_organic_texture_carapace_crack_squishy_003", 0.0, 0.30, fade_out=0.1), 0.0,
+         -9.0)]), -20.0),
+    "type-squirrel-chatter": (lambda: creature([
+        (highpass(sonniss("Squirrel 2017 Lookout Hood Dawn Loud Squirrel 3", 7.76, 8.46, fade_in=0.01, fade_out=0.15), 900),
+         0.0, -4.0)]), -20.0),
+}
+
+
+# Round 10 (Caleb on round 9: human shout too creepy -> B; goblins not good; dragon B good; elf could be better;
+# sliver good; squirrel a little too much). New goblins and elves, and a shorter, quieter squirrel.
+ROUND10 = {
+    "goblin-1-cackle": (lambda: creature([
+        (slowed(sonniss("Laugh_Evil_Cartoon_Female_KB_08_SCREAM LIBRARY_BRFX-004", 0.33, 1.05, fade_out=0.2), 2.0), 0.0, -6.0)]),
+        -20.0),
+    "goblin-2-small-creature": (lambda: creature([
+        (sonniss("Monster Within - Small Creature - Spawn_Up600_02", 1.22, 1.92, fade_out=0.25), 0.0, -5.0)]), -20.0),
+    "goblin-3-hup": (lambda: creature([
+        (slowed(sonniss("Little Fighter Guy - Vocalizations - Punch Kick Chop_19", 0.0, 0.26, fade_out=0.08), 3.0), 0.0, -4.0)]),
+        -20.0),
+    "elf-1-plucked-strings": (lambda: creature([
+        (sonniss("Action_Ethnic plugged Indian strings 02", 0.0, 1.0, fade_in=0.005, fade_out=0.5), 0.0, -8.0)]), -20.0),
+    "elf-2-ukulele": (lambda: creature([
+        (sonniss("Selection_Ukelele chord 04", 0.0, 0.9, fade_in=0.005, fade_out=0.45), 0.0, -8.0)]), -20.0),
+    "elf-3-bowl-octave-up": (lambda: creature([
+        (highpass(slowed(sonniss("SINGING_BOWL_Strike_Sustain_D_02", 3.40, 5.20, fade_out=0.9), 12.0), 600), 0.0, -9.0)]), -20.0),
+    "squirrel-shorter": (lambda: creature([
+        (highpass(sonniss("Squirrel 2017 Lookout Hood Dawn Loud Squirrel 3", 7.76, 8.12, fade_in=0.01, fade_out=0.1), 900),
+         0.0, -7.0)]), -20.0),
+}
+
+
+def stretched(x: np.ndarray, speed: float) -> np.ndarray:
+    """Slower without lowering the pitch (pedalboard's time stretch), for chatter that runs too fast."""
+    from pedalboard import time_stretch
+    y = time_stretch(x.astype(np.float32).reshape(1, -1) if x.ndim == 1 else x.T.astype(np.float32), SR, stretch_factor=speed)
+    return (y[0] if x.ndim == 1 else y.T).astype(np.float32)
+
+
+SQUIRREL = lambda: sonniss("Squirrel 2017 Lookout Hood Dawn Loud Squirrel 3", 7.76, 8.12, fade_in=0.01, fade_out=0.1)
+# Round 11: the goblins lower (Caleb: too high-pitched), the squirrel slower (a bit too fast).
+ROUND11 = {
+    "goblin-1-cackle-lower": (lambda: creature([
+        (slowed(sonniss("Laugh_Evil_Cartoon_Female_KB_08_SCREAM LIBRARY_BRFX-004", 0.33, 0.80, fade_out=0.2), -3.0), 0.0, -6.0)]),
+        -20.0),
+    "goblin-2-small-creature-lower": (lambda: creature([
+        (slowed(sonniss("Monster Within - Small Creature - Spawn_Up600_02", 1.22, 1.70, fade_out=0.25), -4.0), 0.0, -5.0)]),
+        -20.0),
+    "goblin-3-hup-lower": (lambda: creature([
+        (slowed(sonniss("Little Fighter Guy - Vocalizations - Punch Kick Chop_19", 0.0, 0.26, fade_out=0.08), -3.0), 0.0, -4.0)]),
+        -20.0),
+    "squirrel-A-slower-same-pitch": (lambda: creature([
+        (highpass(stretched(SQUIRREL(), 0.7), 900), 0.0, -7.0)]), -20.0),
+    "squirrel-B-slower-lower": (lambda: creature([
+        (highpass(slowed(SQUIRREL(), -3.0), 700), 0.0, -7.0)]), -20.0),
+}
+
 def shipped(path: str) -> np.ndarray:
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "x.wav")
@@ -326,7 +411,7 @@ def main() -> None:
             continue   # retired since (creature-enter, token-create)
         x = shipped(os.path.join(args.shipped, name))
         wavfile.write(os.path.join(args.out, "before-" + name.rsplit(".", 1)[0] + ".wav"), SR, (np.clip(x, -1, 1) * 32767).astype(np.int16))
-    for name, (layers, target) in {**ROUND5, **ROUND6, **ROUND7, **ROUND8}.items():
+    for name, (layers, target) in {**ROUND5, **ROUND6, **ROUND7, **ROUND8, **ROUND9, **ROUND10, **ROUND11}.items():
         takes[name] = ((lambda layers=layers: layer(*layers())), target, False)
     for name, (recipe, target, stereo) in takes.items():
         if args.only and name not in wanted:
@@ -335,7 +420,7 @@ def main() -> None:
         # Sharp knocks hit the -1 dB ceiling before their loudness target; a fast limiter lets them reach it. Round 8
         # keeps its natural transients instead (limiting flattened the thock), and ends up quieter where it must.
         limit = -6.0
-        while loudness(y) < target - 0.5 and limit > -18.0 and name not in ROUND8:
+        while loudness(y) < target - 0.5 and limit > -18.0 and name not in ROUND8 and name not in ROUND9 and name not in ROUND10 and name not in ROUND11:
             from pedalboard import Limiter
             y = match_loudness(Limiter(threshold_db=limit, release_ms=50)(y.astype(np.float32), SR), target, -1.0)
             limit -= 3.0

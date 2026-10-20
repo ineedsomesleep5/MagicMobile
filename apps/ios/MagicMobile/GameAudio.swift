@@ -21,8 +21,8 @@ enum GameSoundCategory: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .interface: return String(localized: "Confirm buttons, sheets, “your decision” and emotes.")
-        case .cards: return String(localized: "Drawing, playing, lands, creatures, tokens and counters.")
-        case .spells: return String(localized: "A cast sound for each color, big spells and your commander.")
+        case .cards: return String(localized: "Drawing, playing, lands, creatures and their kinds, artifacts and counters.")
+        case .spells: return String(localized: "Instants, sorceries, other spells, big spells and your commander.")
         case .combat: return String(localized: "Attacks, blocks, hits, deaths, exile and life changes.")
         case .moments: return String(localized: "Your turn, the versus reveal, victory, defeat and dice.")
         }
@@ -40,15 +40,17 @@ enum GameSound: String, CaseIterable, Identifiable {
     // Cards and board
     case cardDraw = "card-draw", cardPickup = "card-pickup", cardPlay = "card-play", shuffle,
          landDrop = "land-drop", counter, ability, steal,
-         // A card arriving (BoardFXArrivalSound): a slam by size, a layer per colour on top, or a basic land's place.
-         slamLight = "slam-light", slamMedium = "slam-medium", slamHeavy = "slam-heavy",
-         layerWhite = "layer-white", layerBlue = "layer-blue", layerBlack = "layer-black", layerRed = "layer-red",
-         layerGreen = "layer-green", layerColorless = "layer-colorless",
+         // A card arriving (BoardFXArrivalSound): one sound per kind of card, never a wood knock under it. A creature
+         // plays its type's voice alone, or lands as a card placed on the table when its type has no voice yet; a basic
+         // land plays its place. Water, fire and leaves are only ever the lands'.
+         arriveCreature = "arrive-creature", arriveCreatureHeavy = "arrive-creature-heavy", arriveArtifact = "arrive-artifact",
+         arriveEnchantment = "arrive-enchantment", arrivePlaneswalker = "arrive-planeswalker",
+         // Creature voices, one per BoardFXArrivalSound.creatureVoices slot
+         creatureHuman = "creature-human", creatureGoblin = "creature-goblin", creatureElf = "creature-elf", creatureDragon = "creature-dragon", creatureSliver = "creature-sliver", creatureSquirrel = "creature-squirrel", creatureOrc = "creature-orc", creatureGiant = "creature-giant", creatureBear = "creature-bear", creatureDinosaur = "creature-dinosaur", creatureBeast = "creature-beast", creatureHorror = "creature-horror", creatureCritter = "creature-critter", creatureFaerie = "creature-faerie", creatureAngel = "creature-angel", creatureVampire = "creature-vampire", creatureZombie = "creature-zombie", creatureWolf = "creature-wolf", creatureCat = "creature-cat", creatureBird = "creature-bird", creatureOoze = "creature-ooze", creatureWizard = "creature-wizard", creatureInsect = "creature-insect", creatureRat = "creature-rat", creatureEldrazi = "creature-eldrazi",
          landPlains = "land-plains", landIsland = "land-island", landSwamp = "land-swamp", landMountain = "land-mountain",
          landForest = "land-forest"
-    // Spells by color identity
-    case castWhite = "cast-white", castBlue = "cast-blue", castBlack = "cast-black", castRed = "cast-red",
-         castGreen = "cast-green", castColorless = "cast-colorless", castMulti = "cast-multi",
+    // Spells by card type (BoardFXCastSound), never colour
+    case castInstant = "cast-instant", castSorcery = "cast-sorcery", castPermanent = "cast-permanent",
          spellBig = "spell-big", commanderCast = "commander-cast"
     // Combat and life
     case attack, block, strike, playerHit = "player-hit", death, exile,
@@ -62,11 +64,9 @@ enum GameSound: String, CaseIterable, Identifiable {
         switch self {
         case .uiTap, .uiConfirm, .uiBack, .uiOpen, .uiClose, .uiToggle, .uiTick, .uiError,
              .responseAlert, .menuPlay, .pageFlip, .emote, .bookOpen, .bookClose: return .interface
-        case .cardDraw, .cardPickup, .cardPlay, .shuffle, .landDrop, .counter, .ability, .steal, .slamLight, .slamMedium,
-             .slamHeavy, .layerWhite, .layerBlue, .layerBlack, .layerRed, .layerGreen, .layerColorless, .landPlains,
-             .landIsland, .landSwamp, .landMountain, .landForest: return .cards
-        case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti,
-             .spellBig, .commanderCast: return .spells
+        case .cardDraw, .cardPickup, .cardPlay, .shuffle, .landDrop, .counter, .ability, .steal, .arriveCreature, .arriveCreatureHeavy, .arriveArtifact, .arriveEnchantment, .arrivePlaneswalker,
+             .creatureHuman, .creatureGoblin, .creatureElf, .creatureDragon, .creatureSliver, .creatureSquirrel, .creatureOrc, .creatureGiant, .creatureBear, .creatureDinosaur, .creatureBeast, .creatureHorror, .creatureCritter, .creatureFaerie, .creatureAngel, .creatureVampire, .creatureZombie, .creatureWolf, .creatureCat, .creatureBird, .creatureOoze, .creatureWizard, .creatureInsect, .creatureRat, .creatureEldrazi, .landPlains, .landIsland, .landSwamp, .landMountain, .landForest: return .cards
+        case .castInstant, .castSorcery, .castPermanent, .spellBig, .commanderCast: return .spells
         case .attack, .block, .strike, .playerHit, .death, .exile, .lifeGain, .lifeLoss: return .combat
         case .turnYou, .versus, .victory, .defeat, .diceRoll, .diceLand: return .moments
         }
@@ -97,27 +97,44 @@ enum GameSound: String, CaseIterable, Identifiable {
         case .counter: return String(localized: "Counter")
         case .ability: return String(localized: "Your ability")
         case .steal: return String(localized: "Stolen permanent")
-        case .slamLight: return String(localized: "Small card lands")
-        case .slamMedium: return String(localized: "Card lands")
-        case .slamHeavy: return String(localized: "Big card lands")
-        case .layerWhite: return String(localized: "White card")
-        case .layerBlue: return String(localized: "Blue card")
-        case .layerBlack: return String(localized: "Black card")
-        case .layerRed: return String(localized: "Red card")
-        case .layerGreen: return String(localized: "Green card")
-        case .layerColorless: return String(localized: "Colorless card")
+        case .arriveCreature: return String(localized: "Creature lands")
+        case .arriveCreatureHeavy: return String(localized: "Big creature lands")
+        case .arriveArtifact: return String(localized: "Artifact")
+        case .arriveEnchantment: return String(localized: "Enchantment")
+        case .arrivePlaneswalker: return String(localized: "Planeswalker")
+        case .creatureHuman: return String(localized: "Human")
+        case .creatureGoblin: return String(localized: "Goblin")
+        case .creatureElf: return String(localized: "Elf")
+        case .creatureDragon: return String(localized: "Dragon")
+        case .creatureSliver: return String(localized: "Sliver")
+        case .creatureSquirrel: return String(localized: "Squirrel")
+        case .creatureOrc: return String(localized: "Orc, ogre, troll")
+        case .creatureGiant: return String(localized: "Giant")
+        case .creatureBear: return String(localized: "Bear")
+        case .creatureDinosaur: return String(localized: "Dinosaur")
+        case .creatureBeast: return String(localized: "Beast, hydra")
+        case .creatureHorror: return String(localized: "Horror, demon, wurm")
+        case .creatureCritter: return String(localized: "Small critter")
+        case .creatureFaerie: return String(localized: "Faerie")
+        case .creatureAngel: return String(localized: "Angel")
+        case .creatureVampire: return String(localized: "Vampire")
+        case .creatureZombie: return String(localized: "Zombie")
+        case .creatureWolf: return String(localized: "Wolf, dog")
+        case .creatureCat: return String(localized: "Cat")
+        case .creatureBird: return String(localized: "Bird")
+        case .creatureOoze: return String(localized: "Ooze")
+        case .creatureWizard: return String(localized: "Wizard")
+        case .creatureInsect: return String(localized: "Insect, spider")
+        case .creatureRat: return String(localized: "Rat, mouse")
+        case .creatureEldrazi: return String(localized: "Eldrazi")
         case .landPlains: return String(localized: "Plains")
         case .landIsland: return String(localized: "Island")
         case .landSwamp: return String(localized: "Swamp")
         case .landMountain: return String(localized: "Mountain")
         case .landForest: return String(localized: "Forest")
-        case .castWhite: return String(localized: "White spell")
-        case .castBlue: return String(localized: "Blue spell")
-        case .castBlack: return String(localized: "Black spell")
-        case .castRed: return String(localized: "Red spell")
-        case .castGreen: return String(localized: "Green spell")
-        case .castColorless: return String(localized: "Colorless spell")
-        case .castMulti: return String(localized: "Multicolor spell")
+        case .castInstant: return String(localized: "Instant")
+        case .castSorcery: return String(localized: "Sorcery")
+        case .castPermanent: return String(localized: "Permanent spell")
         case .spellBig: return String(localized: "Big spell")
         case .commanderCast: return String(localized: "Commander")
         case .attack: return String(localized: "Attack")
@@ -137,13 +154,18 @@ enum GameSound: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Numbered files ("card-draw-1…3") give repeated sounds natural variety.
+    /// Numbered files ("attack-1…3") give repeated sounds natural variety; a creature type with several voices picks one.
     var variants: Int {
         switch self {
-        case .cardDraw, .attack: return 3
+        case .attack: return 3
+        case .creatureGiant, .creatureFaerie, .creatureZombie, .creatureCat, .creatureOoze, .creatureWizard, .creatureInsect: return 2
+        case .creatureDragon, .creatureSquirrel, .creatureOrc, .creatureHorror: return 3
         default: return 1
         }
     }
+
+    /// The files a sound plays from: Giants share the first two orc voices (Caleb: the third is not for giants).
+    var fileBase: String { self == .creatureGiant ? GameSound.creatureOrc.rawValue : rawValue }
 
     /// Mix level. Files are already loudness-matched (audio-manifest.json); this sets the
     /// balance: interface quiet, the board clear, big moments on top.
@@ -153,10 +175,9 @@ enum GameSound: String, CaseIterable, Identifiable {
         case .uiConfirm, .uiError, .pageFlip, .emote, .bookOpen, .bookClose: return 0.65
         case .responseAlert, .menuPlay: return 0.8
         case .cardDraw, .cardPickup, .counter, .ability: return 0.7
-        case .cardPlay, .shuffle, .landDrop, .slamLight, .slamMedium, .slamHeavy, .layerWhite, .layerBlue, .layerBlack,
-             .layerRed, .layerGreen, .layerColorless, .landPlains, .landIsland, .landSwamp, .landMountain, .landForest:
-            return 0.85
-        case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti: return 0.85
+        case .cardPlay, .shuffle, .landDrop, .arriveCreature, .arriveCreatureHeavy, .arriveArtifact, .arriveEnchantment, .arrivePlaneswalker,
+             .creatureHuman, .creatureGoblin, .creatureElf, .creatureDragon, .creatureSliver, .creatureSquirrel, .creatureOrc, .creatureGiant, .creatureBear, .creatureDinosaur, .creatureBeast, .creatureHorror, .creatureCritter, .creatureFaerie, .creatureAngel, .creatureVampire, .creatureZombie, .creatureWolf, .creatureCat, .creatureBird, .creatureOoze, .creatureWizard, .creatureInsect, .creatureRat, .creatureEldrazi, .landPlains, .landIsland, .landSwamp, .landMountain, .landForest: return 0.85
+        case .castInstant, .castSorcery, .castPermanent: return 0.85
         case .spellBig, .commanderCast, .attack, .block, .strike, .playerHit: return 0.9
         case .death, .exile, .lifeGain, .lifeLoss, .steal: return 0.75
         case .turnYou, .versus, .victory, .defeat: return 0.9
@@ -169,7 +190,7 @@ enum GameSound: String, CaseIterable, Identifiable {
     var pitchVariation: Float {
         switch self {
         case .cardDraw, .cardPickup, .cardPlay, .landDrop, .strike, .playerHit, .death, .attack, .block, .counter, .shuffle,
-             .diceLand, .slamLight, .slamMedium, .slamHeavy:
+             .diceLand, .arriveCreature, .arriveCreatureHeavy, .arriveArtifact:
             return 0.04
         default: return 0
         }
@@ -178,8 +199,7 @@ enum GameSound: String, CaseIterable, Identifiable {
     /// Simultaneous copies allowed (a board wipe plays several deaths at once).
     var voices: Int {
         switch self {
-        case .strike, .death, .cardDraw, .slamLight, .slamMedium, .slamHeavy, .layerWhite, .layerBlue, .layerBlack, .layerRed,
-             .layerGreen, .layerColorless: return 3
+        case .strike, .death, .cardDraw, .arriveCreature, .arriveCreatureHeavy, .arriveArtifact, .arriveEnchantment, .arrivePlaneswalker, .creatureHuman, .creatureGoblin, .creatureElf, .creatureDragon, .creatureSliver, .creatureSquirrel, .creatureOrc, .creatureGiant, .creatureBear, .creatureDinosaur, .creatureBeast, .creatureHorror, .creatureCritter, .creatureFaerie, .creatureAngel, .creatureVampire, .creatureZombie, .creatureWolf, .creatureCat, .creatureBird, .creatureOoze, .creatureWizard, .creatureInsect, .creatureRat, .creatureEldrazi: return 3
         case .victory, .defeat, .versus, .turnYou, .menuPlay, .responseAlert: return 1
         default: return 2
         }
@@ -191,10 +211,10 @@ enum GameSound: String, CaseIterable, Identifiable {
         switch self {
         case .uiTick: return 0.08
         case .cardDraw, .uiTap: return 0.1
-        case .strike, .death, .landDrop, .slamLight, .slamMedium, .slamHeavy, .landPlains, .landIsland, .landSwamp,
-             .landMountain, .landForest: return 0.12
+        case .strike, .death, .landDrop, .arriveCreature, .arriveCreatureHeavy, .arriveArtifact, .arriveEnchantment, .arrivePlaneswalker,
+             .landPlains, .landIsland, .landSwamp, .landMountain, .landForest: return 0.12
         case .counter, .lifeGain: return 0.3
-        case .castWhite, .castBlue, .castBlack, .castRed, .castGreen, .castColorless, .castMulti: return 0.25
+        case .castInstant, .castSorcery, .castPermanent: return 0.25
         case .ability: return 0.8
         case .responseAlert: return 1.2
         case .turnYou, .versus, .victory, .defeat: return 1.5
@@ -202,15 +222,16 @@ enum GameSound: String, CaseIterable, Identifiable {
         }
     }
 
-    static func cast(for tint: BoardFXTint) -> GameSound {
-        switch tint {
-        case .white: return .castWhite
-        case .blue: return .castBlue
-        case .black: return .castBlack
-        case .red: return .castRed
-        case .green: return .castGreen
-        case .multicolor: return .castMulti
-        case .colorless: return .castColorless
+    var isCreatureVoice: Bool { rawValue.hasPrefix("creature-") }
+
+    /// A creature voice slot (BoardFXArrivalSound.creatureVoices) to its sound.
+    static func voice(_ slot: String) -> GameSound? { GameSound(rawValue: "creature-\(slot)") }
+
+    static func cast(_ kind: BoardFXCastSound) -> GameSound {
+        switch kind {
+        case .instant: return .castInstant
+        case .sorcery: return .castSorcery
+        case .permanent: return .castPermanent
         }
     }
 
@@ -309,10 +330,10 @@ final class GameAudio {
     }
 
     private func player(for sound: GameSound) -> AVAudioPlayer? {
-        let file = sound.variants > 1 ? "\(sound.rawValue)-\(Int.random(in: 1...sound.variants))" : sound.rawValue
+        let file = sound.variants > 1 ? "\(sound.fileBase)-\(Int.random(in: 1...sound.variants))" : sound.fileBase
         var pool = pools[file] ?? []
-        // An idle voice first: making and preparing another player costs ~40 ms, which smeared a slam and its colour
-        // layer apart when both played at once.
+        // An idle voice first: making and preparing another player costs ~40 ms, which smeared two sounds meant to start
+        // together.
         if let idle = pool.first(where: { !$0.isPlaying }) { return idle }
         if pool.count < sound.voices, let url = url(file), let player = try? AVAudioPlayer(contentsOf: url) {
             player.enableRate = sound.pitchVariation > 0
@@ -339,21 +360,29 @@ final class GameAudio {
 
     /// `audition` plays a sound from the Sound Lab even when its category is off.
     func play(_ sound: GameSound, after delay: TimeInterval = 0, volume scale: Float = 1, audition: Bool = false) {
+        play(sound, after: delay, endingWithin: nil, volume: scale, audition: audition)
+    }
+
+    /// `endingWithin`: start late enough that the sound finishes this long after `delay` (a creature's voice ends as
+    /// its card lands); one longer than that starts at `delay`.
+    func play(_ sound: GameSound, after delay: TimeInterval, endingWithin window: TimeInterval?, volume scale: Float = 1,
+              audition: Bool = false) {
         guard !isTesting, effectsEnabled || audition, effectsVolume > 0 || audition,
               isEnabled(sound.category) || audition else { return }
         if delay > 0.005 {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
-                self?.play(sound, after: 0, volume: scale, audition: audition)
+                self?.play(sound, after: 0, endingWithin: window, volume: scale, audition: audition)
             }
             return
         }
         guard let player = ready(sound, volume: scale, audition: audition) else { return }
-        player.play()
-        logPlay(sound, player)
+        let wait = window.map { max(0, $0 - player.duration / Double(max(player.rate, 0.5))) } ?? 0
+        if wait > 0.005 { player.play(atTime: player.deviceCurrentTime + wait) } else { player.play() }
+        logPlay(sound, player, wait: wait)
     }
 
-    /// Several cues due at the same moment (a card slam and its colour layers), started on the same sample: each
+    /// Several cues due at the same moment (a combat flurry), started on the same sample: each
     /// AVAudioPlayer takes a while to start the first time, which smeared them up to ~50 ms apart.
     /// `lead` is how far ahead the shared start is set: long enough to ready every voice first (a few at ~30 ms each).
     func playTogether(_ cues: [(sound: GameSound, volume: Float)], lead: TimeInterval = 0.1) {
@@ -383,12 +412,14 @@ final class GameAudio {
         return player
     }
 
-    private func logPlay(_ sound: GameSound, _ player: AVAudioPlayer) {
+    private func logPlay(_ sound: GameSound, _ player: AVAudioPlayer, wait: TimeInterval = 0) {
         #if DEBUG
         // Visual QA: MAGICMOBILE_LOG_SOUNDS=1 prints each cue as it plays (its start on the device clock too), so a
-        // silent simulator recording can be given its soundtrack afterwards.
+        // silent simulator recording can be given its soundtrack afterwards. It names the file played, so a random
+        // variant ("creature-dragon-2") is the one put back.
         if Self.logsPlays {
-            print("MMSOUND \(Date().timeIntervalSince1970) \(sound.rawValue) \(player.volume) \(player.rate) \(player.deviceCurrentTime)")
+            let file = player.url?.deletingPathExtension().lastPathComponent ?? sound.rawValue
+            print("MMSOUND \(Date().timeIntervalSince1970 + wait) \(file) \(player.volume) \(player.rate) \(player.deviceCurrentTime + wait)")
         }
         #endif
     }

@@ -88,8 +88,10 @@ def main() -> None:
         near = min(changes, key=lambda c: abs(c - guess))
         anchors.append((st, (near if abs(near - guess) < 0.25 else guess) - RENDER))
     shift = matches(lag)
-    last_step = [p for p in lines if p[0] == "MMSTEP"][-1]
-    demo_end = anchors[-1][1] if last_step[2].strip() == "0" else None
+    # The walkthrough wraps back to step 0 after its last card: end the video there.
+    numbers = [p[2].strip() for p in lines if p[0] == "MMSTEP"]
+    wrap = next((i for i, n in enumerate(numbers) if i > 0 and n == "0"), None)
+    demo_end = anchors[wrap][1] if wrap is not None else None
     print(f"{len(steps)} steps, {shift} matched to label changes; demo ends at {demo_end}")
 
     def video_time(t: float) -> float:

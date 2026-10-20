@@ -52,41 +52,67 @@ extension BoardFXTint {
     }
 }
 
-/// What a card arriving on the battlefield sounds like (BoardFXSound plays it). Like MTG Arena, a basic land sounds like
-/// its place; anything else lands with a card slam sized by mana value plus a short layer for each of its colours (the
-/// first two). Caleb picked this from audio trials round 6, 2026-10-19.
+/// What a card arriving on the battlefield sounds like (BoardFXSound plays it). A basic land sounds like its place
+/// (water, fire and leaves are only ever the lands'). Nothing gets a wood knock (Caleb, round 13, 2026-10-19): a
+/// creature plays its type's voice alone, or lands as a card placed on the table (with a soft thud at 5+ mana) when its
+/// type has no voice yet; artifacts, enchantments and planeswalkers each have one sound.
 enum BoardFXArrivalSound: Equatable {
-    enum Size: Equatable { case light, medium, heavy }
-
     /// "plains", "island", "swamp", "mountain" or "forest".
     case basicLand(String)
     /// A land with no basic land type.
     case otherLand
-    /// Colours as WUBRG letters, at most two; none is colourless.
-    case permanent(Size, colors: [String])
+    /// `voice` is the slot of the first of its creature types that has one (`creatureVoices`); with none it lands as a
+    /// card placed on the table, `heavy` adding a soft thud.
+    case creature(heavy: Bool, voice: String?)
+    /// Every planeswalker plays the one planeswalker sound: its subtype is its name, not a race (Caleb, round 13).
+    case artifact, enchantment, planeswalker
+    /// Anything else (a battle): a card placed on the table.
+    case other
 
     static let basicLandTypes = ["plains", "island", "swamp", "mountain", "forest"]
-
+    /// Creature subtype to its voice slot (a `creature-<slot>` GameSound). Grow it here, in BoardEventTimeline.kt and in
+    /// build_game_audio.py's CREATURE_VOICES. A card plays the first of its subtypes listed: a Human Wizard is a Human.
+    static let creatureVoices: [String: String] = [
+        "human": "human", "goblin": "goblin", "elf": "elf", "dragon": "dragon", "drake": "dragon", "sliver": "sliver",
+        "squirrel": "squirrel", "orc": "orc", "ogre": "orc", "troll": "orc", "giant": "giant", "bear": "bear",
+        "dinosaur": "dinosaur", "beast": "beast", "hydra": "beast", "horror": "horror", "demon": "horror", "wurm": "horror",
+        "boar": "horror", "rat": "rat", "mouse": "rat", "rabbit": "critter", "fox": "critter", "otter": "critter",
+        "weasel": "critter", "hamster": "critter", "faerie": "faerie", "angel": "angel", "archon": "angel",
+        "vampire": "vampire", "bat": "vampire", "zombie": "zombie", "skeleton": "zombie", "wolf": "wolf", "werewolf": "wolf",
+        "dog": "wolf", "jackal": "wolf", "cat": "cat", "bird": "bird", "phoenix": "bird", "ooze": "ooze", "wizard": "wizard",
+        "insect": "insect", "spider": "insect", "scorpion": "insect", "eldrazi": "eldrazi",
+    ]
     static func plan(card: CardIdentity, isToken: Bool, commander: Bool) -> BoardFXArrivalSound {
         let typeLine = card.typeLine.lowercased()
-        let words = typeLine.split(whereSeparator: { !$0.isLetter }).map(String.init)
-        if words.contains("land") {
-            // The subtypes after the dash: "Land — Forest Island" sounds like a Forest.
-            let subtypes = typeLine.replacingOccurrences(of: " - ", with: "—").components(separatedBy: "—").dropFirst()
-                .joined(separator: " ")
-                .split(whereSeparator: { !$0.isLetter }).map(String.init)
+        let parts = typeLine.replacingOccurrences(of: " - ", with: "—").components(separatedBy: "—")
+        let types = parts[0].split(whereSeparator: { !$0.isLetter }).map(String.init)
+        let subtypes = parts.dropFirst().joined(separator: " ").split(whereSeparator: { !$0.isLetter }).map(String.init)
+        if types.contains("land") {
+            // "Land — Forest Island" sounds like a Forest.
             return subtypes.first(where: basicLandTypes.contains).map(BoardFXArrivalSound.basicLand) ?? .otherLand
         }
-        let size: Size
-        if commander {
-            size = .heavy
-        } else if isToken {
-            size = .light
-        } else {
-            let value = BoardFXManaValue.of(card.manaCost)
-            size = value <= 2 ? .light : value <= 4 ? .medium : .heavy
+        if types.contains("creature") {
+            let heavy = commander || (!isToken && BoardFXManaValue.of(card.manaCost) >= 5)
+            return .creature(heavy: heavy, voice: subtypes.lazy.compactMap { creatureVoices[$0] }.first)
         }
-        return .permanent(size, colors: Array(BoardFXTint.colors(of: card).prefix(2)))
+        if types.contains("planeswalker") { return .planeswalker }
+        if types.contains("artifact") { return .artifact }
+        if types.contains("enchantment") { return .enchantment }
+        return .other
+    }
+}
+
+/// The sound of a spell being cast (BoardFXSound plays it): by card type, never colour. A permanent spell gets a soft
+/// swipe; it lands with its own arrival sound.
+enum BoardFXCastSound: Equatable {
+    case instant, sorcery, permanent
+
+    static func of(_ card: CardIdentity?) -> BoardFXCastSound {
+        let types = (card?.typeLine.lowercased() ?? "").replacingOccurrences(of: " - ", with: "—")
+            .components(separatedBy: "—")[0].split(whereSeparator: { !$0.isLetter })
+        if types.contains("instant") { return .instant }
+        if types.contains("sorcery") { return .sorcery }
+        return .permanent
     }
 }
 
