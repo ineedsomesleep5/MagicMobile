@@ -12,19 +12,103 @@ enum class BoardFXTint {
     WHITE, BLUE, BLACK, RED, GREEN, MULTICOLOR, COLORLESS;
 
     companion object {
-        fun of(card: CardIdentity): BoardFXTint {
-            val colors = mutableSetOf<String>()
-            card.manaCost?.uppercase()?.let { cost -> for (symbol in listOf("W", "U", "B", "R", "G")) if (cost.contains(symbol)) colors += symbol }
-            if (colors.isEmpty()) {
+        /** A card's colours in WUBRG order: from its mana cost, else (a token) its printed colours. */
+        fun colors(card: CardIdentity): List<String> {
+            val order = listOf("W", "U", "B", "R", "G")
+            val found = mutableSetOf<String>()
+            card.manaCost?.uppercase()?.let { cost -> for (symbol in order) if (cost.contains(symbol)) found += symbol }
+            if (found.isEmpty()) {
                 for (color in card.tokenColors ?: emptyList()) when (color.lowercase()) {
-                    "w", "white" -> colors += "W"; "u", "blue" -> colors += "U"; "b", "black" -> colors += "B"
-                    "r", "red" -> colors += "R"; "g", "green" -> colors += "G"
+                    "w", "white" -> found += "W"; "u", "blue" -> found += "U"; "b", "black" -> found += "B"
+                    "r", "red" -> found += "R"; "g", "green" -> found += "G"
                 }
             }
+            return order.filter { it in found }
+        }
+
+        fun of(card: CardIdentity): BoardFXTint {
+            val colors = colors(card)
             return when (colors.size) {
                 0 -> COLORLESS
                 1 -> when (colors.first()) { "W" -> WHITE; "U" -> BLUE; "B" -> BLACK; "R" -> RED; else -> GREEN }
                 else -> MULTICOLOR
+            }
+        }
+    }
+}
+
+/**
+ * What a card arriving on the battlefield sounds like (BoardFXSound plays it; Swift BoardFXArrivalSound). A basic land
+ * sounds like its place (water, fire and leaves are only ever the lands'). Nothing gets a wood knock (Caleb, round 13,
+ * 2026-10-19): a creature plays its type's voice alone, or lands as a card placed on the table (with a soft thud at 5+
+ * mana) when its type has no voice yet; artifacts, enchantments and planeswalkers each have one sound.
+ */
+sealed class BoardFXArrivalSound {
+    /** "plains", "island", "swamp", "mountain" or "forest". */
+    data class BasicLand(val kind: String) : BoardFXArrivalSound()
+    /** A land with no basic land type. */
+    object OtherLand : BoardFXArrivalSound()
+    /** `voice` is the slot of the first of its creature types that has one (`creatureVoices`). */
+    data class Creature(val heavy: Boolean, val voice: String?) : BoardFXArrivalSound()
+    object Artifact : BoardFXArrivalSound()
+    object Enchantment : BoardFXArrivalSound()
+    /** Every planeswalker plays the one planeswalker sound: its subtype is its name, not a race. */
+    object Planeswalker : BoardFXArrivalSound()
+    /** Anything else (a battle): a card placed on the table. */
+    object Other : BoardFXArrivalSound()
+
+    companion object {
+        val basicLandTypes = listOf("plains", "island", "swamp", "mountain", "forest")
+        /**
+         * Creature subtype to its voice slot (a `creature-<slot>` GameSound). Grow it here, in BoardEventTimeline.swift
+         * and in build_game_audio.py's CREATURE_VOICES. A card plays the first of its subtypes listed: a Human Wizard is a Human.
+         */
+        val creatureVoices: Map<String, String> = mapOf(
+            "human" to "human", "goblin" to "goblin", "elf" to "elf", "dragon" to "dragon", "drake" to "dragon",
+            "sliver" to "sliver", "squirrel" to "squirrel", "orc" to "orc", "ogre" to "orc", "troll" to "orc",
+            "giant" to "giant", "bear" to "bear", "dinosaur" to "dinosaur", "beast" to "beast", "hydra" to "beast",
+            "horror" to "horror", "demon" to "horror", "wurm" to "horror", "boar" to "horror", "rat" to "rat",
+            "mouse" to "rat", "rabbit" to "critter", "fox" to "critter", "otter" to "critter", "weasel" to "critter",
+            "hamster" to "critter", "faerie" to "faerie", "angel" to "angel", "archon" to "angel", "vampire" to "vampire",
+            "bat" to "vampire", "zombie" to "zombie", "skeleton" to "zombie", "wolf" to "wolf", "werewolf" to "wolf",
+            "dog" to "wolf", "jackal" to "wolf", "cat" to "cat", "bird" to "bird", "phoenix" to "bird", "ooze" to "ooze",
+            "wizard" to "wizard", "insect" to "insect", "spider" to "insect", "scorpion" to "insect",
+            "eldrazi" to "eldrazi",
+        )
+        private val letters = Regex("[^a-z]+")
+
+        fun plan(card: CardIdentity, isToken: Boolean, commander: Boolean): BoardFXArrivalSound {
+            val parts = card.typeLine.lowercase().replace(" - ", "—").split("—")
+            val types = parts[0].split(letters)
+            val subtypes = parts.drop(1).joinToString(" ").split(letters).filter { it.isNotEmpty() }
+            // "Land — Forest Island" sounds like a Forest.
+            if ("land" in types) return subtypes.firstOrNull { it in basicLandTypes }?.let { BasicLand(it) } ?: OtherLand
+            if ("creature" in types) {
+                val heavy = commander || (!isToken && BoardFXManaValue.of(card.manaCost) >= 5)
+                return Creature(heavy, subtypes.firstNotNullOfOrNull { creatureVoices[it] })
+            }
+            if ("planeswalker" in types) return Planeswalker
+            if ("artifact" in types) return Artifact
+            if ("enchantment" in types) return Enchantment
+            return Other
+        }
+    }
+}
+
+/**
+ * The sound of a spell being cast (BoardFXSound plays it; Swift BoardFXCastSound): by card type, never colour. A permanent
+ * spell gets a soft swipe; it lands with its own arrival sound.
+ */
+enum class BoardFXCastSound {
+    INSTANT, SORCERY, PERMANENT;
+
+    companion object {
+        fun of(card: CardIdentity?): BoardFXCastSound {
+            val types = (card?.typeLine?.lowercase() ?: "").replace(" - ", "—").split("—")[0].split(Regex("[^a-z]+"))
+            return when {
+                "instant" in types -> INSTANT
+                "sorcery" in types -> SORCERY
+                else -> PERMANENT
             }
         }
     }

@@ -6,6 +6,41 @@
   "peak_db": -6.1,
   "seconds": 0.35
  },
+ "arrive-artifact": {
+  "bytes": 10227,
+  "file": "arrive-artifact.m4a",
+  "loudness_db": -22.0,
+  "peak_db": -7.0,
+  "seconds": 0.52
+ },
+ "arrive-creature": {
+  "bytes": 30426,
+  "file": "arrive-creature.caf",
+  "loudness_db": -25.0,
+  "peak_db": -1.0,
+  "seconds": 0.299
+ },
+ "arrive-creature-heavy": {
+  "bytes": 8839,
+  "file": "arrive-creature-heavy.m4a",
+  "loudness_db": -25.2,
+  "peak_db": -1.0,
+  "seconds": 0.54
+ },
+ "arrive-enchantment": {
+  "bytes": 11286,
+  "file": "arrive-enchantment.m4a",
+  "loudness_db": -23.0,
+  "peak_db": -14.3,
+  "seconds": 1.0
+ },
+ "arrive-planeswalker": {
+  "bytes": 14321,
+  "file": "arrive-planeswalker.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -3.9,
+  "seconds": 0.86
+ },
  "attack-1": {
   "bytes": 31438,
   "file": "attack-1.caf",
@@ -48,26 +83,12 @@
   "peak_db": -5.9,
   "seconds": 1.69
  },
- "card-draw-1": {
-  "bytes": 10843,
-  "file": "card-draw-1.m4a",
-  "loudness_db": -26.4,
-  "peak_db": -2.4,
-  "seconds": 0.601
- },
- "card-draw-2": {
-  "bytes": 10897,
-  "file": "card-draw-2.m4a",
+ "card-draw": {
+  "bytes": 22154,
+  "file": "card-draw.caf",
   "loudness_db": -26.2,
-  "peak_db": -2.2,
-  "seconds": 0.598
- },
- "card-draw-3": {
-  "bytes": 10384,
-  "file": "card-draw-3.m4a",
-  "loudness_db": -25.0,
-  "peak_db": -3.9,
-  "seconds": 0.51
+  "peak_db": -2.1,
+  "seconds": 0.205
  },
  "card-pickup": {
   "bytes": 18206,
@@ -77,60 +98,11 @@
   "seconds": 0.16
  },
  "card-play": {
-  "bytes": 13019,
-  "file": "card-play.m4a",
-  "loudness_db": -23.7,
-  "peak_db": -2.0,
-  "seconds": 0.809
- },
- "cast-black": {
-  "bytes": 21916,
-  "file": "cast-black.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -6.2,
-  "seconds": 1.45
- },
- "cast-blue": {
-  "bytes": 30514,
-  "file": "cast-blue.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -7.7,
-  "seconds": 1.5
- },
- "cast-colorless": {
-  "bytes": 23614,
-  "file": "cast-colorless.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -3.7,
-  "seconds": 1.1
- },
- "cast-green": {
-  "bytes": 28211,
-  "file": "cast-green.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -3.9,
-  "seconds": 1.4
- },
- "cast-multi": {
-  "bytes": 31479,
-  "file": "cast-multi.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -8.3,
-  "seconds": 1.65
- },
- "cast-red": {
-  "bytes": 21434,
-  "file": "cast-red.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -4.9,
-  "seconds": 1.4
- },
- "cast-white": {
-  "bytes": 18910,
-  "file": "cast-white.m4a",
-  "loudness_db": -22.0,
-  "peak_db": -8.7,
-  "seconds": 0.85
+  "bytes": 30426,
+  "file": "card-play.caf",
+  "loudness_db": -25.6,
+  "peak_db": -1.1,
+  "seconds": 0.299
  },
  "commander-cast": {
   "bytes": 38624,
@@ -146,12 +118,271 @@
   "peak_db": -16.9,
   "seconds": 0.11
  },
- "creature-enter": {
-  "bytes": 12832,
-  "file": "creature-enter.m4a",
-  "loudness_db": -21.4,
+ "creature-angel": {
+  "bytes": 21936,
+  "file": "creature-angel.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -8.7,
+  "seconds": 1.76
+ },
+ "creature-bear": {
+  "bytes": 13214,
+  "file": "creature-bear.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -9.5,
+  "seconds": 1.03
+ },
+ "creature-beast": {
+  "bytes": 22034,
+  "file": "creature-beast.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -4.0,
+  "seconds": 1.6
+ },
+ "creature-bird": {
+  "bytes": 20634,
+  "file": "creature-bird.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -8.5,
+  "seconds": 1.28
+ },
+ "creature-cat-1": {
+  "bytes": 14870,
+  "file": "creature-cat-1.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -8.2,
+  "seconds": 1.245
+ },
+ "creature-cat-2": {
+  "bytes": 19136,
+  "file": "creature-cat-2.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -12.8,
+  "seconds": 1.28
+ },
+ "creature-critter": {
+  "bytes": 38070,
+  "file": "creature-critter.caf",
+  "loudness_db": -21.0,
+  "peak_db": -7.7,
+  "seconds": 0.385
+ },
+ "creature-dinosaur": {
+  "bytes": 22247,
+  "file": "creature-dinosaur.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -5.9,
+  "seconds": 1.6
+ },
+ "creature-dragon-1": {
+  "bytes": 26833,
+  "file": "creature-dragon-1.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -8.7,
+  "seconds": 1.96
+ },
+ "creature-dragon-2": {
+  "bytes": 22011,
+  "file": "creature-dragon-2.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -1.5,
+  "seconds": 1.76
+ },
+ "creature-dragon-3": {
+  "bytes": 23715,
+  "file": "creature-dragon-3.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -10.8,
+  "seconds": 1.76
+ },
+ "creature-eldrazi": {
+  "bytes": 17294,
+  "file": "creature-eldrazi.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -2.6,
+  "seconds": 1.904
+ },
+ "creature-elf": {
+  "bytes": 21001,
+  "file": "creature-elf.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -16.5,
+  "seconds": 1.6
+ },
+ "creature-faerie-1": {
+  "bytes": 19897,
+  "file": "creature-faerie-1.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -8.7,
+  "seconds": 1.355
+ },
+ "creature-faerie-2": {
+  "bytes": 18691,
+  "file": "creature-faerie-2.m4a",
+  "loudness_db": -21.3,
+  "peak_db": -1.6,
+  "seconds": 1.44
+ },
+ "creature-goblin": {
+  "bytes": 20392,
+  "file": "creature-goblin.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -8.2,
+  "seconds": 1.28
+ },
+ "creature-horror-1": {
+  "bytes": 18148,
+  "file": "creature-horror-1.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -10.0,
+  "seconds": 1.214
+ },
+ "creature-horror-2": {
+  "bytes": 19588,
+  "file": "creature-horror-2.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -4.8,
+  "seconds": 1.6
+ },
+ "creature-horror-3": {
+  "bytes": 14180,
+  "file": "creature-horror-3.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -3.9,
+  "seconds": 0.9
+ },
+ "creature-human": {
+  "bytes": 12200,
+  "file": "creature-human.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -3.9,
+  "seconds": 0.84
+ },
+ "creature-insect-1": {
+  "bytes": 8133,
+  "file": "creature-insect-1.m4a",
+  "loudness_db": -21.0,
   "peak_db": -3.3,
-  "seconds": 0.689
+  "seconds": 0.413
+ },
+ "creature-insect-2": {
+  "bytes": 20449,
+  "file": "creature-insect-2.m4a",
+  "loudness_db": -21.1,
+  "peak_db": -1.0,
+  "seconds": 1.12
+ },
+ "creature-ooze-1": {
+  "bytes": 15460,
+  "file": "creature-ooze-1.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -3.9,
+  "seconds": 0.926
+ },
+ "creature-ooze-2": {
+  "bytes": 10046,
+  "file": "creature-ooze-2.m4a",
+  "loudness_db": -22.2,
+  "peak_db": -1.4,
+  "seconds": 0.51
+ },
+ "creature-orc-1": {
+  "bytes": 20344,
+  "file": "creature-orc-1.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -7.2,
+  "seconds": 1.44
+ },
+ "creature-orc-2": {
+  "bytes": 10354,
+  "file": "creature-orc-2.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -4.2,
+  "seconds": 0.798
+ },
+ "creature-orc-3": {
+  "bytes": 16642,
+  "file": "creature-orc-3.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -6.5,
+  "seconds": 1.28
+ },
+ "creature-rat": {
+  "bytes": 17770,
+  "file": "creature-rat.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -6.3,
+  "seconds": 1.2
+ },
+ "creature-sliver": {
+  "bytes": 13933,
+  "file": "creature-sliver.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -6.0,
+  "seconds": 0.88
+ },
+ "creature-squirrel-1": {
+  "bytes": 12548,
+  "file": "creature-squirrel-1.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -6.6,
+  "seconds": 0.642
+ },
+ "creature-squirrel-2": {
+  "bytes": 13579,
+  "file": "creature-squirrel-2.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -4.3,
+  "seconds": 0.96
+ },
+ "creature-squirrel-3": {
+  "bytes": 16754,
+  "file": "creature-squirrel-3.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -4.6,
+  "seconds": 0.96
+ },
+ "creature-vampire": {
+  "bytes": 15008,
+  "file": "creature-vampire.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -4.9,
+  "seconds": 0.987
+ },
+ "creature-wizard-1": {
+  "bytes": 22398,
+  "file": "creature-wizard-1.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -7.9,
+  "seconds": 1.6
+ },
+ "creature-wizard-2": {
+  "bytes": 21674,
+  "file": "creature-wizard-2.m4a",
+  "loudness_db": -21.0,
+  "peak_db": -8.2,
+  "seconds": 1.6
+ },
+ "creature-wolf": {
+  "bytes": 24363,
+  "file": "creature-wolf.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -15.2,
+  "seconds": 1.92
+ },
+ "creature-zombie-1": {
+  "bytes": 23602,
+  "file": "creature-zombie-1.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -6.2,
+  "seconds": 1.6
+ },
+ "creature-zombie-2": {
+  "bytes": 20326,
+  "file": "creature-zombie-2.m4a",
+  "loudness_db": -20.0,
+  "peak_db": -6.8,
+  "seconds": 1.6
  },
  "death": {
   "bytes": 12472,
@@ -201,6 +432,41 @@
   "loudness_db": -22.6,
   "peak_db": -1.9,
   "seconds": 0.883
+ },
+ "land-forest": {
+  "bytes": 16564,
+  "file": "land-forest.m4a",
+  "loudness_db": -22.3,
+  "peak_db": -2.6,
+  "seconds": 1.0
+ },
+ "land-island": {
+  "bytes": 16673,
+  "file": "land-island.m4a",
+  "loudness_db": -22.2,
+  "peak_db": -2.8,
+  "seconds": 1.0
+ },
+ "land-mountain": {
+  "bytes": 14454,
+  "file": "land-mountain.m4a",
+  "loudness_db": -22.1,
+  "peak_db": -5.8,
+  "seconds": 0.78
+ },
+ "land-plains": {
+  "bytes": 14831,
+  "file": "land-plains.m4a",
+  "loudness_db": -22.1,
+  "peak_db": -2.3,
+  "seconds": 0.9
+ },
+ "land-swamp": {
+  "bytes": 14926,
+  "file": "land-swamp.m4a",
+  "loudness_db": -22.3,
+  "peak_db": -2.1,
+  "seconds": 1.03
  },
  "life-gain": {
   "bytes": 18971,
@@ -309,11 +575,11 @@
   "seconds": 0.98
  },
  "shuffle": {
-  "bytes": 24183,
+  "bytes": 19020,
   "file": "shuffle.m4a",
   "loudness_db": -24.9,
-  "peak_db": -2.0,
-  "seconds": 1.62
+  "peak_db": -2.5,
+  "seconds": 1.282
  },
  "spell-big": {
   "bytes": 20179,
@@ -335,13 +601,6 @@
   "loudness_db": -22.0,
   "peak_db": -3.3,
   "seconds": 0.2
- },
- "token-create": {
-  "bytes": 9921,
-  "file": "token-create.m4a",
-  "loudness_db": -25.0,
-  "peak_db": -6.7,
-  "seconds": 0.52
  },
  "turn-you": {
   "bytes": 33951,

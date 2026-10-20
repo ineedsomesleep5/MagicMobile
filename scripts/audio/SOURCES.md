@@ -110,6 +110,56 @@ Round 5 (round 4 redone short and dry) uses Kenney Impact Sounds (CC0, https://k
 Interface Sounds (CC0, https://kenney.nl/assets/interface-sounds), named `impact-sounds__…`/`interface-sounds__…`, and
 GDC 2016 / George Karagioules - SFX for Board Games / `Placing Pieces on the Board 2.wav`.
 
+## Cards arriving (`slam-*`, `land-*` basics, `layer-*`, 2026-10-19; trials round 6)
+Kenney Impact Sounds (CC0) for the slam's thuds and the colorless clink, and Sonniss: GDC 2016 / Timothy McHugh - Playing Cards &
+Betting Chips / `games - Deck of cards dealt on to felt table surface 43.wav`; GDC 2018 / Bluezone - MOVIE TRAILER /
+`Bluezone_BC0237_impact_017.wav`; GDC 2017 / Hzandbits - Wind In Trees / `Wind,Ext,Gust,Grasslands,Rustle,Buffeting.wav`;
+GDC 2017 / Raconteur Sound - Spring in the Pacific Northwest / `Amb, Field, Birds, Wind, MS_01.wav`; GDC 2017 / West Wolf -
+Nature Sounds / `NS01_007_Forest birds.wav`; GDC 2017 / RedSonic - Water on Rocks /
+`water_lapping_sea_waves_sandy_beach_03.wav`; GDC 2020 / Articulated Sounds - Magic Elements vol.2 / `LIQUID HIT Lake,
+Branch, Splash, Lake, Seaweed in Water, Small, CU 04.wav`; GDC 2016 / Alexander Kopeikin - Rocks / `soil and dirt debris
+heavy 13.wav`, `rock impact medium 26.wav`, `rock tumble down debris long 06.wav`; GDC 2018 / Soundrangers - Foley
+Elements Foliage / `leaves_pile_pick_up_04.wav`, `tree_dead_tree_limb_impact_05.wav`; GDC 2018 / Soundrangers - Nature
+Ambience / `swamp_ambience_night_05_120_loop.wav` (the frog, ~38.6 s); GDC 2018 / The Sound Keeper - Small Fire /
+`sm-fire-firewood-small-03-DPAmono.wav`; plus Kenney Impact Sounds.
+
+Round 8 (one sound per card type; colour textures only for lands) adds Sonniss: GDC 2018 / Gibson and Ansell - Got Wood /
+`PineBlock_8x22x100cm_FaceDropped100cmOntoMDF_BeyerdynamicTG137c_Medium.wav`, `BeechPlank_3x27x100cm_EndDropped30cmOntoMDF_SureSM57_Close.wav`;
+GDC 2019 / Baxter Audio - IMPACT / `10 Hit Deep Thud.wav`, `03 Hit Big Drum.wav`; GDC 2020 / SmartSoundFX - Impacts, Hits &
+Whooshes / `IMPACT METAL Short Slam_03.wav`, `IMPACT METAL Scratchy Short Punch_03.wav`, `WHOOSH AIR Steady Smooth_02.wav`;
+GDC 2020 / Sound Spark LLC - Whooshes Impacts and Transitions / `Whoosh_Fast_02.wav`, `Transition_3.wav`; GDC 2017 / SoundBits -
+Whooshes & Impacts 2 / `Whooshes_135.wav`; GDC 2017 / Double Trouble Audio - Wood Impacts and Debris / `Rustles - Pile, Debris
+22.wav`; GDC 2019 / Airborne Sound - Organic Whooshes / `Whoosh,Organic,Fabric,Glove,Airy,Breathy,Punchy.wav`.
+
 `sfx_synth/` holds the sound generators from claude-motion (MIT, https://github.com/whaleyxbt/claude-motion at
 `e627941`, `sfx/`; only `SR` changed to 44.1 kHz), for quiet tonal layers under recordings (a trial's sparkle).
 Its licence sits beside it. Everything runs in a scratch virtualenv with `numpy scipy pedalboard` (`~/.venvs/mm-audio`).
+
+## Creature voices and card sounds (`creature-*`, `arrive-*`, `card-draw`, `card-play`, `shuffle`, 2026-10-19; round 13)
+Caleb picked these in the Tavern Sound Bin (https://claude.ai/artifact/NvyW4nTABNGHk8ZchmZkxC; rounds 12-13 render
+with `round12.py`). Nothing gets a wood knock: a voiced creature plays its voice alone, an unvoiced one a card placed
+on the table. `build_game_audio.py --library build_output/audio-sources` reads the clips below from there.
+
+- Sonniss voices: GDC 2017 / MatiasMacSD - CREATURES ZONE / `Creature_Dragon_Roar_01.wav`; GDC 2019 / Prismo Sound -
+  Singing Bowls / `SINGING_BOWL_Strike_Sustain_D_02.wav` (elf); GDC 2017 / Double Trouble Audio - Medieval Armor and Impacts /
+  `LeatherArmor_Rustle_03.wav` and GDC 2020 / 344 Audio - Medieval Battle / `Sword Scrapes Multiple, Battle, Metal, Slash,
+  Draw.wav` (human); GDC 2020 / Phase 4 Libraries - Monster Roars / `MR - Insect Creature Attack VO 02.wav` and GDC 2020 /
+  Bluezone - Crab - Creature / `Bluezone_BC0263_creature_crab_organic_texture_carapace_crack_squishy_003.wav` (sliver);
+  GDC 2018 / Discover Oregon - Forest Meadow Birds / `Squirrel 2017 Lookout Hood Dawn Loud Squirrel 3.WAV`.
+- Sonniss others: GDC 2020 / SmartSoundFX - Impacts, Hits & Whooshes / `IMPACT METAL Short Slam_03.wav` (artifact);
+  GDC 2019 / Baxter Audio - IMPACT / `10 Hit Deep Thud.wav` (the big no-voice creature's soft thud); GDC 2020 / David
+  Dumais Audio - Spells Magic 1 / `Magic_Spells_Impact_Creation20.wav` with Kenney `impactBell_heavy_002` (planeswalker).
+- Pixabay (`pixabay-raw/<group>/`, fetched from `cdn.pixabay.com/download/audio/...`; Pixabay Content License, no
+  attribution required, no standalone resale): the files named in `CREATURE_VOICES`, `card_placed`, `card-draw`,
+  `shuffle` and `r_arrive_enchantment`, each ending in its Pixabay id. Uploaders are credited in CREDITS.txt.
+- OpenGameArt CC0 (`oga-raw/`): rubberduck's "80 CC0 creature SFX" (`creatures1/`: `grunt_01`, `cute_01`, `bug_04`,
+  `burble_01`) and "#2" (`creatures2/`: `slime_01`); https://opengameart.org/content/80-cc0-creature-sfx and
+  https://opengameart.org/content/80-cc0-creture-sfx-2. artisticdude's CC0 goblins pack is downloaded but unused.
+
+Round 14 adds the rat (Rat, Mouse) and Eldrazi voices: `pixabay-raw/rat/u_3yocsblk00-rat-squeaking-sound-effecthd-570216.mp3`
+and `pixabay-raw/eldrazi/brvhrtz-creature-01-brvhrtz-232041.mp3`, from 27 candidates in `rat/` and `eldrazi/` (Sound
+Bin round 14). Voices now keep their tails (`library(gentle=True)`, up to 1.6x the auditioned cut).
+
+Downloaded but unused so far: the rest of `pixabay-raw/` (135 clips) and `oga-raw/`, all on the Sound Bin. The
+Sonniss GDC 2026 bundle's Google Drive mirror honours HTTP Range (single members can be pulled from the 1.3-1.9 GB
+zips), but it throttled every request on 2026-10-19.

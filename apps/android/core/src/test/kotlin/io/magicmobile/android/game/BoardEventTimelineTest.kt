@@ -61,6 +61,56 @@ class BoardEventTimelineTest {
             log = emptyList(), bridgeRevision = revision, viewerPlayerId = "a")
     }
 
+    /** Mirrors testArrivalSoundsFollowLandTypesCardTypesAndCreatureTypes (iOS). */
+    @Test fun arrivalSoundsFollowLandTypesCardTypesAndCreatureTypes() {
+        fun plan(type: String, cost: String? = null, isToken: Boolean = false, commander: Boolean = false) =
+            BoardFXArrivalSound.plan(CardIdentity("x", type, null, manaCost = cost), isToken, commander)
+        fun creature(heavy: Boolean, voice: String?) = BoardFXArrivalSound.Creature(heavy, voice)
+        assertEquals(BoardFXArrivalSound.BasicLand("forest"), plan("Basic Land — Forest"))
+        assertEquals(BoardFXArrivalSound.BasicLand("swamp"), plan("Basic Land - Swamp"))
+        assertEquals("a dual sounds like its first basic type", BoardFXArrivalSound.BasicLand("island"), plan("Land — Island Mountain"))
+        assertEquals(BoardFXArrivalSound.BasicLand("forest"), plan("Land Creature — Forest Dryad"))
+        assertEquals(BoardFXArrivalSound.OtherLand, plan("Land"))
+        assertEquals(creature(false, "wizard"), plan("Creature — Merfolk Wizard", "{1}{U}"))
+        assertEquals("no voice yet: a card placed", creature(false, null), plan("Creature — Merfolk", "{1}{U}"))
+        assertEquals(creature(true, null), plan("Creature — Spirit", "{6}"))
+        assertEquals(creature(false, "bear"), plan("Creature — Bear", "{1}{G}"))
+        assertEquals(creature(false, "human"), plan("Creature — Human Soldier", "{1}{W}"))
+        assertEquals("the first subtype with a voice", creature(false, "human"), plan("Creature — Human Wizard", "{U}"))
+        assertEquals(creature(false, "elf"), plan("Creature — Elf Druid", "{G}"))
+        assertEquals(creature(true, "dragon"), plan("Creature — Dragon", "{4}{R}{R}"))
+        assertEquals(creature(false, "dragon"), plan("Creature — Drake", "{1}{U}"))
+        assertEquals(creature(true, "goblin"), plan("Legendary Creature — Goblin Shaman", "{R}", commander = true))
+        assertEquals(creature(false, "squirrel"), plan("Token Creature — Squirrel", isToken = true))
+        assertEquals("a creature first", creature(true, "sliver"), plan("Artifact Creature — Sliver", "{6}"))
+        assertEquals(creature(false, "orc"), plan("Creature — Ogre Warrior", "{3}{R}"))
+        assertEquals(creature(true, "giant"), plan("Creature — Giant", "{5}{R}"))
+        assertEquals(creature(false, "beast"), plan("Creature — Hydra", "{X}{G}{G}"))
+        assertEquals(creature(true, "dinosaur"), plan("Creature — Dinosaur", "{5}{G}"))
+        assertEquals(creature(true, "horror"), plan("Creature — Demon", "{3}{B}{B}"))
+        assertEquals(creature(false, "rat"), plan("Creature — Rat", "{B}"))
+        assertEquals(creature(false, "critter"), plan("Creature — Fox", "{W}"))
+        assertEquals(creature(true, "eldrazi"), plan("Legendary Creature — Eldrazi", "{11}"))
+        assertEquals(creature(false, "insect"), plan("Token Creature — Spider", isToken = true))
+        assertEquals(creature(false, "wolf"), plan("Creature — Werewolf", "{2}{G}"))
+        assertEquals(BoardFXArrivalSound.Artifact, plan("Artifact", "{1}"))
+        assertEquals(BoardFXArrivalSound.Enchantment, plan("Enchantment — Aura", "{1}{W}{U}"))
+        assertEquals(BoardFXArrivalSound.Planeswalker, plan("Legendary Planeswalker — Liliana", "{1}{B}{B}"))
+        assertEquals("one sound for every planeswalker", BoardFXArrivalSound.Planeswalker, plan("Legendary Planeswalker — Ajani", "{4}{W}"))
+        assertEquals(BoardFXArrivalSound.Other, plan("Battle — Siege", "{2}{R}"))
+    }
+
+    /** Mirrors testCastSoundsFollowTheSpellsType (iOS). */
+    @Test fun castSoundsFollowTheSpellsType() {
+        fun cast(type: String) = BoardFXCastSound.of(CardIdentity("x", type, null))
+        assertEquals(BoardFXCastSound.INSTANT, cast("Instant"))
+        assertEquals(BoardFXCastSound.INSTANT, cast("Tribal Instant — Goblin"))
+        assertEquals(BoardFXCastSound.SORCERY, cast("Sorcery"))
+        assertEquals(BoardFXCastSound.PERMANENT, cast("Creature — Elf"))
+        assertEquals(BoardFXCastSound.PERMANENT, cast("Artifact"))
+        assertEquals(BoardFXCastSound.PERMANENT, BoardFXCastSound.of(null))
+    }
+
     /** Mirrors testStolenCardIsHiddenUntilTheChainDragsItHome (iOS). */
     @Test fun stolenCardIsHiddenUntilTheChainDragsItHome() {
         val ogre = ZoneCard("ogre", CardIdentity("Grizzly Bears", "Creature", null, manaCost = "{1}{G}"), power = 2, toughness = 2, isCreaturePermanent = true)

@@ -56,6 +56,14 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-19 (Claude, audio): AVAudioPlayer takes up to ~50 ms to start the first time, and making a player per
+  play cost ~40 ms, so a card slam and its colour layer (since retired) started as a smeared flam. **Rule:** sounds meant to land
+  together go through `GameAudio.playTogether` (one `play(atTime:)` on the device clock, set `lead` ahead), players are
+  reused when idle, and `GameAudio.boardSounds` are preloaded when a game appears (`preload` existed on both
+  platforms but was never called; Android's SoundPool skipped a first play still decoding). `simctl io recordVideo`
+  records no audio: run a preview with `MAGICMOBILE_LOG_SOUNDS=1` and give the recording its soundtrack with
+  `scripts/audio/demo_soundtrack.py`; pass `--rec-start` (the recorder's launch), since steps ~3 s apart otherwise sync
+  one step off, and the turn banner crosses the step label. Where: GameAudio.swift/.kt, BoardFXOverlay, demo_soundtrack.py.
 - 2026-10-19 (Claude, audio): pedalboard's `PitchShift` smears very short foley grains (under ~100 ms) into a faint
   tonal ring (seen as horizontal lines at 4-6 kHz in the spectrogram). **Rule:** to lower a recording's pitch, slow it
   down tape-style (`scipy.signal.resample_poly`), which also lengthens it naturally; keep pedalboard for EQ, compression
@@ -394,3 +402,16 @@ contradicting one.
   art needs no Gradle change if it follows that name. XMage's reported power and toughness already include counters:
   subtract the counters' share before calling something a pump, or every +1/+1 counter also plays a stats moment. And
   check the card view before adding a board state look: `ArenaBattlefieldCard` already dims phased-out permanents.
+- 2026-10-19 (Claude, audio): `slowed(x, semitones)` in `scripts/audio/build_game_audio.py` is a tape-speed change whose
+  sign is the pitch direction: negative slows it down (lower, longer), positive speeds it up (higher, shorter). Round 10
+  passed +2/+3 to "slow" goblin voices and made them squeaky. Check the rendered length when retuning a voice.
+  New-source traps: downloads.sonniss.com and pixabay.com pages sit behind a Cloudflare check (curl gets 403; never
+  bypass). The GDC 2026 bundle's Google Drive mirror honours HTTP Range, so single WAVs can be pulled out of the
+  1.3-1.9 GB zips without downloading them (it throttles: retry), and Pixabay's `cdn.pixabay.com/download/audio/...`
+  files fetch fine with curl once a browser page has given the URL.
+- 2026-10-19 (Claude, audio): Caleb judges sounds by ear on his phone, so audition on a page he can open there: the
+  Tavern Sound Bin artifact plays every clip levelled, on a switchable landing sound, with Keep / Maybe / No /
+  Comment marks saved to its `picks` db (read with ArtifactData). Pack clips as one base64 JSON per group: a publish
+  takes at most 255 files. When rebuilding a take for the app, use the loudness target the audition used, not the
+  level it measured: `match_loudness` saturates past -1 dB, so a sharp card snap asked for -22.2 lands at -25 (asking
+  for -25 gave -27). Short cues build as `.caf`, which browsers can't decode: convert them to m4a for any web page.

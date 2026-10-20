@@ -7,7 +7,7 @@ import android.media.SoundPool
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import io.magicmobile.android.game.BoardFXTint
+import io.magicmobile.android.game.BoardFXCastSound
 import kotlin.random.Random
 
 /**
@@ -17,8 +17,8 @@ import kotlin.random.Random
  */
 enum class GameSoundCategory(val rawValue: String, val title: String, val detail: String) {
     INTERFACE("interface", "Menus & alerts", "Confirm buttons, sheets, “your decision” and emotes."),
-    CARDS("cards", "Cards & board", "Drawing, playing, lands, creatures, tokens and counters."),
-    SPELLS("spells", "Spells", "A cast sound for each color, big spells and your commander."),
+    CARDS("cards", "Cards & board", "Drawing, playing, lands, creatures and their kinds, artifacts and counters."),
+    SPELLS("spells", "Spells", "Instants, sorceries, other spells, big spells and your commander."),
     COMBAT("combat", "Combat & life", "Attacks, blocks, hits, deaths, exile and life changes."),
     MOMENTS("moments", "Big moments", "Your turn, the versus reveal, victory, defeat and dice.");
     val key: String get() = "magicmobile.sfx.$rawValue"
@@ -34,13 +34,35 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     BOOK_OPEN("book-open", GameSoundCategory.INTERFACE, "Spell book opens"), BOOK_CLOSE("book-close", GameSoundCategory.INTERFACE, "Spell book closes"),
     CARD_DRAW("card-draw", GameSoundCategory.CARDS, "Draw a card"), CARD_PICKUP("card-pickup", GameSoundCategory.CARDS, "Pick up a card"),
     CARD_PLAY("card-play", GameSoundCategory.CARDS, "Play a card"), SHUFFLE("shuffle", GameSoundCategory.CARDS, "Shuffle (mulligan)"),
-    LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), CREATURE_ENTER("creature-enter", GameSoundCategory.CARDS, "Creature arrives"),
-    TOKEN_CREATE("token-create", GameSoundCategory.CARDS, "Token"), COUNTER("counter", GameSoundCategory.CARDS, "Counter"),
+    LAND_DROP("land-drop", GameSoundCategory.CARDS, "Land"), COUNTER("counter", GameSoundCategory.CARDS, "Counter"),
+    // A card arriving (BoardFXArrivalSound): one sound per kind of card, never a wood knock under it. A creature plays its
+    // type's voice alone, or lands as a card placed on the table when its type has no voice yet; a basic land plays its
+    // place. Water, fire and leaves are only ever the lands'.
+    ARRIVE_CREATURE("arrive-creature", GameSoundCategory.CARDS, "Creature lands"),
+    ARRIVE_CREATURE_HEAVY("arrive-creature-heavy", GameSoundCategory.CARDS, "Big creature lands"),
+    ARRIVE_ARTIFACT("arrive-artifact", GameSoundCategory.CARDS, "Artifact"), ARRIVE_ENCHANTMENT("arrive-enchantment", GameSoundCategory.CARDS, "Enchantment"),
+    ARRIVE_PLANESWALKER("arrive-planeswalker", GameSoundCategory.CARDS, "Planeswalker"),
+    // Creature voices, one per BoardFXArrivalSound.creatureVoices slot
+    CREATURE_HUMAN("creature-human", GameSoundCategory.CARDS, "Human"), CREATURE_GOBLIN("creature-goblin", GameSoundCategory.CARDS, "Goblin"),
+    CREATURE_ELF("creature-elf", GameSoundCategory.CARDS, "Elf"), CREATURE_DRAGON("creature-dragon", GameSoundCategory.CARDS, "Dragon"),
+    CREATURE_SLIVER("creature-sliver", GameSoundCategory.CARDS, "Sliver"), CREATURE_SQUIRREL("creature-squirrel", GameSoundCategory.CARDS, "Squirrel"),
+    CREATURE_ORC("creature-orc", GameSoundCategory.CARDS, "Orc, ogre, troll"), CREATURE_GIANT("creature-giant", GameSoundCategory.CARDS, "Giant"),
+    CREATURE_BEAR("creature-bear", GameSoundCategory.CARDS, "Bear"), CREATURE_DINOSAUR("creature-dinosaur", GameSoundCategory.CARDS, "Dinosaur"),
+    CREATURE_BEAST("creature-beast", GameSoundCategory.CARDS, "Beast, hydra"), CREATURE_HORROR("creature-horror", GameSoundCategory.CARDS, "Horror, demon, wurm"),
+    CREATURE_CRITTER("creature-critter", GameSoundCategory.CARDS, "Small critter"), CREATURE_FAERIE("creature-faerie", GameSoundCategory.CARDS, "Faerie"),
+    CREATURE_ANGEL("creature-angel", GameSoundCategory.CARDS, "Angel"), CREATURE_VAMPIRE("creature-vampire", GameSoundCategory.CARDS, "Vampire"),
+    CREATURE_ZOMBIE("creature-zombie", GameSoundCategory.CARDS, "Zombie"), CREATURE_WOLF("creature-wolf", GameSoundCategory.CARDS, "Wolf, dog"),
+    CREATURE_CAT("creature-cat", GameSoundCategory.CARDS, "Cat"), CREATURE_BIRD("creature-bird", GameSoundCategory.CARDS, "Bird"),
+    CREATURE_OOZE("creature-ooze", GameSoundCategory.CARDS, "Ooze"), CREATURE_WIZARD("creature-wizard", GameSoundCategory.CARDS, "Wizard"),
+    CREATURE_INSECT("creature-insect", GameSoundCategory.CARDS, "Insect, spider"),
+    CREATURE_RAT("creature-rat", GameSoundCategory.CARDS, "Rat, mouse"), CREATURE_ELDRAZI("creature-eldrazi", GameSoundCategory.CARDS, "Eldrazi"),
+    LAND_PLAINS("land-plains", GameSoundCategory.CARDS, "Plains"), LAND_ISLAND("land-island", GameSoundCategory.CARDS, "Island"),
+    LAND_SWAMP("land-swamp", GameSoundCategory.CARDS, "Swamp"), LAND_MOUNTAIN("land-mountain", GameSoundCategory.CARDS, "Mountain"),
+    LAND_FOREST("land-forest", GameSoundCategory.CARDS, "Forest"),
     ABILITY("ability", GameSoundCategory.CARDS, "Your ability"), STEAL("steal", GameSoundCategory.CARDS, "Stolen permanent"),
-    CAST_WHITE("cast-white", GameSoundCategory.SPELLS, "White spell"), CAST_BLUE("cast-blue", GameSoundCategory.SPELLS, "Blue spell"),
-    CAST_BLACK("cast-black", GameSoundCategory.SPELLS, "Black spell"), CAST_RED("cast-red", GameSoundCategory.SPELLS, "Red spell"),
-    CAST_GREEN("cast-green", GameSoundCategory.SPELLS, "Green spell"), CAST_COLORLESS("cast-colorless", GameSoundCategory.SPELLS, "Colorless spell"),
-    CAST_MULTI("cast-multi", GameSoundCategory.SPELLS, "Multicolor spell"), SPELL_BIG("spell-big", GameSoundCategory.SPELLS, "Big spell"),
+    // Spells by card type (BoardFXCastSound), never colour
+    CAST_INSTANT("cast-instant", GameSoundCategory.SPELLS, "Instant"), CAST_SORCERY("cast-sorcery", GameSoundCategory.SPELLS, "Sorcery"),
+    CAST_PERMANENT("cast-permanent", GameSoundCategory.SPELLS, "Permanent spell"), SPELL_BIG("spell-big", GameSoundCategory.SPELLS, "Big spell"),
     COMMANDER_CAST("commander-cast", GameSoundCategory.SPELLS, "Commander"),
     ATTACK("attack", GameSoundCategory.COMBAT, "Attack"), BLOCK("block", GameSoundCategory.COMBAT, "Block"),
     STRIKE("strike", GameSoundCategory.COMBAT, "Creature hit"), PLAYER_HIT("player-hit", GameSoundCategory.COMBAT, "You’re hit"),
@@ -50,8 +72,18 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     VICTORY("victory", GameSoundCategory.MOMENTS, "Victory"), DEFEAT("defeat", GameSoundCategory.MOMENTS, "Defeat"),
     DICE_ROLL("dice-roll", GameSoundCategory.MOMENTS, "Dice roll"), DICE_LAND("dice-land", GameSoundCategory.MOMENTS, "Die lands");
 
-    /** Numbered files ("card-draw-1…3") give repeated sounds natural variety. */
-    val variants: Int get() = if (this == CARD_DRAW || this == ATTACK) 3 else 1
+    /** Numbered files ("attack-1…3") give repeated sounds natural variety; a creature type with several voices picks one. */
+    val variants: Int get() = when (this) {
+        ATTACK -> 3
+        CREATURE_GIANT, CREATURE_FAERIE, CREATURE_ZOMBIE, CREATURE_CAT, CREATURE_OOZE, CREATURE_WIZARD, CREATURE_INSECT -> 2
+        CREATURE_DRAGON, CREATURE_SQUIRREL, CREATURE_ORC, CREATURE_HORROR -> 3
+        else -> 1
+    }
+
+    /** The files a sound plays from: Giants share the first two orc voices (Caleb: the third is not for giants). */
+    val fileBase: String get() = if (this == CREATURE_GIANT) CREATURE_ORC.rawValue else rawValue
+
+    val isCreatureVoice: Boolean get() = rawValue.startsWith("creature-")
 
     /** Mix level: interface quiet, the board clear, big moments on top. */
     val volume: Float get() = when (this) {
@@ -59,8 +91,9 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
         UI_CONFIRM, UI_ERROR, PAGE_FLIP, EMOTE, BOOK_OPEN, BOOK_CLOSE -> 0.65f
         RESPONSE_ALERT, MENU_PLAY -> 0.8f
         CARD_DRAW, CARD_PICKUP, COUNTER, ABILITY -> 0.7f
-        CARD_PLAY, SHUFFLE, LAND_DROP, CREATURE_ENTER, TOKEN_CREATE -> 0.85f
-        CAST_WHITE, CAST_BLUE, CAST_BLACK, CAST_RED, CAST_GREEN, CAST_COLORLESS, CAST_MULTI -> 0.85f
+        CARD_PLAY, SHUFFLE, LAND_DROP, ARRIVE_CREATURE, ARRIVE_CREATURE_HEAVY, ARRIVE_ARTIFACT, ARRIVE_ENCHANTMENT, ARRIVE_PLANESWALKER,
+        LAND_PLAINS, LAND_ISLAND, LAND_SWAMP, LAND_MOUNTAIN, LAND_FOREST, CREATURE_HUMAN, CREATURE_GOBLIN, CREATURE_ELF, CREATURE_DRAGON, CREATURE_SLIVER, CREATURE_SQUIRREL, CREATURE_ORC, CREATURE_GIANT, CREATURE_BEAR, CREATURE_DINOSAUR, CREATURE_BEAST, CREATURE_HORROR, CREATURE_CRITTER, CREATURE_FAERIE, CREATURE_ANGEL, CREATURE_VAMPIRE, CREATURE_ZOMBIE, CREATURE_WOLF, CREATURE_CAT, CREATURE_BIRD, CREATURE_OOZE, CREATURE_WIZARD, CREATURE_INSECT, CREATURE_RAT, CREATURE_ELDRAZI -> 0.85f
+        CAST_INSTANT, CAST_SORCERY, CAST_PERMANENT -> 0.85f
         SPELL_BIG, COMMANDER_CAST, ATTACK, BLOCK, STRIKE, PLAYER_HIT -> 0.9f
         DEATH, EXILE, LIFE_GAIN, LIFE_LOSS, STEAL -> 0.75f
         TURN_YOU, VERSUS, VICTORY, DEFEAT -> 0.9f
@@ -69,13 +102,15 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
 
     /** A little pitch variation keeps repeated foley from sounding mechanical; musical cues stay in tune. */
     val pitchVariation: Float get() = when (this) {
-        CARD_DRAW, CARD_PICKUP, CARD_PLAY, LAND_DROP, CREATURE_ENTER, STRIKE, PLAYER_HIT, DEATH, ATTACK, BLOCK, COUNTER, TOKEN_CREATE, SHUFFLE, DICE_LAND -> 0.04f
+        CARD_DRAW, CARD_PICKUP, CARD_PLAY, LAND_DROP, STRIKE, PLAYER_HIT, DEATH, ATTACK, BLOCK, COUNTER, SHUFFLE, DICE_LAND,
+        ARRIVE_CREATURE, ARRIVE_CREATURE_HEAVY, ARRIVE_ARTIFACT -> 0.04f
         else -> 0f
     }
 
     /** Simultaneous copies allowed (a board wipe plays several deaths at once). */
     val voices: Int get() = when (this) {
-        STRIKE, DEATH, CARD_DRAW, TOKEN_CREATE, CREATURE_ENTER -> 3
+        STRIKE, DEATH, CARD_DRAW, ARRIVE_CREATURE, ARRIVE_CREATURE_HEAVY, ARRIVE_ARTIFACT, ARRIVE_ENCHANTMENT, ARRIVE_PLANESWALKER,
+        CREATURE_HUMAN, CREATURE_GOBLIN, CREATURE_ELF, CREATURE_DRAGON, CREATURE_SLIVER, CREATURE_SQUIRREL, CREATURE_ORC, CREATURE_GIANT, CREATURE_BEAR, CREATURE_DINOSAUR, CREATURE_BEAST, CREATURE_HORROR, CREATURE_CRITTER, CREATURE_FAERIE, CREATURE_ANGEL, CREATURE_VAMPIRE, CREATURE_ZOMBIE, CREATURE_WOLF, CREATURE_CAT, CREATURE_BIRD, CREATURE_OOZE, CREATURE_WIZARD, CREATURE_INSECT, CREATURE_RAT, CREATURE_ELDRAZI -> 3
         VICTORY, DEFEAT, VERSUS, TURN_YOU, MENU_PLAY, RESPONSE_ALERT -> 1
         else -> 2
     }
@@ -84,9 +119,10 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     val cooldown: Double get() = when (this) {
         UI_TICK -> 0.08
         CARD_DRAW, UI_TAP -> 0.1
-        STRIKE, DEATH, TOKEN_CREATE, CREATURE_ENTER, LAND_DROP -> 0.12
+        STRIKE, DEATH, LAND_DROP, ARRIVE_CREATURE, ARRIVE_CREATURE_HEAVY, ARRIVE_ARTIFACT, ARRIVE_ENCHANTMENT, ARRIVE_PLANESWALKER,
+        LAND_PLAINS, LAND_ISLAND, LAND_SWAMP, LAND_MOUNTAIN, LAND_FOREST -> 0.12
         COUNTER, LIFE_GAIN -> 0.3
-        CAST_WHITE, CAST_BLUE, CAST_BLACK, CAST_RED, CAST_GREEN, CAST_COLORLESS, CAST_MULTI -> 0.25
+        CAST_INSTANT, CAST_SORCERY, CAST_PERMANENT -> 0.25
         ABILITY -> 0.8
         RESPONSE_ALERT -> 1.2
         TURN_YOU, VERSUS, VICTORY, DEFEAT -> 1.5
@@ -94,10 +130,11 @@ enum class GameSound(val rawValue: String, val category: GameSoundCategory, val 
     }
 
     companion object {
-        fun cast(tint: BoardFXTint): GameSound = when (tint) {
-            BoardFXTint.WHITE -> CAST_WHITE; BoardFXTint.BLUE -> CAST_BLUE; BoardFXTint.BLACK -> CAST_BLACK; BoardFXTint.RED -> CAST_RED
-            BoardFXTint.GREEN -> CAST_GREEN; BoardFXTint.MULTICOLOR -> CAST_MULTI; BoardFXTint.COLORLESS -> CAST_COLORLESS
+        fun cast(kind: BoardFXCastSound): GameSound = when (kind) {
+            BoardFXCastSound.INSTANT -> CAST_INSTANT; BoardFXCastSound.SORCERY -> CAST_SORCERY; BoardFXCastSound.PERMANENT -> CAST_PERMANENT
         }
+        /** A creature voice slot (BoardFXArrivalSound.creatureVoices) to its sound. */
+        fun voice(slot: String): GameSound? = entries.firstOrNull { it.rawValue == "creature-$slot" }
         fun sounds(category: GameSoundCategory): List<GameSound> = entries.filter { it.category == category }
     }
 }
@@ -182,20 +219,48 @@ object GameAudio {
     /** Warm up the samples used in the first seconds of a game so the first cast is instant. */
     fun preload(sounds: List<GameSound>) {
         for (sound in sounds) {
-            if (sound.variants > 1) (1..sound.variants).forEach { sample("${sound.rawValue}-$it") } else sample(sound.rawValue)
+            if (sound.variants > 1) (1..sound.variants).forEach { sample("${sound.fileBase}-$it") } else sample(sound.fileBase)
         }
     }
 
-    /** `audition` plays a sound from the Sound Lab even when its category is off. */
-    fun play(sound: GameSound, after: Double = 0.0, volume: Float = 1f, audition: Boolean = false) {
+    /** The board's sounds (cards, spells, combat), loaded when a game appears (NativeGameView) so a first arrival is not
+     *  late while SoundPool decodes it. */
+    val boardSounds: List<GameSound> get() = GameSound.entries.filter { it.category in setOf(GameSoundCategory.CARDS, GameSoundCategory.SPELLS, GameSoundCategory.COMBAT) }
+
+    /** Seconds each file lasts (for a voice that should end as its card lands), read once from its header. */
+    private val durations = HashMap<String, Double>()
+    private fun duration(file: String): Double = durations.getOrPut(file) {
+        val path = assetPath(file) ?: return 0.0
+        runCatching {
+            android.media.MediaMetadataRetriever().run {
+                context!!.assets.openFd(path).use { setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+                val ms = extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull() ?: 0.0
+                release(); ms / 1000.0
+            }
+        }.getOrDefault(0.0)
+    }
+
+    /** Several cues due at the same moment (a combat flurry), started from one timer. */
+    fun playTogether(cues: List<Pair<GameSound, Float>>, after: Double) {
+        if (after > 0.005) main.postDelayed({ cues.forEach { (sound, volume) -> play(sound, 0.0, volume) } }, (after * 1000).toLong())
+        else cues.forEach { (sound, volume) -> play(sound, 0.0, volume) }
+    }
+
+    /**
+     * `audition` plays a sound from the Sound Lab even when its category is off. `endingWithin`: start late enough that
+     * the sound finishes this long after `after` (a creature's voice ends as its card lands); a longer one starts then.
+     */
+    fun play(sound: GameSound, after: Double = 0.0, volume: Float = 1f, audition: Boolean = false, endingWithin: Double? = null) {
         if (!(effectsEnabled || audition) || !(effectsVolume > 0 || audition) || !(isEnabled(sound.category) || audition)) return
-        if (after > 0.005) { main.postDelayed({ play(sound, 0.0, volume, audition) }, (after * 1000).toLong()); return }
+        if (after > 0.005) { main.postDelayed({ play(sound, 0.0, volume, audition, endingWithin) }, (after * 1000).toLong()); return }
         val now = uptime()
         if (!audition) lastPlayed[sound]?.let { if (now - it < sound.cooldown) return }
         lastPlayed[sound] = now
         val pool = pool ?: return
-        val file = if (sound.variants > 1) "${sound.rawValue}-${Random.nextInt(1, sound.variants + 1)}" else sound.rawValue
+        val file = if (sound.variants > 1) "${sound.fileBase}-${Random.nextInt(1, sound.variants + 1)}" else sound.fileBase
         val id = sample(file) ?: return
+        val wait = endingWithin?.let { maxOf(0.0, it - duration(file)) } ?: 0.0
+        if (wait > 0.005) { main.postDelayed({ if (loaded.contains(id)) start(pool, id, sound, volume, audition) }, (wait * 1000).toLong()); return }
         if (!loaded.contains(id)) {
             // First use: SoundPool decodes asynchronously. Play once it lands, if it lands soon.
             main.postDelayed({ if (loaded.contains(id)) start(pool, id, sound, volume, audition) }, 120)

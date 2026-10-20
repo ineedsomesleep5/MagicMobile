@@ -92,6 +92,113 @@ enum GameBoardPreviewFixtures {
 
     static let boardFXStepCount = 16
 
+    /// Cards arriving one by one for `MAGICMOBILE_DESIGN_PREVIEW=arrivals`, to hear each arrival and cast sound
+    /// (BoardFXArrivalSound, BoardFXCastSound): the five basic lands, a creature for every voice slot, creatures with
+    /// no voice yet (small and big), an artifact, an enchantment, a planeswalker, and an instant and a sorcery cast onto
+    /// the stack. Each comes from hand. `stack: true` cards stay on the stack for their step.
+    static let arrivalCards: [(id: String, name: String, type: String, cost: String?, power: Int?, toughness: Int?, stack: Bool)] = [
+        ("arrive-plains", "Plains", "Basic Land — Plains", nil, nil, nil, false),
+        ("arrive-island", "Island", "Basic Land — Island", nil, nil, nil, false),
+        ("arrive-swamp", "Swamp", "Basic Land — Swamp", nil, nil, nil, false),
+        ("arrive-mountain", "Mountain", "Basic Land — Mountain", nil, nil, nil, false),
+        ("arrive-forest", "Forest", "Basic Land — Forest", nil, nil, nil, false),
+        ("arrive-thalia", "Thalia, Guardian of Thraben", "Legendary Creature — Human Soldier", "{1}{W}", 2, 1, false),
+        ("arrive-goblin", "Goblin Guide", "Creature — Goblin Scout", "{R}", 2, 2, false),
+        ("arrive-elf", "Elvish Mystic", "Creature — Elf Druid", "{G}", 1, 1, false),
+        ("arrive-dragon", "Shivan Dragon", "Creature — Dragon", "{4}{R}{R}", 5, 5, false),
+        ("arrive-sliver", "Muscle Sliver", "Creature — Sliver", "{1}{G}", 2, 2, false),
+        ("arrive-squirrel", "Squirrel Mob", "Creature — Squirrel", "{1}{G}{G}", 2, 2, false),
+        ("arrive-ogre", "Gray Ogre", "Creature — Ogre", "{2}{R}", 2, 2, false),
+        ("arrive-giant", "Hill Giant", "Creature — Giant", "{3}{R}", 3, 3, false),
+        ("arrive-bear", "Grizzly Bears", "Creature — Bear", "{1}{G}", 2, 2, false),
+        ("arrive-dinosaur", "Regisaur Alpha", "Creature — Dinosaur", "{3}{R}{G}", 4, 4, false),
+        ("arrive-craterhoof", "Craterhoof Behemoth", "Creature — Beast", "{5}{G}{G}{G}", 5, 5, false),
+        ("arrive-demon", "Lord of the Pit", "Creature — Demon", "{4}{B}{B}{B}", 7, 7, false),
+        ("arrive-rat", "Chittering Rats", "Creature — Rat", "{1}{B}{B}", 2, 2, false),
+        ("arrive-faerie", "Spellstutter Sprite", "Creature — Faerie Wizard", "{1}{U}", 1, 1, false),
+        ("arrive-angel", "Serra Angel", "Creature — Angel", "{3}{W}{W}", 4, 4, false),
+        ("arrive-vampire", "Vampire Nighthawk", "Creature — Vampire Shaman", "{1}{B}{B}", 2, 3, false),
+        ("arrive-zombie", "Gravecrawler", "Creature — Zombie", "{B}", 2, 1, false),
+        ("arrive-wolf", "Timberpack Wolf", "Creature — Wolf", "{1}{G}", 2, 2, false),
+        ("arrive-lions", "Savannah Lions", "Creature — Cat", "{W}", 2, 1, false),
+        ("arrive-bird", "Suntail Hawk", "Creature — Bird", "{W}", 1, 1, false),
+        ("arrive-ooze", "Scavenging Ooze", "Creature — Ooze", "{1}{G}", 2, 2, false),
+        ("arrive-wizard", "Silvergill Adept", "Creature — Merfolk Wizard", "{1}{U}", 2, 1, false),
+        ("arrive-spider", "Giant Spider", "Creature — Spider", "{3}{G}", 2, 4, false),
+        ("arrive-ulamog", "Ulamog, the Infinite Gyre", "Legendary Creature — Eldrazi", "{11}", 10, 10, false),
+        ("arrive-merfolk", "Lord of Atlantis", "Creature — Merfolk", "{U}{U}", 2, 2, false),
+        ("arrive-leviathan", "Stormtide Leviathan", "Creature — Leviathan", "{5}{U}{U}{U}", 8, 8, false),
+        ("arrive-sol-ring", "Sol Ring", "Artifact", "{1}", nil, nil, false),
+        ("arrive-sphere", "Detention Sphere", "Enchantment", "{1}{W}{U}", nil, nil, false),
+        ("arrive-liliana", "Liliana of the Veil", "Legendary Planeswalker — Liliana", "{1}{B}{B}", nil, nil, false),
+        ("arrive-bolt", "Lightning Bolt", "Instant", "{R}", nil, nil, true),
+        ("arrive-divination", "Divination", "Sorcery", "{2}{U}", nil, nil, true),
+    ]
+    static var arrivalsStepCount: Int { arrivalCards.count + 1 }
+
+    static func arrivalLabel(_ step: Int) -> String {
+        guard step > 0 else { return "Arrivals: ready" }
+        let c = arrivalCards[step - 1]
+        return "\(c.name): \(arrivalSoundName(c.type, c.cost)) (\(step)/\(arrivalCards.count))"
+    }
+
+    /// What the demo's step plays, so a recording says which sound is which.
+    static func arrivalSoundName(_ type: String, _ cost: String?) -> String {
+        let card = CardIdentity(name: "", typeLine: type, oracleText: nil, manaCost: cost)
+        if type == "Instant" { return "instant cast" }
+        if type == "Sorcery" { return "sorcery cast" }
+        switch BoardFXArrivalSound.plan(card: card, isToken: false, commander: false) {
+        case let .basicLand(kind): return kind
+        case .otherLand: return "land"
+        case let .creature(heavy, voice): return voice.map { "\($0) voice" } ?? (heavy ? "big card, no voice" : "card, no voice")
+        case .artifact: return "artifact"
+        case .enchantment: return "enchantment"
+        case .planeswalker: return "planeswalker"
+        case .other: return "card"
+        }
+    }
+
+    static func arrivalsStep(_ step: Int) -> GameSnapshot {
+        var root = try! JSONSerialization.jsonObject(with: Data(json(for: .normalBattlefield).utf8)) as! [String: Any]
+        root["id"] = "design-preview-arrivals"
+        root["bridgeRevision"] = 2_000 + step
+        root["legalActions"] = []
+        root["phase"] = "precombat-main"
+        root["step"] = "precombat-main"
+        var players = root["players"] as! [[String: Any]]
+        typealias Arrival = (id: String, name: String, type: String, cost: String?, power: Int?, toughness: Int?, stack: Bool)
+        func card(_ c: Arrival) -> [String: Any] {
+            var identity: [String: Any] = ["name": c.name, "typeLine": c.type, "oracleText": ""]
+            if let cost = c.cost { identity["manaCost"] = cost }
+            var zoneCard: [String: Any] = ["instanceId": c.id, "tapped": false, "card": identity,
+                                           "isCreaturePermanent": c.power != nil, "summoningSickness": false]
+            if let power = c.power, let toughness = c.toughness { zoneCard["power"] = power; zoneCard["toughness"] = toughness }
+            return zoneCard
+        }
+        let arrived = arrivalCards.prefix(step)
+        var zones = players[0]["zones"] as! [String: Any]
+        zones["battlefield"] = arrived.filter { !$0.stack }.map(card)
+        zones["graveyard"] = arrived.dropLast().filter(\.stack).map(card)
+        zones["hand"] = step < arrivalCards.count ? [card(arrivalCards[step])] : []
+        players[0]["zones"] = zones
+        root["players"] = players
+        // A spell cast at this step sits on the stack for it (BoardFXCastSound), then goes to the graveyard.
+        if let last = arrived.last, last.stack {
+            root["xmage"] = [
+                "schemaVersion": 1, "gameId": "design-preview-arrivals", "bridgeRevision": 2_000 + step, "xmageCycle": 2_000 + step,
+                "callbackCoverage": [], "combat": [], "players": [], "exileZones": [], "revealed": [],
+                "stack": [["id": "stack-\(last.id)", "objectId": "stack-\(last.id)", "objectType": "SPELL", "name": last.name,
+                           "sourceName": last.name, "sourceCard": card(last), "controllerId": "human", "sourceZone": "hand",
+                           "rulesText": "", "paid": true]],
+                "lookedAt": [], "companion": [], "playableObjects": [],
+                "panels": ["stack": true, "command": true, "graveyard": true, "exile": true, "revealed": false, "lookedAt": false,
+                           "search": false],
+            ] as [String: Any]
+        }
+        let data = try! JSONSerialization.data(withJSONObject: root)
+        return try! JSONDecoder.magicMobile.decode(GameSnapshot.self, from: data)
+    }
+
     /// Scripted board FX walkthrough for `MAGICMOBILE_DESIGN_PREVIEW=board-fx`.
     /// 0 base, 1 cast Swords, 2 Swords resolves (exile Angel, AI life -5),
     /// 3 Sol Ring enters straight from hand (showcase) with a counter on Isamaru,

@@ -49,16 +49,54 @@ final class GameAudioTests: XCTestCase {
             fx(.enteredBattlefield(cardID: "land", playerID: viewer, from: .hand, tint: .green, entrance: .plain)),
             fx(.enteredBattlefield(cardID: "token", playerID: viewer, from: nil, tint: .green, entrance: .plain)),
             fx(.enteredBattlefield(cardID: "bear", playerID: viewer, from: .stack, tint: .green, entrance: .plain)),
+            fx(.enteredBattlefield(cardID: "ring", playerID: viewer, from: .stack, tint: .colorless, entrance: .plain)),
             fx(.leftBattlefield(cardID: "a", playerID: viewer, to: .exile, tint: .white)),
             fx(.leftBattlefield(cardID: "b", playerID: viewer, to: .graveyard, tint: .black)),
             fx(.leftBattlefield(cardID: "c", playerID: viewer, to: .hand, tint: .blue)),
             fx(.countersChanged(cardID: "bear", kind: .plusOne, delta: 1)),
             fx(.controlChanged(cardID: "ogre", from: "them", to: viewer)),
             fx(.lifeChanged(playerID: viewer, delta: 3)),
-        ], viewerID: viewer, arrivals: ["land": .init(isLand: true), "token": .init(isToken: true)], hasStrike: false)
+        ], viewerID: viewer, arrivals: [
+            "land": .init(card: CardIdentity(name: "Forest", typeLine: "Basic Land — Forest", oracleText: nil)),
+            "token": .init(card: CardIdentity(name: "Squirrel", typeLine: "Token Creature — Squirrel", oracleText: nil,
+                                              tokenColors: ["Green"]), isToken: true),
+            "bear": .init(card: CardIdentity(name: "Grizzly Bears", typeLine: "Creature — Bear", oracleText: nil, manaCost: "{1}{G}")),
+            "ring": .init(card: CardIdentity(name: "Sol Ring", typeLine: "Artifact", oracleText: nil, manaCost: "{1}")),
+        ], casts: [
+            "s1": CardIdentity(name: "Lightning Bolt", typeLine: "Instant", oracleText: nil, manaCost: "{R}"),
+            "s2": CardIdentity(name: "Ultimatum", typeLine: "Sorcery", oracleText: nil, manaCost: "{7}{U}{U}{U}"),
+        ], hasStrike: false)
         let sounds = cues.map(\.sound)
-        XCTAssertEqual(sounds, [.castRed, .castBlue, .spellBig, .ability, .landDrop, .tokenCreate, .creatureEnter,
-                                .exile, .death, .cardPickup, .counter, .steal, .lifeGain])
+        XCTAssertEqual(sounds, [.castInstant, .castSorcery, .spellBig, .ability, .landForest, .creatureSquirrel, .creatureBear,
+                                .arriveArtifact, .exile, .death, .cardPickup, .counter, .steal, .lifeGain])
+    }
+
+    func testACreaturesVoicePlaysAsItsCardComesInAndEndsAsItLands() {
+        let viewer = "me"
+        let entering = fx(.enteredBattlefield(cardID: "elf", playerID: viewer, from: .hand, tint: .green, entrance: .showcase), delay: 0.3)
+        let landing = fx(.enteredBattlefield(cardID: "bear", playerID: viewer, from: .hand, tint: .green, entrance: .showcase), delay: 0.3)
+        let cues = BoardFXSound.cues([entering, landing], viewerID: viewer, arrivals: [
+            "elf": .init(card: CardIdentity(name: "Llanowar Elves", typeLine: "Creature — Elf Druid", oracleText: nil, manaCost: "{G}")),
+            "bear": .init(card: CardIdentity(name: "Coral Merfolk", typeLine: "Creature — Merfolk", oracleText: nil, manaCost: "{1}{U}")),
+        ], hasStrike: false)
+        XCTAssertEqual(cues.first?.sound, .creatureElf)
+        XCTAssertEqual(cues.first?.at, entering.delay, "the voice starts as the card starts entering")
+        XCTAssertEqual(cues.first?.endsBy, entering.landing, "and is timed to finish as it lands")
+        XCTAssertEqual(cues.last?.sound, .arriveCreature)
+        XCTAssertEqual(cues.last?.at, landing.landing, "a card with no voice lands with the card sound")
+        XCTAssertNil(cues.last?.endsBy)
+    }
+
+    func testEveryCreatureVoiceSlotHasItsSoundAndFiles() {
+        for slot in Set(BoardFXArrivalSound.creatureVoices.values) {
+            guard let sound = GameSound.voice(slot) else { return XCTFail("no GameSound for \(slot)") }
+            for n in 1...sound.variants {
+                let file = sound.variants > 1 ? "\(sound.fileBase)-\(n)" : sound.fileBase
+                XCTAssertTrue(Bundle.main.url(forResource: file, withExtension: "m4a") != nil
+                              || Bundle.main.url(forResource: file, withExtension: "caf") != nil, "missing \(file)")
+            }
+        }
+        XCTAssertEqual(GameSound.creatureGiant.fileBase, "creature-orc", "giants share the first two orc voices")
     }
 
     func testCombatHitsYouHarderThanACreatureAndLifeLossIsNotDoubled() {
@@ -110,10 +148,9 @@ final class GameAudioTests: XCTestCase {
                        "a different game is a cut, not a transition")
     }
 
-    func testCastSoundFollowsColorIdentity() {
-        XCTAssertEqual(GameSound.cast(for: .white), .castWhite)
-        XCTAssertEqual(GameSound.cast(for: .black), .castBlack)
-        XCTAssertEqual(GameSound.cast(for: .multicolor), .castMulti)
-        XCTAssertEqual(GameSound.cast(for: .colorless), .castColorless)
+    func testCastSoundFollowsTheCardType() {
+        XCTAssertEqual(GameSound.cast(.instant), .castInstant)
+        XCTAssertEqual(GameSound.cast(.sorcery), .castSorcery)
+        XCTAssertEqual(GameSound.cast(.permanent), .castPermanent)
     }
 }
