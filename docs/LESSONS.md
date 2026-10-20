@@ -128,6 +128,54 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-19 (Claude, release D toolchain): GluonFX 1.0.29 (Substrate 0.0.69) is not a GraalVM-23 plugin. Gluon
+  reverted Substrate's JDK 23/24 support in March 2025 (gluonhq/substrate#1310), so 0.0.66 and later default to the
+  JDK 18 static libraries and clibs `ea+27`, which do not fit GraalVM 24.1 (its libchelper adds
+  `checkCPUFeaturesOrExit`, `getThreadId`, and JDK 23's libjava needs new `JVM_*` functions). **Rule:** GluonFX
+  1.0.25 (Substrate 0.0.65) with `libvmone.a` from github.com/gluonhq/vmone `gvm-24-2.1` (JDK static libraries plus
+  GraalVM's C helpers, passed with `-Djavalibspath`), all pinned in `native/gluon/toolchain.json`. download2.gluonhq.com
+  is refused from cloud containers; GitHub release assets download fine. 0.0.65's `staticlib` compiles by itself (a
+  separate `compile` goal compiles twice), and its Android `compile` runs the NDK clang on Substrate's C launchers
+  first, so a compile-only local run needs a stand-in clang (`ld.lld`, `llvm-objdump` must also exist). 0.0.65 does
+  not pass `--libc=bionic` for Android (the image then imports glibc's `__errno_location`, which staging refuses);
+  with it, GraalVM's driver requires `lib/svm/clibraries/linux-amd64/bionic` (host platform, no `--target`), which
+  `prepare_toolchain.py` creates empty because Substrate links the object itself.
+- 2026-10-19 (Claude, release D size): GraalVM 24.1 doubles code made of constants and stores, so `-Os` does not help
+  it. On AArch64 each object constant is four `mov`/`movk` instructions off the heap base, and each reference store
+  into a new object gets a remembered-set header check with an out-of-line slow path. A set class's
+  `cards.add(new SetCardInfo(...))` costs about 650 bytes (Modern Horizons 3: 340 KB for 524 cards), and set-class
+  code went 13.9 → 26.4 MB on the same engine. **Rule:** measure a toolchain move on the same engine with
+  `build_native_bench.sh` before expecting size gains, and treat long constant lists in code as data to move out.
+- 2026-10-19 (Claude, release D toolchain): GraalVM 24.1's `ObjectStreamClass.lookup` reports any Serializable class
+  whose hub is not marked as a serialization target. GraalVM's own registration marks it inside
+  `addConstructorAccessor`; `CheckpointSerializationFeature`'s shared accessor path skipped that, so it now calls
+  `registerSerializationTargetClass` for every class. The registry also moved to
+  `com.oracle.svm.core.reflect.serialize`, and the builder runs on the module path, so the pom exports and opens
+  those packages. **Rule:** after a GraalVM upgrade, check the save/resume self-test in a native build
+  (`build_native_bench.sh` prints `SAVE-RESUME`), not just that the image builds.
+- 2026-10-19 (Claude, release D toolchain): cloud sessions cannot dispatch workflows (`workflow_dispatch` is 403
+  "Resource not accessible by integration" through both the GitHub MCP tools and `gh`), but they can read job logs.
+  **Rule:** to run a dispatch-only workflow from a cloud branch, add a temporary `push` trigger limited to that branch
+  (the Android job already honours `[android-native]` in the commit message), print results into the log, and remove
+  the trigger before review. Method symbols changed too: 24.1 names them `<Class>_<method>_<22-char base-62 digest>`,
+  constructors `<Class>_<digest>`, class names cut to their last 40 characters (`native_code_sizes.py` reads both).
+  With a workflow-level `concurrency` group, a second push while a run is still pending replaces it: the pending run
+  is cancelled even when the new run's job is then skipped by its `if:`. Push again only after the run you want has
+  started.
+- 2026-10-19 (Claude, release D toolchain): a change to `magicmobile-issue4-nonsimulator.yml` (even the JDK version)
+  makes every far-calls candidate fail approval ("Cheap workflow differs from trusted policy"); the tooling preflight's
+  `policy-pin` check fails on the PR as soon as the workflow differs. **Rule:** commit the final cheap workflow, then
+  move `TRUSTED_POLICY_SHA` in `magicmobile-far-calls.yml` to that commit in a second commit; later commits must not
+  touch the cheap workflow or `scripts/magicmobile-native-gate`.
+- 2026-10-19 (Claude, release D AI speed): two traps when probing an AI search on a copy of a live game.
+  `GameImpl.playPriority` fires its table update after making the active player current but before setting the
+  priority player, so `getPriorityPlayerId()` in a listener names the player who last passed (read
+  `getState().getPlayerList().get()`). And upstream's `ComputerPlayer6` copy shares `actionCache` with the original:
+  the probe's pick of a free action (a land) lands in the live player's cache, the live AI then refuses to "repeat"
+  it and passes, and the live game stops developing (0 lands by turn 11). **Rule:** give the probed copy its own
+  `actionCache`, and compare a probed game's final board with an unprobed run of the same seed.
+  `SearchEquivalence` still shares the cache: its recorded decisions are unaffected, but its live games are disturbed.
+
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
   makes a full deep game copy for every option of a trigger, and Loaming Shaman (Draconic Destruction) targets "any number"

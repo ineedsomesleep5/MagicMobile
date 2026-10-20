@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
-# AOT diagnostic only: device by default; optional full Intel simulator target.
+# AOT diagnostic only: the iOS device library. Pins: native/gluon/toolchain.json.
+# The static JDK release (vmone gvm-24-2.1) has no iOS simulator library, so ios-sim is gone.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 NATIVE_TARGET=${MM_NATIVE_TARGET:-ios}
-case "$NATIVE_TARGET" in
-  ios) NATIVE_ARCH=arm64 ;;
-  ios-sim)
-    [[ "$(uname -s)" == Darwin && "$(uname -m)" == x86_64 ]] || {
-      echo 'ios-sim requires an Intel macOS host' >&2; exit 2;
-    }
-    NATIVE_ARCH=x86_64
-    ;;
-  *) echo 'MM_NATIVE_TARGET must be ios or ios-sim' >&2; exit 2 ;;
-esac
-export GRAALVM_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-svm-java17-darwin-m1-gluon-22.1.0.1-Final/Contents/Home}"
+[[ "$NATIVE_TARGET" == ios ]] || { echo 'MM_NATIVE_TARGET must be ios' >&2; exit 2; }
+NATIVE_ARCH=arm64
+export GRAALVM_HOME="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-java23-darwin-aarch64-gluon-23+25.1-dev/Contents/Home}"
+# Checksum-verified libvmone.a (JDK static libraries and GraalVM's C helpers); setup_gluon_intel.sh.
+NATIVE_STATIC_LIBS="${MM_JAVA_STATIC_LIBS:-$ROOT/build/toolchains/vmone-ios-macos-aarch64/lib}"
 export JAVA_HOME="$GRAALVM_HOME"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 export PATH="$JAVA_HOME/bin:$PATH"
@@ -42,9 +37,14 @@ printf 'Builder heap: %s; builder GC: G1 (iOS runtime collector unchanged)\n' "$
 [[ -x "$JAVA_HOME/bin/native-image" ]]
 [[ -s "$ROOT/build/runtime-classpath.txt" ]]
 [[ -s "$ROOT/build/generated/reflect-config.json" ]]
-grep -qx 'GRAALVM_VERSION="22.1.0.1"' "$JAVA_HOME/release"
-grep -qx 'JAVA_VERSION="17.0.3"' "$JAVA_HOME/release"
-grep -qx 'VENDOR=Gluon' "$JAVA_HOME/release"
+for line in $(python3 -c 'import json,sys;print(" ".join(json.load(open(sys.argv[1]))["graalvm"]["release_lines"]))' "$ROOT/native/gluon/toolchain.json"); do
+  grep -qx "$line" "$JAVA_HOME/release"
+done
+[[ -s "$NATIVE_STATIC_LIBS/libvmone.a" ]]
+shasum -a 256 "$NATIVE_STATIC_LIBS/libvmone.a"
+NATIVE_OPTIMIZE=${MM_NATIVE_OPTIMIZE:-2}
+[[ "$NATIVE_OPTIMIZE" == 2 || "$NATIVE_OPTIMIZE" == s ]]
+printf 'Optimization level: -O%s\n' "$NATIVE_OPTIMIZE"
 "$JAVA_HOME/bin/native-image" --version
 xcodebuild -version
 
@@ -133,8 +133,6 @@ printf 'Real NativeEntryPoints compilation passed.\n'
   -d "$NATIVE_BUILD/checkpoint-accessor" "$ROOT/native/gluon/src/main/java-base/jdk/internal/reflect/MobileCheckpointConstructorAccessor.java"
 cp "$NATIVE_BUILD/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class" \
   "$NATIVE_BUILD/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
-python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" \
-  --output "$NATIVE_BUILD/color-patch"
 # Refuse, before the long native build, a resource configuration that would embed .class files
 # (or leave out a resource the engine reads). The report lists every embedded resource.
 python3 "$ROOT/scripts/check_native_resources.py" --classpath "$NATIVE_BUILD/native-java:$NATIVE_CP" \
@@ -142,12 +140,9 @@ python3 "$ROOT/scripts/check_native_resources.py" --classpath "$NATIVE_BUILD/nat
 
 # Keep Maven dependencies and Gluon downloads within the authorized build tree.
 export MAVEN_OPTS="-Xmx512m -Duser.home=$ROOT/build/ios-native-home"
-NATIVE_GOALS=(com.gluonhq:gluonfx-maven-plugin:1.0.29:compile com.gluonhq:gluonfx-maven-plugin:1.0.29:staticlib)
-# The simulator's caller-owned C executable also needs the pinned static JDK,
-# which Gluon's link goal downloads. Device behavior remains compile/staticlib.
-if [[ "$NATIVE_TARGET" == ios-sim ]]; then
-  NATIVE_GOALS+=(com.gluonhq:gluonfx-maven-plugin:1.0.29:link)
-fi
+# Substrate 0.0.65's staticlib compiles the image itself, then archives it (a separate compile
+# goal would compile twice).
+NATIVE_GOALS=(com.gluonhq:gluonfx-maven-plugin:1.0.25:staticlib)
 mvn --batch-mode --no-transfer-progress \
   -f "$ROOT/native/gluon/pom.xml" \
   "-Dmaven.repo.local=$ROOT/build/ios-native-maven" \
@@ -159,7 +154,7 @@ mvn --batch-mode --no-transfer-progress \
   "-Dnative.init.arg=$NATIVE_INIT_ARG" \
   "-Dnative.orm.arg=$NATIVE_ORM_ARG" \
   "-Dnative.max.heap=$NATIVE_MAX_HEAP" \
-  "-Dnative.color.patch=$NATIVE_BUILD/color-patch/classes" \
+  "-Dnative.optimize=$NATIVE_OPTIMIZE" "-Djavalibspath=$NATIVE_STATIC_LIBS" \
   "-Dnative.target=$NATIVE_TARGET" \
   "${NATIVE_GOALS[@]}"
 

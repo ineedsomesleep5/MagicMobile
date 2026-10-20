@@ -371,6 +371,76 @@ same objects that dominate allocation.
 - [ ] Build with `-Os`; use the build report and `-H:+PrintAnalysisCallTree` to find further cuts.
 - Expected: about 15–25% less engine code (cumulative engine about 260–275 MB; iPhone download about 125–135 MB, Android
   APK about 118–125 MB). Watch AI speed: size-optimized code can be slower; heat must not get worse.
+- Status, 2026-10-19 (draft PR #211, engine release D alone; JVM-verified, Android native built and measured, iOS
+  native not built yet, so no box is ticked):
+  - Toolchain: Gluon GraalVM 23+25.1 (GraalVM 24.1.0-dev, JDK 23) with GluonFX 1.0.25 (Substrate 0.0.65) and vmone
+    `gvm-24-2.1`'s `libvmone.a` as the static JDK, checksum-pinned for Linux, Intel Mac and Apple Silicon in
+    `packages/ondevice-engine/native/gluon/toolchain.json`. Not GluonFX 1.0.29: Gluon reverted Substrate's GraalVM 23
+    support in March 2025 (gluonhq/substrate#1310), so Substrate 0.0.66 and later fit only GraalVM 22.1.
+  - Patches: the far-call backport is retired, not ported (GraalVM 24.1 has the upstream
+    `AArch64HostedTrampolineSupport` it copied; the iOS probe now forces upstream trampolines with
+    `-H:+UseDirectCallTrampolinesALot`). The Color patch is retired (JDK 23's `java.awt.Color` has no desktop JNI
+    initializer; the native regression guards the JDK source). `CheckpointSerializationFeature` is ported (registry
+    moved, serialization-target marks, builder-module opens). Not ported: the iOS simulator diagnostics, because vmone
+    ships no simulator library. Android needed `--libc=bionic` again (Substrate 0.0.65 does not pass it) and an empty
+    `clibraries/linux-amd64/bionic` directory in the compiler, and staging allows four more system imports.
+  - JVM: XMage and the adapter build and pass the real-JVM suite on JDK 23 (locally and CI `real-jvm`), including
+    game records replayed from the record alone to the recorded winner, turn and life totals.
+  - Android size (CI runs 39210989561 at -O2 and 39214209589 at -Os, against release C's run 39148290469):
+
+    | | Release C (22.1) | D at -O2 | D at -Os |
+    |---|---|---|---|
+    | `libmmengine.so`, stripped | 316.0 MB | 378.1 MB (+20%) | 364.6 MB (+15%) |
+    | Code (function symbols) | 162.4 MB | 170.0 MB (+5%) | 159.4 MB (−2%) |
+    | Image heap | 156.7 MB | 193.9 MB (+24%) | 190.9 MB (+22%) |
+    | `libmmengine.so` compressed in the APK | | 120.1 MB | 116.6 MB |
+
+    The plan's 15–25% less code did not happen. GraalVM 24.1 makes the engine bigger, and `-Os` only brings code back to
+    about release C's size. Card classes are smaller (116.8 → 111.7 MB at -O2, 105.5 at -Os), but the set classes
+    doubled (11.5 → 22.6 MB) and the image heap grew by 37 MB.
+  - The same engine on both toolchains (`scripts/build_native_bench.sh`: an x86-64 executable with the production
+    options, so only the toolchain differs): code 155.5 MB on 22.1, 161.8 at -O2 and 151.7 at -Os; image heap 139.6 →
+    175.4 and 172.6 MB. Set-class code 13.9 → 26.4 MB (not smaller at -Os). In the heap, code metadata 29.3 → 43.2 MB and
+    strings 13.8 → 30.8 MB (1.03 → 1.54 million objects); class objects are unchanged (45.6 → 45.9 MB). A dump of
+    24.1's image heap (`--enable-monitoring=heapdump`, `-XX:+DumpHeapAndExit`): frame info is 15.3 MB of the code
+    metadata (3.8 million frames); of 397,000 strings, 125,000 (6.7 MB) duplicate another string's value, held by name
+    tables (a 196,000-slot class-name table for the 75,000 reflection-registered types, 46,000 type names, 25,000
+    method names) and five copies of the locale-tag tables; the method-data tables hold 4 MB of the strings.
+  - AI speed (host benchmark of the same engine on 22.1, 24.1 at -O2 and 24.1 at -Os; `profile_long_games.py speed`:
+    108 seeded games per build at skills 4–6, each skill playing itself, the decks swapped and both seatings in every
+    block of 4, 16 probes a game at the active player's main-phase decisions, each a full production search capped at
+    600 nodes; about 1,500 probes and 200,000 nodes per build). CPU per search node: release C 8.58 ms, -O2 8.55, -Os
+    8.25; per-game medians 7.50, 7.69 and 7.99. 95% bootstrap intervals over games: -O2 / C 0.83–1.17, -Os / C
+    0.80–1.11, -Os / -O2 0.87–1.06. The first 36 games alone had release D 8–10% slower, and the 72 run side by side
+    after them had it 3–8% faster. No difference shows at this resolution (about ±10%), in either direction or per deck
+    (per-deck means move 7–12 ms between builds with the positions). The games do not repeat between runs (XMage's
+    random UUIDs change iteration order and so the AI's moves), so no position is measured twice; probing positions
+    replayed from game records would compare like for like. The phone check (a long AI game and its performance log)
+    stays part of the release.
+  - Further cuts found (call tree, build output, disassembly):
+    - Set classes, 21–23 MB of code on 24.1: 82 booster sets' constructors (15.3 MB) plus 139 collators, parents and
+      bonus sheets (7.3 MB), kept for Booster Tutor. 24.1 builds each `cards.add(new SetCardInfo(...))` from four-
+      instruction constants and a remembered-set check per store, about 650 bytes a card. Building the booster sets'
+      card lists from the set catalogue (step 3 already has set, number and rarity) removes most of it.
+    - `-H:-IncludeMethodData`: 24.1 by default records every reachable method and field for run-time inspection; 22.1
+      did not. Off, the image heap is 6.1 MB smaller (strings −4 MB, reflection metadata −2.7 MB) and the native
+      save/resume self-test passes. Release C behaved this way already; it still needs the native real-engine checks.
+    - Small: the SunJCE provider (0.4 MB) through the provider list behind the checkpoints' SHA-256 digests; extended
+      charsets (0.2 MB). JDK 23's locale data is 8% larger than JDK 17's under `-H:+IncludeAllLocales`.
+    - The bulk stays card classes (105–112 MB of code), step 5.
+  - Recommendation: release D alone makes both apps bigger (at -Os about +15 MB compressed in the APK, estimated from
+    release C's library at the same compression ratio) for no measured speed change. Even with the booster-set and
+    method-data cuts, an -Os library would be about 340 MB, still above release C's 316 MB, because of the remaining
+    heap growth. So D is worth shipping only for its maintenance value (a supported JDK 23 toolchain, two patches
+    retired) and together with those cuts; otherwise keep 22.1 and land the set cut there first (about −10 MB on
+    22.1). Caleb decides. If D ships, use -Os: −13.5 MB of library against -O2 and no measurable AI cost
+    (per-package optimization levels are not needed, and GraalVM CE does not offer them). -Os also turns on
+    `ReduceImplicitExceptionStackTraceInformation`, so a null dereference's stack trace loses its top frames in engine
+    crash reports; `-H:-ReduceImplicitExceptionStackTraceInformation` keeps them, at an unmeasured size cost.
+  - Native steps left for D: the iOS cheap gate on the candidate, then the far-calls build (first macOS build of
+    24.1, Substrate 0.0.65 and `libvmone.a`; forced-trampoline probe; Mach-O layout; `-lvmone` product link), then the
+    product-device build, an internal TestFlight and the Android test APK with a long AI game per platform. The
+    far-calls gate's policy pin moved to 0e4eae0 in this PR, because the cheap workflow changed.
 
 ### 5. Engine releases: cards as data
 - [ ] Proof: the 1,500 simple cards built from catalogue data by one generic card class; an automatic check compares
@@ -404,3 +474,7 @@ same objects that dominate allocation.
   Loaming Shaman's trigger made a game copy for each of up to 4,000 options, uncounted and unstopped, and timed-out
   searches kept copying. Abandoned and capped searches now stop at their next copy; the cap counts every search.
   0 of 640 calibration games out of memory (#202: 2), win rates within #202's intervals.
+- 2026-10-19: step 4 built (draft PR #211, engine release D): Gluon GraalVM for JDK 23 with GluonFX 1.0.25 and
+  `libvmone.a`, far-call and Color patches retired, JVM suite green on JDK 23, Android built at -O2 and -Os. The engine
+  got bigger, not smaller (stripped library 316 → 378 / 365 MB; set-class code doubled, image heap +37 MB), with no
+  measurable AI speed change; recommendation and the iOS runs it still needs under step 4.

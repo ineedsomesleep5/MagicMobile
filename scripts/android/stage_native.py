@@ -94,9 +94,12 @@ def check_library(ndk, library, provided):
         [str(ndk/'llvm-nm'), '-D', '--undefined-only', str(library)], text=True).splitlines()
         if line.split() and '@' not in line.split()[-1]}
     # System zlib (already resolved for inflate). Save/resume checkpoints are gzip'd, which makes
-    # the JDK Deflater reachable and adds its deflate entry points from the same library.
+    # the JDK Deflater reachable and adds its deflate entry points from the same library. JDK 23's
+    # libzip (libvmone.a) also calls deflateBound, deflateSetHeader and inflateSetDictionary, and its
+    # nio getgrnam_r next to getgrgid_r (bionic since API 24; minSdk is 26).
     system = {'crc32','inflate','inflateEnd','inflateInit2_','inflateReset','getgrgid_r','stderr',
-              'deflate','deflateEnd','deflateInit2_','deflateParams','deflateReset','deflateSetDictionary'}
+              'deflate','deflateEnd','deflateInit2_','deflateParams','deflateReset','deflateSetDictionary',
+              'deflateBound','deflateSetHeader','inflateSetDictionary','getgrnam_r'}
     missing = unresolved - provided - system
     if missing:
         raise ValueError('Engine has undefined symbols nothing provides: ' + repr(sorted(missing)))

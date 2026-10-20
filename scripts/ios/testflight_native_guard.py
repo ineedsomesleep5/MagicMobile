@@ -23,8 +23,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 ENGINE = Path('packages/ondevice-engine')
 sys.path.insert(0, str(ROOT / ENGINE / 'scripts'))
-from prepare_ios_app_native import CLIBS, JDKLIBS, verify_installed
-from verify_native_candidate import digest, source_identity, validate_receipt
+from prepare_ios_app_native import STATIC_LIBS, verify_installed
+from verify_native_candidate import check_toolchain, digest, source_identity, validate_receipt
 from verify_issue4_unsigned_product import generated_project_receipt, inspect_info, inspect_text
 from verify_graal_product_layout import verify_files
 
@@ -101,8 +101,7 @@ def paired_staging(manifest, hashes):
     mapping = {'lib/libmmengine.a': 'libmmengine.a',
                'include/libmmengine.h': 'include/io.magicmobile.nativebridge.ioslibrarymain.h',
                'include/graal_isolate.h': 'include/graal_isolate.h'}
-    for group, names in (('clib', CLIBS), ('jdk', JDKLIBS)):
-        mapping.update({f'lib/lib{name}.a': f'{group}/lib{name}.a' for name in names})
+    mapping.update({f'lib/lib{name}.a': f'vmone/lib{name}.a' for name in STATIC_LIBS})
     require(set(manifest.get('files', {})) == set(mapping), 'Unexpected staged native input set')
     for staged, original in mapping.items():
         require(manifest['files'][staged].get('sha256') == hashes.get(original),
@@ -125,9 +124,7 @@ def preflight(repo, options_path, audience='internal'):
     hashes = validate_receipt(original, proof['engineSourceCommit'])
     require(hashes == proof.get('files'), 'Original native artifact no longer matches its provenance receipt')
     paired_staging(manifest, hashes)
-    compiler = read_json(original / 'compiler-patch-manifest.json')
-    require(compiler.get('patchSha256') == digest(repo / ENGINE / 'native/gluon/compiler-patches/far-calls.patch'),
-            'Compiler patch differs from the verified artifact')
+    check_toolchain(original, repo)
     return {'schema': 1, **identity, 'engineArtifactID': proof['artifactID'],
             'engineWorkflowRunID': proof['workflowRunID'], 'engineArchiveSHA256': hashes['libmmengine.a'],
             'stagedManifestSHA256': digest(manifest_path), 'provenanceSHA256': digest(provenance_path),

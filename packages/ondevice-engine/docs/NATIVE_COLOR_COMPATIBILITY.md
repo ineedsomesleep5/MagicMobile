@@ -1,5 +1,12 @@
 # Native Color initialization — 2026-09-13
 
+**Engine release D (2026-10-19): the patch is retired.** JDK 23's `java.awt.Color` (Gluon GraalVM 23+25.1,
+`lib/src.zip` SHA-256 `9479c2f7a1544b164ff58c6179c92a7468872ec062d5c6f865ef2bba410a54ef`) no longer has the
+static block that called `Toolkit.loadLibraries()` and `initIDs()`, so the builds use the JDK's own class with no
+`java.desktop` patch. Color and Toolkit stay initialized at run time. `scripts/test_color_native.sh` now fails if
+the JDK source regains that initializer, compares native and JVM values for the production policy, and keeps the
+desktop-Toolkit guard. The 22.1 history below explains why the patch existed.
+
 ## Observed failure and minimal regression
 
 Build 2026091203 reached `HumanPlayer.chooseMulligan` on the physical iPhone but

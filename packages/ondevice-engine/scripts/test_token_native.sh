@@ -3,7 +3,7 @@
 set -euo pipefail
 [[ $# == 0 || ( $# == 1 && "$1" == --prepare-only ) ]] || { echo 'Usage: bash test_token_native.sh [--prepare-only]' >&2; exit 2; }
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-TOKEN_JDK="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-svm-java17-darwin-m1-gluon-22.1.0.1-Final/Contents/Home}"
+TOKEN_JDK="${MM_GRAALVM_HOME:-$ROOT/build/toolchains/graalvm-java23-darwin-aarch64-gluon-23+25.1-dev/Contents/Home}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 PROBE_BUILD=$(mktemp -d "$ROOT/build/token-native-XXXXXX")
 UPSTREAM="$ROOT/.upstream/mage"

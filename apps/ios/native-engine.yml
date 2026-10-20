@@ -36,7 +36,7 @@ targets:
           - "$(inherited)"
           - '"$(SRCROOT)/NativeEngine/lib"'
         "OTHER_LDFLAGS[sdk=iphoneos*]": >-
-          $(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm
+          $(inherited) -lmmengine -lvmone
           -Wl,-order_file,"$(SRCROOT)/NativeLink/graal-first.order"
-          -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin
+          -lz -ldl -lc++ -lpthread
           -framework Foundation -framework UIKit -framework CoreGraphics -framework Security

@@ -1826,7 +1826,7 @@
 					"\"$(SRCROOT)/NativeEngine/lib\"",
 				);
 				"MM_ENGINE_MODE[sdk=iphoneos*]" = "embedded-xmage";
-				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm -Wl,-order_file,\"$(SRCROOT)/NativeLink/graal-first.order\" -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin -framework Foundation -framework UIKit -framework CoreGraphics -framework Security";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -lmmengine -lvmone -Wl,-order_file,\"$(SRCROOT)/NativeLink/graal-first.order\" -lz -ldl -lc++ -lpthread -framework Foundation -framework UIKit -framework CoreGraphics -framework Security";
 				PRODUCT_BUNDLE_IDENTIFIER = com.calebfeliciano.magicmobile;
 				PRODUCT_NAME = MagicMobile;
 				SDKROOT = iphoneos;
@@ -1895,7 +1895,7 @@
 					"\"$(SRCROOT)/NativeEngine/lib\"",
 				);
 				"MM_ENGINE_MODE[sdk=iphoneos*]" = "embedded-xmage";
-				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -lmmengine -ljava -lnio -lzip -lnet -lprefs -ljvm -lfdlibm -Wl,-order_file,\"$(SRCROOT)/NativeLink/graal-first.order\" -lz -ldl -lj2pkcs11 -ljaas -lextnet -lc++ -lpthread -llibchelper -lffi -ldarwin -framework Foundation -framework UIKit -framework CoreGraphics -framework Security";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "$(inherited) -lmmengine -lvmone -Wl,-order_file,\"$(SRCROOT)/NativeLink/graal-first.order\" -lz -ldl -lc++ -lpthread -framework Foundation -framework UIKit -framework CoreGraphics -framework Security";
 				PRODUCT_BUNDLE_IDENTIFIER = com.calebfeliciano.magicmobile;
 				PRODUCT_NAME = MagicMobile;
 				SDKROOT = iphoneos;

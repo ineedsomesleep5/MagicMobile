@@ -18,7 +18,7 @@ class NativeBuilderPolicyTests(unittest.TestCase):
         self.assertIn('-H:NumberOfThreads=2', args)
 
     def test_checkpoint_classes_use_the_light_registration_feature(self):
-        # GraalVM 22.1 serialization configuration would make every declared method of the
+        # GraalVM's serialization configuration would make every declared method of the
         # 48,723 checkpoint types invocable (docs/NATIVE_METADATA.md).
         args = [e.text for e in ET.parse(ROOT / 'native/gluon/pom.xml').iter(
             '{http://maven.apache.org/POM/4.0.0}arg')]
@@ -26,6 +26,10 @@ class NativeBuilderPolicyTests(unittest.TestCase):
         self.assertIn('-Dmagicmobile.checkpoint.serialization=${native.serialization.config}', args)
         self.assertIn('${native.checkpoint.feature}', args)
         self.assertIn('-J--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED', args)
+        # GraalVM 24.1 keeps its serialization registries in named builder modules.
+        self.assertIn('-J--add-opens=org.graalvm.nativeimage.builder/com.oracle.svm.hosted.reflect.serialize=ALL-UNNAMED', args)
+        self.assertIn('-J--add-exports=org.graalvm.nativeimage.builder/com.oracle.svm.core.reflect.serialize=ALL-UNNAMED', args)
+        self.assertIn('-J--add-exports=org.graalvm.nativeimage/org.graalvm.nativeimage.impl=ALL-UNNAMED', args)
         enable = '-Dnative.checkpoint.feature=--features=io.magicmobile.nativebridge.CheckpointSerializationFeature'
         for script in (ROOT / 'scripts/build_native_ios.sh', ROOT.parents[1] / 'scripts/android/build_native.sh'):
             with self.subTest(script=script.name):

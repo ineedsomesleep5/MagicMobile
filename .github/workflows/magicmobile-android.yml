@@ -3,9 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       native_reports:
-        description: 'Measurement only: heap histogram, class-init report and per-method code and heap sizes (docs/cloud/engine-size.md)'
+        description: 'Measurement only: heap histogram, class-init report, per-method code and heap sizes and the analysis call tree (docs/cloud/engine-size.md)'
         type: boolean
         default: false
+      optimize:
+        description: 'native-image optimization level: 2 (default) or s (size; docs/LIGHTER_ENGINE_PLAN.md step 4)'
+        type: choice
+        options: ['2', 's']
+        default: '2'
 permissions:
   contents: read
 concurrency:
@@ -21,10 +26,14 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # 17 (listed last) stays the default for Gradle; the engine's JVM steps use 23, the class library
+      # the native engine is built with (Gluon GraalVM for JDK 23, native/gluon/toolchain.json).
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: |
+            23
+            17
       # Third-party Maven downloads only: the XMage modules this build installs (org/mage) are
       # rebuilt from the pinned source every run and never restored from the cache.
       - uses: actions/cache@v4
@@ -36,9 +45,13 @@ jobs:
           key: android-native-maven-${{ runner.os }}-${{ hashFiles('packages/ondevice-engine/upstream.lock.json', 'packages/ondevice-engine/native/gluon/pom.xml') }}
           restore-keys: android-native-maven-${{ runner.os }}-
       - name: Build the full real XMage JVM input
-        run: bash packages/ondevice-engine/scripts/build_jvm.sh
+        run: |
+          export JAVA_HOME="$JAVA_HOME_23_X64" PATH="$JAVA_HOME_23_X64/bin:$PATH"
+          bash packages/ondevice-engine/scripts/build_jvm.sh
       - name: Real XMage JVM regression tests
-        run: bash packages/ondevice-engine/scripts/test_real_engine.sh
+        run: |
+          export JAVA_HOME="$JAVA_HOME_23_X64" PATH="$JAVA_HOME_23_X64/bin:$PATH"
+          bash packages/ondevice-engine/scripts/test_real_engine.sh
       - name: Prepare Android build SDK
         run: |
           set -euo pipefail
@@ -49,14 +62,26 @@ jobs:
         env:
           MM_ANDROID_NATIVE_HEAP: 10g
           MM_NATIVE_REPORTS: ${{ inputs.native_reports && '1' || '0' }}
-          # Host JDK17.0.3 MXBean crashes on newer cgroup layouts. Heap/CPU limits
-          # are explicit in the build; this is NOT an Android runtime option.
-          JAVA_TOOL_OPTIONS: -XX:-UseContainerSupport
+          MM_NATIVE_OPTIMIZE: ${{ inputs.optimize || '2' }}
         run: |
           set -euo pipefail
           export ANDROID_SDK="$ANDROID_HOME"
           export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
           bash scripts/android/build_native.sh
+      # The same breakdown as magicmobile-native-code-sizes.yml, from this run's unstripped library, in the log.
+      - name: Code size by package (measurement)
+        if: success() && inputs.native_reports
+        run: |
+          set -euo pipefail
+          GRAALVM_HOME=$(cat build_output/android/JAVA_HOME.txt)
+          OUT=build_output/android/native-reports
+          "$GRAALVM_HOME/bin/jimage" list "$GRAALVM_HOME/lib/modules" | grep '\.class$' | sed 's/^ *//' > "$OUT/jdk-classes.txt"
+          tr ':' '\n' < packages/ondevice-engine/build/runtime-classpath.txt | grep '\.jar$' \
+            | while read -r jar; do unzip -Z1 "$jar" | grep '\.class$' || true; done > "$OUT/jar-classes.txt"
+          python3 packages/ondevice-engine/scripts/native_code_sizes.py build_output/android/unstripped/libmmengine.so \
+            --csv "$OUT/code-sizes.csv" --top 60 --sources packages/ondevice-engine --classes "$OUT/jdk-classes.txt" --classes "$OUT/jar-classes.txt" \
+            | tee "$OUT/code-sizes.md"
+          cat "$OUT/code-sizes.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

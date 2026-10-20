@@ -9,11 +9,17 @@ OUT="$REPO/build_output/android"
 [[ -s "$ROOT/build/runtime-classpath.txt" ]]
 python3 -m unittest discover -s "$REPO/scripts/android/tests" -v
 mkdir -p "$OUT"
-[[ -f "$OUT/JAVA_HOME.txt" ]] || python3 "$REPO/scripts/android/prepare_toolchain.py" --result-file "$OUT/JAVA_HOME.txt"
+[[ -f "$OUT/JAVA_HOME.txt" ]] || python3 "$REPO/scripts/android/prepare_toolchain.py" \
+  --result-file "$OUT/JAVA_HOME.txt" --static-libs-file "$OUT/JAVA_STATIC_LIBS.txt"
 export GRAALVM_HOME=$(cat "$OUT/JAVA_HOME.txt")
 export JAVA_HOME="$GRAALVM_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
-export GRAALVM_COMPILER_BACKEND=lir
+# Checksum-verified libvmone.a (JDK static libraries and GraalVM's C helpers) from toolchain.json.
+STATIC_LIBS=$(cat "$OUT/JAVA_STATIC_LIBS.txt")
+[[ -s "$STATIC_LIBS/libvmone.a" ]]
+# -O2 by default; MM_NATIVE_OPTIMIZE=s measures size-optimized code (docs/LIGHTER_ENGINE_PLAN.md step 4).
+OPTIMIZE=${MM_NATIVE_OPTIMIZE:-2}
+[[ "$OPTIMIZE" == 2 || "$OPTIMIZE" == s ]]
 "$JAVA_HOME/bin/native-image" --version
 BUILD=$(mktemp -d "$OUT/native-XXXXXXXX")
 printf '%s\n' "$BUILD" > "$OUT/NATIVE_BUILD.txt"
@@ -42,7 +48,6 @@ mkdir -p "$BUILD/tools"
   -d "$BUILD/checkpoint-accessor" "$ROOT/native/gluon/src/main/java-base/jdk/internal/reflect/MobileCheckpointConstructorAccessor.java"
 cp "$BUILD/checkpoint-accessor/jdk/internal/reflect/MobileCheckpointConstructorAccessor.class" \
   "$BUILD/native-java/io/magicmobile/nativebridge/checkpoint-constructor-accessor.bin"
-python3 "$ROOT/scripts/prepare_native_color.py" --graalvm-home "$JAVA_HOME" --output "$BUILD/color-patch"
 # Refuse, before the long native build, a resource configuration that would embed .class files
 # (or leave out a resource the engine reads). The report lists every embedded resource.
 python3 "$ROOT/scripts/check_native_resources.py" --classpath "$BUILD/native-java:$CP" \
@@ -66,13 +71,13 @@ STUB="$BUILD/awtstub"; mkdir -p "$STUB"
   | grep -q JNI_OnLoad_awt || { echo "AWT stub did not export its entry points" >&2; exit 2; }
 
 export MAVEN_OPTS="-Xmx512m -Duser.home=$OUT/home"
-# Gluon 1.0.29 staticlib is a no-op for this Android target. Use its
+# Gluon's staticlib does not link for this Android target. Use its
 # reviewed shared-library path (compile + link), not an empty successful task.
 # Generate an Android-only POM so no iOS build/link options are changed.
 # MM_NATIVE_REPORTS=1 (measurement only, the library is unchanged): heap histogram and partition sizes
-# in full-native.log, a class-initialization report, and a dashboard dump with heap and code size per
-# class and method in $OUT/native-reports. GraalVM 22.1 has no --emit build-report, and cross-compiles
-# stop before the usual "Top 10" breakdown (docs/cloud/engine-size.md).
+# in full-native.log, a class-initialization report, a dashboard dump with heap and code size per
+# class and method in $OUT/native-reports, and the analysis call tree (CSV: what makes each method
+# reachable) under the image's reports directory (docs/cloud/engine-size.md).
 mkdir -p "$OUT/native-reports"
 python3 - "$ROOT/native/gluon/pom.xml" "$BUILD/android-pom.xml" "$STUB" "$OUT/native-reports" <<'PY'
 import os, sys, xml.etree.ElementTree as E
@@ -83,10 +88,13 @@ t=E.parse(sys.argv[1]); config=t.find('.//{%s}configuration'%ns)
 # User compiler arguments follow the target defaults, so override only Android.
 compiler=config.find('{%s}nativeImageArgs'%ns)
 E.SubElement(compiler,'{%s}arg'%ns).text='-H:+SpawnIsolates'
+# Bionic, not glibc: errno through __errno (glibc's __errno_location does not exist on Android). Substrate 0.0.69
+# passed this for GraalVM 22.1; 0.0.65 does not.
+E.SubElement(compiler,'{%s}arg'%ns).text='--libc=bionic'
 if os.environ.get('MM_NATIVE_REPORTS') == '1':
  for value in ['-H:+PrintHeapHistogram','-H:+PrintImageHeapPartitionSizes','-H:+PrintClassInitialization',
                '-H:DashboardDump='+sys.argv[4]+'/dashboard','-H:+DashboardHeap','-H:+DashboardCode',
-               '-H:+DashboardJson','-H:-DashboardBgv']:
+               '-H:+DashboardJson','-H:-DashboardBgv','-H:PrintAnalysisCallTreeType=CSV','-H:+GenerateBuildArtifactsFile']:
   E.SubElement(compiler,'{%s}arg'%ns).text=value
 args=E.SubElement(config,'{%s}linkerArgs'%ns)
 # Android-packed relocations shrink millions of image-heap RELATIVE entries (API 23+; minSdk
@@ -103,8 +111,8 @@ mvn --batch-mode --no-transfer-progress -f "$BUILD/android-pom.xml" \
   -Dnative.checkpoint.feature=--features=io.magicmobile.nativebridge.CheckpointSerializationFeature \
   "-Dnative.init.arg=--initialize-at-build-time=$INIT_TYPES" \
   '-Dnative.orm.arg=--initialize-at-build-time=com.j256.ormlite.field.types' \
-  "-Dnative.max.heap=$HEAP" "-Dnative.color.patch=$BUILD/color-patch/classes" \
-  -Dnative.target=android com.gluonhq:gluonfx-maven-plugin:1.0.29:sharedlib \
+  "-Dnative.max.heap=$HEAP" "-Dnative.optimize=$OPTIMIZE" "-Djavalibspath=$STATIC_LIBS" \
+  -Dnative.target=android com.gluonhq:gluonfx-maven-plugin:1.0.25:sharedlib \
   2>&1 | tee "$OUT/full-native.log"
 find "$BUILD/gluonfx" -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.h' \) -print | tee "$OUT/native-output-files.txt"
 python3 "$REPO/scripts/android/stage_native.py" "$REPO" "$BUILD"

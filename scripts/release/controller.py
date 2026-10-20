@@ -603,7 +603,7 @@ def stage_native(repo: Path, engine_run_id: str, *, api=gh_api, runner=stage_run
         ("stage", [sys.executable, str(scripts / "prepare_ios_app_native.py"),
                    "--archive", str(download / "libmmengine.a"),
                    "--header", str(download / "include/io.magicmobile.nativebridge.ioslibrarymain.h"),
-                   "--clib-dir", str(download / "clib"), "--jdk-lib-dir", str(download / "jdk"),
+                   "--static-lib-dir", str(download / "vmone"),
                    "--apply"], False),
     ]
     summary = {"engineRunID": run_id, "engineRunAttempt": attempt, "engineCommit": commit,

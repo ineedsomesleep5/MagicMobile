@@ -22,10 +22,10 @@ DESTINATION = ROOT / 'apps/ios/NativeEngine'
 ENGINE_SYMBOLS = ('mm_engine_request', 'mm_engine_free', 'mm_engine_shutdown_v2')
 GRAAL_SYMBOLS = ('graal_create_isolate', 'graal_attach_thread',
                  'graal_detach_thread', 'graal_tear_down_isolate')
-CLIBS = ('jvm', 'libchelper', 'ffi', 'darwin')
-JDKLIBS = ('java', 'nio', 'zip', 'net', 'prefs', 'fdlibm', 'j2pkcs11', 'jaas', 'extnet')
+# libvmone.a: the JDK static libraries plus GraalVM's C helpers (native/gluon/toolchain.json).
+STATIC_LIBS = ('vmone',)
 OWNED_FILES = {'lib/libmmengine.a', 'include/libmmengine.h', 'include/graal_isolate.h'} | {
-    f'lib/lib{name}.a' for name in CLIBS + JDKLIBS}
+    f'lib/lib{name}.a' for name in STATIC_LIBS}
 
 
 def xcrun(*args):
@@ -112,13 +112,12 @@ def verify_installed(destination=DESTINATION):
     return manifest
 
 
-def prepare(archive, header, clib_dir, jdk_lib_dir, destination=DESTINATION, *, apply=False):
+def prepare(archive, header, static_lib_dir, destination=DESTINATION, *, apply=False):
     check_destination(destination)
     sdk_header = validate_header(header)
     inputs = {'lib/libmmengine.a': archive, 'include/libmmengine.h': header,
               'include/graal_isolate.h': sdk_header}
-    for directory, names in ((clib_dir, CLIBS), (jdk_lib_dir, JDKLIBS)):
-        inputs.update({f'lib/lib{name}.a': directory / f'lib{name}.a' for name in names})
+    inputs.update({f'lib/lib{name}.a': static_lib_dir / f'lib{name}.a' for name in STATIC_LIBS})
     files = {}
     for name, source in sorted(inputs.items()):
         if not source.is_file() or not source.stat().st_size:
@@ -155,17 +154,17 @@ def prepare(archive, header, clib_dir, jdk_lib_dir, destination=DESTINATION, *, 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('archive', 'header', 'clib-dir', 'jdk-lib-dir'):
+    for name in ('archive', 'header', 'static-lib-dir'):
         parser.add_argument('--' + name, type=Path)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--verify-installed', action='store_true')
     args = parser.parse_args()
-    inputs = (args.archive, args.header, args.clib_dir, args.jdk_lib_dir)
+    inputs = (args.archive, args.header, args.static_lib_dir)
     if args.verify_installed:
         if any(inputs) or args.apply:
             parser.error('--verify-installed cannot be combined with input or apply options')
     elif not all(inputs):
-        parser.error('--archive, --header, --clib-dir and --jdk-lib-dir are all required')
+        parser.error('--archive, --header and --static-lib-dir are all required')
     try:
         result = verify_installed() if args.verify_installed else prepare(*inputs, apply=args.apply)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:

@@ -26,10 +26,10 @@ import org.graalvm.nativeimage.hosted.RuntimeReflection;
 /**
  * Build-time registration of the save/resume checkpoint classes (docs/NATIVE_METADATA.md).
  *
- * GraalVM 22.1's serialization configuration costs too much for the 48,723 checkpoint types:
- * it makes every declared constructor and method invocable (a compiled stub for each), and it
- * generates one serialization-constructor accessor class per class. Either exhausted the CI
- * builder. Every listed name, arrays and Class-object interfaces included, is registered for
+ * GraalVM's serialization configuration costs too much for the 48,723 checkpoint types: it makes
+ * every declared constructor and method invocable (a compiled stub for each; 24.1 also registers all
+ * members of every field's type), and it generates one serialization-constructor accessor class per
+ * class. Either exhausted the CI builder on 22.1. Every listed name, arrays and Class-object interfaces included, is registered for
  * reflection so that ObjectInputStream.resolveClass finds it through Class.forName. For each listed
  * class and its Serializable superclasses, it registers only what ObjectStreamClass and
  * ReflectionFactory use at run time:
@@ -74,9 +74,9 @@ public final class CheckpointSerializationFeature implements Feature {
                     throw new IllegalStateException("Desktop UI class in checkpoint serialization: " + listed.getName());
                 }
                 // ObjectInputStream.resolveClass loads every stream class, arrays included, through
-                // Class.forName. In 22.1 that finds only classes registered for reflection
-                // (ReflectionDataBuilder.processClass -> ClassForNameSupport.registerClass), so each
-                // listed name is registered, even one with no serialization metadata of its own.
+                // Class.forName. A native image finds only classes registered for reflection
+                // (ReflectionDataBuilder -> ClassForNameSupport), so each listed name is
+                // registered, even one with no serialization metadata of its own.
                 RuntimeReflection.register(listed);
                 if (listed.isArray()) {
                     arrays++;
@@ -96,18 +96,22 @@ public final class CheckpointSerializationFeature implements Feature {
                     }
                 }
             }
-            // GraalVM's registries behind serialization configuration files.
+            // GraalVM's registries behind serialization configuration files (the pom opens their packages).
             Object builder = ImageSingletons.lookup(singletonKey("org.graalvm.nativeimage.impl.RuntimeSerializationSupport"));
             Method generated = builder.getClass().getDeclaredMethod("addConstructorAccessor", Class.class, Class.class);
             generated.setAccessible(true);
-            Object registry = ImageSingletons.lookup(singletonKey("com.oracle.svm.reflect.serialize.SerializationRegistry"));
+            Object registry = ImageSingletons.lookup(singletonKey("com.oracle.svm.core.reflect.serialize.SerializationRegistry"));
             Method add = registry.getClass().getMethod("addConstructorAccessor", Class.class, Class.class, Object.class);
+            // GraalVM 24.1's ObjectStreamClass.lookup reports a Serializable class whose hub is not marked as a
+            // serialization target (GraalVM's own registration marks it in addConstructorAccessor).
+            Method target = registry.getClass().getMethod("registerSerializationTargetClass", Class.class);
             Method allocating = allocatingAccessor();
 
             Set<Class<?>> superclasses = new LinkedHashSet<>();
             int shared = 0, own = 0, fields = 0, hooks = 0;
             for (Class<?> type : classes) {
                 RuntimeReflection.register(type);
+                target.invoke(registry, type);
                 superclasses.add(type.getSuperclass());
                 if (!Enum.class.isAssignableFrom(type)) {
                     Class<?> constructorClass;

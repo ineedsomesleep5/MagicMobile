@@ -1,6 +1,9 @@
-"""Guard the narrow native policy; execution is covered by test_color_native.sh."""
+"""Guard the narrow native Color policy; execution is covered by test_color_native.sh.
+
+JDK 23's java.awt.Color has no desktop JNI initializer, so release D builds the JDK's own
+class: no java.desktop patch, Color and Toolkit still initialized at run time.
+"""
 from pathlib import Path
-import importlib.util
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -8,34 +11,32 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class NativeColorPolicyTests(unittest.TestCase):
-    def test_color_and_toolkit_remain_runtime_initialized(self):
-        args = [e.text for e in ET.parse(ROOT / 'native/gluon/pom.xml').iter(
+    def test_color_and_toolkit_remain_runtime_initialized_without_a_patch(self):
+        args = [e.text or '' for e in ET.parse(ROOT / 'native/gluon/pom.xml').iter(
             '{http://maven.apache.org/POM/4.0.0}arg')]
-        awt = [a for a in args if a and a.startswith('--initialize-at-build-time=') and 'java.awt' in a]
+        awt = [a for a in args if a.startswith('--initialize-at-build-time=') and 'java.awt' in a]
         self.assertEqual(awt, [])
         self.assertIn('--initialize-at-run-time=java.awt.Color,java.awt.Toolkit', args)
-        self.assertIn('-J--patch-module=java.desktop=${native.color.patch}', args)
         self.assertIn('--initialize-at-run-time=io.magicmobile,mage', args)
+        self.assertEqual([a for a in args if 'java.desktop' in a or 'color.patch' in a], [])
 
-    def test_unreviewed_color_source_is_rejected(self):
-        spec = importlib.util.spec_from_file_location('native_color', ROOT / 'scripts/prepare_native_color.py')
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        with self.assertRaisesRegex(ValueError, 'Unreviewed JDK Color source'):
-            module.patched_source(module.DESKTOP_INIT.encode())
+    def test_no_build_prepares_or_passes_a_color_patch(self):
+        self.assertFalse((ROOT / 'scripts/prepare_native_color.py').exists())
+        scripts = [ROOT / 'scripts' / name for name in (
+            'build_native_ios.sh', 'test_ios_toolchain.sh', 'test_ios_link.sh')]
+        scripts.append(ROOT.parents[1] / 'scripts/android/build_native.sh')
+        for script in scripts:
+            with self.subTest(script=script.name):
+                text = script.read_text()
+                self.assertNotIn('prepare_native_color', text)
+                self.assertNotIn('native.color.patch', text)
+                self.assertNotIn('color-patch', text)
 
-    def test_each_shared_pom_caller_prepares_and_passes_the_patch(self):
-        for name, build_variable in [('build_native_ios.sh', 'NATIVE_BUILD'),
-                                     ('test_ios_toolchain.sh', 'PROBE_BUILD'),
-                                     ('test_ios_simulator_toolchain.sh', 'PROBE_BUILD')]:
-            with self.subTest(script=name):
-                script = (ROOT / 'scripts' / name).read_text()
-                self.assertIn('"$ROOT/scripts/prepare_native_color.py"', script)
-                self.assertIn(f'--output "${build_variable}/color-patch"', script)
-                self.assertIn(f'"-Dnative.color.patch=${build_variable}/color-patch/classes"', script)
-        link = (ROOT / 'scripts/test_ios_link.sh').read_text()
-        self.assertIn('"-Dnative.color.patch=$PROBE_BUILD/color-patch/classes"', link)
-        self.assertIn('[[ -s "$PROBE_BUILD/color-patch/classes/java/awt/Color.class" ]]', link)
+    def test_native_regression_guards_the_jdk_color_source(self):
+        script = (ROOT / 'scripts/test_color_native.sh').read_text()
+        for guard in ("'Toolkit.loadLibraries()'", "'initIDs()'", "java.desktop/java/awt/Color.java",
+                      '--initialize-at-run-time=java.awt.Color,java.awt.Toolkit', '--desktop-guard'):
+            self.assertIn(guard, script)
 
 
 if __name__ == '__main__':

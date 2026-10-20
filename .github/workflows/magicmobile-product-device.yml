@@ -82,8 +82,7 @@ jobs:
           python3 packages/ondevice-engine/scripts/prepare_ios_app_native.py \
             --archive "$RUNNER_TEMP/native-candidate/libmmengine.a" \
             --header "$RUNNER_TEMP/native-candidate/include/io.magicmobile.nativebridge.ioslibrarymain.h" \
-            --clib-dir "$RUNNER_TEMP/native-candidate/clib" \
-            --jdk-lib-dir "$RUNNER_TEMP/native-candidate/jdk" --apply
+            --static-lib-dir "$RUNNER_TEMP/native-candidate/vmone" --apply
       - name: Verify native release source guard against the actual paired artifact
         run: >-
           python3 scripts/ios/testflight_native_guard.py source
