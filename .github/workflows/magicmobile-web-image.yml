@@ -15,8 +15,8 @@ on:
       builder_heap:
         description: 'native-image builder heap'
         type: choice
-        options: ['10g', '12g']
-        default: '10g'
+        options: ['10g', '12g', '13g']
+        default: '12g'
 permissions:
   contents: read
 concurrency:
@@ -26,7 +26,7 @@ jobs:
   web-image:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[web-image]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
         with:
@@ -83,15 +83,37 @@ jobs:
           node apps/web-play/scripts/jvm-baseline.mjs --web --games 2p:1,4p:2 --cap 600 \
             --agent "$PWD/packages/web-engine/build/agent" --out packages/web-engine/build/metrics/ci-jvm-web.json
           bash packages/web-engine/build_web.sh metadata
-      - name: Web Image build (native-image --tool:svm-wasm)
+      # Run 39482806260: analysis passed (61,954 types, 346,743 methods) but compiling ran out of a 10 GB heap with 4
+      # threads. First a full build (-O2) with 12 GB and 2 threads; if that fails, a quick build (-Ob), which needs less
+      # memory and still gives a bundle to measure (its code is less optimized: AI timings are then a lower bound).
+      - name: Web Image build (native-image --tool:svm-wasm, -O2)
+        id: full
+        continue-on-error: true
         timeout-minutes: 120
         env:
-          MM_WEB_HEAP: ${{ inputs.builder_heap || '10g' }}
+          MM_WEB_HEAP: ${{ inputs.builder_heap || '12g' }}
+          MM_WEB_BUILDER_THREADS: '2'
+          MM_WEB_OPT: '2'
         run: |
           set -euo pipefail
           free -g
           /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time.txt >&2)
+      - name: Web Image quick build (-Ob), only if the full build failed
+        if: steps.full.outcome != 'success'
+        timeout-minutes: 90
+        env:
+          MM_WEB_HEAP: ${{ inputs.builder_heap || '12g' }}
+          MM_WEB_BUILDER_THREADS: '2'
+          MM_WEB_OPT: 'b'
+        run: |
+          set -euo pipefail
+          cp packages/web-engine/build/wasm/native-image.log packages/web-engine/build/native-image-O2-failed.log || true
+          /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time-Ob.txt >&2)
+      - name: Bundle
+        run: |
+          set -euo pipefail
           bash packages/web-engine/build_web.sh bundle
+          echo "optimization: ${{ steps.full.outcome == 'success' && '-O2' || '-Ob' }}" | tee packages/web-engine/build/web/optimization.txt
           ls -la packages/web-engine/build/web
       - uses: actions/upload-artifact@v4
         if: always()
@@ -99,7 +121,8 @@ jobs:
           name: web-engine-evidence-${{ github.sha }}
           path: |
             packages/web-engine/build/wasm/native-image.log
-            packages/web-engine/build/wasm-time.txt
+            packages/web-engine/build/wasm-time*.txt
+            packages/web-engine/build/native-image-O2-failed.log
             packages/web-engine/build/metrics/
             packages/web-engine/build/web-src/web-sources.json
             packages/web-engine/build/web/manifest.json
