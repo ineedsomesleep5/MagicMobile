@@ -101,9 +101,10 @@ extension NativeGameView {
         // Portrait grows a second row toward its owner; landscape keeps one row that scrolls (no room between the lanes).
         let opponentRows = layout.landscape ? 1 : ArenaLayout.creatureRows(groups: BattlefieldAttachments.groups(opponentCreatures).count)
         let viewerRows = layout.landscape ? 1 : ArenaLayout.creatureRows(groups: BattlefieldAttachments.groups(viewerCreatures).count)
-        let opponentLane = canvas.area(layout.creatureLane(viewer: false, rows: opponentRows))
-        let viewerLane = canvas.area(layout.creatureLane(viewer: true, rows: viewerRows))
-        let tile = canvas.size(layout.tile), land = canvas.size(layout.land)
+        let sizes = layout.tiles(frames: arenaCardFrames)
+        let opponentLane = canvas.area(layout.creatureLane(viewer: false, rows: opponentRows, tileHeight: sizes.tile.height))
+        let viewerLane = canvas.area(layout.creatureLane(viewer: true, rows: viewerRows, tileHeight: sizes.tile.height))
+        let tile = canvas.size(sizes.tile), land = canvas.size(sizes.land)
         let paying = snapshot.manaPayment?.active == true
         arenaLane(title: "Opponent lands", cards: landscapePermanents(opponent.zones.battlefield, resources: true), rect: canvas.area(layout.opponentLands),
                   card: land, flipped: true, resources: true, snapshot: snapshot, targetableIds: targetableIds, chosenIds: chosenIds,

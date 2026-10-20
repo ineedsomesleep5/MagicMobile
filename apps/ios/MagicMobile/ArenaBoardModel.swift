@@ -20,6 +20,15 @@ enum BoardMode: String, CaseIterable, Identifiable {
     static func resolved(_ value: String) -> BoardMode { BoardMode(rawValue: value) ?? .hearth }
 }
 
+/// Tavern frames on battlefield cards, kept per board mode (Caleb, 2026-10-20): on for Hearth, off for Arena, whose
+/// cards look like the reference game's unless the player turns frames on.
+enum CardFramesPreference {
+    static let hearthKey = "magicmobile.cardFrames.hearth"
+    static let arenaKey = "magicmobile.cardFrames.arena"
+    static let hearthDefault = true
+    static let arenaDefault = false
+}
+
 /// The Arena board's design canvases: landscape 956 × 440 (an iPhone 17 Pro Max held sideways) and portrait 440 × 956.
 /// Every number was tuned in the Duel Board Prototype (Claude artifact) against the reference gameplay video, then moved
 /// clear of the Dynamic Island and the home indicator. Other screens scale both axes; sizes scale by the smaller axis.
@@ -163,10 +172,18 @@ struct ArenaLayout: Equatable {
     /// How many creature rows a lane shows: one up to six piles, then a second toward its owner.
     static func creatureRows(groups: Int) -> Int { groups > 6 ? 2 : 1 }
 
+    /// Tile and land sizes: the tavern frames are nearly square; the reference's cropped cards are wider than tall.
+    func tiles(frames: Bool) -> (tile: CGSize, land: CGSize) {
+        guard !frames else { return (tile, land) }
+        return landscape ? (CGSize(width: 84, height: 70), CGSize(width: 68, height: 57))
+                         : (CGSize(width: 80, height: 67), CGSize(width: 62, height: 52))
+    }
+
     /// A creature lane for `rows` rows: the first row on its centre line, a second row toward its owner.
-    func creatureLane(viewer: Bool, rows: Int) -> CGRect {
+    func creatureLane(viewer: Bool, rows: Int, tileHeight: CGFloat? = nil) -> CGRect {
         let centerY = viewer ? viewerCreatureY : opponentCreatureY
-        let rowHeight = tile.height + 10
+        // The row pads its tiles 8 pt above and below, so the lane leaves that room.
+        let rowHeight = (tileHeight ?? tile.height) + 18
         let height = rowHeight + CGFloat(max(rows - 1, 0)) * rowBack
         let top = viewer ? centerY - rowHeight / 2 : centerY + rowHeight / 2 - height
         return CGRect(x: creatureLaneX.lowerBound, y: top, width: creatureLaneX.upperBound - creatureLaneX.lowerBound, height: height)

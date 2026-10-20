@@ -152,6 +152,8 @@ struct NativeGameView: View {
     /// The Arena board (BoardMode): a hand tucked by a tap on the table, the hand card a first tap lifted, a running Auto
     /// Pay and a short notice in the caption (Auto Pay stopping, say).
     @AppStorage(BoardMode.key) var boardMode = BoardMode.defaultValue
+    @AppStorage(CardFramesPreference.hearthKey) var hearthCardFrames = CardFramesPreference.hearthDefault
+    @AppStorage(CardFramesPreference.arenaKey) var arenaCardFrames = CardFramesPreference.arenaDefault
     @State var arenaTucked = false
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
@@ -1038,6 +1040,7 @@ struct NativeGameView: View {
                 )
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
+                .environment(\.cardFrames, isArenaBoard ? arenaCardFrames : hearthCardFrames)
                 // The tavern's candle sits under the clock: the status bar leaves during a game. On a
                 // hidden background, so the board itself never becomes one big accessibility element.
                 .background { Color.clear.statusBarHidden(isTavernBoard).accessibilityHidden(true).allowsHitTesting(false) }

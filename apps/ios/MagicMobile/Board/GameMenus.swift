@@ -356,6 +356,7 @@ struct GameManagementMenu: View {
 
                     GameMenuSectionLabel(text: "Options")
                     BoardModePicker()
+                    CardFramesToggle()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()

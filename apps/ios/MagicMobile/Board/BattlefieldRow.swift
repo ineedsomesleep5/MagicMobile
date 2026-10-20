@@ -157,6 +157,7 @@ struct BattlefieldRow: View {
     @Environment(\.tavernBoard) private var tavern
     /// The Arena board piles identical lands the reference's way: each copy peeks out from under the one on top.
     @Environment(\.arenaBoard) private var arena
+    @Environment(\.cardFrames) private var cardFrames
 
     /// The row's groups, sizes and arrangement, recomputed only when an input changes.
     private var layout: BattlefieldRowLayout {
@@ -367,18 +368,17 @@ struct BattlefieldRow: View {
         }
     }
 
-    /// The Arena board (the reference's): each Aura and Equipment is its own card tucked behind the creature, its top
-    /// edge peeking out above, one step higher per card; a tap on the visible edge acts on it, a hold reads it. Three or
-    /// more show the rest as a count. In a lower row they step sideways instead, clear of the row above.
+    /// The Arena board (the reference's): each Aura and Equipment is its own card tucked behind the creature, shifted
+    /// left and a little up so its name and left edge show, one step further per card; the row makes room for them on
+    /// the left. A tap on the visible edge acts on it, a hold reads it. Four or more show the rest as a count.
     private func arenaAttachmentTile(_ group: BattlefieldCardGroup, tucked: Bool) -> some View {
         let attachments = Array(group.cards.dropFirst())
         let shown = Array(attachments.prefix(3))
-        let step = renderedCardHeight * (tucked ? 0.06 : 0.2)
-        let side = renderedCardWidth * (tucked ? 0.16 : 0.07)
+        let step = renderedCardHeight * (tucked ? 0.0 : 0.1)
+        let side = -renderedCardWidth * 0.3
         return ZStack(alignment: .bottom) {
             ForEach(Array(shown.enumerated().reversed()), id: \.element.id) { index, card in
                 battlefieldCardTile(card)
-                    .brightness(-0.06 * Double(index + 1))
                     .offset(x: side * CGFloat(index + 1), y: -step * CGFloat(index + 1))
                     .accessibilityHint("Attached to \(group.representative.card.name). Tap to select; hold to inspect.")
             }
@@ -397,6 +397,7 @@ struct BattlefieldRow: View {
                 }
         }
         .frame(width: renderedCardWidth, height: renderedCardHeight, alignment: .bottom)
+        .padding(.leading, renderedCardWidth * 0.3 * CGFloat(shown.count))
         .accessibilityElement(children: .contain)
     }
 
@@ -482,7 +483,7 @@ struct BattlefieldRow: View {
         .padding(.leading, CGFloat(peeks) * renderedCardWidth * 0.12)
         .background {
             // A big stack reads as a pile: two more frames peek out behind it (frame art only).
-            if tavern, group.count >= Self.stackThreshold, let frame = TavernFrameKind(card).image {
+            if tavern, cardFrames, group.count >= Self.stackThreshold, let frame = TavernFrameKind(card).image {
                 ForEach(0..<2, id: \.self) { layer in
                     Image(uiImage: frame).resizable()
                         .frame(width: renderedCardWidth, height: renderedCardHeight)

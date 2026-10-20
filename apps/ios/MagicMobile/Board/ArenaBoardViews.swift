@@ -5,12 +5,18 @@ import UIKit
 // with the views and helpers the Hearth board already uses (PlayerZoneMenu, BattlefieldRow, GameActionDockModel…).
 
 struct ArenaBoardKey: EnvironmentKey { static let defaultValue = false }
+struct CardFramesKey: EnvironmentKey { static let defaultValue = true }
 
 extension EnvironmentValues {
     /// True while the Arena board draws: battlefield tiles lean back with the table and tapped ones tilt instead of turning.
     var arenaBoard: Bool {
         get { self[ArenaBoardKey.self] }
         set { self[ArenaBoardKey.self] = newValue }
+    }
+    /// Tavern frames on battlefield cards (CardFramesPreference); off draws the reference game's cards.
+    var cardFrames: Bool {
+        get { self[CardFramesKey.self] }
+        set { self[CardFramesKey.self] = newValue }
     }
 }
 

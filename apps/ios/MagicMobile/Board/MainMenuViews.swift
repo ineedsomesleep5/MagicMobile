@@ -317,6 +317,7 @@ struct AppearanceSettingsView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
                     BoardModePicker()
+                    CardFramesToggle()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
@@ -423,6 +424,21 @@ struct PortraitModeToggle: View {
 }
 
 /// The top of the board switches to whoever's turn starts (BoardFocusTracker). On by default.
+/// Tavern frames on battlefield cards, for the board mode chosen above (CardFramesPreference).
+struct CardFramesToggle: View {
+    @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
+    @AppStorage(CardFramesPreference.hearthKey) private var hearth = CardFramesPreference.hearthDefault
+    @AppStorage(CardFramesPreference.arenaKey) private var arena = CardFramesPreference.arenaDefault
+
+    var body: some View {
+        let isArena = BoardMode.resolved(mode) == .arena
+        TavernToggle(title: "Card Frames", isOn: isArena ? $arena : $hearth, identifier: "settings.cardFrames",
+                     subtitle: isArena ? "Tavern frames on Arena's battlefield cards. Off, they look like the reference game's cards."
+                                       : "Tavern frames on Hearth's battlefield cards. Off, they look like the reference game's cards.")
+            .modifier(TavernSettingsPanel())
+    }
+}
+
 struct FollowTurnsToggle: View {
     @AppStorage(BoardFocusTracker.followTurnsKey) private var isOn = true
 
