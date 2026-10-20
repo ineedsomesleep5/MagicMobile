@@ -625,3 +625,8 @@ single MIT file with its license header when that is enough.
   `ArenaRowFit` sizes each row at one card size across the full table width, and BattlefieldRow takes `preferredRows`
   from it. Tiles lean with `ArenaTableLean` (the plate's camera). Preview: `crowded-battlefield` with
   `MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST=sections`.
+- 2026-10-20 (Claude): Arena layout after the current reference game (Caleb's desktop screenshot): a hand that stays
+  tucked (a tap or a slide pops one card; carry it up to play) on one touch surface (`ArenaHandTouch`), piles bottom left / top
+  right, your medallion above the hand, a standalone side section at the right edge, back-row support right of
+  centre, enamel-and-brass phase icons. Build 51 (internal) predates this. Preview hooks: `MAGICMOBILE_ARENA_HAND=open|pop`
+  on design fixtures.

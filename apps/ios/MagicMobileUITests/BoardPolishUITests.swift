@@ -495,8 +495,22 @@ final class BoardPolishUITests: XCTestCase {
                 XCTAssertTrue(primary.label.hasPrefix("Next"), "Your main phase moves on with Next")
                 let menu = application.buttons["board.arena.menu"]
                 XCTAssertTrue(menu.exists, "The gear in \(name)")
-                // The gear is the launch's first touch, which the simulator can cancel; spend that one on the table.
+                // The launch's first touch can be cancelled by the simulator; spend that one on the table.
                 UITestHarness.settleFirstTouch(application)
+                if landscape {
+                    // The hand rests tucked along the bottom edge and a tap pops the card up whole, as in the reference.
+                    let third = application.descendants(matching: .any)
+                        .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-")).element(boundBy: 2)
+                    XCTAssertTrue(third.exists, "A hand card in \(name)")
+                    // Pin it by identifier: a popped card moves in the accessibility order, so "the third" changes.
+                    let card = application.descendants(matching: .any).matching(identifier: third.identifier).firstMatch
+                    let tucked = card.frame.minY
+                    XCTAssertGreaterThan(tucked, application.frame.height * 0.8, "The hand rests tucked in \(name)")
+                    card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+                    let opened = NSPredicate { _, _ in card.frame.minY < tucked - 40 }
+                    XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: opened, object: card)], timeout: 3),
+                                   .completed, "A tap pops the card up in \(name)")
+                }
                 menu.tap()
                 XCTAssertTrue(application.buttons["Game Log"].waitForExistence(timeout: 5), "The gear opens the game menu in \(name)")
             }

@@ -154,7 +154,8 @@ struct NativeGameView: View {
     @AppStorage(BoardMode.key) var boardMode = BoardMode.defaultValue
     @AppStorage(CardFramesPreference.hearthKey) var hearthCardFrames = CardFramesPreference.hearthDefault
     @AppStorage(CardFramesPreference.arenaKey) var arenaCardFrames = CardFramesPreference.arenaDefault
-    @State var arenaTucked = false
+    /// The Arena hand opened by a touch (it rests tucked otherwise).
+    @State var arenaHandOpen = false
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
     @State var arenaNotice: String?

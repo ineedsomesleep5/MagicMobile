@@ -337,6 +337,8 @@ struct ArenaOpponentHandFan: View {
 
     var body: some View {
         let shown = min(count, 12)
+        // A few cards still fan out past the medallion in front of them.
+        let pitch = shown > 1 ? max(self.pitch, card.width * 1.8 / CGFloat(shown - 1)) : 0
         ZStack {
             ForEach(0..<shown, id: \.self) { index in
                 let offset = CGFloat(index) - CGFloat(shown - 1) / 2
@@ -392,11 +394,25 @@ struct ArenaPhaseStrip: View {
         let rim = viewerTurn ? ArenaPalette.viewerRim : ArenaPalette.opponentRim
         let spacing = (width - 12) / CGFloat(max(items.icons.count, 1))
         let positions = items.icons.indices.map { 6 + spacing * (CGFloat($0) + 0.5) }
+        let shown = lit ?? items.current
         ZStack(alignment: .leading) {
-            Capsule().fill(rim.opacity(0.65)).frame(width: width, height: 1.4)
+            Capsule()
+                .fill(LinearGradient(colors: [.clear, TavernPalette.brass.opacity(0.75), TavernPalette.brass.opacity(0.75), .clear],
+                                     startPoint: .leading, endPoint: .trailing))
+                .frame(width: width, height: 1.4)
+                .shadow(color: .black.opacity(0.6), radius: 0.5, y: 0.8)
+                .position(x: width / 2, y: iconSize / 2 + 2)
+            if let shown, shown > 0, shown < positions.count {
+                // The part of the turn already played, lit in the turn's colour.
+                Capsule().fill(LinearGradient(colors: [rim.opacity(0.2), rim], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: positions[shown] - positions[0], height: 2)
+                    .position(x: (positions[0] + positions[shown]) / 2, y: iconSize / 2 + 2)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: shown)
+            }
             ForEach(Array(items.icons.enumerated()), id: \.offset) { index, icon in
                 let on = index == (lit ?? items.current)
-                ArenaPhaseIcon(icon: icon, rim: rim, on: on, size: iconSize * (icon == .diamond ? 0.7 : 1))
+                ArenaPhaseIcon(icon: icon, rim: rim, on: on,
+                               size: iconSize * (icon == .diamond ? 0.7 : items.icons.count > 5 ? 0.9 : 1) * (on ? 1.2 : 1))
                     .scaleEffect(on && ignite ? 1.45 : 1)
                     .position(x: positions[index], y: iconSize / 2 + 2)
             }
@@ -433,6 +449,8 @@ struct ArenaPhaseStrip: View {
     }
 }
 
+/// One phase icon: a small enamel piece in a brass rim with an engraved detail, dark walnut while it waits, lit from
+/// gold-white into the turn's colour, with a halo, while it is the current step.
 struct ArenaPhaseIcon: View {
     let icon: ArenaPhaseStrip.Icon
     let rim: Color
@@ -440,16 +458,88 @@ struct ArenaPhaseIcon: View {
     let size: CGFloat
 
     var body: some View {
-        let shape = ArenaPhaseShape(icon: icon)
+        let silhouette = ArenaPhaseShape(icon: icon)
+        let enamel = on ? [Color.white, Color(red: 1, green: 0.86, blue: 0.56), rim]
+                        : [Color(red: 0.42, green: 0.33, blue: 0.24), Color(red: 0.2, green: 0.14, blue: 0.1), Color(red: 0.08, green: 0.05, blue: 0.04)]
         ZStack {
-            shape.fill(on ? AnyShapeStyle(LinearGradient(colors: [.white, Color(red: 1, green: 0.85, blue: 0.55), rim],
-                                                         startPoint: .top, endPoint: .bottom))
-                          : AnyShapeStyle(ArenaPalette.iconFill))
-            shape.stroke(on ? Color.white.opacity(0.9) : rim, lineWidth: 1.2)
+            silhouette.fill(LinearGradient(colors: enamel, startPoint: .top, endPoint: .bottom))
+            // Facet shading: the lower right turns away from the lamp.
+            silhouette.fill(LinearGradient(colors: [.clear, .black.opacity(on ? 0.16 : 0.32)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            ArenaPhaseDetail(icon: icon)
+                .stroke(on ? Color(red: 0.42, green: 0.2, blue: 0.04).opacity(0.8) : TavernPalette.brass.opacity(0.6),
+                        style: StrokeStyle(lineWidth: max(0.7, size * 0.05), lineCap: .round, lineJoin: .round))
+            silhouette.stroke(LinearGradient(colors: [Color(red: 1, green: 0.9, blue: 0.62), TavernPalette.brass, Color(red: 0.33, green: 0.2, blue: 0.07)],
+                                             startPoint: .top, endPoint: .bottom),
+                              style: StrokeStyle(lineWidth: max(1, size * 0.07), lineJoin: .round))
+            // A thin lamp highlight along the top edge.
+            silhouette.stroke(Color.white.opacity(on ? 0.7 : 0.25), lineWidth: max(0.5, size * 0.03))
+                .mask(LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .center))
         }
         .frame(width: size, height: size)
-        .shadow(color: on ? rim : .clear, radius: on ? 4 : 0)
-        .shadow(color: on ? rim.opacity(0.8) : .clear, radius: on ? 9 : 0)
+        // The halo sits behind without taking part in the layout (inside the stack it doubled the lit icon's size).
+        .background {
+            if on {
+                Circle()
+                    .fill(RadialGradient(colors: [rim.opacity(0.7), rim.opacity(0)], center: .center, startRadius: 0, endRadius: size))
+                    .frame(width: size * 2, height: size * 2)
+            }
+        }
+        .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+        .shadow(color: on ? rim : .clear, radius: on ? 5 : 0)
+    }
+}
+
+/// A rounded rectangle drawn from lines and arcs. iOS fills a `Path(roundedRect:)` returned from a small Shape at the
+/// shape's full size from the rectangle's corner (a block beside each card icon, 2026-10-20), so the phase icons
+/// draw theirs by hand.
+func arenaRoundedRectPath(_ rect: CGRect, radius: CGFloat) -> Path {
+    let r = min(radius, rect.width / 2, rect.height / 2)
+    var path = Path()
+    path.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
+    path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+    path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.minY + r), radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+    path.addArc(center: CGPoint(x: rect.maxX - r, y: rect.maxY - r), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+    path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+    path.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r), radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+    path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+    path.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r), radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+    path.closeSubpath()
+    return path
+}
+
+/// The engraved line inside each phase icon, on the same 20 × 20 grid: a gem's table, a card's art box and text, a
+/// blade's fuller, a shield's boss and bands, a burst's core.
+struct ArenaPhaseDetail: Shape {
+    let icon: ArenaPhaseStrip.Icon
+
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 20
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * scale, y: rect.minY + y * scale) }
+        var path = Path()
+        switch icon {
+        case .diamond:
+            path.addLines([p(10, 6.6), p(13.4, 10), p(10, 13.4), p(6.6, 10)])
+            path.closeSubpath()
+        case .card:
+            path.addPath(arenaRoundedRectPath(CGRect(origin: p(6.7, 4.3), size: CGSize(width: 6.6 * scale, height: 6.2 * scale)),
+                                              radius: scale))
+            path.move(to: p(7, 12.9)); path.addLine(to: p(13, 12.9))
+            path.move(to: p(7, 14.9)); path.addLine(to: p(11.4, 14.9))
+        case .sword:
+            path.move(to: p(16.2, 3.8)); path.addLine(to: p(8.8, 11.2))
+            path.addEllipse(in: CGRect(origin: p(1.6, 16.4), size: CGSize(width: 2 * scale, height: 2 * scale)))
+        case .swords:
+            path.move(to: p(16.2, 3.8)); path.addLine(to: p(8.8, 11.2))
+            path.move(to: p(3.8, 3.8)); path.addLine(to: p(11.2, 11.2))
+        case .shield:
+            path.addEllipse(in: CGRect(origin: p(7.8, 6.8), size: CGSize(width: 4.4 * scale, height: 4.4 * scale)))
+            path.move(to: p(10, 3.4)); path.addLine(to: p(10, 6.8))
+            path.move(to: p(10, 11.2)); path.addLine(to: p(10, 16.4))
+        case .burst:
+            path.addEllipse(in: CGRect(origin: p(7.4, 7.8), size: CGSize(width: 5.2 * scale, height: 5.2 * scale)))
+        }
+        return path
     }
 }
 
@@ -472,8 +562,8 @@ struct ArenaPhaseShape: Shape {
         case .diamond:
             return polygon([(10, 3.5), (16.5, 10), (10, 16.5), (3.5, 10)])
         case .card:
-            return Path(roundedRect: CGRect(x: rect.minX + 5 * scale, y: rect.minY + 2.5 * scale, width: 10 * scale, height: 15 * scale),
-                        cornerRadius: 2 * scale)
+            return arenaRoundedRectPath(CGRect(x: rect.minX + 5 * scale, y: rect.minY + 2.5 * scale, width: 10 * scale, height: 15 * scale),
+                                        radius: 2 * scale)
         case .sword:
             var path = polygon(blade)
             path.addPath(polygon(guardBar)); path.addPath(polygon(grip))

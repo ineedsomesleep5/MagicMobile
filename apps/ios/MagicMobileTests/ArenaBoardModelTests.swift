@@ -91,19 +91,16 @@ final class ArenaBoardModelTests: XCTestCase {
         }
     }
 
-    func testHandRestsForBoardDecisionsAndRisesWithPriority() {
-        var situation = ArenaHandPosture.Situation(hasPriority: true, isViewerTurn: true, isMainPhase: true)
+    /// The reference game's hand: tucked until touched, open while the player keeps it open, and out of the way for any
+    /// decision on the board.
+    func testHandRestsTuckedUntilOpened() {
+        XCTAssertEqual(ArenaHandPosture.resolve(.init()), .resting)
+        var situation = ArenaHandPosture.Situation(opened: true)
         XCTAssertEqual(ArenaHandPosture.resolve(situation), .raised)
-        situation.tucked = true
-        XCTAssertEqual(ArenaHandPosture.resolve(situation), .resting)
-        situation.tucked = false
         situation.boardDecision = true
         XCTAssertEqual(ArenaHandPosture.resolve(situation), .resting)
-        // The opponent's turn: raised only when something in hand can answer.
-        let response = ArenaHandPosture.Situation(hasPriority: true, isViewerTurn: false, hasPlayableCard: true)
-        XCTAssertEqual(ArenaHandPosture.resolve(response), .raised)
-        XCTAssertEqual(ArenaHandPosture.resolve(.init(hasPriority: true, isViewerTurn: false)), .resting)
-        XCTAssertEqual(ArenaHandPosture.resolve(.init(hasPriority: false, isViewerTurn: true, isMainPhase: true)), .resting)
+        XCTAssertEqual(ArenaHandPosture.resolve(.init(opened: true, dragging: true)), .resting)
+        XCTAssertEqual(ArenaHandPosture.resolve(.init(opened: true, spectating: true)), .resting)
     }
 
     func testFanSlotsCentreAndSpread() {
