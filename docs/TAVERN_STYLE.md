@@ -176,6 +176,19 @@ pass through; the medallion's pop-over lists each badge in words. Table-wide hin
 stay under the phase plate. See `docs/ANDROID_PARITY.md` for the
 piece-by-piece port and `docs/BOARD_FX_ROADMAP.md` for effects.
 
+## Board modes: Hearth and Arena
+
+Two board modes share the tavern kit (Caleb, 2026-10-20); each will get its own themes later.
+
+- **Hearth** is the board above: sockets, the hourglass, the mana rail.
+- **Arena** follows the reference game, as approved in the Duel Board Prototype artifact. Its layout is `ArenaLayout` (`ArenaBoardModel.swift`, 956×440 and 440×956 canvases), not `TavernSockets`.
+  - The table: a leaning tavern table (`tavern-arena-landscape` / `-portrait`, from `scripts/brand/arena_layout.json`). The vertical mat is wider than the screen, because the camera narrows its far half.
+  - Battlefield and stack: lands sit at each player's left edge, creatures on rows around the compass midline. The stack's top card stays big on the right.
+  - The hand and decks: the hand rises while you can play and rests at the edge otherwise; in vertical it tucks behind the front rail, and a tap on the table puts it down. Decks are 3D stacks with the real card back, and a revealed top card lies face up on them.
+  - Controls and medallions: the phase strip and buttons sit in one corner (on the front rail in vertical). The life number sits over the player's picture in the medallion.
+  - Tiles keep the tavern frames but lean back with the table; a tapped tile tilts 12° and greys under a big tap mark.
+  - Floating mana is plain symbols. Cards you can play from the graveyard or exile end the fan with a shimmer. Exile piles sit by the graveyards.
+
 ## Known Android gaps (still plain or system-styled)
 
 From `docs/ANDROID_PARITY.md` (2026-10-03), not re-verified since: the game log drawer's contents,

@@ -463,6 +463,46 @@ final class BoardPolishUITests: XCTestCase {
 
     /// Walnut Tavern held sideways: the landscape plate with the medallions up the left column,
     /// the phase plate and pass button down the right and the battlefield on the mat.
+    /// The Arena board (BoardMode.arena) in both orientations: your medallion, the opponent's, the corner's primary
+    /// button and phase strip, the gear menu and the hand; payment offers Auto Pay.
+    func testArenaBoardKeepsItsControlsInBothOrientations() {
+        for (fixture, landscape) in [("normal-battlefield", false), ("normal-battlefield", true), ("mana-payment-prompt", false)] {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", landscape ? "NO" : "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = landscape ? .landscapeLeft : .portrait
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            let shaped = NSPredicate { _, _ in (application.frame.width > application.frame.height) == landscape }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: shaped, object: application)], timeout: 10), .completed)
+            let name = "\(fixture)-\(landscape ? "landscape" : "portrait")"
+            XCTAssertTrue(application.buttons["board.lifeOrb"].waitForExistence(timeout: 10), "Your medallion in \(name)")
+            XCTAssertTrue(application.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.zones.")).firstMatch.exists,
+                          "The opponent's medallion in \(name)")
+            XCTAssertTrue(application.descendants(matching: .any)["board.phase.plate"].exists, "The phase strip in \(name)")
+            XCTAssertTrue(application.descendants(matching: .any)["board.hand.scroll"].exists, "The hand in \(name)")
+            let primary = application.buttons["board.action.primary"]
+            XCTAssertTrue(primary.exists, "The corner's button in \(name)")
+            XCTAssertGreaterThan(primary.frame.midX, application.frame.width * 0.6, "The corner's button sits on the right in \(name)")
+            XCTAssertGreaterThan(primary.frame.midY, application.frame.height * 0.8, "The corner's button sits at the bottom in \(name)")
+            if fixture == "mana-payment-prompt" {
+                XCTAssertEqual(primary.label, "Auto Pay", "Paying offers Auto Pay")
+            } else {
+                XCTAssertTrue(primary.label.hasPrefix("Next"), "Your main phase moves on with Next")
+                let menu = application.buttons["board.arena.menu"]
+                XCTAssertTrue(menu.exists, "The gear in \(name)")
+                menu.tap()
+                XCTAssertTrue(application.buttons["Game Log"].waitForExistence(timeout: 5), "The gear opens the game menu in \(name)")
+            }
+            captureImage(name: "arena-\(name)")
+        }
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     func testTavernLandscapeTableKeepsItsControls() {
         for fixture in ["normal-battlefield", "crowded-battlefield", "four-player-focus", "attached-permanents"] {
             app?.terminate()

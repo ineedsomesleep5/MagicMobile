@@ -155,6 +155,10 @@ in the same-named Kotlin file:
    to the screen), `CGSize.isTavernPad` (short side ≥ 700). Android tablets: the same map once a tablet is
    in hand.
 
+## Arena board mode (iOS 2026-10-20, Android pending)
+
+The Arena board (`BoardMode.arena`, key `magicmobile.boardMode`, Settings → Board) is iOS only so far. Android still shows Hearth whatever the key says. Port as one piece: `ArenaBoardModel.swift` (layout, hand posture, Auto Pay, combat phase, extra hand; its tests are portable) into core, the views (`Board/ArenaBoardViews.swift`, `ArenaHandFan.swift`, `NativeGameView+Arena*.swift`) into same-named Kotlin files, and the plates come over by name (`tavern-arena-*`).
+
 ## Log
 
 - 2026-09-24 (Claude): Started. Engine client, model, adapters, message log, yield policy and

@@ -21,6 +21,19 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-20 (Claude, Arena mode): a pitched Blender camera (`tavern_table.py --pitch`) draws the far half of the mat
+  narrower and its true centre above its visual middle. Cards placed on the canvas edge spilled onto the frame at the
+  opponent's land row, and the compass sat about 50 pt high. **Rule:** measure the rendered plate (sample brightness
+  rows with `magick … -crop Wx1+0+y txt:-` to find the mat's inner edge per row) before setting lanes. Move the emblem
+  with `--emblem-y`. Render a portrait mat wider than the screen when the far rows need its full width
+  (`arena_layout.json` portrait mat −16…456). Also: `print -r` writes `\n` literally in zsh. An asset
+  `Contents.json` written that way breaks actool ("failed to read asset tags") with no file named; use real newlines
+  as `install_tavern_assets.sh` does.
+- 2026-10-20 (Claude): the hidden-card image `https://gatherer.wizards.com/Images/CardBack.jpg` answers 404 since
+  Gatherer's redesign, so every face-down card fell back to its placeholder. **Fix:** Scryfall's card back
+  (`backs.scryfall.io/large/0/a/0aeebaf5-….jpg`) in `CardImageURL.image("Hidden card")`; the Arena board caches it once in
+  Caches (`ArenaCardBackArt`, only with the artwork consent). Where: `Board/CardImageURL.swift`, `Board/ArenaBoardViews.swift`.
+
 - 2026-10-11 (Claude): the guided first game's coach (`GuidedGame.swift` / `GuidedGame.kt`) reads only
   the snapshot (prompt envelope, legal action types, stack, turn), not the board's interaction
   state, so it stays inside the SwiftPM package and the JVM core and both run the same

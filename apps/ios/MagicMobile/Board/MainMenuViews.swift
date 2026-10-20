@@ -316,6 +316,7 @@ struct AppearanceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
+                    BoardModePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()

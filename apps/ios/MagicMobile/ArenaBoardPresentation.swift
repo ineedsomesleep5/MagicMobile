@@ -437,6 +437,11 @@ struct ArenaBattlefieldCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Tavern table: parchment frame, ink banner and stat gems, like the board concept.
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board: the tile lies back with the leaning table, and a tapped one tilts a little and greys under a big
+    /// tap mark (the reference's look) instead of turning; an attacker keeps its colour while it attacks.
+    @Environment(\.arenaBoard) private var arena
+
+    private var showsTapped: Bool { card.tapped == true && !(arena && card.isAttacking == true) }
 
     private var accent: Color {
         card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold
@@ -785,8 +790,18 @@ struct ArenaBattlefieldCard: View {
                     .padding(.top, BattlefieldCardFaceLayout.counterTop).allowsHitTesting(false)
             }
         }
+        .overlay {
+            if arena && showsTapped {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: width * 0.5, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
-            if card.tapped == true {
+            if card.tapped == true && !arena {
                 Image(systemName: "arrow.turn.down.right")
                     .font(.system(size: max(8, width * 0.12), weight: .black))
                     .foregroundStyle(MagicPalette.parchment)
@@ -819,8 +834,8 @@ struct ArenaBattlefieldCard: View {
                     .allowsHitTesting(false)
             }
         }
-        .saturation(card.tapped == true ? 0.15 : 1)
-        .brightness(card.tapped == true ? -0.16 : 0)
+        .saturation(showsTapped ? (arena ? 0.25 : 0.15) : 1)
+        .brightness(showsTapped ? (arena ? -0.32 : -0.16) : 0)
         .background {
             // A framed tile glows while it is playable, a target or selected: light only, no line.
             // Drawn after the tapped tile's grey so a tapped target still glows red.
@@ -828,7 +843,7 @@ struct ArenaBattlefieldCard: View {
                 TavernTileGlow(color: accent)
             }
         }
-        .rotationEffect(.degrees(card.tapped == true ? -7 : 0))
+        .rotationEffect(.degrees(showsTapped ? (arena ? 12 : -7) : 0))
         .shadow(color: framedTavern ? .clear : accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
         .opacity(card.isPhasedOut ? 0.42 : 1)
         .overlay(alignment: .center) {
@@ -839,6 +854,7 @@ struct ArenaBattlefieldCard: View {
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: card.isPhasedOut)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: card.tapped)
+        .rotation3DEffect(.degrees(arena ? 24 : 0), axis: (x: 1, y: 0, z: 0), anchor: .center, perspective: 0.45)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)

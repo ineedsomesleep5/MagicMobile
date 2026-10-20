@@ -355,6 +355,7 @@ struct GameManagementMenu: View {
                     RememberedChoicesPanel()
 
                     GameMenuSectionLabel(text: "Options")
+                    BoardModePicker()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()

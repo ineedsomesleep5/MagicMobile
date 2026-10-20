@@ -46,11 +46,19 @@ def parse_args():
     p.add_argument("--skip-sprites", action="store_true")
     p.add_argument("--sprites-only", action="store_true")
     p.add_argument("--max-faces", type=int, default=60000)
+    # The Arena board's tables (scripts/brand/arena_layout.json): no sockets, and a camera leaning over your side.
+    p.add_argument("--bare", action="store_true", help="no medallion rings, pass socket or mana rail (the Arena table)")
+    p.add_argument("--pitch", type=float, default=0.0, help="lean the camera forward this many degrees (perspective)")
+    p.add_argument("--lens", type=float, default=35.0, help="lens of the leaning camera, in mm")
+    p.add_argument("--zoom", type=float, default=1.0, help="distance of the leaning camera: >1 shows more table")
+    p.add_argument("--emblem-y", type=float, default=0.0,
+                   help="emblem centre in layout points; a leaning camera draws the mat's true centre above its visual middle")
     p.add_argument("--tooling", default=os.path.join(home, "tooled-leather-pattern.png"))
     return p.parse_args(argv)
 
 
 ARGS = parse_args()
+BARE = ARGS.bare
 LAYOUT = json.load(open(ARGS.layout))[ARGS.variant]
 SW, SH = LAYOUT["screen"]
 U = 0.01                      # one point in scene units
@@ -567,7 +575,9 @@ def build_table(scene):
     floor = flat_material("SocketFloor", (0.018, 0.010, 0.006), rough=0.9)
 
     # The whole table: worn planks; then a raised carved walnut frame around the mat.
-    box("Table", 0, 0, -0.06, W + 1.0, H + 1.0, 0.04, planks)
+    # A leaning camera sees past the canvas edges, so the planks run further.
+    margin = 4.0 if ARGS.pitch else 1.0
+    box("Table", 0, 0, -0.06, W + margin, H + margin, 0.04, planks)
     mx0, my0, mx1, my1 = rect_scene(L["mat"])
     frame_w = 0.13
     frame = box("Frame", (mx0 + mx1) / 2, (my0 + my1) / 2, FRAME_TOP / 2 - 0.02,
@@ -580,7 +590,8 @@ def build_table(scene):
     off = frame_w * 0.55
     rivet_rail(mx0 - off, my0 - off, mx0 - off, my1 + off, rail_z, brass)
     rivet_rail(mx1 + off, my0 - off, mx1 + off, my1 + off, rail_z, brass)
-    add_emblem(leather, ((mx0 + mx1) / 2, mat_cy), min(mx1 - mx0, my1 - my0) * 0.56)
+    emblem_y = pt(0, ARGS.emblem_y)[1] if ARGS.emblem_y else mat_cy
+    add_emblem(leather, ((mx0 + mx1) / 2, emblem_y), min(mx1 - mx0, my1 - my0) * 0.56)
     inset_panel("Mat", L["mat"], MAT_Z, 0.04, leather, brass)
     stitches(mx0 + 0.07, my0 + 0.07, mx1 - 0.07, my1 - 0.07, 0.058,
              flat_material("Thread", (0.52, 0.36, 0.17), rough=0.85))
@@ -606,22 +617,23 @@ def build_table(scene):
     if crest:
         cx, cy = pt(*crest["center"])
         crest_ob = import_prop(os.path.join(ARGS.props, "crest.glb"), crest["width"] * U, (cx, cy), FRAME_TOP + 0.02)
-    if crest_ob is None:  # no crest (landscape) or no model: the medallion ring alone
+    if crest_ob is None and not BARE:  # no crest (landscape) or no model: the medallion ring alone
         ring_prop(os.path.join(ARGS.props, "medallion-frame.glb"), L["opponentMedallion"]["center"],
                   L["opponentMedallion"]["radius"], FRAME_TOP + 0.02)
-    ring_prop(os.path.join(ARGS.props, "medallion-frame.glb"), L["lifeMedallion"]["center"],
-              L["lifeMedallion"]["radius"], FRAME_TOP)
-    for key in ("opponentMedallion", "lifeMedallion"):
+    if not BARE:
+        ring_prop(os.path.join(ARGS.props, "medallion-frame.glb"), L["lifeMedallion"]["center"],
+                  L["lifeMedallion"]["radius"], FRAME_TOP)
+    for key in (() if BARE else ("opponentMedallion", "lifeMedallion")):
         x, y = pt(*L[key]["center"])
         cylinder(key + "Floor", x, y, FRAME_TOP + 0.002, L[key]["radius"] * U * 1.02, 0.006, floor)
 
     # The pass socket: just a dark recess. The button sprite brings its own riveted brass
     # ring, so a second lip here would double it.
-    px, py = pt(*L["passButton"]["center"])
-    pr = L["passButton"]["radius"] * U
-    cylinder("PassFloor", px, py, FRAME_TOP + 0.002, pr * 1.04, 0.006, floor)
-
-    build_mana_rail(L["manaRail"], brass, floor)
+    if not BARE:
+        px, py = pt(*L["passButton"]["center"])
+        pr = L["passButton"]["radius"] * U
+        cylinder("PassFloor", px, py, FRAME_TOP + 0.002, pr * 1.04, 0.006, floor)
+        build_mana_rail(L["manaRail"], brass, floor)
 
     props = L.get("props", {})
     if "candle" in props:
@@ -673,6 +685,16 @@ def ortho_camera(scene, span, horizontal):
     cam_data.sensor_fit = "HORIZONTAL" if horizontal else "VERTICAL"
     cam = bpy.data.objects.new("Cam", cam_data)
     cam.location = (0, 0, 20)
+    if ARGS.pitch:
+        # The Arena table: a perspective camera leaning forward over your side, so the far rows foreshorten.
+        cam_data.type = "PERSP"
+        cam_data.sensor_width = 36
+        cam_data.sensor_height = 36
+        cam_data.lens = ARGS.lens
+        pitch = math.radians(ARGS.pitch)
+        dist = (span / 2) / math.tan(math.atan(18 / ARGS.lens)) * ARGS.zoom
+        cam.location = (0, -dist * math.sin(pitch), dist * math.cos(pitch))
+        cam.rotation_euler = (pitch, 0, 0)
     scene.collection.objects.link(cam)
     scene.camera = cam
     return cam

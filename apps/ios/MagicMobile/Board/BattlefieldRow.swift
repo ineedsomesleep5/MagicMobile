@@ -142,6 +142,8 @@ struct BattlefieldRow: View {
     var arrangement: BattlefieldRowArrangement = .automatic
     var allowsManaUndo = false
     var manaPaymentActive = false
+    /// Where the tiles sit in the lane while they fit: centred, or (the Arena board's lands) from its leading edge.
+    var alignment: Alignment = .center
     let runAction: (LegalAction) -> Void
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
@@ -153,6 +155,8 @@ struct BattlefieldRow: View {
     @State private var layoutCache = BattlefieldRowLayoutCache()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board piles identical lands the reference's way: each copy peeks out from under the one on top.
+    @Environment(\.arenaBoard) private var arena
 
     /// The row's groups, sizes and arrangement, recomputed only when an input changes.
     private var layout: BattlefieldRowLayout {
@@ -287,7 +291,7 @@ struct BattlefieldRow: View {
                         ScrollView(.horizontal, showsIndicators: rowContentWidth(arranged[row]) > rowWidth) {
                             rowTiles(arranged[row], tucked: row > 0)
                                 .padding(.horizontal, 8)
-                                .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2)
+                                .frame(minWidth: rowWidth, minHeight: ((availableHeight ?? 0) - 4) / 2, alignment: alignment)
                                 .reportsBattlefieldRowOffset(row)
                         }
                         .scrollClipDisabled()
@@ -304,7 +308,7 @@ struct BattlefieldRow: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, availableHeight == nil ? 0 : 8)
-                    .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: .center)
+                    .frame(minWidth: rowWidth, minHeight: availableHeight ?? max(cardHeight + 6, 44), alignment: alignment)
                     .reportsBattlefieldRowOffset(0)
                 }
                 .scrollClipDisabled()
@@ -409,6 +413,7 @@ struct BattlefieldRow: View {
         let targetable = !targetableIds.isDisjoint(with: groupIds)
         let combatHighlighted = !combatHighlightIds.isDisjoint(with: groupIds)
         let legal = group.cards.contains { legalAction(for: $0) != nil }
+        let peeks = arena && card.card.isLand ? min(group.count - 1, 5) : 0
 
         ArenaBattlefieldCard(
             card: card,
@@ -420,6 +425,19 @@ struct BattlefieldRow: View {
             height: renderedCardHeight
         )
         .frame(width: renderedCardWidth, height: renderedCardHeight)
+        .background(alignment: .topLeading) {
+            if peeks > 0 {
+                ForEach(1...peeks, id: \.self) { layer in
+                    ArenaBattlefieldCard(card: group.cards[layer], zoneName: title, width: renderedCardWidth, height: renderedCardHeight)
+                        .frame(width: renderedCardWidth, height: renderedCardHeight)
+                        .offset(x: -CGFloat(layer) * renderedCardWidth * 0.12, y: CGFloat(layer) * 2)
+                        .zIndex(-Double(layer))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .padding(.leading, CGFloat(peeks) * renderedCardWidth * 0.12)
         .background {
             // A big stack reads as a pile: two more frames peek out behind it (frame art only).
             if tavern, group.count >= Self.stackThreshold, let frame = TavernFrameKind(card).image {
@@ -437,6 +455,7 @@ struct BattlefieldRow: View {
         .boardFXCardMotion(card.instanceId)
         .opacity(!targetableIds.isEmpty && !targetable ? 0.54 : 1)
         .overlay(alignment: .bottomLeading) {
+            if group.count > peeks + 1 {
             Text("×\(group.count)")
                 .font(.system(size: 10, weight: .black))
                 .foregroundStyle(.white)
@@ -446,6 +465,7 @@ struct BattlefieldRow: View {
                 .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.58), lineWidth: 1))
                 .padding(3)
                 .allowsHitTesting(false)
+            }
         }
         .onCardInteraction(tap: {
             if let next = nextChoosable(in: group) {

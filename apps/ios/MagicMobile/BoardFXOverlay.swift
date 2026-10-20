@@ -41,6 +41,9 @@ struct BoardFXOverlay: View {
     let prune: () -> Void
     /// Walnut Tavern: names under showcased cards are engraved brass plates.
     var tavern = false
+    /// The Arena board keeps the stack's top card on the table, so a spell lands there with a flare of light instead of
+    /// a centre showcase, and a permanent arrives straight from that card. A commander keeps its whole moment.
+    var arena = false
 
     /// Cards that just left the battlefield no longer report bounds; keep their last rectangle.
     @State private var lastKnownBounds: [String: CGRect] = [:]
@@ -174,7 +177,7 @@ struct BoardFXOverlay: View {
             case let .enteredBattlefield(id, playerID, source, _, entrance):
                 guard let target = rect(id) else { return nil }
                 let origin = source == .stack ? anchors.stackPoint : anchors.handPoint(playerID)
-                let kind: BoardFXFlight.Kind = entrance == .plain
+                let kind: BoardFXFlight.Kind = entrance == .plain || (arena && entrance != .commander)
                     ? .arrive(from: origin, to: target)
                     : .showcaseArrive(from: origin, center: anchors.stackPoint, to: target, commander: entrance == .commander)
                 return BoardFXFlight(effect: effect, card: card, kind: kind, tavern: tavern)
@@ -183,6 +186,7 @@ struct BoardFXOverlay: View {
                 let target = destination == .hand ? anchors.handPoint(playerID) : anchors.playerPoint(playerID)
                 return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target, destination: destination))
             case let .spellCast(_, _, controllerID, _, weight):
+                if arena && weight != .commander { return nil }
                 // On the tavern table a commander rises out of its owner's medallion.
                 let origin = tavern && weight == .commander ? anchors.playerPoint(controllerID ?? anchors.viewerID) : anchors.handPoint(controllerID)
                 return BoardFXFlight(effect: effect, card: card,
@@ -203,6 +207,12 @@ struct BoardFXOverlay: View {
                       in context: inout GraphicsContext) {
         let motion = fx.usesMotion
         switch fx.event {
+        case let .spellCast(_, _, _, tint, weight) where arena && weight != .commander:
+            // The Arena stack card: a burst of light as the spell lands on it, then it stays readable there.
+            guard motion else { return }
+            let window = min(1, elapsed / 0.7)
+            BoardFXPainter.rays(at: anchors.stackPoint, color: weight == .ability ? BoardFXPainter.gold : tint.color,
+                                radius: weight == .big ? 170 : 130, progress: window, elapsed: elapsed, in: &context)
         case let .spellCast(stackID, name, controllerID, tint, weight) where tavern && weight == .commander:
             // The tavern commander (storyboard): the table dims, the medallion flares, embers
             // follow the commander up to the middle, firelight holds it and a ribbon names it.
@@ -271,7 +281,7 @@ struct BoardFXOverlay: View {
             // With a flight, the glow is the landing; without one it plays immediately.
             let flying = motion && subjects[cardID] != nil
             let landing = flying ? BoardFXScheduler.landingFraction(entrance) : 0
-            if flying && entrance != .plain && p < landing {
+            if flying && entrance != .plain && p < landing && !(arena && entrance != .commander) {
                 let center = anchors.stackPoint
                 let showcase = BoardFXFlight.castSize(entrance == .commander ? .commander : .spell)
                 let hold = CGRect(x: center.x - showcase.width / 2, y: center.y - showcase.height / 2,
@@ -986,6 +996,30 @@ enum BoardFXHaptics {
     }
 }
 
+/// Hearth or Arena (BoardMode): the board's layout, chosen here and in the game menu; it changes at once, mid-game too.
+struct BoardModePicker: View {
+    @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Board")
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                Text(BoardMode.resolved(mode).summary)
+                    .font(.system(size: 12, design: .serif))
+                    .opacity(0.65)
+                    .lineLimit(2)
+            }
+            Picker("Board", selection: $mode) {
+                ForEach(BoardMode.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.boardMode")
+        }
+        .modifier(TavernSettingsPanel())
+    }
+}
+
 struct BoardEffectsPicker: View {
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
 
@@ -1419,14 +1453,60 @@ struct BoardTurnBanner: View {
     let isViewer: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.arenaBoard) private var arena
     @State private var shown = false
     @State private var sweep: CGFloat = -1
 
     private var tavernKit: Bool { tavern && TavernUIKit.available }
 
     var body: some View {
+        if arena { arenaBanner } else { classicBanner }
+    }
+
+    /// The Arena board's banner (the reference's): a slim gold title on a brass hairline that draws out from the middle,
+    /// with a sweep of light through the letters. No band: it plays over the draw for under a second.
+    private var arenaBanner: some View {
         let accent = isViewer ? BoardFXPainter.gold : Color(red: 0.62, green: 0.74, blue: 1)
-        ZStack {
+        return ZStack {
+            LinearGradient(colors: [.clear, accent, Color(red: 1, green: 0.93, blue: 0.7), accent, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: 360, height: 2)
+                .shadow(color: accent, radius: 8)
+                .scaleEffect(x: shown ? 1 : 0.02, y: 1)
+                .offset(y: 4)
+            RadialGradient(colors: [accent.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 140)
+                .frame(width: 300, height: 70)
+                .blendMode(.plusLighter)
+                .opacity(shown ? 1 : 0)
+            Text(title)
+                .font(.system(size: 26, weight: .bold, design: .serif))
+                .tracking(1.5)
+                .foregroundStyle(LinearGradient(colors: [.white, accent], startPoint: .top, endPoint: .bottom))
+                .shadow(color: .black.opacity(0.85), radius: 2, y: 1)
+                .shadow(color: accent.opacity(0.7), radius: 10)
+                .overlay {
+                    LinearGradient(colors: [.clear, .white.opacity(0.95), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 46)
+                        .offset(x: sweep * 140)
+                        .blendMode(.plusLighter)
+                        .mask { Text(title).font(.system(size: 26, weight: .bold, design: .serif)).tracking(1.5) }
+                }
+                .offset(y: -12)
+                .opacity(shown ? 1 : 0)
+                .scaleEffect(shown ? 1 : 0.86)
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), turn \(turn)")
+        .onAppear {
+            if reduceMotion { shown = true; return }
+            withAnimation(.easeOut(duration: 0.28)) { shown = true }
+            withAnimation(.easeInOut(duration: 0.7).delay(0.12)) { sweep = 1 }
+        }
+    }
+
+    private var classicBanner: some View {
+        let accent = isViewer ? BoardFXPainter.gold : Color(red: 0.62, green: 0.74, blue: 1)
+        return ZStack {
             Group {
                 if tavernKit {
                     tavernBand

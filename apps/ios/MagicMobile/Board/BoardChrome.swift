@@ -236,6 +236,8 @@ struct GameCompletionOverlay: View {
     private var isVictory: Bool { snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board shows your own medallion instead of the trophy: rising in gold, or falling grey.
+    @Environment(\.arenaBoard) private var arena
     @State private var revealed = false
 
     var body: some View {
@@ -248,10 +250,20 @@ struct GameCompletionOverlay: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 12) {
+                if arena, let viewer = snapshot.human {
+                    ArenaHeroMedallion(player: viewer, diameter: 104, active: isVictory, showsLife: false)
+                        .saturation(isVictory ? 1 : 0)
+                        .brightness(isVictory ? 0 : -0.15)
+                        .scaleEffect(revealed || reduceMotion ? 1 : (isVictory ? 0.4 : 1.1))
+                        .offset(y: revealed || reduceMotion ? 0 : (isVictory ? 50 : -30))
+                        .rotationEffect(.degrees(revealed || reduceMotion || isVictory ? 0 : -4))
+                        .accessibilityHidden(true)
+                } else {
                 Image(systemName: isVictory ? "trophy.fill" : "flag.checkered")
                     .font(.system(size: 40, weight: .black))
                     .foregroundStyle(isVictory ? MagicPalette.antiqueGold : Color(red: 0.8, green: 0.35, blue: 0.3))
                     .shadow(color: (isVictory ? MagicPalette.antiqueGold : .red).opacity(0.6), radius: 12)
+                }
 
                 Text(title.uppercased())
                     .font(.system(size: 48, weight: .black, design: .serif))
