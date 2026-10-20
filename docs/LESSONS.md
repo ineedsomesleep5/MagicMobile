@@ -136,6 +136,26 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-20 (Claude, web engine M1): GraalVM Web Image 25.4 is single-threaded in more ways than "Thread.start runs
+  nothing". `Thread.interrupt()` on the current thread is a no-op too, so XMage's AI timeout (interrupt the search,
+  which then reads `isInterrupted()` in ComputerPlayer6, `PlayerImpl.canRespond`, `GameImpl.checkIfGameIsOver`) cannot
+  work; there is no native zip library, so `GZIPInputStream`, `Inflater` and `CRC32` throw `UnsatisfiedLinkError`; timed
+  waits (`BlockingQueue.poll(timeout)`, `Condition.await`) throw `IllegalMonitorStateException` or "Unsafe.park"; once a
+  `FutureTask.run` after `Thread.interrupt()` trapped the whole instance ("Fatal unsafe read error"). Untimed
+  `poll`/`offer`, `ConcurrentHashMap`, atomics, plain `ReentrantLock`, `java.awt.Color` and Gson work. **Rule:** probe a
+  JDK API in a tiny image before relying on it (a 15–40 s build, ~0.7 GB); the web build rewrites copies of the sources
+  (packages/web-engine/web_sources.py) and never the phone tree. `@JS` natives need `args={...}` unless compiled with
+  `-parameters`, and `javac --release N` cannot see the `org.graalvm.webimage.api` module (compile without `--release`).
+  A `@TargetClass(Thread.class) @Substitute start()` in user code is accepted and makes a stray start fail loudly.
+  Where: docs/WEB_ENGINE_M1.md.
+- 2026-10-20 (Claude, web engine M1): a game copy that ends (a player loses inside it) calls `GameImpl.end()`, which
+  aborts the copy's players, and a `MobileHumanPlayer` copy shares the live player's input channel, so the live human's
+  channel closes. Upstream `CombatUtil.willItSurviveSimple` (the AI choosing blocks) runs state-based actions on such a
+  copy. After that, every question to the human throws "Mobile match stopped", XMage rolls back and asks again, and the
+  game ends without the human. Phones run the same code; it showed up as 5 of 92 seeded JVM games in the web harness.
+  **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
+  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor (not fixed in M1; engine follow-up).
+
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
   makes a full deep game copy for every option of a trigger, and Loaming Shaman (Draconic Destruction) targets "any number"

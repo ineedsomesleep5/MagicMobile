@@ -1,8 +1,11 @@
 name: Web engine (GraalVM Web Image)
 # Milestone M1 (docs/WEB_ENGINE_M1.md): the real XMage adapter compiled to WebAssembly for desktop browsers.
-# Manual only: the full engine's Web Image build needs a ~10 GB builder heap, so it runs here, never on the 8 GB Mac.
+# Manual only (dispatch, or a push to a web-engine branch whose commit message has [web-image]): the full engine's
+# Web Image build needs a ~10 GB builder heap, so it runs here, never on the 8 GB Mac.
 # Ships nothing to players. The bundle artifact (build/web) is benchmarked locally with apps/web-play.
 on:
+  push:
+    branches: ['claude/web-engine-*']
   workflow_dispatch:
     inputs:
       phone_regressions:
@@ -21,6 +24,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   web-image:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[web-image]')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -82,7 +86,7 @@ jobs:
       - name: Web Image build (native-image --tool:svm-wasm)
         timeout-minutes: 120
         env:
-          MM_WEB_HEAP: ${{ inputs.builder_heap }}
+          MM_WEB_HEAP: ${{ inputs.builder_heap || '10g' }}
         run: |
           set -euo pipefail
           free -g
