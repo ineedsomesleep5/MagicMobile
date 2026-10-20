@@ -16,6 +16,8 @@
 #   build_web.sh all       every stage in order
 #
 # Environment: GRAALVM_HOME (wasm stage; Oracle GraalVM 25.4), MM_WEB_HEAP (builder heap, default 10g),
+# MM_WEB_OPT (native-image optimization level: 2 default, 1, or b for a quick build that needs less memory),
+# MM_WEB_BUILDER_THREADS (default 4; fewer threads compile fewer methods at once, so peak memory is lower),
 # JAVA_HOME for the other stages (JDK 17+).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -99,6 +101,7 @@ stage_wasm() {
   # --tool:svm-wasm must come first. Options mirror the phone build (native/gluon/pom.xml) where they apply.
   "$GRAALVM_HOME/bin/native-image" --tool:svm-wasm \
     -J-Xmx"$heap" --parallelism="${MM_WEB_BUILDER_THREADS:-4}" \
+    -O"${MM_WEB_OPT:-2}" \
     -H:+UnlockExperimentalVMOptions \
     -cp "$out/classes:$CP" \
     --initialize-at-run-time=io.magicmobile,mage \
