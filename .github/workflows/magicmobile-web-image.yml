@@ -15,8 +15,8 @@ on:
       builder_heap:
         description: 'native-image builder heap'
         type: choice
-        options: ['10g', '12g', '13g']
-        default: '12g'
+        options: ['12g', '13g', '14g']
+        default: '14g'
 permissions:
   contents: read
 concurrency:
@@ -83,37 +83,33 @@ jobs:
           node apps/web-play/scripts/jvm-baseline.mjs --web --games 2p:1,4p:2 --cap 600 \
             --agent "$PWD/packages/web-engine/build/agent" --out packages/web-engine/build/metrics/ci-jvm-web.json
           bash packages/web-engine/build_web.sh metadata
-      # Run 39482806260: analysis passed (61,954 types, 346,743 methods) but compiling ran out of a 10 GB heap with 4
-      # threads. First a full build (-O2) with 12 GB and 2 threads; if that fails, a quick build (-Ob), which needs less
-      # memory and still gives a bundle to measure (its code is less optimized: AI timings are then a lower bound).
+      # Run 39482806260 ran out of a 10 GB heap compiling with 4 threads. Run 39495674113 compiled with 2 threads and laid
+      # out methods within 12 GB at -O2 and -Ob alike, then ran out building the Wasm module (stage 8/8). This run gives
+      # the builder 14 GB backed by swap on /mnt (the runner has about 16 GB of RAM), drops the per-instruction comments
+      # Web Image keeps for its .wat text (-H:WasmComments=NONE) and skips the Closure pass over the small JS wrapper.
+      - name: Add swap on /mnt
+        run: |
+          set -euo pipefail
+          sudo fallocate -l 12G /mnt/web-image.swap
+          sudo chmod 600 /mnt/web-image.swap
+          sudo mkswap /mnt/web-image.swap
+          sudo swapon /mnt/web-image.swap
+          free -g
       - name: Web Image build (native-image --tool:svm-wasm, -O2)
-        id: full
-        continue-on-error: true
-        timeout-minutes: 120
+        timeout-minutes: 150
         env:
-          MM_WEB_HEAP: ${{ inputs.builder_heap || '12g' }}
+          MM_WEB_HEAP: ${{ inputs.builder_heap || '14g' }}
           MM_WEB_BUILDER_THREADS: '2'
           MM_WEB_OPT: '2'
+          MM_WEB_EXTRA_OPTIONS: >-
+            -H:WasmComments=NONE -H:-ClosureCompiler
+            -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
+            -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M
         run: |
           set -euo pipefail
-          free -g
+          ( while true; do sleep 60; echo "[mem] $(date -u +%T) $(free -m | awk '/Mem:/{print "used="$3"MB avail="$7"MB"} /Swap:/{print "swap="$3"MB"}' | tr '\n' ' ')"; done ) &
           /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time.txt >&2)
-      - name: Web Image quick build (-Ob), only if the full build failed
-        if: steps.full.outcome != 'success'
-        timeout-minutes: 90
-        env:
-          MM_WEB_HEAP: ${{ inputs.builder_heap || '12g' }}
-          MM_WEB_BUILDER_THREADS: '2'
-          MM_WEB_OPT: 'b'
-        run: |
-          set -euo pipefail
-          cp packages/web-engine/build/wasm/native-image.log packages/web-engine/build/native-image-O2-failed.log || true
-          /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time-Ob.txt >&2)
-      - name: Bundle
-        run: |
-          set -euo pipefail
           bash packages/web-engine/build_web.sh bundle
-          echo "optimization: ${{ steps.full.outcome == 'success' && '-O2' || '-Ob' }}" | tee packages/web-engine/build/web/optimization.txt
           ls -la packages/web-engine/build/web
       - uses: actions/upload-artifact@v4
         if: always()
@@ -122,7 +118,8 @@ jobs:
           path: |
             packages/web-engine/build/wasm/native-image.log
             packages/web-engine/build/wasm-time*.txt
-            packages/web-engine/build/native-image-O2-failed.log
+            packages/web-engine/build/wasm-build-output.json
+            packages/web-engine/build/builder-gc.log*
             packages/web-engine/build/metrics/
             packages/web-engine/build/web-src/web-sources.json
             packages/web-engine/build/web/manifest.json
