@@ -71,9 +71,13 @@ export class GuestTable {
     };
   }
 
+  get localPeerID() { return this.relay?.localPeerID; }
+
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
-  private set(patch: Partial<TableState>) { this.state = { ...this.state, ...patch }; this.listeners.forEach((l) => l()); }
-  private changed = () => this.listeners.forEach((l) => l());
+  /** Bumped on every change to the table or its game, for React's external-store hook. */
+  version = 0;
+  private set(patch: Partial<TableState>) { this.state = { ...this.state, ...patch }; this.changed(); }
+  private changed = () => { this.version += 1; this.listeners.forEach((l) => l()); };
 
   /** Joins a table by its code (or a join link); the host's AI choices apply once the table fills. */
   join(codeOrLink: string, name: string, deck: J) {

@@ -41,5 +41,10 @@ with (out / 'printings.tsv').open('w') as f:
         f.write('\t'.join([row['name'], row['setCode'], row['collectorNumber']]) + '\n')
     for alias, target in sorted((data.get('nameAliases') or {}).items()):
         f.write('\t'.join(['=', alias, target]) + '\n')
+# Recorded engine polls for the `?preview=<fixture>` scripted host (development only).
+fixtures = repo / 'apps/ios/MagicMobileTests/Fixtures/OnDevice'
+(out / 'preview').mkdir(exist_ok=True)
+for name in ('2p-priority', '2p-battlefield', '2p-combat', '2p-stack', '2p-mana', '2p-attackers'):
+    (out / 'preview' / f'{name}.json').write_bytes((fixtures / f'{name}.json').read_bytes())
 (out / 'precons.json').write_text(json.dumps({'decks': decks}, ensure_ascii=False))
 print('Prepared', len(data['cards']), 'printings and', len(decks), 'precons for catalogue', data['catalogueHash'][:12])
