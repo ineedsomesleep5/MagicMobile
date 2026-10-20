@@ -136,6 +136,15 @@ contradicting one.
 
 ## Website
 
+- 2026-10-20 (Claude, web guest M2): three traps in `apps/web`. (1) A ` `/` ` escape written into a JS
+  regex literal can land in the file as the raw character, which ends the literal ("Unterminated regular expression");
+  build such patterns with `new RegExp("…\\u2028…")`. (2) The desktop app's browser pane gives no animation frames
+  while it is hidden, so a Three.js scene that only renders from `requestAnimationFrame` looks frozen in screenshots and
+  `project()` reads a stale camera; `TableScene` renders once directly when the page is hidden and calls
+  `camera.updateMatrixWorld()` after every resize. (3) Simulator builds of the iOS app carry no XMage engine (the board
+  says "NO ENGINE"), so a simulator cannot host a relay table; a phone-hosted test needs the Android emulator (with the
+  simulator shut down) or a device. Where: `apps/web/src/core/displayText.ts`, `src/board/TableScene.ts`, `apps/web/README.md`.
+
 - 2026-10-11 (Claude): the donation link lives in one place, the tip button on the site's support page
   (`apps/site/public/support/index.html`). Both apps' support links (main menu, Settings, Updates) and
   the home page open `https://magicmobile-downloads.vercel.app/support/`, so swapping the provider is a
