@@ -77,5 +77,7 @@ their mana cost capsule; the right column holds the decision, the stack, the log
 ## Not done yet
 
 - Ranked, friends, sign-in and deck import (later web steps); only the five precons are offered.
-- Multiplayer pods render but were only exercised with fixtures; the real-table check was 2 players.
+- **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
+  against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator
+  builds have no engine) and play it to the end from desktop Chrome; pods are untested.
 - No sounds, card moments or animations beyond tiles gliding into place.
