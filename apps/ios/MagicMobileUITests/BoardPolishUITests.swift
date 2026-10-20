@@ -495,6 +495,8 @@ final class BoardPolishUITests: XCTestCase {
                 XCTAssertTrue(primary.label.hasPrefix("Next"), "Your main phase moves on with Next")
                 let menu = application.buttons["board.arena.menu"]
                 XCTAssertTrue(menu.exists, "The gear in \(name)")
+                // The gear is the launch's first touch, which the simulator can cancel; spend that one on the table.
+                UITestHarness.settleFirstTouch(application)
                 menu.tap()
                 XCTAssertTrue(application.buttons["Game Log"].waitForExistence(timeout: 5), "The gear opens the game menu in \(name)")
             }

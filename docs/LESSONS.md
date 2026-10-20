@@ -428,3 +428,12 @@ contradicting one.
   takes at most 255 files. When rebuilding a take for the app, use the loudness target the audition used, not the
   level it measured: `match_loudness` saturates past -1 dB, so a sharp card snap asked for -22.2 lands at -25 (asking
   for -25 gave -27). Short cues build as `.caf`, which browsers can't decode: convert them to m4a for any web page.
+- 2026-10-20 (Claude, Arena sections): BattlefieldRow sizes itself with `ArenaPermanentLayout`, which caps the shrink at
+  five visible columns and splits into two rows once a row has more than five tiles. A board that lays out its own
+  sections has to pass the card size it fitted and `preferredRows`, or a sixth creature scrolls behind the edge fade
+  however wide the lane is. Count tiles the way the row draws them (`BattlefieldRow.arenaTileUnits`): piles open into
+  single cards while they are targeted or in combat, and attachments peek out to the left.
+- 2026-10-20 (Claude, simulator): after many launches that force landscape (`-magicmobile.portraitModeEnabled NO`) the
+  iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
+  "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
+  simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.

@@ -440,8 +440,15 @@ struct ArenaBattlefieldCard: View {
     /// The Arena board: the tile lies back with the leaning table, and a tapped one tilts a little and greys under a big
     /// tap mark (the reference's look) instead of turning; an attacker keeps its colour while it attacks.
     @Environment(\.arenaBoard) private var arena
+    /// Card Frames (Settings, kept per board mode): off draws the reference game's card instead of the tavern frame.
+    @Environment(\.cardFrames) private var cardFrames
 
     private var showsTapped: Bool { card.tapped == true && !(arena && card.isAttacking == true) }
+
+    /// Frames off: the reference game's battlefield card. A card is cropped below its art: a name bar tinted by its
+    /// colour, the art, a silver power/toughness box hanging off the corner. A token sits in an arched frame.
+    private var plainTile: Bool { tavern && !cardFrames }
+    private var isTokenCard: Bool { card.card.isToken == true || card.card.typeLine.localizedCaseInsensitiveContains("token") }
 
     private var accent: Color {
         card.isPhasedOut ? .gray : targetable ? .red : selected ? MagicPalette.antiqueGold
@@ -450,7 +457,7 @@ struct ArenaBattlefieldCard: View {
     }
 
     /// Walnut Tavern with its kit installed: art only, in a carved walnut frame.
-    private var tavernFrame: Bool { tavern && TavernUIKit.available }
+    private var tavernFrame: Bool { tavern && TavernUIKit.available && cardFrames }
 
     /// The tile wears its painted frame, whose ribbon and gems overhang the tile's edges.
     private var framedTavern: Bool { tavernFrame && TavernFrameKind(card).image != nil }
@@ -484,6 +491,98 @@ struct ArenaBattlefieldCard: View {
         case "G": return Color(red: 0.22, green: 0.66, blue: 0.30)
         default: return Color(red: 0.62, green: 0.62, blue: 0.66)
         }
+    }
+
+    @ViewBuilder private var plainFace: some View {
+        let shape = ArenaTileShape(arched: isTokenCard, corner: width * 0.07)
+        let edge = max(1.6, width * 0.035)
+        ZStack {
+            shape.fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+            shape.inset(by: edge * 0.45).strokeBorder(colorEdge.opacity(0.9), lineWidth: edge * 0.9)
+            VStack(spacing: 0) {
+                if !isTokenCard {
+                    Text(card.card.name)
+                        .font(.system(size: max(6.5, height * 0.105), weight: .semibold, design: .serif))
+                        .foregroundStyle(Color(red: 0.08, green: 0.07, blue: 0.06))
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                        .padding(.horizontal, width * 0.05)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: max(9, height * 0.17))
+                        .background(ZStack { Color(white: 0.93); colorEdge.opacity(0.32) })
+                        .overlay(alignment: .bottom) { Rectangle().fill(.black.opacity(0.5)).frame(height: 0.8) }
+                }
+                TavernArtCrop(card: card, zoneName: zoneName, tagReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
+                    cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
+                    .clipShape(isTokenCard ? AnyShape(ArenaTileShape(arched: true, corner: 0)) : AnyShape(Rectangle()))
+            }
+            .padding(edge * 1.4)
+            .clipShape(shape)
+            shape.strokeBorder(.black.opacity(0.85), lineWidth: 1)
+        }
+        .frame(width: width, height: height)
+        .overlay(alignment: .bottomTrailing) {
+            if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+                powerToughnessBox(power, toughness)
+                    .offset(x: width * 0.03, y: height * 0.1)
+            } else if let shield = shieldCounter {
+                counterShield(shield.value, battle: shield.battle)
+                    .offset(x: width * 0.03, y: height * 0.12)
+            }
+        }
+    }
+
+    /// A planeswalker's loyalty, or a battle's defense: the reference shows it on a shield where a creature's stats sit.
+    private var shieldCounter: (value: Int, battle: Bool)? {
+        guard !card.isCreature else { return nil }
+        let battle = card.card.typeLine.localizedCaseInsensitiveContains("battle")
+        guard card.card.isPlaneswalker || battle else { return nil }
+        let name = battle ? "defense" : "loyalty"
+        guard let value = card.counters?.first(where: { $0.key.lowercased().contains(name) })?.value else { return nil }
+        return (value, battle)
+    }
+
+    /// The counter chips leave out the one the shield already shows.
+    private var chipBadges: [CardCounterBadge] {
+        guard plainTile, let shield = shieldCounter else { return card.counterBadges }
+        let name = shield.battle ? "defense" : "loyalty"
+        return card.counterBadges.filter { !$0.name.lowercased().contains(name) }
+    }
+
+    private func counterShield(_ value: Int, battle: Bool) -> some View {
+        let fill = battle ? [Color(red: 0.78, green: 0.22, blue: 0.14), Color(red: 0.42, green: 0.08, blue: 0.05)]
+                          : [Color(white: 0.26), Color(white: 0.05)]
+        return Text("\(value)")
+            .font(.system(size: max(9, width * 0.17), weight: .heavy, design: .serif))
+            .monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .foregroundStyle(.white)
+            .padding(.bottom, width * 0.05)
+            .frame(width: max(18, width * 0.3), height: max(20, width * 0.34))
+            .background(ArenaShieldShape().fill(LinearGradient(colors: fill, startPoint: .top, endPoint: .bottom)))
+            .overlay(ArenaShieldShape().stroke(Color(white: 0.86), lineWidth: 1.2))
+            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+            .accessibilityLabel(battle ? "\(value) defense" : "\(value) loyalty")
+    }
+
+    /// The reference's power/toughness box: silver (gold for a legend), toughness red while damaged.
+    private func powerToughnessBox(_ power: String, _ toughness: String) -> some View {
+        let powerColor = Color.black
+        let toughnessColor: Color = (card.damage ?? 0) > 0 ? Color(red: 0.75, green: 0.1, blue: 0.08) : .black
+        let fill = isLegendary ? [Color(red: 1, green: 0.93, blue: 0.68), Color(red: 0.86, green: 0.7, blue: 0.36)]
+                               : [Color(white: 0.98), Color(white: 0.76)]
+        return HStack(spacing: 0) {
+            Text(power).foregroundStyle(powerColor)
+            Text("/").foregroundStyle(.black.opacity(0.75))
+            Text(toughness).foregroundStyle(toughnessColor)
+        }
+        .font(.system(size: max(9, width * 0.16), weight: .heavy, design: .serif))
+        .monospacedDigit()
+        .lineLimit(1).minimumScaleFactor(0.6)
+        .padding(.horizontal, width * 0.07)
+        .frame(minWidth: width * 0.42, minHeight: max(14, height * 0.21))
+        .background(RoundedRectangle(cornerRadius: max(3, width * 0.05)).fill(LinearGradient(colors: fill, startPoint: .top, endPoint: .bottom)))
+        .overlay(RoundedRectangle(cornerRadius: max(3, width * 0.05)).strokeBorder(Color(white: 0.2), lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
     }
 
     /// The tavern tile (option B, Caleb 2026-10-02): the card's art in an arched frame of its
@@ -680,7 +779,7 @@ struct ArenaBattlefieldCard: View {
     /// Labeled combat keywords while the card attacks or blocks, gained ones included.
     private var combatPlan: CombatKeywordBadgePlan? {
         // A framed tile keeps keywords as icons in its ability row, in combat too.
-        guard card.isInCombat, !card.isPhasedOut, !framedTavern else { return nil }
+        guard card.isInCombat, !card.isPhasedOut, !framedTavern, !plainTile else { return nil }
         let plan = CombatKeywordBadgePlan(keywords: card.combatKeywords, cardWidth: width, cardHeight: height)
         return plan.visible.isEmpty ? nil : plan
     }
@@ -695,7 +794,9 @@ struct ArenaBattlefieldCard: View {
 
     var body: some View {
         Group {
-        if tavernFrame {
+        if plainTile {
+            plainFace
+        } else if tavernFrame {
             tavernFace
         } else {
         VStack(spacing: 0) {
@@ -753,7 +854,7 @@ struct ArenaBattlefieldCard: View {
         .foregroundStyle(.white)
         .frame(width: width, height: height)
         .background {
-            if tavernFrame {
+            if tavernFrame || plainTile {
                 Color.clear
             } else if tavern {
                 LinearGradient(colors: [Color(red: 0.93, green: 0.86, blue: 0.70), Color(red: 0.78, green: 0.67, blue: 0.48)],
@@ -762,7 +863,7 @@ struct ArenaBattlefieldCard: View {
                 Color(red: 0.07, green: 0.08, blue: 0.10)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: framedTavern ? 0 : tavern ? 4 : 7).inset(by: framedTavern ? -width : 0))
+        .clipShape(RoundedRectangle(cornerRadius: framedTavern ? 0 : tavern ? 4 : 7).inset(by: framedTavern || plainTile ? -width : 0))
         // A framed tile's drop shadow is a pre-blurred image: a live shadow per tile is an
         // offscreen pass each, too slow with dozens of tokens.
         .shadow(color: .black.opacity(tavern && !framedTavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
@@ -771,8 +872,8 @@ struct ArenaBattlefieldCard: View {
         }
         .overlay(alignment: .bottomLeading) {
             BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
-                .padding(.leading, tavernFrame ? 5 : 2)
-                .padding(.bottom, tavernFrame ? tavernBadgeInset : (showsFooter ? 22 : 2))
+                .padding(.leading, tavernFrame ? 5 : plainTile ? 3 : 2)
+                .padding(.bottom, tavernFrame ? tavernBadgeInset : plainTile ? 3 : (showsFooter ? 22 : 2))
                 .allowsHitTesting(false)
         }
         .overlay(alignment: .topLeading) {
@@ -783,8 +884,8 @@ struct ArenaBattlefieldCard: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if !card.counterBadges.isEmpty {
-                CardCounterBadgeStrip(badges: Array(card.counterBadges.prefix(2)), cardWidth: width)
+            if !chipBadges.isEmpty {
+                CardCounterBadgeStrip(badges: Array(chipBadges.prefix(2)), cardWidth: width)
                     .frame(maxWidth: card.tokenCopySourceName == nil ? nil : BattlefieldCardFaceLayout.counterColumnWidth(cardWidth: width),
                            alignment: .trailing)
                     .padding(.top, BattlefieldCardFaceLayout.counterTop).allowsHitTesting(false)
@@ -819,13 +920,15 @@ struct ArenaBattlefieldCard: View {
         .overlay {
             // A framed tile glows around its frame only while it is playable, a target or
             // selected; the painted frame is its border otherwise.
-            if !framedTavern {
+            if plainTile {
+                if legal || targetable || selected { ArenaTileShape(arched: isTokenCard, corner: width * 0.07).stroke(accent, lineWidth: 2) }
+            } else if !framedTavern {
                 RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1)
             }
         }
         .overlay {
             // Legendary permanents wear a gold edge unless a play/target state owns the border.
-            if isLegendary && !framedTavern && !(legal || targetable || selected) && !card.isPhasedOut {
+            if isLegendary && !framedTavern && !plainTile && !(legal || targetable || selected) && !card.isPhasedOut {
                 RoundedRectangle(cornerRadius: 7)
                     .strokeBorder(AngularGradient(colors: [MagicPalette.antiqueGold, Color(red: 1, green: 0.93, blue: 0.62),
                                                            Color(red: 0.62, green: 0.44, blue: 0.14), MagicPalette.antiqueGold],
@@ -841,10 +944,13 @@ struct ArenaBattlefieldCard: View {
             // Drawn after the tapped tile's grey so a tapped target still glows red.
             if framedTavern && (legal || targetable || selected) && !card.isPhasedOut {
                 TavernTileGlow(color: accent)
+            } else if plainTile && (legal || targetable || selected) && !card.isPhasedOut {
+                // Light that follows the card's own outline.
+                ArenaTileShape(arched: isTokenCard, corner: width * 0.07).fill(accent).blur(radius: width * 0.08).opacity(0.95)
             }
         }
         .rotationEffect(.degrees(showsTapped ? (arena ? 12 : -7) : 0))
-        .shadow(color: framedTavern ? .clear : accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
+        .shadow(color: framedTavern || plainTile ? .clear : accent.opacity(legal || targetable ? 0.45 : 0.1), radius: 5)
         .opacity(card.isPhasedOut ? 0.42 : 1)
         .overlay(alignment: .center) {
             if card.isPhasedOut {
@@ -854,7 +960,8 @@ struct ArenaBattlefieldCard: View {
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: card.isPhasedOut)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: card.tapped)
-        .rotation3DEffect(.degrees(arena ? 24 : 0), axis: (x: 1, y: 0, z: 0), anchor: .center, perspective: 0.45)
+        // On the Arena table the tile lies on the table with the plate's own camera (ArenaTableLean).
+        .modifier(ArenaTableLeanEffect())
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
@@ -1113,5 +1220,50 @@ struct TavernArtCrop: View {
             }
         }
         .clipped()
+    }
+}
+
+/// The reference game's battlefield card outline: a rounded rectangle, or an arched top for a token.
+struct ArenaTileShape: InsettableShape {
+    var arched: Bool
+    var corner: CGFloat
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        guard arched else { return Path(roundedRect: r, cornerRadius: max(0, corner - insetAmount)) }
+        let shoulder = r.height * 0.34
+        var path = Path()
+        path.move(to: CGPoint(x: r.minX, y: r.maxY))
+        path.addLine(to: CGPoint(x: r.minX, y: r.minY + shoulder))
+        path.addQuadCurve(to: CGPoint(x: r.midX, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
+        path.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + shoulder), control: CGPoint(x: r.maxX, y: r.minY))
+        path.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        path.closeSubpath()
+        return path
+    }
+
+    func inset(by amount: CGFloat) -> ArenaTileShape {
+        var shape = self
+        shape.insetAmount += amount
+        return shape
+    }
+}
+
+/// The loyalty and defense shield: a flat top with notched corners, straight sides, then a point.
+struct ArenaShieldShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let notch = rect.width * 0.14
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + notch, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - notch, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + notch))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.55))
+        path.addQuadCurve(to: CGPoint(x: rect.midX, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY - rect.height * 0.12))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.55),
+                          control: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.12))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + notch))
+        path.closeSubpath()
+        return path
     }
 }
