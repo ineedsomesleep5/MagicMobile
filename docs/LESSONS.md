@@ -437,3 +437,9 @@ contradicting one.
   iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
   "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
   simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.
+- 2026-10-20 (Claude, Arena phase strip): on iOS a small custom `Shape` that returns `Path(roundedRect:cornerRadius:)`
+  fills at the shape's whole frame size, starting from the rectangle's corner, while its stroke draws correctly: each
+  card icon in the phase strip had a pale or dark block beside it. The same code renders fine through `ImageRenderer`
+  on macOS, so a Mac probe doesn't reproduce it. Draw such rectangles from lines and arcs (`arenaRoundedRectPath`).
+  Also, a child bigger than its `ZStack`'s fixed frame (a halo) makes the stack's shapes draw at the child's size on
+  macOS: put halos in `.background`.

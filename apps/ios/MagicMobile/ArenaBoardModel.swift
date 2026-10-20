@@ -57,6 +57,9 @@ struct ArenaLayout: Equatable {
         /// stays whole on the screen (Caleb, 2026-10-20: no cards clipped at the bottom).
         var maxDrop: CGFloat = .infinity
         var upFloor: CGFloat = .infinity
+        /// Whether a tap on the tucked hand opens it into the raised fan. Off in both layouts (Caleb, 2026-10-20: the
+        /// hand stays tucked; a tap or a slide pops one card up while the rest stay put).
+        var opensOnTap = false
     }
 
     let canvas: CGSize
@@ -84,6 +87,14 @@ struct ArenaLayout: Equatable {
     /// Battlefield lanes. Creature rows sit near the midline; extra rows grow toward their owner.
     let opponentLands: CGRect
     let viewerLands: CGRect
+    /// Landscape: the back row's second section, right of centre (artifacts, mana rocks, Treasures), as the current
+    /// reference game lays it out; nil where the lands lane holds them at its right end (portrait).
+    var opponentSupport: CGRect? = nil
+    var viewerSupport: CGRect? = nil
+    /// Landscape: the centre line of each side's section for planeswalkers, battles and sagas, standing on its own at the
+    /// table's right edge; nil where that section ends the front row (portrait).
+    var opponentSideY: CGFloat? = nil
+    var viewerSideY: CGFloat? = nil
     let opponentCreatureY: CGFloat
     let viewerCreatureY: CGFloat
     let creatureLaneX: ClosedRange<CGFloat>
@@ -113,18 +124,24 @@ struct ArenaLayout: Equatable {
     /// The landscape table (scripts/brand/arena_layout.json "landscape").
     static let landscapeLayout = ArenaLayout(
         canvas: CGSize(width: 956, height: 440), landscape: true,
-        hand: Hand(card: CGSize(width: 93, height: 131), centerX: 476, upY: 368, upPitch: 92, upSpan: 555, upDrop: 2.6,
-                   tilt: 3.5, maxTilt: 11, downY: 412, downPitch: 33, downSpan: 209, downDrop: 1.5, downScale: 0.88,
-                   lift: 48, liftDown: 70, maxDrop: 14, upFloor: 437),
-        opponentHand: CGPoint(x: 270, y: 10), opponentHandCard: CGSize(width: 36, height: 50), opponentHandPitch: 17,
-        viewerMedallion: CGPoint(x: 478, y: 400), viewerMedallionDiameter: 58,
+        // Positions follow the current reference game (Caleb's desktop screenshot, 2026-10-20): your hand rests tucked
+        // along the bottom edge in a wide fan and opens when touched; your medallion stands above it in the gap of your
+        // back row; your graveyard, library and exile sit in the bottom-left corner, the opponent's top right.
+        // The tucked fan ends before the controls corner on the right and after the exile pile on the left.
+        hand: Hand(card: CGSize(width: 93, height: 131), centerX: 450, upY: 368, upPitch: 92, upSpan: 520, upDrop: 2.6,
+                   tilt: 3.5, maxTilt: 11, downY: 448, downPitch: 58, downSpan: 430, downDrop: 1.2, downScale: 1,
+                   lift: 48, liftDown: 92, maxDrop: 14, upFloor: 437),
+        opponentHand: CGPoint(x: 478, y: 4), opponentHandCard: CGSize(width: 36, height: 50), opponentHandPitch: 30,
+        viewerMedallion: CGPoint(x: 478, y: 352), viewerMedallionDiameter: 58,
         opponentMedallion: CGPoint(x: 478, y: 25), opponentMedallionDiameter: 50,
-        viewerLibrary: CGPoint(x: 222, y: 405), viewerGraveyard: CGPoint(x: 174, y: 405), viewerPile: CGSize(width: 42, height: 59),
-        // The opponent's piles sit whole on the far rail, level with their medallion.
-        viewerExile: CGPoint(x: 270, y: 405), opponentExile: CGPoint(x: 733, y: 27),
-        opponentLibrary: CGPoint(x: 629, y: 27), opponentGraveyard: CGPoint(x: 681, y: 27), opponentPile: CGSize(width: 36, height: 50),
-        opponentLands: CGRect(x: 80, y: 54, width: 552, height: 66),
-        viewerLands: CGRect(x: 80, y: 290, width: 560, height: 70),
+        viewerLibrary: CGPoint(x: 108, y: 398), viewerGraveyard: CGPoint(x: 60, y: 398), viewerPile: CGSize(width: 42, height: 59),
+        viewerExile: CGPoint(x: 156, y: 398), opponentExile: CGPoint(x: 652, y: 30),
+        opponentLibrary: CGPoint(x: 704, y: 30), opponentGraveyard: CGPoint(x: 756, y: 30), opponentPile: CGSize(width: 36, height: 50),
+        opponentLands: CGRect(x: 80, y: 54, width: 360, height: 66),
+        viewerLands: CGRect(x: 80, y: 290, width: 360, height: 70),
+        opponentSupport: CGRect(x: 540, y: 54, width: 332, height: 66),
+        viewerSupport: CGRect(x: 540, y: 290, width: 160, height: 70),
+        opponentSideY: 116, viewerSideY: 248,
         // The front rows run the table's full width, inside the mat's leaning edges (Caleb, 2026-10-20).
         opponentCreatureY: 146, viewerCreatureY: 248, creatureLaneX: 84...872, rowBack: 76,
         tile: CGSize(width: 66, height: 71), land: CGSize(width: 58, height: 62.5),
@@ -145,9 +162,11 @@ struct ArenaLayout: Equatable {
     /// in the top half, you in the bottom half, and every control on the walnut rail under the mat.
     static let portraitLayout = ArenaLayout(
         canvas: CGSize(width: 440, height: 956), landscape: false,
+        // The tucked hand at full size: card tops just below your lands, the rest behind the front rail (Caleb,
+        // 2026-10-20), clear of the exile pile on the left.
         hand: Hand(card: CGSize(width: 104, height: 146), centerX: 220, upY: 784, upPitch: 58, upSpan: 336, upDrop: 2.2,
-                   tilt: 3, maxTilt: 10, downY: 829, downPitch: 33, downSpan: 210, downDrop: 1, downScale: 0.8,
-                   lift: 52, liftDown: 92),
+                   tilt: 3, maxTilt: 10, downY: 779, downPitch: 46, downSpan: 230, downDrop: 1, downScale: 1,
+                   lift: 52, liftDown: 60),
         opponentHand: CGPoint(x: 340, y: 20), opponentHandCard: CGSize(width: 30, height: 42), opponentHandPitch: 14,
         // Your medallion and piles sit low on the rail, level with the main button (Caleb, 2026-10-20).
         viewerMedallion: CGPoint(x: 50, y: 890), viewerMedallionDiameter: 74,
@@ -315,26 +334,21 @@ struct ArenaRowFit: Equatable {
 enum ArenaHandPosture: Equatable {
     case raised, resting
 
+    /// The reference game's hand (Caleb, 2026-10-20): it rests tucked along the bottom edge with only the cards' tops
+    /// showing, and opens into a fan when you touch it; a tap on the table puts it back.
     struct Situation: Equatable {
-        var hasPriority = false
-        var isViewerTurn = false
-        var isMainPhase = false
-        /// A card in the hand can be played or cast right now.
-        var hasPlayableCard = false
+        /// The player tapped the hand open.
+        var opened = false
         /// Paying a cost, choosing a target, declaring attackers or blockers, or answering a choice: the hand gets out
         /// of the way so the board can be read and tapped.
         var boardDecision = false
         var dragging = false
-        /// The player tapped the empty table to put the hand down; it comes back on a touch or at the next step.
-        var tucked = false
         var spectating = false
     }
 
     static func resolve(_ situation: Situation) -> ArenaHandPosture {
-        if situation.spectating || situation.dragging || situation.boardDecision || situation.tucked { return .resting }
-        guard situation.hasPriority else { return .resting }
-        if situation.isViewerTurn && situation.isMainPhase { return .raised }
-        return situation.hasPlayableCard ? .raised : .resting
+        if situation.spectating || situation.dragging || situation.boardDecision { return .resting }
+        return situation.opened ? .raised : .resting
     }
 }
 

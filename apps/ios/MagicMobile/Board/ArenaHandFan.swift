@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
-/// The Arena board's hand (the reference's hand): a fan that rises over the table while you can play and rests at its
-/// edge otherwise. In portrait a resting hand tucks behind the front rail. A tap on a resting hand raises it; a tap on a
-/// raised card lifts it, and a second tap plays it; drag a card up onto the table to play it; hold to read it. A card you
-/// draw flies off the top of your deck, shows itself, then joins the fan.
+/// The Arena board's hand, the reference game's way (Caleb, 2026-10-20): it rests tucked along the bottom edge with only
+/// the cards' tops showing (in portrait, behind the front rail). A tap or a slide along the hand pops up the card under
+/// the finger while the rest stay tucked; a second tap plays it, and carrying it up off the hand and onto the table
+/// plays it too. A hold magnifies the card under the finger and follows it along the hand. (Where the layout allows it,
+/// a tap opens the hand into a raised fan instead; neither layout does today.) A card you draw flies off the top of your deck, shows itself, then joins the fan.
 struct ArenaHandFan: View {
     let cards: [ZoneCard]
     /// Playable cards from your graveyard or exile (ArenaExtraHand): the end of the fan, shimmering, with their zone.
@@ -19,10 +21,13 @@ struct ArenaHandFan: View {
     /// A spectator's stand-in: their hand stays hidden and only its size shows.
     var hiddenCount: Int? = nil
     let raise: () -> Void
+    /// Puts an opened hand back down (after a card is played from it).
+    var lower: () -> Void = {}
     let onDropFeedback: (String) -> Void
     let onActionChoice: ([LegalAction], String) -> Void
     let runAction: (LegalAction) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.holdCardInspection) private var inspection
     @State private var dragging: (id: String, start: CGPoint, offset: CGSize)?
     @State private var known: Set<String>?
     /// Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan.
@@ -38,6 +43,18 @@ struct ArenaHandFan: View {
             } else {
                 ForEach(Array((cards + extraCards).enumerated()), id: \.element.id) { index, card in
                     handCard(card, index: index, extra: index >= cards.count)
+                }
+                if !(cards + extraCards).isEmpty {
+                    let band = touchBand
+                    ArenaHandTouch(tap: { tapped(at: band.origin + $0) },
+                                   hold: { held(at: band.origin + $0) },
+                                   holdEnded: endHold,
+                                   pan: { panned(to: band.origin + $0, band: band) },
+                                   panEnded: { panEnded(at: band.origin + $0, cancelled: $1) })
+                        .frame(width: band.width, height: band.height)
+                        .position(x: band.midX, y: band.midY)
+                        .zIndex(1500)
+                        .accessibilityHidden(true)
                 }
                 if let dragging, let card = (cards + extraCards).first(where: { $0.id == dragging.id }) {
                     dragPreview(card, start: dragging.start, offset: dragging.offset)
@@ -69,7 +86,7 @@ struct ArenaHandFan: View {
         let home = slot(index)
         let arrival = arrivals[card.id]
         let position = arrival.map { arrivalPoint($0, home: home) } ?? liftedPoint(home, lifted: lifted)
-        let scale = arrival.map { arrivalScale($0, home: home) } ?? (lifted ? (posture == .raised ? 1.24 : 1.04) : home.scale)
+        let scale = arrival.map { arrivalScale($0, home: home) } ?? (lifted ? liftedScale : home.scale)
         CardTile(card: card, selected: false, pending: pendingCardInstanceId == card.instanceId,
                  legal: playable.contains { $0.type == "play_land" }, castOffered: playable.contains { $0.type == "cast_spell" },
                  zoneName: "Hand", width: cardSize.width, height: cardSize.height)
@@ -78,13 +95,6 @@ struct ArenaHandFan: View {
                     .offset(y: -14).allowsHitTesting(false).accessibilityHidden(true)
             }
             .overlay { if extra { ArenaExtraCardShimmer(zone: playable.first?.sourceZone ?? "") } }
-            .overlay {
-                HandCardPan(changed: { translation, start in dragChanged(card, translation: translation, start: start, home: home) },
-                            ended: { translation, start, cancelled in dragEnded(card, translation: translation, start: start, cancelled: cancelled, home: home) },
-                            inspect: { inspectedCard = card },
-                            tap: { tapped(card) },
-                            releaseInspection: { if inspectedCard?.id == card.id { inspectedCard = nil } })
-            }
             .scaleEffect(scale)
             .rotationEffect(.degrees(lifted || arrival != nil ? 0 : home.rotation), anchor: .bottom)
             .opacity(dragging?.id == card.id ? 0 : 1)
@@ -95,7 +105,7 @@ struct ArenaHandFan: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: arrival == 0 ? 0.5 : 0.22), value: arrival)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(extra ? "\(card.card.name), playable from your \(playable.first?.sourceZone ?? "zone")" : card.card.name)
-            .accessibilityHint("Tap to raise or lift, tap again to play. Hold to inspect. Drag upward to the table to play.")
+            .accessibilityHint("Tap to open the hand or lift the card, tap again to play. Hold to inspect. Slide along the hand, then up onto the table to play.")
             .accessibilityAction { inspectedCard = card }
             .accessibilityAction(named: "Inspect card") { inspectedCard = card }
             .accessibilityAction(named: "Play card") { play(card) }
@@ -107,10 +117,44 @@ struct ArenaHandFan: View {
         posture == .raised ? .timingCurve(0.2, 0.9, 0.3, 1.12, duration: 0.22) : .timingCurve(0.5, 0, 0.75, 0.4, duration: 0.18)
     }
 
+    /// A lifted card from a raised hand grows to read; one popped out of the tucked hand shows whole, a little larger.
+    private var liftedScale: CGFloat { posture == .raised ? 1.24 : 1.18 }
+
     private func liftedPoint(_ home: ArenaHandSlot, lifted: Bool) -> CGPoint {
         guard lifted else { return home.center }
         let rise = canvas.length(posture == .raised ? layout.hand.lift : layout.hand.liftDown)
-        return CGPoint(x: home.center.x, y: home.center.y - rise)
+        // Never below the point where the whole card clears the bottom edge.
+        let highest = canvas.screen.height - cardSize.height * liftedScale / 2 - canvas.length(8)
+        return CGPoint(x: home.center.x, y: min(home.center.y - rise, highest))
+    }
+
+    /// The fan's touch surface: every card's home frame, to the bottom of the screen.
+    private var touchBand: CGRect {
+        let count = cards.count + extraCards.count
+        let frames = (0..<count).map { index -> CGRect in
+            let home = slot(index)
+            let size = CGSize(width: cardSize.width * home.scale, height: cardSize.height * home.scale)
+            return CGRect(x: home.center.x - size.width / 2, y: home.center.y - size.height / 2, width: size.width, height: size.height)
+        }
+        guard let first = frames.first else { return .zero }
+        let union = frames.dropFirst().reduce(first) { $0.union($1) }
+        return CGRect(x: union.minX, y: union.minY, width: union.width, height: max(0, canvas.screen.height - union.minY))
+    }
+
+    /// The card under a point: of the cards whose home slot spans its x, the top one (each card lies over the one before).
+    private func card(at point: CGPoint) -> ZoneCard? {
+        let all = cards + extraCards
+        guard !all.isEmpty else { return nil }
+        let homes = all.indices.map { slot($0) }
+        if let liftedCardID, let index = all.firstIndex(where: { $0.id == liftedCardID }),
+           abs(point.x - homes[index].center.x) <= cardSize.width * liftedScale / 2,
+           point.y >= liftedPoint(homes[index], lifted: true).y - cardSize.height * liftedScale / 2 {
+            return all[index]
+        }
+        if let index = all.indices.last(where: { abs(point.x - homes[$0].center.x) <= cardSize.width * homes[$0].scale / 2 }) {
+            return all[index]
+        }
+        return all.indices.min { abs(point.x - homes[$0].center.x) < abs(point.x - homes[$1].center.x) }.map { all[$0] }
     }
 
     private func hiddenFan(count: Int) -> some View {
@@ -128,18 +172,29 @@ struct ArenaHandFan: View {
 
     // MARK: Taps and drags
 
-    private func tapped(_ card: ZoneCard) {
-        if posture == .resting {
-            raise()
-            return
-        }
+    private func tapped(at point: CGPoint) {
+        guard let card = card(at: point) else { return }
         if liftedCardID == card.id {
             play(card)
+        } else if posture == .resting && layout.hand.opensOnTap {
+            raise()
         } else {
             liftedCardID = card.id
             GameAudio.shared.play(.cardPickup)
             GameHaptics.selection()
         }
+    }
+
+    /// A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand.
+    private func held(at point: CGPoint) {
+        guard let card = card(at: point), inspectedCard?.id != card.id else { return }
+        if inspectedCard == nil { inspection?.begin { inspectedCard = nil } }
+        inspectedCard = card
+        GameHaptics.selection()
+    }
+
+    private func endHold() {
+        if let inspection { inspection.end() } else { inspectedCard = nil }
     }
 
     private func play(_ card: ZoneCard) {
@@ -149,6 +204,7 @@ struct ArenaHandFan: View {
             interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
             if action.type == "cast_spell" { GameAudio.shared.play(.cardPlay) }
             runAction(action)
+            lower()
         case let .requiresChoice(actions, message):
             onActionChoice(actions, message)
         case let .rejected(message):
@@ -159,25 +215,37 @@ struct ArenaHandFan: View {
         }
     }
 
-    private func dragChanged(_ card: ZoneCard, translation: CGSize, start: CGPoint, home: ArenaHandSlot) {
-        if dragging?.id != card.id {
-            GameAudio.shared.play(.cardPickup)
-            liftedCardID = nil
-            inspectedCard = nil
+    /// Along the hand the card under the finger pops up; carried up off the hand, that card is picked up and follows the
+    /// finger until it is dropped.
+    private func panned(to point: CGPoint, band: CGRect) {
+        let all = cards + extraCards
+        if var current = dragging {
+            current.offset = CGSize(width: point.x - current.start.x, height: point.y - current.start.y)
+            dragging = current
+            isOverPlayerDropZone = canvas.area(layout.dropArea).contains(point)
+            return
         }
-        // The finger's point on the card, measured from the card's centre at its home slot.
-        let grab = CGPoint(x: home.center.x - cardSize.width / 2 + start.x, y: home.center.y - cardSize.height / 2 + start.y)
-        dragging = (card.id, grab, translation)
-        let finger = CGPoint(x: grab.x + translation.width, y: grab.y + translation.height)
-        isOverPlayerDropZone = canvas.area(layout.dropArea).contains(finger)
+        if point.y >= band.minY - canvas.length(12) {
+            guard let card = card(at: point), liftedCardID != card.id else { return }
+            liftedCardID = card.id
+            GameHaptics.selection()
+            return
+        }
+        let popped = liftedCardID.flatMap { id in all.first { $0.id == id } }
+        guard let card = popped ?? card(at: CGPoint(x: point.x, y: band.midY)) else { return }
+        GameAudio.shared.play(.cardPickup)
+        liftedCardID = nil
+        inspectedCard = nil
+        dragging = (card.id, point, .zero)
+        isOverPlayerDropZone = canvas.area(layout.dropArea).contains(point)
         interactionState.mode = .draggingCard(cardId: card.instanceId,
                                               legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
     }
 
-    private func dragEnded(_ card: ZoneCard, translation: CGSize, start: CGPoint, cancelled: Bool, home: ArenaHandSlot) {
-        guard let current = dragging, current.id == card.id else { return }
-        let finger = CGPoint(x: current.start.x + translation.width, y: current.start.y + translation.height)
-        let dropped = !cancelled && canvas.area(layout.dropArea).contains(finger)
+    /// A slide that never left the hand leaves its card popped up; a carried card plays if it lands on the table.
+    private func panEnded(at point: CGPoint, cancelled: Bool) {
+        guard let current = dragging, let card = (cards + extraCards).first(where: { $0.id == current.id }) else { return }
+        let dropped = !cancelled && canvas.area(layout.dropArea).contains(point)
         dragging = nil
         isOverPlayerDropZone = false
         guard dropped else {
@@ -198,6 +266,7 @@ struct ArenaHandFan: View {
             interactionState.mode = .awaitingCastSnapshot(actionId: action.id)
             if action.type == "cast_spell" { GameAudio.shared.play(.cardPlay) }
             runAction(action)
+            lower()
         }
     }
 
@@ -257,6 +326,85 @@ struct ArenaHandFan: View {
         default: return home.scale
         }
     }
+}
+
+/// One touch surface over the whole fan. A tap; a hold (0.3 s) that reports where the finger is while it stays down; and
+/// a pan that starts once the finger moves before the hold, in any direction. Points are in the surface's space.
+struct ArenaHandTouch: UIViewRepresentable {
+    var tap: (CGPoint) -> Void
+    var hold: (CGPoint) -> Void
+    var holdEnded: () -> Void
+    var pan: (CGPoint) -> Void
+    var panEnded: (CGPoint, Bool) -> Void
+
+    func makeUIView(context: Context) -> TouchView {
+        let view = TouchView()
+        update(view)
+        return view
+    }
+
+    func updateUIView(_ view: TouchView, context: Context) { update(view) }
+
+    private func update(_ view: TouchView) {
+        view.onTap = tap
+        view.onHold = hold
+        view.onHoldEnded = holdEnded
+        view.onPan = pan
+        view.onPanEnded = panEnded
+    }
+
+    final class TouchView: UIView {
+        var onTap: ((CGPoint) -> Void)?
+        var onHold: ((CGPoint) -> Void)?
+        var onHoldEnded: (() -> Void)?
+        var onPan: ((CGPoint) -> Void)?
+        var onPanEnded: ((CGPoint, Bool) -> Void)?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+            isAccessibilityElement = false
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+            hold.minimumPressDuration = 0.3
+            hold.allowableMovement = 10
+            addGestureRecognizer(hold)
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+            pan.maximumNumberOfTouches = 1
+            // A finger that moves first slides; one that holds still first magnifies.
+            pan.require(toFail: hold)
+            addGestureRecognizer(pan)
+            let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+            tap.require(toFail: hold)
+            tap.require(toFail: pan)
+            addGestureRecognizer(tap)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        @objc private func tapped(_ gesture: UITapGestureRecognizer) { onTap?(gesture.location(in: self)) }
+
+        @objc private func held(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began, .changed: onHold?(gesture.location(in: self))
+            case .ended, .cancelled, .failed: onHoldEnded?()
+            default: break
+            }
+        }
+
+        @objc private func panned(_ gesture: UIPanGestureRecognizer) {
+            let point = gesture.location(in: self)
+            switch gesture.state {
+            case .began, .changed: onPan?(point)
+            case .ended: onPanEnded?(point, false)
+            case .cancelled, .failed: onPanEnded?(point, true)
+            default: break
+            }
+        }
+    }
+}
+
+private extension CGPoint {
+    static func + (origin: CGPoint, point: CGPoint) -> CGPoint { CGPoint(x: origin.x + point.x, y: origin.y + point.y) }
 }
 
 /// The shimmer around a card you can play from your graveyard or exile, with that zone's mark in its corner.
