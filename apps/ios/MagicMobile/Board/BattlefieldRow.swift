@@ -144,6 +144,8 @@ struct BattlefieldRow: View {
     var manaPaymentActive = false
     /// Where the tiles sit in the lane while they fit: centred, or (the Arena board's lands) from its leading edge.
     var alignment: Alignment = .center
+    /// The Arena board sizes its rows itself (ArenaRowFit): this many rows, whatever the tile count.
+    var preferredRows: Int? = nil
     let runAction: (LegalAction) -> Void
     let runTargetAction: (ZoneCard) -> Void
     let runCombatCardAction: (ZoneCard) -> Bool
@@ -162,8 +164,8 @@ struct BattlefieldRow: View {
     /// The row's groups, sizes and arrangement, recomputed only when an input changes.
     private var layout: BattlefieldRowLayout {
         layoutCache.layout(BattlefieldRowLayout.Input(
-            flipped: flipped, adaptsToDensity: adaptsToDensity, arrangement: arrangement, rowWidth: rowWidth,
-            cardWidth: cardWidth, cardHeight: cardHeight, availableHeight: availableHeight,
+            flipped: flipped, adaptsToDensity: adaptsToDensity, arrangement: arrangement, preferredRows: preferredRows,
+            rowWidth: rowWidth, cardWidth: cardWidth, cardHeight: cardHeight, availableHeight: availableHeight,
             expandedGroupIds: expandedGroupIds, chosenIds: chosenIds, targetableIds: targetableIds,
             combatHighlightIds: combatHighlightIds, cards: cards), make: makeLayout)
     }
@@ -173,7 +175,7 @@ struct BattlefieldRow: View {
         let rendered = groups.flatMap(displayGroups)
         let permanent = availableHeight.map { height in
             let proposed = arrangement.rows(rendered, flipped: flipped,
-                twoRows: arrangement == .landscapeResources || rendered.count > 5)
+                twoRows: preferredRows.map { $0 == 2 } ?? (arrangement == .landscapeResources || rendered.count > 5))
             return ArenaPermanentLayout(rowCounts: proposed.map(\.count), width: rowWidth,
                 height: height, maxCardWidth: cardWidth, ratio: cardHeight / max(cardWidth, 1))
         }
@@ -236,6 +238,23 @@ struct BattlefieldRow: View {
 
     /// From this many identical cards a group stays stacked while it can be chosen.
     static let stackThreshold = 8
+
+    /// Each tile's width in cards as the Arena board draws these cards, for ArenaRowFit: an attached Aura or Equipment
+    /// peeks out 0.3 of a card per layer, a pile of lands 0.12 per copy underneath, and piles open into single cards
+    /// while they are chosen from, as `isExpanded` opens them. A pile the player opened by hand scrolls like any overflow.
+    static func arenaTileUnits(_ cards: [ZoneCard], targetableIds: Set<String>, chosenIds: Set<String>,
+                               combatHighlightIds: Set<String>) -> [CGFloat] {
+        BattlefieldAttachments.groups(cards).flatMap { group -> [BattlefieldCardGroup] in
+            let choosing = group.cards.contains { targetableIds.contains($0.instanceId) || targetableIds.contains($0.id) } ||
+                requiresIndividualCombatCards(group, highlightedIDs: combatHighlightIds)
+            let expanded = !group.id.hasPrefix("attachment:") && group.count < stackThreshold && choosing
+            return displayGroups(group, expanded: expanded, chosenIds: chosenIds)
+        }.map { group in
+            if group.id.hasPrefix("attachment:") { return 1 + 0.3 * CGFloat(min(group.count - 1, 3)) }
+            if group.count > 1, group.representative.card.isLand { return 1 + 0.12 * CGFloat(min(group.count - 1, 5)) }
+            return 1
+        }
+    }
 
     /// The piles still open once a choice or combat has ended: the ones opened only to look.
     static func openAfterChoice(expanded: Set<String>, openedForChoice: Set<String>) -> Set<String> {
@@ -652,6 +671,7 @@ struct BattlefieldRowLayout {
         let flipped: Bool
         let adaptsToDensity: Bool
         let arrangement: BattlefieldRowArrangement
+        let preferredRows: Int?
         let rowWidth: CGFloat
         let cardWidth: CGFloat
         let cardHeight: CGFloat

@@ -620,3 +620,8 @@ single MIT file with its license header when that is enough.
   file's length with MediaMetadataRetriever. Card and land sounds still play at the landing. Voices rebuilt longer
   (`library(gentle:)`, Sonniss slices run into their tails): 0.6-2.0 s instead of 0.4-1.2 s.
 - 2026-10-20 (Claude): Arena board mode (phase 17). `BoardFXOverlay(arena:)` drops the centre showcase for every spell but a commander and draws `rays` at the stack card instead; arrivals take the plain flight from the stack point. `BoardTurnBanner` has an `arenaBanner` (slim title on a hairline) and NativeGameView holds effects 0.9 s behind it in Arena. Next: phone feel, then the Android port.
+- 2026-10-20 (Claude): Arena battlefield sections. Front row: creatures centred, then a side section for planeswalkers,
+  battles and other non-creature permanents (`ArenaFrontSection`); back row: lands, then mana rocks and Treasures.
+  `ArenaRowFit` sizes each row at one card size across the full table width, and BattlefieldRow takes `preferredRows`
+  from it. Tiles lean with `ArenaTableLean` (the plate's camera). Preview: `crowded-battlefield` with
+  `MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST=sections`.

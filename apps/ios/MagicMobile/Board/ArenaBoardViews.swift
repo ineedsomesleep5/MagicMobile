@@ -7,11 +7,37 @@ import UIKit
 struct ArenaBoardKey: EnvironmentKey { static let defaultValue = false }
 struct CardFramesKey: EnvironmentKey { static let defaultValue = true }
 
+/// The table's camera, so cards lying on it lean the way the rendered table does: the plate's pitch (landscape 22°,
+/// portrait 16°, scripts/brand/arena_layout.json), the camera's distance in points (35 mm lens on a 36 mm sensor across
+/// the screen's long side: half of it over tan 27°) and the screen's centre, toward which every card converges.
+struct ArenaTableLean: Equatable {
+    let pitch: Double
+    let distance: CGFloat
+    let centerX: CGFloat
+
+    init(canvas: ArenaCanvas) {
+        pitch = canvas.layout.landscape ? 22 : 16
+        distance = max(canvas.screen.width, canvas.screen.height) / 2 / tan(27 * .pi / 180)
+        centerX = canvas.screen.width / 2
+    }
+
+    /// The tilt for a card laid out at `frame` (global): its axis anchored under the screen's centre line, so its
+    /// sides converge toward the table's vanishing point rather than its own.
+    func anchor(for frame: CGRect) -> UnitPoint { UnitPoint(x: (centerX - frame.minX) / max(frame.width, 1), y: 0.5) }
+    func perspective(for frame: CGRect) -> CGFloat { max(frame.width, frame.height) / distance }
+}
+
+struct ArenaTableLeanKey: EnvironmentKey { static let defaultValue: ArenaTableLean? = nil }
+
 extension EnvironmentValues {
     /// True while the Arena board draws: battlefield tiles lean back with the table and tapped ones tilt instead of turning.
     var arenaBoard: Bool {
         get { self[ArenaBoardKey.self] }
         set { self[ArenaBoardKey.self] = newValue }
+    }
+    var arenaTableLean: ArenaTableLean? {
+        get { self[ArenaTableLeanKey.self] }
+        set { self[ArenaTableLeanKey.self] = newValue }
     }
     /// Tavern frames on battlefield cards (CardFramesPreference); off draws the reference game's cards.
     var cardFrames: Bool {
@@ -217,12 +243,30 @@ struct ArenaDeckPile: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .rotation3DEffect(.degrees(24), axis: (x: 1, y: 0, z: 0), perspective: 0.45)
+        .modifier(ArenaTableLeanEffect())
         .overlay(alignment: .bottomTrailing) {
             if count > 0 { ArenaCountBadge(count: count).offset(x: 8, y: -2) }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
+    }
+}
+
+/// Lays a view on the table: tilted by the table camera's pitch, converging on its vanishing point.
+struct ArenaTableLeanEffect: ViewModifier {
+    @Environment(\.arenaTableLean) private var lean
+
+    @ViewBuilder func body(content: Content) -> some View {
+        // Off the Arena table (Hearth) the tile stays flat and pays for no geometry reads.
+        if let lean {
+            content.visualEffect { view, proxy in
+                let frame = proxy.frame(in: .global)
+                return view.rotation3DEffect(.degrees(lean.pitch), axis: (x: 1, y: 0, z: 0),
+                                             anchor: lean.anchor(for: frame), perspective: lean.perspective(for: frame))
+            }
+        } else {
+            content
+        }
     }
 }
 

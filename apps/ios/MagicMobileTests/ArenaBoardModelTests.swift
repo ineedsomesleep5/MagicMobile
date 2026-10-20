@@ -115,10 +115,26 @@ final class ArenaBoardModelTests: XCTestCase {
         let right = ArenaHandFanLayout.slot(index: 6, count: 7, posture: .raised, hand: hand)
         XCTAssertEqual(left.center.x + right.center.x, hand.centerX * 2, accuracy: 0.001)
         XCTAssertLessThan(left.rotation, 0)
-        XCTAssertGreaterThan(left.center.y, only.center.y)
+        XCTAssertGreaterThan(left.center.y, ArenaHandFanLayout.slot(index: 3, count: 7, posture: .raised, hand: hand).center.y)
         let resting = ArenaHandFanLayout.slot(index: 0, count: 7, posture: .resting, hand: hand)
         XCTAssertEqual(resting.scale, hand.downScale)
         XCTAssertGreaterThan(resting.center.y, left.center.y)
+    }
+
+    /// A full raised hand stays whole on the landscape screen: the arc flattens and the fan rises until the outermost
+    /// card's lowest corner clears the floor.
+    func testRaisedLandscapeHandNeverRunsOffTheScreen() {
+        let hand = ArenaLayout.landscapeLayout.hand
+        for count in 1...12 {
+            for index in 0..<count {
+                let slot = ArenaHandFanLayout.slot(index: index, count: count, posture: .raised, hand: hand)
+                let tilt = abs(slot.rotation) * .pi / 180
+                let corner = slot.center.y + hand.card.height / 2 * CGFloat(cos(tilt)) + hand.card.width / 2 * CGFloat(sin(tilt))
+                XCTAssertLessThanOrEqual(corner, hand.upFloor + 0.001, "card \(index) of \(count)")
+            }
+        }
+        // One card keeps its place.
+        XCTAssertEqual(ArenaHandFanLayout.slot(index: 0, count: 1, posture: .raised, hand: hand).center.y, hand.upY)
     }
 
     func testCanvasScalesEachAxisAndSizesByTheSmaller() {
@@ -133,14 +149,79 @@ final class ArenaBoardModelTests: XCTestCase {
 
     func testCreatureLanesGrowTowardTheirOwner() {
         let layout = ArenaLayout.portraitLayout
-        XCTAssertEqual(ArenaLayout.creatureRows(groups: 6), 1)
-        XCTAssertEqual(ArenaLayout.creatureRows(groups: 7), 2)
+        XCTAssertEqual(layout.maxCreatureRows, 2)
+        XCTAssertEqual(ArenaLayout.landscapeLayout.maxCreatureRows, 1)
         let mine = layout.creatureLane(viewer: true, rows: 2), mineOne = layout.creatureLane(viewer: true, rows: 1)
         XCTAssertEqual(mine.minY, mineOne.minY)
         XCTAssertGreaterThan(mine.maxY, mineOne.maxY)
         let theirs = layout.creatureLane(viewer: false, rows: 2), theirsOne = layout.creatureLane(viewer: false, rows: 1)
         XCTAssertEqual(theirs.maxY, theirsOne.maxY)
         XCTAssertLessThan(theirs.minY, theirsOne.minY)
+    }
+
+    /// Landscape's front row is the table's full width (788 pt): eight cards at full size, then they shrink, and only a
+    /// thirteenth scrolls.
+    func testLandscapeFrontRowFitsTwelveCardsBeforeScrolling() {
+        let layout = ArenaLayout.landscapeLayout
+        let width = layout.creatureLane(viewer: true, rows: 1).width
+        let card = layout.tiles(frames: false).tile.width
+        func fit(_ count: Int, side: Int = 0) -> ArenaRowFit {
+            ArenaRowFit.fit(leading: Array(repeating: 1, count: count), trailing: Array(repeating: 1, count: side),
+                            width: width, maxCard: card, maxRows: layout.maxCreatureRows)
+        }
+        XCTAssertEqual(width, 788)
+        XCTAssertEqual(fit(8).cardWidth, card)
+        XCTAssertLessThan(fit(9).cardWidth, card)
+        XCTAssertFalse(fit(12).overflows)
+        XCTAssertGreaterThanOrEqual(fit(12).cardWidth, card * ArenaRowFit.minimumScale)
+        XCTAssertTrue(fit(13).overflows)
+        XCTAssertEqual(fit(13).rows, 1)
+        // A planeswalker's section takes its share of the same row at the same card size.
+        let walker = fit(8, side: 1)
+        XCTAssertLessThan(walker.cardWidth, card)
+        XCTAssertEqual(walker.trailingWidth, ArenaRowFit.sectionWidth([1], card: walker.cardWidth))
+        XCTAssertEqual(fit(0, side: 2).trailingWidth, ArenaRowFit.sectionWidth([1, 1], card: card))
+    }
+
+    /// Portrait opens a second front row before cards get much smaller, and holds twelve before scrolling.
+    func testPortraitFrontRowOpensASecondRowThenShrinks() {
+        let layout = ArenaLayout.portraitLayout
+        let width = layout.creatureLane(viewer: true, rows: 1).width
+        let card = layout.tiles(frames: false).tile.width
+        func fit(_ count: Int) -> ArenaRowFit {
+            ArenaRowFit.fit(leading: Array(repeating: 1, count: count), trailing: [], width: width, maxCard: card,
+                            maxRows: layout.maxCreatureRows, secondRowBelow: card * 0.85)
+        }
+        XCTAssertEqual(fit(5).rows, 1)
+        XCTAssertEqual(fit(6).rows, 2)
+        XCTAssertEqual(fit(6).cardWidth, card)
+        XCTAssertFalse(fit(12).overflows)
+        XCTAssertTrue(fit(13).overflows)
+        // Two planeswalkers stack into the two rows beside ten creatures.
+        let walkers = ArenaRowFit.fit(leading: Array(repeating: 1, count: 10), trailing: [1, 1], width: width, maxCard: card,
+                                      maxRows: layout.maxCreatureRows, secondRowBelow: card * 0.85)
+        XCTAssertFalse(walkers.overflows)
+        XCTAssertEqual(walkers.rows, 2)
+        XCTAssertEqual(walkers.trailingWidth, ArenaRowFit.sectionWidth([1], card: walkers.cardWidth))
+        // One pile never needs two rows, however wide.
+        XCTAssertEqual(ArenaRowFit.fit(leading: [4], trailing: [], width: 200, maxCard: card, maxRows: 2).rows, 1)
+    }
+
+    func testPlaneswalkersAndOtherNonCreaturesTakeTheSideSection() {
+        func card(_ type: String, creature: Bool? = nil) -> ZoneCard {
+            ZoneCard(instanceId: type, card: CardIdentity(name: type, typeLine: type, oracleText: nil), tapped: nil,
+                     summoningSickness: nil, cardIcons: nil, counters: nil, power: nil, toughness: nil, isCreaturePermanent: creature,
+                     damage: nil, isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+        }
+        XCTAssertEqual(ArenaFrontSection.of(card("Creature — Bear")), .creatures)
+        XCTAssertEqual(ArenaFrontSection.of(card("Legendary Planeswalker — Liliana")), .side)
+        XCTAssertEqual(ArenaFrontSection.of(card("Battle — Siege")), .side)
+        XCTAssertEqual(ArenaFrontSection.of(card("Enchantment — Saga")), .side)
+        // A crewed Vehicle is a creature while it is one.
+        XCTAssertEqual(ArenaFrontSection.of(card("Artifact — Vehicle", creature: true)), .creatures)
+        XCTAssertEqual(ArenaFrontSection.of(card("Artifact — Vehicle")), .side)
+        XCTAssertGreaterThan(ArenaFrontSection.sideRank(card("Legendary Planeswalker — Liliana")),
+                             ArenaFrontSection.sideRank(card("Enchantment — Saga")))
     }
 
     // MARK: Real XMage polls (Fixtures/OnDevice: the production engine, recorded on the JVM)

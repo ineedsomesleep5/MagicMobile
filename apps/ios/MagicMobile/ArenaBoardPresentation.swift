@@ -524,8 +524,44 @@ struct ArenaBattlefieldCard: View {
             if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
                 powerToughnessBox(power, toughness)
                     .offset(x: width * 0.03, y: height * 0.1)
+            } else if let shield = shieldCounter {
+                counterShield(shield.value, battle: shield.battle)
+                    .offset(x: width * 0.03, y: height * 0.12)
             }
         }
+    }
+
+    /// A planeswalker's loyalty, or a battle's defense: the reference shows it on a shield where a creature's stats sit.
+    private var shieldCounter: (value: Int, battle: Bool)? {
+        guard !card.isCreature else { return nil }
+        let battle = card.card.typeLine.localizedCaseInsensitiveContains("battle")
+        guard card.card.isPlaneswalker || battle else { return nil }
+        let name = battle ? "defense" : "loyalty"
+        guard let value = card.counters?.first(where: { $0.key.lowercased().contains(name) })?.value else { return nil }
+        return (value, battle)
+    }
+
+    /// The counter chips leave out the one the shield already shows.
+    private var chipBadges: [CardCounterBadge] {
+        guard plainTile, let shield = shieldCounter else { return card.counterBadges }
+        let name = shield.battle ? "defense" : "loyalty"
+        return card.counterBadges.filter { !$0.name.lowercased().contains(name) }
+    }
+
+    private func counterShield(_ value: Int, battle: Bool) -> some View {
+        let fill = battle ? [Color(red: 0.78, green: 0.22, blue: 0.14), Color(red: 0.42, green: 0.08, blue: 0.05)]
+                          : [Color(white: 0.26), Color(white: 0.05)]
+        return Text("\(value)")
+            .font(.system(size: max(9, width * 0.17), weight: .heavy, design: .serif))
+            .monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .foregroundStyle(.white)
+            .padding(.bottom, width * 0.05)
+            .frame(width: max(18, width * 0.3), height: max(20, width * 0.34))
+            .background(ArenaShieldShape().fill(LinearGradient(colors: fill, startPoint: .top, endPoint: .bottom)))
+            .overlay(ArenaShieldShape().stroke(Color(white: 0.86), lineWidth: 1.2))
+            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+            .accessibilityLabel(battle ? "\(value) defense" : "\(value) loyalty")
     }
 
     /// The reference's power/toughness box: silver (gold for a legend), toughness red while damaged.
@@ -848,8 +884,8 @@ struct ArenaBattlefieldCard: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if !card.counterBadges.isEmpty {
-                CardCounterBadgeStrip(badges: Array(card.counterBadges.prefix(2)), cardWidth: width)
+            if !chipBadges.isEmpty {
+                CardCounterBadgeStrip(badges: Array(chipBadges.prefix(2)), cardWidth: width)
                     .frame(maxWidth: card.tokenCopySourceName == nil ? nil : BattlefieldCardFaceLayout.counterColumnWidth(cardWidth: width),
                            alignment: .trailing)
                     .padding(.top, BattlefieldCardFaceLayout.counterTop).allowsHitTesting(false)
@@ -924,7 +960,8 @@ struct ArenaBattlefieldCard: View {
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: card.isPhasedOut)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: card.tapped)
-        .rotation3DEffect(.degrees(arena ? 24 : 0), axis: (x: 1, y: 0, z: 0), anchor: .center, perspective: 0.45)
+        // On the Arena table the tile lies on the table with the plate's own camera (ArenaTableLean).
+        .modifier(ArenaTableLeanEffect())
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
@@ -1210,5 +1247,23 @@ struct ArenaTileShape: InsettableShape {
         var shape = self
         shape.insetAmount += amount
         return shape
+    }
+}
+
+/// The loyalty and defense shield: a flat top with notched corners, straight sides, then a point.
+struct ArenaShieldShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let notch = rect.width * 0.14
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + notch, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - notch, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + notch))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.55))
+        path.addQuadCurve(to: CGPoint(x: rect.midX, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY - rect.height * 0.12))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.55),
+                          control: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.12))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + notch))
+        path.closeSubpath()
+        return path
     }
 }

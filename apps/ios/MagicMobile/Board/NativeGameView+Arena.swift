@@ -1,6 +1,14 @@
 import SwiftUI
 import UIKit
 
+/// What the Arena board's lanes are choosing from right now, shared by every lane.
+struct ArenaLaneChoice {
+    let targetableIds: Set<String>
+    let chosenIds: Set<String>
+    let highlights: Set<String>
+    let paying: Bool
+}
+
 /// An Auto Pay in progress: the payment states it has already acted on, so it stops instead of tapping in circles.
 struct ArenaAutoPayRun: Equatable {
     var steps = 0
@@ -31,6 +39,7 @@ extension NativeGameView {
         .ignoresSafeArea()
         .environment(\.tavernBoard, true)
         .environment(\.arenaBoard, true)
+        .environment(\.arenaTableLean, ArenaTableLean(canvas: canvas))
         .modifier(ArenaAutoPayDriver(key: "\(snapshot.bridgeRevision ?? -1)|\(pendingActionId ?? "")",
                                      active: arenaAutoPay != nil || arenaAttackQueue != nil) {
             arenaAutoPayStep(snapshot: snapshot)
@@ -87,46 +96,111 @@ extension NativeGameView {
             .zIndex(90)
     }
 
-    /// Opponent's lands at their edge, their creatures toward the middle; yours mirrored. BattlefieldRow keeps grouping,
-    /// attachments, targeting, combat taps and mana undo exactly as on the Hearth board.
+    /// Each side laid out the reference game's way (Caleb, 2026-10-20). The front row, toward the middle, holds creatures
+    /// and, in a section of its own at the right end, planeswalkers, battles and other non-creature permanents. The back
+    /// row holds lands from the left, with mana rocks and Treasures at its right end. ArenaRowFit shrinks the cards to use
+    /// the table's whole width (portrait opens a second front row first) before any section scrolls. BattlefieldRow keeps
+    /// grouping, attachments, targeting, combat taps and mana undo exactly as on the Hearth board.
     @ViewBuilder
     private func arenaLanes(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
+        let choice = ArenaLaneChoice(
+            targetableIds: GameBoardInteractionState.boardTargetableIds(for: snapshot),
+            chosenIds: GameBoardInteractionState.boardChosenTargetIds(for: snapshot),
+            highlights: CombatHighlightSet(selection: combatSelection, actions: snapshot.legalActions ?? [],
+                                           combatGroups: snapshot.xmage?.combat ?? []).cardIds,
+            paying: snapshot.manaPayment?.active == true)
+        arenaSide(opponent, viewer: false, snapshot: snapshot, canvas: canvas, choice: choice)
+        arenaSide(human, viewer: true, snapshot: snapshot, canvas: canvas, choice: choice)
+    }
+
+    @ViewBuilder
+    private func arenaSide(_ player: PlayerGameState, viewer: Bool, snapshot: GameSnapshot, canvas: ArenaCanvas,
+                           choice: ArenaLaneChoice) -> some View {
         let layout = canvas.layout
-        let actions = snapshot.legalActions ?? []
-        let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
-        let chosenIds = GameBoardInteractionState.boardChosenTargetIds(for: snapshot)
-        let highlights = CombatHighlightSet(selection: combatSelection, actions: actions, combatGroups: snapshot.xmage?.combat ?? []).cardIds
-        let opponentCreatures = landscapePermanents(opponent.zones.battlefield, resources: false)
-        let viewerCreatures = landscapePermanents(human.zones.battlefield, resources: false)
-        // Portrait grows a second row toward its owner; landscape keeps one row that scrolls (no room between the lanes).
-        let opponentRows = layout.landscape ? 1 : ArenaLayout.creatureRows(groups: BattlefieldAttachments.groups(opponentCreatures).count)
-        let viewerRows = layout.landscape ? 1 : ArenaLayout.creatureRows(groups: BattlefieldAttachments.groups(viewerCreatures).count)
         let sizes = layout.tiles(frames: arenaCardFrames)
-        let opponentLane = canvas.area(layout.creatureLane(viewer: false, rows: opponentRows, tileHeight: sizes.tile.height))
-        let viewerLane = canvas.area(layout.creatureLane(viewer: true, rows: viewerRows, tileHeight: sizes.tile.height))
         let tile = canvas.size(sizes.tile), land = canvas.size(sizes.land)
-        let paying = snapshot.manaPayment?.active == true
-        arenaLane(title: "Opponent lands", cards: landscapePermanents(opponent.zones.battlefield, resources: true), rect: canvas.area(layout.opponentLands),
-                  card: land, flipped: true, resources: true, snapshot: snapshot, targetableIds: targetableIds, chosenIds: chosenIds,
-                  highlights: highlights, viewer: false, paying: paying)
-        arenaLane(title: "Opponent board", cards: opponentCreatures, rect: opponentLane, card: tile, flipped: true, resources: false,
-                  snapshot: snapshot, targetableIds: targetableIds, chosenIds: chosenIds, highlights: highlights, viewer: false, paying: paying)
-        arenaLane(title: "Your board", cards: viewerCreatures, rect: viewerLane, card: tile, flipped: false, resources: false,
-                  snapshot: snapshot, targetableIds: targetableIds, chosenIds: chosenIds, highlights: highlights, viewer: true, paying: paying)
-        arenaLane(title: "Your lands", cards: landscapePermanents(human.zones.battlefield, resources: true), rect: canvas.area(layout.viewerLands),
-                  card: land, flipped: false, resources: true, snapshot: snapshot, targetableIds: targetableIds, chosenIds: chosenIds,
-                  highlights: highlights, viewer: true, paying: paying)
+        let units = { (cards: [ZoneCard]) in
+            BattlefieldRow.arenaTileUnits(cards, targetableIds: choice.targetableIds, chosenIds: choice.chosenIds,
+                                          combatHighlightIds: choice.highlights)
+        }
+        let owner = viewer ? "Your" : "Opponent"
+
+        // Front row: creatures, then the side section.
+        let front = arenaSections(landscapePermanents(player.zones.battlefield, resources: false),
+                                  trailing: { ArenaFrontSection.of($0) == .side }, rank: ArenaFrontSection.sideRank)
+        let sideUnits = units(front.trailing)
+        let frontFit = ArenaRowFit.fit(leading: units(front.leading), trailing: sideUnits,
+                                       width: canvas.area(layout.creatureLane(viewer: viewer, rows: 1)).width, maxCard: tile.width,
+                                       maxRows: layout.maxCreatureRows, secondRowBelow: tile.width * 0.85)
+        let frontCard = CGSize(width: frontFit.cardWidth, height: frontFit.cardWidth * tile.height / max(tile.width, 1))
+        let lane = canvas.area(layout.creatureLane(viewer: viewer, rows: frontFit.rows, tileHeight: frontCard.height / canvas.scale))
+        let firstRow = canvas.area(layout.creatureLane(viewer: viewer, rows: 1, tileHeight: frontCard.height / canvas.scale))
+        let frontSplit = Self.arenaSplit(lane, trailing: frontFit.trailingWidth)
+        arenaLane(title: "\(owner) board", cards: front.leading, rect: frontSplit.leading, card: frontCard, rows: frontFit.rows,
+                  alignment: .center, viewer: viewer, snapshot: snapshot, choice: choice)
+        if !front.trailing.isEmpty {
+            // With two rows the side section stacks into both; a lone permanent keeps to the row nearest the middle.
+            let sideRows = sideUnits.count > 1 ? frontFit.rows : 1
+            let band = sideRows > 1 ? lane : firstRow
+            arenaLane(title: "\(owner) permanents", cards: front.trailing,
+                      rect: CGRect(x: frontSplit.trailing.minX, y: band.minY, width: frontSplit.trailing.width, height: band.height),
+                      card: frontCard, rows: sideRows, alignment: .trailing, viewer: viewer, snapshot: snapshot, choice: choice)
+        }
+
+        // Back row: lands, then mana rocks and Treasures.
+        let backLane = canvas.area(viewer ? layout.viewerLands : layout.opponentLands)
+        let back = arenaSections(landscapePermanents(player.zones.battlefield, resources: true),
+                                 trailing: { !$0.card.isLand }, rank: { _ in 0 })
+        let backFit = ArenaRowFit.fit(leading: units(back.leading), trailing: units(back.trailing), width: backLane.width,
+                                      maxCard: land.width)
+        let backCard = CGSize(width: backFit.cardWidth, height: backFit.cardWidth * land.height / max(land.width, 1))
+        let backSplit = Self.arenaSplit(backLane, trailing: backFit.trailingWidth)
+        arenaLane(title: "\(owner) lands", cards: back.leading, rect: backSplit.leading, card: backCard, rows: 1,
+                  alignment: .leading, viewer: viewer, snapshot: snapshot, choice: choice)
+        if !back.trailing.isEmpty {
+            arenaLane(title: "\(owner) artifacts", cards: back.trailing, rect: backSplit.trailing, card: backCard, rows: 1,
+                      alignment: .trailing, viewer: viewer, snapshot: snapshot, choice: choice)
+        }
+    }
+
+    /// A lane's cards in its two sections, by the permanent each card is attached to (or itself): the engine's order,
+    /// the trailing section sorted by `rank`.
+    private func arenaSections(_ cards: [ZoneCard], trailing: (ZoneCard) -> Bool,
+                               rank: (ZoneCard) -> Int) -> (leading: [ZoneCard], trailing: [ZoneCard]) {
+        let roots = BattlefieldAttachments.roots(cards)
+        let byID = Dictionary(cards.map { ($0.instanceId, $0) }, uniquingKeysWith: { first, _ in first })
+        func root(_ card: ZoneCard) -> ZoneCard { byID[roots[card.instanceId] ?? card.instanceId] ?? card }
+        let leading = cards.filter { !trailing(root($0)) }
+        let back = cards.enumerated().filter { trailing(root($0.element)) }
+            .sorted { (rank(root($0.element)), $0.offset) < (rank(root($1.element)), $1.offset) }
+            .map(\.element)
+        return (leading, back)
+    }
+
+    /// The library's top card when it is revealed. XMage sends a library card only then; the design fixtures fill
+    /// libraries with "Hidden card" placeholders, which stay face down.
+    static func arenaRevealedTop(_ player: PlayerGameState) -> ZoneCard? {
+        guard let top = player.zones.library.first, top.card.name != "Hidden card" else { return nil }
+        return top
+    }
+
+    /// A lane split at its right end: the trailing section's width there, the rest (less a gap) before it.
+    static func arenaSplit(_ lane: CGRect, trailing: CGFloat) -> (leading: CGRect, trailing: CGRect) {
+        guard trailing > 0 else { return (lane, .zero) }
+        let leadingWidth = max(0, lane.width - trailing - ArenaRowFit.sectionGap)
+        return (CGRect(x: lane.minX, y: lane.minY, width: leadingWidth, height: lane.height),
+                CGRect(x: lane.maxX - trailing, y: lane.minY, width: trailing, height: lane.height))
     }
 
     // swiftlint:disable:next function_parameter_count
-    private func arenaLane(title: String, cards: [ZoneCard], rect: CGRect, card: CGSize, flipped: Bool, resources: Bool,
-                           snapshot: GameSnapshot, targetableIds: Set<String>, chosenIds: Set<String>, highlights: Set<String>,
-                           viewer: Bool, paying: Bool) -> some View {
-        BattlefieldRow(title: title, cards: cards, legalActions: snapshot.legalActions ?? [], targetableIds: targetableIds,
-                       chosenIds: chosenIds, combatHighlightIds: highlights, selectedCard: $selectedCard, inspectedCard: $inspectedCard,
-                       flipped: flipped, cardWidth: card.width, cardHeight: card.height, rowWidth: rect.width,
-                       adaptsToDensity: true, availableHeight: rect.height, arrangement: resources ? .landscapeResources : .automatic,
-                       allowsManaUndo: viewer, manaPaymentActive: paying, alignment: resources ? .leading : .center, runAction: runAction,
+    private func arenaLane(title: String, cards: [ZoneCard], rect: CGRect, card: CGSize, rows: Int, alignment: Alignment,
+                           viewer: Bool, snapshot: GameSnapshot, choice: ArenaLaneChoice) -> some View {
+        BattlefieldRow(title: title, cards: cards, legalActions: snapshot.legalActions ?? [], targetableIds: choice.targetableIds,
+                       chosenIds: choice.chosenIds, combatHighlightIds: choice.highlights, selectedCard: $selectedCard,
+                       inspectedCard: $inspectedCard, flipped: !viewer, cardWidth: card.width, cardHeight: card.height,
+                       rowWidth: rect.width, adaptsToDensity: true, availableHeight: rect.height, arrangement: .automatic,
+                       allowsManaUndo: viewer, manaPaymentActive: choice.paying, alignment: alignment, preferredRows: rows,
+                       runAction: runAction,
                        runTargetAction: { submitTarget($0, snapshot: snapshot) },
                        runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
             .frame(width: rect.width, height: rect.height)
@@ -143,7 +217,7 @@ extension NativeGameView {
                       label: "\(snapshot.playerLabel(opponent.playerId))'s library, \(opponent.zones.visibleLibraryCount) cards")
             .overlay {
                 // A revealed top card (Courser of Kruphix, Future Sight…) lies face up on the deck.
-                if let top = opponent.zones.library.first {
+                if let top = Self.arenaRevealedTop(opponent) {
                     TopOfLibraryCard(card: top, owner: "\(snapshot.playerLabel(opponent.playerId))'s", height: canvas.size(layout.opponentPile).height) {
                         localViewZone(title: "Top of \(snapshot.playerLabel(opponent.playerId))'s library", cards: [top])
                     }
@@ -230,7 +304,7 @@ extension NativeGameView {
         ArenaDeckPile(count: human.zones.visibleLibraryCount, size: canvas.size(layout.viewerPile),
                       label: "Your library, \(human.zones.visibleLibraryCount) cards")
             .overlay {
-                if let top = human.zones.library.first {
+                if let top = Self.arenaRevealedTop(human) {
                     TopOfLibraryCard(card: top, playable: GameplayAffordances.castableZones(player: human, snapshot: snapshot,
                                      pendingActionID: pendingActionId).contains(.library), owner: "your",
                                      height: canvas.size(layout.viewerPile).height) {

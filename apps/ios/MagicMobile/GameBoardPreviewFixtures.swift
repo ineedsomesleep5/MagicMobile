@@ -584,6 +584,26 @@ enum GameBoardPreviewFixtures {
                     card("\(seat)-resource-oath", "Fixture Oath", "Enchantment", "{2}", "Creatures you control get +1/+1.")
                 ], at: 0)
             }
+            if resourceLayoutMode == "sections" {
+                // Opt-in Arena board fixture: a wider army, a planeswalker and the other non-creature permanents that
+                // share its section, and a Treasure in the back row.
+                for (number, name) in ["Elvish Mystic", "Savannah Lions", "Raging Goblin", "Goblin Guide"].enumerated() {
+                    battlefield.append(card("\(seat)-section-creature-\(number)", name, "Creature", "{1}", "Development fixture permanent.", power: 1))
+                }
+                var walker = card("\(seat)-section-walker", index == 0 ? "Ajani, Caller of the Pride" : "Liliana of the Veil",
+                                  "Legendary Planeswalker", index == 0 ? "{1}{W}{W}" : "{1}{B}{B}", "+1: Development fixture loyalty ability.")
+                walker["counters"] = ["loyalty": index == 0 ? 4 : 3]
+                battlefield.append(walker)
+                if index == 0 {
+                    var battle = card("\(seat)-section-battle", "Invasion of Gobakhan", "Battle — Siege", "{1}{W}", "When this Siege enters, look at target opponent's hand.")
+                    battle["counters"] = ["defense": 3]
+                    battlefield.append(battle)
+                    battlefield.append(card("\(seat)-section-treasure", "Treasure", "Token Artifact — Treasure", "",
+                                            "{T}, Sacrifice this artifact: Add one mana of any color."))
+                } else {
+                    battlefield.append(card("\(seat)-section-saga", "Fable of the Mirror-Breaker", "Enchantment — Saga", "{2}{R}", "(As this Saga enters and after your draw step, add a lore counter.)"))
+                }
+            }
             if state == .combatArrows {
                 let id = index == 0 ? "human-preview-creature-0" : "ai-1-preview-creature-0"
                 if let offset = battlefield.firstIndex(where: { $0["instanceId"] as? String == id }) {

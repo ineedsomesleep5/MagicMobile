@@ -53,6 +53,10 @@ struct ArenaLayout: Equatable {
         /// How far a touched card rises from each posture.
         let lift: CGFloat
         let liftDown: CGFloat
+        /// Raised: the outer cards dip at most this far, and no card's corner reaches below `upFloor`, so a full hand
+        /// stays whole on the screen (Caleb, 2026-10-20: no cards clipped at the bottom).
+        var maxDrop: CGFloat = .infinity
+        var upFloor: CGFloat = .infinity
     }
 
     let canvas: CGSize
@@ -111,16 +115,18 @@ struct ArenaLayout: Equatable {
         canvas: CGSize(width: 956, height: 440), landscape: true,
         hand: Hand(card: CGSize(width: 93, height: 131), centerX: 476, upY: 368, upPitch: 92, upSpan: 555, upDrop: 2.6,
                    tilt: 3.5, maxTilt: 11, downY: 412, downPitch: 33, downSpan: 209, downDrop: 1.5, downScale: 0.88,
-                   lift: 48, liftDown: 70),
+                   lift: 48, liftDown: 70, maxDrop: 14, upFloor: 437),
         opponentHand: CGPoint(x: 270, y: 10), opponentHandCard: CGSize(width: 36, height: 50), opponentHandPitch: 17,
         viewerMedallion: CGPoint(x: 478, y: 400), viewerMedallionDiameter: 58,
         opponentMedallion: CGPoint(x: 478, y: 25), opponentMedallionDiameter: 50,
         viewerLibrary: CGPoint(x: 222, y: 405), viewerGraveyard: CGPoint(x: 174, y: 405), viewerPile: CGSize(width: 42, height: 59),
-        viewerExile: CGPoint(x: 270, y: 405), opponentExile: CGPoint(x: 733, y: 9),
-        opponentLibrary: CGPoint(x: 629, y: 9), opponentGraveyard: CGPoint(x: 681, y: 9), opponentPile: CGSize(width: 36, height: 50),
+        // The opponent's piles sit whole on the far rail, level with their medallion.
+        viewerExile: CGPoint(x: 270, y: 405), opponentExile: CGPoint(x: 733, y: 27),
+        opponentLibrary: CGPoint(x: 629, y: 27), opponentGraveyard: CGPoint(x: 681, y: 27), opponentPile: CGSize(width: 36, height: 50),
         opponentLands: CGRect(x: 80, y: 54, width: 552, height: 66),
         viewerLands: CGRect(x: 80, y: 290, width: 560, height: 70),
-        opponentCreatureY: 146, viewerCreatureY: 248, creatureLaneX: 186...694, rowBack: 76,
+        // The front rows run the table's full width, inside the mat's leaning edges (Caleb, 2026-10-20).
+        opponentCreatureY: 146, viewerCreatureY: 248, creatureLaneX: 84...872, rowBack: 76,
         tile: CGSize(width: 66, height: 71), land: CGSize(width: 58, height: 62.5),
         stack: CGRect(x: 708, y: 46, width: 175, height: 250),
         draw: CGRect(x: 686, y: 187, width: 106, height: 148),
@@ -143,9 +149,10 @@ struct ArenaLayout: Equatable {
                    tilt: 3, maxTilt: 10, downY: 829, downPitch: 33, downSpan: 210, downDrop: 1, downScale: 0.8,
                    lift: 52, liftDown: 92),
         opponentHand: CGPoint(x: 340, y: 20), opponentHandCard: CGSize(width: 30, height: 42), opponentHandPitch: 14,
-        viewerMedallion: CGPoint(x: 50, y: 878), viewerMedallionDiameter: 74,
+        // Your medallion and piles sit low on the rail, level with the main button (Caleb, 2026-10-20).
+        viewerMedallion: CGPoint(x: 50, y: 890), viewerMedallionDiameter: 74,
         opponentMedallion: CGPoint(x: 42, y: 36), opponentMedallionDiameter: 54,
-        viewerLibrary: CGPoint(x: 123, y: 879), viewerGraveyard: CGPoint(x: 167, y: 879), viewerPile: CGSize(width: 38, height: 53),
+        viewerLibrary: CGPoint(x: 123, y: 891), viewerGraveyard: CGPoint(x: 167, y: 891), viewerPile: CGSize(width: 38, height: 53),
         viewerExile: CGPoint(x: 30, y: 795), opponentExile: CGPoint(x: 168, y: 33),
         opponentLibrary: CGPoint(x: 98, y: 33), opponentGraveyard: CGPoint(x: 133, y: 33), opponentPile: CGSize(width: 30, height: 42),
         opponentLands: CGRect(x: 14, y: 95, width: 412, height: 62),
@@ -169,8 +176,8 @@ struct ArenaLayout: Equatable {
         size.width > size.height ? .landscapeLayout : .portraitLayout
     }
 
-    /// How many creature rows a lane shows: one up to six piles, then a second toward its owner.
-    static func creatureRows(groups: Int) -> Int { groups > 6 ? 2 : 1 }
+    /// Front rows a side may use: landscape has no room between the lanes for a second; portrait grows one toward its owner.
+    var maxCreatureRows: Int { landscape ? 1 : 2 }
 
     /// Tile and land sizes: the tavern frames are nearly square; the reference's cropped cards are wider than tall.
     func tiles(frames: Bool) -> (tile: CGSize, land: CGSize) {
@@ -222,6 +229,87 @@ struct ArenaCanvas: Equatable {
     }
 }
 
+/// Where a non-land permanent sits in its side's front row, the reference game's way: creatures across the row,
+/// everything else (planeswalkers, battles, sagas and other enchantments, artifacts) in a section of its own at the
+/// row's right end, planeswalkers and battles outermost. Lands, mana rocks and Treasures take the back row.
+/// An Aura or Equipment goes wherever the permanent it is attached to goes.
+enum ArenaFrontSection: Equatable {
+    case creatures, side
+
+    static func of(_ card: ZoneCard) -> ArenaFrontSection { card.isCreature ? .creatures : .side }
+
+    /// Order inside the side section: other permanents first, planeswalkers and battles at the far right.
+    static func sideRank(_ card: ZoneCard) -> Int {
+        card.card.isPlaneswalker || card.card.typeLine.localizedCaseInsensitiveContains("battle") ? 1 : 0
+    }
+}
+
+/// Sizes one row of a side's board, a leading section and a trailing one, at a single card size, the reference game's
+/// way: cards shrink as the row fills (a second row opens first where the layout has one), and only below the smallest
+/// size does a section scroll. Widths include BattlefieldRow's 8-pt padding at each end and 4-pt spacing.
+struct ArenaRowFit: Equatable {
+    let cardWidth: CGFloat
+    let rows: Int
+    /// The trailing section's width (0 when it is empty); the leading section takes the rest of the row.
+    let trailingWidth: CGFloat
+    let overflows: Bool
+
+    static let padding: CGFloat = 8, spacing: CGFloat = 4, sectionGap: CGFloat = 10
+    /// The smallest a card shrinks to before its section scrolls, as a share of its full size.
+    static let minimumScale: CGFloat = 0.7
+
+    /// The width a section's piles need at `card` wide; `units` is each pile's width in cards (an attached Aura or
+    /// Equipment peeking out from behind its creature, or a pile of lands, takes a little more than one).
+    static func sectionWidth(_ units: [CGFloat], card: CGFloat) -> CGFloat {
+        units.isEmpty ? 0 : 2 * padding + units.reduce(0, +) * card + CGFloat(units.count - 1) * spacing
+    }
+
+    /// A section's piles in `count` rows, BattlefieldRow's split: the first row takes the extra pile.
+    static func rows(_ units: [CGFloat], count: Int) -> [[CGFloat]] {
+        guard count > 1, units.count > 1 else { return [units] }
+        let first = (units.count + 1) / 2
+        return [Array(units.prefix(first)), Array(units.dropFirst(first))]
+    }
+
+    /// The trailing section's width at `card` wide in `rows` rows.
+    static func trailingWidth(_ units: [CGFloat], card: CGFloat, rows: Int) -> CGFloat {
+        Self.rows(units, count: rows).map { sectionWidth($0, card: card) }.max() ?? 0
+    }
+
+    /// Both sections fill their first row, then their second, side by side; each is as wide as its widest row. A one-row
+    /// fit narrower than `secondRowBelow` opens the second row instead.
+    static func fit(leading: [CGFloat], trailing: [CGFloat], width: CGFloat, maxCard: CGFloat,
+                    maxRows: Int = 1, secondRowBelow: CGFloat = 0) -> ArenaRowFit {
+        let minCard = maxCard * minimumScale
+        // sectionWidth is linear in the card width, so the largest card that fits is the tightest pairing of a row
+        // from each section.
+        func largestCard(_ count: Int) -> CGFloat {
+            var card = maxCard
+            for row in rows(leading, count: count) {
+                for side in rows(trailing, count: count) {
+                    let units = row.reduce(0, +) + side.reduce(0, +)
+                    guard units > 0 else { continue }
+                    let fixed = sectionWidth(row, card: 0) + sectionWidth(side, card: 0)
+                        + (row.isEmpty || side.isEmpty ? 0 : sectionGap)
+                    card = min(card, (width - fixed) / units)
+                }
+            }
+            return card
+        }
+        let maxRows = max(1, min(maxRows, max(leading.count, trailing.count)))
+        for count in 1...maxRows {
+            let card = largestCard(count)
+            if card >= (count < maxRows ? max(secondRowBelow, minCard) : minCard) {
+                return ArenaRowFit(cardWidth: card, rows: count,
+                                   trailingWidth: trailingWidth(trailing, card: card, rows: count), overflows: false)
+            }
+        }
+        // Full at the smallest size: the trailing section keeps at most 40% of the row, and each section scrolls.
+        let widest = trailing.isEmpty ? 0 : min(trailingWidth(trailing, card: minCard, rows: maxRows), width * 0.4)
+        return ArenaRowFit(cardWidth: minCard, rows: maxRows, trailingWidth: widest, overflows: true)
+    }
+}
+
 /// Whether the hand is raised over the table or resting at its edge (the reference's hand has these two postures, plus
 /// a lifted card and a dragged one, which the fan draws itself).
 enum ArenaHandPosture: Equatable {
@@ -267,7 +355,13 @@ enum ArenaHandFanLayout {
         let x = hand.centerX + offset * pitch
         if raised {
             let tilt = max(-hand.maxTilt, min(hand.maxTilt, Double(offset) * hand.tilt))
-            return ArenaHandSlot(center: CGPoint(x: x, y: hand.upY + hand.upDrop * offset * offset), rotation: tilt, scale: 1)
+            // The arc flattens as the hand grows, and the whole fan rises until its outermost corner clears the floor.
+            let edge = CGFloat(count - 1) / 2
+            let drop = edge > 0 ? min(hand.upDrop, hand.maxDrop / (edge * edge)) : 0
+            let edgeTilt = min(hand.maxTilt, Double(edge) * hand.tilt) * .pi / 180
+            let reach = drop * edge * edge + hand.card.height / 2 * CGFloat(cos(edgeTilt)) + hand.card.width / 2 * CGFloat(sin(edgeTilt))
+            let rise = max(0, hand.upY + reach - hand.upFloor)
+            return ArenaHandSlot(center: CGPoint(x: x, y: hand.upY - rise + drop * offset * offset), rotation: tilt, scale: 1)
         }
         return ArenaHandSlot(center: CGPoint(x: x, y: hand.downY + offset * offset * hand.downDrop),
                              rotation: Double(offset) * 1.8, scale: hand.downScale)
