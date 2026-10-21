@@ -136,6 +136,14 @@ contradicting one.
 
 ## Website
 
+- 2026-10-21 (Claude, web solo M3): two traps running the Web Image engine under Vite's dev server. (1) Every hot
+  reload of the module that created the engine made a new `LocalEngine`, so each edit started another ~1 GB worker
+  while the old one kept running; after a few edits the tab stalled and a reload hung. The engine singleton lives on
+  `globalThis` (`localEngine()`). (2) Vite's dev server serves a classic worker unbundled, so a value import in
+  `engine.worker.ts` breaks it in dev while `vite build` (IIFE) works: the worker has `import type` only. Also: XMage
+  stops at every step for priority, so a client without smart pass asks for ~10 Pass clicks a turn; the web port
+  is `src/core/smartPass.ts`. Where: `apps/web/src/engine/`, `apps/web/README.md`.
+
 - 2026-10-20 (Claude, web guest M2): three traps in `apps/web`. (1) A ` `/` ` escape written into a JS
   regex literal can land in the file as the raw character, which ends the literal ("Unterminated regular expression");
   build such patterns with `new RegExp("…\\u2028…")`. (2) The desktop app's browser pane gives no animation frames
