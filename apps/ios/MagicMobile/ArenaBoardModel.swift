@@ -60,6 +60,9 @@ struct ArenaLayout: Equatable {
         /// Whether a tap on the tucked hand opens it into the raised fan. Off in both layouts (Caleb, 2026-10-20: the
         /// hand stays tucked; a tap or a slide pops one card up while the rest stay put).
         var opensOnTap = false
+        /// Touches on the hand count down to this line (design points) and no lower: below it is the home gesture's edge
+        /// (landscape) or the cards' hidden part behind the front rail (portrait).
+        var touchBottom: CGFloat? = nil
     }
 
     let canvas: CGSize
@@ -124,18 +127,18 @@ struct ArenaLayout: Equatable {
     /// The landscape table (scripts/brand/arena_layout.json "landscape").
     static let landscapeLayout = ArenaLayout(
         canvas: CGSize(width: 956, height: 440), landscape: true,
-        // Positions follow the current reference game (Caleb's desktop screenshot, 2026-10-20): your hand rests tucked
-        // along the bottom edge in a wide fan and opens when touched; your medallion stands above it in the gap of your
-        // back row; your graveyard, library and exile sit in the bottom-left corner, the opponent's top right.
-        // The tucked fan ends before the controls corner on the right and after the exile pile on the left.
-        hand: Hand(card: CGSize(width: 93, height: 131), centerX: 450, upY: 368, upPitch: 92, upSpan: 520, upDrop: 2.6,
-                   tilt: 3.5, maxTilt: 11, downY: 448, downPitch: 58, downSpan: 430, downDrop: 1.2, downScale: 1,
-                   lift: 48, liftDown: 92, maxDrop: 14, upFloor: 437),
+        // Positions follow the current reference game (Caleb's desktop screenshot, 2026-10-20): the opponent's piles top
+        // right, their hand fanned behind their medallion. Your medallion sits in the bottom-left corner with your
+        // graveyard, library and exile beside it, so the tucked hand can sit higher, its tops just under your lands and
+        // clear of the home gesture's edge (Caleb, 2026-10-20). The fan runs between the piles and the controls corner.
+        hand: Hand(card: CGSize(width: 93, height: 131), centerX: 490, upY: 368, upPitch: 92, upSpan: 520, upDrop: 2.6,
+                   tilt: 3.5, maxTilt: 11, downY: 432, downPitch: 50, downSpan: 317, downDrop: 1.2, downScale: 1,
+                   lift: 48, liftDown: 92, maxDrop: 14, upFloor: 437, touchBottom: 416),
         opponentHand: CGPoint(x: 478, y: 4), opponentHandCard: CGSize(width: 36, height: 50), opponentHandPitch: 30,
-        viewerMedallion: CGPoint(x: 478, y: 352), viewerMedallionDiameter: 58,
+        viewerMedallion: CGPoint(x: 96, y: 402), viewerMedallionDiameter: 56,
         opponentMedallion: CGPoint(x: 478, y: 25), opponentMedallionDiameter: 50,
-        viewerLibrary: CGPoint(x: 108, y: 398), viewerGraveyard: CGPoint(x: 60, y: 398), viewerPile: CGSize(width: 42, height: 59),
-        viewerExile: CGPoint(x: 156, y: 398), opponentExile: CGPoint(x: 652, y: 30),
+        viewerLibrary: CGPoint(x: 204, y: 404), viewerGraveyard: CGPoint(x: 158, y: 404), viewerPile: CGSize(width: 42, height: 59),
+        viewerExile: CGPoint(x: 250, y: 404), opponentExile: CGPoint(x: 652, y: 30),
         opponentLibrary: CGPoint(x: 704, y: 30), opponentGraveyard: CGPoint(x: 756, y: 30), opponentPile: CGSize(width: 36, height: 50),
         opponentLands: CGRect(x: 80, y: 54, width: 360, height: 66),
         viewerLands: CGRect(x: 80, y: 290, width: 360, height: 70),
@@ -150,7 +153,8 @@ struct ArenaLayout: Equatable {
         primary: CGRect(x: 708, y: 388, width: 176, height: 36),
         secondary: CGRect(x: 708, y: 335, width: 176, height: 37),
         phaseStripX: 708...884, phaseStripY: 368, phaseStripRaisedY: 314,
-        passAhead: CGRect(x: 656, y: 392, width: 42, height: 28),
+        // The skip pill in the corner right of the main button, as in the reference.
+        passAhead: CGRect(x: 890, y: 392, width: 40, height: 28),
         undo: CGRect(x: 650, y: 343, width: 52, height: 26),
         menu: CGPoint(x: 876, y: 23),
         floatingMana: CGPoint(x: 92, y: 405),
@@ -166,7 +170,7 @@ struct ArenaLayout: Equatable {
         // 2026-10-20), clear of the exile pile on the left.
         hand: Hand(card: CGSize(width: 104, height: 146), centerX: 220, upY: 784, upPitch: 58, upSpan: 336, upDrop: 2.2,
                    tilt: 3, maxTilt: 10, downY: 779, downPitch: 46, downSpan: 230, downDrop: 1, downScale: 1,
-                   lift: 52, liftDown: 60),
+                   lift: 52, liftDown: 60, touchBottom: 825),
         opponentHand: CGPoint(x: 340, y: 20), opponentHandCard: CGSize(width: 30, height: 42), opponentHandPitch: 14,
         // Your medallion and piles sit low on the rail, level with the main button (Caleb, 2026-10-20).
         viewerMedallion: CGPoint(x: 50, y: 890), viewerMedallionDiameter: 74,
@@ -248,16 +252,23 @@ struct ArenaCanvas: Equatable {
     }
 }
 
-/// Where a non-land permanent sits in its side's front row, the reference game's way: creatures across the row,
-/// everything else (planeswalkers, battles, sagas and other enchantments, artifacts) in a section of its own at the
-/// row's right end, planeswalkers and battles outermost. Lands, mana rocks and Treasures take the back row.
-/// An Aura or Equipment goes wherever the permanent it is attached to goes.
+/// Where a non-land permanent sits, the current reference game's way: creatures across the front row; planeswalkers,
+/// battles and sagas in a section of their own at the table's right edge (planeswalkers and battles outermost); every
+/// other permanent (artifacts, enchantments, an unattached Equipment) in the back row right of the lands, with the mana
+/// rocks and Treasures. An Aura or Equipment goes wherever the permanent it is attached to goes.
 enum ArenaFrontSection: Equatable {
-    case creatures, side
+    case creatures, side, support
 
-    static func of(_ card: ZoneCard) -> ArenaFrontSection { card.isCreature ? .creatures : .side }
+    static func of(_ card: ZoneCard) -> ArenaFrontSection {
+        if card.isCreature { return .creatures }
+        let type = card.card.typeLine
+        if card.card.isPlaneswalker || type.localizedCaseInsensitiveContains("battle") || type.localizedCaseInsensitiveContains("saga") {
+            return .side
+        }
+        return .support
+    }
 
-    /// Order inside the side section: other permanents first, planeswalkers and battles at the far right.
+    /// Order inside the side section: sagas first, planeswalkers and battles at the far right.
     static func sideRank(_ card: ZoneCard) -> Int {
         card.card.isPlaneswalker || card.card.typeLine.localizedCaseInsensitiveContains("battle") ? 1 : 0
     }
@@ -387,7 +398,8 @@ enum ArenaHandFanLayout {
 /// step sends the same `make_mana` a tap on the land sends, or spends floating mana with `play_mana`.
 enum ArenaAutoPay {
     enum Step: Equatable {
-        case tap(actionID: String)
+        /// `color`: the colour to name when the source makes a mana of any colour.
+        case tap(actionID: String, color: String? = nil)
         case spend(symbol: String)
         case done
         case blocked(String)
@@ -437,10 +449,13 @@ enum ArenaAutoPay {
     }
 
     /// What one tap of a mana action produces: one symbol list per alternative ("Add {W} or {U}" has two), or any
-    /// colour. Nil when the ability costs more than a tap (life, other mana, a sacrifice): those stay manual.
+    /// colour. Nil when the ability costs more than a tap and sacrificing the source itself (life, other mana, another
+    /// permanent): those stay manual.
     struct Production: Equatable {
         var options: [[String]]
         var anyColor = false
+        /// The source goes away to make it (a Treasure, a Gold token): spent only when nothing else can pay.
+        var sacrifices = false
 
         func makes(_ symbol: String) -> Bool { anyColor && colors.contains(symbol) || options.contains { $0.contains(symbol) } }
         var amount: Int { anyColor ? 1 : options.map(\.count).max() ?? 0 }
@@ -449,28 +464,46 @@ enum ArenaAutoPay {
     }
 
     static func production(of action: LegalAction) -> Production? {
+        let label = action.label
+        let addRange = label.range(of: "Add", options: .caseInsensitive)
+        var sacrifices = false
+        if let addRange {
+            let costPart = String(label[..<addRange.lowerBound])
+            if let colon = costPart.lastIndex(of: ":") {
+                let cost = costPart[..<colon].uppercased().replacingOccurrences(of: " ", with: "")
+                let name = (action.cardName ?? "").uppercased().replacingOccurrences(of: " ", with: "")
+                // A tap, a sacrifice of the source itself, or both ("{T}, Sacrifice this artifact"); anything else is
+                // a cost the player chooses to pay.
+                let parts = cost.split(separator: ",").map(String.init)
+                for part in parts {
+                    if part == "{T}" { continue }
+                    if part.hasPrefix("SACRIFICE"), part.hasPrefix("SACRIFICETHIS") || part == "SACRIFICEIT" || (!name.isEmpty && part == "SACRIFICE" + name) {
+                        sacrifices = true
+                        continue
+                    }
+                    return nil
+                }
+            }
+        }
         if let produced = action.producedMana?.map({ $0.uppercased() }), !produced.isEmpty {
             // One symbol repeated is one ability making that much ({C}{C}); different symbols are alternatives.
-            return Production(options: Set(produced).count == 1 ? [produced] : produced.map { [$0] })
+            return Production(options: Set(produced).count == 1 ? [produced] : produced.map { [$0] }, sacrifices: sacrifices)
         }
-        let label = action.label
-        guard let addRange = label.range(of: "Add", options: .caseInsensitive) else { return nil }
-        let costPart = String(label[..<addRange.lowerBound])
-        if let colon = costPart.lastIndex(of: ":") {
-            let cost = costPart[..<colon].uppercased().replacingOccurrences(of: " ", with: "")
-            guard cost == "{T}" || cost.isEmpty else { return nil }
-        }
+        guard let addRange else { return nil }
         let effect = String(label[addRange.upperBound...])
         if effect.range(of: "any color", options: .caseInsensitive) != nil || effect.range(of: "any colour", options: .caseInsensitive) != nil {
-            return Production(options: [], anyColor: true)
+            return Production(options: [], anyColor: true, sacrifices: sacrifices)
         }
         // Stop at the first sentence: reminder text and riders ("Activate only…", "deals 1 damage") follow it.
         let clause = effect.split(separator: ".", maxSplits: 1).first.map(String.init) ?? effect
-        let options = clause.components(separatedBy: " or ").map { part -> [String] in
+        // "Add {W}, {B}, or {G}" is three choices of one mana each, not {W}{B} or {G}.
+        let alternatives = clause.replacingOccurrences(of: ", or ", with: "|").replacingOccurrences(of: " or ", with: "|")
+            .replacingOccurrences(of: ",", with: "|").components(separatedBy: "|")
+        let options = alternatives.map { part -> [String] in
             symbols(in: part).filter { colors.contains($0) || $0 == "C" }
         }.filter { !$0.isEmpty }
         guard !options.isEmpty else { return nil }
-        return Production(options: options)
+        return Production(options: options, sacrifices: sacrifices)
     }
 
     private static func symbols(in text: String) -> [String] {
@@ -479,10 +512,194 @@ enum ArenaAutoPay {
         return regex.matches(in: source as String, range: NSRange(location: 0, length: source.length)).map { source.substring(with: $0.range(at: 1)) }
     }
 
+    /// What kind of permanent a mana source is, when the board says: a creature tapped for mana can't attack or block.
+    enum SourceKind { case land, creature, other }
+
+    /// One permanent that can make mana now, and the ways it can (a dual land offers one action per colour).
+    struct Source {
+        let key: String
+        var yields: [Yield]
+        /// Its cheapest yield's cost: the order sources are tried in.
+        var cost: Int { yields.map(\.cost).min() ?? 0 }
+
+        /// One way to tap it: the action to send, what it makes (`*` is a mana of any colour) and what using it costs
+        /// the plan (a land's sacrifice ability costs more than its tap: Crystal Vein).
+        struct Yield {
+            let actionID: String
+            let symbols: [String]
+            var cost: Int
+        }
+    }
+
+    /// The order a payment spends sources in, as a cost: single-colour lands, then duals, then tri-lands and
+    /// any-colour lands, then creatures, and a sacrifice (Treasure) only when nothing else will do. Mana a source makes
+    /// beyond the cost is waste.
+    static func sources(from actions: [LegalAction], kinds: [String: SourceKind] = [:]) -> [Source] {
+        var byKey: [String: Source] = [:]
+        var order: [String] = []
+        for action in actions where action.type == "make_mana" {
+            guard let key = action.sourceInstanceId ?? action.cardInstanceId, let production = production(of: action) else { continue }
+            var cost = production.anyColor ? 18 : [0, 10, 14, 16, 16, 16][min(production.colorCount, 5)]
+            // Colourless-only sources pay generic before any coloured one, keeping colours open.
+            if production.colorlessOnly { cost = 9 }
+            if production.sacrifices { cost = 60 }
+            if kinds[key] == .creature { cost += 10 }
+            let yields: [Source.Yield] = production.anyColor
+                ? [Source.Yield(actionID: action.id, symbols: ["*"], cost: cost)]
+                : production.options.map { Source.Yield(actionID: action.id, symbols: $0, cost: cost) }
+            if var existing = byKey[key] {
+                existing.yields += yields
+                byKey[key] = existing
+            } else {
+                byKey[key] = Source(key: key, yields: yields)
+                order.append(key)
+            }
+        }
+        // Several abilities on one permanent (a dual land's two colours) make it as flexible as their colours together.
+        return order.compactMap { key in
+            guard var source = byKey[key] else { return nil }
+            let taps = source.yields.filter { $0.cost < 60 }
+            let colorsMade = Set(taps.flatMap(\.symbols).filter { colors.contains($0) }).count
+            if taps.count > 1, !taps.contains(where: { $0.symbols.contains("*") }) {
+                let combined = [0, 10, 14, 16, 16, 16][min(colorsMade, 5)] + (kinds[key] == .creature ? 10 : 0)
+                for index in source.yields.indices where source.yields[index].cost < 60 {
+                    source.yields[index].cost = max(source.yields[index].cost, combined)
+                }
+            }
+            return source
+        }
+    }
+
+    /// One planned tap: the permanent, the action and, for a mana of any colour, which colour to name.
+    struct PlannedTap: Equatable {
+        let key: String
+        let actionID: String
+        let color: String?
+    }
+
+    /// The cheapest way to pay the whole cost from these sources, or nil when they can't. Coloured pips are matched
+    /// first (the most constrained first), hybrids take whichever half is cheaper, and generic takes what is left;
+    /// taps for coloured pips come first in the plan.
+    static func plan(need: Need, sources: [Source]) -> [PlannedTap]? {
+        struct Pip { let accepts: [String]; let generic: Int }
+        var pips: [Pip] = []
+        for (symbol, count) in need.symbols.sorted(by: { $0.key < $1.key }) where count > 0 {
+            pips += Array(repeating: Pip(accepts: [symbol], generic: 0), count: count)
+        }
+        for hybrid in need.hybrids {
+            let generic = hybrid.compactMap { $0.hasPrefix("generic") ? Int($0.dropFirst(7)) : nil }.first ?? 0
+            pips.append(Pip(accepts: hybrid.filter { !$0.hasPrefix("generic") }, generic: generic))
+        }
+        func accepts(_ yield: Source.Yield, _ pip: Pip) -> Bool {
+            yield.symbols.contains { $0 == "*" ? pip.accepts.contains(where: colors.contains) : pip.accepts.contains($0) }
+        }
+        pips.sort { lhs, rhs in
+            func options(_ pip: Pip) -> Int { sources.filter { $0.yields.contains { accepts($0, pip) } }.count }
+            return (options(lhs), lhs.accepts.joined()) < (options(rhs), rhs.accepts.joined())
+        }
+
+        // A used source: the yield chosen and the units of it still unspent.
+        struct Use { var yield: Int; var left: [String] }
+        var best: (cost: Int, uses: [Int: Use], colors: [Int: String], order: [Int])?
+        var uses: [Int: Use] = [:]
+        var named: [Int: String] = [:]
+        var order: [Int] = []
+        var nodes = 0
+
+        func spentCost() -> Int { uses.reduce(0) { $0 + sources[$1.key].yields[$1.value.yield].cost } }
+
+        func finish(extraGeneric: Int) {
+            // Generic: leftover units first, then the cheapest fill of unused sources (small knapsack on units).
+            let owed = need.generic + extraGeneric
+            let leftover = uses.values.reduce(0) { $0 + $1.left.count }
+            var cost = spentCost()
+            var fill: [(index: Int, yield: Int)] = []
+            if owed > leftover {
+                let short = owed - leftover
+                let unused = sources.indices.filter { uses[$0] == nil }
+                // dp over units reached (capped): the cheapest set of sources, each used one way at most.
+                let cap = short + 2
+                var dp: [(cost: Int, picks: [(index: Int, yield: Int)])?] = Array(repeating: nil, count: cap + 1)
+                dp[0] = (0, [])
+                for index in unused {
+                    let previous = dp
+                    for (yieldIndex, yield) in sources[index].yields.enumerated() {
+                        for reached in 0...cap {
+                            guard let current = previous[reached] else { continue }
+                            let next = min(cap, reached + max(1, yield.symbols.count))
+                            let candidate: (cost: Int, picks: [(index: Int, yield: Int)]) = (current.cost + yield.cost, current.picks + [(index: index, yield: yieldIndex)])
+                            if dp[next] == nil || candidate.0 < dp[next]!.cost { dp[next] = candidate }
+                        }
+                    }
+                }
+                guard let pick = (short...cap).compactMap({ reached in dp[reached].map { (reached, $0) } })
+                    .min(by: { ($0.1.cost + 3 * ($0.0 - short)) < ($1.1.cost + 3 * ($1.0 - short)) }) else { return }
+                cost += pick.1.cost + 3 * (pick.0 - short)
+                fill = pick.1.picks
+            } else {
+                cost += 3 * (leftover - owed)
+            }
+            if best == nil || cost < best!.cost {
+                var all = uses
+                for pick in fill { all[pick.index] = Use(yield: pick.yield, left: []) }
+                best = (cost, all, named, order + fill.map(\.index))
+            }
+        }
+
+        func assign(_ next: Int, extraGeneric: Int) {
+            nodes += 1
+            if nodes > 40_000 { return }
+            if let best, spentCost() >= best.cost { return }
+            guard next < pips.count else { finish(extraGeneric: extraGeneric); return }
+            let pip = pips[next]
+            // A unit left on a source already tapped costs nothing more.
+            for index in uses.keys.sorted() {
+                guard let slot = uses[index]!.left.firstIndex(where: { $0 == "*" ? pip.accepts.contains(where: colors.contains) : pip.accepts.contains($0) }) else { continue }
+                var use = uses[index]!
+                let unit = use.left.remove(at: slot)
+                uses[index] = use
+                let before = named[index]
+                if unit == "*" { named[index] = pip.accepts.first(where: colors.contains) }
+                assign(next + 1, extraGeneric: extraGeneric)
+                named[index] = before
+                use.left.insert(unit, at: slot)
+                uses[index] = use
+            }
+            // A new source: one of each identical kind is enough to try.
+            var tried = Set<String>()
+            for index in sources.indices.sorted(by: { (sources[$0].cost, $0) < (sources[$1].cost, $1) }) where uses[index] == nil {
+                for (yieldIndex, yield) in sources[index].yields.enumerated() where accepts(yield, pip) {
+                    let signature = sources[index].yields.map { "\($0.cost):" + $0.symbols.joined() }.joined(separator: ",") + "|\(yieldIndex)"
+                    guard tried.insert(signature).inserted else { continue }
+                    var left = yield.symbols
+                    let slot = left.firstIndex(where: { $0 == "*" ? pip.accepts.contains(where: colors.contains) : pip.accepts.contains($0) })!
+                    let unit = left.remove(at: slot)
+                    uses[index] = Use(yield: yieldIndex, left: left)
+                    if unit == "*" { named[index] = pip.accepts.first(where: colors.contains) }
+                    order.append(index)
+                    assign(next + 1, extraGeneric: extraGeneric)
+                    order.removeLast()
+                    named[index] = nil
+                    uses[index] = nil
+                }
+            }
+            // {2/W}: pay its generic half instead.
+            if pip.generic > 0 { assign(next + 1, extraGeneric: extraGeneric + pip.generic) }
+        }
+
+        assign(0, extraGeneric: 0)
+        guard let best else { return nil }
+        return best.order.map { index in
+            let source = sources[index]
+            let yield = source.yields[best.uses[index]?.yield ?? 0]
+            let color = yield.symbols.contains("*") ? (best.colors[index] ?? colors.first) : nil
+            return PlannedTap(key: source.key, actionID: yield.actionID, color: color)
+        }
+    }
+
     /// The next Auto Pay step for a cost (`remainingText`), given the floating mana the prompt can spend and the
-    /// legal actions. Coloured pips go first, starting with the colour the fewest sources make; single-colour sources
-    /// are spent before flexible ones, and generic costs take colourless sources first.
-    static func next(remainingText: String, floating: [String: Int], actions: [LegalAction]) -> Step {
+    /// legal actions: floating mana first, then the first tap of the cheapest plan that pays the whole cost.
+    static func next(remainingText: String, floating: [String: Int], actions: [LegalAction], kinds: [String: SourceKind] = [:]) -> Step {
         let need = need(from: remainingText)
         guard !need.isEmpty else { return .done }
 
@@ -501,58 +718,17 @@ enum ArenaAutoPay {
             }
         }
 
-        let sources: [(action: LegalAction, production: Production)] = actions
-            .filter { $0.type == "make_mana" && ($0.sourceInstanceId != nil || $0.cardInstanceId != nil) }
-            .compactMap { action in production(of: action).map { (action, $0) } }
-        // How many colours each permanent can make across all its mana abilities: the less flexible, the sooner spent.
-        var flexibility: [String: Int] = [:]
-        var amounts: [String: Int] = [:]
-        for source in sources {
-            let key = source.action.sourceInstanceId ?? source.action.cardInstanceId ?? source.action.id
-            flexibility[key] = max(flexibility[key] ?? 0, source.production.colorCount)
-            amounts[key] = max(amounts[key] ?? 0, source.production.amount)
-        }
-        // Never start tapping for a cost that can't be finished: the lands would stay tapped for nothing.
-        let owed = need.generic + need.symbols.values.reduce(0, +) + need.hybrids.count
-        // Floating mana that could help was spent above, so only untapped sources count here.
-        let available = amounts.values.reduce(0, +)
-        if available < owed { return .blocked("Not enough untapped mana for this cost") }
-        func flex(_ action: LegalAction) -> Int { flexibility[action.sourceInstanceId ?? action.cardInstanceId ?? action.id] ?? 0 }
-
-        // Coloured and colourless-specific pips, most constrained first.
-        var demands: [[String]] = need.symbols.filter { $0.value > 0 }.map { [$0.key] }
-        demands += need.hybrids.map { $0.filter { !$0.hasPrefix("generic") } }.filter { !$0.isEmpty }
-        let ranked = demands.map { demand -> (demand: [String], candidates: [(action: LegalAction, production: Production)]) in
-            (demand, sources.filter { source in demand.contains { source.production.makes($0) } })
-        }.sorted { ($0.candidates.count, $0.demand.joined()) < ($1.candidates.count, $1.demand.joined()) }
-        if let first = ranked.first {
-            guard let pick = first.candidates.sorted(by: { lhs, rhs in
-                (lhs.production.anyColor ? 1 : 0, flex(lhs.action), lhs.action.id) < (rhs.production.anyColor ? 1 : 0, flex(rhs.action), rhs.action.id)
-            }).first else {
-                // A {2/W}-style hybrid with no white source falls back to its generic half.
-                if need.hybrids.contains(where: { $0.contains { $0.hasPrefix("generic") } }) && first.demand.allSatisfy({ colors.contains($0) }) {
-                    return genericStep(sources: sources, flex: flex) ?? .blocked("No mana source left for this cost")
-                }
-                return .blocked("No untapped source makes {\(first.demand.joined(separator: "/"))}")
+        let sources = sources(from: actions, kinds: kinds)
+        guard let plan = plan(need: need, sources: sources), let first = plan.first else {
+            // Say what is short: a colour no source makes, or just not enough mana.
+            let owed = need.generic + need.symbols.values.reduce(0, +) + need.hybrids.count
+            if sources.count < owed { return .blocked("Not enough untapped mana for this cost") }
+            if let missing = need.symbols.keys.sorted().first(where: { symbol in !sources.contains { $0.yields.contains { $0.symbols.contains(symbol) || $0.symbols.contains("*") && colors.contains(symbol) } } }) {
+                return .blocked("No untapped source makes {\(missing)}")
             }
-            return .tap(actionID: pick.action.id)
+            return .blocked("Your untapped mana can't pay this cost")
         }
-        return genericStep(sources: sources, flex: flex, generic: need.generic) ?? .blocked("No mana source left for this cost")
-    }
-
-    private static func genericStep(sources: [(action: LegalAction, production: Production)], flex: (LegalAction) -> Int,
-                                    generic: Int = 1) -> Step? {
-        let pick = sources.sorted { lhs, rhs in
-            // Colourless first, then single colours, then flexible lands, then any-colour rocks; a two-mana rock is
-            // welcome when two or more generic remain.
-            func score(_ source: (action: LegalAction, production: Production)) -> (Int, Int, Int, String) {
-                // A rock that would make more than is owed wastes the rest, so it waits; one that fits goes first.
-                let multi = source.production.amount > 1 ? (generic >= source.production.amount ? -1 : 1) : 0
-                return (multi, source.production.colorlessOnly ? 0 : source.production.anyColor ? 3 : 1, flex(source.action), source.action.id)
-            }
-            return score(lhs) < score(rhs)
-        }.first
-        return pick.map { .tap(actionID: $0.action.id) }
+        return .tap(actionID: first.actionID, color: first.color)
     }
 }
 
@@ -582,7 +758,16 @@ extension ArenaAutoPay {
         let remaining = snapshot.manaPayment?.remainingText ?? snapshot.promptEnvelopeV2?.message ?? ""
         var floating: [String: Int] = [:]
         for choice in snapshot.promptEnvelopeV2?.manaChoices ?? [] { floating[choice.manaType ?? choice.id, default: 0] += choice.amount ?? 0 }
-        return next(remainingText: remaining, floating: floating, actions: snapshot.legalActions ?? [])
+        return next(remainingText: remaining, floating: floating, actions: snapshot.legalActions ?? [], kinds: sourceKinds(in: snapshot))
+    }
+
+    /// Lands, creatures and other permanents on the battlefield, by instance id.
+    static func sourceKinds(in snapshot: GameSnapshot) -> [String: SourceKind] {
+        var kinds: [String: SourceKind] = [:]
+        for card in snapshot.players.flatMap(\.zones.battlefield) {
+            kinds[card.instanceId] = card.isCreature ? .creature : card.card.isLand ? .land : .other
+        }
+        return kinds
     }
 }
 

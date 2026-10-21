@@ -287,7 +287,7 @@ final class OnDeviceSession: ObservableObject {
         self.client = client; self.matchID = matchID; self.seatID = seatID
         self.pollReader = pollReader; pollExchange = nil
         supportedAnswerActions = answerActions; rememberedAnswers = 0; rememberedTriggerOrders = 0; standingActions = [:]
-        comboHistory = []; comboOffer = nil; comboDeclined = nil; comboResult = nil
+        comboHistory = []; comboOffer = nil; comboWinForecast = nil; comboDeclined = nil; comboResult = nil
         if let autoPassAfterCast { setAutoPassAfterCast(autoPassAfterCast) }
         if devicePaceHot { queueDevicePace() }
         self.smartPass = smartPass; smartPassTask?.cancel(); smartPassTask = nil; smartPassedPromptID = nil; fullControlTurn = nil
@@ -662,9 +662,11 @@ final class OnDeviceSession: ObservableObject {
     // MARK: Combo loop shortcut (ComboLoop)
 
     /// Solo games only: the root turns it on for games against the AI.
-    var comboLoopsAllowed = false { didSet { if !comboLoopsAllowed { comboHistory = []; comboOffer = nil } } }
+    var comboLoopsAllowed = false { didSet { if !comboLoopsAllowed { comboHistory = []; comboOffer = nil; comboWinForecast = nil } } }
     /// A round the player has made three times in a row this turn, offered for repeating.
     @Published private(set) var comboOffer: [ComboStep]?
+    /// Whether repeating the offered round ends the game: "Until they lose" is offered only then.
+    @Published private(set) var comboWinForecast: ComboWinForecast?
     /// Repeating a round: how far it has got, and the last few rounds and notes.
     @Published private(set) var comboRun: ComboRun?
     /// The line shown when repeating stops: rounds, life changes and why.
@@ -680,10 +682,12 @@ final class OnDeviceSession: ObservableObject {
     }
     /// The board's snapshot: the live game, or the repeats' quiet copy while a loop runs.
     var presentedSnapshot: GameSnapshot? { comboRun == nil ? snapshot : (comboPresented ?? snapshot?.withoutPrompts) }
-    private var comboHistory: [(step: ComboStep, turn: Int)] = []
+    private var comboHistory: [(step: ComboStep, turn: Int, standings: [String: ComboWinForecast.Standing])] = []
     private var comboDeclined: [ComboStep]?
     private var comboStopRequested = false
     private var comboFastMode = false
+    /// Rounds a winning loop still needs, while it finishes behind its curtain; nil otherwise.
+    @Published private(set) var comboFinishing: Int?
     private var comboTask: Task<Void, Never>?
 
     private func noteComboStep(_ command: GameCommand, label: String, actionID: String, decision: GameSnapshot?) {
@@ -692,15 +696,23 @@ final class OnDeviceSession: ObservableObject {
         case .ignore:
             return
         case .breaks:
-            comboHistory = []; comboOffer = nil
+            comboHistory = []; comboOffer = nil; comboWinForecast = nil
         case .step(let step):
             let turn = decision?.turn ?? 0
             // A loop is offered only for rounds made in one turn.
             if let last = comboHistory.last, last.turn != turn { comboHistory = [] }
-            comboHistory.append((step, turn))
+            comboHistory.append((step, turn, decision.map(ComboWinForecast.standings) ?? [:]))
             if comboHistory.count > ComboLoop.historyLimit { comboHistory.removeFirst(comboHistory.count - ComboLoop.historyLimit) }
             let round = ComboLoop.cycle(in: comboHistory.map(\.step))
             comboOffer = round != nil && round != comboDeclined ? round : nil
+            comboWinForecast = comboOffer.flatMap { round in
+                // The opponents' standings at the start of each of the last rounds.
+                let length = round.count
+                let starts = stride(from: comboHistory.count - length * ComboLoop.repeatsToOffer, to: comboHistory.count, by: length)
+                    .filter { $0 >= 0 }.map { comboHistory[$0].standings }
+                guard let current = snapshot ?? decision else { return nil }
+                return ComboWinForecast.forecast(starts: starts, opponentsCanRespond: ComboWinForecast.opponentsCanRespond(current))
+            }
         }
     }
 
@@ -708,13 +720,18 @@ final class OnDeviceSession: ObservableObject {
     func declineComboLoop() {
         comboDeclined = comboOffer
         comboOffer = nil
+        comboWinForecast = nil
     }
 
     /// Repeats the offered round: a number of times, until a step can't be taken, or until every opponent has lost (at
     /// most ComboLoop.maxRepeats rounds).
     func startComboLoop(_ mode: ComboRepeat) {
         guard let round = comboOffer, comboRun == nil, let start = snapshot else { return }
+        // "Until they lose" only runs when the rounds so far show it wins; it then goes straight to the end.
+        if mode == .untilWin, comboWinForecast?.canFinish != true { return }
+        comboFinishing = mode == .untilWin ? comboWinForecast?.rounds : nil
         comboOffer = nil
+        comboWinForecast = nil
         comboResult = nil
         comboStopRequested = false
         comboPresented = start.withoutPrompts
@@ -741,7 +758,7 @@ final class OnDeviceSession: ObservableObject {
         comboFastMode = !watch
         BoardFXLevel.suppressedForLoop = !watch
         defer { BoardFXLevel.suppressedForLoop = false; comboFastMode = false }
-        let limit = min(mode.count ?? ComboLoop.maxRepeats, ComboLoop.maxRepeats)
+        let limit = min(mode.count ?? comboFinishing.map { $0 + 2 } ?? ComboLoop.maxRepeats, ComboLoop.maxRepeats)
         var rounds = 0, unchanged = 0
         var lastDigest = ComboLoop.digest(start)
         var prefer: [Int: [String]] = [:]
@@ -768,7 +785,7 @@ final class OnDeviceSession: ObservableObject {
             comboRun?.done = rounds
             noteComboLine(ComboLoop.roundLine(rounds, round, chosen: chosen))
             guard let current = snapshot else { break }
-            comboPresented = current.withoutPrompts
+            if comboFinishing == nil { comboPresented = current.withoutPrompts }
             if current.isCompleted { stop = .gameOver; break }
             if watch {
                 await waitForBoardPresentation()
@@ -782,7 +799,7 @@ final class OnDeviceSession: ObservableObject {
                 if unchanged >= ComboLoop.unchangedRoundsToStop { stop = .nothingChanged; break }
             }
         }
-        if mode.count == nil, stop == .finished { stop = .reachedLimit }
+        if mode.count == nil, stop == .finished { stop = comboFinishing != nil ? .didNotFinish(rounds) : .reachedLimit }
         let summary = ComboLoop.summary(rounds: rounds, before: start, after: snapshot ?? start)
         switch stop {
         case .finished, .gameOver:
@@ -794,6 +811,7 @@ final class OnDeviceSession: ObservableObject {
         }
         comboRun = nil
         comboPresented = nil
+        comboFinishing = nil
         comboHistory = []
         comboDeclined = round
         comboTask = nil
@@ -839,7 +857,8 @@ final class OnDeviceSession: ObservableObject {
                     }
                 }
             }
-            try? await Task.sleep(for: .milliseconds(120))
+            // A long or winning run checks back quickly; nothing is drawn between its rounds.
+            try? await Task.sleep(for: .milliseconds(comboFastMode ? 40 : 120))
         }
         return .stop(.stepMissing(ComboLoop.missing(step)))
     }
@@ -1015,7 +1034,7 @@ final class OnDeviceSession: ObservableObject {
     }
 
     func close() async throws {
-        comboStopRequested = true; comboTask?.cancel(); comboHistory = []; comboOffer = nil
+        comboStopRequested = true; comboTask?.cancel(); comboHistory = []; comboOffer = nil; comboWinForecast = nil
         stopAutoPass()
         smartPassTask?.cancel(); smartPassTask = nil
         abilityAutoAnswer?.cancel(); abilityAutoAnswer = nil

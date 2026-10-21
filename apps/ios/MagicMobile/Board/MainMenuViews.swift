@@ -372,7 +372,7 @@ struct GamePerformancePanel: View {
             }
             #endif
         }
-        .sheet(isPresented: $showReport) { GamePerformanceSheet(report: GamePerformanceLog.section(entries) ?? "") }
+        .sheet(isPresented: $showReport) { GamePerformanceSheet(report: GamePerformanceLog.section(entries) ?? "").environment(\.boardPanelClose, nil) }
     }
 }
 
@@ -485,20 +485,23 @@ struct SmartAutoPassToggle: View {
             .accessibilityIdentifier("settings.phaseStops")
         }
         .modifier(TavernSettingsPanel())
-        .sheet(isPresented: $showStops) { PhaseStopsSheet() }
+        .sheet(isPresented: $showStops) { PhaseStopsSheet().environment(\.boardPanelClose, nil) }
     }
 }
 
 /// The phase stops on a tavern sheet; also opened by tapping the phase plate in a game.
 struct PhaseStopsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.boardPanelClose) private var panelClose
+    /// Closes the sheet, or the Arena board's panel on the table.
+    private func close() { if let panelClose { panelClose() } else { dismiss() } }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 TavernPanelTitle(text: "Phase Stops")
                 Spacer()
-                Button { dismiss() } label: { TavernSealLabel() }
+                Button { close() } label: { TavernSealLabel() }
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityLabel("Close")
                     .accessibilityIdentifier("phaseStops.close")

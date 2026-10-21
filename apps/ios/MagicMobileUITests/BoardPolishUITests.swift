@@ -513,10 +513,89 @@ final class BoardPolishUITests: XCTestCase {
                 }
                 menu.tap()
                 XCTAssertTrue(application.buttons["Game Log"].waitForExistence(timeout: 5), "The gear opens the game menu in \(name)")
+                // Its settings open on the table in glass, not in a system sheet, and Done closes them.
+                application.buttons["Game Settings"].tap()
+                let done = application.buttons["board.menu.done"]
+                XCTAssertTrue(done.waitForExistence(timeout: 5), "Game Settings opens in \(name)")
+                captureImage(name: "arena-settings-\(name)")
+                done.tap()
+                XCTAssertTrue(done.waitForNonExistence(timeout: 5), "Done closes Game Settings in \(name)")
             }
             captureImage(name: "arena-\(name)")
         }
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// The Arena board's other browsers: a "you may" question on its own screen with Yes and No, scry's Bottom and Top
+    /// zones (a tap moves a card across), and a modal spell's modes as cards (a tap answers with that mode).
+    func testArenaBoardShowsChoicesAsBrowsers() {
+        func launch(_ fixture: String) -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = .portrait
+            application.launch()
+            return application
+        }
+        var application = launch("may-trigger-prompt")
+        XCTAssertTrue(application.descendants(matching: .any)["arena.question"].waitForExistence(timeout: 15), "The question screen")
+        XCTAssertTrue(application.buttons["Yes"].exists && application.buttons["No"].exists, "Yes and No under the card")
+        captureImage(name: "arena-question")
+
+        application = launch("scry-choice")
+        XCTAssertTrue(application.staticTexts["board.choice.title"].waitForExistence(timeout: 15))
+        XCTAssertEqual(application.staticTexts["board.choice.title"].label, "Scry")
+        let top = application.descendants(matching: .any)["board.choice.zone.top"]
+        XCTAssertTrue(top.exists, "Scry's Top zone")
+        let card = top.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "board.choice.card.")).firstMatch
+        XCTAssertTrue(card.exists, "A card on top")
+        let id = card.identifier
+        card.tap()
+        let bottom = application.descendants(matching: .any)["board.choice.zone.bottom"]
+        let moved = NSPredicate { _, _ in bottom.descendants(matching: .any).matching(identifier: id).firstMatch.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: moved, object: bottom)], timeout: 5), .completed,
+                       "A tap moves the card to the bottom")
+        captureImage(name: "arena-scry")
+
+        application = launch("mode-choice")
+        XCTAssertTrue(application.descendants(matching: .any)["arena.modeBrowser"].waitForExistence(timeout: 15), "The mode browser")
+        XCTAssertFalse(application.buttons["Cancel prompt details"].exists, "No prompt panel over it")
+        application.descendants(matching: .any)["arena.mode.mode-2"].tap()
+        let answered = NSPredicate { _, _ in
+            application.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Choose mode")).firstMatch.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: answered, object: application)], timeout: 5),
+                       .completed, "A tap answers with that mode")
+    }
+
+    /// The Arena board answers an ability choice in its own browser, never in the prompt panel behind it, and a tap on
+    /// an ability answers with that ability.
+    func testArenaBoardChoosesAbilitiesInItsOwnBrowser() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+            "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "ability-choice"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.abilityBrowser"].waitForExistence(timeout: 15), "The ability browser")
+        XCTAssertFalse(application.buttons["Cancel prompt details"].exists, "No prompt panel over the browser")
+        let id = "22222222-2222-4222-8222-222222222222"
+        let ability = application.descendants(matching: .any)["arena.ability.\(id)"]
+        XCTAssertTrue(ability.exists, "Each ability is a card in the browser")
+        captureImage(name: "arena-ability-browser")
+        ability.tap()
+        let answered = NSPredicate { _, _ in
+            application.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", id)).firstMatch.exists
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: answered, object: application)], timeout: 5),
+                       .completed, "A tap answers with that ability")
     }
 
     func testTavernLandscapeTableKeepsItsControls() {

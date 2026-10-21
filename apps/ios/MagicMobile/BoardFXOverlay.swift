@@ -177,7 +177,7 @@ struct BoardFXOverlay: View {
             case let .enteredBattlefield(id, playerID, source, _, entrance):
                 guard let target = rect(id) else { return nil }
                 let origin = source == .stack ? anchors.stackPoint : anchors.handPoint(playerID)
-                let kind: BoardFXFlight.Kind = entrance == .plain || (arena && entrance != .commander)
+                let kind: BoardFXFlight.Kind = entrance == .plain || arena
                     ? .arrive(from: origin, to: target)
                     : .showcaseArrive(from: origin, center: anchors.stackPoint, to: target, commander: entrance == .commander)
                 return BoardFXFlight(effect: effect, card: card, kind: kind, tavern: tavern)
@@ -186,7 +186,8 @@ struct BoardFXOverlay: View {
                 let target = destination == .hand ? anchors.handPoint(playerID) : anchors.playerPoint(playerID)
                 return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target, destination: destination))
             case let .spellCast(_, _, controllerID, _, weight):
-                if arena && weight != .commander { return nil }
+                // The Arena board's stack card carries every spell, commanders too (gold rim and crown).
+                if arena { return nil }
                 // On the tavern table a commander rises out of its owner's medallion.
                 let origin = tavern && weight == .commander ? anchors.playerPoint(controllerID ?? anchors.viewerID) : anchors.handPoint(controllerID)
                 return BoardFXFlight(effect: effect, card: card,
@@ -207,12 +208,13 @@ struct BoardFXOverlay: View {
                       in context: inout GraphicsContext) {
         let motion = fx.usesMotion
         switch fx.event {
-        case let .spellCast(_, _, _, tint, weight) where arena && weight != .commander:
-            // The Arena stack card: a burst of light as the spell lands on it, then it stays readable there.
+        case let .spellCast(_, _, _, tint, weight) where arena:
+            // The Arena stack card: a burst of light as the spell lands on it, then it stays readable there. A commander
+            // gets a wider gold burst, no showcase.
             guard motion else { return }
             let window = min(1, elapsed / 0.7)
-            BoardFXPainter.rays(at: anchors.stackPoint, color: weight == .ability ? BoardFXPainter.gold : tint.color,
-                                radius: weight == .big ? 170 : 130, progress: window, elapsed: elapsed, in: &context)
+            BoardFXPainter.rays(at: anchors.stackPoint, color: weight == .ability || weight == .commander ? BoardFXPainter.gold : tint.color,
+                                radius: weight == .commander ? 190 : weight == .big ? 170 : 130, progress: window, elapsed: elapsed, in: &context)
         case let .spellCast(stackID, name, controllerID, tint, weight) where tavern && weight == .commander:
             // The tavern commander (storyboard): the table dims, the medallion flares, embers
             // follow the commander up to the middle, firelight holds it and a ribbon names it.
@@ -281,7 +283,7 @@ struct BoardFXOverlay: View {
             // With a flight, the glow is the landing; without one it plays immediately.
             let flying = motion && subjects[cardID] != nil
             let landing = flying ? BoardFXScheduler.landingFraction(entrance) : 0
-            if flying && entrance != .plain && p < landing && !(arena && entrance != .commander) {
+            if flying && entrance != .plain && p < landing && !arena {
                 let center = anchors.stackPoint
                 let showcase = BoardFXFlight.castSize(entrance == .commander ? .commander : .spell)
                 let hold = CGRect(x: center.x - showcase.width / 2, y: center.y - showcase.height / 2,

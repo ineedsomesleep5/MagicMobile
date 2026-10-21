@@ -4,10 +4,11 @@ import MagicMobileOnDevice
 @testable import MagicMobile
 
 final class ArenaBoardModelTests: XCTestCase {
-    private func mana(_ id: String, source: String, label: String, produced: [String]? = nil) throws -> LegalAction {
+    private func mana(_ id: String, source: String, label: String, produced: [String]? = nil, card: String? = nil) throws -> LegalAction {
         var json: [String: Any] = ["id": id, "type": "make_mana", "playerId": "p1", "label": label,
                                    "sourceInstanceId": source, "cardInstanceId": source]
         if let produced { json["producedMana"] = produced }
+        if let card { json["cardName"] = card }
         return try JSONDecoder().decode(LegalAction.self, from: JSONSerialization.data(withJSONObject: json))
     }
 
@@ -71,7 +72,68 @@ final class ArenaBoardModelTests: XCTestCase {
         let tower = try mana("tower", source: "t1", label: "{T}: Add one mana of any color in your commander's color identity.")
         let forest = try mana("forest", source: "f1", label: "{T}: Add {G}.")
         XCTAssertEqual(ArenaAutoPay.next(remainingText: "{G}", floating: [:], actions: [tower, forest]), .tap(actionID: "forest"))
-        XCTAssertEqual(ArenaAutoPay.next(remainingText: "{G}", floating: [:], actions: [tower]), .tap(actionID: "tower"))
+        XCTAssertEqual(ArenaAutoPay.next(remainingText: "{G}", floating: [:], actions: [tower]), .tap(actionID: "tower", color: "G"))
+    }
+
+    /// Caleb's Squirrel Girl ({1}{G}{G}{G}): two green lands and a Treasure pay the green, a colourless land the rest; the
+    /// Treasure is spent only because nothing else makes the third green.
+    func testTreasurePaysTheColourNothingElseMakes() throws {
+        let forest = try mana("forest", source: "f1", label: "{T}: Add {G}.")
+        let oran = try mana("oran", source: "o1", label: "{T}: Add {G}.")
+        let swarmyard = try mana("swarmyard", source: "y1", label: "{T}: Add {C}.")
+        let swamp = try mana("swamp", source: "s1", label: "{T}: Add {B}.")
+        let treasure = try mana("treasure", source: "t1", label: "{T}, Sacrifice this artifact: Add one mana of any color.")
+        let actions = [treasure, swamp, swarmyard, oran, forest]
+        let sources = ArenaAutoPay.sources(from: actions)
+        let plan = try XCTUnwrap(ArenaAutoPay.plan(need: ArenaAutoPay.need(from: "{1}{G}{G}{G}"), sources: sources))
+        XCTAssertEqual(Set(plan.map(\.key)), ["f1", "o1", "t1", "y1"])
+        XCTAssertEqual(plan.first { $0.key == "t1" }?.color, "G")
+        if case .tap = ArenaAutoPay.next(remainingText: "{1}{G}{G}{G}", floating: [:], actions: actions) {} else { XCTFail("pays") }
+        // With a second green land the Treasure stays.
+        let forest2 = try mana("forest2", source: "f2", label: "{T}: Add {G}.")
+        let without = try XCTUnwrap(ArenaAutoPay.plan(need: ArenaAutoPay.need(from: "{G}{G}{G}"), sources: ArenaAutoPay.sources(from: actions + [forest2])))
+        XCTAssertFalse(without.contains { $0.key == "t1" })
+    }
+
+    /// A tri-land makes one mana of three colours, not two at once; a land that can tap or sacrifice is only tapped
+    /// when tapping is enough (Crystal Vein).
+    func testTriLandsMakeOneManaAndLandsAreTappedBeforeSacrificed() throws {
+        let triome = try mana("triome", source: "x1", label: "{T}: Add {W}, {B}, or {G}.")
+        XCTAssertEqual(ArenaAutoPay.production(of: triome)?.options, [["W"], ["B"], ["G"]])
+        XCTAssertNil(ArenaAutoPay.plan(need: ArenaAutoPay.need(from: "{W}{B}"), sources: ArenaAutoPay.sources(from: [triome])),
+                     "one tap can't pay two pips")
+        let veinTap = try mana("vein-tap", source: "v1", label: "{T}: Add {C}.")
+        let veinSac = try mana("vein-sac", source: "v1", label: "{T}, Sacrifice Crystal Vein: Add {C}{C}.", card: "Crystal Vein")
+        let plains = try mana("plains", source: "p1", label: "{T}: Add {W}.")
+        let plan = try XCTUnwrap(ArenaAutoPay.plan(need: ArenaAutoPay.need(from: "{2}"),
+                                                   sources: ArenaAutoPay.sources(from: [veinSac, veinTap, plains])))
+        XCTAssertEqual(Set(plan.map(\.actionID)), ["vein-tap", "plains"])
+        // With nothing else it still sacrifices when it has to.
+        let alone = try XCTUnwrap(ArenaAutoPay.plan(need: ArenaAutoPay.need(from: "{2}"), sources: ArenaAutoPay.sources(from: [veinSac, veinTap])))
+        XCTAssertEqual(alone.map(\.actionID), ["vein-sac"])
+    }
+
+    /// Colours are checked before the first tap: two white from one Plains can't be paid, so nothing is tapped.
+    func testColourShortCostIsBlockedBeforeAnyTap() throws {
+        let plains = try mana("plains", source: "p1", label: "{T}: Add {W}.")
+        let swamp = try mana("swamp", source: "s1", label: "{T}: Add {B}.")
+        let island = try mana("island", source: "i1", label: "{T}: Add {U}.")
+        guard case .blocked = ArenaAutoPay.next(remainingText: "{W}{W}", floating: [:], actions: [plains, swamp, island]) else {
+            return XCTFail("only one white source")
+        }
+        // A tri-land is spent after the lands that make one colour, and a bounce land pays both its colours.
+        let triome = try mana("triome", source: "x1", label: "{T}: Add {W}, {B}, or {G}.")
+        let triomeB = try mana("triome-b", source: "x1", label: "{T}: Add {B}.")
+        XCTAssertEqual(ArenaAutoPay.next(remainingText: "{B}", floating: [:], actions: [triomeB, triome, swamp]), .tap(actionID: "swamp"))
+        let bounce = try XCTUnwrap(ArenaAutoPay.plan(need: ArenaAutoPay.need(from: "{B}{R}"),
+                                                     sources: [ArenaAutoPay.Source(key: "c1", yields: [.init(actionID: "carnarium", symbols: ["B", "R"], cost: 10)])]))
+        XCTAssertEqual(bounce.map(\.key), ["c1"])
+    }
+
+    /// A sacrifice of anything but the source itself (Ashnod's Altar) or a life payment stays a manual choice.
+    func testOnlySelfSacrificeCountsAsAManaSource() throws {
+        XCTAssertNil(ArenaAutoPay.production(of: try mana("a", source: "x", label: "Sacrifice a creature: Add {C}{C}.")))
+        XCTAssertEqual(ArenaAutoPay.production(of: try mana("a", source: "x", label: "Sacrifice this artifact: Add one mana of any color."))?.sacrifices, true)
     }
 
     func testFloatingManaIsSpentFirst() throws {
@@ -204,7 +266,7 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertEqual(ArenaRowFit.fit(leading: [4], trailing: [], width: 200, maxCard: card, maxRows: 2).rows, 1)
     }
 
-    func testPlaneswalkersAndOtherNonCreaturesTakeTheSideSection() {
+    func testPlaneswalkersBattlesAndSagasTakeTheSideSection() {
         func card(_ type: String, creature: Bool? = nil) -> ZoneCard {
             ZoneCard(instanceId: type, card: CardIdentity(name: type, typeLine: type, oracleText: nil), tapped: nil,
                      summoningSickness: nil, cardIcons: nil, counters: nil, power: nil, toughness: nil, isCreaturePermanent: creature,
@@ -216,7 +278,10 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertEqual(ArenaFrontSection.of(card("Enchantment — Saga")), .side)
         // A crewed Vehicle is a creature while it is one.
         XCTAssertEqual(ArenaFrontSection.of(card("Artifact — Vehicle", creature: true)), .creatures)
-        XCTAssertEqual(ArenaFrontSection.of(card("Artifact — Vehicle")), .side)
+        // Other artifacts and enchantments join the back row, as in the current reference.
+        XCTAssertEqual(ArenaFrontSection.of(card("Artifact — Vehicle")), .support)
+        XCTAssertEqual(ArenaFrontSection.of(card("Artifact — Equipment")), .support)
+        XCTAssertEqual(ArenaFrontSection.of(card("Enchantment")), .support)
         XCTAssertGreaterThan(ArenaFrontSection.sideRank(card("Legendary Planeswalker — Liliana")),
                              ArenaFrontSection.sideRank(card("Enchantment — Saga")))
     }
@@ -240,7 +305,7 @@ final class ArenaBoardModelTests: XCTestCase {
         let snapshot = try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID)
         XCTAssertEqual(snapshot.manaPayment?.active, true)
         XCTAssertEqual(ArenaAutoPay.need(from: try XCTUnwrap(snapshot.manaPayment?.remainingText)).symbols, ["W": 1])
-        guard case let .tap(actionID) = ArenaAutoPay.next(in: snapshot) else { return XCTFail("Auto Pay should tap a source") }
+        guard case let .tap(actionID, _) = ArenaAutoPay.next(in: snapshot) else { return XCTFail("Auto Pay should tap a source") }
         let action = try XCTUnwrap(snapshot.legalActions?.first { $0.id == actionID })
         XCTAssertEqual(action.type, "make_mana")
         let source = try XCTUnwrap(action.sourceInstanceId)

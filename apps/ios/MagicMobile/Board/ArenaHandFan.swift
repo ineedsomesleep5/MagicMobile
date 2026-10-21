@@ -128,7 +128,7 @@ struct ArenaHandFan: View {
         return CGPoint(x: home.center.x, y: min(home.center.y - rise, highest))
     }
 
-    /// The fan's touch surface: every card's home frame, to the bottom of the screen.
+    /// The fan's touch surface: every card's home frame, down to the layout's touch line.
     private var touchBand: CGRect {
         let count = cards.count + extraCards.count
         let frames = (0..<count).map { index -> CGRect in
@@ -138,7 +138,8 @@ struct ArenaHandFan: View {
         }
         guard let first = frames.first else { return .zero }
         let union = frames.dropFirst().reduce(first) { $0.union($1) }
-        return CGRect(x: union.minX, y: union.minY, width: union.width, height: max(0, canvas.screen.height - union.minY))
+        let bottom = min(canvas.screen.height, layout.hand.touchBottom.map { canvas.y($0) } ?? canvas.screen.height)
+        return CGRect(x: union.minX, y: union.minY, width: union.width, height: max(0, bottom - union.minY))
     }
 
     /// The card under a point: of the cards whose home slot spans its x, the top one (each card lies over the one before).

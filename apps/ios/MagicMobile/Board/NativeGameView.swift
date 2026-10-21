@@ -156,6 +156,11 @@ struct NativeGameView: View {
     @AppStorage(CardFramesPreference.arenaKey) var arenaCardFrames = CardFramesPreference.arenaDefault
     /// The Arena hand opened by a touch (it rests tucked otherwise).
     @State var arenaHandOpen = false
+    /// Triggers still to answer from an order chosen in the Arena ability browser, in the order XMage takes them
+    /// (the first goes on the stack first, so it resolves last).
+    @State var arenaTriggerPlan: [String] = []
+    /// The trigger-order prompt the plan last answered ("id:messageId"): it is never answered twice.
+    @State var arenaTriggerSent: String?
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
     @State var arenaNotice: String?
@@ -200,6 +205,16 @@ struct NativeGameView: View {
     @Environment(\.startingRollVisible) var startingRollVisible
     @Environment(\.emoteCenter) var emoteCenter
 
+    /// The prompt-detail panel opens by itself for this question; the Arena board answers ability choices, trigger
+    /// order and modes in its own browsers (ArenaAbilityBrowser, ArenaModeBrowser) instead.
+    func boardDetailChoiceKey(_ snapshot: GameSnapshot) -> String? {
+        if isArenaBoard, let prompt = snapshot.promptEnvelopeV2, prompt.abilities?.isEmpty == false,
+           (prompt.responseCommand?.type ?? "").lowercased() == "choose_ability" { return nil }
+        // Its modes too, in ArenaModeBrowser.
+        if isArenaBoard, snapshot.promptEnvelopeV2?.modes?.isEmpty == false { return nil }
+        return PortraitInteractionPolicy.detailChoiceKey(snapshot)
+    }
+
     func openPromptDetails() {
         if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
             isCardChoiceOpen = true
@@ -231,7 +246,7 @@ struct NativeGameView: View {
         committedCardChoice = plan.stopped ? nil : plan
         if plan.stopped {
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         }
         if let command {
             runCommand(command, "Apply card choice", "card-plan-\(command.promptId ?? "")-\(command.messageId ?? 0)")
@@ -249,7 +264,7 @@ struct NativeGameView: View {
                 isPromptDetailOpen = false
             } else {
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
         }
     }
@@ -259,7 +274,7 @@ struct NativeGameView: View {
         if reviewCardChoiceAfterPending {
             reviewCardChoiceAfterPending = false
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         } else if oldValue != nil, committedCardChoice?.submittedPromptIsUnchanged(in: snapshot) == true {
             cancelCommittedCardChoice()
         } else {
@@ -942,7 +957,8 @@ struct NativeGameView: View {
                     }
                     #endif
                 }
-                .sheet(isPresented: $isLogOpen) {
+                // The Arena board shows these on its table in glass (`boardSheet`); the Hearth board keeps its sheets.
+                .boardSheet(isPresented: $isLogOpen, arena: isArenaBoard) {
                     GameLogDrawer(
                         log: snapshot.log,
                         reasons: combatLogReasons.reasons,
@@ -951,12 +967,12 @@ struct NativeGameView: View {
                     .padding(14)
                     .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
                 }
                 .sheet(isPresented: $isLandscapeStackOpen) {
                     BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                 }
-                .sheet(isPresented: $isPromptDetailOpen) {
+                .boardSheet(isPresented: $isPromptDetailOpen, arena: isArenaBoard) {
                     UniversalPromptActionPanel(
                         snapshot: snapshot,
                         selectedCardActions: selectedCard.map { GameBoardInteractionState.cardActions(for: $0, actions: snapshot.legalActions ?? []) } ?? [],
@@ -975,9 +991,9 @@ struct NativeGameView: View {
                     .padding(14)
                     .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
                 }
-                .sheet(isPresented: $isGameMenuOpen) {
+                .boardSheet(isPresented: $isGameMenuOpen, arena: isArenaBoard) {
                     GameManagementMenu(
                         snapshot: snapshot,
                         concedeAction: concedeAction(in: snapshot.legalActions ?? []),
@@ -998,7 +1014,13 @@ struct NativeGameView: View {
                     )
                     .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
+                }
+                // The Arena board's phase stops (its stack opens in ArenaStackBrowser, in arenaOverlays).
+                .overlay {
+                    if isArenaBoard {
+                        ArenaPanelOverlay(isPresented: $arenaShowPhaseStops) { PhaseStopsSheet() }
+                    }
                 }
                 .sheet(isPresented: $isPromptInspectorOpen) {
                     PromptDebugInspector(
@@ -1014,7 +1036,7 @@ struct NativeGameView: View {
                             await refreshProtocolDebug()
                         }
                         .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
+                        .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
                 }
                 .tavernConfirmation(
                     active: isTavernBoard,
@@ -1042,6 +1064,8 @@ struct NativeGameView: View {
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
                 .environment(\.cardFrames, isArenaBoard ? arenaCardFrames : hearthCardFrames)
+                // The Arena board's sheets, menus, dialogs and pop-ups wear its glass, not the Hearth board's leather.
+                .environment(\.arenaBoard, isArenaBoard)
                 // The tavern's candle sits under the clock: the status bar leaves during a game. On a
                 // hidden background, so the board itself never becomes one big accessibility element.
                 .background { Color.clear.statusBarHidden(isTavernBoard).accessibilityHidden(true).allowsHitTesting(false) }
@@ -1188,7 +1212,7 @@ struct NativeGameView: View {
             .onAppear {
                 updateAIWaitStart(for: snapshot)
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
             // The tracker starts over by itself when the game changes.
             .onChange(of: BoardFocusTracker.observationKey(snapshot, followTurns: followTurns), initial: true) { _, _ in
@@ -1226,7 +1250,7 @@ struct NativeGameView: View {
             }
             .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in
                 advanceCommittedCardChoice()
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
             .onChange(of: snapshot.promptEnvelopeV2?.messageId) { _, _ in
                 advanceCommittedCardChoice()
@@ -1253,7 +1277,7 @@ struct NativeGameView: View {
             .onChange(of: commandFailure) { oldValue, newValue in
                 handleCardChoiceFailureChange(from: oldValue, to: newValue)
             }
-            .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
+            .onChange(of: boardDetailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
                 // A decision that needs you, not a routine priority pass (the starting roll answers its own).
                 if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
@@ -1292,15 +1316,25 @@ struct NativeGameView: View {
             .overlay(alignment: .top) {
                 if committedCardChoice != nil {
                     HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Applying card choices…").font(.caption)
-                        Button("Stop") { cancelCommittedCardChoice() }
-                            .font(.caption.weight(.semibold))
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                        ProgressView().tint(isArenaBoard ? ArenaGlass.text : nil)
+                        Text("Applying card choices…")
+                            .font(isArenaBoard ? .system(size: 13, weight: .semibold, design: .serif) : .caption)
+                            .foregroundStyle(isArenaBoard ? ArenaGlass.text : .primary)
+                        if isArenaBoard {
+                            Button("Stop") { cancelCommittedCardChoice() }
+                                .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 14))
+                                .frame(width: 84, height: 36)
+                                .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                        } else {
+                            Button("Stop") { cancelCommittedCardChoice() }
+                                .font(.caption.weight(.semibold))
+                                .frame(minWidth: 44, minHeight: 44)
+                                .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                        }
                     }
                     .padding(8)
-                    .background(MagicPalette.iron, in: Capsule())
+                    .background { if !isArenaBoard { Capsule().fill(MagicPalette.iron) } }
+                    .modifier(ArenaGlassIf(active: isArenaBoard, cornerRadius: 22))
                     .accessibilityIdentifier("board.choice.progress")
                 }
             }

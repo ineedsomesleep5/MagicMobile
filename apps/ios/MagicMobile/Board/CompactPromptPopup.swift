@@ -8,6 +8,8 @@ struct CompactPromptPopup: View {
     let runAction: (LegalAction) -> Void
     let runCommand: (GameCommand, String, String) -> Void
     let openDetails: () -> Void
+    /// The Arena question screen (ArenaQuestionStage) shows the question and its card itself: only the answers, as plaques.
+    var stage = false
     @Environment(\.boardAnswerActions) private var answerActions
     /// "Don't ask again this game" for this question only.
     @State private var remember = false
@@ -38,6 +40,29 @@ struct CompactPromptPopup: View {
     private var tavernKit: Bool { tavern && TavernUIKit.available }
 
     var body: some View {
+        if stage { stageBody } else { panelBody }
+    }
+
+    private var stageBody: some View {
+        VStack(spacing: 12) {
+            if pendingActionId != nil {
+                HStack(spacing: 8) {
+                    ProgressView().tint(ArenaGlass.text)
+                    Text("Waiting for the table…").font(.system(size: 14, design: .serif).italic()).foregroundStyle(ArenaGlass.text.opacity(0.8))
+                }
+                .frame(minHeight: 46)
+            } else if let prompt = promptV2 {
+                compactPromptControls(prompt)
+            } else if let prompt = snapshot.choicePrompt {
+                compactChoicePrompt(prompt)
+            } else if let prompt = snapshot.promptEnvelope {
+                compactLegacyPrompt(prompt)
+            }
+        }
+        .environment(\.arenaPlaques, true)
+    }
+
+    private var panelBody: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: tavernKit ? .center : .firstTextBaseline, spacing: 8) {
                 GameRulesText(source: PromptDisplayText.clean(messageText), symbolSize: 14)
@@ -435,7 +460,8 @@ struct CompactPromptPopup: View {
                         isPending: pendingActionId == action.id
                     )
                 }
-                .buttonStyle(PanelActionButtonStyle(isPrimary: action.isPrimary == true || action.type == "keep_hand", compact: true))
+                .buttonStyle(PanelActionButtonStyle(isPrimary: stage ? yesNoIcon(title) != "xmark.circle"
+                                                    : action.isPrimary == true || action.type == "keep_hand", compact: true))
                 .disabled(pendingActionId != nil)
             }
             if actions.count > 3 || (snapshot.source == "xmage-ondevice" && Self.needsDetails(snapshot)) {
@@ -460,7 +486,8 @@ struct CompactPromptPopup: View {
         } label: {
             PromptButtonLabel(title: label, systemImage: systemImage, isPending: pendingActionId == pendingId)
         }
-        .buttonStyle(PanelActionButtonStyle(isPrimary: true, compact: true))
+        // On the Arena question screen "No" and "Cancel" are leather, the rest ember.
+        .buttonStyle(PanelActionButtonStyle(isPrimary: !stage || yesNoIcon(label) != "xmark.circle", compact: true))
         .disabled(pendingActionId != nil || command == nil)
     }
 
@@ -1005,9 +1032,12 @@ struct ManaPaymentTray: View {
 private struct PopupPanelBackground: ViewModifier {
     let tavern: Bool
     let borderColor: Color
+    @Environment(\.arenaBoard) private var arena
 
     func body(content: Content) -> some View {
-        if tavern {
+        if arena {
+            content.modifier(ArenaGlassPanel(cornerRadius: 14))
+        } else if tavern {
             content
                 .background {
                     TavernFill(material: .leather)

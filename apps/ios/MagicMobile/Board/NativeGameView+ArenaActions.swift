@@ -43,6 +43,12 @@ extension NativeGameView {
         case .waiting:
             return ArenaButtonPlan(primary: .init(title: "Waiting…", kind: .waiting, enabled: false) {})
         case .prompt:
+            if model.primaryAction == nil, arenaAbilityPrompt(snapshot) != nil || arenaTriggerPlanAnswers(snapshot) {
+                // The ability browser holds the choice: only a prompt's own answer (a Cancel) stays in the corner.
+                return ArenaButtonPlan(primary: model.promptActions.first.map { action in
+                    .init(title: action.label, kind: .secondary) { runAction(action) }
+                })
+            }
             let primary: ArenaButtonPlan.Choice
             if let action = model.primaryAction {
                 primary = .init(title: action.label) { runAction(action) }
@@ -123,26 +129,53 @@ extension NativeGameView {
         arenaAutoPayStep(snapshot: snapshot)
     }
 
-    /// One Auto Pay step per settled snapshot: it sends one tap and waits for XMage's answer before the next.
+    /// One Auto Pay step per settled snapshot: it sends one tap and waits for XMage's answer before the next. XMage
+    /// asks which colour a mana of any colour should be: that is answered with the colour the plan wanted.
     func arenaAutoPayStep(snapshot: GameSnapshot) {
         guard var run = arenaAutoPay, pendingActionId == nil else { return }
-        guard InlinePaymentPromptState.isActive(in: snapshot), let prompt = InlinePaymentPromptState.paymentPrompt(in: snapshot) else {
-            arenaAutoPay = nil
+        if run.awaitingColor, let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
+           let choice = Self.arenaColorChoice(in: prompt, wanted: run.color) {
+            run.color = nil
+            run.awaitingColor = false
+            run.quiet = 0
+            arenaAutoPay = run
+            if let command = PromptCommandBuilder.command(gameId: snapshot.id, promptEnvelope: prompt, type: "resolve_choice",
+                                                          promptId: prompt.responseCommand?.promptId ?? prompt.id,
+                                                          playerId: prompt.playerId, ids: [choice]) {
+                runCommand(command, "Choose mana colour", "autopay-colour-\(prompt.id)-\(prompt.messageId)")
+            } else {
+                arenaAutoPay = nil
+            }
             return
         }
+        guard InlinePaymentPromptState.isActive(in: snapshot), let prompt = InlinePaymentPromptState.paymentPrompt(in: snapshot) else {
+            // Another question means the payment is over; a quiet snapshot or two can come between XMage's answers.
+            let asked = snapshot.promptEnvelopeV2.map { snapshot.isViewer($0.playerId) } ?? false
+            run.quiet += 1
+            // A tap's colour question comes at once; one that comes later is the spell's own (Painter's Servant).
+            if run.quiet > 1 { run.awaitingColor = false }
+            arenaAutoPay = asked || run.quiet > 3 ? nil : run
+            return
+        }
+        // Back at the payment: the last tap asked nothing.
+        run.awaitingColor = false
+        run.color = nil
+        run.quiet = 0
         let remaining = snapshot.manaPayment?.remainingText ?? prompt.message
         let signature = remaining + "|" + (snapshot.legalActions ?? []).map(\.id).sorted().joined(separator: ",")
-        guard !run.signatures.contains(signature), run.steps < 24 else {
+        guard run.signatures[signature, default: 0] < 2, run.steps < 30 else {
             arenaAutoPay = nil
             arenaShowNotice("Auto Pay stopped: tap the rest yourself")
             return
         }
-        run.signatures.insert(signature)
+        run.signatures[signature, default: 0] += 1
         run.steps += 1
         arenaAutoPay = run
         switch arenaAutoPayNext(snapshot) {
-        case let .tap(actionID):
+        case let .tap(actionID, color):
             if let action = snapshot.legalActions?.first(where: { $0.id == actionID }) {
+                arenaAutoPay?.color = color
+                arenaAutoPay?.awaitingColor = true
                 runAction(action)
             } else {
                 arenaAutoPay = nil
@@ -159,6 +192,107 @@ extension NativeGameView {
             arenaAutoPay = nil
             arenaShowNotice(reason)
         }
+    }
+
+    /// The choice that names `wanted` in XMage's mana-colour question, or its first colour when any will do; nil when
+    /// the prompt isn't a colour question.
+    static func arenaColorChoice(in prompt: PromptEnvelopeV2, wanted: String?) -> String? {
+        let names = ["W": "white", "U": "blue", "B": "black", "R": "red", "G": "green"]
+        guard prompt.responseKind.lowercased() == "choice", let choices = prompt.choices, !choices.isEmpty,
+              choices.allSatisfy({ choice in names.values.contains { choice.label.lowercased().contains($0) } }) else { return nil }
+        if let wanted, let name = names[wanted], let match = choices.first(where: { $0.label.lowercased().contains(name) }) {
+            return match.id
+        }
+        return choices.first?.id
+    }
+
+    // MARK: Abilities
+
+    /// XMage asking which ability: the order of triggers going on the stack (PICK_ABILITY), or which ability to use
+    /// (CHOOSE_ABILITY). Shown in the Arena ability browser unless an order chosen there is answering it.
+    func arenaAbilityPrompt(_ snapshot: GameSnapshot) -> (prompt: PromptEnvelopeV2, ordering: Bool)? {
+        guard !arenaTriggerPlanAnswers(snapshot), let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
+              let abilities = prompt.abilities, !abilities.isEmpty,
+              (prompt.responseCommand?.type ?? "").lowercased() == "choose_ability" else { return nil }
+        return (prompt, prompt.isTriggerOrder)
+    }
+
+    func arenaChooseAbility(_ ability: XmagePromptAbility, prompt: PromptEnvelopeV2, snapshot: GameSnapshot, remember: Bool) {
+        guard pendingActionId == nil,
+              var command = PromptCommandBuilder.command(gameId: snapshot.id, promptEnvelope: prompt, type: "choose_ability",
+                                                         promptId: prompt.responseCommand?.promptId ?? prompt.id,
+                                                         playerId: prompt.playerId, ids: [ability.id]) else { return }
+        if remember { command.answerActions = ["rememberTriggerFirst"] }
+        GameHaptics.selection()
+        runCommand(command, prompt.isTriggerOrder ? "Put a trigger on the stack" : "Choose ability", "\(prompt.id)-\(ability.id)")
+    }
+
+    /// `resolveOrder` runs first to last. XMage asks which goes on the stack first, which resolves last: the plan is the
+    /// picks in reverse, and each ordering prompt gets the first planned trigger it still offers (arenaTriggerStep).
+    func arenaOrderTriggers(_ resolveOrder: [XmagePromptAbility], remember: Bool, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        let picks = resolveOrder.reversed().map(\.id)
+        guard let first = picks.first, let ability = resolveOrder.first(where: { $0.id == first }) else { return }
+        arenaTriggerPlan = picks
+        arenaTriggerSent = "\(prompt.id):\(prompt.messageId)"
+        arenaChooseAbility(ability, prompt: prompt, snapshot: snapshot, remember: remember)
+    }
+
+    /// The plan answers this ordering prompt by itself: it offers a planned trigger and hasn't been answered yet. A
+    /// prompt the plan already answered and still showing (a refused pick) goes back to the browser.
+    func arenaTriggerPlanAnswers(_ snapshot: GameSnapshot) -> Bool {
+        guard !arenaTriggerPlan.isEmpty, let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
+              prompt.isTriggerOrder, let abilities = prompt.abilities else { return false }
+        return "\(prompt.id):\(prompt.messageId)" != arenaTriggerSent && abilities.contains { arenaTriggerPlan.contains($0.id) }
+    }
+
+    /// The next pick of a chosen trigger order. Triggers XMage no longer offers are on the stack and leave the plan; a
+    /// target question for one of them keeps it; your next priority, or an ordering prompt with none of its triggers
+    /// (the last one XMage places itself), ends it.
+    func arenaTriggerStep(snapshot: GameSnapshot) {
+        guard !arenaTriggerPlan.isEmpty, pendingActionId == nil,
+              let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId) else { return }
+        guard prompt.isTriggerOrder, let abilities = prompt.abilities, !abilities.isEmpty else {
+            if prompt.responseKind == "priority" || prompt.responseCommand?.type == "pass_priority" {
+                arenaTriggerPlan = []; arenaTriggerSent = nil
+            }
+            return
+        }
+        arenaTriggerPlan = arenaTriggerPlan.filter { id in abilities.contains { $0.id == id } }
+        guard let next = arenaTriggerPlan.first, let ability = abilities.first(where: { $0.id == next }) else {
+            arenaTriggerSent = nil
+            return
+        }
+        let key = "\(prompt.id):\(prompt.messageId)"
+        guard key != arenaTriggerSent else { return }
+        arenaTriggerSent = key
+        arenaChooseAbility(ability, prompt: prompt, snapshot: snapshot, remember: false)
+    }
+
+    /// XMage asking for a modal spell's mode: the Arena's mode browser answers it.
+    func arenaModePrompt(_ snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        guard let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId), prompt.modes?.isEmpty == false else { return nil }
+        return prompt
+    }
+
+    /// The spell whose modes these are: named on the prompt's second line ("Black Market Connections [4cb]"), else the
+    /// top of the stack.
+    func arenaModeSource(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot) -> ZoneCard? {
+        let lines = prompt.message.components(separatedBy: "\n")
+        if lines.count > 1 {
+            let name = lines[1].replacingOccurrences(of: #"\s*\[[^\]]*\]\s*$"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+            if let card = PortraitInteractionPolicy.authorizedCards(snapshot).first(where: { $0.card.name == name }) { return card }
+        }
+        return snapshot.stackTopFirst.first?.displaySourceCard
+    }
+
+    func arenaChooseMode(_ mode: ChoicePromptOption, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        guard pendingActionId == nil,
+              let command = UniversalPromptResponseCommandBuilder.command(
+                gameId: snapshot.id, bridgeRevision: snapshot.bridgeRevision, promptEnvelope: prompt,
+                type: PromptCommandBuilder.idCommandType(preferred: prompt.responseCommand?.type, fallback: "choose_mode"),
+                promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [mode.id]) else { return }
+        runCommand(command, "Choose mode", "\(prompt.id)-\(mode.id)")
     }
 
     func arenaShowNotice(_ text: String) {
@@ -253,18 +387,28 @@ extension NativeGameView {
     /// The on-device engine takes one attacker per answer: send the next as soon as XMage has taken the last.
     func arenaAttackStep(snapshot: GameSnapshot) {
         guard var queue = arenaAttackQueue, pendingActionId == nil else { return }
-        guard arenaCombatPhase(snapshot) == .attackers else { arenaAttackQueue = nil; return }
-        let targetable = GameBoardInteractionState.boardTargetableIds(for: snapshot)
-        let mine = snapshot.human?.zones.battlefield ?? []
-        while let next = queue.remaining.first {
-            queue.remaining.removeFirst()
-            guard let card = mine.first(where: { $0.instanceId == next || $0.id == next }), card.isAttacking != true,
-                  targetable.contains(next) else { continue }
-            arenaAttackQueue = queue.remaining.isEmpty ? nil : queue
-            submitTarget(card, snapshot: snapshot)
+        guard arenaCombatPhase(snapshot) == .attackers else {
+            // A snapshot between XMage's answers can lack the attacker prompt: only leaving the step ends the queue.
+            let step = (snapshot.step ?? snapshot.phase).lowercased().replacingOccurrences(of: "_", with: "-")
+            if !step.contains("declare-attack") { arenaAttackQueue = nil }
             return
         }
-        arenaAttackQueue = nil
+        let targetable = GameBoardInteractionState.boardTargetableIds(for: snapshot)
+        // Wait for the prompt's choices rather than dropping the rest of the queue.
+        guard !targetable.isEmpty else { return }
+        let mine = snapshot.human?.zones.battlefield ?? []
+        func creature(_ id: String) -> ZoneCard? { mine.first { $0.instanceId == id || $0.id == id } }
+        // XMage asking which defender (a planeswalker or battle in play) offers none of your creatures: wait for it.
+        guard mine.contains(where: { targetable.contains($0.instanceId) || targetable.contains($0.id) }) else { return }
+        // The rest: still yours, not yet attacking, and offered now.
+        queue.remaining = queue.remaining.filter { id in targetable.contains(id) && creature(id).map { $0.isAttacking != true } == true }
+        guard let next = queue.remaining.first, let card = creature(next) else {
+            arenaAttackQueue = nil
+            return
+        }
+        queue.remaining.removeFirst()
+        arenaAttackQueue = queue.remaining.isEmpty ? nil : queue
+        submitTarget(card, snapshot: snapshot)
     }
 }
 
