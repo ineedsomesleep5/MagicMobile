@@ -31,7 +31,8 @@ enum CardImageURL {
             return nil
         }
         if name == "Hidden card" {
-            return URL(string: "https://gatherer.wizards.com/Images/CardBack.jpg")
+            // The Magic card back as Scryfall serves it (Gatherer's old CardBack.jpg answers 404 since its redesign).
+            return URL(string: "https://backs.scryfall.io/large/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg")
         }
         #if DEBUG
         // Explicit design-preview assets only; never a production image or engine fallback.

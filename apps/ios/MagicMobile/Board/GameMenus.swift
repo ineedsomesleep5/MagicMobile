@@ -267,6 +267,9 @@ struct PromptDebugInspector: View {
 
 struct GameManagementMenu: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.boardPanelClose) private var panelClose
+    /// Closes the sheet, or the Arena board's panel on the table.
+    private func close() { if let panelClose { panelClose() } else { dismiss() } }
     @Environment(\.gameConcede) private var gameConcede
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.friendMessages) private var friendMessages
@@ -286,7 +289,7 @@ struct GameManagementMenu: View {
             HStack {
                 TavernPanelTitle(text: "Game Menu")
                 Spacer()
-                Button("Done") { dismiss() }
+                Button("Done") { close() }
                     .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("board.menu.done")
             }
@@ -355,6 +358,8 @@ struct GameManagementMenu: View {
                     RememberedChoicesPanel()
 
                     GameMenuSectionLabel(text: "Options")
+                    BoardModePicker()
+                    CardFramesToggle()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
@@ -377,8 +382,8 @@ struct GameManagementMenu: View {
             // The leather sheet backing on the tavern (`.tavernSheet`); the table plate behind a menu read as clutter.
             if tavern && TavernUIKit.available { Color.clear } else { BattlefieldSurface().ignoresSafeArea() }
         }
-        .sheet(isPresented: $showHowToPlay) { HowToPlayView() }
-        .sheet(isPresented: $showMessages) { friendMessages?.hub() }
+        .sheet(isPresented: $showHowToPlay) { HowToPlayView().environment(\.boardPanelClose, nil) }
+        .sheet(isPresented: $showMessages) { friendMessages?.hub().environment(\.boardPanelClose, nil) }
         .tavernConfirmation(
             active: tavern,
             title: "Concede this game?",
@@ -387,7 +392,7 @@ struct GameManagementMenu: View {
                 : "Your opponent wins this game.",
             isPresented: $confirmingConcede,
             actions: [TavernDialogAction(title: "Concede", destructive: true) {
-                dismiss()
+                close()
                 if let gameConcede { gameConcede.concede() } else if let concedeAction { runAction(concedeAction) }
             }],
             cancelTitle: "Keep Playing"

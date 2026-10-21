@@ -101,7 +101,7 @@ struct OpponentFocusMenu: View {
 }
 
 struct NativeGameView: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
     let snapshot: GameSnapshot?
     @Binding var selectedCard: ZoneCard?
     @Binding var inspectedCard: ZoneCard?
@@ -123,67 +123,105 @@ struct NativeGameView: View {
     let loadProtocolDebug: (String) async throws -> XmageProtocolDebug
     @Binding var portraitModeEnabled: Bool
     let viewZone: (String, [ZoneCard]) -> Void
-    @State private var isLogOpen = false
-    @State private var isGameMenuOpen = false
-    @State private var isTavernStackOpen = false
-    @AppStorage(BoardAppearancePreference.key) private var boardAppearance = BoardAppearancePreference.defaultValue
-    @State private var isPromptInspectorOpen = false
-    @State private var protocolDebug: XmageProtocolDebug?
-    @State private var protocolDebugError: String?
-    @State private var isProtocolDebugLoading = false
-    @State private var gameMenuConfirmation: GameMenuConfirmation?
-    @State private var isOverPlayerDropZone = false
-    @State private var interactionState = GameBoardInteractionState.idle
-    @State private var inspectingZoneTitle: String? = nil
-    @State private var inspectingZoneCards: [ZoneCard] = []
-    @State private var isPromptDetailOpen = false
-    @State private var isCardChoiceOpen = false
-    @State private var committedCardChoice: CardChoicePlan?
-    @State private var cardChoiceCompletionTask: Task<Void, Never>?
-    @State private var reviewCardChoiceAfterPending = false
-    @State private var isLandscapeStackOpen = false
-    @State private var inspectingZoneReference: BoardZoneReference?
-    @State private var dragActionChoice: DragActionChoice?
-    @State private var combatSelection = CombatSelectionState()
-    @State private var combatPreviewArrows: [CombatArrow] = []
+    @State var isLogOpen = false
+    @State var isGameMenuOpen = false
+    @State var isTavernStackOpen = false
+    @AppStorage(BoardAppearancePreference.key) var boardAppearance = BoardAppearancePreference.defaultValue
+    @State var isPromptInspectorOpen = false
+    @State var protocolDebug: XmageProtocolDebug?
+    @State var protocolDebugError: String?
+    @State var isProtocolDebugLoading = false
+    @State var gameMenuConfirmation: GameMenuConfirmation?
+    @State var isOverPlayerDropZone = false
+    @State var interactionState = GameBoardInteractionState.idle
+    @State var inspectingZoneTitle: String? = nil
+    @State var inspectingZoneCards: [ZoneCard] = []
+    @State var isPromptDetailOpen = false
+    @State var isCardChoiceOpen = false
+    @State var committedCardChoice: CardChoicePlan?
+    @State var cardChoiceCompletionTask: Task<Void, Never>?
+    @State var reviewCardChoiceAfterPending = false
+    @State var isLandscapeStackOpen = false
+    @State var inspectingZoneReference: BoardZoneReference?
+    @State var dragActionChoice: DragActionChoice?
+    @State var combatSelection = CombatSelectionState()
+    @State var combatPreviewArrows: [CombatArrow] = []
     /// Creatures you declared as attackers or blockers this step, oldest first: Back takes
     /// back the latest.
-    @State private var combatDeclarationOrder: [String] = []
+    @State var combatDeclarationOrder: [String] = []
+    /// The Arena board (BoardMode): a hand tucked by a tap on the table, the hand card a first tap lifted, a running Auto
+    /// Pay and a short notice in the caption (Auto Pay stopping, say).
+    @AppStorage(BoardMode.key) var boardMode = BoardMode.defaultValue
+    @AppStorage(CardFramesPreference.hearthKey) var hearthCardFrames = CardFramesPreference.hearthDefault
+    @AppStorage(CardFramesPreference.arenaKey) var arenaCardFrames = CardFramesPreference.arenaDefault
+    /// The Arena hand opened by a touch (it rests tucked otherwise).
+    @State var arenaHandOpen = false
+    /// Triggers still to answer from an order chosen in the Arena ability browser, in the order XMage takes them
+    /// (the first goes on the stack first, so it resolves last).
+    @State var arenaTriggerPlan: [String] = []
+    /// The trigger-order prompt the plan last answered ("id:messageId"): it is never answered twice.
+    @State var arenaTriggerSent: String?
+    /// The opponent's spell being revealed on the Arena stack card (its first moments there).
+    @State var arenaRevealID: String?
+    /// The Arena board's player card (ArenaPlayerCard), opened from a medallion: whose it is.
+    @State var arenaPlayerCardID: String?
+    /// Stack objects whose landing has played, so one plays once and not again when the object above it resolves.
+    @State var arenaLandedStackIDs: Set<String> = []
+    @State var arenaLiftedCardID: String?
+    @State var arenaAutoPay: ArenaAutoPayRun?
+    @State var arenaNotice: String?
+    @State var arenaAttackQueue: ArenaAttackQueue?
+    @State var arenaShowPhaseStops = false
+    /// Set by a long press on the primary button (full control), so lifting that finger doesn't also pass.
+    @State var arenaSwallowNextPass = false
+    @Environment(\.turnClockFeed) var turnClockFeed
+    @Environment(\.nativeTurnControl) var nativeTurnControl
+    @Environment(\.boardAnswerActions) var answerActions
     /// Which opponent the top of the board shows; it follows the turn (BoardFocusTracker).
-    @State private var focusTracker = BoardFocusTracker()
-    @AppStorage(BoardFocusTracker.followTurnsKey) private var followTurns = true
-    @State private var lastTurnCueKey: String?
-    @State private var showsTurnCue = false
+    @State var focusTracker = BoardFocusTracker()
+    @AppStorage(BoardFocusTracker.followTurnsKey) var followTurns = true
+    @State var lastTurnCueKey: String?
+    @State var showsTurnCue = false
     /// Game, turn and active player of the last turn-start banner.
-    @State private var lastTurnBannerKey: String?
-    @State private var lastTurnSoundKey: String?
-    @State private var showsTurnBanner = false
+    @State var lastTurnBannerKey: String?
+    @State var lastTurnSoundKey: String?
+    @State var showsTurnBanner = false
     /// While the turn banner holds the centre of the board, showcases wait (BoardFXDirector.ingest).
-    @State private var turnBannerEndsAt: Date?
+    @State var turnBannerEndsAt: Date?
     /// The phase pill is flying up into the top bar.
-    @State private var phaseCueMerging = false
-    @State private var hudPulse = 0
-    @State private var aiWaitBeganAt = Date()
-    @State private var aiWaitKey = ""
-    @State private var didAutoRefreshAIWaitKey: String?
-    @State private var didAutoReconnectAIWaitKey: String?
-    @State private var didAutoDiagnoseAIWaitKey: String?
-    @State private var boardFX = BoardFXDirector()
-    @State private var boardFXClock = BoardFXClock()
-    @State private var boardShake: CGFloat = 0
-    @State private var boardShakeAmplitude: CGFloat = 6
-    @State private var hitVignette = 0.0
-    @State private var gameStats = GameStats()
-    @State private var combatLogReasons = CombatLogReasons()
-    @AppStorage(BoardFXLevel.key) private var boardFXLevel = BoardFXLevel.defaultValue
-    @AppStorage(BoardFXSound.key) private var boardSoundsEnabled = true
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @State var phaseCueMerging = false
+    @State var hudPulse = 0
+    @State var aiWaitBeganAt = Date()
+    @State var aiWaitKey = ""
+    @State var didAutoRefreshAIWaitKey: String?
+    @State var didAutoReconnectAIWaitKey: String?
+    @State var didAutoDiagnoseAIWaitKey: String?
+    @State var boardFX = BoardFXDirector()
+    @State var boardFXClock = BoardFXClock()
+    @State var boardShake: CGFloat = 0
+    @State var boardShakeAmplitude: CGFloat = 6
+    @State var hitVignette = 0.0
+    @State var gameStats = GameStats()
+    @State var combatLogReasons = CombatLogReasons()
+    @AppStorage(BoardFXLevel.key) var boardFXLevel = BoardFXLevel.defaultValue
+    @AppStorage(BoardFXSound.key) var boardSoundsEnabled = true
+    @Environment(\.accessibilityReduceMotion) var accessibilityReduceMotion
+    @Environment(\.verticalSizeClass) var verticalSizeClass
     /// The starting roll covers the board and answers its starting-player prompt itself.
-    @Environment(\.startingRollVisible) private var startingRollVisible
-    @Environment(\.emoteCenter) private var emoteCenter
+    @Environment(\.startingRollVisible) var startingRollVisible
+    @Environment(\.emoteCenter) var emoteCenter
 
-    private func openPromptDetails() {
+    /// The prompt-detail panel opens by itself for this question; the Arena board answers ability choices, trigger
+    /// order and modes in its own browsers (ArenaAbilityBrowser, ArenaModeBrowser) instead.
+    func boardDetailChoiceKey(_ snapshot: GameSnapshot) -> String? {
+        if isArenaBoard, let prompt = snapshot.promptEnvelopeV2, prompt.abilities?.isEmpty == false,
+           (prompt.responseCommand?.type ?? "").lowercased() == "choose_ability" { return nil }
+        // Its modes too, in ArenaModeBrowser, and the choices, players, numbers, splits and piles its other screens take.
+        if isArenaBoard, snapshot.promptEnvelopeV2?.modes?.isEmpty == false || arenaScreenPrompt(snapshot) { return nil }
+        return PortraitInteractionPolicy.detailChoiceKey(snapshot)
+    }
+
+    func openPromptDetails() {
         if let snapshot, PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil {
             isCardChoiceOpen = true
         } else {
@@ -191,7 +229,7 @@ struct NativeGameView: View {
         }
     }
 
-    private func advanceCommittedCardChoice() {
+    func advanceCommittedCardChoice() {
         guard var plan = committedCardChoice, let snapshot else { return }
         if snapshot.promptEnvelopeV2 == nil && pendingActionId == nil && plan.lastPrompt != nil {
             if cardChoiceCompletionTask == nil {
@@ -214,14 +252,14 @@ struct NativeGameView: View {
         committedCardChoice = plan.stopped ? nil : plan
         if plan.stopped {
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         }
         if let command {
             runCommand(command, "Apply card choice", "card-plan-\(command.promptId ?? "")-\(command.messageId ?? 0)")
         }
     }
 
-    private func cancelCommittedCardChoice() {
+    func cancelCommittedCardChoice() {
         cardChoiceCompletionTask?.cancel()
         cardChoiceCompletionTask = nil
         committedCardChoice = nil
@@ -232,17 +270,17 @@ struct NativeGameView: View {
                 isPromptDetailOpen = false
             } else {
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
         }
     }
 
-    private func handleCardChoicePendingChange(from oldValue: String?, to newValue: String?, snapshot: GameSnapshot) {
+    func handleCardChoicePendingChange(from oldValue: String?, to newValue: String?, snapshot: GameSnapshot) {
         guard newValue == nil else { return }
         if reviewCardChoiceAfterPending {
             reviewCardChoiceAfterPending = false
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+            isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         } else if oldValue != nil, committedCardChoice?.submittedPromptIsUnchanged(in: snapshot) == true {
             cancelCommittedCardChoice()
         } else {
@@ -250,7 +288,7 @@ struct NativeGameView: View {
         }
     }
 
-    private func handleCardChoiceFailureChange(from oldValue: CardChoiceCommandFailure?,
+    func handleCardChoiceFailureChange(from oldValue: CardChoiceCommandFailure?,
                                                to newValue: CardChoiceCommandFailure?) {
         if committedCardChoice != nil,
            CardChoiceCommandFailure.isNewFailure(from: oldValue, to: newValue) {
@@ -258,7 +296,7 @@ struct NativeGameView: View {
         }
     }
 
-    private func commitCardChoicePlan(_ plan: CardChoicePlan) {
+    func commitCardChoicePlan(_ plan: CardChoicePlan) {
         cardChoiceCompletionTask?.cancel()
         cardChoiceCompletionTask = nil
         reviewCardChoiceAfterPending = false
@@ -267,7 +305,7 @@ struct NativeGameView: View {
         advanceCommittedCardChoice()
     }
 
-    private func localViewZone(title: String, cards: [ZoneCard]) {
+    func localViewZone(title: String, cards: [ZoneCard]) {
         if title.hasPrefix("Enchanting "), let snapshot,
            let playerID = snapshot.players.first(where: { player in
                Set(ZoneCard.enchanting(playerID: player.playerId, cards: snapshot.players.flatMap { $0.zones.battlefield }).map(\.id)) == Set(cards.map(\.id))
@@ -280,7 +318,7 @@ struct NativeGameView: View {
         inspectingZoneCards = cards
     }
 
-    private func inspectBoardZone(_ reference: BoardZoneReference) {
+    func inspectBoardZone(_ reference: BoardZoneReference) {
         guard let snapshot else { return }
         inspectingZoneReference = reference
         inspectingZoneTitle = reference.title(in: snapshot)
@@ -288,11 +326,11 @@ struct NativeGameView: View {
         inspectedCard = nil
     }
 
-    private var boardOverlayTransition: AnyTransition {
+    var boardOverlayTransition: AnyTransition {
         GameBoardMotion.reduced(accessibilityReduceMotion) ? .opacity : .scale.combined(with: .opacity)
     }
 
-    private func clearBoardSelection() {
+    func clearBoardSelection() {
         guard selectedCard != nil || inspectedCard != nil else { return }
         selectedCard = nil
         inspectedCard = nil
@@ -304,7 +342,7 @@ struct NativeGameView: View {
     /// overlays. The classic board frames it between its side columns; the tavern board lays
     /// it on the mat of the landscape plate.
     @ViewBuilder
-    private func landscapeCenterColumn(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState) -> some View {
+    func landscapeCenterColumn(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState) -> some View {
         GeometryReader { proxy in
             let metrics = BattlefieldLayoutMetrics(proxy: proxy,
                 centerControlsVisible: BoardDecisionPresentation.needsCenterSpace(snapshot, hasRejection: lastActionRejection != nil))
@@ -590,7 +628,7 @@ struct NativeGameView: View {
     /// column above yours, and the phase plate, stack tray and pass button down the right. The
     /// tavern top bar and command bar place their pieces on those sockets themselves.
     @ViewBuilder
-    private func tavernLandscapeContent(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState,
+    func tavernLandscapeContent(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState,
                                         humanName: String, opponentName: String, rootProxy: GeometryProxy) -> some View {
         let canvas = CGSize(width: rootProxy.size.width + rootProxy.safeAreaInsets.leading + rootProxy.safeAreaInsets.trailing,
                             height: rootProxy.size.height + rootProxy.safeAreaInsets.top + rootProxy.safeAreaInsets.bottom)
@@ -672,7 +710,7 @@ struct NativeGameView: View {
         .environment(\.tavernCanvas, canvas)
     }
 
-    private func recover(from rejection: ActionRejectionNotice) {
+    func recover(from rejection: ActionRejectionNotice) {
         GameHaptics.impact()
         if rejection.category == .bridgeDisconnected {
             reconnectGame()
@@ -681,7 +719,7 @@ struct NativeGameView: View {
         }
     }
 
-    private func refreshProtocolDebug() async {
+    func refreshProtocolDebug() async {
         guard let gameId = snapshot?.id else { return }
         isProtocolDebugLoading = true
         protocolDebugError = nil
@@ -708,6 +746,9 @@ struct NativeGameView: View {
             )
             let boardSurface = GeometryReader { rootProxy in
                 ZStack {
+                    if isArenaBoard {
+                        arenaBoard(snapshot: snapshot, human: human, opponent: opponent, rootProxy: rootProxy)
+                    } else {
                     BattlefieldSurface(portraitModeEnabled: portraitModeEnabled)
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
@@ -908,6 +949,7 @@ struct NativeGameView: View {
                 }
                 }
                 }
+                }
             }
                 .background(Color(red: 0.055, green: 0.085, blue: 0.10).ignoresSafeArea())
                 .preferredColorScheme(.dark)
@@ -921,7 +963,8 @@ struct NativeGameView: View {
                     }
                     #endif
                 }
-                .sheet(isPresented: $isLogOpen) {
+                // The Arena board shows these on its table in glass (`boardSheet`); the Hearth board keeps its sheets.
+                .boardSheet(isPresented: $isLogOpen, arena: isArenaBoard) {
                     GameLogDrawer(
                         log: snapshot.log,
                         reasons: combatLogReasons.reasons,
@@ -930,12 +973,12 @@ struct NativeGameView: View {
                     .padding(14)
                     .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
                 }
                 .sheet(isPresented: $isLandscapeStackOpen) {
                     BoardStackInspector(snapshot: snapshot, selectedCard: $selectedCard, inspectedCard: $inspectedCard, runCommand: runCommand)
                 }
-                .sheet(isPresented: $isPromptDetailOpen) {
+                .boardSheet(isPresented: $isPromptDetailOpen, arena: isArenaBoard) {
                     UniversalPromptActionPanel(
                         snapshot: snapshot,
                         selectedCardActions: selectedCard.map { GameBoardInteractionState.cardActions(for: $0, actions: snapshot.legalActions ?? []) } ?? [],
@@ -954,9 +997,9 @@ struct NativeGameView: View {
                     .padding(14)
                     .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
                 }
-                .sheet(isPresented: $isGameMenuOpen) {
+                .boardSheet(isPresented: $isGameMenuOpen, arena: isArenaBoard) {
                     GameManagementMenu(
                         snapshot: snapshot,
                         concedeAction: concedeAction(in: snapshot.legalActions ?? []),
@@ -977,7 +1020,13 @@ struct NativeGameView: View {
                     )
                     .tavernSheet(isTavernBoard)
                     .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
+                }
+                // The Arena board's phase stops (its stack opens in ArenaStackBrowser, in arenaOverlays).
+                .overlay {
+                    if isArenaBoard {
+                        ArenaPanelOverlay(isPresented: $arenaShowPhaseStops) { PhaseStopsSheet() }
+                    }
                 }
                 .sheet(isPresented: $isPromptInspectorOpen) {
                     PromptDebugInspector(
@@ -993,7 +1042,7 @@ struct NativeGameView: View {
                             await refreshProtocolDebug()
                         }
                         .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
+                        .presentationDragIndicator(isArenaBoard ? .hidden : .visible)
                 }
                 .tavernConfirmation(
                     active: isTavernBoard,
@@ -1020,6 +1069,9 @@ struct NativeGameView: View {
                 )
             // Above the HUD, dock, choice and phase layers, edge to edge.
             boardPresentation(boardSurface, snapshot: snapshot)
+                .environment(\.cardFrames, isArenaBoard ? arenaCardFrames : hearthCardFrames)
+                // The Arena board's sheets, menus, dialogs and pop-ups wear its glass, not the Hearth board's leather.
+                .environment(\.arenaBoard, isArenaBoard)
                 // The tavern's candle sits under the clock: the status bar leaves during a game. On a
                 // hidden background, so the board itself never becomes one big accessibility element.
                 .background { Color.clear.statusBarHidden(isTavernBoard).accessibilityHidden(true).allowsHitTesting(false) }
@@ -1046,6 +1098,7 @@ struct NativeGameView: View {
                     if snapshot.isCompleted {
                         GameCompletionOverlay(snapshot: snapshot, stats: gameStats, newGame: newGame, quitGame: quitGame)
                             .environment(\.tavernBoard, isTavernBoard)
+                            .environment(\.arenaBoard, isArenaBoard)
                             .transition(boardOverlayTransition)
                     }
                 }
@@ -1069,15 +1122,15 @@ struct NativeGameView: View {
         }
     }
 
-    private func boardPresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+    func boardPresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         let observed = boardObservation(content, snapshot: snapshot)
         let choices = boardChoicePresentation(observed, snapshot: snapshot)
         return boardPhasePresentation(choices, snapshot: snapshot)
     }
 
-    private func ingestBoardFX(_ snapshot: GameSnapshot) {
+    func ingestBoardFX(_ snapshot: GameSnapshot) {
         let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
-        let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt)
+        let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt, pace: isArenaBoard ? .arena : .hearth)
         BoardPresentationHold.shared.record(BoardFXRevisionKey(snapshot: snapshot), until: boardFX.smartPassHoldUntil)
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
@@ -1127,7 +1180,7 @@ struct NativeGameView: View {
     }
 
     /// Life points default to the battlefield edges; the portrait board passes its life HUD positions.
-    private func boardFXOverlay(bounds: [String: CGRect], snapshot: GameSnapshot, opponentRect: CGRect,
+    func boardFXOverlay(bounds: [String: CGRect], snapshot: GameSnapshot, opponentRect: CGRect,
                                 playerRect: CGRect, stackRect: CGRect, handRect: CGRect,
                                 viewerLife: CGPoint? = nil, opponentLife: CGPoint? = nil) -> some View {
         let anchors = BoardFXAnchors(
@@ -1135,15 +1188,16 @@ struct NativeGameView: View {
             viewerPoint: viewerLife ?? CGPoint(x: playerRect.minX + 50, y: playerRect.maxY - 20),
             opponentPoint: opponentLife ?? CGPoint(x: opponentRect.minX + 50, y: opponentRect.minY + 20),
             // On the tavern table the showcase sits higher, clear of the cost and target ribbons.
-            stackPoint: CGPoint(x: stackRect.midX, y: isTavernBoard ? min(stackRect.midY, (opponentRect.midY + stackRect.midY) / 2) : stackRect.midY),
+            stackPoint: CGPoint(x: stackRect.midX, y: isTavernBoard && !isArenaBoard ? min(stackRect.midY, (opponentRect.midY + stackRect.midY) / 2) : stackRect.midY),
             viewerHandPoint: CGPoint(x: handRect.midX, y: handRect.midY),
             opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40),
             playerLabels: Dictionary(snapshot.players.map { ($0.playerId, snapshot.playerLabel($0.playerId)) }, uniquingKeysWith: { first, _ in first }))
         return BoardFXOverlay(effects: boardFX.active, subjects: boardFX.subjects, cardBounds: bounds, anchors: anchors,
-                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) }, tavern: isTavernBoard)
+                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) }, tavern: isTavernBoard, arena: isArenaBoard,
+                              arenaStackIDs: Set(snapshot.stackTopFirst.map(\.id)))
     }
 
-    private func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+    func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             // Touches and game changes keep the breathing glows awake (BoardActivity).
             .background { BoardTouchActivity() }
@@ -1165,7 +1219,7 @@ struct NativeGameView: View {
             .onAppear {
                 updateAIWaitStart(for: snapshot)
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
             // The tracker starts over by itself when the game changes.
             .onChange(of: BoardFocusTracker.observationKey(snapshot, followTurns: followTurns), initial: true) { _, _ in
@@ -1203,7 +1257,7 @@ struct NativeGameView: View {
             }
             .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in
                 advanceCommittedCardChoice()
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snapshot) != nil
+                isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
             }
             .onChange(of: snapshot.promptEnvelopeV2?.messageId) { _, _ in
                 advanceCommittedCardChoice()
@@ -1230,7 +1284,7 @@ struct NativeGameView: View {
             .onChange(of: commandFailure) { oldValue, newValue in
                 handleCardChoiceFailureChange(from: oldValue, to: newValue)
             }
-            .onChange(of: PortraitInteractionPolicy.detailChoiceKey(snapshot)) { _, key in
+            .onChange(of: boardDetailChoiceKey(snapshot)) { _, key in
                 isPromptDetailOpen = key != nil
                 // A decision that needs you, not a routine priority pass (the starting roll answers its own).
                 if key != nil && !startingRollVisible { GameAudio.shared.play(.responseAlert) }
@@ -1244,7 +1298,7 @@ struct NativeGameView: View {
             }
     }
 
-    private func boardChoicePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+    func boardChoicePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             // The starting roll covers the board too (the root also applies startingRollCovered).
             .accessibilityHidden(isCardChoiceOpen || committedCardChoice != nil || startingRollVisible)
@@ -1269,15 +1323,25 @@ struct NativeGameView: View {
             .overlay(alignment: .top) {
                 if committedCardChoice != nil {
                     HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Applying card choices…").font(.caption)
-                        Button("Stop") { cancelCommittedCardChoice() }
-                            .font(.caption.weight(.semibold))
-                            .frame(minWidth: 44, minHeight: 44)
-                            .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                        ProgressView().tint(isArenaBoard ? ArenaGlass.text : nil)
+                        Text("Applying card choices…")
+                            .font(isArenaBoard ? .system(size: 13, weight: .semibold, design: .serif) : .caption)
+                            .foregroundStyle(isArenaBoard ? ArenaGlass.text : .primary)
+                        if isArenaBoard {
+                            Button("Stop") { cancelCommittedCardChoice() }
+                                .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 14))
+                                .frame(width: 84, height: 36)
+                                .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                        } else {
+                            Button("Stop") { cancelCommittedCardChoice() }
+                                .font(.caption.weight(.semibold))
+                                .frame(minWidth: 44, minHeight: 44)
+                                .accessibilityHint("Stops remaining automatic replies. Choices already sent to XMage stay applied.")
+                        }
                     }
                     .padding(8)
-                    .background(MagicPalette.iron, in: Capsule())
+                    .background { if !isArenaBoard { Capsule().fill(MagicPalette.iron) } }
+                    .modifier(ArenaGlassIf(active: isArenaBoard, cornerRadius: 22))
                     .accessibilityIdentifier("board.choice.progress")
                 }
             }
@@ -1291,7 +1355,7 @@ struct NativeGameView: View {
             }
     }
 
-    private func boardPhasePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
+    func boardPhasePresentation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
         content
             // The classic board: day or night and the storm count under the top bar (the tavern table hangs them
             // under its phase plate).
@@ -1307,6 +1371,7 @@ struct NativeGameView: View {
                     BoardTurnBanner(title: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn",
                                     turn: snapshot.turn, isViewer: snapshot.isViewer(active))
                         .environment(\.tavernBoard, isTavernBoard)
+                        .environment(\.arenaBoard, isArenaBoard)
                         // Leaves by shrinking up toward the top bar's turn label.
                         .transition(.asymmetric(insertion: .opacity,
                                                 removal: .scale(scale: 0.2, anchor: .top).combined(with: .offset(y: -220)).combined(with: .opacity)))
@@ -1367,9 +1432,11 @@ struct NativeGameView: View {
                         }
                         // The ribbon plays with the phase pill; it is center stage only briefly.
                         if snapshot.isViewer(snapshot.activePlayerId) { UINotificationFeedbackGenerator().notificationOccurred(.success) }
-                        turnBannerEndsAt = Date().addingTimeInterval(1.95)
+                        // The Arena banner is the reference's 0.9 s and plays over the draw; it holds the board's
+                        // effects only that long.
+                        turnBannerEndsAt = Date().addingTimeInterval(isArenaBoard ? 0.9 : 1.95)
                         withAnimation(.easeOut(duration: 0.2)) { showsTurnBanner = true; showsTurnCue = !isTavernBoard }
-                        do { try await Task.sleep(for: .seconds(1.6)) } catch { showsTurnBanner = false; return }
+                        do { try await Task.sleep(for: .seconds(isArenaBoard ? 0.7 : 1.6)) } catch { showsTurnBanner = false; return }
                         withAnimation(.easeIn(duration: 0.35)) { showsTurnBanner = false }
                         await mergePhaseCueIntoBar()
                         return
@@ -1391,7 +1458,7 @@ struct NativeGameView: View {
     }
 
     /// The pill shrinks up into the top bar, which flashes its turn label as it lands.
-    private func mergePhaseCueIntoBar() async {
+    func mergePhaseCueIntoBar() async {
         withAnimation(.easeIn(duration: 0.3)) { phaseCueMerging = true }
         try? await Task.sleep(for: .milliseconds(300))
         showsTurnCue = false
@@ -1399,7 +1466,7 @@ struct NativeGameView: View {
         hudPulse += 1
     }
 
-    private func updateAIWaitStart(for snapshot: GameSnapshot) {
+    func updateAIWaitStart(for snapshot: GameSnapshot) {
         let key = snapshot.aiWaitSignature
         if key != aiWaitKey {
             aiWaitKey = key
@@ -1410,7 +1477,7 @@ struct NativeGameView: View {
         }
     }
 
-    private func handleAIWaitRecovery(for snapshot: GameSnapshot, now: Date) {
+    func handleAIWaitRecovery(for snapshot: GameSnapshot, now: Date) {
         let key = snapshot.aiWaitSignature
         guard key == aiWaitKey else { return }
         let action = AIWaitRecoveryPolicy.action(
@@ -1442,9 +1509,13 @@ struct NativeGameView: View {
     }
 
     /// The Walnut Tavern table is portrait-only for now; landscape keeps the classic controls.
-    private var isTavernBoard: Bool { BattlefieldBackdrop.resolved(boardAppearance) == .tavern }
+    var isTavernBoard: Bool { BattlefieldBackdrop.resolved(boardAppearance) == .tavern }
 
-    private func portraitGameContent(
+    /// The Arena board (BoardMode.arena): the reference game's board on the leaning tavern table, in both orientations.
+    /// It dresses in the tavern kit, so the sheets and pop-overs keep their tavern look.
+    var isArenaBoard: Bool { BoardMode.resolved(boardMode) == .arena }
+
+    func portraitGameContent(
         snapshot: GameSnapshot,
         human: PlayerGameState,
         opponent: PlayerGameState,
@@ -1790,23 +1861,23 @@ struct NativeGameView: View {
         }
     }
 
-    private func passAction(in actions: [LegalAction]) -> LegalAction? {
+    func passAction(in actions: [LegalAction]) -> LegalAction? {
         actions.first { $0.type == "pass_priority" }
             ?? actions.first { $0.type == "pass_until_response" }
     }
 
-    private func concedeAction(in actions: [LegalAction]) -> LegalAction? {
+    func concedeAction(in actions: [LegalAction]) -> LegalAction? {
         actions.first { $0.type == "concede" }
     }
 
-    private func selectedActions(in snapshot: GameSnapshot) -> [LegalAction] {
+    func selectedActions(in snapshot: GameSnapshot) -> [LegalAction] {
         guard let selectedCard else { return [] }
         return GameBoardInteractionState.cardActions(for: selectedCard, actions: snapshot.legalActions ?? [])
     }
 
     /// Your creatures already declared in this combat step: attacking while you declare
     /// attackers, blocking while you declare blockers.
-    private func declaredCombatCards(in snapshot: GameSnapshot) -> [ZoneCard] {
+    func declaredCombatCards(in snapshot: GameSnapshot) -> [ZoneCard] {
         guard let human = snapshot.human else { return [] }
         let step = (snapshot.step ?? snapshot.phase).lowercased().replacingOccurrences(of: "_", with: "-")
         let attackers = step.contains("declare-attack")
@@ -1818,7 +1889,7 @@ struct NativeGameView: View {
 
     /// Back while declaring attackers or blockers: select the latest declared creature again,
     /// which XMage takes as taking it back (the creature stays an exposed target).
-    private func combatBackAction(in snapshot: GameSnapshot) -> (() -> Void)? {
+    func combatBackAction(in snapshot: GameSnapshot) -> (() -> Void)? {
         guard pendingActionId == nil else { return nil }
         let targetable = targetableCardIds(in: snapshot)
         let candidates = declaredCombatCards(in: snapshot).filter { targetable.contains($0.id) || targetable.contains($0.instanceId) }
@@ -1832,11 +1903,11 @@ struct NativeGameView: View {
         }
     }
 
-    private func targetableCardIds(in snapshot: GameSnapshot) -> Set<String> {
+    func targetableCardIds(in snapshot: GameSnapshot) -> Set<String> {
         GameBoardInteractionState.boardTargetableIds(for: snapshot)
     }
 
-    private func submitTarget(_ card: ZoneCard, snapshot: GameSnapshot) {
+    func submitTarget(_ card: ZoneCard, snapshot: GameSnapshot) {
         guard targetableCardIds(in: snapshot).contains(card.instanceId) || targetableCardIds(in: snapshot).contains(card.id) else {
             GameHaptics.warning()
             onInteractionFeedback("\(card.card.name) is not an exposed XMage target")
@@ -1870,7 +1941,7 @@ struct NativeGameView: View {
         runCommand(command, "Target \(card.card.name)", "\(promptId)-\(card.instanceId)")
     }
 
-    private func handleCombatCardTap(_ card: ZoneCard, snapshot: GameSnapshot) -> Bool {
+    func handleCombatCardTap(_ card: ZoneCard, snapshot: GameSnapshot) -> Bool {
         let actions = snapshot.legalActions ?? []
         if CombatSelectionState.isDeclareAttackers(snapshot) {
             if let attackerId = CombatSelectionState.matchingCardId(for: card, in: combatSelection.attackerHighlightIds(actions: actions)) {
@@ -1922,7 +1993,7 @@ struct NativeGameView: View {
         return false
     }
 
-    private func submitAttackers(defenderId: String, snapshot: GameSnapshot) {
+    func submitAttackers(defenderId: String, snapshot: GameSnapshot) {
         let actions = snapshot.legalActions ?? []
         guard !combatSelection.selectedAttackerIds.isEmpty else {
             onInteractionFeedback("Select at least one attacker first")
@@ -1959,7 +2030,7 @@ struct NativeGameView: View {
         combatSelection.clearAttackers()
     }
 
-    private func submitBlockers(snapshot: GameSnapshot) {
+    func submitBlockers(snapshot: GameSnapshot) {
         guard let human = snapshot.human else { return }
         guard let command = combatSelection.pendingBlockActionPayload(
             playerId: human.playerId,
@@ -1977,7 +2048,7 @@ struct NativeGameView: View {
         combatSelection.clearBlockers()
     }
 
-    private func finishAttackers(snapshot: GameSnapshot) {
+    func finishAttackers(snapshot: GameSnapshot) {
         guard let human = snapshot.human else { return }
         let command = CombatSelectionState.finishAttackCommand(
             gameId: snapshot.id,
@@ -1988,7 +2059,7 @@ struct NativeGameView: View {
         combatSelection.clearAttackers()
     }
 
-    private func finishBlockers(snapshot: GameSnapshot) {
+    func finishBlockers(snapshot: GameSnapshot) {
         guard let human = snapshot.human else { return }
         let command = CombatSelectionState.finishBlockCommand(
             gameId: snapshot.id,
@@ -1999,20 +2070,20 @@ struct NativeGameView: View {
         combatSelection.clearBlockers()
     }
 
-    private func designPreviewState(from snapshot: GameSnapshot) -> GameBoardDesignPreviewState {
+    func designPreviewState(from snapshot: GameSnapshot) -> GameBoardDesignPreviewState {
         let raw = snapshot.id.replacingOccurrences(of: "design-preview-", with: "")
         return GameBoardDesignPreviewState(rawValue: raw) ?? .normalBattlefield
     }
 
-    private func landPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
+    func landPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
         BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: true, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []))
     }
 
-    private func landscapePermanents(_ cards: [ZoneCard], resources: Bool) -> [ZoneCard] {
+    func landscapePermanents(_ cards: [ZoneCard], resources: Bool) -> [ZoneCard] {
         BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: resources, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []), includesManaRocks: true)
     }
 
-    private func nonLandPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
+    func nonLandPermanents(_ cards: [ZoneCard]) -> [ZoneCard] {
         BattlefieldAttachments.lane(ownedCards: cards, allCards: snapshot?.players.flatMap { $0.zones.battlefield } ?? cards, lands: false, playerIDs: Set(snapshot?.players.map(\.playerId) ?? []))
     }
 }

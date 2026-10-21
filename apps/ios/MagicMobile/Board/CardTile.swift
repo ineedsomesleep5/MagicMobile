@@ -17,8 +17,23 @@ struct CardTile: View {
     var imageVariant: CardImageCacheVariant = .board
     /// Room a token copy's tag leaves at the trailing edge (TokenCopyFrameLayout.tagTrailingReserve).
     var tokenCopyTagTrailingReserve: CGFloat = 0
+    /// A token copy's "Token copy" tag; off where the caller marks the copy itself (an Arena tile crops the card).
+    var tokenCopyTag = true
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.nativeTurnControl) private var nativeTurnControl
+    /// The Arena board: the hand's cards glow around their own outline (ArenaOutlineGlow) instead of a coloured line.
+    @Environment(\.arenaBoard) private var arena
+
+    private var arenaHand: Bool { arena && zoneName == "Hand" }
+
+    /// The hand's glow border: playable cards breathe cyan; a card being cast or chosen glows gold.
+    private var arenaHandGlow: (tone: ArenaOutlineGlow.Tone, breathes: Bool)? {
+        guard arenaHand else { return nil }
+        if pending || selected { return (.selected, false) }
+        if targetable { return (.target, false) }
+        if legal || castOffered { return (.playable, true) }
+        return nil
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -27,6 +42,7 @@ struct CardTile: View {
                     CardArtPlaceholder(card: card, width: width, height: height)
                 } else if let source = card.tokenCopySourceName {
                     TokenCopyCardFace(card: card, source: source, width: width, height: height, imageVariant: imageVariant,
+                                      showsTag: tokenCopyTag,
                                       tagTrailingReserve: tokenCopyTagTrailingReserve)
                 } else if nativeTurnControl != nil {
                     NativeCardArtworkView(card: card, variant: imageVariant) { loading, _ in
@@ -99,9 +115,10 @@ struct CardTile: View {
             }
         }
         .frame(width: width, height: height)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(strokeColor, lineWidth: strokeWidth))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(arenaHand ? .black.opacity(0.45) : strokeColor,
+                                                          lineWidth: arenaHand ? 0.8 : strokeWidth))
         .overlay(alignment: .topLeading) {
-            if castOffered && !pending {
+            if castOffered && !pending && !arenaHand {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                     .padding(4).background(.black.opacity(0.85), in: Circle()).padding(3)
@@ -109,6 +126,7 @@ struct CardTile: View {
             }
         }
         .overlay {
+            if !arenaHand {
             Group {
             if castOffered && legal && !selected && !pending && !targetable {
                 RoundedRectangle(cornerRadius: 8)
@@ -147,8 +165,15 @@ struct CardTile: View {
             }
             // The existing playable glow breathes in the hand; nothing new is drawn.
             .modifier(PlayableGlowPulse(active: zoneName == "Hand" && (legal || castOffered) && !selected && !pending && !targetable))
+            }
         }
-        .shadow(color: shadowColor, radius: shadowRadius)
+        .shadow(color: arenaHand ? .black.opacity(0.5) : shadowColor, radius: arenaHand ? 4 : shadowRadius, y: arenaHand ? 2 : 0)
+        // After the shadow, so the light casts none.
+        .background {
+            if let arenaHandGlow {
+                ArenaOutlineGlow(outline: .card, tone: arenaHandGlow.tone, breathes: arenaHandGlow.breathes)
+            }
+        }
         .rotationEffect(.degrees(card.tapped == true && !ignoreTappedRotation ? 90 : 0))
         .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: card.tapped)
         .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -442,6 +467,7 @@ struct TokenCopyCardFace: View {
     let width: CGFloat
     let height: CGFloat
     var imageVariant: CardImageCacheVariant = .board
+    var showsTag = true
     var tagTrailingReserve: CGFloat = 0
     @Environment(\.nativeTurnControl) private var nativeTurnControl
 
@@ -505,6 +531,7 @@ struct TokenCopyCardFace: View {
             }
 
             let slot = frame.tagSlot
+            if showsTag {
             Text(TokenCopyPresentation.tag(source: source, cardWidth: width))
                 .font(.system(size: frame.tagFontSize, weight: .black))
                 .tracking(0.3)
@@ -516,6 +543,7 @@ struct TokenCopyCardFace: View {
                 .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.6), lineWidth: 0.7))
                 .frame(width: slot.width, height: slot.height, alignment: .leading)
                 .offset(x: slot.minX, y: slot.minY)
+            }
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .overlay(

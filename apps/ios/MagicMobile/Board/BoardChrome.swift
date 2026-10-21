@@ -236,6 +236,8 @@ struct GameCompletionOverlay: View {
     private var isVictory: Bool { snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board shows your own medallion instead of the trophy: rising in gold, or falling grey.
+    @Environment(\.arenaBoard) private var arena
     @State private var revealed = false
 
     var body: some View {
@@ -248,10 +250,20 @@ struct GameCompletionOverlay: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 12) {
+                if arena, let viewer = snapshot.human {
+                    ArenaHeroMedallion(player: viewer, diameter: 104, active: isVictory, showsLife: false)
+                        .saturation(isVictory ? 1 : 0)
+                        .brightness(isVictory ? 0 : -0.15)
+                        .scaleEffect(revealed || reduceMotion ? 1 : (isVictory ? 0.4 : 1.1))
+                        .offset(y: revealed || reduceMotion ? 0 : (isVictory ? 50 : -30))
+                        .rotationEffect(.degrees(revealed || reduceMotion || isVictory ? 0 : -4))
+                        .accessibilityHidden(true)
+                } else {
                 Image(systemName: isVictory ? "trophy.fill" : "flag.checkered")
                     .font(.system(size: 40, weight: .black))
                     .foregroundStyle(isVictory ? MagicPalette.antiqueGold : Color(red: 0.8, green: 0.35, blue: 0.3))
                     .shadow(color: (isVictory ? MagicPalette.antiqueGold : .red).opacity(0.6), radius: 12)
+                }
 
                 Text(title.uppercased())
                     .font(.system(size: 48, weight: .black, design: .serif))
@@ -1483,8 +1495,31 @@ struct TavernTag: View {
     let text: String
     var leather = false
     var accent: Color?
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        if arena { arenaTag } else { tavernTag }
+    }
+
+    /// On the Arena board: gold capitals on glass, no leather.
+    private var arenaTag: some View {
+        HStack(spacing: 5) {
+            if let accent { Circle().fill(accent).frame(width: 6, height: 6).shadow(color: accent, radius: 3) }
+            Text(text)
+                .font(.system(size: 10, weight: .heavy, design: .serif))
+                .tracking(1)
+                .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 10)
+        .frame(minHeight: 22)
+        .background(Capsule().fill(Color.white.opacity(0.07)))
+        .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.8))
+        .fixedSize()
+    }
+
+    private var tavernTag: some View {
         HStack(spacing: 5) {
             if let accent {
                 Circle()
@@ -1580,7 +1615,13 @@ struct TavernAwareManaSymbol: View {
 
 /// The backing of tavern sheets: dark tooled leather under a brass rule along the top.
 struct TavernSheetBackground: View {
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
+        if arena { ArenaGlassBackground() } else { leather }
+    }
+
+    private var leather: some View {
         TavernFill(material: .leather)
             .overlay(LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom))
             .overlay(alignment: .top) {
@@ -1612,7 +1653,13 @@ struct TavernPanelTitle: View {
 
 /// The wax-seal close button of tavern panels: the rendered Meshy seal once installed.
 struct TavernSealLabel: View {
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
+        if arena { ArenaCloseLabel() } else { seal }
+    }
+
+    private var seal: some View {
         Group {
             if let image = UIImage(named: "tavern-ui-seal") {
                 // The x pressed into the wax is faint; a gold x on top reads at a glance (Caleb, 2026-10-03).
@@ -1643,17 +1690,27 @@ struct TavernSealLabel: View {
 
 /// The leather title bar of tavern panels, in brass trim.
 struct TavernTitleBar: ViewModifier {
+    @Environment(\.arenaBoard) private var arena
+
     func body(content: Content) -> some View {
-        content
-            .padding(.leading, 12)
-            .padding(.trailing, 2)
-            .frame(minHeight: 48)
-            .background {
-                TavernFill(material: .leather)
-                    .overlay(Color.black.opacity(0.22))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .overlay { TavernBrassFrame(scale: 0.5) }
+        if arena {
+            // On the Arena board: the title on the glass itself over a gold hairline, no leather or brass frame.
+            content
+                .padding(.leading, 4)
+                .frame(minHeight: 44)
+                .overlay(alignment: .bottom) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.6) }
+        } else {
+            content
+                .padding(.leading, 12)
+                .padding(.trailing, 2)
+                .frame(minHeight: 48)
+                .background {
+                    TavernFill(material: .leather)
+                        .overlay(Color.black.opacity(0.22))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .overlay { TavernBrassFrame(scale: 0.5) }
+        }
     }
 }
 
@@ -1722,9 +1779,12 @@ struct TavernPanelChrome: ViewModifier {
     var cornerRadius: CGFloat = 12
     var classicFill: Color = MagicPalette.iron.opacity(0.94)
     var classicStroke: Color = MagicPalette.antiqueGold.opacity(0.38)
+    @Environment(\.arenaBoard) private var arena
 
     func body(content: Content) -> some View {
-        if tavern && TavernUIKit.available {
+        if arena {
+            content.modifier(ArenaGlassPanel(cornerRadius: max(cornerRadius, 12)))
+        } else if tavern && TavernUIKit.available {
             let scale = min(max(cornerRadius / 12, 0.4), 1)
             content
                 .background {
@@ -1744,9 +1804,21 @@ struct TavernPanelChrome: ViewModifier {
 /// A search field: the system rounded field, or on the tavern board a recessed parchment slot.
 struct TavernFieldChrome: ViewModifier {
     let tavern: Bool
+    @Environment(\.arenaBoard) private var arena
 
     func body(content: Content) -> some View {
-        if tavern && TavernUIKit.available {
+        if arena {
+            // On the Arena board: a darker pane in the glass's gold hairline, light text.
+            content
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .medium, design: .serif))
+                .foregroundStyle(ArenaGlass.text)
+                .tint(Color(red: 0.98, green: 0.84, blue: 0.52))
+                .padding(.horizontal, 12)
+                .frame(minHeight: 40)
+                .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+        } else if tavern && TavernUIKit.available {
             content
                 .textFieldStyle(.plain)
                 .font(.system(size: 15, weight: .medium, design: .serif))
@@ -1924,6 +1996,7 @@ struct TavernMenu<Label: View, Items: View>: View {
     @ViewBuilder let label: Label
     @State private var open = false
     @State private var pending: (() -> Void)?
+    @Environment(\.arenaBoard) private var arena
     /// The button sits in the lower half of the screen: the pop-over opens upward, where there is room.
     @State private var opensUpward = false
 
@@ -1955,8 +2028,9 @@ struct TavernMenu<Label: View, Items: View>: View {
                         pending = action
                         open = false
                     }
+                    .environment(\.arenaBoard, arena)
                     .presentationCompactAdaptation(.popover)
-                    .presentationBackground { TavernSheetBackground() }
+                    .presentationBackground { TavernSheetBackground().environment(\.arenaBoard, arena) }
             }
             .onChange(of: open) { _, isOpen in
                 guard !isOpen, let action = pending else { return }

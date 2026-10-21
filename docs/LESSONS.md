@@ -21,6 +21,19 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-20 (Claude, Arena mode): a pitched Blender camera (`tavern_table.py --pitch`) draws the far half of the mat
+  narrower and its true centre above its visual middle. Cards placed on the canvas edge spilled onto the frame at the
+  opponent's land row, and the compass sat about 50 pt high. **Rule:** measure the rendered plate (sample brightness
+  rows with `magick … -crop Wx1+0+y txt:-` to find the mat's inner edge per row) before setting lanes. Move the emblem
+  with `--emblem-y`. Render a portrait mat wider than the screen when the far rows need its full width
+  (`arena_layout.json` portrait mat −16…456). Also: `print -r` writes `\n` literally in zsh. An asset
+  `Contents.json` written that way breaks actool ("failed to read asset tags") with no file named; use real newlines
+  as `install_tavern_assets.sh` does.
+- 2026-10-20 (Claude): the hidden-card image `https://gatherer.wizards.com/Images/CardBack.jpg` answers 404 since
+  Gatherer's redesign, so every face-down card fell back to its placeholder. **Fix:** Scryfall's card back
+  (`backs.scryfall.io/large/0/a/0aeebaf5-….jpg`) in `CardImageURL.image("Hidden card")`; the Arena board caches it once in
+  Caches (`ArenaCardBackArt`, only with the artwork consent). Where: `Board/CardImageURL.swift`, `Board/ArenaBoardViews.swift`.
+
 - 2026-10-11 (Claude): the guided first game's coach (`GuidedGame.swift` / `GuidedGame.kt`) reads only
   the snapshot (prompt envelope, legal action types, stack, turn), not the board's interaction
   state, so it stays inside the SwiftPM package and the JVM core and both run the same
@@ -415,3 +428,57 @@ contradicting one.
   takes at most 255 files. When rebuilding a take for the app, use the loudness target the audition used, not the
   level it measured: `match_loudness` saturates past -1 dB, so a sharp card snap asked for -22.2 lands at -25 (asking
   for -25 gave -27). Short cues build as `.caf`, which browsers can't decode: convert them to m4a for any web page.
+- 2026-10-20 (Claude, Arena sections): BattlefieldRow sizes itself with `ArenaPermanentLayout`, which caps the shrink at
+  five visible columns and splits into two rows once a row has more than five tiles. A board that lays out its own
+  sections has to pass the card size it fitted and `preferredRows`, or a sixth creature scrolls behind the edge fade
+  however wide the lane is. Count tiles the way the row draws them (`BattlefieldRow.arenaTileUnits`): piles open into
+  single cards while they are targeted or in combat, and attachments peek out to the left.
+- 2026-10-20 (Claude, simulator): after many launches that force landscape (`-magicmobile.portraitModeEnabled NO`) the
+  iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
+  "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
+  simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.
+- 2026-10-21 (Claude, Arena glow and motion): three SwiftUI traps.
+  - `ArenaStackArc` as a `Canvas` that trimmed its path by an `@State` animated in `onAppear` drew nothing on the board's
+    overlay (`overlayPreferenceValue`), though the reticle beside it, a plain view, showed. The same arc as a `Shape`
+    with `.trim(from:to:)` draws itself in. Use shapes for anything that animates.
+  - A curve of an animated value (`sin(.pi * t)` for a flare) does not animate: SwiftUI interpolates modifier values
+    between the start and end states, and a flare is 0 at both. Drive such moments with a short `TimelineView` that stops
+    (`ArenaStackCard`'s landing).
+  - A glow drawn as `.background` before a `.shadow` casts a shadow of its own light. Put the glow after the shadow.
+  The glow border itself (`ArenaOutlineGlow`) blurs each outline once with Core Image and caches it, as the web
+  board's `glowCanvas` does. Never blur live per tile.
+- 2026-10-21 (Claude, Arena hand touch): a touch on the popped card's upper part went to the table, because the hand's
+  touch surface stopped at the tucked hand. Two fixes that look obvious fail:
+  - Growing the surface to cover where cards pop, then filtering touches with `UIView.point(inside:)`, made the lands
+    under it untappable. The UI test caught it ("not hittable"): SwiftUI hit-tests a `UIViewRepresentable` by its frame.
+  - Swapping in a new surface when the card pops would cancel the pan, because a gesture ends when its view leaves.
+  So the popped card gets its own surface the size of its picture (`ArenaHandFan.touchSurface`). It stays where the
+  card was while the card is carried (`carrySurface`), so the drag that started on it keeps going.
+  The drop rule is `ArenaLayout.drops`: the whole table above the hand except the controls corner, after a carry of
+  24 pt up or 80 pt in any direction. In landscape a popped card already sits over your land row, and a short sideways
+  slide must not cast it.
+- 2026-10-21 (Claude, Arena hand): a slide along the tucked hand skipped cards because the hit test gave a popped card
+  its whole enlarged width, which covers its neighbours' strips, and ignored the fan's tilt. Scrubbing now maps the
+  finger to each card's visible strip at the finger's height along its rotation (`ArenaHandFan.scrubCard`), with a small
+  dead zone. Taps still prefer the popped card so a second tap plays it.
+- 2026-10-21 (Claude, Arena fixtures): the card-choice browser opens only for `choose_target` prompts with
+  `maxChoices == 1` (`PortraitInteractionPolicy.cardChoiceKey`): XMage asks one pick at a time and reports earlier picks
+  in `options.chosenTargets`. A fixture asking for five picks at once never opened it. Long SwiftUI modifier chains
+  with ternaries over colours (a split's number badge) time out the type checker; build such views from small helpers.
+- 2026-10-20 (Claude, Arena panels): the prompt-detail sheet opens by itself for every ability, order, amount and
+  search question (`PortraitInteractionPolicy.detailChoiceKey`, read in six places in NativeGameView). A board that answers
+  one of those in its own view has to filter the key (`boardDetailChoiceKey`), or the sheet covers its view. Showing a
+  sheet's view in an overlay instead (`boardSheet`) also breaks its close button: `dismiss` there acts on the nearest
+  presentation, which can be the screen holding the board. Panels in an overlay close with `boardPanelClose`.
+- 2026-10-20 (Claude, Arena browsers): a screen that takes over a prompt must use the same gate as the pop-up it
+  replaces. `arenaQuestion` first checked only "the prompt has answers", so a mana payment counted as a question and
+  hid the corner (Auto Pay, the phase strip); the Arena UI test caught it. Gate such screens with
+  `CompactPromptPopup.shouldShow`, the payment checks and the other browsers' prompts. Also, XMage asks a trigger's
+  targets as soon as that trigger goes on the stack, between its trigger-order prompts: a planned order must survive
+  other questions (`arenaTriggerStep` keeps the plan until your next priority) and never answer one prompt twice.
+- 2026-10-20 (Claude, Arena phase strip): on iOS a small custom `Shape` that returns `Path(roundedRect:cornerRadius:)`
+  fills at the shape's whole frame size, starting from the rectangle's corner, while its stroke draws correctly: each
+  card icon in the phase strip had a pale or dark block beside it. The same code renders fine through `ImageRenderer`
+  on macOS, so a Mac probe doesn't reproduce it. Draw such rectangles from lines and arcs (`arenaRoundedRectPath`).
+  Also, a child bigger than its `ZStack`'s fixed frame (a halo) makes the stack's shapes draw at the child's size on
+  macOS: put halos in `.background`.

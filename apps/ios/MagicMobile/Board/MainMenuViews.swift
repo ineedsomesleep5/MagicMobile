@@ -316,6 +316,8 @@ struct AppearanceSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     if nativeTurnControl != nil { NativeArtworkPreferenceView() }
+                    BoardModePicker()
+                    CardFramesToggle()
                     PortraitModeToggle(isOn: $portraitModeEnabled)
                     FollowTurnsToggle()
                     AutoPassAfterCastToggle()
@@ -370,7 +372,7 @@ struct GamePerformancePanel: View {
             }
             #endif
         }
-        .sheet(isPresented: $showReport) { GamePerformanceSheet(report: GamePerformanceLog.section(entries) ?? "") }
+        .sheet(isPresented: $showReport) { GamePerformanceSheet(report: GamePerformanceLog.section(entries) ?? "").environment(\.boardPanelClose, nil) }
     }
 }
 
@@ -422,6 +424,21 @@ struct PortraitModeToggle: View {
 }
 
 /// The top of the board switches to whoever's turn starts (BoardFocusTracker). On by default.
+/// Tavern frames on battlefield cards, for the board mode chosen above (CardFramesPreference).
+struct CardFramesToggle: View {
+    @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
+    @AppStorage(CardFramesPreference.hearthKey) private var hearth = CardFramesPreference.hearthDefault
+    @AppStorage(CardFramesPreference.arenaKey) private var arena = CardFramesPreference.arenaDefault
+
+    var body: some View {
+        let isArena = BoardMode.resolved(mode) == .arena
+        TavernToggle(title: "Card Frames", isOn: isArena ? $arena : $hearth, identifier: "settings.cardFrames",
+                     subtitle: isArena ? "Tavern frames on Arena's battlefield cards. Off, they look like the reference game's cards."
+                                       : "Tavern frames on Hearth's battlefield cards. Off, they look like the reference game's cards.")
+            .modifier(TavernSettingsPanel())
+    }
+}
+
 struct FollowTurnsToggle: View {
     @AppStorage(BoardFocusTracker.followTurnsKey) private var isOn = true
 
@@ -468,20 +485,23 @@ struct SmartAutoPassToggle: View {
             .accessibilityIdentifier("settings.phaseStops")
         }
         .modifier(TavernSettingsPanel())
-        .sheet(isPresented: $showStops) { PhaseStopsSheet() }
+        .sheet(isPresented: $showStops) { PhaseStopsSheet().environment(\.boardPanelClose, nil) }
     }
 }
 
 /// The phase stops on a tavern sheet; also opened by tapping the phase plate in a game.
 struct PhaseStopsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.boardPanelClose) private var panelClose
+    /// Closes the sheet, or the Arena board's panel on the table.
+    private func close() { if let panelClose { panelClose() } else { dismiss() } }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 TavernPanelTitle(text: "Phase Stops")
                 Spacer()
-                Button { dismiss() } label: { TavernSealLabel() }
+                Button { close() } label: { TavernSealLabel() }
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityLabel("Close")
                     .accessibilityIdentifier("phaseStops.close")
