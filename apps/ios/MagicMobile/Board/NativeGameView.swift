@@ -163,6 +163,10 @@ struct NativeGameView: View {
     @State var arenaTriggerSent: String?
     /// The opponent's spell being revealed on the Arena stack card (its first moments there).
     @State var arenaRevealID: String?
+    /// The Arena board's player card (ArenaPlayerCard), opened from a medallion: whose it is.
+    @State var arenaPlayerCardID: String?
+    /// Stack objects whose landing has played, so one plays once and not again when the object above it resolves.
+    @State var arenaLandedStackIDs: Set<String> = []
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
     @State var arenaNotice: String?

@@ -437,6 +437,26 @@ contradicting one.
   iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
   "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
   simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.
+- 2026-10-21 (Claude, Arena glow and motion): three SwiftUI traps.
+  - `ArenaStackArc` as a `Canvas` that trimmed its path by an `@State` animated in `onAppear` drew nothing on the board's
+    overlay (`overlayPreferenceValue`), though the reticle beside it, a plain view, showed. The same arc as a `Shape`
+    with `.trim(from:to:)` draws itself in. Use shapes for anything that animates.
+  - A curve of an animated value (`sin(.pi * t)` for a flare) does not animate: SwiftUI interpolates modifier values
+    between the start and end states, and a flare is 0 at both. Drive such moments with a short `TimelineView` that stops
+    (`ArenaStackCard`'s landing).
+  - A glow drawn as `.background` before a `.shadow` casts a shadow of its own light. Put the glow after the shadow.
+  The glow border itself (`ArenaOutlineGlow`) blurs each outline once with Core Image and caches it, as the web
+  board's `glowCanvas` does. Never blur live per tile.
+- 2026-10-21 (Claude, Arena hand touch): a touch on the popped card's upper part went to the table, because the hand's
+  touch surface stopped at the tucked hand. Two fixes that look obvious fail:
+  - Growing the surface to cover where cards pop, then filtering touches with `UIView.point(inside:)`, made the lands
+    under it untappable. The UI test caught it ("not hittable"): SwiftUI hit-tests a `UIViewRepresentable` by its frame.
+  - Swapping in a new surface when the card pops would cancel the pan, because a gesture ends when its view leaves.
+  So the popped card gets its own surface the size of its picture (`ArenaHandFan.touchSurface`). It stays where the
+  card was while the card is carried (`carrySurface`), so the drag that started on it keeps going.
+  The drop rule is `ArenaLayout.drops`: the whole table above the hand except the controls corner, after a carry of
+  24 pt up or 80 pt in any direction. In landscape a popped card already sits over your land row, and a short sideways
+  slide must not cast it.
 - 2026-10-21 (Claude, Arena hand): a slide along the tucked hand skipped cards because the hit test gave a popped card
   its whole enlarged width, which covers its neighbours' strips, and ignored the fan's tilt. Scrubbing now maps the
   finger to each card's visible strip at the finger's height along its rotation (`ArenaHandFan.scrubCard`), with a small

@@ -633,6 +633,97 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertTrue(answered(application, "Choose 2"), "The pill answers with its value")
     }
 
+    /// The Arena board's table pieces from Caleb's 2026-10-21 notes: the stack card's tab with its count, a popped hand
+    /// card carried straight onto the table (your land row counts), a medallion opening the player's card, its zones and
+    /// revealed cards opening as browsers, and the command zone's Cast.
+    func testArenaBoardStackTabDragAfterPopAndZoneBrowsers() {
+        func launch(_ fixture: String, landscape: Bool) -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", landscape ? "NO" : "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            XCUIDevice.shared.orientation = landscape ? .landscapeLeft : .portrait
+            application.launch()
+            XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+            let shaped = NSPredicate { _, _ in (application.frame.width > application.frame.height) == landscape }
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: shaped, object: application)], timeout: 10), .completed)
+            UITestHarness.settleFirstTouch(application)
+            return application
+        }
+        func captured(_ application: XCUIApplication, _ text: String) -> Bool {
+            let found = NSPredicate { _, _ in
+                let label = application.staticTexts["preview.captured-command"]
+                return label.exists && label.label.contains(text)
+            }
+            return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: found, object: application)], timeout: 5) == .completed
+        }
+
+        // The stack card's tab opens the stack and says how much is on it.
+        var application = launch("stack-response-prompt", landscape: false)
+        let tab = application.buttons["board.stack.tray"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10), "The stack card's tab")
+        XCTAssertTrue(tab.label.contains("2 objects"), tab.label)
+        tab.tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.stackBrowser"].waitForExistence(timeout: 5), "The tab opens the stack")
+        captureImage(name: "arena-stack-tab")
+
+        // A card popped out of the hand is carried straight onto the table from its own picture.
+        application = launch("normal-battlefield", landscape: true)
+        // Sol Ring is the fixture's castable card.
+        let card = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-sol-ring")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "Sol Ring in the hand")
+        let tucked = card.frame.minY
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        let popped = NSPredicate { _, _ in card.frame.minY < tucked - 40 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: popped, object: card)], timeout: 3), .completed, "The card pops up")
+        // Start on the popped card's top, above the tucked hand, and let go on the table.
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
+            .press(forDuration: 0.05, thenDragTo: application.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.45)))
+        XCTAssertTrue(captured(application, "Sol Ring"), "Carrying the popped card onto the table plays it")
+
+        // The hand's touch area reaches up to where cards pop, over your land row; a land there still takes its tap.
+        application = launch("mana-payment-prompt", landscape: false)
+        let forest = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-your-lands-forest")).firstMatch
+        XCTAssertTrue(forest.waitForExistence(timeout: 10), "A Forest in your land row")
+        // A real touch at its middle (XCUITest's hittable check misreads the table's lean, as on the Tavern board).
+        forest.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(captured(application, "captured"), "A land under the hand's touch area still taps for mana")
+
+        // Your medallion opens your player card; the command zone opens as a browser and casts your commander.
+        application = launch("zone-inspection", landscape: false)
+        let medallion = application.buttons["board.lifeOrb"]
+        XCTAssertTrue(medallion.waitForExistence(timeout: 10))
+        medallion.tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.playerCard"].waitForExistence(timeout: 5), "Your player card")
+        let command = application.buttons["arena.player.zone.command"]
+        XCTAssertTrue(command.exists && command.label.contains("you can play from it"), command.label)
+        captureImage(name: "arena-player-card")
+        command.tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.zone"].waitForExistence(timeout: 5), "The command zone's browser")
+        XCTAssertFalse(application.descendants(matching: .any)["arena.playerCard"].exists, "The player card steps aside for it")
+        captureImage(name: "arena-command-zone")
+        let cast = application.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "arena.zone.action.")).firstMatch
+        XCTAssertTrue(cast.exists && cast.label.hasPrefix("Cast"), "The commander's Cast plaque")
+        cast.tap()
+        XCTAssertTrue(captured(application, "Cast commander"), "Cast answers as the Hearth panel does")
+
+        // Revealed cards: a pill beside the opponent's piles opens them in a browser; Done closes it.
+        application = launch("zone-inspection", landscape: true)
+        let revealed = application.buttons["arena.chip.revealed"]
+        XCTAssertTrue(revealed.waitForExistence(timeout: 10), "The revealed pill")
+        XCTAssertLessThan(revealed.frame.midY, application.frame.height * 0.2, "It sits up by the opponent's piles, off the rows")
+        revealed.tap()
+        let zone = application.descendants(matching: .any)["arena.zone"]
+        XCTAssertTrue(zone.waitForExistence(timeout: 5), "Revealed cards open in a browser")
+        captureImage(name: "arena-revealed")
+        application.buttons["arena.browser.primary"].tap()
+        XCTAssertTrue(zone.waitForNonExistence(timeout: 5), "Done closes it")
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     /// The Arena board answers an ability choice in its own browser, never in the prompt panel behind it, and a tap on
     /// an ability answers with that ability.
     func testArenaBoardChoosesAbilitiesInItsOwnBrowser() {

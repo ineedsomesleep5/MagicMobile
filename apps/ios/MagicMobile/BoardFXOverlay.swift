@@ -217,13 +217,10 @@ struct BoardFXOverlay: View {
                       in context: inout GraphicsContext) {
         let motion = fx.usesMotion
         switch fx.event {
-        case let .spellCast(_, _, _, tint, weight) where arena:
-            // The Arena stack card: a burst of light as the spell lands on it, then it stays readable there. A commander
-            // gets a wider gold burst, no showcase.
-            guard motion else { return }
-            let window = min(1, elapsed / max(0.3, fx.duration * 0.9))
-            BoardFXPainter.rays(at: anchors.stackPoint, color: weight == .ability || weight == .commander ? BoardFXPainter.gold : tint.color,
-                                radius: weight == .commander ? 190 : weight == .big ? 170 : 130, progress: window, elapsed: elapsed, in: &context)
+        case .spellCast where arena:
+            // The Arena stack card plays its own landing (ArenaStackCard: a bloom behind it, a shine, a few motes), so
+            // nothing is painted over it here (Caleb, 2026-10-21: the light rays didn't look like the reference).
+            return
         case let .spellCast(stackID, name, controllerID, tint, weight) where tavern && weight == .commander:
             // The tavern commander (storyboard): the table dims, the medallion flares, embers
             // follow the commander up to the middle, firelight holds it and a ribbon names it.
