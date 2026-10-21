@@ -7,6 +7,7 @@ import { useState } from "react";
 import { EngineDisplayText } from "../../core/displayText";
 import { type GameCommand, type GameSnapshot, type LegalAction, pileNumber, promptKind, type PromptEnvelopeV2, type ZoneCard } from "../../core/models";
 import { cardImageURL } from "../cardArt";
+import { AbilityCard } from "./AbilityCard";
 
 export type Send = (command: Omit<GameCommand, "gameId" | "playerId" | "promptId" | "messageId">, label: string) => void;
 export type SendAction = (action: LegalAction) => void;
@@ -79,7 +80,10 @@ export function Browser({ kind, snapshot, envelope, send, sendAction, pending, o
   const [amount, setAmount] = useState<number>();
   const [split, setSplit] = useState<Record<string, number>>({});
   const promptActions = (snapshot.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
-  const { title, line } = heading(envelope, kind);
+  const ordering = kind === "abilities" && /trigger|goes to the stack first/i.test(envelope.message);
+  const { title, line } = ordering
+    ? { title: "Order your triggers", line: "Choose the one that goes on the stack first: it resolves last." }
+    : heading(envelope, kind);
   const top = snapshot.xmage?.stack[0];
   const answers = promptActions.length > 0 && (
     <div className="answers">
@@ -174,18 +178,14 @@ export function Browser({ kind, snapshot, envelope, send, sendAction, pending, o
       );
       break;
     case "abilities":
+      // The reference's ability browser: the abilities as Arena ability cards in a row; a click picks one (to order
+      // triggers, XMage asks for the one that resolves first, then the next).
       body = (
         <div className="cards">
           {envelope.abilities!.map((ability) => (
-            <button key={ability.id} type="button" className="arow" disabled={pending} style={{ flexDirection: "column", alignItems: "stretch", width: 190, padding: 0, overflow: "hidden" }}
+            <button key={ability.id} type="button" className="ability-pick" disabled={pending}
               onClick={() => send({ type: "choose_ability", abilityId: ability.id }, ability.label)}>
-              {(ability.sourceCard?.card.name ?? ability.sourceName) && (
-                <img src={cardImageURL(ability.sourceCard?.card.name ?? ability.sourceName!, "art_crop")} alt="" crossOrigin="anonymous" style={{ width: "100%", height: 96, borderRadius: 0 }} />
-              )}
-              <span style={{ padding: "8px 12px 12px" }}>
-                <span className="sub" style={{ textTransform: "uppercase", letterSpacing: ".12em", fontSize: 10, color: "#fad584" }}>{ability.sourceName ?? "Ability"}</span>
-                {EngineDisplayText.label(ability.label)}
-              </span>
+              <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={160} />
             </button>
           ))}
         </div>

@@ -7,6 +7,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { displayPower, displayToughness, isCreatureCard, type ZoneCard } from "../../core/models";
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols } from "../cardArt";
+import { AbilityCard } from "./AbilityCard";
 import { LEAN, type Place } from "./layout";
 
 export type CardView = "face" | "tile" | "back";
@@ -128,6 +129,8 @@ export interface ArenaCardProps {
   card?: ZoneCard;
   /** Battlefield tiles in the tavern frames (Card Frames on) rather than the reference game's card (off, the default). */
   frames?: boolean;
+  /** An ability on the stack: drawn as the reference's ability card instead of a printed card. */
+  ability?: { source?: ZoneCard; name?: string; text: string };
   /** For faces without a ZoneCard (stack objects): the printed card to show. */
   name?: string;
   owner?: "me" | "opp";
@@ -142,7 +145,7 @@ export interface ArenaCardProps {
  * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
  * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
  */
-export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, name, owner, inHand, classes, label, onClick, onHover }: ArenaCardProps) {
+export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, classes, label, onClick, onHover }: ArenaCardProps) {
   const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
     width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
@@ -161,7 +164,8 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
       <div className="lean" style={lean}>
         <div className="spin" style={{ transform: `rotate(${place.r ?? 0}deg) scale(${place.s ?? 1})` }}>
           {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} />)}
-          {view === "face" && <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />}
+          {view === "face" && (ability ? <AbilityCard source={ability.source} name={ability.name} text={ability.text} />
+            : <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />)}
           {view === "back" && <div className="back" />}
         </div>
       </div>

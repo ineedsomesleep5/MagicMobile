@@ -17,6 +17,7 @@ import {
   ARENA, BASE_GEOMETRY, battlefieldPlaces, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, stackPlace,
   STAGE,
 } from "./arena/layout";
+import { AbilityCard } from "./arena/AbilityCard";
 import { ArenaPile } from "./arena/ArenaPile";
 import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
@@ -50,6 +51,9 @@ const PHASE_ICONS: Record<string, React.ReactNode> = {
 const GEAR = <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.6 5.1-1.9-.3a7 7 0 0 1-.6 1.5l1.1 1.6-1.9 1.9-1.6-1.1c-.5.3-1 .5-1.5.6l-.3 1.9h-2.7l-.3-1.9a7 7 0 0 1-1.5-.6l-1.6 1.1-1.9-1.9 1.1-1.6c-.3-.5-.5-1-.6-1.5l-1.9-.3v-2.7l1.9-.3c.1-.5.3-1 .6-1.5L4.1 6.9 6 5l1.6 1.1c.5-.3 1-.5 1.5-.6l.3-1.9h2.7l.3 1.9c.5.1 1 .3 1.5.6L15.5 5l1.9 1.9-1.1 1.6c.3.5.5 1 .6 1.5l1.9.3z" /></svg>;
 const SCROLL = <svg viewBox="0 0 16 16"><path d="M4 2h8.5a1.5 1.5 0 0 1 0 3H12v8.5A1.5 1.5 0 0 1 10.5 15H3.5a1.5 1.5 0 0 1 0-3H4z" /></svg>;
 const HOURGLASS = <svg viewBox="0 0 24 24"><path d="M6 2h12v2c0 3-2.2 5.2-4.3 8 2.1 2.8 4.3 5 4.3 8v2H6v-2c0-3 2.2-5.2 4.3-8C8.2 9.2 6 7 6 4zm2 2c0 2 1.6 3.8 4 6.6C14.4 7.8 16 6 16 4z" /></svg>;
+
+/** XMage marks spells; everything else on the stack is an activated or triggered ability (ArenaStackCard.isAbility). */
+const isStackAbility = (item: { objectType?: string }) => item.objectType !== undefined && item.objectType.toUpperCase() !== "SPELL";
 
 /** Legal actions for one card, grouped by what a click on it would do. */
 const actionsFor = (snapshot: GameSnapshot, id: string) =>
@@ -101,6 +105,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   const [rollDismissed, setRollDismissed] = useState(false);
   const [steppedAside, setSteppedAside] = useState<string>();
   const [smart, setSmart] = useState(session?.smartPass?.enabled ?? false);
+  const [stackOpen, setStackOpen] = useState(false);
+  /** When each stack object first showed, so its landing plays once. */
+  const stackSeen = useRef(new Map<string, number>());
   // Card Frames (iOS Settings, per board mode): off by default on the Arena board, the reference game's cards.
   const [frames, setFrames] = useState(() => storage.get("mm.web.cardFrames") === "on");
   const [, setClockTick] = useState(0);
@@ -159,6 +166,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   };
 
   // ---------------- cards ----------------
+  const now = performance.now();
+  const battlefieldCard = (id: string) => snapshot?.players.flatMap((p) => p.zones.battlefield).find((c) => c.instanceId === id);
   // The resting hand's room: from the right edge of your last pile (with its count lozenge) to the controls corner.
   const handRoom = (() => {
     const P = ARENA.viewerPiles;
@@ -212,7 +221,18 @@ export function GameScreen({ table }: { table: GameTable }) {
     });
     stack.slice(0, 4).forEach((item, depth) => {
       const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
-      add({ id: item.id, place: stackPlace(depth, geo), view: "face", name, card: item.sourceCard, label: item.name, onHover: setHovered });
+      const ability = isStackAbility(item);
+      const source = item.sourceCard ?? (item.sourceInstanceId ? battlefieldCard(item.sourceInstanceId) : undefined);
+      // A spell cast from the command zone wears a gold rim and a crown; that is its whole fanfare (ArenaStackCard).
+      const commander = !ability && /command/i.test(item.sourceZone ?? "");
+      const firstSeen = stackSeen.current.get(item.id) ?? now;
+      stackSeen.current.set(item.id, firstSeen);
+      const landing = depth === 0 && now - firstSeen < 650;
+      add({
+        id: item.id, place: stackPlace(depth, geo), view: "face", name, card: item.sourceCard, label: item.name,
+        ability: ability ? { source, name: item.sourceName ?? item.name, text: item.rulesText ?? item.name } : undefined,
+        classes: [landing ? "landing" : "", commander ? "commander" : ""].join(" "), onHover: setHovered, onClick: () => setStackOpen(true),
+      });
     });
   }
   // Your commander is cast from your medallion, as on the iOS Arena board: it glows while the commander can be cast.
@@ -394,9 +414,16 @@ export function GameScreen({ table }: { table: GameTable }) {
               onClick={(event) => { event.stopPropagation(); if (choice) send({ type: "play_mana", manaType: choice.manaType }, choice.label); }} />
           );
         })}
-        {stack.length > 1 && (() => {
+        {stack.length > 0 && (() => {
+          // A tab on the stack card's left edge opens the whole stack, with how many objects are on it.
           const top = stackPlace(0, geo);
-          return <div className="astack-count" style={{ left: top.x + top.w / 2 - 14, top: top.y - top.h / 2 - 8 }}>{stack.length}</div>;
+          const height = stack.length > 1 ? 58 : 44;
+          return (
+            <button type="button" className="astack-tab" style={{ left: top.x - top.w / 2 - 26, top: top.y - height / 2, height }}
+              aria-label={stack.length > 1 ? `Open the stack, ${stack.length} objects` : "Open the stack"} onClick={(event) => { event.stopPropagation(); setStackOpen(true); }}>
+              {stack.length > 1 && <b>{stack.length}</b>}<i>‹</i>
+            </button>
+          );
         })()}
 
         {/* Above the raised hand while there is an answer to give (the prototype's controls z-index). */}
@@ -429,7 +456,9 @@ export function GameScreen({ table }: { table: GameTable }) {
             left: inspected.left ? 250 - (ARENA.zoom.w * Math.min(geo.grow, 1.2)) / 2 : ARENA.zoom.x - (ARENA.zoom.w * Math.min(geo.grow, 1.2)) / 2,
             top: Math.max(6, Y(ARENA.zoom.y) - (ARENA.zoom.h * Math.min(geo.grow, 1.2)) / 2), width: ARENA.zoom.w * Math.min(geo.grow, 1.2),
           }}>
-            <img src={cardImageURL(inspected.name, "normal")} alt={inspected.name} crossOrigin="anonymous" />
+            {/* A card Scryfall can't find by name (most tokens) shows nothing rather than a broken image. */}
+            <img src={cardImageURL(inspected.name, "normal")} alt="" crossOrigin="anonymous" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+              onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} />
           </div>
         )}
 
@@ -543,6 +572,32 @@ export function GameScreen({ table }: { table: GameTable }) {
               onClick={() => send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan")}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
             <button type="button" className="aplaque ember want" style={{ left: 716, top: B(388) }} disabled={pending}
               onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
+          </div>
+        )}
+
+        {stackOpen && snapshot && (
+          <div className="aoverlay dim" onClick={(event) => { event.stopPropagation(); setStackOpen(false); }}>
+            <div className="abrowser">
+              <h2>The stack</h2>
+              <p className="instr">{stack.length === 0 ? "The stack is empty." : "Left to right, from what resolves next."}</p>
+              <div className="cards">
+                {stack.map((item, index) => {
+                  const ability = isStackAbility(item);
+                  const source = item.sourceCard ?? (item.sourceInstanceId ? battlefieldCard(item.sourceInstanceId) : undefined);
+                  const controller = item.controllerId === viewer ? "Yours" : `${snapshot.players.find((p) => p.playerId === item.controllerId)?.displayName ?? "Their"}’s`;
+                  const targets = (item.targetIds ?? []).map((id) => (id === viewer ? "you" : snapshot.players.find((p) => p.playerId === id)?.displayName ?? battlefieldCard(id)?.card.name)).filter(Boolean);
+                  return (
+                    <div key={item.id} className={`bitem ${index === 0 ? "next" : ""}`}>
+                      {ability ? <AbilityCard source={source} name={item.sourceName ?? item.name} text={item.rulesText ?? item.name} width={150} />
+                        : <img src={cardImageURL(item.sourceCard?.card.name ?? item.sourceName ?? item.name, "normal")} alt={item.name} crossOrigin="anonymous" style={{ width: 150, borderRadius: 8 }} />}
+                      <span className="who">{controller}</span>
+                      {targets.length > 0 && <span className="tgt">Targets {targets.join(", ")}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="answers"><button type="button" className="aplaque ember" onClick={() => setStackOpen(false)}>Done</button></div>
+            </div>
           </div>
         )}
 

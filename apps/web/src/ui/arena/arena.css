@@ -269,3 +269,44 @@
 .ainspect { position: absolute; z-index: 720; pointer-events: none; filter: drop-shadow(0 14px 26px rgba(0,0,0,.7)); }
 .ainspect img { display: block; width: 100%; border-radius: 12px; }
 @media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .aplaque.ember.want, .ahourglass svg { animation: none; } .aresult .glory { animation: none; opacity: 1; } }
+
+/* An ability as the reference shows it (ArenaAbilityCard): 15em wide, 0.72 of its height; the source's colour frames it. */
+.ability-card { position: relative; width: 15em; height: 20.83em; border-radius: .75em; box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), 0 .6em 1.2em rgba(0,0,0,.6);
+  background: linear-gradient(var(--frame), color-mix(in srgb, var(--frame) 75%, transparent)); padding: .53em; text-align: left; }
+.ability-card .ab-inner { position: absolute; inset: .53em; border-radius: .5em; overflow: hidden; display: flex; flex-direction: column; background: #f7f2e6; }
+.ability-card .ab-name { flex: none; height: 1.6em; padding: 0 .55em; display: flex; align-items: center; font: 700 1.1em/1 var(--serif); color: #141210;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: linear-gradient(color-mix(in srgb, var(--frame) 28%, transparent), color-mix(in srgb, var(--frame) 28%, transparent)), #f0f0f0; }
+.ability-card .ab-art { flex: none; height: 8.33em; position: relative; overflow: hidden; display: grid; place-items: center;
+  background: linear-gradient(color-mix(in srgb, var(--frame) 60%, transparent), #1a1a1f); color: rgba(255,255,255,.5); font-size: 1em; }
+.ability-card .ab-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.ability-card .ab-art span { font-size: 3em; }
+.ability-card .ab-type { flex: none; height: 1.55em; padding: 0 .95em; display: flex; align-items: center; font: 600 .93em/1 var(--serif); color: #141210;
+  background: linear-gradient(color-mix(in srgb, var(--frame) 22%, transparent), color-mix(in srgb, var(--frame) 22%, transparent)), #e6e6e6; }
+.ability-card .ab-text { flex: 1; min-height: 0; overflow: hidden; padding: .9em; font: 400 .98em/1.3 var(--serif); color: #1a140f; white-space: pre-line; }
+/* the loyalty shield at the card's foot: in its own 1.5em font, 3.2em is the card's 32% */
+.ability-card .ab-loyalty { position: absolute; left: 50%; bottom: -1em; transform: translateX(-50%); font: 800 1.5em/1 var(--serif); width: 3.2em; height: 2.4em;
+  padding-bottom: .4em; display: grid; place-items: center; color: #fff;
+  clip-path: polygon(14% 0, 86% 0, 100% 14%, 100% 55%, 50% 100%, 0 55%, 0 14%); background: #141418; }
+
+/* the stack card's tab: opens the whole stack, with how many objects it holds */
+.astack-tab { position: absolute; z-index: 346; width: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0;
+  border-radius: 9px 0 0 9px; background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px rgba(232,190,110,.75), -1px 2px 3px rgba(0,0,0,.5);
+  color: #f2ebdb; font: 800 15px/1 var(--serif); }
+.astack-tab b { color: #fad584; font-variant-numeric: tabular-nums; }
+.astack-tab i { font-style: normal; font-size: 11px; }
+/* a spell landing on the stack settles with a little overshoot in a bloom of its colour (ArenaStackCard) */
+.acard.landing .spin { animation: asettle .55s cubic-bezier(.3,1.5,.5,1); }
+.acard.landing .spin::before { content: ""; position: absolute; inset: -12%; border-radius: 1.4em; background: var(--bloom, #ffd27a); filter: blur(1.4em);
+  mix-blend-mode: screen; opacity: 0; animation: abloom .55s ease-out; pointer-events: none; z-index: -1; }
+@keyframes asettle { from { transform: scale(1.07); } }
+@keyframes abloom { 0% { opacity: 0; } 40% { opacity: .85; } 100% { opacity: 0; } }
+.acard.commander .spin { box-shadow: 0 0 0 .25em #f5c45c, 0 0 1.2em .3em rgba(255,204,90,.75); }
+.acard.commander .spin::after { content: "♛"; position: absolute; left: 50%; top: -1.1em; transform: translateX(-50%); width: 2.1em; height: 2.1em; border-radius: 50%;
+  display: grid; place-items: center; font-size: 1.3em; color: #4d2b08; background: linear-gradient(#ffe594, #dba34c); box-shadow: 0 .1em .2em rgba(0,0,0,.5); }
+.abrowser .bitem { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.abrowser .bitem .who { font: 700 11px/1.2 var(--serif); letter-spacing: .1em; text-transform: uppercase; color: #fad584; text-align: center; max-width: 170px; }
+.abrowser .bitem .tgt { font: 500 12px/1.25 var(--serif); color: rgba(243,234,216,.8); text-align: center; max-width: 170px; }
+.abrowser .bitem.next .who::before { content: "Resolves next · "; color: #ffe08f; }
+.abrowser button.ability-pick { border: 0; padding: 0; background: none; border-radius: .75em; transition: transform .16s ease-out; }
+.abrowser button.ability-pick:hover:not(:disabled) { transform: translateY(-6px); }
+@media (prefers-reduced-motion: reduce) { .acard.landing .spin, .acard.landing .spin::before { animation: none; } }
