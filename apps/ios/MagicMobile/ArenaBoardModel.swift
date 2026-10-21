@@ -63,6 +63,9 @@ struct ArenaLayout: Equatable {
         /// Touches on the hand count down to this line (design points) and no lower: below it is the home gesture's edge
         /// (landscape) or the cards' hidden part behind the front rail (portrait).
         var touchBottom: CGFloat? = nil
+        /// Portrait: the bottom of the spread hand's last row (design points), just over the front rail; nil where the
+        /// hand has no spread (Caleb, 2026-10-21: an arrow at the hand's left lays every card out whole).
+        var spreadBottom: CGFloat? = nil
     }
 
     let canvas: CGSize
@@ -183,7 +186,7 @@ struct ArenaLayout: Equatable {
         // 2026-10-20), clear of the exile pile on the left.
         hand: Hand(card: CGSize(width: 104, height: 146), centerX: 220, upY: 784, upPitch: 58, upSpan: 336, upDrop: 2.2,
                    tilt: 3, maxTilt: 10, downY: 779, downPitch: 46, downSpan: 230, downDrop: 1, downScale: 1,
-                   lift: 52, liftDown: 60, touchBottom: 825),
+                   lift: 52, liftDown: 60, touchBottom: 825, spreadBottom: 808),
         opponentHand: CGPoint(x: 340, y: 20), opponentHandCard: CGSize(width: 30, height: 42), opponentHandPitch: 14,
         // Your medallion and piles sit low on the rail, level with the main button (Caleb, 2026-10-20).
         viewerMedallion: CGPoint(x: 50, y: 890), viewerMedallionDiameter: 74,
@@ -368,12 +371,16 @@ struct ArenaRowFit: Equatable {
 /// a lifted card and a dragged one, which the fan draws itself).
 enum ArenaHandPosture: Equatable {
     case raised, resting
+    /// Every card laid out whole in lined-up rows over the table (portrait, the tab at the hand's left).
+    case spread
 
     /// The reference game's hand (Caleb, 2026-10-20): it rests tucked along the bottom edge with only the cards' tops
     /// showing, and opens into a fan when you touch it; a tap on the table puts it back.
     struct Situation: Equatable {
         /// The player tapped the hand open.
         var opened = false
+        /// The player spread the hand with its tab.
+        var spread = false
         /// Paying a cost, choosing a target, declaring attackers or blockers, or answering a choice: the hand gets out
         /// of the way so the board can be read and tapped.
         var boardDecision = false
@@ -383,6 +390,7 @@ enum ArenaHandPosture: Equatable {
 
     static func resolve(_ situation: Situation) -> ArenaHandPosture {
         if situation.spectating || situation.dragging || situation.boardDecision { return .resting }
+        if situation.spread { return .spread }
         return situation.opened ? .raised : .resting
     }
 }
@@ -395,8 +403,47 @@ struct ArenaHandSlot: Equatable {
 }
 
 enum ArenaHandFanLayout {
+    /// The spread hand (Caleb, 2026-10-21): one flat row of whole cards, lined up, just over the rail; a hand wider than
+    /// the table swipes sideways (`scroll`, design points from the first card).
+    struct Spread: Equatable {
+        let count: Int
+        let scale: CGFloat
+        let cardWidth: CGFloat
+        let cardHeight: CGFloat
+        let gap: CGFloat
+        /// Room above the row for the mana costs.
+        let costRoom: CGFloat
+        let bottom: CGFloat
+        let centerX: CGFloat
+
+        var contentWidth: CGFloat { CGFloat(count) * cardWidth + CGFloat(max(count - 1, 0)) * gap }
+        /// How far the row swipes: 0 when it fits.
+        var maxScroll: CGFloat { max(0, contentWidth - ArenaHandFanLayout.spreadWidth) }
+        /// The top of the row, its mana costs included.
+        var top: CGFloat { bottom - cardHeight - costRoom }
+        var centerY: CGFloat { bottom - cardHeight / 2 }
+
+        func centerX(of index: Int, scroll: CGFloat) -> CGFloat {
+            let start = maxScroll > 0 ? centerX - ArenaHandFanLayout.spreadWidth / 2 - min(max(scroll, 0), maxScroll)
+                                      : centerX - contentWidth / 2
+            return start + cardWidth / 2 + CGFloat(index) * (cardWidth + gap)
+        }
+    }
+
+    static let spreadWidth: CGFloat = 416
+
+    static func spread(count: Int, hand: ArenaLayout.Hand) -> Spread? {
+        guard let bottom = hand.spreadBottom, count > 0 else { return nil }
+        let scale: CGFloat = 0.96
+        return Spread(count: count, scale: scale, cardWidth: hand.card.width * scale, cardHeight: hand.card.height * scale,
+                      gap: 8, costRoom: 20, bottom: bottom, centerX: hand.centerX)
+    }
+
     /// Card `index` of `count` in the given posture, in design points.
-    static func slot(index: Int, count: Int, posture: ArenaHandPosture, hand: ArenaLayout.Hand) -> ArenaHandSlot {
+    static func slot(index: Int, count: Int, posture: ArenaHandPosture, hand: ArenaLayout.Hand, scroll: CGFloat = 0) -> ArenaHandSlot {
+        if posture == .spread, let row = spread(count: count, hand: hand) {
+            return ArenaHandSlot(center: CGPoint(x: row.centerX(of: index, scroll: scroll), y: row.centerY), rotation: 0, scale: row.scale)
+        }
         let raised = posture == .raised
         let pitch = count > 1 ? (raised ? min(hand.upPitch, hand.upSpan / CGFloat(count - 1))
                                         : min(hand.downPitch, hand.downSpan / CGFloat(count - 1))) : 0
@@ -985,5 +1032,27 @@ enum ArenaCommanderSteal {
         let name = parts.first ?? "Your commander"
         let holder = parts.count > 1 ? snapshot.playerLabel(parts[1]) : "An opponent"
         return "\(holder) took \(name). A commander goes to the command zone only after the spell that moved it finishes, so that spell could take it first."
+    }
+}
+
+/// A board wipe's recap for the caption: the spell that just resolved and what left the battlefield because of it
+/// ("Necromantic Selection: 6 to the graveyard"), three or more at once, as BoardFXScheduler's cascade (Caleb,
+/// 2026-10-21: a wipe went by too fast to see what it took).
+enum ArenaSweepRecap {
+    static func text(spell: String?, events: [BoardFXEvent]) -> String? {
+        var graveyard = 0, exile = 0, other = 0
+        for event in events {
+            guard case let .leftBattlefield(_, _, zone, _) = event else { continue }
+            switch zone {
+            case .graveyard: graveyard += 1
+            case .exile: exile += 1
+            default: other += 1
+            }
+        }
+        guard graveyard + exile + other >= BoardFXScheduler.sweepMinimum else { return nil }
+        let parts = [graveyard > 0 ? "\(graveyard) to the graveyard" : nil, exile > 0 ? "\(exile) exiled" : nil,
+                     other > 0 ? "\(other) returned or moved" : nil].compactMap { $0 }
+        let what = parts.joined(separator: ", ")
+        return spell.map { "\($0): \(what)" } ?? "\(graveyard + exile + other) permanents left the battlefield: \(what)"
     }
 }

@@ -584,4 +584,22 @@ extension BoardEventTimelineTests {
         XCTAssertTrue(reveal[0].holdsSmartPass)
         XCTAssertEqual(reveal[0].release, 1.6, accuracy: 0.001, "later effects wait for the reveal")
     }
+
+    /// A board wipe on the Arena board: the permanents leave one after another within about a second, the creature the
+    /// spell returns arrives after them, and smart pass waits for them; two deaths still go together (Caleb, 2026-10-21).
+    func testArenaBoardWipeLeavesInACascade() {
+        let deaths = (1...6).map { BoardFXEvent.leftBattlefield(cardID: "c\($0)", playerID: "a", to: .graveyard, tint: .green) }
+        let wipe = BoardFXScheduler.schedule(deaths, level: .full, pace: .arena, viewerID: "a")
+        let delays = wipe.map(\.delay)
+        XCTAssertEqual(delays[1] - delays[0], BoardFXScheduler.sweepStep, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(delays.max()! - delays.min()!, BoardFXScheduler.sweepSpread + 0.001)
+        XCTAssertTrue(wipe.allSatisfy(\.holdsSmartPass))
+        let many = (1...20).map { BoardFXEvent.leftBattlefield(cardID: "m\($0)", playerID: "a", to: .graveyard, tint: .green) }
+        let big = BoardFXScheduler.schedule(many, level: .full, pace: .arena, viewerID: "a").map(\.delay)
+        XCTAssertLessThanOrEqual(big.max()! - big.min()!, BoardFXScheduler.sweepSpread + 0.001, "a huge wipe stays short")
+        let pair = BoardFXScheduler.schedule(Array(deaths.prefix(2)), level: .full, pace: .arena, viewerID: "a").map(\.delay)
+        XCTAssertLessThan(pair[1] - pair[0], 0.1, "two deaths still go together")
+        let hearth = BoardFXScheduler.schedule(deaths, level: .full).map(\.delay)
+        XCTAssertLessThan(hearth.max()! - hearth.min()!, 0.5, "Hearth unchanged")
+    }
 }

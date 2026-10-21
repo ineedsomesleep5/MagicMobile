@@ -167,6 +167,10 @@ struct NativeGameView: View {
     @State var arenaPlayerCardID: String?
     /// The Arena board's open corner menu ("game" for the gear's, "pass" for the skip pill's), drawn on the table.
     @State var arenaCornerMenu: String?
+    /// Portrait: the hand spread out whole with its tab (ArenaHandPosture.spread), until it is tucked again.
+    @State var arenaHandSpread = false
+    /// The top of the stack at the last board update, to name a board wipe when it resolves (ArenaSweepRecap).
+    @State var arenaLastStackTop: XmageStackObject?
     /// Stack objects whose landing has played, so one plays once and not again when the object above it resolves.
     @State var arenaLandedStackIDs: Set<String> = []
     @State var arenaLiftedCardID: String?
@@ -1134,6 +1138,12 @@ struct NativeGameView: View {
         let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
         let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt, pace: isArenaBoard ? .arena : .hearth)
         BoardPresentationHold.shared.record(BoardFXRevisionKey(snapshot: snapshot), until: boardFX.smartPassHoldUntil)
+        if isArenaBoard {
+            // A spell that just left the stack and took three or more permanents with it is named in the caption.
+            let resolved = arenaLastStackTop.flatMap { last in snapshot.stackTopFirst.contains { $0.id == last.id } ? nil : last.displayName }
+            arenaLastStackTop = snapshot.stackTopFirst.first
+            if let recap = ArenaSweepRecap.text(spell: resolved, events: scheduled.map(\.event)) { arenaShowNotice(recap, seconds: 3.5) }
+        }
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
         if boardSoundsEnabled {

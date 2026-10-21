@@ -72,6 +72,9 @@ extension NativeGameView {
             arenaTriggerStep(snapshot: snapshot)
         })
         .onChange(of: snapshot.step ?? snapshot.phase) { _, _ in arenaHandOpen = false }
+        // The spread hand tucks at a new turn and when the phone turns (landscape has no spread).
+        .onChange(of: snapshot.turn) { _, _ in arenaHandSpread = false }
+        .onChange(of: canvas.layout.landscape) { _, _ in arenaHandSpread = false }
         // A new decision puts a player's card away.
         .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in arenaPlayerCardID = nil; arenaCornerMenu = nil }
         // Reading a card holds smart pass until the inspector closes (BoardPresentationHold.reading).
@@ -86,10 +89,12 @@ extension NativeGameView {
         .onAppear {
             interactionState.mode = GameBoardInteractionState.mode(for: snapshot, pendingActionId: pendingActionId, selectedCard: selectedCard)
             GameAudio.shared.preload(GameAudio.boardSounds)
-            // Design fixtures only: MAGICMOBILE_ARENA_HAND=open shows the hand opened, =pop one card popped out of it.
+            // Design fixtures only: MAGICMOBILE_ARENA_HAND=open shows the hand opened, =pop one card popped out of it,
+            // =spread the hand spread out (portrait).
             if snapshot.id.hasPrefix("design-preview-") {
                 switch ProcessInfo.processInfo.environment["MAGICMOBILE_ARENA_HAND"] {
                 case "open": arenaHandOpen = true
+                case "spread": arenaHandSpread = true
                 case "pop": arenaLiftedCardID = BoardOpponentFocus.seatHand(in: snapshot).dropFirst(3).first?.id
                 default: break
                 }
@@ -152,7 +157,13 @@ extension NativeGameView {
             .allowsHitTesting(!openingHand)
             // An opened hand, and in landscape a card popped out of it, cover your medallion and mana; controls the table
             // needs stay on top. In portrait a popped card already clears the rail, which keeps the rest tucked behind it.
-            .zIndex(posture == .raised || (arenaLiftedCardID != nil && canvas.layout.railTop == nil) ? 68 : 50)
+            .zIndex(posture == .raised || posture == .spread || (arenaLiftedCardID != nil && canvas.layout.railTop == nil) ? 68 : 50)
+        if canvas.layout.hand.spreadBottom != nil, !openingHand, !browserOpen, !snapshot.isSpectating,
+           !BoardOpponentFocus.seatHand(in: snapshot).isEmpty,
+           arenaHandPosture(snapshot: snapshot, spread: true) == .spread || posture == .spread {
+            arenaHandSpreadTab(snapshot: snapshot, canvas: canvas, spread: posture == .spread)
+                .zIndex(69)
+        }
         if let amountPrompt {
             // X and other numbers: the reference's pill takes the corner; the board, caption and stack stay in view.
             let setup = arenaAmountSetup(amountPrompt, snapshot: snapshot)
@@ -169,7 +180,8 @@ extension NativeGameView {
                 .zIndex(75)
         } else if !snapshot.isSpectating && !openingHand && !browserOpen {
             arenaControls(snapshot: snapshot, canvas: canvas)
-                .zIndex(controlsOnTop || posture == .resting ? 70 : 45)
+                // The spread hand sits over the table, not the rail, so the corner stays on top of it.
+                .zIndex(controlsOnTop || posture != .raised ? 70 : 45)
         }
         arenaOverlays(snapshot: snapshot, human: human, canvas: canvas)
             .zIndex(90)
@@ -627,6 +639,38 @@ extension NativeGameView {
         .zIndex(35)
     }
 
+    /// The tab at the left of the tucked hand (portrait): ▲ spreads every card out whole in lined-up rows, ▼ tucks
+    /// them again (Caleb, 2026-10-21). Spread, it sits just above the cards' top row.
+    private func arenaHandSpreadTab(snapshot: GameSnapshot, canvas: ArenaCanvas, spread: Bool) -> some View {
+        let extra = snapshot.human.map { snapshot.isViewer($0.playerId) ? ArenaExtraHand.cards(for: $0, actions: snapshot.legalActions ?? []).count : 0 } ?? 0
+        let count = BoardOpponentFocus.seatHand(in: snapshot).count + extra
+        let top = ArenaHandFanLayout.spread(count: count, hand: canvas.layout.hand)?.top ?? 700
+        let center = canvas.point(CGPoint(x: 22, y: spread ? top - 6 : 740))
+        return Button {
+            withAnimation(accessibilityReduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.85)) {
+                arenaHandSpread = !spread
+                arenaLiftedCardID = nil
+            }
+            GameAudio.shared.play(.cardPickup)
+            GameHaptics.selection()
+        } label: {
+            Image(systemName: spread ? "chevron.down" : "chevron.up")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)))
+                .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .position(center)
+        .accessibilityLabel(spread ? "Tuck your hand" : "Spread your hand")
+        .accessibilityHint(spread ? "Puts the cards back along the bottom" : "Lays every card in your hand out whole")
+        .accessibilityIdentifier("arena.hand.spread")
+    }
+
     /// Revealed and looked-at cards, as small glass pills beside the opponent's piles, clear of the creature rows
     /// (Caleb, 2026-10-21: the chip sat over a creature's power and toughness). A tap opens them in a browser.
     @ViewBuilder
@@ -692,7 +736,7 @@ extension NativeGameView {
                      liftedCardID: $arenaLiftedCardID,
                      hiddenCount: snapshot.isViewer(human.playerId) ? nil : human.zones.visibleHandCount,
                      raise: { arenaHandOpen = true },
-                     lower: { arenaHandOpen = false },
+                     lower: { arenaHandOpen = false; arenaHandSpread = false },
                      onDropFeedback: onInteractionFeedback,
                      onActionChoice: { actions, message in dragActionChoice = DragActionChoice(message: message, actions: actions) },
                      runAction: runAction)
@@ -1052,7 +1096,8 @@ extension NativeGameView {
 
     // MARK: Decisions
 
-    func arenaHandPosture(snapshot: GameSnapshot) -> ArenaHandPosture {
+    /// `spread` asks what the posture would be with the hand spread (whether the tab may spread it now).
+    func arenaHandPosture(snapshot: GameSnapshot, spread: Bool? = nil) -> ArenaHandPosture {
         let decision = InlinePaymentPromptState.isActive(in: snapshot)
             || !GameBoardInteractionState.boardTargetableIds(for: snapshot).isEmpty
             || arenaCombatPhase(snapshot) != nil
@@ -1060,8 +1105,8 @@ extension NativeGameView {
             || (!startingRollVisible && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: nil))
         var dragging = false
         if case .draggingCard = interactionState.mode { dragging = true }
-        return ArenaHandPosture.resolve(.init(opened: arenaHandOpen, boardDecision: decision, dragging: dragging,
-                                              spectating: snapshot.isSpectating))
+        return ArenaHandPosture.resolve(.init(opened: arenaHandOpen, spread: spread ?? arenaHandSpread,
+                                              boardDecision: decision, dragging: dragging, spectating: snapshot.isSpectating))
     }
 
     /// The raised hand covers the corner controls, as in the reference, except while the table asks you something.
@@ -1074,8 +1119,9 @@ extension NativeGameView {
     private func arenaTapTable(snapshot: GameSnapshot) {
         if arenaLiftedCardID != nil {
             arenaLiftedCardID = nil
-        } else if arenaHandPosture(snapshot: snapshot) == .raised {
+        } else if arenaHandPosture(snapshot: snapshot) == .raised || arenaHandPosture(snapshot: snapshot) == .spread {
             arenaHandOpen = false
+            arenaHandSpread = false
             GameAudio.shared.play(.cardPickup)
         }
         clearBoardSelection()
