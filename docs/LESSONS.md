@@ -136,6 +136,15 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-21 (Claude, web engine heap): GraalVM CE ships Native Image and the Web Image API but not the Web Image tool;
+  Oracle ships the tool only in Oracle GraalVM (GFTC: use unmodified). The tool's source is open: mx 7.85.1 on labsjdk
+  builds it from oracle/graal at CE's own commit in about 2 minutes (`packages/web-engine/ce/build_web_image_tool.sh`).
+  Trap: CE's runtime image has an empty placeholder module `org.graalvm.extraimage.builder`, which shadows the tool's
+  jar on the builder's module path with no error, so `--tool:svm-wasm` quietly builds a native executable. **Rule:**
+  the tool's macro puts the jar on `--upgrade-module-path`; check new toolchains with the probe (`ce/probe`) and
+  `-J--show-module-resolution`. Also: the workflow reads its `[oracle]`, `[builder-patch]` and `[phone-regressions]`
+  tags from the commit subject only, since a body that merely mentioned `[builder-patch]` once built the patched
+  experiment instead of the default.
 - 2026-10-21 (Claude, web engine heap): Web Image 25.4's builder keeps memory it never uses, whatever the options:
   every compiled method's compiler graph (the compilation result, variable ids, labels, and each instruction's .wat
   "comment" is its Graal node even with `-H:WasmComments=NONE`), millions of formatted comment strings, and an Unsafe
@@ -144,8 +153,9 @@ contradicting one.
   `-H:+PrintImageHeapPartitionSizes` print nothing for Web Image: read the module (`wasm_report.mjs`).
   **Rule:** the fixes live in `packages/web-engine/builder-patch` (pinned by `expected.sha256`; `rebase.sh` moves them
   to a new GraalVM). Don't limit dispatch entries to "unsafe-accessed" fields: JDK VarHandle fields reach the arrays
-  unregistered (`AtomicReference.value` trapped a probe). Oracle GraalVM is licensed for use unmodified, so shipping
-  patched-builder output is Caleb's call. Where: docs/WEB_ENGINE_M1.md, "Fitting the free runner".
+  unregistered (`AtomicReference.value` trapped a probe). Oracle GraalVM is licensed for use unmodified, so the fixes
+  ship only through GraalVM CE with the tool built from source (entry above); patched Oracle builds are experiments.
+  Where: docs/WEB_ENGINE_M1.md, "Fitting the free runner".
 - 2026-10-21 (Claude, web engine heap): build-machine traps. The native-image driver gives the builder a clean
   environment, so a `-H:WasmAsPath` wrapper sees your variables only if passed with `-E<NAME>`. Later
   `-J-XX:-UseParallelGC -J-XX:+UseG1GC` override the driver's ParallelGC. In CI neither `pgrep -f` nor grepping

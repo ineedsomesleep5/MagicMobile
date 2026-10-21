@@ -201,7 +201,8 @@ manifest = {
     'upstream': json.loads((engine / 'upstream.lock.json').read_text())['commit'],
     'catalogueHash': re.search(r'CATALOGUE_HASH="([0-9a-f]{64})"', factory).group(1),
     'engineBuild': identity,
-    'toolchain': next((l.strip() for l in log.splitlines() if 'GraalVM' in l and 'Version info' in l), None),
+    # e.g. "GraalVM CE 25.4.4.1.1+1.1" or "Oracle GraalVM 25.4.4.1.1+1.1"
+    'toolchain': next((l.split('vendor version:', 1)[1].strip() for l in log.splitlines() if 'vendor version:' in l), None),
     'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     'buildKey': os.environ.get('MM_WEB_BUILD_KEY'),  # the CI workflow's key for the build's inputs
     'builderPatch': next((l.strip() for l in log.splitlines() if l.startswith('MagicMobile builder patch:')), None),

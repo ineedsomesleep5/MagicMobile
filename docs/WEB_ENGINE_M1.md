@@ -9,9 +9,10 @@ GraalVM Web Image, with no game server, within the size, speed and memory gates?
 **Verdict: go, with one condition.** The real engine (pinned XMage, release C adapter, full card pool) runs in desktop
 Chrome as a 174 MB WebAssembly module, with no game server. It finishes 10 of 10 seeded games, and every measured gate
 passes with room to spare. The condition was the build itself: it fit GitHub's free runner only with swap, peaking at
-about 30 of the runner's 32 GB of RAM plus swap. **Update 2026-10-21:** with a patch to the Web Image builder it now
-fits the free runner's 16 GB without swap and rebuilds by itself when the engine changes; see "Fitting the free
-runner", including the licence question that patch raises. Firefox and Safari have not been run yet.
+about 30 of the runner's 32 GB of RAM plus swap. **Update 2026-10-21:** it now builds free on the runner's 16 GB
+without swap, on all-open-source tools (GraalVM Community Edition and the Web Image tool built from source with
+memory fixes), and rebuilds by itself when the engine changes; see "Fitting the free runner". Firefox and Safari
+have not been run yet.
 
 ## Results against the gates
 
@@ -65,13 +66,20 @@ What fills the build, and how it came to fit the free runner without swap: next 
 
 ## Fitting the free runner (2026-10-21)
 
-Branch `claude/web-engine-heap` (Claude). **The build now fits GitHub's free 16 GB runner without swap**, in about
-34 minutes for the whole job: run [39626530141](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626530141)
-built with a 12 GB builder heap on G1, peaked at 13.2 GiB of builder memory (14.5 of the runner's 16 GB in use, the
-runner's own small swap file untouched); its live heap peaks at about 9 GB. The module also shrank from
-174.4 MB to 136.7 MB. It takes a patch to GraalVM's Web Image builder: with the stock builder the same settings run
-out of heap (run [39628671876](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628671876)), and **Oracle
-licenses Oracle GraalVM for use unmodified** (below), so whether builds made this way may ship is Caleb's decision.
+Branch `claude/web-engine-heap` (Claude). **The build fits GitHub's free 16 GB runner without swap, licence-clean**:
+run [39657809739](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39657809739) built the engine in 37
+minutes for the whole job with a 12 GB builder heap on G1, peaking at 13.2 GiB of builder memory (14.5 of the
+runner's 16 GB in use, no swap); its live heap peaks at about 9 GB. The module also shrank from 174.4 MB to
+136.8 MB. Two things made it fit:
+
+1. **Fixes to GraalVM's Web Image builder**, which kept every compiled method's compiler graph, millions of unused
+   comment strings and a field table per class (below). With the stock builder the same settings run out of heap
+   (run [39628671876](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628671876)).
+2. **GraalVM Community Edition with the Web Image tool built from source.** Oracle ships Web Image only in Oracle
+   GraalVM, licensed for use unmodified, so the fixes could not be used there for anything that ships. CE and the
+   tool's source are GPLv2 with the Classpath Exception: the workflow builds the tool from oracle/graal at CE's own
+   commit with the fixes in its source ("Community Edition" below). This is the default; Oracle GraalVM stays
+   selectable.
 
 ### What fills the build (measured on run [39618901221](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39618901221), the M1 configuration)
 
@@ -131,7 +139,8 @@ compiling**; while writing the image the heap in use rose to 14.4 GB (no full co
 
 | Change | Where | Effect |
 |---|---|---|
-| **Builder patch**: compiled methods release their compiler graphs; no comment strings or nodes kept for the `.wat` with `-H:WasmComments=NONE`; no dispatch entries for fields of `mage.*` and `io.magicmobile.*` unless the analysis registered them as unsafe-accessed | `packages/web-engine/builder-patch/` (8 classes of oracle/graal `95ce1499`, changes marked `MagicMobile`) | heap in use at the peak ~14.4 → ~9 GB (6.3 GB after compiling, from 10.0); 2.78 million dispatch entries and ~48,000 accessor functions gone; module −37 MB |
+| **Builder fixes**: compiled methods release their compiler graphs; no comment strings or nodes kept for the `.wat` with `-H:WasmComments=NONE`; no dispatch entries for fields of `mage.*` and `io.magicmobile.*` unless the analysis registered them as unsafe-accessed | `packages/web-engine/builder-patch/src` (8 classes of oracle/graal `95ce1499`, changes marked `MagicMobile`): compiled into the CE tool (the default), or patched into Oracle's builder at build time (`build_patch.sh`, experiments only) | heap in use at the peak ~14.4 → ~9 GB (6.3 GB after compiling, from 10.0); 2.78 million dispatch entries and ~48,000 accessor functions gone; module −37 MB |
+| **GraalVM CE 25.4.4.1.1 with the Web Image tool built from source** | `packages/web-engine/ce/build_web_image_tool.sh` (mx 7.85.1 on labsjdk, ~1.5 min, cached), the workflow's default | all-open-source tools, so the fixes can ship |
 | **`wasm-as` after the builder exits**: Web Image's `-H:WasmAsPath` points at `wasm_as_deferred.sh`, which records the final assembly; `build_web.sh` runs it once the JVM has exited | `packages/web-engine/wasm_as_deferred.sh`, `build_web.sh` | the assembler's 6.3 GB no longer adds to the builder's |
 | **G1** for the builder instead of the driver's ParallelGC | `build_web.sh` (`MM_WEB_GC`) | the old generation can use nearly all of the heap |
 | The options every working build needs (`-H:WasmComments=NONE`, `-H:ImageHeapObjectsPerFunction=4000`, `-H:-ClosureCompiler`) moved from the workflow into `build_web.sh`; the web engine identity now also covers `build_web.sh` and the patch | `build_web.sh`, `web_identity.py` | |
@@ -146,6 +155,27 @@ without registering it. So the patch skips only packages that never make such ac
 unsafe read error … No unsafe accessible fields available"), never misbehave quietly. Each patched class's
 unmodified upstream copy compiles to the shipped bytecode (`javap -c`), `expected.sha256` pins the shipped classes,
 and a probe image built with the patch matches the JVM's output.
+
+### Community Edition with the Web Image tool built from source
+
+GraalVM CE 25.4.4.1.1 (`graalvm/graalvm-ce-builds`, 2026-09-22) is built from the same oracle/graal commit as Oracle
+GraalVM 25.4.4.1.1 (`95ce1499`). It ships Native Image and the Web Image API module (`org.graalvm.webimage.api`), but
+not the Web Image tool (`lib/svm/tools/svm-wasm`); GraalVM's docs list Web Image as Oracle GraalVM only. The tool's
+source is open in oracle/graal (`web-image/`), so `packages/web-engine/ce/build_web_image_tool.sh`:
+
+1. fetches oracle/graal at the commit named in CE's `release` file, the mx version (7.85.1) and labsjdk
+   (25.0.4.1.1-jvmci-25.4-b23, checksummed) pinned in its `common.json`;
+2. copies the builder fixes from `builder-patch/src` into the source (it refuses if they were made for another
+   commit; `builder-patch/rebase.sh` moves them);
+3. builds `SVM_WASM`, `SVM_WASM_JIMFS`, `SVM_WASM_GUAVA` and the tool's generated `native-image.properties` with mx
+   (about 1.5 minutes) and installs them into the CE home, as Oracle lays out the tool (without its enterprise jar).
+
+One trap: CE's runtime image contains an empty placeholder module named `org.graalvm.extraimage.builder` (Oracle's has
+none), and a module in the runtime image wins over the same name on the builder's module path. Without a fix,
+`--tool:svm-wasm` quietly builds a native executable. The installed macro therefore puts the tool's jar on the
+builder's `--upgrade-module-path`. The workflow pins the CE archive by checksum, caches the built tool by CE version
+and fix sources, and checks every toolchain with a probe program (`ce/probe`) that must print the same in Wasm as on
+the JVM. `build_web.sh` checks that the tool really contains the fixes (`MM_WEB_BUILDER_FIXES=builtin`).
 
 ### The runs
 
@@ -164,6 +194,8 @@ resident memory and the runner's RAM in use.
 | [39628789815](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628789815) G | stock at `-Os`, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 15m49s | ~16.4 GB | 14.8 GiB RSS, 11.3 GB swap | 174.3 / 45.0 MB | built; `-Os` saves nothing here |
 | [39633234887](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39633234887) H | full patch, deferred `wasm-as`, G1 | 11 GB, no swap | 10m48s | 6.3 GB after compiling, ~8.4–9.3 GB writing | 12.3 GiB RSS, 13.6 of 16 GB in use, 0 swap | — | built; GC 5.8%, histograms |
 | [39635835998](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39635835998) **final** | the committed workflow and branch, with the phone regressions | 12 GB, no swap | 10m36s | — | 13.2 GiB RSS, 14.5 of 16 GB in use, 0 swap | 136.8 / 43.2 MB | built; phone regressions passed; 39 min in all |
+| [39652956935](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39652956935) S | Oracle with the patch (meant as stock: its commit body named the patch tag) | 12 GB, no swap | 9m55s | — | 13.3 GiB RSS, 0 swap | 137.0 / 43.0 MB | built; led to reading tags from the subject only |
+| [39657809739](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39657809739) **CE** | **GraalVM CE + the tool built from source with the fixes**, deferred `wasm-as`, G1 | **12 GB, no swap** | 11m28s | — | **13.2 GiB RSS, 14.5 of 16 GB in use, 0 swap** | 136.8 / 43.1 MB | **built; the default from now on; 37 min in all (tool 1.5 min)** |
 
 With the patch the live heap is 6.3 GB after compiling (10.0 GB stock: the released graphs) and about 8.4–9.3 GB at
 its peak, while the image is written. The workflow uses 12 GB, leaving about 3 GB of heap for a growing card pool;
@@ -174,25 +206,27 @@ the JVM games that feed the tracing agent take 10–17.
 ### The fitted engine in Chrome
 
 Headless Chrome 155 on the 8 GB Mac, `apps/web-play` bench, the same 10 seeded games as above (2-player seeds 1–5,
-4-player 6–10), M1's engine and run D's back to back (`node scripts/bench.mjs --engine-dir <bundle> --ready-visits 2
---games 2p:1,…,4p:10`; metrics, git-ignored, in the `sleepy-lumiere-f6745e` worktree's
-`packages/web-engine/build/metrics/chrome-games-10-{m1-rerun,fitted,run-b}.json`):
+4-player 6–10): M1's engine, run D's (Oracle, patched) back to back, and the default CE engine (run CE) later
+(`node scripts/bench.mjs --engine-dir <bundle> --ready-visits 2 --games 2p:1,…,4p:10`; metrics, git-ignored, in the
+`sleepy-lumiere-f6745e` worktree's `packages/web-engine/build/metrics/chrome-games-10-{m1-rerun,fitted,ce,run-b}.json`):
 
-| | M1 engine (run 39599683802) | Fitted engine (run D) |
-|---|---|---|
-| Wasm, raw / gzip -9 | 173.8 / 45.0 MB | 136.7 / 43.3 MB |
-| Engine ready, first visit / cached | 3.14 / 3.06 s | 2.63 / 2.11 s |
-| Wasm fetch and compile, first visit / cached | 2.96 / 2.88 s | 2.38 / 1.99 s |
-| Seeded games finished | 10 of 10 | 10 of 10 |
-| AI turn median / p95 / max | 1.03 / 4.31 / 8.0 s | 1.05 / 4.24 / 16.5 s (one long turn) |
-| Board update median / p95 | 30 / 55 ms | 28 / 56 ms |
-| Game start, 2-player / 4-player median | 119 / 125 ms | 92 / 163 ms |
-| Renderer memory: after boot / peak in games | 0.81 / 0.91 GB | 0.63 / 0.96 GB |
+| | M1 engine (Oracle, stock) | Run D (Oracle, patched) | **Run CE (the default)** |
+|---|---|---|---|
+| Wasm, raw / gzip -9 | 173.8 / 45.0 MB | 136.7 / 43.3 MB | **136.8 / 43.1 MB** |
+| Engine ready, first visit / cached | 3.14 / 3.06 s | 2.63 / 2.11 s | **1.91 / 1.76 s** |
+| Wasm fetch and compile, first visit / cached | 2.96 / 2.88 s | 2.38 / 1.99 s | **1.75 / 1.61 s** |
+| Seeded games finished | 10 of 10 | 10 of 10 | **10 of 10** |
+| AI turn median / p95 / max | 1.03 / 4.31 / 8.0 s | 1.05 / 4.24 / 16.5 s | **1.05 / 4.81 / 9.2 s** |
+| Board update median / p95 | 30 / 55 ms | 28 / 56 ms | **26 / 52 ms** |
+| Game start, 2-player / 4-player median | 119 / 125 ms | 92 / 163 ms | **90 / 122 ms** |
+| Renderer memory: after boot / peak in games | 0.81 / 0.91 GB | 0.63 / 0.96 GB | **0.71 / 0.92 GB** |
 
-The fitted engine plays the same (AI turns depend on time budgets, so medians within noise mean the same speed),
-starts 0.5–1 s sooner (a smaller module to compile, 1.3 MB of dispatch arrays instead of 76 MB) and passes every gate.
-Peak memory during games varies with the game more than with the engine. An earlier pass over run B's engine, with
-another session's simulator running, finished 10 of 10 as well (AI median 1.09 s, p95 5.65 s).
+All three pass every gate. The fitted engines start 1–1.4 s sooner (a smaller module to compile, 1.3 MB of dispatch
+arrays instead of 76 MB). AI turns have the same median; CE's p95 is about half a second higher, within the spread
+of these runs. Oracle GraalVM's compiler has optimizations CE lacks, and AI searches are time-budgeted, so a slower
+engine would explore fewer positions rather than take longer: the web AI calibration (M5) should run on the CE
+engine. Peak memory during games varies with the game more than with the engine. An earlier pass over run B's
+engine, with another session's simulator running, finished 10 of 10 as well (AI median 1.09 s, p95 5.65 s).
 
 ### Rebuilding by itself
 
@@ -209,10 +243,16 @@ another session's simulator running, finished 10 of 10 as well (AI median 1.09 s
   [39647712333](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39647712333), a commit with the final
   run's input trees on another parent (as a merge to `main` would be), stopped after the one-minute plan job.
   (Re-running a run rebuilds: GitHub deletes an earlier attempt's artifacts.)
-- **Keeps working when GraalVM moves.** `setup-graalvm` with `version: '25.4'` takes Oracle's latest 25.4 archive.
-  If its builder classes no longer match `builder-patch/expected.sha256`, the build uses the stock builder with M1's
-  settings (24 GB over 16 GB of swap, ParallelGC) and posts a warning; `builder-patch/rebase.sh <commit>` moves the
-  patch to the new commit (it merges cleanly onto oracle/graal master of 2026-10-21).
+- **Pins its toolchain.** The default is GraalVM CE 25.4.4.1.1 by archive checksum (`CE_VERSION` in the workflow)
+  with the tool built from its commit, so engine updates rebuild on unchanged tools. Moving to a newer GraalVM is a
+  deliberate step: change `CE_VERSION` and `CE_ARCHIVE`, run `builder-patch/rebase.sh <its commit>` (it merges
+  cleanly onto oracle/graal master of 2026-10-21) and check the probe and a build. The Oracle route takes the latest
+  Oracle 25.4 (`setup-graalvm`); its patched experiment refuses a builder that no longer matches
+  `builder-patch/expected.sha256`.
+- **Lets you pick the toolchain.** `[oracle]` in the commit subject (or dispatch `toolchain`) builds with Oracle
+  GraalVM's stock builder over 16 GB of swap; `[builder-patch]` with Oracle's builder patched (not for players).
+  Each gets its own bundle name (`-oracle`, `-oracle-patched`), so nothing stands in for the default bundle. Tags
+  count only in the subject line.
 - **Names the engine by its content.** The bundle holds `engine-<16 hex of sha256>.js` and `.wasm` and a
   `manifest.json` (`files`, `engineBuild`, `buildKey`, `builderPatch`, sizes) that pages fetch uncached; the engine
   files can be cached for good. `apps/web-play` reads `manifest.files` and falls back to the old `engine.js` and
@@ -223,21 +263,23 @@ another session's simulator running, finished 10 of 10 as well (AI median 1.09 s
 
 Web Image ships only in Oracle GraalVM, under the GraalVM Free Terms and Conditions (read 2026-10-21). Their licence
 grant covers use of "the unmodified Programs"; bundled source is for reference only unless other terms allow
-changes; and Native Image output counts as an unmodified Program only when the unmodified Program produced it. The
-patched classes are Oracle's own open-source code (GPLv2 with the Classpath Exception, from oracle/graal), compiled
-by us and put in place with `--patch-module`; the installed GraalVM is not changed on disk.
-That may still count as running a modified Program, which would leave the output outside GFTC's terms. This is not
-legal advice, and nothing built this way has shipped. Options:
+changes; and Native Image output counts as an unmodified Program only when the unmodified Program produced it. So
+the builder fixes could not be used with Oracle GraalVM for anything that ships, even though they are Oracle's own
+open-source code (this is not legal advice).
 
-1. **Accept it** for the web build (the workflow's current default).
-2. **Report the fixes upstream** (oracle/graal issues or pull requests: the retained graphs and unprinted comments are
-   plain bugs; the dispatch arrays are a design choice) and use the stock builder over swap until a release has them.
-   Posting needs Caleb's OK.
-3. **The stock builder over swap**: works today (M1, run A), about 40 minutes, with almost no headroom (24 GB, 16 GB
-   of swap, ParallelGC: the workflow's fallback). Setting the repository variable `MM_WEB_BUILDER_PATCH` to `0`
-   (GitHub, Settings → Variables) switches the workflow to it without a code change.
-4. **A bigger machine for the stock builder**: a 64 GB Hetzner CCX43 (€0.4431/h) for one build, about €1.30–1.80.
-5. **Build GraalVM's open-source Web Image ourselves** (all GPL, so patchable): untested, and a large job.
+Caleb's call (2026-10-21, through the coordinating session): whatever is best, works and is free. Considered:
+
+| Option | Licence | Cost | Result |
+|---|---|---|---|
+| **GraalVM CE + the Web Image tool built from source with the fixes** | GPLv2 with the Classpath Exception throughout | free, 37 min, no swap | **the default** (run CE) |
+| Oracle GraalVM, stock builder over swap | GFTC, unmodified | free, about 40–44 min, almost no headroom | works (runs A, E); kept as `[oracle]` |
+| Oracle GraalVM with the builder patched | outside GFTC's grant | free, 34 min, no swap | experiments only (`[builder-patch]`, `-oracle-patched` bundles) |
+| GraalVM CE as released | GPL | — | ships no Web Image tool |
+| Report the fixes upstream | — | free | issue texts drafted in `docs/upstream/graal-web-image-memory.md`; posting needs Caleb's OK |
+| A 64 GB machine for the stock builder | GFTC, unmodified | about €1.30–1.80 per build (Hetzner CCX43) | not needed |
+
+Bundles from runs B, C, D, H, final and S were built with Oracle's builder patched and are not for players; M3 was
+told to use licence-clean bundles (`builderPatch` in `manifest.json` names the fixes, and `toolchain` the edition).
 
 ## What was built
 
@@ -248,12 +290,13 @@ legal advice, and nothing built this way has shipped. Options:
 | `packages/web-engine/src-svm/` | A `Thread.start` substitution that throws, so a stray thread start fails loudly instead of silently running nothing. |
 | `packages/web-engine/web_identity.py` | The web engine's build identity (`web-1:sha256:…`): the phone identity plus every web-only input and the toolchain. |
 | `packages/web-engine/build_web.sh` | Stages `sources`, `jvm`, `metadata`, `wasm`, `bundle`. The `wasm` stage needs a ~10 GB builder heap: CI only. |
-| `packages/web-engine/builder-patch/` | The Web Image builder patch (2026-10-21): `build_patch.sh` (verifies the toolchain, compiles, prints the `--patch-module` option; `--check`), `check_skip_packages.py`, `rebase.sh`, `expected.sha256`, `src/`. |
+| `packages/web-engine/builder-patch/` | The Web Image builder fixes (2026-10-21): `src/` (8 classes of oracle/graal `95ce1499`), `rebase.sh` (moves them to another commit), `check_skip_packages.py`; for the Oracle experiment, `build_patch.sh` (`--check`, `--patch-module`) and `expected.sha256`. |
+| `packages/web-engine/ce/` | `build_web_image_tool.sh`: builds the Web Image tool from oracle/graal into GraalVM CE with the fixes; `probe/`: the toolchain smoke test. |
 | `packages/web-engine/wasm_as_deferred.sh` | `-H:WasmAsPath` wrapper: records the module's assembly so `build_web.sh` runs `wasm-as` after the builder exits. |
 | `packages/web-engine/builder_watch.sh` | CI diagnostics: RAM, swap and builder memory every 30 s; heap histograms at stages 6–8. |
 | `packages/web-engine/wasm_report.mjs` | What a module is made of: sections, compiled methods against image-heap initializers, bytes per initializer template. |
 | `packages/web-engine/patch_wrapper.py` | Adapts the generated `engine.js`: Wasm URL from the worker, `instantiateStreaming` (Chrome's Wasm code cache), boot timing marks. |
-| `.github/workflows/magicmobile-web-image.yml` | The build: `build_jvm.sh`, web sources, two web-mode games on GraalVM's JVM with the tracing agent (reachability metadata), the Web Image build, the bundle artifact. Starts on engine changes on `main` (skipping inputs already built), on dispatch, or on a push to a `claude/web-engine-*` branch whose commit message has `[web-image]` ("Rebuilding by itself"). |
+| `.github/workflows/magicmobile-web-image.yml` | The build: `build_jvm.sh`, the toolchain (GraalVM CE with the tool built from source, cached; or Oracle GraalVM), the probe, web sources, two web-mode games on GraalVM's JVM with the tracing agent (reachability metadata), the Web Image build, the bundle artifact. Starts on engine changes on `main` (skipping inputs already built), on dispatch, or on a push to a `claude/web-engine-*` branch whose commit message has `[web-image]` ("Rebuilding by itself"). |
 | `apps/web-play/` | The spike's bench, moved to Web Image: `engine.worker.ts` (classic worker, SharedArrayBuffer channel), `engineClient.ts`, `bench.ts`/`bench.html`, `scripts/bench.mjs` (headless Chrome), `scripts/serve.mjs` (COOP/COEP), `scripts/jvm-baseline.mjs` (`--web` runs `WebJvmMain`). Games now pass the engine seed and AI seeds. |
 
 ## The web threading mode
@@ -347,10 +390,11 @@ node scripts/bench.mjs --ready-visits 2 --games 2p:1,4p:2
 - **Firefox and Safari smoke runs** (see the gate table). To run one by hand: `cd apps/web-play && npm run build &&
   node scripts/serve.mjs`, then open `http://127.0.0.1:5178/bench.html?games=2p:1` in the browser; the tab title
   shows the status.
-- **A cheaper build:** done with the builder patch (2026-10-21, "Fitting the free runner"); Caleb decides the licence
-  question. Follow-ups: report the builder fixes upstream (needs Caleb's OK); move the patch to GraalVM 25.5 when it
-  ships (`builder-patch/rebase.sh`; until then the workflow falls back to the stock builder over swap); load the
-  9.8 MB of card catalogues at run time instead of embedding them, so card-data changes need no engine rebuild.
+- **A cheaper build:** done (2026-10-21, "Fitting the free runner"): GraalVM CE with the Web Image tool built from
+  source with the builder fixes, free, licence-clean, no swap. Follow-ups: post the drafted upstream reports
+  (`docs/upstream/graal-web-image-memory.md`, needs Caleb's OK); move to a newer GraalVM only deliberately
+  (`CE_VERSION` plus `builder-patch/rebase.sh`); load the 9.8 MB of card catalogues at run time instead of embedding
+  them, so card-data changes need no engine rebuild.
 - **Updates without a full rebuild** (researched 2026-10-20 by the coordinating session): engine-code changes need a
   rebuild. Native Image layers exist for native targets but are undocumented for Web Image, and a run-time bytecode
   interpreter (Crema) would be far too slow for AI search. Data updates (catalogue, precons) and UI changes ship
