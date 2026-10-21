@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           cd packages/web-engine/ce/probe
+          mkdir -p "$RUNNER_TEMP/probe-out"
           "$CE_HOME/bin/javac" -d "$RUNNER_TEMP/probe" Probe.java
           jvm=$("$CE_HOME/bin/java" -cp "$RUNNER_TEMP/probe" Probe)
           "$CE_HOME/bin/native-image" --tool:svm-wasm -J-Xmx3g -H:+UnlockExperimentalVMOptions -H:WasmComments=NONE \
