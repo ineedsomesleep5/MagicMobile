@@ -136,6 +136,24 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-21 (Claude, web engine heap): Web Image 25.4's builder keeps memory it never uses, whatever the options:
+  every compiled method's compiler graph (the compilation result, variable ids, labels, and each instruction's .wat
+  "comment" is its Graal node even with `-H:WasmComments=NONE`), millions of formatted comment strings, and an Unsafe
+  dispatch array of every field of every class (2.8 million entries; 76 MB allocated in the browser at startup). It
+  also runs `wasm-as` (6.3 GB) on the multi-GB `.wat` while the JVM holds its heap. `-H:+PrintHeapHistogram` and
+  `-H:+PrintImageHeapPartitionSizes` print nothing for Web Image: read the module (`wasm_report.mjs`).
+  **Rule:** the fixes live in `packages/web-engine/builder-patch` (pinned by `expected.sha256`; `rebase.sh` moves them
+  to a new GraalVM). Don't limit dispatch entries to "unsafe-accessed" fields: JDK VarHandle fields reach the arrays
+  unregistered (`AtomicReference.value` trapped a probe). Oracle GraalVM is licensed for use unmodified, so shipping
+  patched-builder output is Caleb's call. Where: docs/WEB_ENGINE_M1.md, "Fitting the free runner".
+- 2026-10-21 (Claude, web engine heap): build-machine traps. The native-image driver gives the builder a clean
+  environment, so a `-H:WasmAsPath` wrapper sees your variables only if passed with `-E<NAME>`. Later
+  `-J-XX:-UseParallelGC -J-XX:+UseG1GC` override the driver's ParallelGC. `pgrep -f` and `/proc/*/cmdline` don't find
+  the builder (argument file; procps truncates): take the largest `java` process. Web Image output differs by a few KB
+  between identical builds, so content-hashed names change on every rebuild: rebuild only for changed inputs. To
+  compile copies of builder classes, use the class path of every jar in `lib/svm`, `--add-exports` for every package
+  of `jdk.internal.vm.ci` (also to `jdk.graal.compiler`) and `jdk.graal.compiler`, and diff `javap -c` against the
+  shipped class first. Where: `builder-patch/build_patch.sh`, `wasm_as_deferred.sh`, `builder_watch.sh`.
 - 2026-10-21 (Claude, web engine M1): the full engine's Web Image build fails in three places that the phone builds
   never hit.
   - **Compiling** ran out of a 10 GB builder heap with 4 threads. Two threads fit.
@@ -150,7 +168,8 @@ contradicting one.
   The debug `.wat` is about 22× the `.wasm` (3.8 GB here) and is streamed to disk, so it doesn't cost heap.
 
   **Rule:** check a new build's function sizes before blaming the engine (`node packages/web-engine/wasm_functions.mjs <engine.js.wasm>`).
-  Shrink the image heap (class metadata for 62k types) before relying on routine rebuilds.
+  Shrink the image heap (class metadata for 62k types) before relying on routine rebuilds. Updated 2026-10-21
+  (Claude): the image heap was not the cause; the builder patch (entry above) fits a 12 GB heap without swap.
 
   Where: `.github/workflows/magicmobile-web-image.yml`, docs/WEB_ENGINE_M1.md.
 
