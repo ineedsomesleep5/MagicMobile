@@ -1,0 +1,66 @@
+name: Web engine toolchain (GraalVM CE + Web Image built from source)
+# GraalVM Community Edition is open source (GPLv2 with the Classpath Exception) but ships no Web Image tool; this
+# builds the tool from oracle/graal at CE's own commit, with the builder fixes applied to the source
+# (packages/web-engine/ce/build_web_image_tool.sh), and smoke-tests it on a probe program. A licence-clean way to
+# build the web engine without swap (docs/WEB_ENGINE_M1.md, "The licence question"). Runs on a push to a
+# claude/web-engine-* branch whose commit message has [ce-tool].
+on:
+  push:
+    branches: ['claude/web-engine-*']
+permissions:
+  contents: read
+jobs:
+  ce-tool:
+    if: contains(github.event.head_commit.message, '[ce-tool]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: GraalVM CE 25.4.4.1.1, pinned and checksummed
+        run: |
+          set -euo pipefail
+          N=graalvm-community-jdk-25i4-25.0.4.1.1_linux-x64_bin.tar.gz
+          U=https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1
+          curl -sSfL -o "$RUNNER_TEMP/$N" "$U/$N"
+          curl -sSfL -o "$RUNNER_TEMP/$N.sha256" "$U/$N.sha256"
+          echo "$(tr -d ' \n' < "$RUNNER_TEMP/$N.sha256")  $RUNNER_TEMP/$N" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/ce" && tar xzf "$RUNNER_TEMP/$N" -C "$RUNNER_TEMP/ce" --strip-components 1
+          echo "CE_HOME=$RUNNER_TEMP/ce" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/ce/bin/native-image" --version
+      - name: Build the Web Image tool from oracle/graal into CE
+        run: /usr/bin/time -v bash packages/web-engine/ce/build_web_image_tool.sh "$CE_HOME" "$RUNNER_TEMP/ce-tool" 2> >(tee "$RUNNER_TEMP/tool-time.txt" >&2)
+      - name: Install binaryen (wasm-as), pinned and checksummed
+        run: |
+          set -euo pipefail
+          V=version_133
+          SUM=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
+          curl -sSfL -o "$RUNNER_TEMP/binaryen.tar.gz" "https://github.com/WebAssembly/binaryen/releases/download/$V/binaryen-$V-x86_64-linux.tar.gz"
+          echo "$SUM  $RUNNER_TEMP/binaryen.tar.gz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/binaryen.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-$V/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe image on CE with the built tool (same output as the JVM)
+        run: |
+          set -euo pipefail
+          cd packages/web-engine/ce/probe
+          "$CE_HOME/bin/javac" -d "$RUNNER_TEMP/probe" Probe.java
+          jvm=$("$CE_HOME/bin/java" -cp "$RUNNER_TEMP/probe" Probe)
+          "$CE_HOME/bin/native-image" --tool:svm-wasm -J-Xmx3g -H:+UnlockExperimentalVMOptions -H:WasmComments=NONE \
+            -H:-ClosureCompiler -H:ReflectionConfigurationFiles=reflect-config.json -cp "$RUNNER_TEMP/probe" \
+            -o "$RUNNER_TEMP/probe-out/probe" Probe
+          wasm=$(node "$RUNNER_TEMP/probe-out/probe.js" | tail -1)
+          echo "JVM:  $jvm"; echo "Wasm: $wasm"
+          [[ "$jvm" == "$wasm" ]]
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-image-ce-tool-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ce/lib/svm/tools/svm-wasm/
+            ${{ runner.temp }}/tool-time.txt
+          retention-days: 14
+          if-no-files-found: warn
