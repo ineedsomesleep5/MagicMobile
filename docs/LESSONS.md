@@ -149,7 +149,8 @@ contradicting one.
   build such patterns with `new RegExp("…\\u2028…")`. (2) The desktop app's browser pane gives no animation frames
   while it is hidden, so a Three.js scene that only renders from `requestAnimationFrame` looks frozen in screenshots and
   `project()` reads a stale camera; `TableScene` renders once directly when the page is hidden and calls
-  `camera.updateMatrixWorld()` after every resize. (3) Simulator builds of the iOS app carry no XMage engine (the board
+  `camera.updateMatrixWorld()` after every resize. Updated 2026-10-21 (Claude, web solo M3): the Three.js table is gone;
+  the web board is the DOM Arena board (`src/ui/arena/`), which renders without animation frames. (3) Simulator builds of the iOS app carry no XMage engine (the board
   says "NO ENGINE"), so a simulator cannot host a relay table; a phone-hosted test needs the Android emulator (with the
   simulator shut down) or a device. Where: `apps/web/src/core/displayText.ts`, `src/board/TableScene.ts`, `apps/web/README.md`.
 

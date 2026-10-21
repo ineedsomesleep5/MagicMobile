@@ -1,0 +1,571 @@
+{
+ "_doc": "Desktop shapes of the Arena landscape plate for apps/web (2026-10-21): the landscape entry of claude/arena-mode's scripts/brand/arena_layout.json with the screen made taller and every y in proportion; the mat keeps its 8-point margins.",
+ "desk1610": {
+  "screen": [
+   956,
+   598
+  ],
+  "opponentMedallion": {
+   "center": [
+    118,
+    103.3
+   ],
+   "radius": 30
+  },
+  "mat": [
+   34,
+   8,
+   922,
+   590
+  ],
+  "lifeMedallion": {
+   "center": [
+    118,
+    467.5
+   ],
+   "radius": 34
+  },
+  "passButton": {
+   "center": [
+    846,
+    467.5
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    391,
+    547.0,
+    563,
+    583.7
+   ],
+   "socketXs": [
+    407,
+    435,
+    463,
+    491,
+    519,
+    547
+   ],
+   "socketY": 565.4,
+   "socketRadius": 12.4
+  },
+  "props": {
+   "candle": {
+    "at": [
+     12,
+     54.4
+    ],
+    "width": 40
+   },
+   "tankard": {
+    "at": [
+     10,
+     320.7
+    ],
+    "width": 34,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     950,
+     320.7
+    ],
+    "width": 56,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      12,
+      568
+     ],
+     "width": 24
+    },
+    {
+     "at": [
+      944,
+      568
+     ],
+     "width": 24
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      28,
+      203.9
+     ],
+     "width": 40,
+     "rotate": 80
+    },
+    {
+     "at": [
+      28,
+      407.7
+     ],
+     "width": 36,
+     "rotate": 95
+    },
+    {
+     "at": [
+      928,
+      176.7
+     ],
+     "width": 40,
+     "rotate": -95
+    },
+    {
+     "at": [
+      928,
+      394.1
+     ],
+     "width": 36,
+     "rotate": -80
+    },
+    {
+     "at": [
+      330,
+      596
+     ],
+     "width": 40,
+     "rotate": -10
+    },
+    {
+     "at": [
+      620,
+      597
+     ],
+     "width": 38,
+     "rotate": 12
+    }
+   ]
+  }
+ },
+ "desk169": {
+  "screen": [
+   956,
+   538
+  ],
+  "opponentMedallion": {
+   "center": [
+    118,
+    92.9
+   ],
+   "radius": 30
+  },
+  "mat": [
+   34,
+   8,
+   922,
+   530
+  ],
+  "lifeMedallion": {
+   "center": [
+    118,
+    420.6
+   ],
+   "radius": 34
+  },
+  "passButton": {
+   "center": [
+    846,
+    420.6
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    391,
+    492.1,
+    563,
+    525.2
+   ],
+   "socketXs": [
+    407,
+    435,
+    463,
+    491,
+    519,
+    547
+   ],
+   "socketY": 508.7,
+   "socketRadius": 12.4
+  },
+  "props": {
+   "candle": {
+    "at": [
+     12,
+     48.9
+    ],
+    "width": 40
+   },
+   "tankard": {
+    "at": [
+     10,
+     288.6
+    ],
+    "width": 34,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     950,
+     288.6
+    ],
+    "width": 56,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      12,
+      508
+     ],
+     "width": 24
+    },
+    {
+     "at": [
+      944,
+      508
+     ],
+     "width": 24
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      28,
+      183.4
+     ],
+     "width": 40,
+     "rotate": 80
+    },
+    {
+     "at": [
+      28,
+      366.8
+     ],
+     "width": 36,
+     "rotate": 95
+    },
+    {
+     "at": [
+      928,
+      159.0
+     ],
+     "width": 40,
+     "rotate": -95
+    },
+    {
+     "at": [
+      928,
+      354.6
+     ],
+     "width": 36,
+     "rotate": -80
+    },
+    {
+     "at": [
+      330,
+      536
+     ],
+     "width": 40,
+     "rotate": -10
+    },
+    {
+     "at": [
+      620,
+      537
+     ],
+     "width": 38,
+     "rotate": 12
+    }
+   ]
+  }
+ },
+ "desk43": {
+  "screen": [
+   956,
+   717
+  ],
+  "opponentMedallion": {
+   "center": [
+    118,
+    123.8
+   ],
+   "radius": 30
+  },
+  "mat": [
+   34,
+   8,
+   922,
+   709
+  ],
+  "lifeMedallion": {
+   "center": [
+    118,
+    560.6
+   ],
+   "radius": 34
+  },
+  "passButton": {
+   "center": [
+    846,
+    560.6
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    391,
+    655.9,
+    563,
+    699.9
+   ],
+   "socketXs": [
+    407,
+    435,
+    463,
+    491,
+    519,
+    547
+   ],
+   "socketY": 677.9,
+   "socketRadius": 12.4
+  },
+  "props": {
+   "candle": {
+    "at": [
+     12,
+     65.2
+    ],
+    "width": 40
+   },
+   "tankard": {
+    "at": [
+     10,
+     384.6
+    ],
+    "width": 34,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     950,
+     384.6
+    ],
+    "width": 56,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      12,
+      687
+     ],
+     "width": 24
+    },
+    {
+     "at": [
+      944,
+      687
+     ],
+     "width": 24
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      28,
+      244.4
+     ],
+     "width": 40,
+     "rotate": 80
+    },
+    {
+     "at": [
+      28,
+      488.9
+     ],
+     "width": 36,
+     "rotate": 95
+    },
+    {
+     "at": [
+      928,
+      211.8
+     ],
+     "width": 40,
+     "rotate": -95
+    },
+    {
+     "at": [
+      928,
+      472.6
+     ],
+     "width": 36,
+     "rotate": -80
+    },
+    {
+     "at": [
+      330,
+      715
+     ],
+     "width": 40,
+     "rotate": -10
+    },
+    {
+     "at": [
+      620,
+      716
+     ],
+     "width": 38,
+     "rotate": 12
+    }
+   ]
+  }
+ },
+ "desk195": {
+  "screen": [
+   956,
+   490
+  ],
+  "opponentMedallion": {
+   "center": [
+    118,
+    84.6
+   ],
+   "radius": 30
+  },
+  "mat": [
+   34,
+   8,
+   922,
+   482
+  ],
+  "lifeMedallion": {
+   "center": [
+    118,
+    383.1
+   ],
+   "radius": 34
+  },
+  "passButton": {
+   "center": [
+    846,
+    383.1
+   ],
+   "radius": 48
+  },
+  "manaRail": {
+   "rect": [
+    391,
+    448.2,
+    563,
+    478.3
+   ],
+   "socketXs": [
+    407,
+    435,
+    463,
+    491,
+    519,
+    547
+   ],
+   "socketY": 463.3,
+   "socketRadius": 12.4
+  },
+  "props": {
+   "candle": {
+    "at": [
+     12,
+     44.5
+    ],
+    "width": 40
+   },
+   "tankard": {
+    "at": [
+     10,
+     262.8
+    ],
+    "width": 34,
+    "rotate": -20
+   },
+   "books": {
+    "at": [
+     950,
+     262.8
+    ],
+    "width": 56,
+    "rotate": 100
+   },
+   "coins": [
+    {
+     "at": [
+      12,
+      460
+     ],
+     "width": 24
+    },
+    {
+     "at": [
+      944,
+      460
+     ],
+     "width": 24
+    }
+   ],
+   "ivy": [
+    {
+     "at": [
+      28,
+      167.0
+     ],
+     "width": 40,
+     "rotate": 80
+    },
+    {
+     "at": [
+      28,
+      334.1
+     ],
+     "width": 36,
+     "rotate": 95
+    },
+    {
+     "at": [
+      928,
+      144.8
+     ],
+     "width": 40,
+     "rotate": -95
+    },
+    {
+     "at": [
+      928,
+      323.0
+     ],
+     "width": 36,
+     "rotate": -80
+    },
+    {
+     "at": [
+      330,
+      488
+     ],
+     "width": 40,
+     "rotate": -10
+    },
+    {
+     "at": [
+      620,
+      489
+     ],
+     "width": 38,
+     "rotate": 12
+    }
+   ]
+  }
+ }
+}

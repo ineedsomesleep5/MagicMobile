@@ -2,10 +2,57 @@
  * Where everything sits on the horizontal Arena board: the Duel Board Prototype's landscape layout ("land": the
  * reference game's positions on the 956 x 440 Walnut Tavern plate, artifact T5NcAkjCThiA5hfd9Twwwu), filled from real
  * snapshots. Pure functions of the snapshot, so a card keeps one element as it moves between zones and glides.
+ *
+ * A desktop window is rarely 956 x 440, and it can be resized. The board is always 956 points wide and as tall as the
+ * window's shape allows (440 to 717 points, 2.17:1 to 4:3): every y below is a point on the 440-point plate, stretched
+ * in proportion (`Geometry.ky`), and cards grow a little with the extra room (`grow`). The plate is the same table
+ * rendered for the nearest shape (public/arena), so it is never stretched by more than a few percent.
  */
 import { isCreatureCard, type ZoneCard } from "../../core/models";
 
 export const STAGE = { width: 956, height: 440 } as const;
+
+/** The table rendered at several shapes (scripts: apps/web/README.md, "The Arena plates"). */
+export const PLATES = [
+  { src: "/arena/table.jpg", height: 440 },
+  { src: "/arena/table-195.jpg", height: 490 },
+  { src: "/arena/table-169.jpg", height: 538 },
+  { src: "/arena/table-1610.jpg", height: 598 },
+  { src: "/arena/table-43.jpg", height: 717 },
+] as const;
+
+export interface Geometry {
+  /** The board's height in points (its width is always 956). */
+  height: number;
+  /** Plate points to board points, vertically. */
+  ky: number;
+  /** How much bigger tiles, piles and medallions draw than on the 440-point plate. */
+  grow: number;
+  /** Hand cards grow less: they already fan wide. */
+  handGrow: number;
+  plate: string;
+  /** Points to CSS pixels, and where the board sits in the window. */
+  scale: number;
+  left: number;
+  top: number;
+}
+
+/** The board for a window of this size: as tall as its shape allows, the nearest plate under it. */
+export function geometry(width: number, height: number): Geometry {
+  const tall = Math.min(717, Math.max(STAGE.height, (STAGE.width * height) / Math.max(1, width)));
+  const scale = Math.min(width / STAGE.width, height / tall);
+  const plate = PLATES.reduce((best, p) => (Math.abs(p.height - tall) < Math.abs(best.height - tall) ? p : best));
+  const ky = tall / STAGE.height;
+  return {
+    height: tall, ky, grow: Math.min(1.35, 1 + (ky - 1) * 0.7), handGrow: Math.min(1.2, 1 + (ky - 1) * 0.4), plate: plate.src,
+    scale, left: (width - STAGE.width * scale) / 2, top: (height - tall * scale) / 2,
+  };
+}
+
+/** The 440-point plate, for tests and the first frame before the window is measured. */
+export const BASE_GEOMETRY: Geometry = { height: 440, ky: 1, grow: 1, handGrow: 1, plate: PLATES[0].src, scale: 1, left: 0, top: 0 };
+
+const sized = (size: { w: number; h: number }, grow: number) => ({ w: size.w * grow, h: size.h * grow });
 /** How far battlefield cards lie back on the table (the reference's camera leans forward). */
 export const TILT = 26;
 
@@ -36,8 +83,11 @@ const isFront = (card: ZoneCard) => isCreature(card) || /planeswalker|battle/i.t
  * artifacts and enchantments lie in name groups in the back row (untapped groups first), as on the reference; auras
  * and equipment tuck behind what they are attached to. `band` splits the top half between several opponents.
  */
-export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = { index: 0, count: 1 }): Map<string, Place> {
+export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = { index: 0, count: 1 }, geo: Geometry = BASE_GEOMETRY): Map<string, Place> {
   const places = new Map<string, Place>();
+  const { ky, grow } = geo;
+  const tile = sized(SIZE.tile, grow);
+  const land = sized(SIZE.land, grow);
   const far = side === "opp";
   const scale = far ? 0.92 : 1;
   const ids = new Set(cards.map((c) => c.instanceId));
@@ -54,13 +104,13 @@ export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = 
   const rowRight = sliceRight(far && band.count > 1 ? 120 : ROWS.left, far && band.count > 1 ? 690 : ROWS.right);
   const span = Math.min(ROWS.span, rowRight - rowLeft);
   const n = front.length;
-  const pitch = n > 1 ? Math.min(ROWS.pitch, span / (n - 1)) : 0;
+  const pitch = n > 1 ? Math.min(ROWS.pitch * grow, span / (n - 1)) : 0;
   const width = (n - 1) * pitch;
   const center = band.count > 1 ? (rowLeft + rowRight) / 2 : Math.max(rowLeft + width / 2, Math.min(ROWS.cx, rowRight - width / 2));
   front.forEach((card, i) => {
     const fighting = card.isAttacking === true || (card.blocking?.length ?? 0) > 0;
     places.set(card.instanceId, {
-      x: center + (i - (n - 1) / 2) * pitch, y: (far ? ROWS.opp : ROWS.me) + (fighting ? (far ? 4.5 : -4.5) : 0), ...SIZE.tile,
+      x: center + (i - (n - 1) / 2) * pitch, y: (far ? ROWS.opp : ROWS.me) * ky + (fighting ? (far ? 4.5 : -4.5) * grow : 0), ...tile,
       r: card.tapped && !fighting ? 12 : 0, tx: TILT, s: scale, z: card.isAttacking ? 90 : 60 + i,
     });
   });
@@ -73,16 +123,18 @@ export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = 
     group.cards.push(card);
   }
   groups.sort((a, b) => Number(a.key.endsWith("|tapped")) - Number(b.key.endsWith("|tapped")));
-  const origin = far ? LANDS.opp : LANDS.me;
+  // A taller plate is drawn by the same leaning camera, so its far edge narrows more: their lands move inward.
+  const origin = far ? { x: LANDS.opp.x + (ky - 1) * 55, y: LANDS.opp.y } : LANDS.me;
   const left = band.count > 1 ? sliceLeft(origin.x, LANDS.right) : origin.x;
-  const right = band.count > 1 ? sliceRight(origin.x, LANDS.right) - SIZE.land.w / 2 : LANDS.right;
-  const widths = groups.map((g) => LANDS.step + (g.cards.length - 1) * 7);
-  const total = widths.reduce((a, b) => a + b, 0) - (widths.length ? LANDS.step : 0);
+  const right = band.count > 1 ? sliceRight(origin.x, LANDS.right) - land.w / 2 : LANDS.right;
+  const step = LANDS.step * grow;
+  const widths = groups.map((g) => step + (g.cards.length - 1) * 7 * grow);
+  const total = widths.reduce((a, b) => a + b, 0) - (widths.length ? step : 0);
   const squeeze = total > right - left && total > 0 ? (right - left) / total : 1;
-  let x = left;
+  let x = left + (grow - 1) * land.w * 0.4;
   groups.forEach((group, gi) => {
     group.cards.forEach((card, j) => places.set(card.instanceId, {
-      x: x + j * 7 * squeeze, y: origin.y - j * 2, ...SIZE.land, r: card.tapped ? 12 : 0, tx: TILT, s: far ? 0.94 : 1, z: 30 + j,
+      x: x + j * 7 * grow * squeeze, y: origin.y * ky - j * 2 * grow, ...land, r: card.tapped ? 12 : 0, tx: TILT, s: far ? 0.94 : 1, z: 30 + j,
     }));
     x += widths[gi] * squeeze;
   });
@@ -90,49 +142,54 @@ export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = 
   attached.forEach((card, i) => {
     const host = places.get(card.attachedToInstanceId!);
     if (!host) return;
-    places.set(card.instanceId, { ...host, ...SIZE.tile, x: host.x + 9 + i * 4, y: host.y + (far ? 9 : -9) - i * 3, r: card.tapped ? 12 : 0, z: host.z - 1 - i });
+    places.set(card.instanceId, { ...host, ...tile, x: host.x + (9 + i * 4) * grow, y: host.y + ((far ? 9 : -9) - i * 3) * grow, r: card.tapped ? 12 : 0, z: host.z - 1 - i });
   });
   return places;
 }
 
 /** The hand along the bottom edge: fanned up when it's yours to play, tucked low otherwise; the card under the pointer pops up. */
-export function handPlaces(ids: string[], up: boolean, hovered?: string): Map<string, Place> {
+export function handPlaces(ids: string[], up: boolean, hovered?: string, geo: Geometry = BASE_GEOMETRY): Map<string, Place> {
   const places = new Map<string, Place>();
+  const g = geo.handGrow;
+  const size = sized(SIZE.hand, g);
   const n = ids.length;
-  const pitch = n > 1 ? (up ? Math.min(HAND.upPitch, HAND.upSpan / (n - 1)) : Math.min(HAND.downPitch, HAND.downSpan / (n - 1))) : 0;
+  const pitch = n > 1 ? (up ? Math.min(HAND.upPitch * g, HAND.upSpan / (n - 1)) : Math.min(HAND.downPitch * g, HAND.downSpan / (n - 1))) : 0;
+  // The fan keeps its distance from the board's bottom edge as the board grows taller.
+  const fromBottom = (y: number) => geo.height - (STAGE.height - y) * g;
   ids.forEach((id, i) => {
     const off = i - (n - 1) / 2;
     const x = HAND.cx + off * pitch;
     let place: Place = up
-      ? { x, y: HAND.upY + HAND.drop * off * off, ...SIZE.hand, r: Math.max(-HAND.maxTilt, Math.min(HAND.maxTilt, off * HAND.tilt)), s: 1, z: 440 + i }
-      : { x, y: HAND.downY + off * off * HAND.downDrop, ...SIZE.hand, r: off * 1.8, s: HAND.downS, z: 200 + i };
-    if (id === hovered) place = { ...place, y: place.y - (up ? HAND.lift : HAND.liftDown), r: 0, s: up ? 1.24 : 1.04, z: 480 };
+      ? { x, y: fromBottom(HAND.upY) + HAND.drop * off * off, ...size, r: Math.max(-HAND.maxTilt, Math.min(HAND.maxTilt, off * HAND.tilt)), s: 1, z: 440 + i }
+      : { x, y: fromBottom(HAND.downY) + off * off * HAND.downDrop, ...size, r: off * 1.8, s: HAND.downS, z: 200 + i };
+    if (id === hovered) place = { ...place, y: place.y - (up ? HAND.lift : HAND.liftDown) * g, r: 0, s: up ? 1.24 : 1.04, z: 480 };
     places.set(id, place);
   });
   return places;
 }
 
 /** The opponent's hand: card backs fanned upside down along the top edge. */
-export function opponentHandPlaces(count: number, band = { index: 0, count: 1 }): Place[] {
+export function opponentHandPlaces(count: number, band = { index: 0, count: 1 }, geo: Geometry = BASE_GEOMETRY): Place[] {
   const cx = band.count > 1 ? 150 + (520 * (band.index + 0.5)) / band.count : POS.handOpp.x;
   return Array.from({ length: Math.min(count, 12) }, (_, i) => {
     const off = i - (Math.min(count, 12) - 1) / 2;
-    return { x: cx + off * 17, y: POS.handOpp.y - off * off * 0.9, ...SIZE.opile, r: 180 - off * 4, s: 1, z: 100 + i };
+    return { x: cx + off * 17 * geo.grow, y: POS.handOpp.y * geo.ky - off * off * 0.9, ...sized(SIZE.opile, geo.grow), r: 180 - off * 4, s: 1, z: 100 + i };
   });
 }
 
 /** The stack card on the right; older objects lean in behind the top one. Index 0 is the top. */
-export const stackPlace = (depth: number): Place =>
-  ({ ...POS.stack, x: POS.stack.x - depth * 12, y: POS.stack.y - depth * 10, r: 0, s: 1 - depth * 0.05, z: 300 - depth });
+export const stackPlace = (depth: number, geo: Geometry = BASE_GEOMETRY): Place =>
+  ({ ...POS.stack, ...sized(POS.stack, Math.min(geo.grow, 1.15)), x: POS.stack.x - depth * 12, y: POS.stack.y * geo.ky - depth * 10, r: 0, s: 1 - depth * 0.05, z: 300 - depth });
 
 /** The opening hand, large in the middle of the table while the player decides whether to keep it. */
-export function mulliganPlaces(ids: string[]): Map<string, Place> {
+export function mulliganPlaces(ids: string[], geo: Geometry = BASE_GEOMETRY): Map<string, Place> {
   const places = new Map<string, Place>();
   const n = ids.length;
-  const pitch = n > 1 ? Math.min(MULLIGAN.pitch, 600 / (n - 1)) : 0;
+  const g = geo.handGrow;
+  const pitch = n > 1 ? Math.min(MULLIGAN.pitch * g, 600 / (n - 1)) : 0;
   ids.forEach((id, i) => {
     const off = i - (n - 1) / 2;
-    places.set(id, { x: MULLIGAN.cx + off * pitch, y: MULLIGAN.y + off * off * 2, w: MULLIGAN.w, h: MULLIGAN.h, r: off * 1.4, s: 1, z: 820 + i });
+    places.set(id, { x: MULLIGAN.cx + off * pitch, y: MULLIGAN.y * geo.ky + off * off * 2, w: MULLIGAN.w * g, h: MULLIGAN.h * g, r: off * 1.4, s: 1, z: 820 + i });
   });
   return places;
 }

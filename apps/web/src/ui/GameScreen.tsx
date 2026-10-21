@@ -14,7 +14,8 @@ import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
 import { Browser, browserKind, type Send } from "./arena/Browsers";
 import {
-  battlefieldPlaces, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, POOL, POS, SIZE, stackPlace, STAGE, TILT,
+  BASE_GEOMETRY, battlefieldPlaces, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, POOL, POS, SIZE,
+  stackPlace, STAGE, TILT,
 } from "./arena/layout";
 import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
@@ -56,24 +57,22 @@ const actionsFor = (snapshot: GameSnapshot, id: string) =>
 const cleanMessage = (message: string | undefined) =>
   EngineDisplayText.text(message ?? "").replace(/\s*\[[0-9a-f]{3,}\]/gi, "").split("\n").map((s) => s.trim()).filter(Boolean).join(" · ");
 
-/** Fits the 956 x 440 plate into the window, centred a little high so the hand has room below it. */
-function useStageFit(ref: React.RefObject<HTMLDivElement | null>) {
-  const [fit, setFit] = useState({ scale: 1, left: 0, top: 0 });
+/** The board for the window it's in, measured again whenever the window or its pane is resized. */
+function useGeometry(ref: React.RefObject<HTMLDivElement | null>) {
+  const [geo, setGeo] = useState<Geometry>(BASE_GEOMETRY);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
     const measure = () => {
       const w = element.clientWidth; const h = element.clientHeight;
-      if (w === 0 || h === 0) return;
-      const scale = Math.min(w / STAGE.width, (h - 24) / STAGE.height);
-      setFit({ scale, left: (w - STAGE.width * scale) / 2, top: Math.max(0, (h - STAGE.height * scale) / 2 - 18 * scale) });
+      if (w > 0 && h > 0) setGeo(geometry(w, h));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
   }, [ref]);
-  return fit;
+  return geo;
 }
 
 interface Plaque { label: string; style: "ember" | "leather" | "label" | "oxblood"; want?: boolean; onClick?: () => void }
@@ -83,7 +82,11 @@ export function GameScreen({ table }: { table: GameTable }) {
   const session = table.session;
   const snapshot = session?.state.snapshot;
   const wrapRef = useRef<HTMLDivElement>(null);
-  const fit = useStageFit(wrapRef);
+  const geo = useGeometry(wrapRef);
+  /** Plate points to board points: in proportion (the middle), from the top edge (theirs), from the bottom edge (yours). */
+  const Y = (y: number) => y * geo.ky;
+  const T = (y: number) => y * geo.grow;
+  const B = (y: number) => geo.height - (STAGE.height - y) * geo.grow;
   const [hovered, setHovered] = useState<string>();
   const [menu, setMenu] = useState<{ id: string; at: Place; actions: LegalAction[] }>();
   const [toast, setToast] = useState<string>();
@@ -172,19 +175,19 @@ export function GameScreen({ table }: { table: GameTable }) {
   };
   const clickAt = (place: Place) => (id: string) => clickCard(id, place);
   if (snapshot && me) {
-    battlefieldPlaces(me.zones.battlefield, "me").forEach((place, id) => {
+    battlefieldPlaces(me.zones.battlefield, "me", undefined, geo).forEach((place, id) => {
       const card = me.zones.battlefield.find((c) => c.instanceId === id)!;
       add({ id, place, view: "tile", card, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
     });
     opponents.forEach((opponent, index) => {
-      battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }).forEach((place, id) => {
+      battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }, geo).forEach((place, id) => {
         const card = opponent.zones.battlefield.find((c) => c.instanceId === id)!;
         add({ id, place, view: "tile", card, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
       });
-      opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }).forEach((place, i) =>
+      opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }, geo).forEach((place, i) =>
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
     });
-    const handPlace = mulligan ? mulliganPlaces(handIDs) : handPlaces(handIDs, handUp, hovered);
+    const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(handIDs, handUp, hovered, geo);
     me.zones.hand.forEach((card) => {
       const place = handPlace.get(card.instanceId)!;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true, classes: classFor(card, false),
@@ -192,13 +195,14 @@ export function GameScreen({ table }: { table: GameTable }) {
     });
     stack.slice(0, 4).forEach((item, depth) => {
       const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
-      add({ id: item.id, place: stackPlace(depth), view: "face", name, card: item.sourceCard, label: item.name, onHover: setHovered });
+      add({ id: item.id, place: stackPlace(depth, geo), view: "face", name, card: item.sourceCard, label: item.name, onHover: setHovered });
     });
     const command = (player: PlayerGameState, mine: boolean, index: number) => player.zones.command.forEach((card, i) => {
       const at = mine ? POS.cmdMe : POS.cmdOpp;
-      const size = mine ? SIZE.pile : SIZE.opile;
+      const base = mine ? SIZE.pile : SIZE.opile;
+      const size = { w: base.w * geo.grow, h: base.h * geo.grow };
       const x = mine ? at.x - i * 48 : at.x + i * 42 + (opponents.length > 1 ? -index * 90 : 0);
-      const place: Place = { x, y: at.y, ...size, r: 0, s: 1, tx: mine ? TILT : 0, z: 12 };
+      const place: Place = { x, y: mine ? B(at.y) : T(at.y), ...size, r: 0, s: 1, tx: mine ? TILT : 0, z: 12 };
       add({ id: card.instanceId, place, view: "face", card, owner: mine ? "me" : "opp", classes: classFor(card, false), onClick: mine ? clickAt(place) : undefined, onHover: setHovered });
     });
     command(me, true, 0);
@@ -264,8 +268,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   };
 
   const medallion = (player: PlayerGameState, mine: boolean, index: number) => {
-    const at = mine ? POS.faceMe : opponents.length > 1 ? { x: 170 + (560 * (index + 0.5)) / opponents.length, y: POS.faceOpp.y } : POS.faceOpp;
-    const d = mine ? 58 : 50;
+    const at = mine ? { x: POS.faceMe.x, y: B(POS.faceMe.y) }
+      : { x: opponents.length > 1 ? 170 + (560 * (index + 0.5)) / opponents.length : POS.faceOpp.x, y: Y(POS.faceOpp.y + 3) };
+    const d = (mine ? 58 : 50) * geo.grow;
     const targetable = targetIDs.has(player.playerId) && !pending;
     const seat = seatOf(player);
     const clock = rope && rope.seat === seat ? rope : undefined;
@@ -303,9 +308,10 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   const piles = (player: PlayerGameState, mine: boolean, index: number) => {
     const shift = !mine && opponents.length > 1 ? -index * 90 : 0;
-    const lib = mine ? POS.libMe : { x: POS.libOpp.x + shift, y: POS.libOpp.y };
-    const gy = mine ? POS.gyMe : { x: POS.gyOpp.x + shift, y: POS.gyOpp.y };
-    const size = mine ? SIZE.pile : SIZE.opile;
+    const lib = mine ? { x: POS.libMe.x, y: B(POS.libMe.y) } : { x: POS.libOpp.x + shift, y: T(POS.libOpp.y) };
+    const gy = mine ? { x: POS.gyMe.x, y: B(POS.gyMe.y) } : { x: POS.gyOpp.x + shift, y: T(POS.gyOpp.y) };
+    const base = mine ? SIZE.pile : SIZE.opile;
+    const size = { w: base.w * geo.grow, h: base.h * geo.grow };
     const top = player.zones.graveyard.at(-1);
     const box = (at: { x: number; y: number }) => ({ left: at.x - size.w / 2, top: at.y - size.h / 2, width: size.w, height: size.h });
     const whose = mine ? "Your" : `${player.displayName ?? "Their"}’s`;
@@ -341,8 +347,10 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   return (
     <div className="arena" ref={wrapRef} onClick={() => { setGear(false); setPlayerCard(undefined); setMenu(undefined); }}>
-      <div className="arena-stage" style={{ transform: `translate(${fit.left}px, ${fit.top}px) scale(${fit.scale})` }} aria-label="Game table">
-        <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined} />
+      <div className="arena-stage" aria-label="Game table"
+        style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})` }}>
+        <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined}
+          style={{ height: 220 * geo.ky, top: snapshot ? Y(activeIsMe ? 205 : 15) : undefined }} />
         <div className="lamp" />
         {me && piles(me, true, 0)}
         {opponents.map((o, i) => piles(o, false, i))}
@@ -355,38 +363,44 @@ export function GameScreen({ table }: { table: GameTable }) {
           const choice = envelope?.manaChoices?.find((c) => c.manaType === symbol);
           return (
             <button key={`${symbol}-${i}`} type="button" className={`mana-orb ${choice && !pending ? "payable" : ""}`} disabled={!choice || pending}
-              style={{ left: POOL.x + i * POOL.dx, top: POOL.y, backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} aria-label={`${symbol} mana in your pool`}
+              style={{ left: POOL.x + i * POOL.dx, top: B(POOL.y), backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} aria-label={`${symbol} mana in your pool`}
               onClick={(event) => { event.stopPropagation(); if (choice) send({ type: "play_mana", manaType: choice.manaType }, choice.label); }} />
           );
         })}
-        {stack.length > 1 && <div className="astack-count" style={{ left: POS.stack.x + POS.stack.w / 2 - 14, top: POS.stack.y - POS.stack.h / 2 - 8 }}>{stack.length}</div>}
+        {stack.length > 1 && (() => {
+          const top = stackPlace(0, geo);
+          return <div className="astack-count" style={{ left: top.x + top.w / 2 - 14, top: top.y - top.h / 2 - 8 }}>{stack.length}</div>;
+        })()}
 
         {/* Above the raised hand while there is an answer to give (the prototype's controls z-index). */}
         <div className="acontrols" style={{ zIndex: (primary && primary.style !== "label") || secondary ? 600 : 430 }} onClick={stop}>
-          <div className="aphases" data-side={activeIsMe ? "me" : "opp"} style={{ top: secondary ? 304 : 360 }} aria-hidden="true">
+          <div className="aphases" data-side={activeIsMe ? "me" : "opp"} style={{ top: B(secondary ? 304 : 360) }} aria-hidden="true">
             <div className="track" />
             {strip.items.map(([key, icon]) => <span key={key} className={`aph ${icon === "dia" ? "small" : ""} ${strip.current === key ? "on" : ""}`}>{PHASE_ICONS[icon]}</span>)}
           </div>
-          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} disabled={pending} onClick={secondary.onClick}>{secondary.label}</button>}
+          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(335) }} disabled={pending} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
-            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""}`} disabled={primary.style !== "label" && pending}
+            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""}`} style={{ top: B(388) }} disabled={primary.style !== "label" && pending}
               onClick={primary.onClick}>{primary.label}</button>
-          ) : !finished && <div className="ahourglass">{HOURGLASS}</div>}
+          ) : !finished && <div className="ahourglass" style={{ top: B(388) }}>{HOURGLASS}</div>}
           {session && (
-            <button type="button" className={`aff ${smart ? "on" : ""}`} aria-pressed={smart} onClick={toggleSmart}
+            <button type="button" className={`aff ${smart ? "on" : ""}`} style={{ top: B(392) }} aria-pressed={smart} onClick={toggleSmart}
               title={smart ? "Smart pass is on: routine priority passes by itself" : "Smart pass is off: you pass every step"}>
               <svg viewBox="0 0 26 18"><path d="M2 2l9 7-9 7zM14 2l9 7-9 7z" /></svg>
             </button>
           )}
-          <button type="button" className={`acoin ${panel ? "on" : ""}`} style={{ left: 829, top: 9 }} aria-label="Game log" onClick={() => setPanel(panel ? undefined : "log")}>{SCROLL}</button>
-          <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: 862, top: 9 }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
+          <button type="button" className={`acoin ${panel ? "on" : ""}`} style={{ left: 829, top: T(9) }} aria-label="Game log" onClick={() => setPanel(panel ? undefined : "log")}>{SCROLL}</button>
+          <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: 862, top: T(9) }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
         </div>
 
-        {promptLine && <div className="aprompt" style={{ top: combatSelect && !/attack/i.test(envelope?.message ?? "") ? 205 : 187 }}>{promptLine}</div>}
-        {thinkingName && <div className="aprompt" style={{ top: 187, opacity: 0.75 }}>{thinkingName} is thinking…</div>}
+        {promptLine && <div className="aprompt" style={{ top: Y(combatSelect && !/attack/i.test(envelope?.message ?? "") ? 205 : 187) }}>{promptLine}</div>}
+        {thinkingName && <div className="aprompt" style={{ top: Y(187), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
 
         {inspected && (
-          <div className="ainspect" style={{ left: inspected.left ? 250 - POS.zoom.w / 2 : POS.zoom.x - POS.zoom.w / 2, top: POS.zoom.y - POS.zoom.h / 2, width: POS.zoom.w }}>
+          <div className="ainspect" style={{
+            left: inspected.left ? 250 - (POS.zoom.w * Math.min(geo.grow, 1.2)) / 2 : POS.zoom.x - (POS.zoom.w * Math.min(geo.grow, 1.2)) / 2,
+            top: Math.max(6, Y(POS.zoom.y) - (POS.zoom.h * Math.min(geo.grow, 1.2)) / 2), width: POS.zoom.w * Math.min(geo.grow, 1.2),
+          }}>
             <img src={cardImageURL(inspected.name, "normal")} alt={inspected.name} crossOrigin="anonymous" />
           </div>
         )}
@@ -404,7 +418,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           if (!player) return null;
           const mine = player.playerId === viewer;
           return (
-            <div className="amenu glass" style={{ left: 520, top: mine ? 230 : 50, right: "auto" }} onClick={stop}>
+            <div className="amenu glass" style={{ left: 520, top: Y(mine ? 230 : 50), right: "auto" }} onClick={stop}>
               <h3 className="panel-title" style={{ margin: 0 }}>{mine ? "You" : player.displayName}</h3>
               <div className="small-print" style={{ color: "#efe4cf" }}>
                 Life {player.life} · Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}<br />
@@ -472,7 +486,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           </div>
         )}
         {browser !== undefined && steppedAside === envelope?.id && (
-          <button type="button" className="aplaque ember" style={{ left: 708, top: 290, width: 176, height: 34, zIndex: 700 }}
+          <button type="button" className="aplaque ember" style={{ left: 708, top: B(290), width: 176, height: 34, zIndex: 700 }}
             onClick={(event) => { event.stopPropagation(); setSteppedAside(undefined); }}>Back to the choice</button>
         )}
 
@@ -486,11 +500,11 @@ export function GameScreen({ table }: { table: GameTable }) {
               const name = table.state.seatNames[first] ?? snapshot?.players.find((p) => p.playerId === first)?.displayName;
               return name ? `${name} goes first` : "Your opening hand";
             })()}</h2>
-            <p>{cleanMessage(envelope.message)}</p>
-            <div className="tips"><span>Click a card to play it</span><span>Click a land for mana while paying</span><span>Hover a card to read it</span></div>
-            <button type="button" className="aplaque leather" style={{ left: 716, top: 340 }} disabled={pending}
+            <p style={{ top: Y(52) }}>{cleanMessage(envelope.message)}</p>
+            <div className="tips" style={{ top: B(352) }}><span>Click a card to play it</span><span>Click a land for mana while paying</span><span>Hover a card to read it</span></div>
+            <button type="button" className="aplaque leather" style={{ left: 716, top: B(340) }} disabled={pending}
               onClick={() => send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan")}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
-            <button type="button" className="aplaque ember want" style={{ left: 716, top: 388 }} disabled={pending}
+            <button type="button" className="aplaque ember want" style={{ left: 716, top: B(388) }} disabled={pending}
               onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
           </div>
         )}
@@ -568,7 +582,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           <div className="atoast">{toast ?? session?.state.errorMessage ?? table.state.status}</div>
         )}
         {session?.hasPending && !session.state.working && session.state.errorMessage && (
-          <button type="button" className="aplaque leather" style={{ left: 708, top: 250, width: 176, height: 34, zIndex: 700 }}
+          <button type="button" className="aplaque leather" style={{ left: 708, top: B(250), width: 176, height: 34, zIndex: 700 }}
             onClick={(event) => { event.stopPropagation(); session.retryPending().catch(fail); }}>Retry</button>
         )}
       </div>

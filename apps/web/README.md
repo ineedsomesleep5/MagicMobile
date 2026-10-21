@@ -115,14 +115,33 @@ held to the same goldens the apps use:
 
 When a parity case or golden changes for the apps, run `npm --prefix apps/web test` too.
 
-## The board
+## The board: Arena mode, horizontal
 
-`src/board/TableScene.ts` draws the landscape Walnut Tavern plate (956 x 440 points, sockets from
-`scripts/brand/tavern_layout.json`) through a pitched Three.js camera. Permanents lie on it as tiles in
-the tavern frames (`tileArt.ts`: Scryfall art crop, frame, name ribbon, power/toughness gems); tapped
-tiles tilt 12° and dim; glows follow the frame outline. Medallions, the pass disc, the mana rail and the
-stack sit in the plate's own sockets as HTML. The hand is plain printed cards (Scryfall images) with
-their mana cost capsule; the right column holds the decision, the stack, the log and chat.
+Solo games and relay tables play on the horizontal Arena board (`docs/ARENA_STYLE.md`), a port of the Duel Board
+Prototype's landscape table (artifact T5NcAkjCThiA5hfd9Twwwu) driven by real snapshots:
+
+- `src/ui/arena/layout.ts`: the prototype's positions on the 956 x 440 plate (the reference game's, scaled): the
+  opponent's lands and creatures at the top, yours below, the fanned hand along the bottom edge (raised when you can
+  play, tucked otherwise), libraries, graveyards and command zones at the corners, the stack card on the right.
+- `src/ui/arena/ArenaCard.tsx`: every card is one element that glides between hand, stack and battlefield.
+  Battlefield tiles are the tavern frames painted by `src/board/tileArt.ts`; highlights are a CSS drop-shadow that
+  traces the painted frame (the frame-outline glow): cyan playable, light cyan target, gold for combat choices,
+  orange while paying, red attacking. Tapped tiles tilt 12° and grey under a tap arrow.
+- `src/ui/GameScreen.tsx`: the corner plaques (Pass / Resolve / Attack / No Blocks / Cancel and a secondary), the
+  phase strip, the smart-pass pill, medallions, mana pool, menu and game log in glass, the Arena mulligan, D20 roll
+  and result screens. `src/ui/arena/Browsers.tsx`: full-table glass browsers for everything not answered by
+  clicking the table (questions, choices, modes, abilities, card picks, piles, numbers, splits, who starts).
+
+**Any window shape.** The board is 956 points wide and as tall as the window's shape allows, from 440 points
+(2.17:1) to 717 (4:3); it re-flows live on resize. Positions in the middle of the table stretch in proportion, your
+side stays anchored to the bottom edge and theirs to the top, and cards grow a little with the extra room
+(`geometry()` in `layout.ts`). Under it lies the same table rendered for the nearest shape, so it is never stretched by
+more than a few percent:
+
+| Plate | Shape | |
+|---|---|---|
+| `public/arena/table.jpg` | 956 x 440 (2.17:1) | the prototype's plate |
+| `table-195.jpg`, `table-169.jpg`, `table-1610.jpg`, `table-43.jpg` | 956 x 490, 538, 598, 717 | `scripts/render_arena_plates.sh` (Blender, the Arena renderer from `claude/arena-mode`, layouts in `scripts/arena_plates.json`) |
 
 ## Not done yet
 
@@ -130,4 +149,5 @@ their mana cost capsule; the right column holds the decision, the stack, the log
 - **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
   against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator
   builds have no engine) and play it to the end from desktop Chrome; pods are untested.
-- No sounds, card moments or animations beyond tiles gliding into place.
+- No sounds or card moments yet; cards glide between zones, but there are no target arcs, strikes or spell landings.
+- The vertical (portrait) Arena layout isn't ported; the web board is horizontal only.
