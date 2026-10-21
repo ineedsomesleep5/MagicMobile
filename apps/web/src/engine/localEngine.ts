@@ -11,6 +11,8 @@ export interface EngineManifest {
   engineBuild: string;
   upstream: string;
   catalogueHash: string;
+  /** Content-hashed file names (builds since the CE engine); older bundles use engine.js and engine.js.wasm. */
+  files?: { js: string; wasm: string };
   wasm: { bytes: number; sha256: string };
 }
 
@@ -107,7 +109,7 @@ export class LocalEngine {
   private loading?: Promise<WorkerTransport>;
   private transport?: WorkerTransport;
 
-  /** `base` serves engine.js, engine.js.wasm and manifest.json (the dev server maps it to packages/web-engine/build/web). */
+  /** `base` serves manifest.json and the files it names (the dev server maps it to packages/web-engine/build/web). */
   constructor(private readonly base = "/engine/") {}
 
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
@@ -171,7 +173,7 @@ export class LocalEngine {
         }
       };
       worker.postMessage({
-        type: "init", engineUrl: url("engine.js"), wasmUrl: url("engine.js.wasm"), wasmSha256: manifest.wasm.sha256,
+        type: "init", engineUrl: url(manifest.files?.js ?? "engine.js"), wasmUrl: url(manifest.files?.wasm ?? "engine.js.wasm"), wasmSha256: manifest.wasm.sha256,
         wasmBytes: manifest.wasm.bytes, channel,
       });
     });
@@ -195,3 +197,12 @@ export class LocalEngine {
     this.set({ stage: "idle" });
   }
 }
+
+/**
+ * One engine per page: it survives going back to the setup screen and serves every game. Kept on globalThis so a
+ * development hot reload of the screens reuses it instead of starting another 1 GB worker.
+ */
+export const localEngine = (): LocalEngine => {
+  const page = globalThis as { mmLocalEngine?: LocalEngine };
+  return (page.mmLocalEngine ??= new LocalEngine());
+};

@@ -8,6 +8,7 @@ import { EngineError, get, type J, jsonEqual, newUuid, str } from "../core/json"
 import { OnDeviceMessageLog } from "../core/messageLog";
 import type { GameCommand, GameSnapshot, LegalAction } from "../core/models";
 import { OnDevicePromptAdapter } from "../core/promptAdapter";
+import { situation, SMART_PASS_ACTION_PREFIX, type SmartPassSettings, stepFromEngine, passPrompt } from "../core/smartPass";
 import { OnDeviceSnapshotAdapter } from "../core/snapshotAdapter";
 import { HostRetryPolicy } from "./remoteEngine";
 
@@ -77,6 +78,10 @@ export class GuestSession {
   private unchangedPolls = 0;
   /** Asked after every applied snapshot: an automatic answer the table wants sent (the D20 winner). */
   autoCommand?: (snapshot: GameSnapshot) => GameCommand | undefined;
+  /** Arena-style smart pass (OnDeviceSmartPass); undefined leaves every priority to the player. */
+  smartPass?: SmartPassSettings;
+  private smartPassing = false;
+  private smartPassedPromptID?: string;
 
   constructor(transport: EngineTransport, readonly matchID: string, readonly seatID: string, private readonly onChange: () => void,
     private readonly schedule: "relay" | "local" = "relay") {
@@ -181,6 +186,7 @@ export class GuestSession {
           pendingActionID: this.pending ? this.state.pendingActionID : undefined,
         });
         this.followUp(next, snapshot);
+        this.scheduleSmartPass();
       }
     } finally {
       this.refreshing = false;
@@ -212,6 +218,31 @@ export class GuestSession {
       const command = this.autoCommand?.(snapshot);
       if (command) void this.submit(command, "Starting player", "auto-starting-player").catch(() => { /* retried next poll */ });
     }
+  }
+
+  /**
+   * Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for (OnDeviceSession
+   * .scheduleSmartPass): the same pass a tap sends, once per prompt; a failure is left to the player, never retried.
+   */
+  private scheduleSmartPass() {
+    const settings = this.smartPass;
+    const poll = this.poll;
+    const snapshot = this.state.snapshot;
+    if (!settings || !poll || !snapshot?.viewerPlayerId || this.smartPassing || this.stopped || this.pending || this.chosenAbility ||
+      this.state.working || this.state.pendingActionID !== undefined) return;
+    const value = situation(poll, true);
+    const prompt = value && passPrompt(value, settings);
+    if (!value || !prompt || prompt.id === this.smartPassedPromptID) return;
+    this.smartPassedPromptID = prompt.id;
+    const label = snapshot.xmage?.stack[0]?.name ?? stepFromEngine(value.step)?.title ?? "Priority";
+    this.log.noteAutoPass(label, prompt.id);
+    this.smartPassing = true;
+    this.submit({
+      type: "pass_priority", gameId: this.matchID, playerId: snapshot.viewerPlayerId, promptId: prompt.id, messageId: prompt.revision,
+      expectedBridgeRevision: snapshot.bridgeRevision,
+    }, "Pass priority", SMART_PASS_ACTION_PREFIX + prompt.id)
+      .catch(() => { /* the player passes by hand */ })
+      .finally(() => { this.smartPassing = false; });
   }
 
   /** A legal action the board offered. */

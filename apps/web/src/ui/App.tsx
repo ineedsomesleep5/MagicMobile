@@ -126,7 +126,7 @@ function JoinScreen({ table, decks, resolver, name, setName, deckID, setDeckID, 
           </>
         )}
       </form>
-      {window.innerWidth < 900 && <div className="toast narrow-note">MagicMobile on the web is built for a desktop browser window.</div>}
+      {window.innerWidth < 760 && <div className="toast narrow-note">MagicMobile on the web is built for a desktop browser window.</div>}
     </div>
   );
 }

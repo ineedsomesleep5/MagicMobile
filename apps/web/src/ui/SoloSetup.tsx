@@ -5,16 +5,12 @@
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { DeckList } from "../core/deckResolver";
-import { LocalEngine } from "../engine/localEngine";
+import { type LocalEngine, localEngine } from "../engine/localEngine";
 import { SoloTable, type SoloSetup, type StartingPlayerMode } from "../table/soloTable";
 import type { Loaded } from "./App";
 import { cardImageURL } from "./cardArt";
 import { GameScreen } from "./GameScreen";
 import { storage } from "./storage";
-
-/** One engine per page: it survives going back to the setup screen and serves every game. */
-let sharedEngine: LocalEngine | undefined;
-const localEngine = () => (sharedEngine ??= new LocalEngine());
 
 const useEngine = (engine: LocalEngine) => {
   useSyncExternalStore((listener) => engine.subscribe(listener), () => engine.version);
@@ -66,6 +62,7 @@ function SetupScreen({ loaded, engine, onStart, onJoin }: {
   // The phones' default skill is 2.
   const [aiSkill, setAISkill] = useState(() => savedNumber("mm.web.solo.aiSkill", 2, 1, 10));
   const [starting, setStarting] = useState<StartingPlayerMode>(() => (storage.get("mm.web.solo.starting") === "choose" ? "choose" : "roll"));
+  const [name, setName] = useState(() => storage.get("mm.web.name") ?? "");
   const [error, setError] = useState<string>();
   const state = useEngine(engine);
 
@@ -85,8 +82,8 @@ function SetupScreen({ loaded, engine, onStart, onJoin }: {
       storage.set("mm.web.solo.aiDeck", aiDeckID);
       storage.set("mm.web.solo.aiSkill", String(aiSkill));
       storage.set("mm.web.solo.starting", starting);
-      const name = storage.get("mm.web.name")?.trim() || "You";
-      onStart({ name, deck: loaded.resolver.resolve(deck), aiDeck: loaded.resolver.resolve(aiDeck), aiSkill, startingPlayerMode: starting });
+      storage.set("mm.web.name", name.trim());
+      onStart({ name: name.trim() || "Player", deck: loaded.resolver.resolve(deck), aiDeck: loaded.resolver.resolve(aiDeck), aiSkill, startingPlayerMode: starting });
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     }
@@ -114,6 +111,10 @@ function SetupScreen({ loaded, engine, onStart, onJoin }: {
         </section>
 
         <div className="setup-options">
+          <label className="option">
+            <span className="option-head"><span className="label">Your name</span></span>
+            <input className="slot" value={name} maxLength={40} autoComplete="nickname" placeholder="Player" onChange={(e) => setName(e.target.value)} />
+          </label>
           <div className="option">
             <div className="option-head">
               <span className="label">AI skill: {aiSkill}</span>
@@ -141,7 +142,7 @@ function SetupScreen({ loaded, engine, onStart, onJoin }: {
         {error && <div className="error">{error}</div>}
         <button type="button" className="plaque primary wide" disabled={!ready} onClick={start}>{ready ? "Start the game" : startLabel(state.stage, state.loaded, state.total)}</button>
       </div>
-      {window.innerWidth < 900 && <div className="toast narrow-note">MagicMobile on the web is built for a desktop browser window.</div>}
+      {window.innerWidth < 760 && <div className="toast narrow-note">MagicMobile on the web is built for a desktop browser window.</div>}
     </div>
   );
 }

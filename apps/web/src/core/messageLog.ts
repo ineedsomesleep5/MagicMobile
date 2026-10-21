@@ -8,6 +8,9 @@ import type { GameLogEntry } from "./models";
 
 const retainedMessages = 64;
 const retainedBytes = 1024 * 1024;
+const AUTO_PASS_PREFIX = "local:auto-pass:";
+/** The latest six labels of a run. */
+const autoPassMessage = (labels: string[]) => "Auto-passed: " + labels.slice(-6).join(" · ");
 
 export class OnDeviceMessageLog {
   private matchID?: string;
@@ -15,6 +18,28 @@ export class OnDeviceMessageLog {
   private processedThrough = -1;
   entries: GameLogEntry[] = [];
   private messageBytes = 0;
+  /** The steps or stack items in the current run of automatic passes (one log line per run). */
+  private autoPassRun: string[] = [];
+
+  /**
+   * A quiet local line for a pass smart pass made for the player (OnDeviceMessageLog.noteAutoPass), so the game never
+   * seems to move on without them. A run of passes shares one line ("Auto-passed: Upkeep · Draw · Main 1").
+   */
+  noteAutoPass(label: string, id: string): void {
+    const next = [...this.entries];
+    const last = next.at(-1);
+    if (last && last.id.startsWith(AUTO_PASS_PREFIX)) {
+      if (this.autoPassRun.at(-1) !== label) this.autoPassRun = [...this.autoPassRun, label];
+      this.messageBytes -= utf8Length(last.message);
+      next[next.length - 1] = { id: last.id, message: autoPassMessage(this.autoPassRun) };
+    } else {
+      this.autoPassRun = [label];
+      next.push({ id: AUTO_PASS_PREFIX + id, message: autoPassMessage(this.autoPassRun) });
+    }
+    this.messageBytes += utf8Length(next.at(-1)!.message);
+    while (next.length > retainedMessages) this.messageBytes -= utf8Length(next.shift()!.message);
+    this.entries = next;
+  }
 
   /** Validate the whole batch before changing state. Older polls never duplicate notices. */
   ingest(poll: MatchPoll): void {

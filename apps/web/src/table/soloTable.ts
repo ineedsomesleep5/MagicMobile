@@ -7,6 +7,7 @@
 import { EngineClient } from "../core/engineClient";
 import { EngineError, get, type J, type JObject, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
+import { defaultSmartPass } from "../core/smartPass";
 import { OnDeviceStartingPlayerChoice, OnDeviceStartingRoll, OnDeviceStartingRollProgress } from "../core/startingRoll";
 import { TurnClockBoard } from "../core/turnClock";
 import type { LocalEngine, WorkerTransport } from "../engine/localEngine";
@@ -99,6 +100,7 @@ export class SoloTable implements GameTable {
       if (this.left) { void this.release(matchID, false); return; }
       const session = new GuestSession(transport.request, matchID, SOLO_SEAT, () => this.sessionChanged(), "local");
       session.autoCommand = (snapshot) => this.startingCommand(snapshot);
+      session.smartPass = defaultSmartPass;
       this.session = session;
       session.start();
       this.set({ stage: "playing", status: "Playing the XMage AI on this computer." });

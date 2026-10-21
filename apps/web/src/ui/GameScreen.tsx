@@ -116,7 +116,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const seatOf = (player: PlayerGameState) => Object.entries(table.state.seatNames).find(([, n]) => n === player.displayName)?.[0];
   const now = performance.now() / 1000;
   const rope = table.state.turnClock.rope(table.state.localSeatID, now);
-  const waitingFor = snapshot ? (() => {
+  const waitingFor = snapshot && !isCompleted(snapshot) ? (() => {
     const thinking = thinkingPlayerID(snapshot);
     if (thinking) return snapshot.players.find((p) => p.playerId === thinking)?.displayName;
     const priority = snapshot.priorityPlayerId;
