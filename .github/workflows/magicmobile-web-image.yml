@@ -15,8 +15,8 @@ on:
       builder_heap:
         description: 'native-image builder heap'
         type: choice
-        options: ['12g', '13g', '14g']
-        default: '14g'
+        options: ['14g', '24g']
+        default: '24g'
 permissions:
   contents: read
 concurrency:
@@ -26,7 +26,7 @@ jobs:
   web-image:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[web-image]')
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 345
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,22 +87,24 @@ jobs:
       # out methods within 12 GB at -O2 and -Ob alike, then ran out building the Wasm module (stage 8/8). This run gives
       # the builder 14 GB backed by swap on /mnt (the runner has about 16 GB of RAM), drops the per-instruction comments
       # Web Image keeps for its .wat text (-H:WasmComments=NONE) and skips the Closure pass over the small JS wrapper.
+      # Run 39511250420 then spent 43 min in WasmGCHeapWriter at the 12.7 GB usable-heap limit (swap unused) until the
+      # watchdog stopped it. Now: a 24 GB heap that spills into 16 GB of swap, watchdog off, up to 4.5 h.
       - name: Add swap on /mnt
         run: |
           set -euo pipefail
-          sudo fallocate -l 12G /mnt/web-image.swap
+          sudo fallocate -l 16G /mnt/web-image.swap
           sudo chmod 600 /mnt/web-image.swap
           sudo mkswap /mnt/web-image.swap
           sudo swapon /mnt/web-image.swap
           free -g
       - name: Web Image build (native-image --tool:svm-wasm, -O2)
-        timeout-minutes: 150
+        timeout-minutes: 270
         env:
-          MM_WEB_HEAP: ${{ inputs.builder_heap || '14g' }}
+          MM_WEB_HEAP: ${{ inputs.builder_heap || '24g' }}
           MM_WEB_BUILDER_THREADS: '2'
           MM_WEB_OPT: '2'
           MM_WEB_EXTRA_OPTIONS: >-
-            -H:WasmComments=NONE -H:-ClosureCompiler
+            -H:WasmComments=NONE -H:-ClosureCompiler -H:DeadlockWatchdogInterval=0 -H:+PrintImageHeapPartitionSizes
             -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
             -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M
         run: |
