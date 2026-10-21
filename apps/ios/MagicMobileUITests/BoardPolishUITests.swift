@@ -688,7 +688,8 @@ final class BoardPolishUITests: XCTestCase {
         application = launch("mana-payment-prompt", landscape: false)
         let forest = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-your-lands-forest")).firstMatch
         XCTAssertTrue(forest.waitForExistence(timeout: 10), "A Forest in your land row")
-        forest.tap()
+        // A real touch at its middle (XCUITest's hittable check misreads the table's lean, as on the Tavern board).
+        forest.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(captured(application, "captured"), "A land under the hand's touch area still taps for mana")
 
         // Your medallion opens your player card; the command zone opens as a browser and casts your commander.
