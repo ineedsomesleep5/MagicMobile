@@ -138,4 +138,25 @@ final class ComboLoopTests: XCTestCase {
         XCTAssertFalse(ComboRepeat.times(20).watchable)
         XCTAssertFalse(ComboRepeat.untilWin.watchable)
     }
+
+    func testWinForecastNeedsASteadyDrainAndNoAnswer() {
+        typealias S = ComboWinForecast.Standing
+        // Round starts at 20, 18, 16: the third round takes them to 14, then 7 more rounds.
+        let drain = [["ai": S(life: 20, poison: 0)], ["ai": S(life: 18, poison: 0)], ["ai": S(life: 16, poison: 0)]]
+        let forecast = ComboWinForecast.forecast(starts: drain, opponentsCanRespond: false)
+        XCTAssertEqual(forecast?.rounds, 7)
+        XCTAssertEqual(forecast?.canFinish, true)
+        XCTAssertEqual(ComboWinForecast.forecast(starts: drain, opponentsCanRespond: true)?.canFinish,
+                       false, "an opponent with cards and open mana could answer")
+        // Poison 1, 2, 3: the third round makes 4, then 6 more.
+        let poison = [["ai": S(life: 20, poison: 1)], ["ai": S(life: 20, poison: 2)], ["ai": S(life: 20, poison: 3)]]
+        XCTAssertEqual(ComboWinForecast.forecast(starts: poison, opponentsCanRespond: false)?.rounds, 6)
+        let lastRound = [["ai": S(life: 6, poison: 0)], ["ai": S(life: 4, poison: 0)], ["ai": S(life: 2, poison: 0)]]
+        XCTAssertEqual(ComboWinForecast.forecast(starts: lastRound, opponentsCanRespond: false)?.rounds, 0, "the round under way wins")
+        let uneven = [["ai": S(life: 20, poison: 0)], ["ai": S(life: 18, poison: 0)], ["ai": S(life: 17, poison: 0)]]
+        XCTAssertNil(ComboWinForecast.forecast(starts: uneven, opponentsCanRespond: false))
+        XCTAssertNil(ComboWinForecast.forecast(starts: Array(drain.prefix(2)), opponentsCanRespond: false), "two rounds are not a pattern yet")
+        let slow = [["ai": S(life: 1000, poison: 0)], ["ai": S(life: 999, poison: 0)], ["ai": S(life: 998, poison: 0)]]
+        XCTAssertNil(ComboWinForecast.forecast(starts: slow, opponentsCanRespond: false, cap: 200))
+    }
 }

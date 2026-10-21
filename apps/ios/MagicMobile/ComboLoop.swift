@@ -395,6 +395,63 @@ enum ComboLoop {
 }
 
 /// Why repeating a loop stopped.
+/// Whether repeating a round ends the game, read from the rounds the player made: every opponent lost the same life
+/// (or got the same poison) each round, so the rounds still needed can be counted; and whether an opponent can visibly
+/// answer (cards in hand and an untapped land). A hidden instant can still stop the loop: the rules check every step.
+struct ComboWinForecast: Equatable, Sendable {
+    /// Life and poison of one opponent at the start of a round.
+    struct Standing: Equatable, Sendable {
+        var life: Int
+        var poison: Int
+    }
+
+    /// Rounds until every opponent has lost.
+    let rounds: Int
+    /// An opponent holds cards and has an untapped land.
+    let opponentsCanRespond: Bool
+
+    var canFinish: Bool { !opponentsCanRespond }
+
+    /// `starts`: each opponent's standing at the start of the last rounds, oldest first (at least three). Only round
+    /// starts count: the latest round's drain can still be waiting on the stack (Blood Artist, Impact Tremors) when the
+    /// loop is offered. `rounds` is what's still needed once that latest round has finished.
+    static func forecast(starts: [[String: Standing]], opponentsCanRespond: Bool,
+                         cap: Int = ComboLoop.maxRepeats) -> ComboWinForecast? {
+        guard starts.count >= 3, let last = starts.last, !last.isEmpty else { return nil }
+        var needed = 0
+        for (player, standing) in last {
+            let history = starts.compactMap { $0[player] }
+            guard history.count == starts.count else { return nil }
+            let lifeLoss = zip(history, history.dropFirst()).map { $0.life - $1.life }
+            let poisonGain = zip(history, history.dropFirst()).map { $1.poison - $0.poison }
+            let rounds: Int
+            if let loss = lifeLoss.first, loss > 0, lifeLoss.allSatisfy({ $0 == loss }) {
+                rounds = max(0, (standing.life + loss - 1) / loss - 1)
+            } else if let gain = poisonGain.first, gain > 0, poisonGain.allSatisfy({ $0 == gain }) {
+                rounds = max(0, (10 - standing.poison + gain - 1) / gain - 1)
+            } else {
+                return nil
+            }
+            needed = max(needed, rounds)
+        }
+        guard needed <= cap else { return nil }
+        return ComboWinForecast(rounds: needed, opponentsCanRespond: opponentsCanRespond)
+    }
+
+    /// Each opponent's life and poison in a snapshot.
+    static func standings(_ snapshot: GameSnapshot) -> [String: Standing] {
+        Dictionary(uniqueKeysWithValues: snapshot.players.filter { !snapshot.isViewer($0.playerId) && !$0.isOut }
+            .map { ($0.playerId, Standing(life: $0.life, poison: $0.poison)) })
+    }
+
+    /// An opponent holds cards and has an untapped land: they could answer.
+    static func opponentsCanRespond(_ snapshot: GameSnapshot) -> Bool {
+        snapshot.players.filter { !snapshot.isViewer($0.playerId) && !$0.isOut }.contains { player in
+            player.zones.visibleHandCount > 0 && player.zones.battlefield.contains { $0.card.isLand && $0.tapped != true }
+        }
+    }
+}
+
 enum ComboLoopStop: Equatable, Sendable {
     case finished
     case gameOver
@@ -402,6 +459,8 @@ enum ComboLoopStop: Equatable, Sendable {
     case opponentResponded
     case nothingChanged
     case reachedLimit
+    /// "Until they lose" ran the rounds its forecast needed, and a few more, without ending the game.
+    case didNotFinish(Int)
     case stoppedByPlayer
     case failed(String)
 
@@ -413,6 +472,7 @@ enum ComboLoopStop: Equatable, Sendable {
         case .opponentResponded: return String(localized: "An opponent responded, so it's your turn to choose.")
         case .nothingChanged: return String(localized: "The loop stopped changing the game.")
         case .reachedLimit: return String(localized: "Stopped after \(ComboLoop.maxRepeats) rounds.")
+        case .didNotFinish(let rounds): return String(localized: "Stopped after \(rounds) rounds: the loop didn't end the game.")
         case .stoppedByPlayer: return String(localized: "Stopped.")
         case .failed(let reason): return reason
         }

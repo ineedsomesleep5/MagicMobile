@@ -520,14 +520,17 @@ struct ArenaBattlefieldCard: View {
             shape.strokeBorder(.black.opacity(0.85), lineWidth: 1)
         }
         .frame(width: width, height: height)
-        .overlay(alignment: .bottomTrailing) {
-            if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
-                powerToughnessBox(power, toughness)
-                    .offset(x: width * 0.03, y: height * 0.1)
-            } else if let shield = shieldCounter {
-                counterShield(shield.value, battle: shield.battle)
-                    .offset(x: width * 0.03, y: height * 0.12)
-            }
+    }
+
+    /// The plain card's power/toughness box, or loyalty or defense shield, hanging off its corner. Drawn after the
+    /// playable or target outline so the line never crosses it.
+    @ViewBuilder private var plainStats: some View {
+        if card.showsPowerToughness, let power = card.displayPower, let toughness = card.displayToughness {
+            powerToughnessBox(power, toughness)
+                .offset(x: width * 0.03, y: height * 0.1)
+        } else if let shield = shieldCounter {
+            counterShield(shield.value, battle: shield.battle)
+                .offset(x: width * 0.03, y: height * 0.12)
         }
     }
 
@@ -937,6 +940,7 @@ struct ArenaBattlefieldCard: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .bottomTrailing) { if plainTile { plainStats } }
         .saturation(showsTapped ? (arena ? 0.25 : 0.15) : 1)
         .brightness(showsTapped ? (arena ? -0.32 : -0.16) : 0)
         .background {

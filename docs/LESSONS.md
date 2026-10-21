@@ -437,6 +437,17 @@ contradicting one.
   iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
   "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
   simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.
+- 2026-10-20 (Claude, Arena panels): the prompt-detail sheet opens by itself for every ability, order, amount and
+  search question (`PortraitInteractionPolicy.detailChoiceKey`, read in six places in NativeGameView). A board that answers
+  one of those in its own view has to filter the key (`boardDetailChoiceKey`), or the sheet covers its view. Showing a
+  sheet's view in an overlay instead (`boardSheet`) also breaks its close button: `dismiss` there acts on the nearest
+  presentation, which can be the screen holding the board. Panels in an overlay close with `boardPanelClose`.
+- 2026-10-20 (Claude, Arena browsers): a screen that takes over a prompt must use the same gate as the pop-up it
+  replaces. `arenaQuestion` first checked only "the prompt has answers", so a mana payment counted as a question and
+  hid the corner (Auto Pay, the phase strip); the Arena UI test caught it. Gate such screens with
+  `CompactPromptPopup.shouldShow`, the payment checks and the other browsers' prompts. Also, XMage asks a trigger's
+  targets as soon as that trigger goes on the stack, between its trigger-order prompts: a planned order must survive
+  other questions (`arenaTriggerStep` keeps the plan until your next priority) and never answer one prompt twice.
 - 2026-10-20 (Claude, Arena phase strip): on iOS a small custom `Shape` that returns `Path(roundedRect:cornerRadius:)`
   fills at the shape's whole frame size, starting from the rectangle's corner, while its stroke draws correctly: each
   card icon in the phase strip had a pale or dark block beside it. The same code renders fine through `ImageRenderer`
