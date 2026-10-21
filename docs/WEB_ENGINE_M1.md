@@ -205,8 +205,10 @@ another session's simulator running, finished 10 of 10 as well (AI median 1.09 s
 - **Skips inputs it has already built.** A one-minute `plan` job hashes git's tree ids of those paths into a 16-hex
   key and looks for an unexpired `web-engine-bundle-<key>` artifact; if there is one, nothing rebuilds (dispatch with
   `force` to rebuild). This matters because Web Image builds are not byte-for-byte reproducible: an unchanged engine
-  rebuilt would get new file names and every browser would download 45 MB again. (Re-running a run rebuilds: GitHub
-  deletes an earlier attempt's artifacts.)
+  rebuilt would get new file names and every browser would download 45 MB again. Checked: run
+  [39647712333](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39647712333), a commit with the final
+  run's input trees on another parent (as a merge to `main` would be), stopped after the one-minute plan job.
+  (Re-running a run rebuilds: GitHub deletes an earlier attempt's artifacts.)
 - **Keeps working when GraalVM moves.** `setup-graalvm` with `version: '25.4'` takes Oracle's latest 25.4 archive.
   If its builder classes no longer match `builder-patch/expected.sha256`, the build uses the stock builder with M1's
   settings (24 GB over 16 GB of swap, ParallelGC) and posts a warning; `builder-patch/rebase.sh <commit>` moves the
