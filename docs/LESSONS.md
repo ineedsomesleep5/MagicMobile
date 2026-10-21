@@ -154,7 +154,8 @@ contradicting one.
   between identical builds, so content-hashed names change on every rebuild: rebuild only for changed inputs. To
   compile copies of builder classes, use the class path of every jar in `lib/svm`, `--add-exports` for every package
   of `jdk.internal.vm.ci` (also to `jdk.graal.compiler`) and `jdk.graal.compiler`, and diff `javap -c` against the
-  shipped class first. Where: `builder-patch/build_patch.sh`, `wasm_as_deferred.sh`, `builder_watch.sh`.
+  shipped class first. Re-running a workflow run deletes its earlier attempt's artifacts, so a re-run of the web
+  build always rebuilds. Where: `builder-patch/build_patch.sh`, `wasm_as_deferred.sh`, `builder_watch.sh`.
 - 2026-10-21 (Claude, web engine M1): the full engine's Web Image build fails in three places that the phone builds
   never hit.
   - **Compiling** ran out of a 10 GB builder heap with 4 threads. Two threads fit.

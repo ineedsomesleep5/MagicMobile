@@ -149,8 +149,9 @@ and a probe image built with the patch matches the JVM's output.
 
 ### The runs
 
-All on `ubuntu-24.04` (4 cores, 15.6 GiB). Heap figures are the builder's peak resident memory; "live" is the heap
-left after full or mixed collections in the image-writing stage.
+All on `ubuntu-24.04` (4 cores, 15.6 GiB, about 3 GB of swap of its own). "Heap" is the builder's `-Xmx`; "live" is
+the heap left after full or mixed collections while the image is written; "peak memory" is the builder's peak
+resident memory and the runner's RAM in use.
 
 | Run | Builder | Heap, swap | native-image | Live peak | Peak memory | Wasm raw / gzip -9 | Outcome |
 |---|---|---|---|---|---|---|---|
@@ -158,16 +159,17 @@ left after full or mixed collections in the image-writing stage.
 | [39621928534](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39621928534) B | patch: comments, dispatch | 24 GB over 16 GB swap, ParallelGC | 12m50s | ≤ 12.0 GB | 14.7 GiB RSS, 12.2 GB swap | 136.9 / 43.3 MB | built; 10 of 10 games in Chrome |
 | [39626468418](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626468418) C | full patch, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 9m47s | (G1 not pressed) | 14.8 GiB RSS; `wasm-as` 6.3 GB alone | 136.9 / 43.1 MB | built |
 | [39626530141](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626530141) **D** | full patch, deferred `wasm-as`, G1 | **12 GB, no swap** | 10m48s | ~9 GB | **13.2 GiB RSS**, 14.5 of 16 GB in use, 0 swap | 136.7 / 43.3 MB | **built; the target configuration** |
-| [39628671876](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628671876) F | stock, deferred `wasm-as`, G1 | 13 GB, no swap | — | > 13 GB | 15.5 of 16 GB in use | — | `OutOfMemoryError: Java heap space` writing the image |
 | [39628668397](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628668397) E | stock, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 21m55s | ~12.3–12.9 GB | 14.7 GiB RSS, 12.7 GB swap; `wasm-as` 7.1 GB alone | 174.4 / 45.1 MB | built; GC 20% of the time |
-| [39633234887](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39633234887) H | full patch, deferred `wasm-as`, G1 | 11 GB, no swap | 10m48s | 6.3 GB after compiling, ~8.4–9.3 GB writing | 12.3 GiB RSS, 13.6 of 16 GB in use, 0 swap | — | built; GC 5.8%, histograms |
+| [39628671876](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628671876) F | stock, deferred `wasm-as`, G1 | 13 GB, no swap | — | > 13 GB | 15.5 of 16 GB in use | — | `OutOfMemoryError: Java heap space` writing the image |
 | [39628789815](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628789815) G | stock at `-Os`, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 15m49s | ~16.4 GB | 14.8 GiB RSS, 11.3 GB swap | 174.3 / 45.0 MB | built; `-Os` saves nothing here |
+| [39633234887](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39633234887) H | full patch, deferred `wasm-as`, G1 | 11 GB, no swap | 10m48s | 6.3 GB after compiling, ~8.4–9.3 GB writing | 12.3 GiB RSS, 13.6 of 16 GB in use, 0 swap | — | built; GC 5.8%, histograms |
+| [39635835998](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39635835998) **final** | the committed workflow and branch, with the phone regressions | 12 GB, no swap | 10m36s | — | 13.2 GiB RSS, 14.5 of 16 GB in use, 0 swap | 136.8 / 43.2 MB | built; phone regressions passed; 39 min in all |
 
 With the patch the live heap is 6.3 GB after compiling (10.0 GB stock: the released graphs) and about 8.4–9.3 GB at
 its peak, while the image is written. The workflow uses 12 GB, leaving about 3 GB of heap for a growing card pool;
 11 GB (run H) also works and leaves 2.4 GB of RAM free instead of 1.5. GC took 29 s of D's build (4.4%), against
-167 s for A. The Web Image step took 12 minutes in D and 19 in A (22 in
-M1); the whole job about 34 minutes, of which the JVM games that feed the tracing agent take 10–17.
+167 s for A. The Web Image step took 12 minutes in D and 19 in A (22 in M1); the whole job about 34 minutes, of which
+the JVM games that feed the tracing agent take 10–17.
 
 ### The fitted engine in Chrome
 
@@ -198,11 +200,13 @@ another session's simulator running, finished 10 of 10 as well (AI median 1.09 s
 
 - **Starts on engine changes on `main`**: pushes touching `packages/ondevice-engine/{engine,platform,native,scripts}`,
   `packages/ondevice-engine/upstream.lock.json` (so an XMage update), `packages/web-engine/` or the workflow. On
-  `claude/web-engine-*` branches it still needs `[web-image]` in the commit message; dispatch works anywhere.
+  `claude/web-engine-*` branches it still needs `[web-image]` in the commit message (with `[phone-regressions]` it also
+  runs `test_real_engine.sh`). Dispatch, with its options, works once the workflow is on `main`.
 - **Skips inputs it has already built.** A one-minute `plan` job hashes git's tree ids of those paths into a 16-hex
   key and looks for an unexpired `web-engine-bundle-<key>` artifact; if there is one, nothing rebuilds (dispatch with
   `force` to rebuild). This matters because Web Image builds are not byte-for-byte reproducible: an unchanged engine
-  rebuilt would get new file names and every browser would download 45 MB again.
+  rebuilt would get new file names and every browser would download 45 MB again. (Re-running a run rebuilds: GitHub
+  deletes an earlier attempt's artifacts.)
 - **Keeps working when GraalVM moves.** `setup-graalvm` with `version: '25.4'` takes Oracle's latest 25.4 archive.
   If its builder classes no longer match `builder-patch/expected.sha256`, the build uses the stock builder with M1's
   settings (24 GB over 16 GB of swap, ParallelGC) and posts a warning; `builder-patch/rebase.sh <commit>` moves the
@@ -217,8 +221,9 @@ another session's simulator running, finished 10 of 10 as well (AI median 1.09 s
 
 Web Image ships only in Oracle GraalVM, under the GraalVM Free Terms and Conditions (read 2026-10-21). Their licence
 grant covers use of "the unmodified Programs"; bundled source is for reference only unless other terms allow
-changes; and Native Image output counts as an unmodified Program only when the unmodified Program produced it. The patched classes are Oracle's own open-source code (GPLv2 with the Classpath Exception, from
-oracle/graal), compiled by us and put in place with `--patch-module`; the installed GraalVM is not changed on disk.
+changes; and Native Image output counts as an unmodified Program only when the unmodified Program produced it. The
+patched classes are Oracle's own open-source code (GPLv2 with the Classpath Exception, from oracle/graal), compiled
+by us and put in place with `--patch-module`; the installed GraalVM is not changed on disk.
 That may still count as running a modified Program, which would leave the output outside GFTC's terms. This is not
 legal advice, and nothing built this way has shipped. Options:
 
@@ -226,8 +231,9 @@ legal advice, and nothing built this way has shipped. Options:
 2. **Report the fixes upstream** (oracle/graal issues or pull requests: the retained graphs and unprinted comments are
    plain bugs; the dispatch arrays are a design choice) and use the stock builder over swap until a release has them.
    Posting needs Caleb's OK.
-3. **The stock builder over swap**: works today (M1, run A), about 40 minutes, with almost no headroom
-   (`MM_WEB_BUILDER_PATCH=0`, 24 GB, 16 GB of swap, ParallelGC; the workflow's fallback already).
+3. **The stock builder over swap**: works today (M1, run A), about 40 minutes, with almost no headroom (24 GB, 16 GB
+   of swap, ParallelGC: the workflow's fallback). Setting the repository variable `MM_WEB_BUILDER_PATCH` to `0`
+   (GitHub, Settings → Variables) switches the workflow to it without a code change.
 4. **A bigger machine for the stock builder**: a 64 GB Hetzner CCX43 (€0.4431/h) for one build, about €1.30–1.80.
 5. **Build GraalVM's open-source Web Image ourselves** (all GPL, so patchable): untested, and a large job.
 

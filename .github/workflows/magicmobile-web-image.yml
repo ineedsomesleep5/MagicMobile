@@ -150,9 +150,14 @@ jobs:
         env:
           HEAP_OVERRIDE: ${{ inputs.builder_heap }}
           SWAP_GB: ${{ inputs.swap_gb || '0' }}
+          # Repository variable: 0 builds with the stock builder (docs/WEB_ENGINE_M1.md, "The licence question").
+          USE_PATCH: ${{ vars.MM_WEB_BUILDER_PATCH || '1' }}
         run: |
           set -euo pipefail
-          if bash packages/web-engine/builder-patch/build_patch.sh --check; then
+          if [[ $USE_PATCH == 0 ]]; then
+            echo "Repository variable MM_WEB_BUILDER_PATCH=0: the stock builder over swap"
+            patch=0 heap=${HEAP_OVERRIDE:-24g} gc=parallel swap=16
+          elif bash packages/web-engine/builder-patch/build_patch.sh --check; then
             patch=1 heap=${HEAP_OVERRIDE:-12g} gc=g1 swap=$SWAP_GB
           else
             echo "::warning::The builder patch does not match this GraalVM: building with the stock builder over 16 GB of swap. Move the patch to it: packages/web-engine/builder-patch/rebase.sh (see build_patch.sh)."
