@@ -116,16 +116,23 @@ const pileUnits = (n: number) => 1 + (n - 1) * 0.11;
 
 interface Pile { cards: ZoneCard[]; units: number }
 
-/** Same-name cards with the same tapped state share a pile (BattlefieldRow's grouping), untapped piles first. */
+/**
+ * Same-name cards with the same tapped state share a pile (BattlefieldRow's grouping). Each name keeps its place in
+ * XMage's order, as on iOS, with its untapped pile before its tapped one: tapping a land never moves another under the
+ * pointer (sorting every untapped pile first put the next land where the tapped one had been).
+ */
 function pilesOf(cards: ZoneCard[]): Pile[] {
-  const piles: (Pile & { key: string })[] = [];
+  const piles: (Pile & { key: string; name: string; tapped: boolean })[] = [];
+  const place = new Map<string, number>();
   for (const card of cards) {
-    const key = card.card.name + (card.tapped ? "|tapped" : "");
+    if (!place.has(card.card.name)) place.set(card.card.name, place.size);
+    const tapped = card.tapped === true;
+    const key = card.card.name + (tapped ? "|tapped" : "");
     const pile = piles.find((p) => p.key === key);
-    if (pile) pile.cards.push(card); else piles.push({ key, cards: [card], units: 1 });
+    if (pile) pile.cards.push(card); else piles.push({ key, name: card.card.name, tapped, cards: [card], units: 1 });
   }
   for (const pile of piles) pile.units = pileUnits(pile.cards.length);
-  return piles.sort((a, b) => Number(a.key.endsWith("|tapped")) - Number(b.key.endsWith("|tapped")));
+  return piles.sort((a, b) => place.get(a.name)! - place.get(b.name)! || Number(a.tapped) - Number(b.tapped));
 }
 
 const sectionWidth = (piles: Pile[], card: number, spacing: number = ROW.spacing) =>

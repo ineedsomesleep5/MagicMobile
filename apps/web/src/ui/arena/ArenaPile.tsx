@@ -6,6 +6,7 @@
  */
 import { cardImageURL } from "../cardArt";
 import { LEAN, pileThickness } from "./layout";
+import { CardBack } from "./Symbols";
 
 export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover }: {
   x: number; y: number; size: { w: number; h: number }; count: number;
@@ -36,7 +37,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover
         })}
         {count > 0 && (
           <div className="ptop" style={{ transform: `translate(${(-thickness * 0.22).toFixed(2)}px, ${(-thickness).toFixed(2)}px)` }}>
-            {kind === "library" || !top ? <div className="back" /> : (
+            {kind === "library" || !top ? <CardBack /> : (
               <>
                 <img src={cardImageURL(top, "normal")} alt="" crossOrigin="anonymous" draggable={false} />
                 {kind === "exile" && <div className="veil" aria-hidden="true">✦</div>}

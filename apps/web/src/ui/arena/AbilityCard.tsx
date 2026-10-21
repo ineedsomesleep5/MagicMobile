@@ -6,6 +6,10 @@
 import type { ZoneCard } from "../../core/models";
 import { EngineDisplayText } from "../../core/displayText";
 import { cardImageURL } from "../cardArt";
+import { RulesText } from "./Symbols";
+
+/** XMage marks spells; everything else on the stack is an activated or triggered ability (ArenaStackCard.isAbility). */
+export const isStackAbility = (item: { objectType?: string }) => item.objectType !== undefined && item.objectType.toUpperCase() !== "SPELL";
 
 /** A card's frame colour: its one colour, gold for several, grey for none (lands take their basic types). */
 export function frameColor(card: ZoneCard | undefined): string {
@@ -47,7 +51,7 @@ export function AbilityCard({ source, name, kind = "Ability", text, width }: {
         <div className="ab-name">{source?.card.name ?? name ?? "Ability"}</div>
         <div className="ab-art">{art ? <img src={cardImageURL(art, "art_crop")} alt="" crossOrigin="anonymous" draggable={false} /> : <span>✦</span>}</div>
         <div className="ab-type">{kind}</div>
-        <div className="ab-text">{rules}</div>
+        <div className="ab-text"><RulesText text={rules} /></div>
       </div>
       {cost && <div className="ab-loyalty">{cost}</div>}
     </div>

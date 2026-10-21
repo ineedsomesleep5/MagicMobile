@@ -9,6 +9,7 @@ import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols } from "../cardArt";
 import { AbilityCard } from "./AbilityCard";
 import { LEAN, type Place } from "./layout";
+import { CardBack, ManaSymbol } from "./Symbols";
 
 export type CardView = "face" | "tile" | "back";
 
@@ -113,9 +114,8 @@ function Face({ name, cost, showCost }: { name: string; cost?: string; showCost:
           : <img src={cardImageURL(name, "normal")} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
       </div>
       {symbols.length > 0 && (
-        <div className="mcost">{symbols.map((symbol, index) => /^[WUBRGC]$/.test(symbol)
-          ? <span key={index} className="sym" style={{ backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} />
-          : <span key={index} className="sym" style={{ backgroundImage: "url(/tavern/mana-generic.webp)" }}>{symbol === "//" ? "" : symbol}</span>)}
+        <div className="mcost">{symbols.map((symbol, index) => symbol === "//"
+          ? <i key={index}>/</i> : <ManaSymbol key={index} symbol={symbol} />)}
         </div>
       )}
     </>
@@ -166,7 +166,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
           {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} />)}
           {view === "face" && (ability ? <AbilityCard source={ability.source} name={ability.name} text={ability.text} />
             : <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />)}
-          {view === "back" && <div className="back" />}
+          {view === "back" && <CardBack />}
         </div>
       </div>
     </div>

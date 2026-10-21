@@ -12,34 +12,19 @@ import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
 import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
-import { Browser, browserKind, type Send } from "./arena/Browsers";
+import { AmountPill, Browser, browserKind, cardNamed, type Inspect, type Send, StackBrowser, ZoneBrowser } from "./arena/Browsers";
 import {
   ARENA, BASE_GEOMETRY, battlefieldPlaces, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, stackPlace,
   STAGE,
 } from "./arena/layout";
-import { AbilityCard } from "./arena/AbilityCard";
+import { isStackAbility } from "./arena/AbilityCard";
 import { ArenaPile } from "./arena/ArenaPile";
+import { AVATAR } from "./arena/avatars";
+import { ManaSymbol, RulesText } from "./arena/Symbols";
 import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
 import { storage } from "./storage";
 
-const AVATAR = {
-  me: (
-    <svg viewBox="0 0 100 100" aria-hidden="true">
-      <defs><radialGradient id="avMe" cx=".5" cy=".75" r=".8"><stop offset="0" stopColor="#ffb36a" /><stop offset=".55" stopColor="#8a2a12" /><stop offset="1" stopColor="#2a0c06" /></radialGradient></defs>
-      <rect width="100" height="100" fill="url(#avMe)" /><path d="M50 18c-18 0-28 16-28 34v48h56V52c0-18-10-34-28-34z" fill="#1b0c06" />
-      <path d="M50 30c-9 0-15 10-15 21h30c0-11-6-21-15-21z" fill="#2c140a" /><circle cx="44" cy="50" r="2.6" fill="#ffb070" /><circle cx="56" cy="50" r="2.6" fill="#ffb070" />
-      <circle cx="50" cy="86" r="5" fill="#ff8a3d" opacity=".8" />
-    </svg>
-  ),
-  opp: (
-    <svg viewBox="0 0 100 100" aria-hidden="true">
-      <defs><radialGradient id="avOpp" cx=".5" cy=".65" r=".8"><stop offset="0" stopColor="#a8dcff" /><stop offset=".55" stopColor="#2a5a96" /><stop offset="1" stopColor="#0a1830" /></radialGradient></defs>
-      <rect width="100" height="100" fill="url(#avOpp)" /><path d="M24 100c2-18 12-26 26-26s24 8 26 26z" fill="#0b1b33" /><circle cx="50" cy="52" r="16" fill="#0b1b33" />
-      <path d="M33 38l6 10 11-12 11 12 6-10v12H33z" fill="#dba34c" /><circle cx="44" cy="53" r="2.2" fill="#c8eaff" /><circle cx="56" cy="53" r="2.2" fill="#c8eaff" />
-    </svg>
-  ),
-};
 const PHASE_ICONS: Record<string, React.ReactNode> = {
   dia: <svg viewBox="0 0 20 20"><path d="M10 3.5l6.5 6.5-6.5 6.5-6.5-6.5z" /></svg>,
   card: <svg viewBox="0 0 20 20"><rect x="5" y="2.5" width="10" height="15" rx="2" /></svg>,
@@ -51,9 +36,6 @@ const PHASE_ICONS: Record<string, React.ReactNode> = {
 const GEAR = <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.6 5.1-1.9-.3a7 7 0 0 1-.6 1.5l1.1 1.6-1.9 1.9-1.6-1.1c-.5.3-1 .5-1.5.6l-.3 1.9h-2.7l-.3-1.9a7 7 0 0 1-1.5-.6l-1.6 1.1-1.9-1.9 1.1-1.6c-.3-.5-.5-1-.6-1.5l-1.9-.3v-2.7l1.9-.3c.1-.5.3-1 .6-1.5L4.1 6.9 6 5l1.6 1.1c.5-.3 1-.5 1.5-.6l.3-1.9h2.7l.3 1.9c.5.1 1 .3 1.5.6L15.5 5l1.9 1.9-1.1 1.6c.3.5.5 1 .6 1.5l1.9.3z" /></svg>;
 const SCROLL = <svg viewBox="0 0 16 16"><path d="M4 2h8.5a1.5 1.5 0 0 1 0 3H12v8.5A1.5 1.5 0 0 1 10.5 15H3.5a1.5 1.5 0 0 1 0-3H4z" /></svg>;
 const HOURGLASS = <svg viewBox="0 0 24 24"><path d="M6 2h12v2c0 3-2.2 5.2-4.3 8 2.1 2.8 4.3 5 4.3 8v2H6v-2c0-3 2.2-5.2 4.3-8C8.2 9.2 6 7 6 4zm2 2c0 2 1.6 3.8 4 6.6C14.4 7.8 16 6 16 4z" /></svg>;
-
-/** XMage marks spells; everything else on the stack is an activated or triggered ability (ArenaStackCard.isAbility). */
-const isStackAbility = (item: { objectType?: string }) => item.objectType !== undefined && item.objectType.toUpperCase() !== "SPELL";
 
 /** Legal actions for one card, grouped by what a click on it would do. */
 const actionsFor = (snapshot: GameSnapshot, id: string) =>
@@ -103,7 +85,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   const [playerCard, setPlayerCard] = useState<string>();
   const [confirmConcede, setConfirmConcede] = useState(false);
   const [rollDismissed, setRollDismissed] = useState(false);
-  const [steppedAside, setSteppedAside] = useState<string>();
+  /** A card under the pointer in a browser (the table's own hover is `hovered`). */
+  const [browseZoom, setBrowseZoom] = useState<{ name: string; left: boolean }>();
   const [smart, setSmart] = useState(session?.smartPass?.enabled ?? false);
   const [stackOpen, setStackOpen] = useState(false);
   /** When each stack object first showed, so its landing plays once. */
@@ -151,9 +134,14 @@ export function GameScreen({ table }: { table: GameTable }) {
     return (id: string) => ids.has(id);
   }, [snapshot, me]);
   // With a D20 roll the table answers XMage's starting-player question itself, so that question never shows.
-  const rawBrowser = browserKind(envelope, onTable);
+  const rawBrowser = browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
   const browser = rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
-  const showBrowser = browser !== undefined && browser !== "mulligan" && steppedAside !== envelope?.id && !pending;
+  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending;
+  // A number takes the button corner (ArenaAmountPill), with the board in view.
+  const amountPill = browser === "amount" && !finished;
+  const inspect: Inspect = setBrowseZoom;
+  // A zoom from a browser goes when the browser does.
+  useEffect(() => setBrowseZoom(undefined), [envelope?.id, envelope?.messageId, zone, stackOpen]);
 
   /** A click on a card: answer a target or combat question with it, or offer its legal actions. */
   const clickCard = (id: string, at?: Place) => {
@@ -181,7 +169,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   // it; the prototype raised it whenever you could play (a touch screen's answer), which covered your lands.
   // A decision on the table (paying, choosing a permanent or player, combat) keeps the hand resting (ArenaHandPosture).
   const boardDecision = paying || combatSelect || (envelope !== undefined && targetIDs.size > 0 && !(me?.zones.hand ?? []).some((c) => targetIDs.has(c.instanceId)));
-  const handUp = mulligan || (handRaised && !boardDecision);
+  // A browser over the table keeps the hand resting under its veil.
+  const covered = showBrowser || zone !== undefined || stackOpen;
+  const handUp = mulligan || (handRaised && !boardDecision && !covered);
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
   const classFor = (card: ZoneCard, onBattlefield: boolean) => {
@@ -242,7 +232,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const myCreatures = me?.zones.battlefield ?? [];
   let primary: Plaque | undefined;
   let secondary: Plaque | undefined;
-  if (snapshot && !finished && envelope && !showBrowser && !mulligan) {
+  if (snapshot && !finished && envelope && !showBrowser && !mulligan && !amountPill) {
     const act = (action: LegalAction | undefined, style: Plaque["style"], label?: string, want = false): Plaque | undefined =>
       action && { label: label ?? EngineDisplayText.label(action.label), style, want, onClick: () => sendAction(action) };
     if (envelope.responseKind === "priority") {
@@ -365,6 +355,7 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   // The card under the pointer, large, away from the side it sits on (never for the hand, which pops up instead).
   const inspected = (() => {
+    if (browseZoom) return browseZoom;
     if (!hovered || !snapshot) return undefined;
     if (hovered.startsWith("zone:")) return { name: hovered.slice(5), left: false };
     if (handIDs.includes(hovered)) return undefined;
@@ -375,20 +366,21 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   const log = snapshot?.log ?? [];
   const pool = me?.manaPool;
-  const poolSymbols = pool ? (["W", "U", "B", "R", "G", "C"] as const).flatMap((s) => Array.from({ length: Math.min(pool[s], 6) }, () => s)) : [];
+  const poolSymbols = pool ? (["W", "U", "B", "R", "G", "C"] as const).map((s) => [s, pool[s]] as const).filter(([, n]) => n > 0) : [];
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
     <div className="arena" ref={wrapRef} onClick={() => { setGear(false); setPlayerCard(undefined); setMenu(undefined); }}
       onPointerMove={(event) => {
         // The hand rises while the pointer is over it: below the top of the fan as it stands, within its width.
-        if (mulligan || handIDs.length === 0) return;
+        if (mulligan || covered || handIDs.length === 0) return;
         const bounds = wrapRef.current!.getBoundingClientRect();
         const x = (event.clientX - bounds.left - geo.left) / geo.scale;
         const y = (event.clientY - bounds.top - geo.top) / geo.scale;
         const fan = [...handPlaces(handIDs, handRaised, undefined, geo, handRoom).values()];
         const top = Math.min(...fan.map((p) => p.y - (p.h * (p.s ?? 1)) / 2)) - 6;
-        const left = Math.min(...fan.map((p) => p.x - p.w / 2)) - 12;
+        // Never over your piles: a click on the graveyard raised the hand over it.
+        const left = Math.max(handRoom.left, Math.min(...fan.map((p) => p.x - p.w / 2)) - 12);
         const right = Math.max(...fan.map((p) => p.x + p.w / 2)) + 12;
         const over = y > top && x > left && x < right;
         if (over !== handRaised) setHandRaised(over);
@@ -406,14 +398,18 @@ export function GameScreen({ table }: { table: GameTable }) {
         </div>
         {opponents.map((o, i) => medallion(o, false, i))}
         {me && medallion(me, true, 0)}
-        {poolSymbols.map((symbol, i) => {
-          const choice = envelope?.manaChoices?.find((c) => c.manaType === symbol);
-          return (
-            <button key={`${symbol}-${i}`} type="button" className={`mana-orb ${choice && !pending ? "payable" : ""}`} disabled={!choice || pending}
-              style={{ left: ARENA.floatingMana.x + i * ARENA.floatingMana.dx, top: B(ARENA.floatingMana.y), backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} aria-label={`${symbol} mana in your pool`}
-              onClick={(event) => { event.stopPropagation(); if (choice) send({ type: "play_mana", manaType: choice.manaType }, choice.label); }} />
-          );
-        })}
+        {poolSymbols.length > 0 && (
+          <div className="afloat" style={{ left: ARENA.floatingMana.x - 14, top: B(ARENA.floatingMana.y) }} onClick={stop}>
+            {poolSymbols.map(([symbol, count]) => {
+              const choice = envelope?.manaChoices?.find((c) => c.manaType === symbol);
+              const body = <><ManaSymbol symbol={symbol} />{count > 1 && <b>{count}</b>}</>;
+              return choice ? (
+                <button key={symbol} type="button" className="fm" disabled={pending} aria-label={`Spend floating ${symbol} mana, ${count} available`}
+                  onClick={() => send({ type: "play_mana", manaType: choice.manaType }, choice.label)}>{body}</button>
+              ) : <span key={symbol} className="fm" aria-label={`${count} floating ${symbol} mana`}>{body}</span>;
+            })}
+          </div>
+        )}
         {stack.length > 0 && (() => {
           // A tab on the stack card's left edge opens the whole stack, with how many objects are on it.
           const top = stackPlace(0, geo);
@@ -448,7 +444,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: ARENA.menu.x - 14, top: T(ARENA.menu.y) - 14 }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
         </div>
 
-        {promptLine && <div className="aprompt" style={{ top: Y(ARENA.captionY) }}>{promptLine}</div>}
+        {promptLine && <div className="aprompt" style={{ top: Y(ARENA.captionY) }}><span><RulesText text={promptLine} /></span></div>}
         {thinkingName && <div className="aprompt" style={{ top: Y(ARENA.captionY), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
 
         {inspected && (
@@ -545,15 +541,21 @@ export function GameScreen({ table }: { table: GameTable }) {
           </div>
         )}
 
-        {showBrowser && snapshot && envelope && browser !== undefined && (
+        {showBrowser && snapshot && envelope && (
           <div onClick={stop}>
-            <Browser kind={browser} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction} pending={pending} onHide={() => setSteppedAside(envelope.id)} />
+            <Browser key={`${envelope.id}:${envelope.messageId}`} kind={browser} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction}
+              pending={pending} height={geo.height} inspect={inspect} />
           </div>
         )}
-        {browser !== undefined && steppedAside === envelope?.id && (
-          <button type="button" className="aplaque ember" style={{ left: 708, top: B(290), width: 176, height: 34, zIndex: 700 }}
-            onClick={(event) => { event.stopPropagation(); setSteppedAside(undefined); }}>Back to the choice</button>
-        )}
+        {amountPill && snapshot && envelope && (() => {
+          // The pill where the secondary plaque sits, Cancel under it where the primary does (the reference's corner).
+          const cancel = promptActions.some((a) => a.type !== "choose_amount" && a.type !== "play_x_mana");
+          return (
+            <AmountPill key={`${envelope.id}:${envelope.messageId}`} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction} pending={pending}
+              x={Math.min(STAGE.width - 142, Math.max(142, ARENA.primary.x + ARENA.primary.w / 2))}
+              y={B(ARENA.secondary.y + ARENA.secondary.h / 2 + (cancel ? 24 : 0))} />
+          );
+        })()}
 
         {mulligan && envelope?.confirmation && !showRoll && (
           <div className="amull" onClick={stop}>
@@ -576,41 +578,15 @@ export function GameScreen({ table }: { table: GameTable }) {
         )}
 
         {stackOpen && snapshot && (
-          <div className="aoverlay dim" onClick={(event) => { event.stopPropagation(); setStackOpen(false); }}>
-            <div className="abrowser">
-              <h2>The stack</h2>
-              <p className="instr">{stack.length === 0 ? "The stack is empty." : "Left to right, from what resolves next."}</p>
-              <div className="cards">
-                {stack.map((item, index) => {
-                  const ability = isStackAbility(item);
-                  const source = item.sourceCard ?? (item.sourceInstanceId ? battlefieldCard(item.sourceInstanceId) : undefined);
-                  const controller = item.controllerId === viewer ? "Yours" : `${snapshot.players.find((p) => p.playerId === item.controllerId)?.displayName ?? "Their"}’s`;
-                  const targets = (item.targetIds ?? []).map((id) => (id === viewer ? "you" : snapshot.players.find((p) => p.playerId === id)?.displayName ?? battlefieldCard(id)?.card.name)).filter(Boolean);
-                  return (
-                    <div key={item.id} className={`bitem ${index === 0 ? "next" : ""}`}>
-                      {ability ? <AbilityCard source={source} name={item.sourceName ?? item.name} text={item.rulesText ?? item.name} width={150} />
-                        : <img src={cardImageURL(item.sourceCard?.card.name ?? item.sourceName ?? item.name, "normal")} alt={item.name} crossOrigin="anonymous" style={{ width: 150, borderRadius: 8 }} />}
-                      <span className="who">{controller}</span>
-                      {targets.length > 0 && <span className="tgt">Targets {targets.join(", ")}</span>}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="answers"><button type="button" className="aplaque ember" onClick={() => setStackOpen(false)}>Done</button></div>
-            </div>
+          <div onClick={stop}>
+            <StackBrowser snapshot={snapshot} height={geo.height} inspect={inspect} close={() => setStackOpen(false)} />
           </div>
         )}
 
-        {zone && (
-          <div className="aoverlay dim" onClick={(event) => { event.stopPropagation(); setZone(undefined); }}>
-            <div className="abrowser">
-              <h2>{zone.title}</h2>
-              <p className="instr">{zone.cards.length === 0 ? "Nothing here yet." : `${zone.cards.length} card${zone.cards.length === 1 ? "" : "s"}, newest last.`}</p>
-              <div className="cards">{zone.cards.map((card) => (
-                <div key={card.instanceId} className="bcard"><img src={cardImageURL(card.card.name, "normal")} alt={card.card.name} crossOrigin="anonymous" /></div>
-              ))}</div>
-              <div className="answers"><button type="button" className="aplaque ember" onClick={() => setZone(undefined)}>Done</button></div>
-            </div>
+        {zone && snapshot && (
+          <div onClick={stop}>
+            <ZoneBrowser title={zone.title} cards={zone.cards} snapshot={snapshot} pending={pending} sendAction={sendAction} height={geo.height}
+              inspect={inspect} close={() => setZone(undefined)} />
           </div>
         )}
 

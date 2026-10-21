@@ -43,6 +43,18 @@ describe("arena geometry", () => {
     }
   });
 
+  it("keeps a land where it was when it taps, so the next click finds the next land", () => {
+    const geo = geometry(1440, 900);
+    const lands = (tapped: string[]) => battlefieldPlaces([
+      card("p", "Plains", "Basic Land — Plains", { tapped: tapped.includes("p") }),
+      card("f", "Forest", "Basic Land — Forest", { tapped: tapped.includes("f") }),
+    ], "me", undefined, geo);
+    const before = lands([]);
+    const after = lands(["p"]);
+    expect(after.get("p")!.x).toBeLessThan(after.get("f")!.x);
+    expect(after.get("f")!.x).toBeCloseTo(before.get("f")!.x, 0);
+  });
+
   it("keeps the hand on the bottom edge however tall the board is", () => {
     for (const [w, h] of [[2560, 1080], [1440, 900], [1024, 768]]) {
       const geo = geometry(w, h);
