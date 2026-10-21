@@ -151,8 +151,10 @@ jobs:
           SWAP_GB: ${{ inputs.swap_gb || '0' }}
         run: |
           set -euo pipefail
-          if bash packages/web-engine/builder-patch/build_patch.sh --check; then
+          if false; then  # experiment: the stock builder at -Os, G1, assembly after the builder exits
             patch=1 heap=${HEAP_OVERRIDE:-12g} gc=g1 swap=$SWAP_GB
+          elif true; then
+            patch=0 heap=24g gc=g1 swap=16
           else
             echo "::warning::The builder patch does not match this GraalVM: building with the stock builder over 16 GB of swap. Re-apply the patch (packages/web-engine/builder-patch/build_patch.sh)."
             patch=0 heap=${HEAP_OVERRIDE:-24g} gc=parallel swap=16
@@ -170,9 +172,9 @@ jobs:
       - name: Web Image build (native-image --tool:svm-wasm, -O2)
         timeout-minutes: 270
         env:
-          DIAGNOSTICS: ${{ inputs.diagnostics }}
+          DIAGNOSTICS: 'true'
           MM_WEB_BUILDER_THREADS: '2'
-          MM_WEB_OPT: '2'
+          MM_WEB_OPT: 's'
           MM_WEB_EXTRA_OPTIONS: >-
             -H:DeadlockWatchdogInterval=0
             -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
