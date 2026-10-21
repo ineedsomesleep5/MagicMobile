@@ -992,8 +992,14 @@ final class BoardPresentationHold {
     /// can take longer than a tenth of a second, and passing before the board has seen the snapshot skips its hold.
     static let ingestWait: TimeInterval = 1
 
+    /// How long smart pass waits while you read a card (Caleb, 2026-10-21: an opponent's spell went by before he could
+    /// read it). Long, but still a bound, so a forgotten inspector can't hold the game forever.
+    static let readingWait: TimeInterval = 60
+
     private(set) var ingested: BoardFXRevisionKey?
     private(set) var until: Date?
+    /// The player is reading a card (the inspector is open): smart pass waits until it closes.
+    var reading = false
 
     func record(_ key: BoardFXRevisionKey?, until: Date?) {
         ingested = key

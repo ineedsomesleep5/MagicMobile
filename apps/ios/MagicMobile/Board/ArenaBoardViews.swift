@@ -818,7 +818,21 @@ struct ArenaPillStyle: ButtonStyle {
 
 /// Pass ahead: the skip options while you play, Stop while the table skips for you.
 struct ArenaPassAheadPill: View {
+    /// Opens the skip choices on the table (ArenaMenuCard), not in a system pop-over.
+    var openMenu: () -> Void = {}
     @Environment(\.nativeTurnControl) private var control
+
+    /// The skip choices in a few words each (Caleb, 2026-10-21: the long labels wrapped and covered the hand).
+    static func items(_ control: NativeTurnControl) -> [ArenaMenuItem] {
+        [ArenaMenuItem(id: "skip-responses", title: "To end of turn", subtitle: "Skips responses", symbol: "forward.end.fill",
+                       enabled: control.canSkipResponses, action: control.skipResponses),
+         ArenaMenuItem(id: "skip-to-my-turn", title: "To my turn", subtitle: "Skips responses", symbol: "forward.end.alt.fill",
+                       enabled: control.canSkipToMyTurn, action: control.skipToMyTurn),
+         ArenaMenuItem(id: "end-turn", title: "To end of turn", subtitle: "Stops if they respond", symbol: "forward.fill",
+                       enabled: control.canEndTurn, action: control.endTurn),
+         ArenaMenuItem(id: "full-control", title: "Full control", subtitle: control.isFullControl ? "On for this turn" : "Stop at every priority this turn",
+                       symbol: "hand.raised.fill", lit: control.isFullControl, action: control.toggleFullControl)]
+    }
 
     var body: some View {
         if let control {
@@ -828,16 +842,7 @@ struct ArenaPassAheadPill: View {
                     .accessibilityLabel("Stop skipping")
                     .accessibilityHint(control.status ?? "Stops future automatic passes")
             } else {
-                TavernMenu(arrowEdge: .bottom) {
-                    TavernMenuItem(title: "End turn — skip stack responses", action: control.skipResponses)
-                        .disabled(!control.canSkipResponses)
-                    TavernMenuItem(title: "Skip to my turn — skip stack responses", action: control.skipToMyTurn)
-                        .disabled(!control.canSkipToMyTurn)
-                    TavernMenuItem(title: "End turn — stop for responses", action: control.endTurn)
-                        .disabled(!control.canEndTurn)
-                    TavernMenuItem(title: control.isFullControl ? "Full control: on (this turn)" : "Full control this turn",
-                                   systemImage: "hand.raised.fill", action: control.toggleFullControl)
-                } label: { skipGlyph }
+                Button(action: openMenu) { skipGlyph }
                 .buttonStyle(ArenaPillStyle())
                 .disabled(!control.canEndTurn && !control.canSkipResponses && !control.canSkipToMyTurn)
                 .accessibilityLabel("Skip options")
@@ -848,6 +853,68 @@ struct ArenaPassAheadPill: View {
 
     private var skipGlyph: some View {
         Image(systemName: "forward.fill").font(.system(size: 13, weight: .black))
+    }
+}
+
+/// One row of an Arena menu card.
+struct ArenaMenuItem: Identifiable {
+    let id: String
+    let title: String
+    var subtitle: String? = nil
+    var symbol: String? = nil
+    /// On right now (full control this turn).
+    var lit = false
+    var enabled = true
+    let action: () -> Void
+}
+
+/// A menu on the Arena table (Caleb, 2026-10-21: the gear's and the skip pill's menus were system pop-overs with an
+/// arrow): glass rows in a gold hairline on a glass card, an icon, a title and a line under it. A row closes the card,
+/// then acts.
+struct ArenaMenuCard: View {
+    let items: [ArenaMenuItem]
+    let close: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(items) { item in
+                Button {
+                    close()
+                    item.action()
+                } label: {
+                    HStack(spacing: 12) {
+                        if let symbol = item.symbol {
+                            Image(systemName: symbol).font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(item.lit ? TavernPalette.ember : Color(red: 0.98, green: 0.84, blue: 0.52))
+                                .frame(width: 22)
+                        }
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.system(size: 16, weight: .semibold, design: .serif))
+                            if let subtitle = item.subtitle {
+                                Text(subtitle).font(.system(size: 11, weight: .medium, design: .serif)).opacity(0.65)
+                            }
+                        }
+                        .foregroundStyle(ArenaGlass.text)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 46)
+                    .contentShape(Rectangle())
+                    .modifier(ArenaGlassRow(primary: item.lit))
+                }
+                .buttonStyle(.plain)
+                .disabled(!item.enabled)
+                .opacity(item.enabled ? 1 : 0.45)
+                .accessibilityLabel(item.subtitle.map { "\(item.title), \($0)" } ?? item.title)
+                .accessibilityIdentifier("arena.menu.\(item.id)")
+            }
+        }
+        .padding(10)
+        .frame(width: 280)
+        .modifier(ArenaGlassPanel(cornerRadius: 16, opacity: 0.96))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("arena.menuCard")
     }
 }
 

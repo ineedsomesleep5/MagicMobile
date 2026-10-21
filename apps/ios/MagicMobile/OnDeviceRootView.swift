@@ -42,6 +42,7 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSmartPass.enabledKey) private var smartAutoPass = true
     @AppStorage(OnDeviceSmartPass.stopsKey) private var phaseStops = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
     @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwnSpells = false
+    @AppStorage(OnDeviceSmartPass.stopForThreatsKey) private var stopForThreats = true
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
     @State private var showSetup = false
     @State private var showAppearance = false
@@ -1005,6 +1006,7 @@ struct OnDeviceRootView: View {
         .onChange(of: smartAutoPass) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: phaseStops) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
+        .onChange(of: stopForThreats) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
         .environment(\.emoteCenter, emotes)
         // Messages from friends inside a game too: the game menu's Messages button, and a banner for a new one.

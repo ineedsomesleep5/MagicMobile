@@ -76,6 +76,9 @@ no footage, design it in the same language (below) and say so in the PR.
 | A player's life, counters and zones | `ArenaPlayerCard`, opened from their medallion | same |
 | Library, graveyard and exile piles | `ArenaPileStack`: leaning, thickness by count, the count always shown, the top card face up without badges | same |
 | What a spell or ability targets | `ArenaStackArc` and `ArenaTargetReticle` from the stack card | same |
+| A menu (the gear's, the skip choices) | `ArenaMenuCard`: glass rows with an icon, a title and a line under it, drawn on the table (never a pop-over) | same |
+| The game log | `GameLogDrawer`'s Arena look: a gold serif title, turn dividers, an icon per event, smart pass's lines dimmed, gold card links | `Board/GameLogAndStyles.swift` |
+| Buttons in panels (Concede, Start New, Quit…) | `CompactActionButtonStyle`'s Arena look: glass rows, oxblood glass for a destructive one | same |
 | Running loop | `ComboLoopOverlay.runningBar` | `ComboLoopViews.swift` |
 
 Every browser sits in `ArenaBrowserFrame` with its answers in `ArenaAnswerRow`. Abilities are drawn as `ArenaAbilityCard`: the source's art crop on top, its name, a type line ("Ability", "Mode 2"),
@@ -134,7 +137,9 @@ Measured from Arena gameplay video at 30 fps (`~/Movies/motion-assets/yt/_-awmu2
 | Hand up / down | 0.22 s / 0.18 s |
 
 Effects never change what XMage is asked or when; they only set how long smart pass waits before passing for you
-(`BoardPresentationHold`, at most 4–5 s).
+(`BoardPresentationHold`, at most 4–5 s). Holding a card open to read it holds the pass until you close it (at most a
+minute). An opponent's spell that destroys, exiles, bounces or takes your permanents stops for you even when you can't
+answer it (Stop for Removal, on by default), and a skip that passes responses stops for it too.
 
 ## Gating a new Arena screen
 

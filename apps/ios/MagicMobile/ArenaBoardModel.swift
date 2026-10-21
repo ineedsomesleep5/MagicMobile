@@ -964,3 +964,26 @@ enum ArenaKeywordGlossary {
         return Array(found.sorted { $0.0 < $1.0 }.map(\.1).prefix(limit))
     }
 }
+
+/// Your commander on an opponent's battlefield (Caleb, 2026-10-21: Necromantic Selection took Chatterfang and he never
+/// saw why). XMage moves a dead commander home as a state-based action, after the spell that killed it has finished, so
+/// a spell that destroys and then returns creatures can take it first. The board names who has it and explains.
+enum ArenaCommanderSteal {
+    /// "Name|holder id" for each of your commanders an opponent controls now.
+    static func taken(in snapshot: GameSnapshot) -> [String] {
+        guard let viewer = snapshot.players.first(where: { snapshot.isViewer($0.playerId) }) else { return [] }
+        let names = Set((viewer.commanders ?? []).compactMap(\.name).filter { !$0.isEmpty })
+        guard !names.isEmpty else { return [] }
+        return snapshot.players.filter { !snapshot.isViewer($0.playerId) }.flatMap { player in
+            player.zones.battlefield.filter { names.contains($0.card.name) }.map { "\($0.card.name)|\(player.playerId)" }
+        }.sorted()
+    }
+
+    /// The notice for a commander that has just been taken.
+    static func notice(_ entry: String, snapshot: GameSnapshot) -> String {
+        let parts = entry.split(separator: "|", maxSplits: 1).map(String.init)
+        let name = parts.first ?? "Your commander"
+        let holder = parts.count > 1 ? snapshot.playerLabel(parts[1]) : "An opponent"
+        return "\(holder) took \(name). A commander goes to the command zone only after the spell that moved it finishes, so that spell could take it first."
+    }
+}

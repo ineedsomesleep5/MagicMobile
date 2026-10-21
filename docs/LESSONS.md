@@ -437,6 +437,15 @@ contradicting one.
   iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
   "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
   simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.
+- 2026-10-21 (Claude, commander taken by a sweeper): Necromantic Selection destroyed Caleb's commander and returned it
+  under the AI's control, and he was never asked about the command zone. That is the rules, not a bug. XMage moves a
+  dead commander home as a state-based action (GameImpl, after CR 903.9a), which runs only after the spell has finished
+  resolving, so a spell that destroys and then returns creatures takes the commander first. The board now says so
+  (`ArenaCommanderSteal`). The log showed "Auto-passed: Necromantic Selection": smart pass stops for an opponent's
+  spell only when the engine marks a playable answer (`respondsToStack`). It found none, probably because his mana was
+  tapped, so the spell went by unread. Smart pass now also stops for an opponent's removal, sweepers and steals
+  (`OnDeviceSmartPass.threatensViewer`, setting Stop for Removal). Holding a card open holds the pass too
+  (`BoardPresentationHold.reading`). Android's smart pass doesn't have these stops yet.
 - 2026-10-21 (Claude, Arena glow and motion): three SwiftUI traps.
   - `ArenaStackArc` as a `Canvas` that trimmed its path by an `@State` animated in `onAppear` drew nothing on the board's
     overlay (`overlayPreferenceValue`), though the reticle beside it, a plain view, showed. The same arc as a `Shape`
