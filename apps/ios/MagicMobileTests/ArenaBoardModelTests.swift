@@ -409,4 +409,42 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertTrue(ArenaKeywordGlossary.entries(rules: "Flashback {2}").allSatisfy { $0.keyword != "Flash" }, "flashback isn't flash")
         XCTAssertTrue(ArenaKeywordGlossary.entries(rules: "Equipped creature gets +1/+1.").isEmpty, "equipped isn't equip")
     }
+
+    /// A carried card plays anywhere on the table above the hand, your land row and the table's right side included,
+    /// but not over the controls corner, back in the hand, or after a wiggle or a short slide (Caleb, 2026-10-21).
+    func testDropsCountOverTheWholeTableOutOfTheCorner() {
+        let landscape = ArenaLayout.landscapeLayout
+        XCTAssertTrue(landscape.drops(at: CGPoint(x: 240, y: 320), from: CGPoint(x: 330, y: 300)), "your land row, from a popped card")
+        XCTAssertTrue(landscape.drops(at: CGPoint(x: 820, y: 150), from: CGPoint(x: 500, y: 330)), "the table's right side")
+        XCTAssertFalse(landscape.drops(at: CGPoint(x: 780, y: 330), from: CGPoint(x: 500, y: 330)), "the controls corner")
+        XCTAssertFalse(landscape.drops(at: CGPoint(x: 500, y: 400), from: CGPoint(x: 500, y: 300)), "back in the hand")
+        XCTAssertFalse(landscape.drops(at: CGPoint(x: 330, y: 280), from: CGPoint(x: 330, y: 300)), "a wiggle")
+        XCTAssertFalse(landscape.drops(at: CGPoint(x: 380, y: 300), from: CGPoint(x: 330, y: 300)), "a short slide sideways")
+        let portrait = ArenaLayout.portraitLayout
+        XCTAssertTrue(portrait.drops(at: CGPoint(x: 100, y: 660), from: CGPoint(x: 150, y: 720)), "your land row")
+        XCTAssertTrue(portrait.drops(at: CGPoint(x: 220, y: 120), from: CGPoint(x: 220, y: 720)), "the far side")
+        XCTAssertFalse(portrait.drops(at: CGPoint(x: 100, y: 760), from: CGPoint(x: 150, y: 600)), "the hand")
+    }
+
+    /// Your piles leave room between them for their count badges, which hang 8 pt past a pile's right edge, and clear
+    /// your medallion (Caleb, 2026-10-21: the badges ran over the next pile).
+    func testViewerPilesLeaveRoomForTheirCounts() {
+        for layout in [ArenaLayout.landscapeLayout, ArenaLayout.portraitLayout] {
+            let half = layout.viewerPile.width / 2
+            let row = [layout.viewerGraveyard, layout.viewerLibrary] + (layout.landscape ? [layout.viewerExile] : [])
+            let piles = row.sorted { $0.x < $1.x }
+            for (left, right) in zip(piles, piles.dropFirst()) where abs(left.y - right.y) < 1 {
+                XCTAssertGreaterThanOrEqual((right.x - half) - (left.x + half), 10, "a count badge's room in \(layout.landscape ? "landscape" : "portrait")")
+            }
+            XCTAssertLessThan(layout.viewerMedallion.x + layout.viewerMedallionDiameter / 2, piles[0].x - half,
+                              "the first pile clears your medallion")
+        }
+    }
+
+    /// The landscape stack card sits under the opponent's piles and above the raised phase strip and its pills.
+    func testLandscapeStackCardClearsThePilesAndTheCorner() {
+        let layout = ArenaLayout.landscapeLayout
+        XCTAssertGreaterThanOrEqual(layout.stack.minY, layout.opponentLibrary.y + layout.opponentPile.height / 2)
+        XCTAssertLessThan(layout.stack.maxY, layout.phaseStripRaisedY - 24)
+    }
 }

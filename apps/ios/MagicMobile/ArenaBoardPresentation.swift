@@ -442,8 +442,27 @@ struct ArenaBattlefieldCard: View {
     @Environment(\.arenaBoard) private var arena
     /// Card Frames (Settings, kept per board mode): off draws the reference game's card instead of the tavern frame.
     @Environment(\.cardFrames) private var cardFrames
+    /// A mana payment is open: what can pay glows orange.
+    @Environment(\.arenaPaying) private var paying
 
     private var showsTapped: Bool { card.tapped == true && !(arena && card.isAttacking == true) }
+
+    /// The Arena board's glow border (ArenaOutlineGlow): what you're choosing, attackers and blockers, then what you can
+    /// use, orange while paying. Lands you could tap glow softer, so a full mana row doesn't shout.
+    private var arenaGlow: (tone: ArenaOutlineGlow.Tone, strength: Double)? {
+        guard arena, !card.isPhasedOut else { return nil }
+        if selected { return (.selected, 1) }
+        if card.isAttacking == true { return (.attacking, 1) }
+        if !(card.blocking ?? []).isEmpty { return (.blocking, 1) }
+        if targetable { return (.target, 1) }
+        guard legal else { return nil }
+        if paying { return (.payable, 1) }
+        return (.playable, card.card.isLand ? 0.65 : 0.85)
+    }
+
+    private var arenaGlowOutline: ArenaOutlineGlow.Outline {
+        framedTavern ? .frame(TavernFrameKind(card)) : .tile(arched: isTokenCard && plainTile)
+    }
 
     /// Frames off: the reference game's battlefield card. A card is cropped below its art: a name bar tinted by its
     /// colour, the art, a silver power/toughness box hanging off the corner. A token sits in an arched frame.
@@ -512,7 +531,7 @@ struct ArenaBattlefieldCard: View {
                         .overlay(alignment: .bottom) { Rectangle().fill(.black.opacity(0.5)).frame(height: 0.8) }
                 }
                 TavernArtCrop(card: card, zoneName: zoneName, tagReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
-                    cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
+                    cardWidth: width, showsCounters: !card.counterBadges.isEmpty), copyTag: !arena)
                     .clipShape(isTokenCard ? AnyShape(ArenaTileShape(arched: true, corner: 0)) : AnyShape(Rectangle()))
             }
             .padding(edge * 1.4)
@@ -606,7 +625,7 @@ struct ArenaBattlefieldCard: View {
         let ribbonHeight = ribbonWidth * TavernCardParts.ribbonAspect
         return ZStack(alignment: .topLeading) {
             TavernArtCrop(card: card, zoneName: zoneName, tagReserve: BattlefieldCardFaceLayout.tagTrailingReserve(
-                cardWidth: width, showsCounters: !card.counterBadges.isEmpty))
+                cardWidth: width, showsCounters: !card.counterBadges.isEmpty), copyTag: !arena)
                 .frame(width: width * window.width, height: height * window.height)
                 .offset(x: width * window.minX, y: height * window.minY)
             Image(uiImage: frame).resizable().interpolation(.high)
@@ -871,7 +890,12 @@ struct ArenaBattlefieldCard: View {
         // offscreen pass each, too slow with dozens of tokens.
         .shadow(color: .black.opacity(tavern && !framedTavern ? 0.55 : 0), radius: 3, x: 1, y: 3)
         .background {
-            if framedTavern { TavernTileGlow(color: .black, strength: 0.55).offset(x: 1, y: 3) }
+            // On the Arena board the shadow follows the frame's outline too.
+            if framedTavern && arena {
+                ArenaOutlineGlow(outline: arenaGlowOutline, tone: .shadow, strength: 0.6).offset(x: 1, y: 3)
+            } else if framedTavern {
+                TavernTileGlow(color: .black, strength: 0.55).offset(x: 1, y: 3)
+            }
         }
         .overlay(alignment: .bottomLeading) {
             BattlefieldAbilityBadges(icons: abilityIcons, cardWidth: width)
@@ -886,6 +910,22 @@ struct ArenaBattlefieldCard: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .top) {
+            // A token copy says so inside its frame, under the arch (Caleb, 2026-10-21: "oken copy" ran off the crop).
+            if arena && card.tokenCopySourceName != nil && (plainTile || framedTavern) {
+                Text("COPY")
+                    .font(.system(size: max(6.5, width * 0.1), weight: .heavy, design: .serif))
+                    .tracking(0.8)
+                    .foregroundStyle(MagicPalette.antiqueGold)
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, width * 0.06).padding(.vertical, 1.5)
+                    .background(Capsule().fill(.black.opacity(0.72)))
+                    .overlay(Capsule().strokeBorder(MagicPalette.antiqueGold.opacity(0.55), lineWidth: 0.6))
+                    .padding(.top, height * (framedTavern ? 0.2 : isTokenCard ? 0.16 : 0.24))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if !chipBadges.isEmpty {
                 CardCounterBadgeStrip(badges: Array(chipBadges.prefix(2)), cardWidth: width)
@@ -897,8 +937,8 @@ struct ArenaBattlefieldCard: View {
         .overlay {
             if arena && showsTapped {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: width * 0.5, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .font(.system(size: width * 0.42, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.55))
                     .shadow(color: .black.opacity(0.7), radius: 2)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -924,7 +964,12 @@ struct ArenaBattlefieldCard: View {
             // A framed tile glows around its frame only while it is playable, a target or
             // selected; the painted frame is its border otherwise.
             if plainTile {
-                if legal || targetable || selected { ArenaTileShape(arched: isTokenCard, corner: width * 0.07).stroke(accent, lineWidth: 2) }
+                // The Arena board's glow border marks these instead of a line.
+                if !arena && (legal || targetable || selected) {
+                    ArenaTileShape(arched: isTokenCard, corner: width * 0.07).stroke(accent, lineWidth: 2)
+                }
+            } else if arena, arenaGlow != nil {
+                EmptyView()
             } else if !framedTavern {
                 RoundedRectangle(cornerRadius: 7).stroke(accent, lineWidth: legal || targetable || selected ? 2 : 1)
             }
@@ -941,12 +986,18 @@ struct ArenaBattlefieldCard: View {
             }
         }
         .overlay(alignment: .bottomTrailing) { if plainTile { plainStats } }
+        // A tapped tile greys the prototype's way (grayscale 0.75, brightness 0.62): a multiply, so dark art still reads.
         .saturation(showsTapped ? (arena ? 0.25 : 0.15) : 1)
-        .brightness(showsTapped ? (arena ? -0.32 : -0.16) : 0)
+        .brightness(showsTapped && !arena ? -0.16 : 0)
+        .colorMultiply(showsTapped && arena ? Color(white: 0.64) : .white)
         .background {
             // A framed tile glows while it is playable, a target or selected: light only, no line.
             // Drawn after the tapped tile's grey so a tapped target still glows red.
-            if framedTavern && (legal || targetable || selected) && !card.isPhasedOut {
+            if let arenaGlow {
+                ArenaOutlineGlow(outline: arenaGlowOutline, tone: arenaGlow.tone, strength: arenaGlow.strength)
+            } else if arena {
+                EmptyView()
+            } else if framedTavern && (legal || targetable || selected) && !card.isPhasedOut {
                 TavernTileGlow(color: accent)
             } else if plainTile && (legal || targetable || selected) && !card.isPhasedOut {
                 // Light that follows the card's own outline.
@@ -1193,6 +1244,8 @@ struct TavernArtCrop: View {
     let card: ZoneCard
     let zoneName: String
     var tagReserve: CGFloat = 0
+    /// The copy's own "Token copy" tag; the Arena tile marks the copy inside its frame instead (the crop cut the tag off).
+    var copyTag = true
     /// The card image is missing: its stand-in prints the name large, so the crop would show
     /// stray letters. Show a quiet art stand-in instead (the nameplate still names it).
     @State private var artMissing = false
@@ -1204,7 +1257,7 @@ struct TavernArtCrop: View {
             let cardWidth = max(window.width / 0.85, window.height / (0.44 * ratio))
             let cardHeight = cardWidth * ratio
             CardTile(card: card, selected: false, zoneName: zoneName, width: cardWidth, height: cardHeight,
-                     ignoreTappedRotation: true, tokenCopyTagTrailingReserve: tagReserve)
+                     ignoreTappedRotation: true, tokenCopyTagTrailingReserve: tagReserve, tokenCopyTag: copyTag)
                 .frame(width: cardWidth, height: cardHeight)
                 .position(x: window.width / 2, y: window.height / 2 + (0.5 - 0.335) * cardHeight)
                 .allowsHitTesting(false)

@@ -29,6 +29,8 @@ struct ArenaHandFan: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.holdCardInspection) private var inspection
     @State private var dragging: (id: String, start: CGPoint, offset: CGSize)?
+    /// Where the popped card was when it was picked up: its touch surface stays there until the carry ends.
+    @State private var carrySurface: CGRect?
     @State private var known: Set<String>?
     /// Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan.
     @State private var arrivals: [String: Int] = [:]
@@ -46,15 +48,13 @@ struct ArenaHandFan: View {
                 }
                 if !(cards + extraCards).isEmpty {
                     let band = touchBand
-                    ArenaHandTouch(tap: { tapped(at: band.origin + $0) },
-                                   hold: { held(at: band.origin + $0) },
-                                   holdEnded: endHold,
-                                   pan: { panned(to: band.origin + $0, band: band) },
-                                   panEnded: { panEnded(at: band.origin + $0, cancelled: $1) })
-                        .frame(width: band.width, height: band.height)
-                        .position(x: band.midX, y: band.midY)
-                        .zIndex(1500)
-                        .accessibilityHidden(true)
+                    touchSurface(band, band: band).zIndex(1500)
+                    // The popped card takes touches over its whole picture too (Caleb, 2026-10-21: it couldn't be
+                    // dragged from its top), on a surface of its own that stays where it was while the card is carried,
+                    // so the drag that started on it keeps going. The table around it keeps its touches.
+                    if let lift = liftedFrame ?? carrySurface {
+                        touchSurface(lift, band: band).zIndex(1501)
+                    }
                 }
                 if let dragging, let card = (cards + extraCards).first(where: { $0.id == dragging.id }) {
                     dragPreview(card, start: dragging.start, offset: dragging.offset)
@@ -66,7 +66,7 @@ struct ArenaHandFan: View {
         .accessibilityIdentifier("board.hand.scroll")
         .onChange(of: cards.map(\.id), initial: true) { _, ids in noteArrivals(ids) }
         .onChange(of: (cards + extraCards).map(\.id)) { _, ids in
-            if let dragging, !ids.contains(dragging.id) { self.dragging = nil; isOverPlayerDropZone = false }
+            if let dragging, !ids.contains(dragging.id) { self.dragging = nil; carrySurface = nil; isOverPlayerDropZone = false }
             if let liftedCardID, !ids.contains(liftedCardID) { self.liftedCardID = nil }
         }
         .onChange(of: posture) { _, now in if now == .resting { liftedCardID = nil } }
@@ -140,6 +140,30 @@ struct ArenaHandFan: View {
         let union = frames.dropFirst().reduce(first) { $0.union($1) }
         let bottom = min(canvas.screen.height, layout.hand.touchBottom.map { canvas.y($0) } ?? canvas.screen.height)
         return CGRect(x: union.minX, y: union.minY, width: union.width, height: max(0, bottom - union.minY))
+    }
+
+    /// A card popped out of the hand, where it shows now.
+    private func liftedFrame(_ index: Int) -> CGRect {
+        let center = liftedPoint(slot(index), lifted: true)
+        let size = CGSize(width: cardSize.width * liftedScale, height: cardSize.height * liftedScale)
+        return CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
+    }
+
+    private var liftedFrame: CGRect? {
+        guard let liftedCardID, let index = (cards + extraCards).firstIndex(where: { $0.id == liftedCardID }) else { return nil }
+        return liftedFrame(index)
+    }
+
+    /// A touch surface over `rect` (screen points); every surface reports in screen points.
+    private func touchSurface(_ rect: CGRect, band: CGRect) -> some View {
+        ArenaHandTouch(tap: { tapped(at: rect.origin + $0) },
+                       hold: { held(at: rect.origin + $0) },
+                       holdEnded: endHold,
+                       pan: { panned(to: rect.origin + $0, band: band) },
+                       panEnded: { panEnded(at: rect.origin + $0, cancelled: $1) })
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
+            .accessibilityHidden(true)
     }
 
     /// The card under a point: of the cards whose home slot spans its x, the top one (each card lies over the one before).
@@ -248,7 +272,7 @@ struct ArenaHandFan: View {
         if var current = dragging {
             current.offset = CGSize(width: point.x - current.start.x, height: point.y - current.start.y)
             dragging = current
-            isOverPlayerDropZone = canvas.area(layout.dropArea).contains(point)
+            isOverPlayerDropZone = canvas.drops(at: point, from: current.start)
             return
         }
         if point.y >= band.minY - canvas.length(12) {
@@ -260,18 +284,20 @@ struct ArenaHandFan: View {
         let popped = liftedCardID.flatMap { id in all.first { $0.id == id } }
         guard let card = popped ?? card(at: CGPoint(x: point.x, y: band.midY)) else { return }
         GameAudio.shared.play(.cardPickup)
+        carrySurface = liftedFrame
         liftedCardID = nil
         inspectedCard = nil
         dragging = (card.id, point, .zero)
-        isOverPlayerDropZone = canvas.area(layout.dropArea).contains(point)
+        isOverPlayerDropZone = false
         interactionState.mode = .draggingCard(cardId: card.instanceId,
                                               legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
     }
 
     /// A slide that never left the hand leaves its card popped up; a carried card plays if it lands on the table.
     private func panEnded(at point: CGPoint, cancelled: Bool) {
+        carrySurface = nil
         guard let current = dragging, let card = (cards + extraCards).first(where: { $0.id == current.id }) else { return }
-        let dropped = !cancelled && canvas.area(layout.dropArea).contains(point)
+        let dropped = !cancelled && canvas.drops(at: point, from: current.start)
         dragging = nil
         isOverPlayerDropZone = false
         guard dropped else {
@@ -300,7 +326,7 @@ struct ArenaHandFan: View {
     /// little smaller, the way the reference's card shrinks toward the stack.
     private func dragPreview(_ card: ZoneCard, start: CGPoint, offset: CGSize) -> some View {
         let finger = CGPoint(x: start.x + offset.width, y: start.y + offset.height)
-        let over = canvas.area(layout.dropArea).contains(finger)
+        let over = canvas.drops(at: finger, from: start)
         let actions = GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions)
         return CardTile(card: card, selected: false, legal: actions.contains { $0.type == "play_land" },
                         castOffered: actions.contains { $0.type == "cast_spell" }, zoneName: "Hand",
@@ -362,7 +388,6 @@ struct ArenaHandTouch: UIViewRepresentable {
     var holdEnded: () -> Void
     var pan: (CGPoint) -> Void
     var panEnded: (CGPoint, Bool) -> Void
-
     func makeUIView(context: Context) -> TouchView {
         let view = TouchView()
         update(view)

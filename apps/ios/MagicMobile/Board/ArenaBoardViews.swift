@@ -1,3 +1,4 @@
+import CoreImage
 import SwiftUI
 import UIKit
 
@@ -44,7 +45,14 @@ extension EnvironmentValues {
         get { self[CardFramesKey.self] }
         set { self[CardFramesKey.self] = newValue }
     }
+    /// A mana payment is open on the Arena board: the permanents that can pay glow orange instead of cyan.
+    var arenaPaying: Bool {
+        get { self[ArenaPayingKey.self] }
+        set { self[ArenaPayingKey.self] = newValue }
+    }
 }
+
+struct ArenaPayingKey: EnvironmentKey { static let defaultValue = false }
 
 enum ArenaPalette {
     static let cream = Color(red: 1, green: 0.965, blue: 0.88)
@@ -53,6 +61,147 @@ enum ArenaPalette {
     static let attackGlow = Color(red: 1, green: 0.22, blue: 0.12)
     static let targetGlow = Color(red: 0.55, green: 0.9, blue: 1)
     static let iconFill = Color(red: 0.08, green: 0.045, blue: 0.025)
+}
+
+/// The Arena board's highlight: "the glow border" Caleb picked on the web guest board (memory frame-outline-glow,
+/// `apps/web/src/board/tileArt.ts` `glowCanvas`): soft light that follows the card's own outline, never a box. With Card
+/// Frames on it traces the tavern frame (crest and corners included); off, the reference's card or a token's arch; in
+/// the hand, the printed card. Drawn behind the card and added to the light under it, so only the glow outside its edge
+/// shows.
+struct ArenaOutlineGlow: View {
+    enum Outline: Hashable {
+        case frame(TavernFrameKind)
+        case tile(arched: Bool)
+        /// A printed card (hand, drag, stack).
+        case card
+    }
+
+    enum Tone {
+        case playable, payable, target, selected, attacking, blocking, source, shadow
+
+        /// The web board's colours (playable #7ff0ff, target #c6f8ff, selected #ffe08f, attacking #ff5a2e, blocking
+        /// #ffd38a), the duel prototype's orange for a source that can pay, its gold for a spell's source.
+        var color: Color {
+            switch self {
+            case .playable: Color(red: 0.5, green: 0.94, blue: 1)
+            case .target: Color(red: 0.78, green: 0.97, blue: 1)
+            case .payable: Color(red: 1, green: 0.62, blue: 0.3)
+            case .selected: Color(red: 1, green: 0.88, blue: 0.56)
+            case .attacking: Color(red: 1, green: 0.35, blue: 0.18)
+            case .blocking: Color(red: 1, green: 0.83, blue: 0.54)
+            case .source: Color(red: 1, green: 0.84, blue: 0.5)
+            case .shadow: .black
+            }
+        }
+    }
+
+    let outline: Outline
+    let tone: Tone
+    /// The web board shows a playable glow at 0.8 and the others at full strength.
+    var strength: Double = 1
+    /// The hand's playable glow breathes (full board effects only, never with Reduce Motion).
+    var breathes = false
+    @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if breathes && BoardFXLevel(rawValue: level) == .full && !reduceMotion {
+                // The prototype's 2.2 s breath, on the shared clock so every playable card breathes together.
+                BoardBreath(period: 1.1, low: 0.55, high: 1) { light in glow.opacity(light) }
+            } else {
+                glow
+            }
+        }
+        .opacity(strength)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var glow: some View {
+        GeometryReader { proxy in
+            if let image = ArenaGlowImages.image(outline) {
+                let pad = ArenaGlowImages.pad
+                Image(uiImage: image).resizable().renderingMode(.template)
+                    .foregroundStyle(tone.color)
+                    // Light adds to the table under it, as the web board's additive halo does; a shadow darkens.
+                    .blendMode(tone == .shadow ? .normal : .plusLighter)
+                    .frame(width: proxy.size.width * (1 + 2 * pad), height: proxy.size.height * (1 + 2 * pad))
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
+        }
+    }
+}
+
+/// The outline glows' light, made once per outline and kept: a live blur on every tile was too slow with dozens of
+/// tokens (TavernTileGlow's lesson). Built the way the web board's `glowCanvas` is: the outline's white silhouette on a
+/// canvas 1.3x the card, drawn 16 px larger (on a 330 px tile) and blurred 14 px three times over, then the card's own
+/// area (inset 4 px) cut back out.
+@MainActor
+enum ArenaGlowImages {
+    /// The canvas reaches this share of the card past each edge (1.3x overall).
+    static let pad: CGFloat = 0.15
+    private static var cache: [ArenaOutlineGlow.Outline: UIImage] = [:]
+    private static let context = CIContext(options: [.cacheIntermediates: false])
+
+    static func image(_ outline: ArenaOutlineGlow.Outline) -> UIImage? {
+        if let image = cache[outline] { return image }
+        guard let image = make(outline) else { return nil }
+        cache[outline] = image
+        return image
+    }
+
+    private static func make(_ outline: ArenaOutlineGlow.Outline) -> UIImage? {
+        // Half the web's resolution is plenty for light this soft: the frames are 330 x 356, the reference's card 6:5,
+        // a printed card 63:88.
+        let shape: CGSize
+        switch outline {
+        case .frame: shape = CGSize(width: 165, height: 178)
+        case .tile: shape = CGSize(width: 165, height: 137.5)
+        case .card: shape = CGSize(width: 126, height: 176)
+        }
+        let unit = shape.width / 330
+        let canvas = CGSize(width: (shape.width * (1 + 2 * pad)).rounded(), height: (shape.height * (1 + 2 * pad)).rounded())
+        let box = CGRect(x: (canvas.width - shape.width) / 2, y: (canvas.height - shape.height) / 2, width: shape.width, height: shape.height)
+        func silhouette(_ rect: CGRect) -> CIImage? {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let image = UIGraphicsImageRenderer(size: canvas, format: format).image { renderer in
+                let cg = renderer.cgContext
+                UIColor.white.setFill()
+                switch outline {
+                case .frame(let kind):
+                    guard let frame = kind.image else { return }
+                    frame.draw(in: rect)
+                    // The frame's alpha in white (source-in), its arched window filled so the glow has the whole tile.
+                    cg.setBlendMode(.sourceIn)
+                    cg.fill(rect)
+                    cg.setBlendMode(.normal)
+                    let window = kind.window
+                    cg.fill(CGRect(x: rect.minX + rect.width * window.minX, y: rect.minY + rect.height * window.minY,
+                                   width: rect.width * window.width, height: rect.height * window.height))
+                case .tile(let arched):
+                    cg.addPath(ArenaTileShape(arched: arched, corner: rect.width * 0.07).path(in: rect).cgPath)
+                    cg.fillPath()
+                case .card:
+                    cg.addPath(UIBezierPath(roundedRect: rect, cornerRadius: rect.width * 0.055).cgPath)
+                    cg.fillPath()
+                }
+            }
+            return image.cgImage.map(CIImage.init(cgImage:))
+        }
+        guard let spread = silhouette(box.insetBy(dx: -8 * unit, dy: -8 * unit)),
+              let inner = silhouette(box.insetBy(dx: 4 * unit, dy: 4 * unit)) else { return nil }
+        let extent = spread.extent
+        let blurred = spread.clampedToExtent().applyingGaussianBlur(sigma: 14 * unit).cropped(to: extent)
+        // Three passes over each other: 1 - (1 - a)^3, about three times the light where it is thin.
+        let light = blurred
+            .applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: 2.6)])
+            .applyingFilter("CIColorClamp")
+            .applyingFilter("CISourceOutCompositing", parameters: [kCIInputBackgroundImageKey: inner])
+        guard let output = context.createCGImage(light, from: extent) else { return nil }
+        return UIImage(cgImage: output, scale: 1, orientation: .up)
+    }
 }
 
 /// The leaning tavern table: the plate stretches to the screen the way the layout does, so the mat sits under the lanes.
@@ -222,7 +371,26 @@ struct ArenaDeckPile: View {
     let label: String
 
     var body: some View {
-        let thickness = count > 0 ? max(1.5, CGFloat(count) * size.height * 0.0055) : 0
+        ArenaPileStack(count: count, size: size) { ArenaCardBack() }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+    }
+}
+
+/// A pile on the table, the library's look for every zone (Caleb, 2026-10-21: the graveyard and exile didn't lie like
+/// the library): slivers whose thickness follows the count under the top card, a contact shadow, leaning with the table,
+/// and the count on a lozenge.
+struct ArenaPileStack<Top: View>: View {
+    let count: Int
+    let size: CGSize
+    @ViewBuilder let top: Top
+
+    static func thickness(count: Int, height: CGFloat) -> CGFloat {
+        count > 0 ? max(1.5, CGFloat(count) * height * 0.0055) : 0
+    }
+
+    var body: some View {
+        let thickness = Self.thickness(count: count, height: size.height)
         let layers = min(16, Int((thickness / 1.1).rounded()))
         ZStack {
             Ellipse().fill(.black.opacity(count > 0 ? 0.55 : 0)).blur(radius: 4)
@@ -239,7 +407,7 @@ struct ArenaDeckPile: View {
                             y: -thickness * CGFloat(index) / CGFloat(max(layers, 1)))
             }
             if count > 0 {
-                ArenaCardBack().offset(x: -thickness * 0.22, y: -thickness)
+                top.offset(x: -thickness * 0.22, y: -thickness)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -247,8 +415,6 @@ struct ArenaDeckPile: View {
         .overlay(alignment: .bottomTrailing) {
             if count > 0 { ArenaCountBadge(count: count).offset(x: 8, y: -2) }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
     }
 }
 
@@ -287,7 +453,8 @@ struct ArenaCountBadge: View {
     }
 }
 
-/// A graveyard: its top card face up, or an empty dashed slot; a tap opens the whole zone.
+/// A graveyard: a pile like the library with its top card face up (the printed card only, no badges), or an empty
+/// dashed slot; a tap opens the whole zone.
 struct ArenaGraveyardPile: View {
     let cards: [ZoneCard]
     let size: CGSize
@@ -298,28 +465,27 @@ struct ArenaGraveyardPile: View {
 
     var body: some View {
         Button(action: open) {
-            ZStack {
+            ArenaPileStack(count: cards.count, size: size) {
                 if let top = cards.last {
-                    CardTile(card: top, selected: false, zoneName: exile ? "Exile" : "Graveyard", width: size.width, height: size.height)
+                    CardTile(card: top, selected: false, zoneName: exile ? "Exile" : "Graveyard", width: size.width, height: size.height,
+                             ignoreTappedRotation: true)
                         .allowsHitTesting(false)
                         .overlay {
                             if exile {
                                 RoundedRectangle(cornerRadius: size.width * 0.07)
-                                    .fill(Color(red: 0.35, green: 0.3, blue: 0.62).opacity(0.38))
-                                    .overlay(Image(systemName: "sparkles").font(.system(size: size.width * 0.32, weight: .bold))
-                                                .foregroundStyle(.white.opacity(0.85)).shadow(color: .black, radius: 2))
+                                    .fill(LinearGradient(colors: [Color(red: 0.55, green: 0.7, blue: 1).opacity(0.42),
+                                                                  Color(red: 0.3, green: 0.25, blue: 0.6).opacity(0.5)],
+                                                         startPoint: .top, endPoint: .bottom))
+                                    .overlay(alignment: .topLeading) {
+                                        Image(systemName: "sparkles").font(.system(size: size.width * 0.24, weight: .bold))
+                                            .foregroundStyle(.white.opacity(0.9)).shadow(color: .black, radius: 2)
+                                            .padding(size.width * 0.06)
+                                    }
                                     .allowsHitTesting(false)
                             }
                         }
-                        .overlay(alignment: .bottomTrailing) {
-                            if cards.count > 1 { ArenaCountBadge(count: cards.count).offset(x: 6, y: 4) }
-                        }
-                } else {
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(TavernPalette.brass.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
             }
-            .frame(width: size.width, height: size.height)
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
@@ -693,23 +859,117 @@ struct ArenaStackCard: View {
     let size: CGSize
     /// A commander cast from the command zone: the card wears a gold rim and a crown, and that is its whole fanfare.
     var commander = false
+    /// The source's permanent on the table, for an ability whose card XMage didn't send (its art stays on the card).
+    var fallbackSource: ZoneCard? = nil
+    /// Plays the landing: only the first time this object shows, not again when the one above it resolves.
+    var lands = true
     let inspect: (ZoneCard) -> Void
     let openStack: () -> Void
+
+    private var sourceCard: ZoneCard? { object.displaySourceCard ?? fallbackSource }
 
     /// XMage marks spells; everything else on the stack is an activated or triggered ability.
     static func isAbility(_ object: XmageStackObject) -> Bool { (object.objectType ?? "").uppercased() != "SPELL" && object.objectType != nil }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(BoardFXLevel.key) private var fxLevel = BoardFXLevel.defaultValue
+    /// The card settles onto the stack with a little overshoot.
+    @State private var settled = false
+    /// While the landing plays: when it started.
+    @State private var landedAt: Date?
+    private static let landing: Double = 0.55
+
+    /// The light a spell lands in: its colour, gold for several colours, a commander or an ability.
+    private var arrivalColor: Color {
+        if commander || Self.isAbility(object) { return Color(red: 1, green: 0.82, blue: 0.45) }
+        let cost = (object.displaySourceCard?.card.manaCost ?? "").uppercased()
+        let colors = ["W", "U", "B", "R", "G"].filter { cost.contains("{\($0)") || cost.contains("/\($0)") }
+        guard colors.count == 1 else { return colors.isEmpty ? Color(red: 0.85, green: 0.88, blue: 0.95) : Color(red: 1, green: 0.82, blue: 0.45) }
+        switch colors[0] {
+        case "W": return Color(red: 1, green: 0.95, blue: 0.78)
+        case "U": return Color(red: 0.4, green: 0.7, blue: 1)
+        case "B": return Color(red: 0.72, green: 0.5, blue: 0.9)
+        case "R": return Color(red: 1, green: 0.45, blue: 0.25)
+        default: return Color(red: 0.45, green: 0.9, blue: 0.5)
+        }
+    }
+
     var body: some View {
+        content
+            .scaleEffect(settled || !lands ? 1 : 1.07)
+            .background {
+                if let landedAt {
+                    TimelineView(.animation) { timeline in arrivalBloom(min(1, timeline.date.timeIntervalSince(landedAt) / Self.landing)) }
+                }
+            }
+            .overlay {
+                if let landedAt {
+                    TimelineView(.animation) { timeline in arrivalShine(min(1, timeline.date.timeIntervalSince(landedAt) / Self.landing)) }
+                }
+            }
+            .onAppear {
+                // The reference's landing: the card settles with a little overshoot in a bloom of its colour, a shine
+                // runs across it and a few motes drift off (Caleb, 2026-10-21: no rays). About half a second, light only.
+                guard lands, !reduceMotion, BoardFXLevel(rawValue: fxLevel) != .off else { settled = true; return }
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.6)) { settled = true }
+                let start = Date()
+                landedAt = start
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(Self.landing + 0.05))
+                    if landedAt == start { landedAt = nil }
+                }
+            }
+    }
+
+    /// Light of the spell's colour behind the card, flaring as it lands and fading as it settles, and motes drifting off.
+    private func arrivalBloom(_ t: Double) -> some View {
+        let flare = sin(.pi * t)
+        return ZStack {
+            RoundedRectangle(cornerRadius: size.width * 0.12)
+                .fill(arrivalColor)
+                .padding(-size.width * (0.04 + 0.1 * flare))
+                .blur(radius: size.width * 0.12)
+                .opacity(0.85 * flare)
+            ForEach(0..<6, id: \.self) { index in
+                let angle = Double(index) / 6 * 2 * .pi + 0.4
+                Circle().fill(.white)
+                    .frame(width: 4, height: 4)
+                    .shadow(color: arrivalColor, radius: 3)
+                    .offset(x: cos(angle) * size.width * (0.42 + 0.3 * t), y: sin(angle) * size.height * (0.38 + 0.24 * t) - 14 * t)
+                    .opacity(flare)
+            }
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// A band of light that sweeps once across the card as it lands.
+    private func arrivalShine(_ t: Double) -> some View {
+        LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .white.opacity(0.5), location: 0.5),
+                               .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing)
+            .frame(width: size.width * 0.45, height: size.height * 1.6)
+            .rotationEffect(.degrees(18))
+            .offset(x: size.width * (-1 + 2 * t))
+            .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: size.width * 0.05))
+            .blendMode(.plusLighter)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var content: some View {
         ZStack {
-            if let card = object.displaySourceCard, Self.isAbility(object) {
+            if let card = sourceCard, Self.isAbility(object) {
                 Button { inspect(card) } label: {
                     ArenaAbilityCard(source: card, text: object.rulesText ?? object.displayName, size: size)
                 }
                 .buttonStyle(.plain)
             } else if let card = object.displaySourceCard {
                 Button { inspect(card) } label: {
+                    // The printed card already shows its power and toughness: no badges over it.
                     CardTile(card: card, selected: false, zoneName: "Stack", width: size.width, height: size.height,
-                             imageVariant: .inspection)
+                             ignoreTappedRotation: true, imageVariant: .inspection)
                         .allowsHitTesting(false)
                 }
                 .buttonStyle(.plain)
@@ -745,24 +1005,31 @@ struct ArenaStackCard: View {
         }
         .shadow(color: .black.opacity(0.6), radius: 10, y: 6)
         .overlay(alignment: .leading) {
+            // A tab on the card's left edge opens the whole stack, with how many objects are on it (Caleb, 2026-10-21:
+            // the loose coin read as a scroll arrow).
             Button(action: openStack) {
-                ZStack {
-                    if let coin = UIImage(named: "tavern-ui-coin") { Image(uiImage: coin).resizable().scaledToFit() }
-                    else { Circle().fill(TavernPalette.brass) }
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .black))
-                        .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04))
+                VStack(spacing: 3) {
+                    if count > 1 {
+                        Text("\(count)")
+                            .font(.system(size: 15, weight: .heavy, design: .serif)).monospacedDigit()
+                            .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                    }
+                    Image(systemName: "chevron.left").font(.system(size: 10, weight: .black))
+                        .foregroundStyle(ArenaGlass.text)
                 }
-                .frame(width: 27, height: 27)
-                .frame(width: 44, height: 44)
+                .frame(width: 26, height: count > 1 ? 58 : 44)
+                .background(UnevenRoundedRectangle(topLeadingRadius: 9, bottomLeadingRadius: 9)
+                    .fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)))
+                .overlay(UnevenRoundedRectangle(topLeadingRadius: 9, bottomLeadingRadius: 9)
+                    .strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                .shadow(color: .black.opacity(0.5), radius: 3, x: -1, y: 2)
+                .frame(width: 44, height: max(44, count > 1 ? 58 : 44), alignment: .trailing)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .offset(x: -40)
-            .accessibilityLabel("Open the stack")
+            .offset(x: -43)
+            .accessibilityLabel(count > 1 ? "Open the stack, \(count) objects" : "Open the stack")
             .accessibilityIdentifier("board.stack.tray")
-        }
-        .overlay(alignment: .topTrailing) {
-            if count > 1 { ArenaCountBadge(count: count).offset(x: 6, y: -6) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Self.isAbility(object) ? "Top of the stack: an ability of \(object.displaySourceName)"
@@ -1327,16 +1594,40 @@ struct ArenaQuestionStage<Answers: View>: View {
     @ViewBuilder let answers: Answers
     @State private var peeking = false
 
+    /// The question in a few words, the reference's way ("Use Esper Sentinel's ability?"); the whole of XMage's message
+    /// goes under it when it says more (Caleb, 2026-10-21: long questions filled the screen).
+    static func headline(_ message: String, object: XmageStackObject?, card: ZoneCard?) -> (title: String, detail: String?) {
+        let clean = PromptDisplayText.clean(message)
+        guard clean.count > 64, object != nil || card != nil else { return (clean, nil) }
+        if let mark = clean.firstIndex(of: "?"), clean.distance(from: clean.startIndex, to: mark) < 64 {
+            let head = String(clean[...mark])
+            let rest = clean[clean.index(after: mark)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            return (head, rest.isEmpty ? nil : rest)
+        }
+        // "Use X's ability?" only when the message is about X; otherwise its first sentence.
+        let name = object?.displaySourceName ?? card?.card.name ?? ""
+        if !name.isEmpty, clean.localizedCaseInsensitiveContains(name), object.map(ArenaStackCard.isAbility) ?? false {
+            return ("Use \(name)'s ability?", clean)
+        }
+        if let stop = clean.range(of: ". "), clean.distance(from: clean.startIndex, to: stop.lowerBound) < 70 {
+            return (String(clean[..<stop.lowerBound]) + ".", clean)
+        }
+        return (String(clean.prefix(60)).trimmingCharacters(in: .whitespaces) + "…", clean)
+    }
+
     var body: some View {
         let landscape = screen.width > screen.height
         let height = landscape ? min(screen.height * 0.48, 220) : min(screen.height * 0.36, 330)
         let size = CGSize(width: height * 0.72, height: height)
+        let headline = Self.headline(title, object: object, card: card)
+        let art = object?.displaySourceCard ?? card
         ZStack {
             Color.black.opacity(peeking ? 0 : 0.72).ignoresSafeArea()
                 .allowsHitTesting(!peeking)
                 .accessibilityHidden(true)
             VStack(spacing: landscape ? 10 : 18) {
-                GameRulesText(source: PromptDisplayText.clean(title), cardName: object?.displaySourceName ?? card?.card.name, symbolSize: 18)
+                VStack(spacing: 4) {
+                GameRulesText(source: headline.title, cardName: object?.displaySourceName ?? card?.card.name, symbolSize: 18)
                     .font(.system(size: landscape ? 20 : 22, weight: .bold, design: .serif))
                     .foregroundStyle(ArenaGlass.text)
                     .shadow(color: .black, radius: 2)
@@ -1346,18 +1637,31 @@ struct ArenaQuestionStage<Answers: View>: View {
                     .frame(maxWidth: 600)
                     .padding(.horizontal, 24)
                     .accessibilityIdentifier("arena.question.title")
+                if let detail = headline.detail {
+                    GameRulesText(source: detail, cardName: object?.displaySourceName ?? card?.card.name, symbolSize: 13)
+                        .font(.system(size: 13, weight: .medium, design: .serif))
+                        .foregroundStyle(ArenaGlass.text.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .frame(maxWidth: 560)
+                        .padding(.horizontal, 24)
+                        .accessibilityIdentifier("arena.question.detail")
+                }
+                }
                 Group {
                     if let object, ArenaStackCard.isAbility(object) || object.displaySourceCard == nil {
-                        ArenaAbilityCard(source: object.displaySourceCard, name: object.displaySourceCard == nil ? object.displayName : nil,
+                        // Its permanent's art from the table when XMage sent no card.
+                        ArenaAbilityCard(source: art, name: art == nil ? object.displayName : nil,
                                          text: object.rulesText ?? object.displayName, size: size)
-                    } else if let shown = object?.displaySourceCard ?? card {
-                        CardTile(card: shown, selected: false, zoneName: "Question", width: size.width, height: size.height, imageVariant: .inspection)
+                    } else if let shown = art {
+                        CardTile(card: shown, selected: false, zoneName: "Question", width: size.width, height: size.height,
+                                 ignoreTappedRotation: true, imageVariant: .inspection)
                             .allowsHitTesting(false)
                     }
                 }
                 .shadow(color: .black.opacity(0.6), radius: 10, y: 6)
                 .contentShape(Rectangle())
-                .onTapGesture { if let shown = object?.displaySourceCard ?? card { inspect(shown) } }
+                .onTapGesture { if let art { inspect(art) } }
                 answers
             }
             .padding(.top, landscape ? 0 : 40)
@@ -1576,6 +1880,248 @@ struct ArenaAnswerRow: View {
             }
             if pending { ProgressView().tint(ArenaGlass.text) }
         }
+    }
+}
+
+/// A zone opened from the table, the Arena way (Caleb, 2026-10-21: the command zone and Revealed panels were the Hearth
+/// board's): graveyard, exile, the command zone, revealed or looked-at cards side by side on the dimmed table, an ember
+/// plaque under each card you can use (Cast, or the action's own name), Done to close. Hold a card to read it. Sends the
+/// same actions as the Hearth board's zone panel (CompactZoneInspectorOverlay).
+struct ArenaZoneBrowser: View {
+    let title: String
+    let cards: [ZoneCard]
+    let legalActions: [LegalAction]
+    let pendingActionId: String?
+    let screen: CGSize
+    var targetableIDs: Set<String> = []
+    var runTargetAction: ((ZoneCard) -> Void)? = nil
+    @Binding var inspectedCard: ZoneCard?
+    let runAction: (LegalAction) -> Void
+    let close: () -> Void
+
+    private var landscape: Bool { screen.width > screen.height }
+    private var cardSize: CGSize {
+        let height = landscape ? min(220, screen.height * 0.5) : min(200, (screen.width - 56) / 3 * 1.4)
+        return CGSize(width: height / 1.4, height: height)
+    }
+
+    private func actions(_ card: ZoneCard) -> [LegalAction] { GameBoardInteractionState.cardActions(for: card, actions: legalActions) }
+    private func targetable(_ card: ZoneCard) -> Bool {
+        runTargetAction != nil && (targetableIDs.contains(card.instanceId) || targetableIDs.contains(card.id))
+    }
+
+    private var detail: String {
+        if cards.isEmpty { return title.contains("Library") ? "The library is face down. Only a revealed top card shows here." : "No cards here." }
+        if cards.contains(where: targetable) { return "Choose a card." }
+        if cards.contains(where: { !actions($0).isEmpty }) { return "Play a card from here, or hold one to read it." }
+        return cards.count == 1 ? "1 card. Hold it to read it." : "\(cards.count) cards. Hold one to read it."
+    }
+
+    private func perform(_ action: LegalAction) {
+        guard pendingActionId == nil, legalActions.contains(where: { $0.id == action.id }) else { return }
+        if GameplayAffordances.dismissesZone(action: action) {
+            inspectedCard = nil
+            close()
+        }
+        runAction(action)
+    }
+
+    var body: some View {
+        ArenaBrowserFrame(title: title, detail: detail, screen: screen, identifier: "arena.zone", inspect: { inspectedCard = $0 }) {
+            if cards.isEmpty {
+                Spacer(minLength: 0)
+            } else if landscape {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 16) { ForEach(cards) { tile($0) } }
+                        .padding(.horizontal, 24).padding(.vertical, 14)
+                        .frame(minWidth: screen.width - 48)
+                }
+            } else {
+                ScrollView(showsIndicators: false) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cardSize.width), spacing: 12, alignment: .top), count: 3), spacing: 14) {
+                        ForEach(cards) { tile($0) }
+                    }
+                    .padding(.vertical, 12)
+                }
+            }
+        } footer: {
+            // Done always closes, even while an answer is on its way (the Hearth panel's close never waited either).
+            ArenaAnswerRow(primary: (title: "Done", subtitle: nil, enabled: true, action: close))
+        }
+    }
+
+    private func tile(_ card: ZoneCard) -> some View {
+        let cardActions = actions(card)
+        let target = targetable(card)
+        return VStack(spacing: 8) {
+            CardTile(card: card, selected: false, zoneName: "Zone", width: cardSize.width, height: cardSize.height,
+                     ignoreTappedRotation: true, imageVariant: .inspection)
+                .background {
+                    if target || !cardActions.isEmpty {
+                        ArenaOutlineGlow(outline: .card, tone: target ? .target : .playable, breathes: !target)
+                    }
+                }
+                .onCardInteraction(tap: { inspectedCard = card }, inspect: { inspectedCard = card },
+                                   release: { if inspectedCard?.id == card.id { inspectedCard = nil } })
+                .accessibilityLabel(card.card.name)
+            if target {
+                Button("Choose") { if pendingActionId == nil { runTargetAction?(card) } }
+                    .buttonStyle(ArenaPlaqueButtonStyle(kind: .primary, fontSize: 14))
+                    .frame(width: cardSize.width, height: 36)
+                    .disabled(pendingActionId != nil)
+                    .accessibilityLabel("Choose \(card.card.name)")
+            }
+            ForEach(cardActions.prefix(3)) { action in
+                Button(cardActions.count == 1 && action.type == "cast_spell" ? "Cast" : action.displayLabel) { perform(action) }
+                    .buttonStyle(ArenaPlaqueButtonStyle(kind: .primary, fontSize: 14))
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                    .frame(width: cardSize.width, height: 36)
+                    .disabled(pendingActionId != nil)
+                    .accessibilityLabel("\(action.displayLabel), \(card.card.name)")
+                    .accessibilityIdentifier("arena.zone.action.\(action.id)")
+            }
+        }
+        .frame(width: cardSize.width)
+    }
+}
+
+/// A player's card on the Arena table, opened from their medallion (Caleb, 2026-10-21: the medallion's menu was a
+/// list of Hearth plaques and ran off the screen): their name, life and counters and the commander damage they took,
+/// then one icon per zone that holds cards (the command zone while they have a commander, lit when you can cast from
+/// it), exile zones by their full names, and in a pod the other opponents to swap to. A tap opens that zone's browser.
+struct ArenaPlayerCard: View {
+    let player: PlayerGameState
+    let snapshot: GameSnapshot
+    let pendingActionID: String?
+    var opponents: [PlayerGameState] = []
+    var swap: ((String) -> Void)? = nil
+    let open: (BoardZoneReference) -> Void
+    let close: () -> Void
+
+    private struct ZoneIcon: Identifiable {
+        let zone: BoardZoneReference.PlayerZone
+        let name: String
+        let symbol: String
+        let count: Int
+        let lit: Bool
+        var id: String { zone.rawValue }
+    }
+
+    private var zones: [ZoneIcon] {
+        let viewer = snapshot.isViewer(player.playerId)
+        let castable = viewer ? GameplayAffordances.castableZones(player: player, snapshot: snapshot, pendingActionID: pendingActionID) : []
+        let commanderReady = viewer && GameplayAffordances.commanderCastAvailable(player: player, snapshot: snapshot, pendingActionID: pendingActionID)
+        let zones = player.zones
+        var icons: [ZoneIcon] = []
+        if !zones.command.isEmpty || !(player.commanders ?? []).isEmpty {
+            icons.append(ZoneIcon(zone: .command, name: "Command", symbol: "crown.fill", count: zones.command.count, lit: commanderReady))
+        }
+        icons.append(ZoneIcon(zone: .graveyard, name: "Graveyard", symbol: "leaf.fill", count: zones.graveyard.count, lit: castable.contains(.graveyard)))
+        icons.append(ZoneIcon(zone: .exile, name: "Exile", symbol: "sparkles", count: zones.exile.count, lit: castable.contains(.exile)))
+        icons.append(ZoneIcon(zone: .library, name: "Library", symbol: "books.vertical.fill", count: zones.visibleLibraryCount, lit: castable.contains(.library)))
+        if !viewer { icons.append(ZoneIcon(zone: .hand, name: "Hand", symbol: "hand.raised.fill", count: zones.visibleHandCount, lit: false)) }
+        // Only zones with something in them, and the library (always worth its count).
+        return icons.filter { $0.count > 0 || $0.zone == .command || $0.zone == .library }
+    }
+
+    var body: some View {
+        // A long list of exile zones scrolls inside the card instead of pushing it off the screen.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView(showsIndicators: false) { content }
+        }
+        .frame(width: 300)
+        .modifier(ArenaGlassPanel(cornerRadius: 18, opacity: 0.96))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("arena.playerCard")
+    }
+
+    private var content: some View {
+        let name = snapshot.playerLabel(player.playerId)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                PlayerPortrait(player: player, size: 44)
+                    .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.system(size: 17, weight: .bold, design: .serif))
+                        .foregroundStyle(ArenaGlass.text)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Text(player.isOut ? "Out of the game" : "\(player.life) life")
+                        .font(.system(size: 13, weight: .heavy, design: .serif))
+                        .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                }
+                Spacer(minLength: 0)
+                Button(action: close) {
+                    Image(systemName: "xmark").font(.system(size: 13, weight: .black)).foregroundStyle(ArenaGlass.text.opacity(0.8))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close \(name)'s card")
+            }
+            let summary = PlayerStatusSummary(player: player, snapshot: snapshot)
+            if !summary.orbit.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(summary.orbit) { badge in
+                        HStack(spacing: 10) {
+                            TavernStatusBadge(badge: badge, size: 26).frame(width: 30, height: 30).accessibilityHidden(true)
+                            Text(badge.label)
+                                .font(.system(size: 13, weight: .semibold, design: .serif))
+                                .foregroundStyle(badge.nearLethal ? Color(red: 1, green: 0.62, blue: 0.52) : ArenaGlass.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(badge.label)
+                    }
+                }
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 8)], spacing: 8) {
+                ForEach(zones) { icon in
+                    Button { open(.player(playerID: player.playerId, zone: icon.zone)) } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: icon.symbol).font(.system(size: 17, weight: .bold))
+                            Text("\(icon.count)").font(.system(size: 13, weight: .heavy, design: .serif)).monospacedDigit()
+                            Text(icon.name.uppercased()).font(.system(size: 8, weight: .heavy, design: .serif)).tracking(0.8)
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                        .foregroundStyle(icon.lit ? Color(red: 1, green: 0.9, blue: 0.7) : ArenaGlass.text)
+                        .frame(maxWidth: .infinity, minHeight: 64)
+                        .modifier(ArenaGlassRow(primary: icon.lit))
+                        .background { if icon.lit { ArenaOutlineGlow(outline: .card, tone: .playable, breathes: true) } }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(icon.lit ? "\(icon.name), \(icon.count), you can play from it" : "\(icon.name), \(icon.count)")
+                    .accessibilityIdentifier("arena.player.zone.\(icon.zone.rawValue)")
+                }
+            }
+            let named = BoardZoneReference.namedReferences(in: snapshot)
+            if !named.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(named, id: \.self) { reference in
+                        Button { open(reference) } label: {
+                            HStack {
+                                Text(reference.title(in: snapshot))
+                                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 6)
+                                Text("\(reference.cards(in: snapshot).count)")
+                                    .font(.system(size: 13, weight: .heavy, design: .serif)).monospacedDigit()
+                            }
+                            .foregroundStyle(ArenaGlass.text)
+                            .padding(.horizontal, 12).frame(minHeight: 40)
+                            .modifier(ArenaGlassRow())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            if opponents.count > 1, let swap {
+                TavernOpponentSwap(opponents: opponents, current: player.playerId,
+                                   label: { snapshot.playerLabel($0) }, select: swap)
+            }
+        }
+        .padding(14)
     }
 }
 
@@ -2142,24 +2688,70 @@ struct ArenaStackArc: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drawn: CGFloat = 0
 
+    /// One arc, from the stack card's left edge up and over to the target's middle.
+    struct Arc: Shape {
+        let start: CGPoint
+        let end: CGPoint
+
+        func path(in rect: CGRect) -> Path {
+            let control = CGPoint(x: (start.x + end.x) / 2, y: min(start.y, end.y) - abs(start.x - end.x) * 0.25 - 30)
+            var path = Path()
+            path.move(to: start)
+            path.addQuadCurve(to: end, control: control)
+            return path
+        }
+    }
+
     var body: some View {
-        Canvas { context, _ in
-            for target in to {
-                let start = CGPoint(x: from.minX, y: from.midY)
-                let end = CGPoint(x: target.midX, y: target.midY)
-                let control = CGPoint(x: (start.x + end.x) / 2, y: min(start.y, end.y) - abs(start.x - end.x) * 0.25 - 30)
-                var path = Path()
-                path.move(to: start)
-                path.addQuadCurve(to: end, control: control)
-                let trimmed = path.trimmedPath(from: 0, to: drawn)
-                context.stroke(trimmed, with: .color(color.opacity(0.35)), style: StrokeStyle(lineWidth: 9, lineCap: .round))
-                context.stroke(trimmed, with: .color(color), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                context.stroke(trimmed, with: .color(.white.opacity(0.85)), style: StrokeStyle(lineWidth: 1, lineCap: .round))
+        // Shapes, not a Canvas, so the arc draws itself in (a trim animates; a Canvas only jumps to the end).
+        ZStack {
+            ForEach(Array(to.enumerated()), id: \.offset) { _, target in
+                // From the upper part of the card's left edge, clear of the stack tab at its middle.
+                let arc = Arc(start: CGPoint(x: from.minX, y: from.minY + from.height * 0.24),
+                              end: CGPoint(x: target.midX, y: target.midY)).trim(from: 0, to: drawn)
+                arc.stroke(color.opacity(0.35), style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                arc.stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                arc.stroke(.white.opacity(0.85), style: StrokeStyle(lineWidth: 1, lineCap: .round))
             }
         }
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
         .onAppear {
             if reduceMotion { drawn = 1 } else { withAnimation(.easeOut(duration: 0.45)) { drawn = 1 } }
+        }
+    }
+}
+
+/// A spell or ability waiting on the stack marks what it targets, as the reference does: a ring with four ticks over
+/// the target that breathes until the spell resolves (Caleb, 2026-10-21: Murder's target couldn't be seen).
+struct ArenaTargetReticle: View {
+    let rect: CGRect
+    let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    var body: some View {
+        let diameter = max(34, min(rect.width, rect.height) * 0.62)
+        ZStack {
+            Circle().stroke(color.opacity(0.35), lineWidth: 7).blur(radius: 3)
+            Circle().stroke(color, lineWidth: 2.2)
+            Circle().stroke(.white.opacity(0.8), lineWidth: 0.8).padding(diameter * 0.18)
+            ForEach(0..<4, id: \.self) { quarter in
+                Capsule().fill(color)
+                    .frame(width: 2.6, height: diameter * 0.2)
+                    .offset(y: -diameter * 0.5)
+                    .rotationEffect(.degrees(Double(quarter) * 90))
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .shadow(color: .black.opacity(0.6), radius: 2)
+        .scaleEffect(shown ? 1 : 1.6)
+        .opacity(shown ? 1 : 0)
+        .position(x: rect.midX, y: rect.midY)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            if reduceMotion { shown = true } else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.35)) { shown = true } }
         }
     }
 }

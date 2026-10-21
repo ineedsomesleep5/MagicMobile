@@ -123,6 +123,12 @@ struct ArenaLayout: Equatable {
     let dropArea: CGRect
     /// Portrait only: the walnut rail along the bottom; a resting hand tucks behind its top edge.
     let railTop: CGFloat?
+    /// The corner the drop area leaves out (the controls), as the reference does.
+    var dropCorner: CGRect? = nil
+    /// How far a card has to be carried before letting go plays it: up a little, or a long way in any direction (in
+    /// landscape a popped card already sits over your land row). A wiggle or a short slide along the hand puts it back.
+    static let dropLift: CGFloat = 24
+    static let dropCarry: CGFloat = 80
 
     /// The landscape table (scripts/brand/arena_layout.json "landscape").
     static let landscapeLayout = ArenaLayout(
@@ -135,10 +141,12 @@ struct ArenaLayout: Equatable {
                    tilt: 3.5, maxTilt: 11, downY: 432, downPitch: 50, downSpan: 317, downDrop: 1.2, downScale: 1,
                    lift: 48, liftDown: 92, maxDrop: 14, upFloor: 437, touchBottom: 416),
         opponentHand: CGPoint(x: 478, y: 4), opponentHandCard: CGSize(width: 36, height: 50), opponentHandPitch: 30,
-        viewerMedallion: CGPoint(x: 96, y: 402), viewerMedallionDiameter: 56,
+        // Your medallion and piles sit a little left with room between the stacks for their count badges (Caleb,
+        // 2026-10-21: the badges ran over the next pile).
+        viewerMedallion: CGPoint(x: 84, y: 402), viewerMedallionDiameter: 56,
         opponentMedallion: CGPoint(x: 478, y: 25), opponentMedallionDiameter: 50,
-        viewerLibrary: CGPoint(x: 204, y: 404), viewerGraveyard: CGPoint(x: 158, y: 404), viewerPile: CGSize(width: 42, height: 59),
-        viewerExile: CGPoint(x: 250, y: 404), opponentExile: CGPoint(x: 652, y: 30),
+        viewerLibrary: CGPoint(x: 201, y: 404), viewerGraveyard: CGPoint(x: 147, y: 404), viewerPile: CGSize(width: 42, height: 59),
+        viewerExile: CGPoint(x: 255, y: 404), opponentExile: CGPoint(x: 652, y: 30),
         opponentLibrary: CGPoint(x: 704, y: 30), opponentGraveyard: CGPoint(x: 756, y: 30), opponentPile: CGSize(width: 36, height: 50),
         opponentLands: CGRect(x: 80, y: 54, width: 360, height: 66),
         viewerLands: CGRect(x: 80, y: 290, width: 360, height: 70),
@@ -148,7 +156,9 @@ struct ArenaLayout: Equatable {
         // The front rows run the table's full width, inside the mat's leaning edges (Caleb, 2026-10-20).
         opponentCreatureY: 146, viewerCreatureY: 248, creatureLaneX: 84...872, rowBack: 76,
         tile: CGSize(width: 66, height: 71), land: CGSize(width: 58, height: 62.5),
-        stack: CGRect(x: 708, y: 46, width: 175, height: 250),
+        // Under the opponent's piles, its bottom above the phase strip and the storm and day pills when two plaques raise
+        // them (Caleb, 2026-10-21: the stack card ran under both).
+        stack: CGRect(x: 716, y: 60, width: 158, height: 222),
         draw: CGRect(x: 686, y: 187, width: 106, height: 148),
         primary: CGRect(x: 708, y: 388, width: 176, height: 36),
         secondary: CGRect(x: 708, y: 335, width: 176, height: 37),
@@ -157,10 +167,13 @@ struct ArenaLayout: Equatable {
         passAhead: CGRect(x: 890, y: 392, width: 40, height: 28),
         undo: CGRect(x: 650, y: 343, width: 52, height: 26),
         menu: CGPoint(x: 876, y: 23),
-        floatingMana: CGPoint(x: 92, y: 405),
+        floatingMana: CGPoint(x: 80, y: 405),
         captionY: 197, bannerY: 210,
-        dropArea: CGRect(x: 60, y: 30, width: 640, height: 258),
-        railTop: nil)
+        // The whole table above the tucked hand, your land row included, as in the reference (Caleb, 2026-10-21: the
+        // old box left out your lands and the right side), minus the controls corner.
+        dropArea: CGRect(x: 0, y: 0, width: 956, height: 352),
+        railTop: nil,
+        dropCorner: CGRect(x: 640, y: 300, width: 316, height: 140))
 
     /// The portrait table (scripts/brand/arena_layout.json "portrait"): the board split at the compass, the opponent
     /// in the top half, you in the bottom half, and every control on the walnut rail under the mat.
@@ -175,7 +188,7 @@ struct ArenaLayout: Equatable {
         // Your medallion and piles sit low on the rail, level with the main button (Caleb, 2026-10-20).
         viewerMedallion: CGPoint(x: 50, y: 890), viewerMedallionDiameter: 74,
         opponentMedallion: CGPoint(x: 42, y: 36), opponentMedallionDiameter: 54,
-        viewerLibrary: CGPoint(x: 123, y: 891), viewerGraveyard: CGPoint(x: 167, y: 891), viewerPile: CGSize(width: 38, height: 53),
+        viewerLibrary: CGPoint(x: 118, y: 891), viewerGraveyard: CGPoint(x: 168, y: 891), viewerPile: CGSize(width: 38, height: 53),
         viewerExile: CGPoint(x: 30, y: 795), opponentExile: CGPoint(x: 168, y: 33),
         opponentLibrary: CGPoint(x: 98, y: 33), opponentGraveyard: CGPoint(x: 133, y: 33), opponentPile: CGSize(width: 30, height: 42),
         opponentLands: CGRect(x: 14, y: 95, width: 412, height: 62),
@@ -192,8 +205,15 @@ struct ArenaLayout: Equatable {
         menu: CGPoint(x: 414, y: 28),
         floatingMana: CGPoint(x: 112, y: 752),
         captionY: 446, bannerY: 446,
-        dropArea: CGRect(x: 0, y: 70, width: 440, height: 630),
+        dropArea: CGRect(x: 0, y: 0, width: 440, height: 700),
         railTop: 815)
+
+    /// Whether a card carried from `start` and let go at `point` (design points) plays: over the table, out of the
+    /// controls corner, and carried up at least `dropLift` or `dropCarry` in any direction.
+    func drops(at point: CGPoint, from start: CGPoint) -> Bool {
+        dropArea.contains(point) && !(dropCorner?.contains(point) ?? false)
+            && (start.y - point.y >= Self.dropLift || hypot(point.x - start.x, point.y - start.y) >= Self.dropCarry)
+    }
 
     static func current(for size: CGSize) -> ArenaLayout {
         size.width > size.height ? .landscapeLayout : .portraitLayout
@@ -236,6 +256,10 @@ struct ArenaCanvas: Equatable {
     var scale: CGFloat { min(scaleX, scaleY) }
 
     func point(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x * scaleX, y: point.y * scaleY) }
+    /// A screen point back in design points.
+    func design(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x / max(scaleX, 0.001), y: point.y / max(scaleY, 0.001)) }
+    /// Whether a card carried from `start` and let go at `point` (screen points) plays (ArenaLayout.drops).
+    func drops(at point: CGPoint, from start: CGPoint) -> Bool { layout.drops(at: design(point), from: design(start)) }
     func x(_ value: CGFloat) -> CGFloat { value * scaleX }
     func y(_ value: CGFloat) -> CGFloat { value * scaleY }
     func length(_ value: CGFloat) -> CGFloat { value * scale }

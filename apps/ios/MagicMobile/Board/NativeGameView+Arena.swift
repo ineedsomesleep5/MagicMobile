@@ -72,6 +72,8 @@ extension NativeGameView {
             arenaTriggerStep(snapshot: snapshot)
         })
         .onChange(of: snapshot.step ?? snapshot.phase) { _, _ in arenaHandOpen = false }
+        // A new decision puts a player's card away.
+        .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in arenaPlayerCardID = nil }
         .onAppear {
             interactionState.mode = GameBoardInteractionState.mode(for: snapshot, pendingActionId: pendingActionId, selectedCard: selectedCard)
             GameAudio.shared.preload(GameAudio.boardSounds)
@@ -103,24 +105,30 @@ extension NativeGameView {
         let controlsOnTop = arenaControlsOnTop(snapshot: snapshot)
         arenaLanes(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas)
         if isOverPlayerDropZone {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(TavernPalette.ember.opacity(0.10))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(TavernPalette.ember.opacity(0.55), lineWidth: 2))
-                .frame(width: canvas.area(canvas.layout.dropArea).width, height: canvas.area(canvas.layout.dropArea).height)
-                .position(x: canvas.area(canvas.layout.dropArea).midX, y: canvas.area(canvas.layout.dropArea).midY)
-                .allowsHitTesting(false)
+            // Over the table a carried card lights the table's edge, the reference's way: soft warm light, no box.
+            let area = canvas.area(canvas.layout.dropArea)
+            ZStack {
+                RoundedRectangle(cornerRadius: 34).strokeBorder(TavernPalette.ember.opacity(0.75), lineWidth: 16).blur(radius: 18)
+                RoundedRectangle(cornerRadius: 28).strokeBorder(Color(red: 1, green: 0.86, blue: 0.6).opacity(0.35), lineWidth: 3)
+                    .blur(radius: 3).padding(6)
+            }
+            .blendMode(.plusLighter)
+            .frame(width: area.width, height: area.height)
+            .position(x: area.midX, y: area.midY)
+            .transition(.opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
         arenaOpponentSeat(snapshot: snapshot, opponent: opponent, canvas: canvas)
         // A browser over the table (card choices, the stack, abilities, questions) says what to do and shows the card it's
         // about itself.
-        let browserOpen = isCardChoiceOpen || isTavernStackOpen || arenaAbilityPrompt(snapshot) != nil || arenaModePrompt(snapshot) != nil
-            || arenaChoicePrompt(snapshot) != nil || arenaPlayerPrompt(snapshot) != nil || arenaSplitPrompt(snapshot) != nil
-            || arenaPilePrompt(snapshot) != nil
-            || arenaQuestion(snapshot, targetableIds: GameBoardInteractionState.boardTargetableIds(for: snapshot)) != nil
+        let browserOpen = arenaScreenUp(snapshot)
         let amountPrompt = browserOpen ? nil : arenaAmountPrompt(snapshot)
         arenaStack(snapshot: snapshot, canvas: canvas)
             .opacity(browserOpen ? 0 : 1)
         arenaCaption(snapshot: snapshot, canvas: canvas)
+            .opacity(browserOpen ? 0 : 1)
+        arenaRevealedChips(snapshot: snapshot, canvas: canvas)
             .opacity(browserOpen ? 0 : 1)
         arenaViewerSeat(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas)
         if let railTop = canvas.layout.railTop {
@@ -157,7 +165,19 @@ extension NativeGameView {
         arenaOverlays(snapshot: snapshot, human: human, canvas: canvas)
             .zIndex(90)
             // The stack browser closes once the stack empties, so it doesn't reopen with the next spell.
-            .onChange(of: snapshot.stackTopFirst.isEmpty) { _, empty in if empty { isTavernStackOpen = false } }
+            .onChange(of: snapshot.stackTopFirst.isEmpty) { _, empty in
+                if empty { isTavernStackOpen = false; arenaLandedStackIDs = [] }
+            }
+    }
+
+    /// A full-table screen is up (a browser, the stack, a question): it hides the corner, the caption, the stack card and
+    /// the arrows over the table.
+    func arenaScreenUp(_ snapshot: GameSnapshot) -> Bool {
+        isCardChoiceOpen || isTavernStackOpen || arenaAbilityPrompt(snapshot) != nil || arenaModePrompt(snapshot) != nil
+            || arenaChoicePrompt(snapshot) != nil || arenaPlayerPrompt(snapshot) != nil || arenaSplitPrompt(snapshot) != nil
+            || arenaPilePrompt(snapshot) != nil
+            || arenaQuestion(snapshot, targetableIds: GameBoardInteractionState.boardTargetableIds(for: snapshot)) != nil
+            || inspectingZoneTitle != nil
     }
 
     /// Each side laid out the current reference game's way (Caleb, 2026-10-20): creatures in the front row nearest
@@ -353,6 +373,7 @@ extension NativeGameView {
                        runAction: runAction,
                        runTargetAction: { submitTarget($0, snapshot: snapshot) },
                        runCombatCardAction: { handleCombatCardTap($0, snapshot: snapshot) })
+            .environment(\.arenaPaying, choice.paying)
             .frame(width: rect.width, height: rect.height)
             .position(x: rect.midX, y: rect.midY)
     }
@@ -433,11 +454,12 @@ extension NativeGameView {
                     .buttonStyle(.plain)
                     .accessibilityLabel(label).accessibilityHint("Chooses this player")
             } else {
-                PlayerZoneMenu(player: opponent, viewZone: { localViewZone(title: $0, cards: $1) },
-                               customLabel: AnyView(medallion.frame(width: diameter + 8, height: diameter + 8)),
-                               accessibilityOverride: (label, "board.zones.\(opponent.playerId)"), menuArrowEdge: .top,
-                               statusSnapshot: snapshot, swapOpponents: BoardOpponentFocus.opponents(in: snapshot),
-                               swap: { focusTracker.select($0) })
+                // The medallion opens the player's card on the table (ArenaPlayerCard), not a menu.
+                Button { arenaPlayerCardID = opponent.playerId } label: { medallion.frame(width: diameter + 8, height: diameter + 8) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(label)
+                    .accessibilityHint("Shows their life, counters and zones")
+                    .accessibilityIdentifier("board.zones.\(opponent.playerId)")
             }
         }
         .overlay(alignment: .bottom) {
@@ -510,10 +532,11 @@ extension NativeGameView {
                     .buttonStyle(.plain)
                     .accessibilityLabel("You, \(human.life) life").accessibilityHint("Chooses you")
             } else {
-                PlayerZoneMenu(player: human, viewZone: { localViewZone(title: $0, cards: $1) }, snapshot: snapshot,
-                               pendingActionID: pendingActionId,
-                               customLabel: AnyView(medallion.frame(width: diameter + 8, height: diameter + 8)),
-                               accessibilityOverride: ("Your life: \(human.life)\(PortraitBottomCommandBar.castableDescription(castable))", "board.lifeOrb"))
+                Button { arenaPlayerCardID = human.playerId } label: { medallion.frame(width: diameter + 8, height: diameter + 8) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Your life: \(human.life)\(PortraitBottomCommandBar.castableDescription(castable))")
+                    .accessibilityHint("Shows your counters and zones")
+                    .accessibilityIdentifier("board.lifeOrb")
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -545,17 +568,22 @@ extension NativeGameView {
             }
             let revealing = arenaRevealID == top.id
             ArenaStackCard(object: top, count: snapshot.xmage?.stack.count ?? objects.count, size: rect.size, commander: commander,
+                           fallbackSource: arenaSourceCard(top, snapshot: snapshot), lands: !arenaLandedStackIDs.contains(top.id),
                            inspect: { inspectedCard = $0 }, openStack: { isTavernStackOpen = true })
                 // An opponent's spell is revealed first, larger and toward the middle, then settles onto the stack card
                 // (the reference's ~0.4 s grow, ~0.9 s hold, 0.3 s settle).
-                .scaleEffect(revealing ? 1.3 : 1)
-                .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.06 : 0)
+                // Low enough that the larger card clears the opponent's piles above the stack card.
+                .scaleEffect(revealing ? 1.2 : 1)
+                .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.14 : 0)
                 .animation(.easeInOut(duration: 0.3), value: revealing)
                 .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["arena.stack": $0] }
                 .id(top.id)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
                 .position(x: rect.midX, y: rect.midY)
-                .onAppear { arenaBeginReveal(top, snapshot: snapshot) }
+                .onAppear {
+                    arenaBeginReveal(top, snapshot: snapshot)
+                    arenaLandedStackIDs.insert(top.id)
+                }
                 .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
                 .zIndex(30)
         }
@@ -580,18 +608,6 @@ extension NativeGameView {
             if let text = arenaNotice ?? arenaCaptionText(snapshot: snapshot) {
                 ArenaPromptCaption(text: text)
             }
-            HStack(spacing: 8) {
-                let revealed = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
-                let lookedAt = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
-                if !revealed.isEmpty {
-                    FloatingZoneChip(title: "Revealed", count: revealed.count, icon: "eye") { inspectBoardZone(.collection(.revealed)) }
-                }
-                if !lookedAt.isEmpty {
-                    FloatingZoneChip(title: "Looked", count: lookedAt.count, icon: "eye.trianglebadge.exclamationmark") {
-                        inspectBoardZone(.collection(.lookedAt))
-                    }
-                }
-            }
             if let lastActionRejection {
                 ActionRejectionInlineView(notice: lastActionRejection) { recover(from: lastActionRejection) }
                     .frame(maxWidth: min(canvas.screen.width - 40, 420))
@@ -600,6 +616,52 @@ extension NativeGameView {
         .frame(maxWidth: band.width)
         .position(x: band.midX, y: y)
         .zIndex(35)
+    }
+
+    /// Revealed and looked-at cards, as small glass pills beside the opponent's piles, clear of the creature rows
+    /// (Caleb, 2026-10-21: the chip sat over a creature's power and toughness). A tap opens them in a browser.
+    @ViewBuilder
+    private func arenaRevealedChips(snapshot: GameSnapshot, canvas: ArenaCanvas) -> some View {
+        let revealed = snapshot.xmage?.revealed.flatMap(\.cards) ?? []
+        let lookedAt = snapshot.xmage?.lookedAt.flatMap(\.cards) ?? []
+        if !revealed.isEmpty || !lookedAt.isEmpty {
+            // Landscape: one over the other in the gap between the opponent's graveyard and the gear. Portrait: side by
+            // side under the opponent's piles.
+            let pills = Group {
+                if !revealed.isEmpty { arenaZonePill("eye.fill", count: revealed.count, label: "Revealed") { inspectBoardZone(.collection(.revealed)) } }
+                if !lookedAt.isEmpty { arenaZonePill("eye", count: lookedAt.count, label: "Looked at") { inspectBoardZone(.collection(.lookedAt)) } }
+            }
+            if canvas.layout.landscape {
+                VStack(spacing: 0) { pills }
+                    .fixedSize()
+                    .position(x: canvas.x(818), y: canvas.y(12) + (revealed.isEmpty || lookedAt.isEmpty ? 22 : 44) / 2)
+                    .zIndex(36)
+            } else {
+                HStack(spacing: 6) { pills }
+                    .fixedSize()
+                    .position(canvas.point(CGPoint(x: 122, y: 74)))
+                    .zIndex(36)
+            }
+        }
+    }
+
+    private func arenaZonePill(_ symbol: String, count: Int, label: String, open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            HStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 11, weight: .bold))
+                Text("\(count)").font(.system(size: 12, weight: .heavy, design: .serif)).monospacedDigit()
+            }
+            .foregroundStyle(ArenaGlass.text)
+            .padding(.horizontal, 9).frame(height: 22)
+            .background(Capsule().fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)))
+            .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+            .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
+            .frame(minWidth: 44, minHeight: 22)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(count == 1 ? "\(label), 1 card" : "\(label), \(count) cards")
+        .accessibilityIdentifier("arena.chip.\(label.lowercased().replacingOccurrences(of: " ", with: ""))")
     }
 
     /// Where the caption may run: the middle of the table, kept left of the stack card while one is up.
@@ -728,6 +790,24 @@ extension NativeGameView {
                                    y: canvas.y(canvas.layout.landscape ? 196 : 446))
         let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
         let abilityPrompt = arenaAbilityPrompt(snapshot)
+        // First, so any decision that comes up draws over it (it also closes when one does).
+        if let cardOwner = arenaPlayerCardID, let player = snapshot.players.first(where: { $0.playerId == cardOwner }) {
+            // A player's card beside their medallion; a tap anywhere else puts it away.
+            Color.black.opacity(0.35).ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { arenaPlayerCardID = nil }
+                .accessibilityHidden(true)
+            let viewer = snapshot.isViewer(player.playerId)
+            let medallion = canvas.point(viewer ? canvas.layout.viewerMedallion : canvas.layout.opponentMedallion)
+            ArenaPlayerCard(player: player, snapshot: snapshot, pendingActionID: pendingActionId,
+                            opponents: viewer ? [] : BoardOpponentFocus.opponents(in: snapshot),
+                            swap: { id in focusTracker.select(id); arenaPlayerCardID = id },
+                            open: { reference in arenaPlayerCardID = nil; inspectBoardZone(reference) },
+                            close: { arenaPlayerCardID = nil })
+                .frame(maxHeight: canvas.screen.height - 24)
+                .position(arenaPlayerCardCenter(medallion: medallion, viewer: viewer, canvas: canvas))
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
+        }
         if let abilityPrompt {
             // A choice XMage lets you back out of keeps its Cancel inside the browser (the corner is hidden behind it).
             let back = CompactPromptPopup.compactLegalPromptActions(in: snapshot).first { $0.type != "choose_ability" }
@@ -839,17 +919,14 @@ extension NativeGameView {
                 .transition(boardOverlayTransition)
         }
         if let inspectingZoneTitle {
-            CompactZoneInspectorOverlay(
+            ArenaZoneBrowser(
                 title: inspectingZoneReference?.title(in: snapshot) ?? inspectingZoneTitle,
                 cards: inspectingZoneReference?.cards(in: snapshot) ?? inspectingZoneCards,
-                legalActions: snapshot.legalActions ?? [], pendingActionId: pendingActionId,
-                selectedCard: $selectedCard, inspectedCard: $inspectedCard, runAction: runAction,
-                closeAction: { self.inspectingZoneTitle = nil; self.inspectingZoneCards = []; self.inspectingZoneReference = nil },
+                legalActions: snapshot.legalActions ?? [], pendingActionId: pendingActionId, screen: canvas.screen,
                 targetableIDs: targetableIds, runTargetAction: { submitTarget($0, snapshot: snapshot) },
-                availableHeight: canvas.screen.height * 0.8)
-                .frame(width: min(canvas.screen.width - 32, 520), height: canvas.screen.height * (canvas.layout.landscape ? 0.82 : 0.62))
-                .position(x: canvas.screen.width / 2, y: canvas.screen.height / 2)
-                .transition(boardOverlayTransition)
+                inspectedCard: $inspectedCard, runAction: runAction,
+                close: { self.inspectingZoneTitle = nil; self.inspectingZoneCards = []; self.inspectingZoneReference = nil })
+                .transition(.opacity)
         }
         if let inspectedCard {
             // The reference dims the table a little behind a card you're reading.
@@ -873,6 +950,22 @@ extension NativeGameView {
         }
     }
 
+    /// Where a player's card opens: beside the medallion toward the table, kept on the screen.
+    private func arenaPlayerCardCenter(medallion: CGPoint, viewer: Bool, canvas: ArenaCanvas) -> CGPoint {
+        let size = CGSize(width: 300, height: min(canvas.screen.height - 24, 360))
+        var center: CGPoint
+        if canvas.layout.landscape {
+            center = viewer ? CGPoint(x: medallion.x + 40 + size.width / 2, y: medallion.y - size.height / 2 - 10)
+                            : CGPoint(x: medallion.x, y: medallion.y + 40 + size.height / 2)
+        } else {
+            center = viewer ? CGPoint(x: medallion.x + size.width / 2 - 20, y: medallion.y - 50 - size.height / 2)
+                            : CGPoint(x: medallion.x + size.width / 2 - 20, y: medallion.y + 40 + size.height / 2)
+        }
+        center.x = min(max(center.x, size.width / 2 + 12), canvas.screen.width - size.width / 2 - 12)
+        center.y = min(max(center.y, size.height / 2 + 12), canvas.screen.height - size.height / 2 - 12)
+        return center
+    }
+
     /// The card and its notes (CardInspector's Arena look): in landscape the card at most of the height with the notes
     /// beside it, in portrait the card over its notes.
     private func arenaInspectorSize(canvas: ArenaCanvas) -> CGSize {
@@ -888,19 +981,32 @@ extension NativeGameView {
                                   opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
         GeometryReader { geometry in
             let bounds = anchors.mapValues { geometry[$0] }
-            if inspectingZoneTitle == nil && inspectedCard == nil {
+            // Nothing is drawn over a full-table screen (Caleb, 2026-10-21: combat arrows crossed the browsers).
+            if inspectedCard == nil && arenaPlayerCardID == nil && !arenaScreenUp(snapshot) {
                 ArenaCombatArrows(snapshot: snapshot, previewArrows: combatPreviewArrows, bounds: bounds, opponentID: opponent.playerId)
-                // An ability on the stack points at its targets, or back at its source, as in the reference.
-                if let top = snapshot.stackTopFirst.first, ArenaStackCard.isAbility(top), let from = bounds["arena.stack"] {
-                    let ids = (top.targetIds ?? []).isEmpty ? [top.sourceInstanceId].compactMap { $0 } : (top.targetIds ?? [])
+                // The top of the stack points at its targets, a spell as well as an ability, with a reticle on each target
+                // while it waits; an ability without targets points back at its source, as in the reference.
+                if let top = snapshot.stackTopFirst.first, let from = bounds["arena.stack"], arenaRevealID != top.id {
+                    let ability = ArenaStackCard.isAbility(top)
+                    let targetIds = top.targetIds ?? []
+                    let ids = !targetIds.isEmpty ? targetIds : ability ? [top.sourceInstanceId].compactMap { $0 } : []
                     let targets = ids.compactMap { id -> CGRect? in
                         if let card = bounds[id] { return card }
                         if CombatPlayerIdentity.ids(for: human.playerId, in: snapshot).contains(id) { return bounds[TavernSeatAnchor.bottom] }
                         if CombatPlayerIdentity.ids(for: opponent.playerId, in: snapshot).contains(id) { return bounds[TavernSeatAnchor.top] }
                         return nil
                     }
-                    ArenaStackArc(from: from, to: targets, color: Color(red: 0.55, green: 0.85, blue: 1))
+                    // Yours in the playable cyan, the opponent's in red.
+                    let theirs = top.controllerId.map { !snapshot.isViewer($0) } ?? false
+                    let color = theirs ? Color(red: 1, green: 0.38, blue: 0.27) : Color(red: 0.55, green: 0.85, blue: 1)
+                    ArenaStackArc(from: from, to: targets, color: color)
                         .id(top.id)
+                    if !targetIds.isEmpty {
+                        ForEach(Array(targets.enumerated()), id: \.offset) { _, rect in
+                            ArenaTargetReticle(rect: rect, color: color)
+                        }
+                        .id("reticle-\(top.id)")
+                    }
                 }
             }
             let stack = canvas.rect(canvas.layout.stack)
@@ -996,7 +1102,18 @@ extension NativeGameView {
                 .max { $0.card.name.count < $1.card.name.count }
         }
         if object == nil && card == nil, let top, message.contains("you may") { object = top }
+        // An ability whose card XMage didn't send shows its permanent's art from the table.
+        if let object, object.displaySourceCard == nil, card == nil { card = arenaSourceCard(object, snapshot: snapshot) }
         return (prompt.message, object, card, "\(prompt.id):\(prompt.messageId)")
+    }
+
+    /// The card a stack object comes from: XMage's own, else its permanent on the table, else a card of its name there.
+    func arenaSourceCard(_ object: XmageStackObject, snapshot: GameSnapshot) -> ZoneCard? {
+        if let card = object.displaySourceCard { return card }
+        let battlefield = snapshot.players.flatMap(\.zones.battlefield)
+        if let id = object.sourceInstanceId, let card = battlefield.first(where: { $0.instanceId == id || $0.id == id }) { return card }
+        let name = object.displaySourceName
+        return name.isEmpty ? nil : battlefield.first { $0.card.name == name }
     }
 
     private func arenaShowsPromptPopup(snapshot: GameSnapshot, targetableIds: Set<String>) -> Bool {

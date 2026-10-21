@@ -38,6 +38,14 @@ no footage, design it in the same language (below) and say so in the PR.
 - **Coins:** `TavernCoin` numbers order (1 resolves first, stack positions, picks).
 - **Highlights:** chosen cards rise about 10 pt in a gold glow (`Color(red: 1, green: 0.82, blue: 0.4)`); the next to
   resolve is lit gold. Cards you can't choose dim to about 0.42.
+- **The glow border** (`ArenaOutlineGlow`, Caleb's pick from the web board, memory `frame-outline-glow`): light that
+  follows the card's own outline, never a box or a coloured line. With Card Frames on it traces the tavern frame, crest
+  and corners included; with them off it traces the reference's card or a token's arch; in the hand it traces the
+  printed card. Colours: playable cyan `#7ff0ff` (it breathes in the hand; lands you could tap glow softer), target
+  `#c6f8ff`, selected `#ffe08f`, attacking `#ff5a2e`, blocking `#ffd38a`, and orange while a payment is open. No badges
+  or arrows on playable cards.
+- **Tapped:** the tile tilts 12° and greys by a multiply (grayscale 0.75, brightness 0.62, the prototype's), under a
+  translucent tap arrow, so dark art still reads.
 - **Never:** system blue tint, `.sheet` or `.popover` chrome, `confirmationDialog`, `Form`/`List` look, parchment or
   leather panels, SF symbol rows as the main content.
 
@@ -64,6 +72,10 @@ no footage, design it in the same language (below) and say so in the PR.
 | Choose a pile | `ArenaPileBrowser` | same |
 | Read a card | `CardInspector` (its Arena look, `arenaBody`) | `Board/CardInspector.swift` |
 | Panels (log, settings, phase stops) | `boardSheet` / `ArenaPanelOverlay` | same |
+| A zone (graveyard, exile, command, revealed) | `ArenaZoneBrowser`: cards, an ember plaque under each one you can use, Done | `Board/ArenaBoardViews.swift` |
+| A player's life, counters and zones | `ArenaPlayerCard`, opened from their medallion | same |
+| Library, graveyard and exile piles | `ArenaPileStack`: leaning, thickness by count, the count always shown, the top card face up without badges | same |
+| What a spell or ability targets | `ArenaStackArc` and `ArenaTargetReticle` from the stack card | same |
 | Running loop | `ComboLoopOverlay.runningBar` | `ComboLoopViews.swift` |
 
 Every browser sits in `ArenaBrowserFrame` with its answers in `ArenaAnswerRow`. Abilities are drawn as `ArenaAbilityCard`: the source's art crop on top, its name, a type line ("Ability", "Mode 2"),
@@ -88,7 +100,20 @@ the text below, and a loyalty badge for planeswalker abilities.
 - Controls live in one corner: phase strip, primary and secondary plaques, the pass-ahead pill. A number choice (X)
   replaces them with the amount pill: [−5] [−] [Pay X = n] [+] [+5], Cancel under it, as in the reference.
 - The hand rests tucked. A tap or a slide pops one card whole; a slide moves one card at a time, each card owning the
-  strip of it that shows at the finger's height (`ArenaHandFan.scrubCard`). Carry a card up to play it; hold to read.
+  strip of it that shows at the finger's height (`ArenaHandFan.scrubCard`). Carry a card up to play it, starting on
+  the popped card itself if you like; hold to read.
+- A carried card plays anywhere on the table above the hand except the controls corner, once carried up 24 pt or
+  80 pt in any direction (`ArenaLayout.drops`), so a short slide puts it back. Over the table, the table's edge lights
+  warm; nothing draws a box.
+
+## The stack card
+
+The top of the stack stands on the right, under the opponent's piles and above the corner. A tab on its left edge
+opens the whole stack and shows how many objects it holds. An arc runs from the card to each target, a spell's as well
+as an ability's, with a reticle on each target while it waits (cyan for yours, red for the opponent's). A spell lands
+with a settle, a bloom of its colour behind the card, a shine and a few motes; there are no light rays. The printed card
+shows its own power and toughness, so no badges go over it. An opponent's spell is revealed larger toward the middle
+without covering their piles.
 
 ## Timing (the reference's pace)
 
@@ -97,7 +122,7 @@ Measured from Arena gameplay video at 30 fps (`~/Movies/motion-assets/yt/_-awmu2
 
 | Moment | Arena |
 |---|---|
-| Your spell onto the stack card | 0.35 s, then it stays readable there |
+| Your spell onto the stack card | 0.35 s, then it stays readable there; its landing light 0.55 s |
 | An opponent's spell | revealed larger toward the middle for ~1.3 s, settles in 0.3 s (1.6 s; smart pass waits for it) |
 | Ability or trigger to the stack | 0.5 s, with the arc to its target |
 | A card arriving (from the stack or hand) | 0.6 s |
