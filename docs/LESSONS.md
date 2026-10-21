@@ -136,6 +136,24 @@ contradicting one.
 
 ## Native engine and releases
 
+- 2026-10-21 (Claude, web engine M1): the full engine's Web Image build fails in three places that the phone builds
+  never hit.
+  - **Compiling** ran out of a 10 GB builder heap with 4 threads. Two threads fit.
+  - **Creating the image** (`WasmGCHeapWriter.write`, writing the 89 MB image heap as Wasm initializer code) needs
+    about 17 GB of heap. With `-Xmx14g`, GraalVM's watchdog stopped it after 43 minutes of GC, without touching the
+    swap. A free GitHub runner builds it only with `-Xmx24g` over a 16 GB swapfile on `/mnt`, with the watchdog off
+    (`-H:DeadlockWatchdogInterval=0`); `-Ob` doesn't help with this stage.
+  - **Chrome refused the module** because by default 100,000 image-heap objects go into one initializer function. One
+    came out at 57.7 MB, and V8 caps a Wasm function at 7,654,321 bytes ("size … > maximum function size").
+    `-H:ImageHeapObjectsPerFunction=4000` fixes it.
+
+  The debug `.wat` is about 22× the `.wasm` (3.8 GB here) and is streamed to disk, so it doesn't cost heap.
+
+  **Rule:** check a new build's function sizes before blaming the engine (`node packages/web-engine/wasm_functions.mjs <engine.js.wasm>`).
+  Shrink the image heap (class metadata for 62k types) before relying on routine rebuilds.
+
+  Where: `.github/workflows/magicmobile-web-image.yml`, docs/WEB_ENGINE_M1.md.
+
 - 2026-10-20 (Claude, web engine M1): GraalVM Web Image 25.4 is single-threaded in more ways than "Thread.start runs
   nothing". `Thread.interrupt()` on the current thread is a no-op too, so XMage's AI timeout (interrupt the search,
   which then reads `isInterrupted()` in ComputerPlayer6, `PlayerImpl.canRespond`, `GameImpl.checkIfGameIsOver`) cannot
