@@ -105,6 +105,10 @@ the text below, and a loyalty badge for planeswalker abilities.
 - The hand rests tucked. A tap or a slide pops one card whole; a slide moves one card at a time, each card owning the
   strip of it that shows at the finger's height (`ArenaHandFan.scrubCard`). Carry a card up to play it, starting on
   the popped card itself if you like; hold to read.
+- Portrait: a glass ▲ tab at the hand's left lays the hand out in one flat row of whole cards over a soft shade, just
+  over the rail (`ArenaHandPosture.spread`); four show at once, and a sideways swipe moves along a bigger hand (a thin
+  gold track shows where). Tap a card to pop it, slide it up to play it, hold to read. ▼ (now above the cards), a tap on the table, playing a card or a
+  new turn tucks it; a payment, a target or combat puts it aside until it's done.
 - A carried card plays anywhere on the table above the hand except the controls corner, once carried up 24 pt or
   80 pt in any direction (`ArenaLayout.drops`), so a short slide puts it back. Over the table, the table's edge lights
   warm; nothing draws a box.
@@ -131,6 +135,7 @@ Measured from Arena gameplay video at 30 fps (`~/Movies/motion-assets/yt/_-awmu2
 | A card arriving (from the stack or hand) | 0.6 s |
 | A card leaving | 0.8 s |
 | Strikes | 0.45 s each, one after another, 0.38 s apart |
+| A board wipe (3+ leaving at once) | one after another, 0.16 s apart, the whole cascade within 1.2 s; the caption names the spell and what went |
 | Attack / block marks | 0.25 / 0.3 s |
 | Turn banner | 0.9 s, during the draw |
 | Draw | 0.5 s out of the deck, 0.4 s on show, 0.2 s into the hand |

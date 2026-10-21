@@ -463,6 +463,43 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertTrue(notice.hasPrefix("AI 1 took Chatterfang, Squirrel General."), notice)
     }
 
+    /// The spread hand: one flat row of whole cards over the rail, never overlapping; four fit, more swipe sideways and
+    /// the last swipe shows the last card whole; landscape has no spread (Caleb, 2026-10-21).
+    func testSpreadHandIsOneFlatRowThatSwipes() {
+        let hand = ArenaLayout.portraitLayout.hand
+        func frames(_ count: Int, scroll: CGFloat = 0) -> [CGRect] {
+            (0..<count).map { index in
+                let slot = ArenaHandFanLayout.slot(index: index, count: count, posture: .spread, hand: hand, scroll: scroll)
+                XCTAssertEqual(slot.rotation, 0)
+                let size = CGSize(width: hand.card.width * slot.scale, height: hand.card.height * slot.scale)
+                return CGRect(x: slot.center.x - size.width / 2, y: slot.center.y - size.height / 2, width: size.width, height: size.height)
+            }
+        }
+        for count in [1, 4, 9] {
+            let row = frames(count)
+            XCTAssertEqual(Set(row.map(\.midY)).count, 1, "one row")
+            for (a, b) in zip(row, row.dropFirst()) { XCTAssertGreaterThan(b.minX, a.maxX, "\(count) cards don't overlap") }
+            XCTAssertLessThanOrEqual(row[0].maxY, hand.spreadBottom! + 0.5)
+        }
+        XCTAssertTrue(frames(4).allSatisfy { $0.minX >= 0 && $0.maxX <= 440 }, "four fit whole")
+        let grid = ArenaHandFanLayout.spread(count: 9, hand: hand)!
+        XCTAssertGreaterThan(grid.maxScroll, 0)
+        XCTAssertGreaterThanOrEqual(frames(9)[0].minX, 0, "the first card shows whole")
+        XCTAssertLessThanOrEqual(frames(9, scroll: grid.maxScroll)[8].maxX, 440, "a full swipe shows the last card whole")
+        XCTAssertEqual(frames(9, scroll: 10_000)[8].maxX, frames(9, scroll: grid.maxScroll)[8].maxX, "the swipe stops at the end")
+        XCTAssertNil(ArenaHandFanLayout.spread(count: 5, hand: ArenaLayout.landscapeLayout.hand))
+        XCTAssertEqual(ArenaHandPosture.resolve(.init(spread: true)), .spread)
+        XCTAssertEqual(ArenaHandPosture.resolve(.init(spread: true, boardDecision: true)), .resting, "it steps aside for a decision")
+    }
+
+    func testBoardWipeRecapNamesTheSpellAndWhatWent() {
+        let deaths = (1...4).map { BoardFXEvent.leftBattlefield(cardID: "c\($0)", playerID: "a", to: .graveyard, tint: .green) }
+            + [BoardFXEvent.leftBattlefield(cardID: "e", playerID: "b", to: .exile, tint: .blue)]
+        XCTAssertEqual(ArenaSweepRecap.text(spell: "Necromantic Selection", events: deaths),
+                       "Necromantic Selection: 4 to the graveyard, 1 exiled")
+        XCTAssertNil(ArenaSweepRecap.text(spell: "Murder", events: Array(deaths.prefix(1))), "one removal needs no recap")
+    }
+
     /// The landscape stack card sits under the opponent's piles and above the raised phase strip and its pills.
     func testLandscapeStackCardClearsThePilesAndTheCorner() {
         let layout = ArenaLayout.landscapeLayout

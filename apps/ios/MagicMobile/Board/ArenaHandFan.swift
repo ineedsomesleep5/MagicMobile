@@ -31,6 +31,10 @@ struct ArenaHandFan: View {
     @State private var dragging: (id: String, start: CGPoint, offset: CGSize)?
     /// Where the popped card was when it was picked up: its touch surface stays there until the carry ends.
     @State private var carrySurface: CGRect?
+    /// The spread row's swipe, in design points from its first card.
+    @State private var spreadScroll: CGFloat = 0
+    /// A touch on the spread row: where it began and the swipe then; sideways it swipes the row, up it carries the card.
+    @State private var spreadTouch: (start: CGPoint, scroll: CGFloat, swiping: Bool)?
     @State private var known: Set<String>?
     /// Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan.
     @State private var arrivals: [String: Int] = [:]
@@ -43,6 +47,30 @@ struct ArenaHandFan: View {
             if let hiddenCount {
                 hiddenFan(count: hiddenCount)
             } else {
+                if posture == .spread, let grid = ArenaHandFanLayout.spread(count: cards.count + extraCards.count, hand: layout.hand) {
+                    // A soft shade under the spread cards, so the table behind doesn't read through the gaps.
+                    let top = canvas.y(grid.top) - canvas.length(10)
+                    let bottom = layout.railTop.map { canvas.y($0) } ?? canvas.screen.height
+                    LinearGradient(colors: [.black.opacity(0), .black.opacity(0.55), .black.opacity(0.62)], startPoint: .top, endPoint: .bottom)
+                        .frame(width: canvas.screen.width, height: max(0, bottom - top))
+                        .position(x: canvas.screen.width / 2, y: (top + bottom) / 2)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                    if grid.maxScroll > 0 {
+                        // Where the row is swiped to, as the reference's hand shows it: a thin track over the row.
+                        let track = canvas.length(90)
+                        let thumb = track * ArenaHandFanLayout.spreadWidth / grid.contentWidth
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.18)).frame(width: track, height: 3)
+                            Capsule().fill(Color(red: 0.98, green: 0.84, blue: 0.52)).frame(width: thumb, height: 3)
+                                .offset(x: (track - thumb) * min(1, max(0, spreadScroll / grid.maxScroll)))
+                        }
+                        .position(x: canvas.screen.width / 2, y: canvas.y(grid.top) - canvas.length(2))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    }
+                }
                 ForEach(Array((cards + extraCards).enumerated()), id: \.element.id) { index, card in
                     handCard(card, index: index, extra: index >= cards.count)
                 }
@@ -69,13 +97,20 @@ struct ArenaHandFan: View {
             if let dragging, !ids.contains(dragging.id) { self.dragging = nil; carrySurface = nil; isOverPlayerDropZone = false }
             if let liftedCardID, !ids.contains(liftedCardID) { self.liftedCardID = nil }
         }
-        .onChange(of: posture) { _, now in if now == .resting { liftedCardID = nil } }
+        .onChange(of: posture) { _, now in
+            if now == .resting { liftedCardID = nil }
+            if now != .spread { spreadScroll = 0 }
+        }
+        .onChange(of: cards.count + extraCards.count) { _, count in
+            spreadScroll = min(spreadScroll, ArenaHandFanLayout.spread(count: count, hand: layout.hand)?.maxScroll ?? 0)
+        }
     }
 
     // MARK: Cards
 
     private func slot(_ index: Int) -> ArenaHandSlot {
-        let design = ArenaHandFanLayout.slot(index: index, count: cards.count + extraCards.count, posture: posture, hand: layout.hand)
+        let design = ArenaHandFanLayout.slot(index: index, count: cards.count + extraCards.count, posture: posture, hand: layout.hand,
+                                             scroll: spreadScroll)
         return ArenaHandSlot(center: canvas.point(design.center), rotation: design.rotation, scale: design.scale)
     }
 
@@ -114,15 +149,20 @@ struct ArenaHandFan: View {
 
     /// Up: a quick ease-out with a small overshoot; down: a quicker ease-in (the reference's 0.22 s and 0.18 s).
     private var postureAnimation: Animation {
-        posture == .raised ? .timingCurve(0.2, 0.9, 0.3, 1.12, duration: 0.22) : .timingCurve(0.5, 0, 0.75, 0.4, duration: 0.18)
+        posture != .resting ? .timingCurve(0.2, 0.9, 0.3, 1.12, duration: posture == .spread ? 0.28 : 0.22)
+            : .timingCurve(0.5, 0, 0.75, 0.4, duration: 0.18)
     }
 
     /// A lifted card from a raised hand grows to read; one popped out of the tucked hand shows whole, a little larger.
-    private var liftedScale: CGFloat { posture == .raised ? 1.24 : 1.18 }
+    private var liftedScale: CGFloat {
+        if posture == .spread { return slot(0).scale * 1.1 }
+        return posture == .raised ? 1.24 : 1.18
+    }
 
     private func liftedPoint(_ home: ArenaHandSlot, lifted: Bool) -> CGPoint {
         guard lifted else { return home.center }
-        let rise = canvas.length(posture == .raised ? layout.hand.lift : layout.hand.liftDown)
+        // A spread card is already whole: it only rises a little.
+        let rise = canvas.length(posture == .spread ? 14 : posture == .raised ? layout.hand.lift : layout.hand.liftDown)
         // Never below the point where the whole card clears the bottom edge.
         let highest = canvas.screen.height - cardSize.height * liftedScale / 2 - canvas.length(8)
         return CGPoint(x: home.center.x, y: min(home.center.y - rise, highest))
@@ -160,7 +200,8 @@ struct ArenaHandFan: View {
                        hold: { held(at: rect.origin + $0) },
                        holdEnded: endHold,
                        pan: { panned(to: rect.origin + $0, band: band) },
-                       panEnded: { panEnded(at: rect.origin + $0, cancelled: $1) })
+                       panEnded: { panEnded(at: rect.origin + $0, cancelled: $1) },
+                       panStart: { panStarted(at: rect.origin + $0) })
             .frame(width: rect.width, height: rect.height)
             .position(x: rect.midX, y: rect.midY)
             .accessibilityHidden(true)
@@ -170,6 +211,7 @@ struct ArenaHandFan: View {
     private func card(at point: CGPoint) -> ZoneCard? {
         let all = cards + extraCards
         guard !all.isEmpty else { return nil }
+        if posture == .spread { return spreadCard(at: point) }
         let homes = all.indices.map { slot($0) }
         if let liftedCardID, let index = all.firstIndex(where: { $0.id == liftedCardID }),
            abs(point.x - homes[index].center.x) <= cardSize.width * liftedScale / 2,
@@ -180,6 +222,22 @@ struct ArenaHandFan: View {
             return all[index]
         }
         return all.indices.min { abs(point.x - homes[$0].center.x) < abs(point.x - homes[$1].center.x) }.map { all[$0] }
+    }
+
+    /// The spread hand's card under a point: its whole picture, the popped one first; else the nearest card.
+    private func spreadCard(at point: CGPoint) -> ZoneCard? {
+        let all = cards + extraCards
+        if let liftedCardID, let index = all.firstIndex(where: { $0.id == liftedCardID }), liftedFrame(index).contains(point) {
+            return all[index]
+        }
+        func frame(_ index: Int) -> CGRect {
+            let home = slot(index)
+            let size = CGSize(width: cardSize.width * home.scale, height: cardSize.height * home.scale)
+            return CGRect(x: home.center.x - size.width / 2, y: home.center.y - size.height / 2, width: size.width, height: size.height)
+        }
+        if let index = all.indices.first(where: { frame($0).insetBy(dx: -3, dy: -10).contains(point) }) { return all[index] }
+        return all.indices.min { hypot(point.x - slot($0).center.x, point.y - slot($0).center.y)
+            < hypot(point.x - slot($1).center.x, point.y - slot($1).center.y) }.map { all[$0] }
     }
 
     /// The card a slide along the hand is over: each card owns the strip of it that shows, measured at the finger's
@@ -275,6 +333,28 @@ struct ArenaHandFan: View {
             isOverPlayerDropZone = canvas.drops(at: point, from: current.start)
             return
         }
+        // Spread, every card shows whole: a sideways swipe moves the row, a slide up carries the card it starts on.
+        if posture == .spread, var touch = spreadTouch {
+            let dx = point.x - touch.start.x, dy = point.y - touch.start.y
+            if touch.swiping || abs(dx) >= abs(dy) || dy > 0 {
+                touch.swiping = true
+                spreadTouch = touch
+                let maxScroll = ArenaHandFanLayout.spread(count: all.count, hand: layout.hand)?.maxScroll ?? 0
+                spreadScroll = min(max(touch.scroll - dx / max(canvas.scale, 0.01), 0), maxScroll)
+                return
+            }
+            guard let card = spreadCard(at: touch.start) else { return }
+            spreadTouch = nil
+            GameAudio.shared.play(.cardPickup)
+            carrySurface = liftedFrame
+            liftedCardID = nil
+            inspectedCard = nil
+            dragging = (card.id, touch.start, CGSize(width: dx, height: dy))
+            isOverPlayerDropZone = canvas.drops(at: point, from: touch.start)
+            interactionState.mode = .draggingCard(cardId: card.instanceId,
+                                                  legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
+            return
+        }
         if point.y >= band.minY - canvas.length(12) {
             guard let card = scrubCard(at: point), liftedCardID != card.id else { return }
             liftedCardID = card.id
@@ -293,9 +373,16 @@ struct ArenaHandFan: View {
                                               legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
     }
 
+    /// Where a slide began (before the recogniser's own threshold): the spread row decides from it whether it swipes or
+    /// carries.
+    private func panStarted(at point: CGPoint) {
+        spreadTouch = posture == .spread ? (point, spreadScroll, false) : nil
+    }
+
     /// A slide that never left the hand leaves its card popped up; a carried card plays if it lands on the table.
     private func panEnded(at point: CGPoint, cancelled: Bool) {
         carrySurface = nil
+        spreadTouch = nil
         guard let current = dragging, let card = (cards + extraCards).first(where: { $0.id == current.id }) else { return }
         let dropped = !cancelled && canvas.drops(at: point, from: current.start)
         dragging = nil
@@ -388,6 +475,9 @@ struct ArenaHandTouch: UIViewRepresentable {
     var holdEnded: () -> Void
     var pan: (CGPoint) -> Void
     var panEnded: (CGPoint, Bool) -> Void
+    /// Where a pan began, reported once before its first move.
+    var panStart: (CGPoint) -> Void = { _ in }
+
     func makeUIView(context: Context) -> TouchView {
         let view = TouchView()
         update(view)
@@ -402,6 +492,7 @@ struct ArenaHandTouch: UIViewRepresentable {
         view.onHoldEnded = holdEnded
         view.onPan = pan
         view.onPanEnded = panEnded
+        view.onPanStart = panStart
     }
 
     final class TouchView: UIView {
@@ -410,6 +501,7 @@ struct ArenaHandTouch: UIViewRepresentable {
         var onHoldEnded: (() -> Void)?
         var onPan: ((CGPoint) -> Void)?
         var onPanEnded: ((CGPoint, Bool) -> Void)?
+        var onPanStart: ((CGPoint) -> Void)?
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -445,7 +537,11 @@ struct ArenaHandTouch: UIViewRepresentable {
         @objc private func panned(_ gesture: UIPanGestureRecognizer) {
             let point = gesture.location(in: self)
             switch gesture.state {
-            case .began, .changed: onPan?(point)
+            case .began:
+                let moved = gesture.translation(in: self)
+                onPanStart?(CGPoint(x: point.x - moved.x, y: point.y - moved.y))
+                onPan?(point)
+            case .changed: onPan?(point)
             case .ended: onPanEnded?(point, false)
             case .cancelled, .failed: onPanEnded?(point, true)
             default: break

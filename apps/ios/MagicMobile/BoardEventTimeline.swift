@@ -694,6 +694,12 @@ enum BoardFXScheduler {
     /// Decorative effects per transition; board wipes collapse to the first few.
     static let decorativeLimit = 10
     static let stagger: TimeInterval = 0.07
+    /// A board wipe on the Arena board (three or more permanents leaving in one update): they leave one after another,
+    /// this far apart, so you can see what went (Caleb, 2026-10-21). The whole cascade stays within `sweepSpread`, and
+    /// smart pass still waits no longer than BoardPresentationHold.maximumWait; the engine is never slowed.
+    static let sweepStep: TimeInterval = 0.16
+    static let sweepSpread: TimeInterval = 1.2
+    static let sweepMinimum = 3
     /// Effects never wait more than this for a showcase from an earlier snapshot (a spell read, then what it removed).
     static let maximumHold: TimeInterval = 4
 
@@ -715,6 +721,10 @@ enum BoardFXScheduler {
             }
         }
         var result: [ScheduledBoardFX] = []
+        let departures = kept.filter { if case .leftBattlefield = $0 { return true } else { return false } }.count
+        let sweepGap = pace == .arena && motion && departures >= sweepMinimum
+            ? min(sweepStep, sweepSpread / Double(departures - 1)) : nil
+        var departureIndex = 0
         var groupStart = min(max(hold, 0), maximumHold)
         var sequentialCursor = groupStart
         var previousOrder: Int?
@@ -741,6 +751,10 @@ enum BoardFXScheduler {
                 } else {
                     sequentialCursor = fx.handoff + 0.1
                 }
+            } else if let sweepGap, case .leftBattlefield = event {
+                fx = ScheduledBoardFX(id: id, event: event, delay: groupStart + Double(departureIndex) * sweepGap,
+                                      duration: duration, usesMotion: motion, pace: pace)
+                departureIndex += 1
             } else {
                 let delay = groupStart + Double(indexInGroup) * (motion ? stagger : 0.02)
                 fx = ScheduledBoardFX(id: id, event: event, delay: delay, duration: duration, usesMotion: motion, pace: pace)

@@ -693,6 +693,36 @@ final class BoardPolishUITests: XCTestCase {
         captureImage(name: "arena-game-log")
         application.buttons["Close game log"].tap()
 
+        // Portrait: the tab at the hand's left lays the hand out in one flat row of whole cards, a sideways swipe moves
+        // along it, and the tab tucks it again.
+        application = launch("normal-battlefield", landscape: false)
+        let spreadTab = application.buttons["arena.hand.spread"]
+        XCTAssertTrue(spreadTab.waitForExistence(timeout: 10), "The spread tab")
+        let sol = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-sol-ring")).firstMatch
+        let last = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-hand-spirited-companion")).firstMatch
+        let rail = application.frame.height * 0.86
+        XCTAssertGreaterThan(sol.frame.maxY, rail, "Tucked behind the rail")
+        spreadTab.tap()
+        let spreadOut = NSPredicate { _, _ in sol.frame.maxY < rail && spreadTab.label == "Tuck your hand" }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: spreadOut, object: sol)], timeout: 5), .completed,
+                       "The cards lie whole above the rail")
+        XCTAssertEqual(sol.frame.midY, last.frame.midY, accuracy: 12, "One row (a card partly off the screen reports a trimmed frame)")
+        XCTAssertGreaterThan(last.frame.maxX, application.frame.width, "The rest of a big hand waits to the right")
+        captureImage(name: "arena-hand-spread")
+        // Two swipes from right to left across the row.
+        for _ in 0..<2 {
+            let y = sol.frame.midY / application.frame.height
+            application.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: y))
+                .press(forDuration: 0.05, thenDragTo: application.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: y)))
+        }
+        let swiped = NSPredicate { _, _ in last.frame.maxX <= application.frame.width + 1 }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: swiped, object: last)], timeout: 5), .completed,
+                       "A sideways swipe brings the last card into view")
+        spreadTab.tap()
+        let tuckedAgain = NSPredicate { _, _ in sol.frame.maxY > rail }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: tuckedAgain, object: sol)], timeout: 5), .completed,
+                       "The tab tucks them again")
+
         // The hand's touch area reaches up to where cards pop, over your land row; a land there still takes its tap.
         application = launch("mana-payment-prompt", landscape: false)
         let forest = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-your-lands-forest")).firstMatch

@@ -649,3 +649,7 @@ single MIT file with its license header when that is enough.
   - Glow border: `ArenaOutlineGlow` follows the tavern frame, the card or the token arch, as the web board's
     `glowCanvas` does.
   - Next: phone feel.
+- 2026-10-21 (Claude): Arena board wipes. When three or more permanents leave in one update, they go one after another
+  (`BoardFXScheduler.sweepStep` 0.16 s, the whole cascade within `sweepSpread` 1.2 s), and whatever the spell returns
+  arrives after them. The caption names the spell and what went (`ArenaSweepRecap`). Smart pass waits for the cascade
+  within its 5 s cap; the engine is never slowed. Hearth unchanged. Test: `testArenaBoardWipeLeavesInACascade`.
