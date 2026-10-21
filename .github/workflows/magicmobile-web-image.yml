@@ -3,9 +3,10 @@ name: Web engine (GraalVM Web Image)
 # GitHub's 16 GB runner, by default on all-open-source tools: GraalVM Community Edition (GPLv2 with the Classpath
 # Exception) and the Web Image tool built from oracle/graal at CE's commit with the builder fixes in its source
 # (packages/web-engine/ce/build_web_image_tool.sh), which fit a 12 GB heap with no swap.
-# Oracle GraalVM, whose licence (GFTC) allows use unmodified, stays selectable: [oracle] in the commit message (or
-# dispatch toolchain=oracle) builds with its stock builder over 16 GB of swap; [builder-patch] patches its builder at
-# build time, an experiment whose bundle is not for players ("The licence question" in the doc).
+# Oracle GraalVM, whose licence (GFTC) allows use unmodified, stays selectable: [oracle] in the commit's subject line
+# (or dispatch toolchain=oracle) builds with its stock builder over 16 GB of swap; [builder-patch] patches its builder
+# at build time, an experiment whose bundle is not for players ("The licence question" in the doc). Tags count only in
+# the subject line, so a message body can mention them.
 #
 # Rebuilds on its own when engine inputs change on main, but skips inputs it has already built (the plan job's key);
 # on claude/web-engine-* branches when the commit message has [web-image]; or by hand. Ships nothing to players: the
@@ -71,6 +72,7 @@ jobs:
       key: ${{ steps.key.outputs.key }}
       toolchain: ${{ steps.key.outputs.toolchain }}
       patch: ${{ steps.key.outputs.patch }}
+      phone: ${{ steps.key.outputs.phone }}
       bundle: ${{ steps.key.outputs.bundle }}
       build: ${{ steps.key.outputs.build }}
     steps:
@@ -84,6 +86,7 @@ jobs:
           FORCE: ${{ inputs.force }}
           TOOLCHAIN: ${{ inputs.toolchain || 'ce' }}
           PATCH_INPUT: ${{ inputs.builder_patch }}
+          PHONE_INPUT: ${{ inputs.phone_regressions }}
           MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
@@ -92,14 +95,15 @@ jobs:
                          packages/ondevice-engine/scripts packages/ondevice-engine/upstream.lock.json packages/web-engine \
                          .github/workflows/magicmobile-web-image.yml; do echo "$p $(git rev-parse "HEAD:$p")"; done |
                 sha256sum | cut -c1-16)
-          patch=false
-          [[ $MESSAGE == *'[oracle]'* ]] && TOOLCHAIN=oracle
-          if [[ $PATCH_INPUT == true || $MESSAGE == *'[builder-patch]'* ]]; then TOOLCHAIN=oracle patch=true; fi
+          subject=${MESSAGE%%$'\n'*} patch=false phone=false
+          if [[ $subject == *'[oracle]'* ]]; then TOOLCHAIN=oracle; fi
+          if [[ $PATCH_INPUT == true || $subject == *'[builder-patch]'* ]]; then TOOLCHAIN=oracle patch=true; fi
+          if [[ $PHONE_INPUT == true || $subject == *'[phone-regressions]'* ]]; then phone=true; fi
           # Each toolchain gets its own bundle name; a patched-builder experiment can never stand in for another.
           bundle=web-engine-bundle-$key
           if [[ $TOOLCHAIN == oracle ]]; then bundle=$bundle-oracle; fi
           if [[ $patch == true ]]; then bundle=$bundle-patched; fi
-          { echo "key=$key"; echo "toolchain=$TOOLCHAIN"; echo "patch=$patch"; echo "bundle=$bundle"; } | tee -a "$GITHUB_OUTPUT"
+          { echo "key=$key"; echo "toolchain=$TOOLCHAIN"; echo "patch=$patch"; echo "phone=$phone"; echo "bundle=$bundle"; } | tee -a "$GITHUB_OUTPUT"
           existing=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$bundle" \
             --jq '[.artifacts[] | select(.expired | not)] | length')
           if [[ $FORCE == true || $existing == 0 ]]; then
@@ -135,7 +139,7 @@ jobs:
         run: bash packages/ondevice-engine/scripts/build_jvm.sh
       # Dispatch needs the workflow on the default branch; until then a push opts in with [phone-regressions].
       - name: Phone real-engine regressions (unchanged by the web build)
-        if: inputs.phone_regressions || contains(github.event.head_commit.message, '[phone-regressions]')
+        if: needs.plan.outputs.phone == 'true'
         run: bash packages/ondevice-engine/scripts/test_real_engine.sh
       - name: GraalVM CE, pinned and checksummed
         if: needs.plan.outputs.toolchain == 'ce'
