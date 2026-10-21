@@ -14,9 +14,10 @@ import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
 import { Browser, browserKind, type Send } from "./arena/Browsers";
 import {
-  BASE_GEOMETRY, battlefieldPlaces, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, POOL, POS, SIZE,
-  stackPlace, STAGE, TILT,
+  ARENA, BASE_GEOMETRY, battlefieldPlaces, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, stackPlace,
+  STAGE,
 } from "./arena/layout";
+import { ArenaPile } from "./arena/ArenaPile";
 import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
 
@@ -155,6 +156,13 @@ export function GameScreen({ table }: { table: GameTable }) {
   };
 
   // ---------------- cards ----------------
+  // The resting hand's room: from the right edge of your last pile (with its count lozenge) to the controls corner.
+  const handRoom = (() => {
+    const P = ARENA.viewerPiles;
+    const lastPile = me && me.zones.exile.length > 0 ? P.exile : P.library;
+    const pileRight = ARENA.viewerMedallion.x + (lastPile.x - ARENA.viewerMedallion.x) * geo.grow + (P.size.w * geo.grow) / 2 + 12;
+    return { left: pileRight, right: ARENA.primary.x - 8 };
+  })();
   const handIDs = me?.zones.hand.map((c) => c.instanceId) ?? [];
   const mulligan = browser === "mulligan";
   // As on Arena's desktop client the hand rests low, showing the top of each card, and fans up while the pointer is on
@@ -189,7 +197,7 @@ export function GameScreen({ table }: { table: GameTable }) {
       opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }, geo).forEach((place, i) =>
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
     });
-    const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(handIDs, handUp, hovered, geo);
+    const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(handIDs, handUp, hovered, geo, handRoom);
     me.zones.hand.forEach((card) => {
       const place = handPlace.get(card.instanceId)!;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true, classes: classFor(card, false),
@@ -199,17 +207,9 @@ export function GameScreen({ table }: { table: GameTable }) {
       const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
       add({ id: item.id, place: stackPlace(depth, geo), view: "face", name, card: item.sourceCard, label: item.name, onHover: setHovered });
     });
-    const command = (player: PlayerGameState, mine: boolean, index: number) => player.zones.command.forEach((card, i) => {
-      const at = mine ? POS.cmdMe : POS.cmdOpp;
-      const base = mine ? SIZE.pile : SIZE.opile;
-      const size = { w: base.w * geo.grow, h: base.h * geo.grow };
-      const x = mine ? at.x - i * 48 : at.x + i * 42 + (opponents.length > 1 ? -index * 90 : 0);
-      const place: Place = { x, y: mine ? B(at.y) : T(at.y), ...size, r: 0, s: 1, tx: mine ? TILT : 0, z: 12 };
-      add({ id: card.instanceId, place, view: "face", card, owner: mine ? "me" : "opp", classes: classFor(card, false), onClick: mine ? clickAt(place) : undefined, onHover: setHovered });
-    });
-    command(me, true, 0);
-    opponents.forEach((opponent, index) => command(opponent, false, index));
   }
+  // Your commander is cast from your medallion, as on the iOS Arena board: it glows while the commander can be cast.
+  const commandActions = snapshot && me && !pending ? me.zones.command.flatMap((c) => actionsFor(snapshot, c.instanceId)) : [];
 
   // ---------------- corner controls ----------------
   const myCreatures = me?.zones.battlefield ?? [];
@@ -270,9 +270,11 @@ export function GameScreen({ table }: { table: GameTable }) {
   };
 
   const medallion = (player: PlayerGameState, mine: boolean, index: number) => {
-    const at = mine ? { x: POS.faceMe.x, y: B(POS.faceMe.y) }
-      : { x: opponents.length > 1 ? 170 + (560 * (index + 0.5)) / opponents.length : POS.faceOpp.x, y: Y(POS.faceOpp.y + 3) };
-    const d = (mine ? 58 : 50) * geo.grow;
+    const spot = mine ? ARENA.viewerMedallion : ARENA.opponentMedallion;
+    const at = mine ? { x: spot.x, y: B(spot.y) }
+      : { x: opponents.length > 1 ? 150 + (650 * (index + 0.5)) / opponents.length : spot.x, y: T(spot.y) };
+    const d = spot.d * geo.grow;
+    const ready = mine && commandActions.length > 0;
     const targetable = targetIDs.has(player.playerId) && !pending;
     const seat = seatOf(player);
     const clock = rope && rope.seat === seat ? rope : undefined;
@@ -280,11 +282,13 @@ export function GameScreen({ table }: { table: GameTable }) {
     const circumference = Math.PI * 2 * 46;
     return (
       <div key={player.playerId}>
-        <button type="button" className={`amed ${targetable ? "targetable" : ""} ${isOut(player) ? "out" : ""}`}
-          style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }} aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life`}
+        <button type="button" className={`amed ${targetable ? "targetable" : ready ? "ready" : ""} ${isOut(player) ? "out" : ""}`}
+          style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }}
+          aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : ""}`}
           onClick={(event) => {
             event.stopPropagation();
             if (targetable) send({ type: "choose_target", targetIds: [player.playerId] }, player.displayName ?? "Player");
+            else if (ready) setMenu({ id: "commander", at: { x: at.x + 110, y: at.y, w: d, h: d, z: 0 }, actions: commandActions });
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
           <div className="av">{mine ? AVATAR.me : AVATAR.opp}</div>
@@ -297,7 +301,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           )}
         </button>
         {!mine && (
-          <div className="aname" style={{ left: at.x + d / 2 + 8, top: at.y }}>
+          <div className="aname under" style={{ left: at.x, top: at.y + d / 2 + 4 }}>
             {player.displayName}{isOut(player) ? " (left)" : ""}
             <small>Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}</small>
             {(player.poison > 0 || player.monarch) && <div className="badges">{player.poison > 0 && <span>Poison {player.poison}</span>}{player.monarch && <span>Monarch</span>}</div>}
@@ -309,25 +313,25 @@ export function GameScreen({ table }: { table: GameTable }) {
   };
 
   const piles = (player: PlayerGameState, mine: boolean, index: number) => {
-    const shift = !mine && opponents.length > 1 ? -index * 90 : 0;
-    const lib = mine ? { x: POS.libMe.x, y: B(POS.libMe.y) } : { x: POS.libOpp.x + shift, y: T(POS.libOpp.y) };
-    const gy = mine ? { x: POS.gyMe.x, y: B(POS.gyMe.y) } : { x: POS.gyOpp.x + shift, y: T(POS.gyOpp.y) };
-    const base = mine ? SIZE.pile : SIZE.opile;
-    const size = { w: base.w * geo.grow, h: base.h * geo.grow };
-    const top = player.zones.graveyard.at(-1);
-    const box = (at: { x: number; y: number }) => ({ left: at.x - size.w / 2, top: at.y - size.h / 2, width: size.w, height: size.h });
+    const spots = mine ? ARENA.viewerPiles : ARENA.opponentPiles;
+    const shift = !mine && opponents.length > 1 ? -index * 170 : 0;
+    // Piles grow with the board, so they spread from their anchor (your medallion; their library) to keep the gaps for
+    // their count lozenges (Caleb, 2026-10-21, on iOS: the badges ran over the next pile).
+    const anchor = mine ? ARENA.viewerMedallion.x : ARENA.opponentPiles.library.x;
+    const at = (p: { x: number; y: number }) => ({ x: anchor + (p.x - anchor) * geo.grow + shift, y: mine ? B(p.y) : T(p.y) });
+    const size = { w: spots.size.w * geo.grow, h: spots.size.h * geo.grow };
     const whose = mine ? "Your" : `${player.displayName ?? "Their"}’s`;
+    const open = (zone: "graveyard" | "exile") => () => setZone({ title: `${whose} ${zone}`, cards: player.zones[zone] });
+    const hover = (name: string | undefined) => setHovered(name ? `zone:${name}` : undefined);
     return (
       <div key={`piles-${player.playerId}`}>
-        <div className={`apile ${mine ? "" : "opp"}`} style={box(lib)} aria-label={`Library, ${player.zones.libraryCount ?? 0} cards`}>
-          <div className="deck" /><span className="cnt">{player.zones.libraryCount ?? 0}</span>
-        </div>
-        <button type="button" className={`apile grave ${mine ? "" : "opp"}`} style={box(gy)} aria-label={`${whose} graveyard, ${player.zones.graveyard.length} cards`}
-          onClick={(event) => { event.stopPropagation(); setZone({ title: `${whose} graveyard`, cards: player.zones.graveyard }); }}
-          onMouseEnter={() => top && setHovered(`grave:${top.card.name}`)} onMouseLeave={() => setHovered(undefined)}>
-          {top && <img src={cardImageURL(top.card.name, "normal")} alt="" crossOrigin="anonymous" />}
-          {player.zones.graveyard.length > 0 && <span className="cnt">{player.zones.graveyard.length}</span>}
-        </button>
+        <ArenaPile {...at(spots.library)} size={size} count={player.zones.libraryCount ?? 0} kind="library" label={`${whose} library`} />
+        <ArenaPile {...at(spots.graveyard)} size={size} count={player.zones.graveyard.length} kind="graveyard" label={`${whose} graveyard`}
+          top={player.zones.graveyard.at(-1)?.card.name} onOpen={open("graveyard")} onHover={hover} />
+        {player.zones.exile.length > 0 && (
+          <ArenaPile {...at(spots.exile)} size={size} count={player.zones.exile.length} kind="exile" label={`${whose} exile`}
+            top={player.zones.exile.at(-1)?.card.name} onOpen={open("exile")} onHover={hover} />
+        )}
       </div>
     );
   };
@@ -335,7 +339,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   // The card under the pointer, large, away from the side it sits on (never for the hand, which pops up instead).
   const inspected = (() => {
     if (!hovered || !snapshot) return undefined;
-    if (hovered.startsWith("grave:")) return { name: hovered.slice(6), left: true };
+    if (hovered.startsWith("zone:")) return { name: hovered.slice(5), left: false };
     if (handIDs.includes(hovered)) return undefined;
     const item = cards.get(hovered);
     if (!item || item.view === "back") return undefined;
@@ -355,7 +359,7 @@ export function GameScreen({ table }: { table: GameTable }) {
         const bounds = wrapRef.current!.getBoundingClientRect();
         const x = (event.clientX - bounds.left - geo.left) / geo.scale;
         const y = (event.clientY - bounds.top - geo.top) / geo.scale;
-        const fan = [...handPlaces(handIDs, handRaised, undefined, geo).values()];
+        const fan = [...handPlaces(handIDs, handRaised, undefined, geo, handRoom).values()];
         const top = Math.min(...fan.map((p) => p.y - (p.h * (p.s ?? 1)) / 2)) - 6;
         const left = Math.min(...fan.map((p) => p.x - p.w / 2)) - 12;
         const right = Math.max(...fan.map((p) => p.x + p.w / 2)) + 12;
@@ -379,7 +383,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           const choice = envelope?.manaChoices?.find((c) => c.manaType === symbol);
           return (
             <button key={`${symbol}-${i}`} type="button" className={`mana-orb ${choice && !pending ? "payable" : ""}`} disabled={!choice || pending}
-              style={{ left: POOL.x + i * POOL.dx, top: B(POOL.y), backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} aria-label={`${symbol} mana in your pool`}
+              style={{ left: ARENA.floatingMana.x + i * ARENA.floatingMana.dx, top: B(ARENA.floatingMana.y), backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} aria-label={`${symbol} mana in your pool`}
               onClick={(event) => { event.stopPropagation(); if (choice) send({ type: "play_mana", manaType: choice.manaType }, choice.label); }} />
           );
         })}
@@ -390,32 +394,33 @@ export function GameScreen({ table }: { table: GameTable }) {
 
         {/* Above the raised hand while there is an answer to give (the prototype's controls z-index). */}
         <div className="acontrols" style={{ zIndex: (primary && primary.style !== "label") || secondary ? 600 : 430 }} onClick={stop}>
-          <div className="aphases" data-side={activeIsMe ? "me" : "opp"} style={{ top: B(secondary ? 304 : 360) }} aria-hidden="true">
+          <div className="aphases" data-side={activeIsMe ? "me" : "opp"} style={{ top: B(secondary ? ARENA.phaseStrip.raisedY : ARENA.phaseStrip.y) - 10 }} aria-hidden="true">
             <div className="track" />
             {strip.items.map(([key, icon]) => <span key={key} className={`aph ${icon === "dia" ? "small" : ""} ${strip.current === key ? "on" : ""}`}>{PHASE_ICONS[icon]}</span>)}
           </div>
-          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(335) }} disabled={pending} onClick={secondary.onClick}>{secondary.label}</button>}
+          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(ARENA.secondary.y) }} disabled={pending} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
-            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""}`} style={{ top: B(388) }} disabled={primary.style !== "label" && pending}
+            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""}`} style={{ top: B(ARENA.primary.y) }} disabled={primary.style !== "label" && pending}
               onClick={primary.onClick}>{primary.label}</button>
-          ) : !finished && <div className="ahourglass" style={{ top: B(388) }}>{HOURGLASS}</div>}
+          ) : !finished && <div className="ahourglass" style={{ top: B(ARENA.primary.y) }}>{HOURGLASS}</div>}
           {session && (
-            <button type="button" className={`aff ${smart ? "on" : ""}`} style={{ top: B(392) }} aria-pressed={smart} onClick={toggleSmart}
+            <button type="button" className={`aff ${smart ? "on" : ""}`} aria-pressed={smart} onClick={toggleSmart}
+              style={{ left: ARENA.passAhead.x, top: B(ARENA.passAhead.y), width: ARENA.passAhead.w, height: ARENA.passAhead.h }}
               title={smart ? "Smart pass is on: routine priority passes by itself" : "Smart pass is off: you pass every step"}>
               <svg viewBox="0 0 26 18"><path d="M2 2l9 7-9 7zM14 2l9 7-9 7z" /></svg>
             </button>
           )}
-          <button type="button" className={`acoin ${panel ? "on" : ""}`} style={{ left: 829, top: T(9) }} aria-label="Game log" onClick={() => setPanel(panel ? undefined : "log")}>{SCROLL}</button>
-          <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: 862, top: T(9) }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
+          <button type="button" className={`acoin ${panel ? "on" : ""}`} style={{ left: ARENA.log.x - 14, top: T(ARENA.log.y) - 14 }} aria-label="Game log" onClick={() => setPanel(panel ? undefined : "log")}>{SCROLL}</button>
+          <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: ARENA.menu.x - 14, top: T(ARENA.menu.y) - 14 }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
         </div>
 
-        {promptLine && <div className="aprompt" style={{ top: Y(combatSelect && !/attack/i.test(envelope?.message ?? "") ? 205 : 187) }}>{promptLine}</div>}
-        {thinkingName && <div className="aprompt" style={{ top: Y(187), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
+        {promptLine && <div className="aprompt" style={{ top: Y(ARENA.captionY) }}>{promptLine}</div>}
+        {thinkingName && <div className="aprompt" style={{ top: Y(ARENA.captionY), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
 
         {inspected && (
           <div className="ainspect" style={{
-            left: inspected.left ? 250 - (POS.zoom.w * Math.min(geo.grow, 1.2)) / 2 : POS.zoom.x - (POS.zoom.w * Math.min(geo.grow, 1.2)) / 2,
-            top: Math.max(6, Y(POS.zoom.y) - (POS.zoom.h * Math.min(geo.grow, 1.2)) / 2), width: POS.zoom.w * Math.min(geo.grow, 1.2),
+            left: inspected.left ? 250 - (ARENA.zoom.w * Math.min(geo.grow, 1.2)) / 2 : ARENA.zoom.x - (ARENA.zoom.w * Math.min(geo.grow, 1.2)) / 2,
+            top: Math.max(6, Y(ARENA.zoom.y) - (ARENA.zoom.h * Math.min(geo.grow, 1.2)) / 2), width: ARENA.zoom.w * Math.min(geo.grow, 1.2),
           }}>
             <img src={cardImageURL(inspected.name, "normal")} alt={inspected.name} crossOrigin="anonymous" />
           </div>
@@ -434,7 +439,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           if (!player) return null;
           const mine = player.playerId === viewer;
           return (
-            <div className="amenu glass" style={{ left: 520, top: Y(mine ? 230 : 50), right: "auto" }} onClick={stop}>
+            <div className="amenu glass" style={mine ? { left: 40, top: B(250), right: "auto" } : { left: 520, top: T(60), right: "auto" }} onClick={stop}>
               <h3 className="panel-title" style={{ margin: 0 }}>{mine ? "You" : player.displayName}</h3>
               <div className="small-print" style={{ color: "#efe4cf" }}>
                 Life {player.life} · Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}<br />
@@ -443,6 +448,11 @@ export function GameScreen({ table }: { table: GameTable }) {
                 {player.commanderTax > 0 && <><br />Commander tax {player.commanderTax}</>}
                 {Object.entries(player.commanderDamage ?? {}).filter(([, n]) => n > 0).map(([id, n]) => <span key={id}><br />Commander damage {n}</span>)}
               </div>
+              {player.zones.command.length > 0 && (
+                <button type="button" className="arow" onClick={() => setZone({ title: `${mine ? "Your" : `${player.displayName ?? "Their"}’s`} command zone`, cards: player.zones.command })}>
+                  <span>Command zone<span className="sub">{player.zones.command.map((c) => c.card.name).join(", ")}</span></span>
+                </button>
+              )}
               {player.zones.exile.length > 0 && (
                 <button type="button" className="arow" onClick={() => setZone({ title: `${mine ? "Your" : `${player.displayName ?? "Their"}’s`} exile`, cards: player.zones.exile })}>View exile</button>
               )}

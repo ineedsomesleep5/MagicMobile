@@ -16,7 +16,9 @@
 /* ---------- cards ---------- */
 .acard { position: absolute; left: 0; top: 0; border-radius: .7em; cursor: pointer; will-change: transform;
   transition: transform .34s cubic-bezier(.2,.75,.25,1), width .34s cubic-bezier(.2,.75,.25,1), height .34s cubic-bezier(.2,.75,.25,1), font-size .34s cubic-bezier(.2,.75,.25,1), filter .3s, opacity .3s; }
-.acard > .face, .acard > .tile, .acard > .back { position: absolute; inset: 0; pointer-events: none; }
+.acard > .lean, .acard .spin { position: absolute; inset: 0; transition: transform .34s cubic-bezier(.2,.75,.25,1), transform-origin .34s cubic-bezier(.2,.75,.25,1); }
+.acard .spin { border-radius: .7em; }
+.acard .spin > .face, .acard .spin > .tile, .acard .spin > .back { position: absolute; inset: 0; pointer-events: none; }
 .acard .face { border-radius: .72em; overflow: hidden; background: #0d0a08; box-shadow: 0 .5em 1.2em rgba(0,0,0,.55); }
 .acard .face img { display: block; width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
 .acard .face .fallback { position: absolute; inset: .4em; display: grid; place-items: center; text-align: center; padding: .6em; border-radius: .45em;
@@ -35,6 +37,9 @@
 .acard[data-view=tile] { border-radius: 0; }
 .acard .tile canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; filter: var(--dim,) var(--glow,); transition: filter .3s; }
 .acard .tile .tshadow { position: absolute; left: 6%; right: 6%; top: 18%; bottom: -10%; border-radius: 1.2em; background: rgba(0,0,0,.5); filter: blur(.7em); transform: translateY(.9em); }
+/* the tile's thickness: a walnut edge under the frame, so it reads as an object lying on the table (the prototype's .tedge) */
+.acard .tile .tedge { position: absolute; left: 3.7%; right: 3.7%; top: 92%; height: 10.8%; border-radius: 0 0 .9em .9em;
+  background: linear-gradient(#7a5426, #3a2410 60%, #20140a); box-shadow: 0 .15em .25em rgba(0,0,0,.5); }
 .acard .tile .tapmark { position: absolute; left: 50%; top: 22%; width: 49%; transform: translateX(-50%); opacity: .72; filter: drop-shadow(0 0 .25em rgba(0,0,0,.7)); }
 .acard .tile .sick { position: absolute; left: 50%; bottom: 3%; width: 17%; transform: translateX(-50%); filter: drop-shadow(0 0 .2em #000); }
 /* glows follow the tavern frame's own outline: drop-shadow traces the painted frame's alpha, never a box (frame-outline glow) */
@@ -54,10 +59,10 @@
   background: radial-gradient(circle at 40% 35%, #ffe08f, #a8752c 60%, #5c3814); box-shadow: 0 0 0 .3em #5c3814, inset 0 0 0 .9em rgba(0,0,0,.18); }
 .acard[data-view=tile][data-o=opp].blk::after { top: auto; bottom: -2.4em; }
 /* faces (hand, stack, command zone) glow as a box: the printed card is its own outline */
-.acard[data-view=face].playable { box-shadow: 0 0 0 .2em #7ff0ff, 0 0 1.1em .35em rgba(80,220,255,.7); animation: abreathe 2.2s ease-in-out infinite; }
+.acard[data-view=face].playable .spin { box-shadow: 0 0 0 .2em #7ff0ff, 0 0 1.1em .35em rgba(80,220,255,.7); animation: abreathe 2.2s ease-in-out infinite; }
 @keyframes abreathe { 50% { box-shadow: 0 0 0 .24em #b8f8ff, 0 0 1.6em .5em rgba(90,230,255,.9); } }
-.acard[data-view=face].targetable { box-shadow: 0 0 0 .35em var(--arcane), 0 0 1.4em .4em rgba(120,230,255,.75); }
-.acard[data-view=face].picked { box-shadow: 0 0 0 .35em #ffe08f, 0 0 1.5em .5em rgba(255,200,90,.9); }
+.acard[data-view=face].targetable .spin { box-shadow: 0 0 0 .35em var(--arcane), 0 0 1.4em .4em rgba(120,230,255,.75); }
+.acard[data-view=face].picked .spin { box-shadow: 0 0 0 .35em #ffe08f, 0 0 1.5em .5em rgba(255,200,90,.9); }
 
 /* ---------- table furniture ---------- */
 .amed { position: absolute; --d: 54px; width: var(--d); height: var(--d); margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2); z-index: 465; border-radius: 50%; padding: 0; background: none;
@@ -73,20 +78,31 @@
 .amed .rope { position: absolute; inset: -22%; width: 144%; height: 144%; z-index: 3; pointer-events: none; overflow: visible; }
 .aname { position: absolute; z-index: 466; transform: translateY(-50%); white-space: nowrap; pointer-events: none;
   font: 700 11px/1.15 var(--serif); color: var(--parchment); text-shadow: 0 1px 3px #000, 0 0 6px rgba(0,0,0,.9); }
+.aname.under { transform: translateX(-50%); text-align: center; }
+.aname.under .badges { justify-content: center; }
 .aname small { display: block; font: 600 9px/1.2 var(--serif); color: #e8d6b0; opacity: .85; }
 .aname .badges { display: flex; gap: 3px; margin-top: 2px; }
 .aname .badges span { font: 800 8px/1 var(--serif); letter-spacing: .08em; text-transform: uppercase; color: #fad17a; padding: 2px 5px; border-radius: 6px;
   background: rgba(0,0,0,.55); box-shadow: inset 0 0 0 1px rgba(219,163,76,.6); }
-.apile { position: absolute; z-index: 6; border-radius: 5px; padding: 0; background: none; }
-.apile .deck { position: absolute; inset: 0; border-radius: .7em; font-size: 2.8px; background: #3a2416 url(/tavern/leather.webp) center/9em;
-  box-shadow: inset 0 0 0 .3em #8a6a3c, inset 0 0 0 .55em #29140b, inset 0 0 0 .7em rgba(219,163,76,.5), 1px 2px 0 #5c3814, 2px 4px 0 #3a2410, 0 5px 8px rgba(0,0,0,.6);
-  transform: perspective(300px) rotateX(26deg); }
-.apile .deck::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6em; height: 6em; transform: translate(-50%,-50%); background: url(/tavern/seal.webp) center/100% no-repeat; }
-.apile.grave { border: 1px dashed rgba(219,163,76,.35); }
-.apile.grave img, .apile.command img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; box-shadow: 0 3px 6px rgba(0,0,0,.6); }
-.apile .cnt { position: absolute; right: -7px; bottom: 4px; min-width: 18px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: #29140b;
-  box-shadow: inset 0 0 0 1px #dba34c; font: 700 10px/16px var(--serif); text-align: center; color: var(--label); z-index: 2; }
-.apile.opp .cnt { bottom: auto; top: 36px; }
+/* piles (ArenaPileStack): slivers under the top card, a contact shadow, leaning with the table, a count lozenge */
+.apile { position: absolute; z-index: 6; padding: 0; background: none; border: 0; }
+.apile:disabled { cursor: default; }
+.apile .plean { position: absolute; inset: 0; }
+.apile .pshadow { position: absolute; left: -5%; width: 110%; top: 57%; height: 50%; border-radius: 50%; background: rgba(0,0,0,.55); filter: blur(4px); }
+.apile .sliver { position: absolute; inset: 0; border-radius: .6em; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.35); }
+.apile .ptop { position: absolute; inset: 0; border-radius: .6em; overflow: hidden; box-shadow: 0 0 0 .5px rgba(0,0,0,.6); }
+.apile .ptop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.apile .ptop .back { position: absolute; inset: 0; background: #3a2416 url(/tavern/leather.webp) center/9em;
+  box-shadow: inset 0 0 0 .3em #8a6a3c, inset 0 0 0 .55em #29140b, inset 0 0 0 .7em rgba(219,163,76,.5); }
+.apile .ptop .back::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6em; height: 6em; transform: translate(-50%,-50%);
+  background: url(/tavern/seal.webp) center/100% no-repeat; }
+.apile .ptop .veil { position: absolute; inset: 0; display: flex; align-items: flex-start; padding: .5em; font: 900 3.4em/1 var(--serif); color: rgba(255,255,255,.9);
+  text-shadow: 0 0 .1em #000; background: linear-gradient(rgba(140,178,255,.42), rgba(77,64,153,.5)); }
+.apile.empty .plean { border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(219,163,76,.35); background-image: none; outline: 1px dashed rgba(219,163,76,.35); outline-offset: -1px; }
+.apile .pcount { position: absolute; right: -8px; bottom: 2px; z-index: 2; min-width: 20px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px;
+  background: var(--leather); box-shadow: inset 0 0 0 1.2px var(--brass); font: 800 11px/17px var(--serif); text-align: center; color: var(--label);
+  font-variant-numeric: tabular-nums; }
+.amed.ready { box-shadow: 0 0 0 2px #7ff0ff, 0 0 14px 5px rgba(80,220,255,.7); }
 .mana-orb { position: absolute; z-index: 412; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; padding: 0; background: center/100% no-repeat;
   box-shadow: 0 0 9px 3px rgba(255,140,60,.75); display: grid; place-items: center; font: 900 9px/1 var(--serif); color: #fff; text-shadow: 0 1px 2px #000; }
 .mana-orb.payable { cursor: pointer; box-shadow: 0 0 0 2px #ffd39a, 0 0 12px 4px rgba(255,140,50,.95); }
@@ -220,4 +236,4 @@
 .aresult .answers { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .ainspect { position: absolute; z-index: 720; pointer-events: none; filter: drop-shadow(0 14px 26px rgba(0,0,0,.7)); }
 .ainspect img { display: block; width: 100%; border-radius: 12px; }
-@media (prefers-reduced-motion: reduce) { .acard { transition-duration: .12s; } .acard[data-view=face].playable, .aplaque.ember.want, .ahourglass svg { animation: none; } .aresult .glory { animation: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .aplaque.ember.want, .ahourglass svg { animation: none; } .aresult .glory { animation: none; opacity: 1; } }

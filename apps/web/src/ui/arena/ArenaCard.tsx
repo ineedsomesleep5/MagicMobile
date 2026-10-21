@@ -7,7 +7,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { type ZoneCard } from "../../core/models";
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols } from "../cardArt";
-import { cardTransform, type Place } from "./layout";
+import { LEAN, type Place } from "./layout";
 
 export type CardView = "face" | "tile" | "back";
 
@@ -34,6 +34,7 @@ function Tile({ card }: { card: ZoneCard }) {
   return (
     <div className="tile">
       <div className="tshadow" />
+      <div className="tedge" />
       {/* A new look gets a new canvas, so a slow paint of the old one can never draw over it. */}
       <canvas key={key} ref={ref} width={TILE.width} height={TILE.height} />
       {card.tapped && !card.isAttacking && TAPMARK}
@@ -76,10 +77,18 @@ export interface ArenaCardProps {
   onHover?: (id: string | undefined) => void;
 }
 
+/**
+ * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
+ * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
+ */
 export const ArenaCard = memo(function ArenaCard({ id, place, view, card, name, owner, inHand, classes, label, onClick, onHover }: ArenaCardProps) {
+  const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
-    width: place.w, height: place.h, fontSize: place.w / 15, transform: cardTransform(place), zIndex: place.z,
+    width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
   };
+  const lean: React.CSSProperties | undefined = place.lean
+    ? { transform: `perspective(${LEAN.distance.toFixed(0)}px) rotateX(${LEAN.pitch}deg)`, transformOrigin: `${(LEAN.centerX - left).toFixed(1)}px 50%` }
+    : undefined;
   const printed = name ?? card?.card.name ?? "";
   return (
     <div className={`acard ${classes ?? ""}`} data-view={view} data-o={owner} style={style} role={onClick ? "button" : undefined}
@@ -88,9 +97,13 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, name, 
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}
       onMouseEnter={onHover && view !== "back" ? () => onHover(id) : undefined}
       onMouseLeave={onHover && view !== "back" ? () => onHover(undefined) : undefined}>
-      {view === "tile" && card && <Tile card={card} />}
-      {view === "face" && <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />}
-      {view === "back" && <div className="back" />}
+      <div className="lean" style={lean}>
+        <div className="spin" style={{ transform: `rotate(${place.r ?? 0}deg) scale(${place.s ?? 1})` }}>
+          {view === "tile" && card && <Tile card={card} />}
+          {view === "face" && <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />}
+          {view === "back" && <div className="back" />}
+        </div>
+      </div>
     </div>
   );
 });
