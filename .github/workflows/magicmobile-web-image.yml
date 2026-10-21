@@ -88,7 +88,9 @@ jobs:
       # the builder 14 GB backed by swap on /mnt (the runner has about 16 GB of RAM), drops the per-instruction comments
       # Web Image keeps for its .wat text (-H:WasmComments=NONE) and skips the Closure pass over the small JS wrapper.
       # Run 39511250420 then spent 43 min in WasmGCHeapWriter at the 12.7 GB usable-heap limit (swap unused) until the
-      # watchdog stopped it. Now: a 24 GB heap that spills into 16 GB of swap, watchdog off, up to 4.5 h.
+      # watchdog stopped it. Now: a 24 GB heap that spills into 16 GB of swap, watchdog off, up to 4.5 h. Run 39546958975
+      # built (12 min, 15.5 GB peak) but Chrome refused it: the image heap's 767,914 objects were initialized in nine
+      # functions, the largest 57.7 MB, over V8's 7,654,321-byte function limit; 4,000 objects per function instead.
       - name: Add swap on /mnt
         run: |
           set -euo pipefail
@@ -105,6 +107,7 @@ jobs:
           MM_WEB_OPT: '2'
           MM_WEB_EXTRA_OPTIONS: >-
             -H:WasmComments=NONE -H:-ClosureCompiler -H:DeadlockWatchdogInterval=0 -H:+PrintImageHeapPartitionSizes
+            -H:ImageHeapObjectsPerFunction=4000
             -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
             -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M
         run: |
