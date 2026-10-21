@@ -21,8 +21,9 @@ histo() { # <pid> <label>
 }
 while true; do
   sleep 30
-  # pgrep truncates long command lines (the builder's runs to tens of kilobytes); [G] keeps grep from matching itself.
-  pid=$(grep -l -a 'NativeImage[G]eneratorRunner' /proc/[0-9]*/cmdline 2>/dev/null | head -1 | cut -d/ -f3)
+  # The builder is the largest java process (the driver starts it from an argument file, so its command line
+  # doesn't name the main class).
+  pid=$(ps -C java -o pid=,rss= --sort=-rss 2>/dev/null | awk 'NR == 1 {print $1}')
   mem=$(free -m | awk '/Mem:/{printf "used=%sMB avail=%sMB ", $3, $7} /Swap:/{printf "swap=%sMB", $3}')
   rss=; [[ -n $pid ]] && rss=$(ps -o rss= -p "$pid" 2>/dev/null | awk '{printf "%d", $1/1024}')
   asm=$(ps -C wasm-as -o rss= 2>/dev/null | awk '{s += $1} END {if (s) printf "%d", s/1024}')

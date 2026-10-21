@@ -276,7 +276,9 @@ each, estimated).
 >
 > **Next, before M3 relies on routine rebuilds:**
 >
-> - Shrink the image heap so the build fits 16 GB without swap.
+> - Shrink the image heap so the build fits 16 GB without swap. **Done 2026-10-21** with a patch to the Web Image
+>   builder (12 GB heap, no swap, 34 min; 137 MB module), which raises an Oracle licence question for Caleb; the
+>   workflow now rebuilds by itself for engine changes (`docs/WEB_ENGINE_M1.md`, "Fitting the free runner").
 > - Run the Firefox and Safari smoke runs.
 > - Then M3 and an AI calibration run. The web AI explores about 5× fewer positions per second than HotSpot.
 >
