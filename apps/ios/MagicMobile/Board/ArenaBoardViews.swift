@@ -960,6 +960,8 @@ struct ArenaAbilityCard: View {
     var kind = "Ability"
     let text: String
     let size: CGSize
+    /// A planeswalker ability's loyalty cost ("+1", "−4"), on a shield at the card's foot as in the reference.
+    var loyalty: String? = nil
 
     var body: some View {
         let frame = source.map(ArenaCardColor.frame(for:)) ?? Color(red: 0.62, green: 0.62, blue: 0.66)
@@ -1008,6 +1010,18 @@ struct ArenaAbilityCard: View {
             shape.strokeBorder(.black.opacity(0.85), lineWidth: 1)
         }
         .frame(width: size.width, height: size.height)
+        .overlay(alignment: .bottom) {
+            if let loyalty {
+                Text(loyalty)
+                    .font(.system(size: max(12, size.width * 0.1), weight: .heavy, design: .serif))
+                    .foregroundStyle(.white)
+                    .frame(width: size.width * 0.32, height: size.width * 0.24)
+                    .background(ArenaShieldShape().fill(Color(red: 0.08, green: 0.08, blue: 0.1)))
+                    .overlay(ArenaShieldShape().stroke(Color.white.opacity(0.85), lineWidth: 1.2))
+                    .offset(y: size.width * 0.1)
+                    .accessibilityLabel("Loyalty \(loyalty)")
+            }
+        }
         .overlay(alignment: .topLeading) {
             if let icon, let image = UIImage(named: icon) {
                 Image(uiImage: image).resizable().scaledToFit()
@@ -1108,7 +1122,9 @@ struct ArenaAbilityBrowser: View {
 
     private func card(_ ability: XmagePromptAbility) -> some View {
         let number = picked.firstIndex(of: ability.id).map { $0 + 1 }
-        return ArenaAbilityCard(source: ability.sourceCard, name: ability.sourceName, text: ability.rulesText ?? ability.label, size: cardSize)
+        let loyalty = ArenaLoyalty.split(ability.rulesText ?? ability.label)
+        return ArenaAbilityCard(source: ability.sourceCard, name: ability.sourceName, text: loyalty?.text ?? ability.rulesText ?? ability.label,
+                                size: cardSize, loyalty: loyalty?.cost)
             .overlay {
                 if number != nil {
                     ArenaAbilityShape(corner: cardSize.width * 0.05).strokeBorder(Color(red: 1, green: 0.82, blue: 0.4), lineWidth: 3)
@@ -1439,6 +1455,653 @@ struct ArenaModeBrowser: View {
         let label = PromptDisplayText.clean(mode.label)
         guard let range = label.range(of: #"^\d+\.\s*"#, options: .regularExpression) else { return label }
         return String(label[range.upperBound...])
+    }
+}
+
+/// The frame every Arena browser shares (docs/ARENA_STYLE.md): the table dims, a title and one line of instructions sit
+/// at the top, the content in the middle, answers at the bottom, the source card on the right in landscape and "View
+/// Battlefield" top right, which steps the browser aside.
+struct ArenaBrowserFrame<Content: View, Footer: View>: View {
+    let title: String
+    var detail: String? = nil
+    var source: XmageStackObject? = nil
+    var sourceCard: ZoneCard? = nil
+    let screen: CGSize
+    var identifier = "arena.browser"
+    var inspect: (ZoneCard) -> Void = { _ in }
+    @ViewBuilder let content: Content
+    @ViewBuilder let footer: Footer
+    @State private var peeking = false
+
+    var body: some View {
+        let landscape = screen.width > screen.height
+        let showsSource = landscape && (source != nil || sourceCard != nil)
+        ZStack {
+            Color.black.opacity(peeking ? 0 : 0.72).ignoresSafeArea()
+                .allowsHitTesting(!peeking)
+                .accessibilityHidden(true)
+            VStack(spacing: landscape ? 8 : 12) {
+                VStack(spacing: 4) {
+                    Text(title)
+                        .font(.system(size: landscape ? 22 : 24, weight: .bold, design: .serif))
+                        .foregroundStyle(ArenaGlass.text)
+                        .shadow(color: .black, radius: 2)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .accessibilityIdentifier("\(identifier).title")
+                    if let detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 13, weight: .medium, design: .serif))
+                            .foregroundStyle(ArenaGlass.text.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.horizontal, 24)
+                content.frame(maxHeight: .infinity)
+                footer
+            }
+            .padding(.top, landscape ? 8 : 96)
+            .padding(.bottom, landscape ? 10 : 28)
+            .padding(.trailing, showsSource ? 150 : 0)
+            .opacity(peeking ? 0 : 1)
+            .allowsHitTesting(!peeking)
+            if showsSource && !peeking {
+                sourceView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .padding(.trailing, 14)
+            }
+            Button(peeking ? "Back to the choice" : "View Battlefield") { peeking.toggle() }
+                .font(.system(size: 12, weight: .bold, design: .serif))
+                .foregroundStyle(ArenaGlass.text)
+                .padding(.horizontal, 14).frame(height: 32)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+                .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                .frame(minHeight: 44)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, 16)
+                .accessibilityIdentifier("\(identifier).viewBattlefield")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityIdentifier(identifier)
+    }
+
+    @ViewBuilder private var sourceView: some View {
+        let size = CGSize(width: 124, height: 172)
+        Group {
+            if let source, ArenaStackCard.isAbility(source) || source.displaySourceCard == nil {
+                ArenaAbilityCard(source: source.displaySourceCard, name: source.displaySourceCard == nil ? source.displayName : nil,
+                                 text: source.rulesText ?? source.displayName, size: size)
+            } else if let card = source?.displaySourceCard ?? sourceCard {
+                CardTile(card: card, selected: false, zoneName: "Stack", width: size.width, height: size.height, imageVariant: .inspection)
+                    .allowsHitTesting(false)
+            }
+        }
+        .shadow(color: .black.opacity(0.6), radius: 8, y: 4)
+        .contentShape(Rectangle())
+        .onTapGesture { if let card = source?.displaySourceCard ?? sourceCard { inspect(card) } }
+    }
+}
+
+/// Plaques under a browser: XMage's own answers (Cancel, Done) beside the browser's main one.
+struct ArenaAnswerRow: View {
+    var answers: [(id: String, title: String, action: () -> Void)] = []
+    var primary: (title: String, subtitle: String?, enabled: Bool, action: () -> Void)? = nil
+    var pending = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(answers, id: \.id) { answer in
+                Button(answer.title, action: answer.action)
+                    .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 15))
+                    .frame(width: 140, height: 40)
+                    .disabled(pending)
+            }
+            if let primary {
+                Button(action: primary.action) {
+                    VStack(spacing: 0) {
+                        Text(primary.title)
+                        if let subtitle = primary.subtitle {
+                            Text(subtitle.uppercased()).font(.system(size: 8, weight: .heavy, design: .serif)).opacity(0.85)
+                        }
+                    }
+                }
+                .buttonStyle(ArenaPlaqueButtonStyle(kind: .primary, fontSize: 16))
+                .frame(width: 170, height: 42)
+                .disabled(!primary.enabled || pending)
+                .accessibilityIdentifier("arena.browser.primary")
+            }
+            if pending { ProgressView().tint(ArenaGlass.text) }
+        }
+    }
+}
+
+/// A list of named choices the Arena way (Caleb, 2026-10-20): replacement effects and other choices that name a card
+/// show that card with the choice's text; colours show their mana symbol; anything else is a glass tile, with a search
+/// field for long lists. XMage's "Remember answer" twins become one "Remember my choice" toggle.
+struct ArenaChoiceBrowser: View {
+    struct Option: Identifiable {
+        let id: String
+        let rememberID: String?
+        let label: String
+        let text: String
+        let card: ZoneCard?
+        let symbol: String?
+    }
+
+    let title: String
+    var detail: String? = nil
+    let options: [Option]
+    var source: XmageStackObject? = nil
+    let pending: Bool
+    let screen: CGSize
+    var answers: [(id: String, title: String, action: () -> Void)] = []
+    let choose: (Option, Bool) -> Void
+    let inspect: (ZoneCard) -> Void
+    @State private var remember = false
+    @State private var search = ""
+
+    private var asCards: Bool { options.contains { $0.card != nil } && options.count <= 8 }
+    private var asSymbols: Bool { !asCards && options.allSatisfy { $0.symbol != nil } }
+    private var shown: [Option] {
+        guard !search.isEmpty else { return options }
+        return options.filter { $0.label.localizedCaseInsensitiveContains(search) }
+    }
+
+    var body: some View {
+        let landscape = screen.width > screen.height
+        ArenaBrowserFrame(title: title, detail: detail, source: source, screen: screen, identifier: "arena.choiceBrowser", inspect: inspect) {
+            VStack(spacing: 10) {
+                if options.count > 12 && !asCards {
+                    TextField("Search choices", text: $search)
+                        .modifier(TavernFieldChrome(tavern: true))
+                        .frame(maxWidth: 360)
+                        .accessibilityIdentifier("arena.choice.search")
+                }
+                if asCards {
+                    let height = min(landscape ? screen.height * 0.5 : 250, 250)
+                    let size = CGSize(width: height * 0.72, height: height)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            ForEach(shown) { option in
+                                ArenaAbilityCard(source: option.card, name: option.card == nil ? (option.label.count < 30 ? option.label : "Choice") : nil,
+                                                 kind: option.card == nil ? "Choice" : "Effect", text: option.text, size: size)
+                                    .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { pick(option) }
+                                    .onLongPressGesture(minimumDuration: 0.35) { if let card = option.card { inspect(card) } }
+                                    .modifier(ArenaChoiceAccessibility(option: option))
+                            }
+                        }
+                        .padding(.horizontal, 24).padding(.vertical, 16)
+                        .frame(minWidth: screen.width - (landscape && source != nil ? 150 : 0))
+                    }
+                } else if asSymbols {
+                    HStack(spacing: 18) {
+                        ForEach(shown) { option in
+                            Button { pick(option) } label: {
+                                VStack(spacing: 6) {
+                                    ManaSymbolView(symbol: option.symbol ?? "C", size: 54)
+                                        .shadow(color: .black.opacity(0.6), radius: 6, y: 3)
+                                    Text(option.label).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(ArenaGlass.text)
+                                }
+                                .frame(minWidth: 64, minHeight: 88)
+                            }
+                            .buttonStyle(.plain)
+                            .modifier(ArenaChoiceAccessibility(option: option))
+                        }
+                    }
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: landscape ? 170 : 150), spacing: 10)], spacing: 10) {
+                            ForEach(shown) { option in
+                                Button { pick(option) } label: {
+                                    GameRulesText(source: PromptDisplayText.clean(option.label), symbolSize: 14)
+                                        .font(.system(size: 14, weight: .semibold, design: .serif))
+                                        .foregroundStyle(ArenaGlass.text)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(3)
+                                        .frame(maxWidth: .infinity, minHeight: 48)
+                                        .padding(.horizontal, 10)
+                                        .modifier(ArenaGlassRow())
+                                }
+                                .buttonStyle(.plain)
+                                .modifier(ArenaChoiceAccessibility(option: option))
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                    }
+                }
+                if options.contains(where: { $0.rememberID != nil }) {
+                    RememberChoiceToggle(title: "Remember my choice for this game", isOn: $remember)
+                        .frame(maxWidth: 420)
+                }
+            }
+        } footer: {
+            ArenaAnswerRow(answers: answers, pending: pending)
+        }
+        .disabled(pending)
+    }
+
+    private func pick(_ option: Option) {
+        guard !pending else { return }
+        GameHaptics.selection()
+        choose(option, remember && option.rememberID != nil)
+    }
+}
+
+private struct ArenaChoiceAccessibility: ViewModifier {
+    let option: ArenaChoiceBrowser.Option
+    func body(content: Content) -> some View {
+        content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(PromptDisplayText.clean(option.label))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("arena.choice.\(option.id)")
+    }
+}
+
+/// Choosing a player the Arena way (who goes first, which player): each player's medallion, their name and life under
+/// it, side by side over the dimmed table; a tap chooses.
+struct ArenaPlayerChoice: View {
+    struct Seat: Identifiable {
+        /// The id the answer sends.
+        let id: String
+        let player: PlayerGameState?
+        let name: String
+    }
+
+    let title: String
+    var detail: String? = nil
+    let seats: [Seat]
+    let pending: Bool
+    let screen: CGSize
+    var answers: [(id: String, title: String, action: () -> Void)] = []
+    let choose: (Seat) -> Void
+
+    var body: some View {
+        let diameter: CGFloat = min(screen.width, screen.height) * (seats.count > 2 ? 0.24 : 0.3)
+        ArenaBrowserFrame(title: title, detail: detail, screen: screen, identifier: "arena.playerChoice") {
+            HStack(spacing: diameter * 0.35) {
+                ForEach(seats) { seat in
+                    Button {
+                        guard !pending else { return }
+                        GameHaptics.selection()
+                        choose(seat)
+                    } label: {
+                        VStack(spacing: 10) {
+                            if let player = seat.player {
+                                ArenaHeroMedallion(player: player, diameter: diameter)
+                            } else {
+                                Circle().fill(Color.white.opacity(0.08)).frame(width: diameter, height: diameter)
+                                    .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 2))
+                            }
+                            Text(seat.name)
+                                .font(.system(size: 18, weight: .bold, design: .serif))
+                                .foregroundStyle(ArenaGlass.text)
+                                .shadow(color: .black, radius: 2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(seat.name)
+                    .accessibilityIdentifier("arena.player.\(seat.id)")
+                }
+            }
+            .frame(maxHeight: .infinity)
+        } footer: {
+            ArenaAnswerRow(answers: answers, pending: pending)
+        }
+    }
+}
+
+/// The reference's number picker (MTG Arena's "Pay X = 10"): one capsule in the button corner, [−5] [−] [answer] [+]
+/// [+5], Cancel under it. Holding − or + keeps stepping. The board stays in view, the spell on the stack.
+struct ArenaAmountPill: View {
+    let label: String
+    let range: ArenaAmountRange
+    let initial: Int
+    let pending: Bool
+    let submit: (Int) -> Void
+    /// XMage's way back (Cancel), under the pill.
+    var cancel: (title: String, action: () -> Void)? = nil
+    @State private var value: Int?
+
+    var body: some View {
+        let current = value ?? range.clamp(initial)
+        VStack(spacing: 10) {
+            HStack(spacing: -6) {
+                if range.values.count > 6 { lens("−5", places: -5, current: current, wide: false) }
+                lens("−", places: -1, current: current, wide: false)
+                Button { submit(current) } label: {
+                    VStack(spacing: -1) {
+                        Text(label).font(.system(size: 12, weight: .bold, design: .serif))
+                        Text(label.hasSuffix("X") ? "X = \(current)" : "\(current)")
+                            .font(.system(size: 18, weight: .heavy, design: .serif)).monospacedDigit()
+                            .contentTransition(.numericText(value: Double(current)))
+                    }
+                    .foregroundStyle(Color(red: 1, green: 0.93, blue: 0.75))
+                    .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+                    .frame(width: 112, height: 50)
+                    .background { TavernFill(material: .ember).clipShape(Capsule()) }
+                    .overlay(Capsule().strokeBorder(Color(red: 1, green: 0.85, blue: 0.5).opacity(0.9), lineWidth: 1.2))
+                    .shadow(color: TavernPalette.ember.opacity(0.7), radius: 8)
+                }
+                .buttonStyle(.plain)
+                .zIndex(1)
+                .disabled(pending)
+                .accessibilityLabel("\(label) \(current)")
+                .accessibilityHint("Locks in the value")
+                .accessibilityIdentifier("arena.amount.submit")
+                lens("+", places: 1, current: current, wide: false)
+                if range.values.count > 6 { lens("+5", places: 5, current: current, wide: false) }
+            }
+            if let cancel {
+                Button(cancel.title, action: cancel.action)
+                    .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 15))
+                    .frame(width: 150, height: 38)
+                    .disabled(pending)
+                    .accessibilityIdentifier("arena.amount.cancel")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("arena.amount")
+    }
+
+    private func lens(_ title: String, places: Int, current: Int, wide: Bool) -> some View {
+        let blocked = places < 0 ? current <= range.minimum : current >= range.maximum
+        return ArenaRepeatButton(repeats: abs(places) == 1) {
+            let now = value ?? range.clamp(initial)
+            let next = range.step(now, by: places)
+            guard next != now else { return false }
+            value = next
+            GameHaptics.selection()
+            return true
+        } label: {
+            Text(title)
+                .font(.system(size: abs(places) == 1 ? 22 : 15, weight: .heavy, design: .serif))
+                .foregroundStyle(ArenaGlass.text.opacity(blocked ? 0.35 : 1))
+                .frame(width: abs(places) == 1 ? 48 : 42, height: 42)
+                .background(Capsule().fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)))
+                .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+        }
+        .disabled(blocked || pending)
+        .accessibilityLabel(places < 0 ? "Lower by \(abs(places))" : "Raise by \(places)")
+        .accessibilityIdentifier("arena.amount.\(places)")
+    }
+}
+
+/// A button that keeps acting while it is held (after a short wait), like the reference's − and +.
+struct ArenaRepeatButton<Label: View>: View {
+    var repeats = true
+    /// Takes one step; false when it can't go further, which also stops a held repeat.
+    let action: () -> Bool
+    @ViewBuilder let label: Label
+    /// Resets by itself when the touch ends or is taken away (a scroll view, the view going), so a repeat always stops.
+    @GestureState private var pressed = false
+    @State private var task: Task<Void, Never>?
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        label
+            .contentShape(Rectangle())
+            .scaleEffect(pressed ? 0.94 : 1)
+            .gesture(DragGesture(minimumDistance: 0).updating($pressed) { _, state, _ in state = true })
+            .onChange(of: pressed) { _, down in
+                task?.cancel()
+                task = nil
+                guard down, isEnabled, action(), repeats else { return }
+                task = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(420))
+                    while !Task.isCancelled, action() {
+                        try? await Task.sleep(for: .milliseconds(90))
+                    }
+                }
+            }
+            .onDisappear { task?.cancel(); task = nil }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { if isEnabled { _ = action() } }
+    }
+}
+
+/// Splitting damage, counters or mana the Arena way: each blocker or target as its card (a player as their medallion,
+/// a colour as its symbol) with a big number on it and − / + under it, lethal marked; what's left to give at the
+/// bottom, Done only when the split is legal. XMage's own split comes in filled (lethal damage first).
+struct ArenaSplitBrowser: View {
+    struct Row: Identifiable {
+        let id: String
+        let label: String
+        let card: ZoneCard?
+        let player: PlayerGameState?
+        let symbol: String?
+        let minimum: Int
+        let maximum: Int
+        let initial: Int
+        let lethal: Int?
+    }
+
+    let title: String
+    let rows: [Row]
+    let slots: [XmagePromptMultiAmount]
+    let totalMin: Int?
+    let totalMax: Int?
+    var source: XmageStackObject? = nil
+    var sourceCard: ZoneCard? = nil
+    let pending: Bool
+    let screen: CGSize
+    var answers: [(id: String, title: String, action: () -> Void)] = []
+    let submit: ([Int]) -> Void
+    let inspect: (ZoneCard) -> Void
+    @State private var values: [Int]?
+
+    private var current: [Int] { values ?? rows.map(\.initial) }
+    private var total: Int { current.reduce(0, +) }
+    private var valid: Bool { PromptCommandBuilder.isValidMultiAmountValues(current, slots: slots, totalMin: totalMin, totalMax: totalMax) }
+
+    private var detail: String {
+        if let totalMax, totalMax == totalMin ?? totalMax {
+            let left = totalMax - total
+            return left == 0 ? "All \(totalMax) given out" : left > 0 ? "\(left) of \(totalMax) left to give" : "\(-left) too many"
+        }
+        return "\(total) given"
+    }
+
+    var body: some View {
+        let landscape = screen.width > screen.height
+        // Portrait: up to three across, wrapping; landscape: one row.
+        let columns = landscape ? rows.count : min(3, max(rows.count, 1))
+        let fitted = landscape ? 210 : ((screen.width - 48 - CGFloat(columns - 1) * 14) / CGFloat(columns)) / 0.72
+        let height = min(landscape ? screen.height * 0.42 : fitted, 210)
+        let size = CGSize(width: height * 0.72, height: height)
+        ArenaBrowserFrame(title: title, detail: detail, source: source, sourceCard: sourceCard, screen: screen,
+                          identifier: "arena.split", inspect: inspect) {
+            if landscape {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 18) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            column(row, index: index, size: size)
+                        }
+                    }
+                    .padding(.horizontal, 24).padding(.vertical, 14)
+                    .frame(minWidth: screen.width - ((source != nil || sourceCard != nil) ? 150 : 0))
+                }
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(size.width), spacing: 14), count: columns), spacing: 18) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            column(row, index: index, size: size)
+                        }
+                    }
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        } footer: {
+            HStack(spacing: 12) {
+                Button("Reset") { values = nil }
+                    .buttonStyle(ArenaPlaqueButtonStyle(kind: .secondary, fontSize: 15))
+                    .frame(width: 110, height: 40)
+                    .disabled(values == nil || pending)
+                ArenaAnswerRow(answers: answers, primary: ("Done", nil, valid, { submit(current) }), pending: pending)
+            }
+        }
+    }
+
+    private func column(_ row: Row, index: Int, size: CGSize) -> some View {
+        let value = current[index]
+        let lethal = row.lethal.map { value >= $0 } ?? false
+        let name = row.card?.card.name ?? ArenaSplit.name(of: row.label)
+        return VStack(spacing: 8) {
+            face(row, size: size)
+                .overlay(alignment: .center) { badge(value, lethal: lethal) }
+                .overlay(alignment: .topTrailing) { if lethal { skull } }
+                .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.3) { if let card = row.card { inspect(card) } }
+            Text(name)
+                .font(.system(size: 12, weight: .semibold, design: .serif)).foregroundStyle(ArenaGlass.text)
+                .lineLimit(1).frame(width: size.width)
+            HStack(spacing: 10) {
+                stepper("−", by: -1, index: index, row: row)
+                stepper("+", by: 1, index: index, row: row)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(name): \(value)\(lethal ? ", lethal" : "")")
+        .accessibilityIdentifier("arena.split.\(row.id)")
+    }
+
+    @ViewBuilder
+    private func face(_ row: Row, size: CGSize) -> some View {
+        if let card = row.card {
+            CardTile(card: card, selected: false, zoneName: "Split", width: size.width, height: size.height, imageVariant: .inspection)
+                .allowsHitTesting(false)
+        } else if let player = row.player {
+            ArenaHeroMedallion(player: player, diameter: size.width * 0.9)
+                .frame(width: size.width, height: size.height)
+        } else if let symbol = row.symbol {
+            ManaSymbolView(symbol: symbol, size: size.width * 0.6)
+                .frame(width: size.width, height: size.height * 0.7)
+        } else {
+            ArenaAbilityCard(source: nil, name: ArenaSplit.name(of: row.label), kind: "Target", text: row.label, size: size)
+        }
+    }
+
+    private static let blood = Color(red: 0.55, green: 0.06, blue: 0.05)
+
+    private func badge(_ value: Int, lethal: Bool) -> some View {
+        let fill: Color = lethal ? Self.blood.opacity(0.92) : Color.black.opacity(0.6)
+        let rim: AnyShapeStyle = lethal ? AnyShapeStyle(Color(red: 1, green: 0.45, blue: 0.3)) : AnyShapeStyle(ArenaGlass.hairline)
+        return Text("\(value)")
+            .font(.system(size: 34, weight: .heavy, design: .serif))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .shadow(color: .black, radius: 3)
+            .frame(width: 62, height: 62)
+            .background(Circle().fill(fill))
+            .overlay(Circle().strokeBorder(rim, lineWidth: 2))
+            .opacity(value == 0 && !lethal ? 0.75 : 1)
+    }
+
+    private var skull: some View {
+        Image(systemName: "skull.fill")
+            .font(.system(size: 16))
+            .foregroundStyle(.white)
+            .padding(6)
+            .background(Circle().fill(Self.blood))
+            .offset(x: 6, y: -6)
+            .accessibilityHidden(true)
+    }
+
+    private func stepper(_ title: String, by delta: Int, index: Int, row: Row) -> some View {
+        let value = current[index]
+        let blocked = delta < 0 ? value <= row.minimum : value >= row.maximum || (totalMax.map { total >= $0 } ?? false)
+        return ArenaRepeatButton {
+            var next = current
+            // Never past the row's limits, nor more than the total to give.
+            if delta > 0, let totalMax, next.reduce(0, +) >= totalMax { return false }
+            let proposed = min(max(next[index] + delta, row.minimum), row.maximum)
+            guard proposed != next[index] else { return false }
+            next[index] = proposed
+            values = next
+            GameHaptics.selection()
+            return true
+        } label: {
+            Text(title)
+                .font(.system(size: 22, weight: .heavy, design: .serif))
+                .foregroundStyle(ArenaGlass.text.opacity(blocked ? 0.35 : 1))
+                .frame(width: 50, height: 40)
+                .background(Capsule().fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)))
+                .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+        }
+        .disabled(blocked || pending)
+        .accessibilityLabel(delta < 0 ? "One less to \(ArenaSplit.name(of: row.label))" : "One more to \(ArenaSplit.name(of: row.label))")
+        .accessibilityIdentifier("arena.split.\(row.id).\(delta < 0 ? "minus" : "plus")")
+    }
+}
+
+/// Choosing a pile the Arena way (Fact or Fiction, Liliana): the two piles fanned side by side in gold-rimmed wells, a
+/// tap picks one, the main plaque takes it. Hold a card to read it.
+struct ArenaPileBrowser: View {
+    let title: String
+    var detail: String? = nil
+    let piles: [XmagePromptPile]
+    var source: XmageStackObject? = nil
+    let pending: Bool
+    let screen: CGSize
+    let choose: (XmagePromptPile) -> Void
+    let inspect: (ZoneCard) -> Void
+    @State private var picked: String?
+
+    var body: some View {
+        let landscape = screen.width > screen.height
+        let width: CGFloat = landscape ? 96 : 84
+        ArenaBrowserFrame(title: title, detail: detail, source: source, screen: screen, identifier: "arena.pileBrowser", inspect: inspect) {
+            let layout = landscape ? AnyLayout(HStackLayout(spacing: 20)) : AnyLayout(VStackLayout(spacing: 14))
+            layout {
+                ForEach(piles) { pile in
+                    let chosen = picked == pile.id
+                    VStack(spacing: 8) {
+                        Text("\(pile.label.uppercased()) · \(pile.cards.count == 1 ? "1 CARD" : "\(pile.cards.count) CARDS")")
+                            .font(.system(size: 13, weight: .heavy, design: .serif)).tracking(1.2)
+                            .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                        HStack(spacing: -width * 0.45) {
+                            ForEach(Array(pile.cards.enumerated()), id: \.element.id) { index, card in
+                                CardTile(card: card, selected: false, zoneName: pile.label, width: width, height: width * 1.4,
+                                         imageVariant: .inspection)
+                                    .allowsHitTesting(false)
+                                    .rotationEffect(.degrees(Double(index - pile.cards.count / 2) * 4), anchor: .bottom)
+                                    .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
+                                    .onLongPressGesture(minimumDuration: 0.3) { inspect(card) }
+                            }
+                            if pile.cards.isEmpty {
+                                Text("Empty").font(.system(size: 14, design: .serif).italic()).foregroundStyle(ArenaGlass.text.opacity(0.6))
+                                    .frame(width: width, height: width * 1.4)
+                            }
+                        }
+                        .padding(14)
+                        .frame(minWidth: width * 1.6)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Color.black.opacity(chosen ? 0.5 : 0.35)))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(chosen ? AnyShapeStyle(Color(red: 1, green: 0.82, blue: 0.4))
+                                                                             : AnyShapeStyle(ArenaGlass.hairline), lineWidth: chosen ? 3 : 1))
+                    .shadow(color: chosen ? Color(red: 1, green: 0.75, blue: 0.3).opacity(0.7) : .clear, radius: 10)
+                    .contentShape(Rectangle())
+                    .onTapGesture { guard !pending else { return }; picked = pile.id; GameHaptics.selection() }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(pile.label): \(pile.cards.map(\.card.name).joined(separator: ", "))")
+                    .accessibilityAddTraits(chosen ? AccessibilityTraits([.isButton, .isSelected]) : .isButton)
+                    .accessibilityIdentifier("arena.pile.\(pile.id)")
+                }
+            }
+        } footer: {
+            let pile = piles.first { $0.id == picked }
+            ArenaAnswerRow(primary: (pile.map { "Choose \($0.label)" } ?? "Pick a pile", nil, pile != nil, { if let pile { choose(pile) } }),
+                           pending: pending)
+        }
     }
 }
 

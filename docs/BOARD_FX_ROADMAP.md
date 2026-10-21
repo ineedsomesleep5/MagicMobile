@@ -635,3 +635,8 @@ single MIT file with its license header when that is enough.
   target (or its source, or a player's medallion). The phase strip always has 8 icons, so main 2 lights. Choices are
   full-table browsers (stack, abilities, scry/surveil/search, modes, questions; see TAVERN_STYLE "Board modes"), studied
   from Arena gameplay frames. Next: phone feel.
+- 2026-10-21 (Claude): Arena pace. `BoardFXPace.arena` (BoardEventTimeline.swift) keeps the reference game's timings
+  from GAP_ANALYSIS.md §2: your spell 0.35 s onto the stack card, an opponent's revealed for 1.6 s (the stack card grows
+  toward the middle, holds, settles: `arenaRevealID`), triggers 0.5 s, arrivals 0.6 s, strikes 0.45 s one after another
+  0.38 s apart. A cast the board never saw on the stack shows at the stack card's place for its reveal. Smart pass waits
+  for the reveal only. Hearth unchanged. Tests: `testArenaPaceFollowsTheReference`. Next: phone feel with the engine.

@@ -137,6 +137,7 @@ extension NativeGameView {
            let choice = Self.arenaColorChoice(in: prompt, wanted: run.color) {
             run.color = nil
             run.awaitingColor = false
+            run.answeredColor = "\(prompt.id):\(prompt.messageId)"
             run.quiet = 0
             arenaAutoPay = run
             if let command = PromptCommandBuilder.command(gameId: snapshot.id, promptEnvelope: prompt, type: "resolve_choice",
@@ -293,6 +294,185 @@ extension NativeGameView {
                 type: PromptCommandBuilder.idCommandType(preferred: prompt.responseCommand?.type, fallback: "choose_mode"),
                 promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: [mode.id]) else { return }
         runCommand(command, "Choose mode", "\(prompt.id)-\(mode.id)")
+    }
+
+    // MARK: Choices, players, numbers, splits and piles (docs/ARENA_STYLE.md)
+
+    /// A question of yours the Arena's own screens take: not a payment, the opening hand or the starting roll.
+    private func arenaOwnPrompt(_ snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        guard !startingRollVisible, OpeningHandChoice(snapshot) == nil, !InlinePaymentPromptState.isActive(in: snapshot),
+              let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId), !CompactPromptPopup.isManaPaymentPrompt(prompt),
+              prompt.responseKind != "priority", prompt.responseCommand?.type != "pass_priority" else { return nil }
+        return prompt
+    }
+
+    /// The card a choice names: on the battlefield first, then anywhere you can see.
+    func arenaCard(named name: String, in snapshot: GameSnapshot) -> ZoneCard? {
+        snapshot.visibleBattlefield.first { $0.card.name == name }
+            ?? PortraitInteractionPolicy.authorizedCards(snapshot).first { $0.card.name == name }
+    }
+
+    /// A list of named choices (replacement effects, creature types, colours): more than three, or ones naming a card,
+    /// or with XMage's "Remember answer" twins. Auto Pay's own colour question is left to Auto Pay.
+    func arenaChoicePrompt(_ snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        guard let prompt = arenaOwnPrompt(snapshot), let choices = prompt.choices, !choices.isEmpty,
+              prompt.modes?.isEmpty != false, prompt.abilities?.isEmpty != false, prompt.cards?.isEmpty != false,
+              prompt.confirmation == nil, !PromptCommandBuilder.isCommanderReplacement(prompt),
+              arenaAutoPay?.awaitingColor != true,
+              // The colour question Auto Pay just answered, until its answer lands.
+              arenaAutoPay?.answeredColor != "\(prompt.id):\(prompt.messageId)" else { return nil }
+        let options = ArenaChoiceList.options(choices.map { ($0.id, $0.label) })
+        let namesCard = options.contains { option in option.name.map { arenaCard(named: $0, in: snapshot) != nil } ?? false }
+        return choices.count > 3 || namesCard || options.count < choices.count ? prompt : nil
+    }
+
+    func arenaChoiceOptions(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot) -> [ArenaChoiceBrowser.Option] {
+        ArenaChoiceList.options((prompt.choices ?? []).map { ($0.id, $0.label) }).map { option in
+            ArenaChoiceBrowser.Option(id: option.id, rememberID: option.rememberID, label: option.label, text: option.text,
+                                      card: option.name.flatMap { arenaCard(named: $0, in: snapshot) },
+                                      symbol: ArenaChoiceList.colorSymbol(option.label))
+        }
+    }
+
+    func arenaAnswerChoice(_ option: ArenaChoiceBrowser.Option, remember: Bool, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        let id = remember ? (option.rememberID ?? option.id) : option.id
+        arenaAnswer(prompt, snapshot: snapshot, type: PromptCommandBuilder.idCommandType(preferred: prompt.responseCommand?.type, fallback: "resolve_choice"),
+                    ids: [id], label: PromptDisplayText.clean(option.label), key: "\(prompt.id)-\(id)")
+    }
+
+    /// Choosing a player: XMage's player list, or a "starting player" question whose targets are the players.
+    func arenaPlayerPrompt(_ snapshot: GameSnapshot) -> (prompt: PromptEnvelopeV2, seats: [ArenaPlayerChoice.Seat], type: String)? {
+        guard let prompt = arenaOwnPrompt(snapshot) else { return nil }
+        func seat(_ id: String, label: String) -> ArenaPlayerChoice.Seat {
+            let player = snapshot.players.first { $0.playerId == id || CombatPlayerIdentity.ids(for: $0.playerId, in: snapshot).contains(id) }
+            return ArenaPlayerChoice.Seat(id: id, player: player, name: player.map { snapshot.isViewer($0.playerId) ? "You" : snapshot.playerLabel($0.playerId) } ?? label)
+        }
+        if let players = prompt.players, !players.isEmpty {
+            return (prompt, players.filter { $0.selectable != false }.map { seat($0.playerId, label: $0.label) },
+                    PromptCommandBuilder.idCommandType(preferred: prompt.responseCommand?.type, fallback: "choose_player"))
+        }
+        let ids = Set(snapshot.players.flatMap { CombatPlayerIdentity.ids(for: $0.playerId, in: snapshot) })
+        let message = prompt.message.lowercased()
+        if message.contains("starting player") || message.contains("first turn") || message.contains("goes first"),
+           let targets = prompt.targets, !targets.isEmpty,
+           targets.allSatisfy({ ids.contains($0.id) }) {
+            return (prompt, targets.map { seat($0.id, label: $0.label) },
+                    PromptCommandBuilder.idCommandType(preferred: prompt.responseCommand?.type, fallback: "choose_target"))
+        }
+        return nil
+    }
+
+    func arenaAnswerPlayer(_ seat: ArenaPlayerChoice.Seat, type: String, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        arenaAnswer(prompt, snapshot: snapshot, type: type, ids: [seat.id], label: "Choose \(seat.name)", key: "\(prompt.id)-\(seat.id)")
+    }
+
+    /// A number to choose (X, how many): XMage's amount question. Paying X mana stays with the payment.
+    func arenaAmountPrompt(_ snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        guard let prompt = arenaOwnPrompt(snapshot), prompt.multiAmounts?.isEmpty != false else { return nil }
+        let type = prompt.responseCommand?.type?.lowercased() ?? prompt.responseKind.lowercased()
+        return prompt.amounts?.isEmpty == false || type == "choose_amount" ? prompt : nil
+    }
+
+    /// The amount pill's values, label and first value: X starts at the most your mana pays (the spell on the stack, your
+    /// untapped mana sources and floating mana), anything else at its least.
+    func arenaAmountSetup(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot) -> (range: ArenaAmountRange, label: String, initial: Int) {
+        let range = ArenaAmountRange(amounts: prompt.amounts, minimum: prompt.minChoices, maximum: prompt.maxChoices)
+        let isX = prompt.message.contains("{X}") || prompt.message.lowercased().contains("value for x")
+        guard isX, let cost = snapshot.stackTopFirst.first?.displaySourceCard?.card.manaCost, let human = snapshot.human else {
+            return (range, isX ? "Pay X" : "Choose", range.minimum)
+        }
+        let sources = human.zones.battlefield.filter { card in
+            card.tapped != true && (card.card.isLand || (card.card.oracleText ?? "").lowercased().contains("add {")
+                                    || (card.card.oracleText ?? "").lowercased().contains("add one mana"))
+        }.count
+        let pool = human.manaPool.map { $0.W + $0.U + $0.B + $0.R + $0.G + $0.C } ?? 0
+        let affordable = ArenaAmountRange.affordableX(cost: cost, sources: sources + pool) ?? range.minimum
+        return (range, "Pay X", range.clamp(affordable))
+    }
+
+    func arenaAnswerAmount(_ value: Int, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        arenaAnswer(prompt, snapshot: snapshot, type: PromptCommandBuilder.amountCommandType(preferred: prompt.responseCommand?.type),
+                    amount: value, amounts: [value], label: "Choose \(value)", key: "\(prompt.id)-amount-\(value)")
+    }
+
+    /// A split of damage, counters or mana among rows.
+    func arenaSplitPrompt(_ snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        guard let prompt = arenaOwnPrompt(snapshot), prompt.multiAmounts?.isEmpty == false else { return nil }
+        return prompt
+    }
+
+    /// Each row as what it names: a blocker or target card, a player, a mana colour. Combat's source is the attacker the
+    /// blockers block; a spell's is the top of the stack.
+    func arenaSplitSetup(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot)
+        -> (title: String, rows: [ArenaSplitBrowser.Row], source: XmageStackObject?, sourceCard: ZoneCard?) {
+        // Combat's split comes in the combat damage step; "assign damage among targets" outside it is a spell's.
+        let step = "\(snapshot.phase) \(snapshot.step ?? "")".lowercased()
+        let combat = step.contains("combat") && step.contains("damage")
+        let message = PromptDisplayText.clean(prompt.message.components(separatedBy: "\n").first ?? "")
+        let damage = combat || message.lowercased().contains("damage")
+        var attacker: ZoneCard?
+        let rows = (prompt.multiAmounts ?? []).map { slot -> ArenaSplitBrowser.Row in
+            let name = ArenaSplit.name(of: slot.label)
+            let card = snapshot.visibleBattlefield.first { $0.card.name == name && (!combat || $0.blocking?.isEmpty == false) }
+                ?? snapshot.visibleBattlefield.first { $0.card.name == name }
+            if combat, attacker == nil, let blocked = card?.blocking {
+                attacker = snapshot.human?.zones.battlefield.first { blocked.contains($0.instanceId) || blocked.contains($0.id) }
+            }
+            let player = card == nil ? snapshot.players.first { ($0.displayName ?? "") == name || snapshot.playerLabel($0.playerId) == name } : nil
+            return ArenaSplitBrowser.Row(id: slot.id, label: slot.label, card: card, player: player,
+                                         symbol: card == nil && player == nil ? ArenaChoiceList.colorSymbol(name) : nil,
+                                         minimum: slot.min, maximum: slot.max, initial: min(max(slot.defaultValue ?? slot.min, slot.min), slot.max),
+                                         lethal: nil)
+        }
+        let deathtouch = (attacker?.card.oracleText ?? snapshot.stackTopFirst.first?.rulesText ?? "").lowercased().contains("deathtouch")
+        let withLethal = rows.map { row -> ArenaSplitBrowser.Row in
+            guard damage, let card = row.card, card.isCreature, let toughness = card.displayToughness.flatMap({ Int($0) }) else { return row }
+            return ArenaSplitBrowser.Row(id: row.id, label: row.label, card: row.card, player: row.player, symbol: row.symbol, minimum: row.minimum,
+                                         maximum: row.maximum, initial: row.initial,
+                                         lethal: ArenaSplit.lethal(toughness: toughness, damage: card.damage ?? 0, deathtouch: deathtouch))
+        }
+        let title = combat ? "Assign combat damage" : message.isEmpty ? "Divide" : message
+        return (title, withLethal, combat ? nil : snapshot.stackTopFirst.first, attacker)
+    }
+
+    func arenaAnswerSplit(_ values: [Int], prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        arenaAnswer(prompt, snapshot: snapshot, type: "choose_multi_amount", amounts: values, label: "Assign amounts",
+                    key: "\(prompt.id)-choose-multi-amount")
+    }
+
+    /// Choosing one of two piles.
+    func arenaPilePrompt(_ snapshot: GameSnapshot) -> PromptEnvelopeV2? {
+        guard let prompt = arenaOwnPrompt(snapshot), prompt.piles?.isEmpty == false else { return nil }
+        return prompt
+    }
+
+    func arenaAnswerPile(_ pile: XmagePromptPile, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
+        arenaAnswer(prompt, snapshot: snapshot, type: "choose_pile", pile: pile.explicitPileNumber, label: "Choose \(pile.label)",
+                    key: "\(prompt.id)-pile-\(pile.id)")
+    }
+
+    /// One of these screens has this question; the pop-up, question screen and detail panel stay away.
+    func arenaScreenPrompt(_ snapshot: GameSnapshot) -> Bool {
+        arenaChoicePrompt(snapshot) != nil || arenaPlayerPrompt(snapshot) != nil || arenaAmountPrompt(snapshot) != nil
+            || arenaSplitPrompt(snapshot) != nil || arenaPilePrompt(snapshot) != nil
+    }
+
+    /// XMage's own answers beside a screen's (Cancel, Done), leaving out the ones the screen makes itself.
+    func arenaPromptAnswers(_ snapshot: GameSnapshot, excluding types: Set<String>) -> [(id: String, title: String, action: () -> Void)] {
+        CompactPromptPopup.compactLegalPromptActions(in: snapshot).filter { !types.contains($0.type) }
+            .map { action in (action.id, action.compactPromptTitle, { runAction(action) }) }
+    }
+
+    /// The same command the Hearth panel sends for this answer.
+    private func arenaAnswer(_ prompt: PromptEnvelopeV2, snapshot: GameSnapshot, type: String, ids: [String] = [], amount: Int? = nil,
+                             amounts: [Int]? = nil, pile: Int? = nil, label: String, key: String) {
+        guard pendingActionId == nil,
+              let command = UniversalPromptResponseCommandBuilder.command(
+                gameId: snapshot.id, bridgeRevision: snapshot.bridgeRevision, promptEnvelope: prompt, type: type,
+                promptId: prompt.responseCommand?.promptId ?? prompt.id, playerId: prompt.playerId, ids: ids,
+                amount: amount, amounts: amounts, pile: pile) else { return }
+        GameHaptics.selection()
+        runCommand(command, label, key)
     }
 
     func arenaShowNotice(_ text: String) {

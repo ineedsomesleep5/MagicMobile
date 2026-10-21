@@ -86,31 +86,13 @@ struct CardInspector: View {
     @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
     @ScaledMetric(relativeTo: .footnote) private var footnoteSize: CGFloat = 13
     @Environment(\.tavernBoard) private var tavern
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
-        let card = shown
-        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let rulesVisible = showsRules && !rules.isEmpty
-        let state = liveState
-        let attached = attachments
-        let reminder = CardRulesReminder.text(for: card)
-        // Rules get their room first; CardInspectorFit shrinks the card, then the text.
-        CardInspectorLayout {
-            InspectorCardFace(card: card, otherFace: otherFace, turned: turned) { turned.toggle() }
-            if rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
-                ViewThatFits(in: .vertical) {
-                    ForEach(CardInspectorFit.textScales, id: \.self) { scale in
-                        footer(scale: scale, card: card, rules: rulesVisible ? rules : nil, state: state,
-                               reminder: reminder, attached: attached)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .clipped()
-            }
+        Group {
+            if arena { arenaBody } else { tavernBody }
         }
-        .padding(9)
         .onPreferenceChange(CardArtPlaceholderShownKey.self) { artMissing = $0 }
-        .modifier(InspectorChrome(tavern: tavern))
         .task(id: card.card.name) {
             turned = false
             otherFace = nil
@@ -126,6 +108,120 @@ struct CardInspector: View {
                 wait = .milliseconds(2600)
             }
         }
+    }
+
+    /// The Arena board's inspection, the reference's way (docs/ARENA_STYLE.md): the card large with no panel round it,
+    /// and beside it (below it in portrait) glass notes: what it is right now, what its keywords mean, its rules when
+    /// the picture can't show them, and what is attached to it.
+    private var arenaBody: some View {
+        let card = shown
+        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let glossary = ArenaKeywordGlossary.entries(rules: rules)
+        let reminder = CardRulesReminder.text(for: card)
+        let attached = attachments
+        let hasNotes = !liveState.isEmpty || !glossary.isEmpty || (showsRules && !rules.isEmpty) || reminder != nil || !attached.isEmpty
+        return GeometryReader { proxy in
+            let landscape = proxy.size.width > proxy.size.height
+            let ratio = BattlefieldLayoutMetrics.magicCardHeightToWidth
+            let notesWidth: CGFloat = landscape ? min(300, max(0, proxy.size.width * 0.45)) : proxy.size.width
+            let cardHeight: CGFloat = landscape
+                ? min(proxy.size.height, (proxy.size.width - (hasNotes ? notesWidth + 16 : 0)) * ratio)
+                : min(proxy.size.height * (hasNotes ? 0.66 : 1), proxy.size.width * ratio)
+            let layout = landscape ? AnyLayout(HStackLayout(alignment: .center, spacing: 16)) : AnyLayout(VStackLayout(spacing: 10))
+            layout {
+                InspectorCardFace(card: card, otherFace: otherFace, turned: turned) { turned.toggle() }
+                    .frame(width: cardHeight / ratio, height: cardHeight)
+                    .shadow(color: .black.opacity(0.7), radius: 16, y: 8)
+                if hasNotes {
+                    arenaNotes(card: card, rules: showsRules ? rules : "", glossary: glossary, reminder: reminder, attached: attached,
+                               compact: !landscape)
+                        .frame(width: notesWidth)
+                        .frame(maxHeight: landscape ? cardHeight : proxy.size.height - cardHeight - 10, alignment: .top)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inspector.arena")
+    }
+
+    private func arenaNotes(card: ZoneCard, rules: String, glossary: [(keyword: String, meaning: String)], reminder: String?,
+                            attached: [ZoneCard], compact: Bool) -> some View {
+        let gold = Color(red: 0.98, green: 0.84, blue: 0.52)
+        func note<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .modifier(ArenaGlassPanel(cornerRadius: 10))
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            if !liveState.isEmpty {
+                note {
+                    Text(liveState.joined(separator: "  •  "))
+                        .font(.system(size: 13, weight: .semibold, design: .serif))
+                        .foregroundStyle(ArenaGlass.text)
+                        .lineLimit(3).minimumScaleFactor(0.8)
+                }
+            }
+            ForEach(Array(glossary.prefix(compact ? 3 : 4).enumerated()), id: \.offset) { _, entry in
+                note {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(entry.keyword).font(.system(size: 14, weight: .bold, design: .serif)).foregroundStyle(gold)
+                        GameRulesText(source: entry.meaning, symbolSize: 13)
+                            .font(.system(size: 13, design: .serif)).foregroundStyle(ArenaGlass.text.opacity(0.9))
+                            .lineLimit(3).minimumScaleFactor(0.8)
+                    }
+                }
+            }
+            if !rules.isEmpty {
+                note {
+                    GameRulesText(source: rules, cardName: card.card.name, isHidden: !NativeCardArtworkPolicy.permitsLookup(card: card), symbolSize: 14)
+                        .font(.system(size: 14, design: .serif)).foregroundStyle(ArenaGlass.text)
+                        .lineLimit(compact ? 5 : 9).minimumScaleFactor(0.75)
+                }
+            }
+            if let reminder {
+                note {
+                    Text(reminder).font(.system(size: 12, design: .serif).italic()).foregroundStyle(ArenaGlass.text.opacity(0.85))
+                        .lineLimit(4).minimumScaleFactor(0.8)
+                        .accessibilityIdentifier("inspector.rulesReminder")
+                }
+            }
+            if !attached.isEmpty {
+                note {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ATTACHED").font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1).foregroundStyle(gold)
+                        Text(attached.map(\.card.name).joined(separator: ", "))
+                            .font(.system(size: 13, design: .serif)).foregroundStyle(ArenaGlass.text).lineLimit(2)
+                    }
+                }
+            }
+        }
+    }
+
+    private var tavernBody: some View {
+        let card = shown
+        let rules = card.card.oracleText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rulesVisible = showsRules && !rules.isEmpty
+        let state = liveState
+        let attached = attachments
+        let reminder = CardRulesReminder.text(for: card)
+        // Rules get their room first; CardInspectorFit shrinks the card, then the text.
+        return CardInspectorLayout {
+            InspectorCardFace(card: card, otherFace: otherFace, turned: turned) { turned.toggle() }
+            if rulesVisible || !state.isEmpty || !attached.isEmpty || reminder != nil {
+                ViewThatFits(in: .vertical) {
+                    ForEach(CardInspectorFit.textScales, id: \.self) { scale in
+                        footer(scale: scale, card: card, rules: rulesVisible ? rules : nil, state: state,
+                               reminder: reminder, attached: attached)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
+            }
+        }
+        .padding(9)
+        .modifier(InspectorChrome(tavern: tavern))
     }
 
     private func footer(scale: CGFloat, card: ZoneCard, rules: String?, state: [String], reminder: String?,

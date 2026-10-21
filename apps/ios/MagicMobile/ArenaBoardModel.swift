@@ -780,3 +780,163 @@ enum ArenaExtraHand {
         return (player.zones.graveyard + player.zones.exile).filter { playable.contains($0.instanceId) || playable.contains($0.id) }
     }
 }
+
+// MARK: - Choices, numbers, splits and the glossary (docs/ARENA_STYLE.md)
+
+/// XMage's named choices, read for the Arena choice browser: each "Remember answer: X" pairs with its X (one "Remember
+/// my choice" toggle instead of a second list), and "Doubling Season: If an effect…" splits into the card it names and
+/// that card's text.
+enum ArenaChoiceList {
+    struct Option: Equatable {
+        let id: String
+        /// The same answer, remembered for the rest of the game.
+        let rememberID: String?
+        let label: String
+        /// The card the choice names, when it starts with one ("Name: text").
+        let name: String?
+        let text: String
+    }
+
+    static let rememberPrefix = "Remember answer: "
+
+    static func options(_ choices: [(id: String, label: String)]) -> [Option] {
+        let remembered = Dictionary(choices.filter { $0.label.hasPrefix(rememberPrefix) }
+            .map { (String($0.label.dropFirst(rememberPrefix.count)), $0.id) }, uniquingKeysWith: { first, _ in first })
+        return choices.filter { !$0.label.hasPrefix(rememberPrefix) }.map { choice in
+            var name: String?
+            var text = choice.label
+            if let colon = choice.label.range(of: ": "), choice.label.distance(from: choice.label.startIndex, to: colon.lowerBound) <= 40 {
+                // XMage names a card with its id: "Doubling Season [8f2]".
+                name = String(choice.label[..<colon.lowerBound])
+                    .replacingOccurrences(of: #"\s*\[[^\]]*\]\s*$"#, with: "", options: .regularExpression)
+                text = String(choice.label[colon.upperBound...])
+            }
+            return Option(id: choice.id, rememberID: remembered[choice.label], label: choice.label, name: name, text: text)
+        }
+    }
+
+    /// "White" or "Red mana" as its mana symbol, for colour choices.
+    static func colorSymbol(_ label: String) -> String? {
+        let names = ["white": "W", "blue": "U", "black": "B", "red": "R", "green": "G", "colorless": "C", "colourless": "C"]
+        let word = label.lowercased().replacingOccurrences(of: " mana", with: "").trimmingCharacters(in: .whitespaces)
+        return names[word]
+    }
+}
+
+/// A planeswalker ability's loyalty cost, as the reference shows it on a badge: "+1: Create a…" is +1 and its text.
+enum ArenaLoyalty {
+    static func split(_ text: String) -> (cost: String, text: String)? {
+        guard let match = text.range(of: #"^\s*([+−-]?\s*(?:\d+|X))\s*:\s*"#, options: .regularExpression) else { return nil }
+        let cost = text[match].replacingOccurrences(of: ":", with: "").replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "−")
+        return (cost, String(text[match.upperBound...]))
+    }
+}
+
+/// The values the Arena's amount pill steps through: XMage's list when it gives one, else its minimum to maximum (an
+/// open maximum stops 99 above the minimum).
+struct ArenaAmountRange: Equatable {
+    let values: [Int]
+
+    init(amounts: [Int]?, minimum: Int?, maximum: Int?) {
+        if let amounts, !amounts.isEmpty {
+            values = Array(Set(amounts)).sorted()
+        } else {
+            // XMage's own bounds (negative ones too); an open maximum stops 99 above the minimum.
+            let low = minimum ?? 0
+            let high = max(low, min(maximum ?? (low + 99), low + 999))
+            values = Array(low...high)
+        }
+    }
+
+    var minimum: Int { values.first ?? 0 }
+    var maximum: Int { values.last ?? 0 }
+
+    /// `by` places along the allowed values, held at the ends.
+    func step(_ value: Int, by places: Int) -> Int {
+        let index = values.firstIndex(of: value) ?? values.firstIndex { $0 >= value } ?? 0
+        return values[min(max(index + places, 0), values.count - 1)]
+    }
+
+    /// The nearest allowed value.
+    func clamp(_ value: Int) -> Int { values.min { abs($0 - value) < abs($1 - value) } ?? value }
+
+    /// The largest X the mana you have can pay: `sources` mana available, `cost` the spell's mana cost with its X.
+    static func affordableX(cost: String, sources: Int) -> Int? {
+        let symbols = cost.uppercased().components(separatedBy: CharacterSet(charactersIn: "{}")).filter { !$0.isEmpty }
+        let xs = symbols.filter { $0 == "X" }.count
+        guard xs > 0 else { return nil }
+        let fixed = symbols.reduce(0) { total, symbol in
+            if symbol == "X" { return total }
+            if let generic = Int(symbol) { return total + generic }
+            return total + 1
+        }
+        return max(0, (sources - fixed) / xs)
+    }
+}
+
+/// Rows of a damage, counter or mana split, read for the Arena split browser.
+enum ArenaSplit {
+    /// "Grizzly Bears, P/T: 2/2" or "Grizzly Bears [8f2]" is Grizzly Bears.
+    static func name(of label: String) -> String {
+        var name = label
+        if let range = name.range(of: ", P/T:") { name = String(name[..<range.lowerBound]) }
+        name = name.replacingOccurrences(of: #"\s*\[[^\]]*\]\s*$"#, with: "", options: .regularExpression)
+        return name.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Damage that destroys a creature: what's left of its toughness, or 1 from a source with deathtouch.
+    static func lethal(toughness: Int, damage: Int, deathtouch: Bool) -> Int {
+        deathtouch ? 1 : max(1, toughness - damage)
+    }
+}
+
+/// The reference's keyword glossary beside an inspected card: what each keyword on it means, in a sentence.
+enum ArenaKeywordGlossary {
+    static let entries: [(keyword: String, meaning: String)] = [
+        ("Flying", "Can be blocked only by creatures with flying or reach."),
+        ("Reach", "Can block creatures with flying."),
+        ("Trample", "Combat damage beyond what its blockers need goes on to the player or planeswalker it's attacking."),
+        ("Deathtouch", "Any damage it deals to a creature is enough to destroy it."),
+        ("Lifelink", "Damage it deals also gains its controller that much life."),
+        ("Vigilance", "Attacking doesn't tap it."),
+        ("Haste", "It can attack and use tap abilities the turn it comes under your control."),
+        ("First strike", "Deals combat damage before creatures without first strike."),
+        ("Double strike", "Deals both first-strike and regular combat damage."),
+        ("Menace", "Can't be blocked except by two or more creatures."),
+        ("Hexproof", "Can't be the target of spells or abilities your opponents control."),
+        ("Shroud", "Can't be the target of any spell or ability."),
+        ("Indestructible", "Damage and \"destroy\" effects don't destroy it."),
+        ("Defender", "Can't attack."),
+        ("Flash", "You may cast it any time you could cast an instant."),
+        ("Ward", "When it becomes the target of an opponent's spell or ability, that player pays the ward cost or it's countered."),
+        ("Prowess", "Whenever you cast a noncreature spell, it gets +1/+1 until end of turn."),
+        ("Flashback", "You may cast this card from your graveyard for its flashback cost. Then it's exiled."),
+        ("Kicker", "You may pay an extra cost as you cast it for an extra effect."),
+        ("Cycling", "Pay its cycling cost and discard it to draw a card."),
+        ("Equip", "Attach it to a creature you control, any time you could cast a sorcery."),
+        ("Toxic", "Players it deals combat damage to also get that many poison counters."),
+        ("Infect", "Deals damage to creatures as -1/-1 counters and to players as poison counters."),
+        ("Persist", "When it dies without a -1/-1 counter, it returns with one."),
+        ("Undying", "When it dies without a +1/+1 counter, it returns with one."),
+        ("Convoke", "Your creatures can help cast it: each one you tap pays for {1} or one mana of its colour."),
+        ("Cascade", "When you cast it, reveal cards until a cheaper nonland card; you may cast that card free."),
+        ("Storm", "When you cast it, copy it for each spell cast before it this turn."),
+        ("Changeling", "It is every creature type."),
+        ("Protection", "Can't be blocked, targeted, damaged, enchanted or equipped by anything with that quality."),
+        ("Treasure", "A token artifact: tap and sacrifice it to add one mana of any colour."),
+        ("Food", "A token artifact: pay {2}, tap and sacrifice it to gain 3 life."),
+        ("Clue", "A token artifact: pay {2} and sacrifice it to draw a card."),
+    ]
+
+    /// The keywords a card's rules mention, in the order they first appear, at most `limit`.
+    static func entries(rules: String, limit: Int = 4) -> [(keyword: String, meaning: String)] {
+        let text = rules.lowercased()
+        let found: [(Int, (keyword: String, meaning: String))] = entries.compactMap { entry in
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: entry.keyword.lowercased()) + "\\b"
+            guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
+            return (text.distance(from: text.startIndex, to: range.lowerBound), entry)
+        }
+        return Array(found.sorted { $0.0 < $1.0 }.map(\.1).prefix(limit))
+    }
+}

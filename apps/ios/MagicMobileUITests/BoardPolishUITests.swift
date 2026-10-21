@@ -572,6 +572,67 @@ final class BoardPolishUITests: XCTestCase {
                        .completed, "A tap answers with that mode")
     }
 
+    /// The rest of the Arena's screens (docs/ARENA_STYLE.md): named choices as cards with a remember toggle, who goes
+    /// first as medallions, a pile choice, a mana split, and the X pill in the corner, each answering with a tap.
+    func testArenaBoardShowsChoicesPlayersPilesSplitsAndNumbers() {
+        func launch(_ environment: [String: String], fixture: String = "normal-battlefield") -> XCUIApplication {
+            app?.terminate()
+            let application = XCUIApplication()
+            app = application
+            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.boardMode", "arena",
+                "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
+            application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
+            application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+            for (key, value) in environment { application.launchEnvironment[key] = value }
+            XCUIDevice.shared.orientation = .portrait
+            application.launch()
+            return application
+        }
+        func answered(_ application: XCUIApplication, _ text: String) -> Bool {
+            let found = NSPredicate { _, _ in
+                application.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch.exists
+            }
+            return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: found, object: application)], timeout: 5) == .completed
+        }
+
+        var application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "replacement"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.choiceBrowser"].waitForExistence(timeout: 15), "The choice browser")
+        XCTAssertFalse(application.buttons["Cancel prompt details"].exists, "No prompt panel over it")
+        XCTAssertTrue(application.descendants(matching: .any)["arena.choice.r1"].exists, "Doubling Season's choice")
+        XCTAssertFalse(application.descendants(matching: .any)["arena.choice.r3"].exists, "Its remembered twin is a toggle, not a card")
+        captureImage(name: "arena-choices")
+        application.descendants(matching: .any)["arena.choice.r2"].tap()
+        XCTAssertTrue(answered(application, "Chatterfang"), "A tap answers with that choice")
+
+        application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "starting-player"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.playerChoice"].waitForExistence(timeout: 15), "Who goes first")
+        application.buttons["arena.player.human"].tap()
+        XCTAssertTrue(answered(application, "Choose You"), "A tap on a medallion answers")
+
+        application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "piles"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.pileBrowser"].waitForExistence(timeout: 15), "The pile browser")
+        application.descendants(matching: .any)["arena.pile.2"].tap()
+        let choose = application.buttons["arena.browser.primary"]
+        XCTAssertTrue(choose.waitForExistence(timeout: 5) && choose.isEnabled, "A picked pile can be taken")
+        choose.tap()
+        XCTAssertTrue(answered(application, "Choose Pile 2"))
+
+        application = launch(["MAGICMOBILE_PREVIEW_PROMPT": "mana-split"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.split"].waitForExistence(timeout: 15), "The split browser")
+        let done = application.buttons["arena.browser.primary"]
+        XCTAssertTrue(done.isEnabled, "XMage's own split comes in complete")
+        application.buttons["arena.split.m4.minus"].tap()
+        XCTAssertFalse(done.isEnabled, "Two of three mana is not a legal split")
+        captureImage(name: "arena-split")
+
+        application = launch(["MAGICMOBILE_PREVIEW_AMOUNT": "1"])
+        XCTAssertTrue(application.descendants(matching: .any)["arena.amount"].waitForExistence(timeout: 15), "The X pill")
+        application.buttons["arena.amount.1"].tap()
+        application.buttons["arena.amount.1"].tap()
+        application.buttons["arena.amount.submit"].tap()
+        XCTAssertTrue(answered(application, "Choose 2"), "The pill answers with its value")
+    }
+
     /// The Arena board answers an ability choice in its own browser, never in the prompt panel behind it, and a tap on
     /// an ability answers with that ability.
     func testArenaBoardChoosesAbilitiesInItsOwnBrowser() {

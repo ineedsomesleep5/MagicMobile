@@ -158,6 +158,31 @@ struct ArenaHandFan: View {
         return all.indices.min { abs(point.x - homes[$0].center.x) < abs(point.x - homes[$1].center.x) }.map { all[$0] }
     }
 
+    /// The card a slide along the hand is over: each card owns the strip of it that shows, measured at the finger's
+    /// height along its tilt, so a slide moves one card at a time however high or low the finger runs. A popped card's
+    /// larger picture is ignored here (it covered its neighbours and made a slide skip them), and the finger has to pass
+    /// a few points into the next strip before the pop moves on.
+    private func scrubCard(at point: CGPoint) -> ZoneCard? {
+        let all = cards + extraCards
+        guard !all.isEmpty else { return nil }
+        let homes = all.indices.map { slot($0) }
+        func left(_ index: Int) -> CGFloat {
+            let home = homes[index]
+            let angle = home.rotation * .pi / 180
+            // rotationEffect turns each card about the bottom of its frame.
+            let pivotY = home.center.y + cardSize.height / 2
+            let centerline = home.center.x + (pivotY - point.y) * CGFloat(tan(angle))
+            return centerline - cardSize.width * home.scale / 2 / CGFloat(max(0.5, cos(angle)))
+        }
+        let index = all.indices.last { left($0) <= point.x } ?? 0
+        if let liftedCardID, let current = all.firstIndex(where: { $0.id == liftedCardID }), current != index {
+            let margin = canvas.length(6)
+            let next = current + 1 < all.count ? left(current + 1) : .infinity
+            if point.x >= left(current) - margin && point.x < next + margin { return all[current] }
+        }
+        return all[index]
+    }
+
     private func hiddenFan(count: Int) -> some View {
         ForEach(0..<min(count, 12), id: \.self) { index in
             let design = ArenaHandFanLayout.slot(index: index, count: min(count, 12), posture: .resting, hand: layout.hand)
@@ -227,7 +252,7 @@ struct ArenaHandFan: View {
             return
         }
         if point.y >= band.minY - canvas.length(12) {
-            guard let card = card(at: point), liftedCardID != card.id else { return }
+            guard let card = scrubCard(at: point), liftedCardID != card.id else { return }
             liftedCardID = card.id
             GameHaptics.selection()
             return

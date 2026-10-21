@@ -29,6 +29,8 @@ struct ArenaAutoPayRun: Equatable {
     var color: String?
     /// Auto Pay's last tap may be asking a colour: only then does it answer a colour question, never one a spell asks later.
     var awaitingColor = false
+    /// The colour question ("id:messageId") Auto Pay answered, kept out of the choice browser until its answer lands.
+    var answeredColor: String?
     /// Snapshots in a row without the payment: XMage can send one between answers, so only a few end the run.
     var quiet = 0
 }
@@ -112,7 +114,10 @@ extension NativeGameView {
         // A browser over the table (card choices, the stack, abilities, questions) says what to do and shows the card it's
         // about itself.
         let browserOpen = isCardChoiceOpen || isTavernStackOpen || arenaAbilityPrompt(snapshot) != nil || arenaModePrompt(snapshot) != nil
+            || arenaChoicePrompt(snapshot) != nil || arenaPlayerPrompt(snapshot) != nil || arenaSplitPrompt(snapshot) != nil
+            || arenaPilePrompt(snapshot) != nil
             || arenaQuestion(snapshot, targetableIds: GameBoardInteractionState.boardTargetableIds(for: snapshot)) != nil
+        let amountPrompt = browserOpen ? nil : arenaAmountPrompt(snapshot)
         arenaStack(snapshot: snapshot, canvas: canvas)
             .opacity(browserOpen ? 0 : 1)
         arenaCaption(snapshot: snapshot, canvas: canvas)
@@ -131,7 +136,21 @@ extension NativeGameView {
             // An opened hand, and in landscape a card popped out of it, cover your medallion and mana; controls the table
             // needs stay on top. In portrait a popped card already clears the rail, which keeps the rest tucked behind it.
             .zIndex(posture == .raised || (arenaLiftedCardID != nil && canvas.layout.railTop == nil) ? 68 : 50)
-        if !snapshot.isSpectating && !openingHand && !browserOpen {
+        if let amountPrompt {
+            // X and other numbers: the reference's pill takes the corner; the board, caption and stack stay in view.
+            let setup = arenaAmountSetup(amountPrompt, snapshot: snapshot)
+            let primary = canvas.rect(canvas.layout.primary), secondary = canvas.rect(canvas.layout.secondary)
+            let back = arenaPromptAnswers(snapshot, excluding: ["choose_amount"]).first
+            let cancel: (title: String, action: () -> Void)? = back.map { item in (item.title, item.action) }
+            ArenaAmountPill(label: setup.label, range: setup.range, initial: setup.initial, pending: pendingActionId != nil,
+                            submit: { arenaAnswerAmount($0, prompt: amountPrompt, snapshot: snapshot) }, cancel: cancel)
+                .id("\(amountPrompt.id):\(amountPrompt.messageId)")
+                .fixedSize()
+                // The pill where the secondary plaque sits, Cancel under it where the primary does (the reference's corner).
+                .position(x: min(canvas.screen.width - 142, max(142, primary.midX)),
+                          y: secondary.midY + (cancel == nil ? 0 : 24))
+                .zIndex(75)
+        } else if !snapshot.isSpectating && !openingHand && !browserOpen {
             arenaControls(snapshot: snapshot, canvas: canvas)
                 .zIndex(controlsOnTop || posture == .resting ? 70 : 45)
         }
@@ -195,6 +214,7 @@ extension NativeGameView {
         let sideUnits = units(front.trailing)
         let laneWidth = canvas.area(layout.creatureLane(viewer: viewer, rows: 1)).width
         var sideRect: CGRect?
+        var frontRows = 1
         if let sideY = viewer ? layout.viewerSideY : layout.opponentSideY {
             // One fit for the creatures and the side section's cards a size up, so both shrink together as the row fills.
             let sideScale: CGFloat = 1.15
@@ -218,6 +238,7 @@ extension NativeGameView {
         } else {
             let frontFit = ArenaRowFit.fit(leading: units(front.leading), trailing: sideUnits, width: laneWidth, maxCard: tile.width,
                                            maxRows: layout.maxCreatureRows, secondRowBelow: tile.width * 0.85)
+            frontRows = frontFit.rows
             let frontCard = sized(frontFit.cardWidth, like: tile)
             let lane = canvas.area(layout.creatureLane(viewer: viewer, rows: frontFit.rows, tileHeight: frontCard.height / canvas.scale))
             let firstRow = canvas.area(layout.creatureLane(viewer: viewer, rows: 1, tileHeight: frontCard.height / canvas.scale))
@@ -243,14 +264,40 @@ extension NativeGameView {
             if let sideRect, sideRect.maxY > support.minY, sideRect.minY < support.maxY {
                 support.size.width = max(0, min(support.maxX, sideRect.minX - gap) - support.minX)
             }
-            let landsFit = ArenaRowFit.fit(leading: units(back.leading), trailing: [], width: backLane.width, maxCard: land.width)
-            let supportFit = ArenaRowFit.fit(leading: units(back.trailing), trailing: [], width: support.width, maxCard: land.width)
-            let card = sized(back.trailing.isEmpty ? landsFit.cardWidth : min(landsFit.cardWidth, supportFit.cardWidth), like: land)
-            plans.append(ArenaLanePlan(title: "\(owner) lands", cards: back.leading, rect: backLane, card: card, rows: 1, alignment: .leading))
-            if !back.trailing.isEmpty {
-                plans.append(ArenaLanePlan(title: "\(owner) artifacts", cards: back.trailing, rect: support, card: card, rows: 1,
-                                           alignment: .leading))
+            if back.trailing.isEmpty || support.width <= 0 {
+                let fit = ArenaRowFit.fit(leading: units(back.leading), trailing: units(back.trailing), width: backLane.width, maxCard: land.width)
+                let split = Self.arenaSplit(backLane, trailing: back.trailing.isEmpty ? 0 : fit.trailingWidth)
+                plans.append(ArenaLanePlan(title: "\(owner) lands", cards: back.leading, rect: back.trailing.isEmpty ? backLane : split.leading,
+                                           card: sized(fit.cardWidth, like: land), rows: 1, alignment: .leading))
+                if !back.trailing.isEmpty {
+                    plans.append(ArenaLanePlan(title: "\(owner) artifacts", cards: back.trailing, rect: split.trailing,
+                                               card: sized(fit.cardWidth, like: land), rows: 1, alignment: .trailing))
+                }
+            } else {
+                // Lands from the left and artifacts, enchantments and Treasures from the support section's right end share the
+                // whole back row (Caleb, 2026-10-20: a narrow support section hid most of them). The artifacts keep at least
+                // the support section's width, taken only from room the lands don't need.
+                let band = CGRect(x: backLane.minX, y: backLane.minY, width: max(backLane.maxX, support.maxX) - backLane.minX, height: backLane.height)
+                let fit = ArenaRowFit.fit(leading: units(back.leading), trailing: units(back.trailing), width: band.width, maxCard: land.width)
+                let landsNeed = ArenaRowFit.sectionWidth(units(back.leading), card: fit.cardWidth)
+                let spare = max(0, band.width - landsNeed - gap)
+                let split = Self.arenaSplit(band, trailing: max(fit.trailingWidth, min(support.width, spare)))
+                plans.append(ArenaLanePlan(title: "\(owner) lands", cards: back.leading, rect: split.leading,
+                                           card: sized(fit.cardWidth, like: land), rows: 1, alignment: .leading))
+                plans.append(ArenaLanePlan(title: "\(owner) artifacts", cards: back.trailing, rect: split.trailing,
+                                           card: sized(fit.cardWidth, like: land), rows: 1, alignment: .trailing))
             }
+        } else if !back.trailing.isEmpty, !viewer || frontRows <= 1 {
+            // Portrait with room (Caleb, 2026-10-20: eight artifacts showed three): artifacts, enchantments, mana rocks and
+            // Treasures get a row of their own in front of the lands, nearer the middle, each row the table's full width.
+            // Your side has the room while your creatures fit one row; the opponent's always has.
+            let landsFit = ArenaRowFit.fit(leading: units(back.leading), trailing: [], width: backLane.width, maxCard: land.width)
+            let supportFit = ArenaRowFit.fit(leading: units(back.trailing), trailing: [], width: backLane.width, maxCard: land.width)
+            let step = backLane.height + canvas.length(4)
+            plans.append(ArenaLanePlan(title: "\(owner) lands", cards: back.leading, rect: backLane,
+                                       card: sized(landsFit.cardWidth, like: land), rows: 1, alignment: .leading))
+            plans.append(ArenaLanePlan(title: "\(owner) artifacts", cards: back.trailing, rect: backLane.offsetBy(dx: 0, dy: viewer ? -step : step),
+                                       card: sized(supportFit.cardWidth, like: land), rows: 1, alignment: .trailing))
         } else {
             let backFit = ArenaRowFit.fit(leading: units(back.leading), trailing: units(back.trailing), width: backLane.width,
                                           maxCard: land.width)
@@ -496,14 +543,32 @@ extension NativeGameView {
             let commander = !ArenaStackCard.isAbility(top) && snapshot.players.contains { player in
                 player.commanders?.contains { $0.name == top.displaySourceName || $0.name == top.displayName } == true
             }
+            let revealing = arenaRevealID == top.id
             ArenaStackCard(object: top, count: snapshot.xmage?.stack.count ?? objects.count, size: rect.size, commander: commander,
                            inspect: { inspectedCard = $0 }, openStack: { isTavernStackOpen = true })
+                // An opponent's spell is revealed first, larger and toward the middle, then settles onto the stack card
+                // (the reference's ~0.4 s grow, ~0.9 s hold, 0.3 s settle).
+                .scaleEffect(revealing ? 1.3 : 1)
+                .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.06 : 0)
+                .animation(.easeInOut(duration: 0.3), value: revealing)
                 .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["arena.stack": $0] }
                 .id(top.id)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
                 .position(x: rect.midX, y: rect.midY)
+                .onAppear { arenaBeginReveal(top, snapshot: snapshot) }
                 .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
                 .zIndex(30)
+        }
+    }
+
+    /// An opponent's spell (not an ability) holds the reveal for its first 1.3 s, then settles.
+    private func arenaBeginReveal(_ top: XmageStackObject, snapshot: GameSnapshot) {
+        guard !accessibilityReduceMotion, !ArenaStackCard.isAbility(top), let controller = top.controllerId,
+              !snapshot.isViewer(controller) else { return }
+        arenaRevealID = top.id
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.3))
+            if arenaRevealID == top.id { arenaRevealID = nil }
         }
     }
 
@@ -691,6 +756,45 @@ extension NativeGameView {
                 .id("\(modes.id):\(modes.messageId)")
                 .transition(.opacity)
         }
+        if abilityPrompt == nil && arenaModePrompt(snapshot) == nil {
+            if let choice = arenaChoicePrompt(snapshot) {
+                let lines = PromptDisplayText.clean(choice.message).components(separatedBy: "\n")
+                ArenaChoiceBrowser(title: lines.first ?? "Make a choice", detail: lines.dropFirst().first,
+                                   options: arenaChoiceOptions(choice, snapshot: snapshot), source: snapshot.stackTopFirst.first,
+                                   pending: pendingActionId != nil, screen: canvas.screen,
+                                   answers: arenaPromptAnswers(snapshot, excluding: ["resolve_choice"]),
+                                   choose: { option, remember in arenaAnswerChoice(option, remember: remember, prompt: choice, snapshot: snapshot) },
+                                   inspect: { inspectedCard = $0 })
+                    .id("\(choice.id):\(choice.messageId)")
+                    .transition(.opacity)
+            } else if let players = arenaPlayerPrompt(snapshot) {
+                let message = PromptDisplayText.clean(players.prompt.message)
+                let first = ["starting player", "first turn", "goes first"].contains { message.lowercased().contains($0) }
+                ArenaPlayerChoice(title: first ? "Choose who goes first" : message,
+                                  seats: players.seats, pending: pendingActionId != nil, screen: canvas.screen,
+                                  answers: arenaPromptAnswers(snapshot, excluding: ["choose_player", "choose_target"]),
+                                  choose: { seat in
+                                      arenaAnswerPlayer(seat, type: players.type, prompt: players.prompt, snapshot: snapshot)
+                                  })
+                    .id("\(players.prompt.id):\(players.prompt.messageId)")
+                    .transition(.opacity)
+            } else if let split = arenaSplitPrompt(snapshot) {
+                let setup = arenaSplitSetup(split, snapshot: snapshot)
+                ArenaSplitBrowser(title: setup.title, rows: setup.rows, slots: split.multiAmounts ?? [], totalMin: split.totalMin,
+                                  totalMax: split.totalMax, source: setup.source, sourceCard: setup.sourceCard,
+                                  pending: pendingActionId != nil, screen: canvas.screen,
+                                  answers: arenaPromptAnswers(snapshot, excluding: ["choose_multi_amount"]),
+                                  submit: { arenaAnswerSplit($0, prompt: split, snapshot: snapshot) }, inspect: { inspectedCard = $0 })
+                    .id("\(split.id):\(split.messageId)")
+                    .transition(.opacity)
+            } else if let piles = arenaPilePrompt(snapshot) {
+                ArenaPileBrowser(title: "Choose a pile", detail: PromptDisplayText.clean(piles.message), piles: piles.piles ?? [],
+                                 source: snapshot.stackTopFirst.first, pending: pendingActionId != nil, screen: canvas.screen,
+                                 choose: { arenaAnswerPile($0, prompt: piles, snapshot: snapshot) }, inspect: { inspectedCard = $0 })
+                    .id("\(piles.id):\(piles.messageId)")
+                    .transition(.opacity)
+            }
+        }
         if isTavernStackOpen && !snapshot.stackTopFirst.isEmpty {
             let resolve = GameplayAffordances.resolveStackCommand(snapshot: snapshot, pendingActionID: pendingActionId, supported: answerActions.supported)
             ArenaStackBrowser(snapshot: snapshot, screen: canvas.screen,
@@ -705,6 +809,7 @@ extension NativeGameView {
         }
         // The opening hand has its own screen (OpeningHandOverlay): XMage's mulligan question never shows behind it.
         if !startingRollVisible && OpeningHandChoice(snapshot) == nil && abilityPrompt == nil && arenaModePrompt(snapshot) == nil
+            && !arenaScreenPrompt(snapshot)
             && CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId) && !isPromptDetailOpen
             && arenaShowsPromptPopup(snapshot: snapshot, targetableIds: targetableIds) {
             if let question = arenaQuestion(snapshot, targetableIds: targetableIds) {
@@ -747,7 +852,8 @@ extension NativeGameView {
                 .transition(boardOverlayTransition)
         }
         if let inspectedCard {
-            Color.black.opacity(0.01).ignoresSafeArea()
+            // The reference dims the table a little behind a card you're reading.
+            Color.black.opacity(0.45).ignoresSafeArea()
                 .onTapGesture { self.inspectedCard = nil }
                 .inspectionTouchPassthrough()
             let size = arenaInspectorSize(canvas: canvas)
@@ -767,12 +873,14 @@ extension NativeGameView {
         }
     }
 
+    /// The card and its notes (CardInspector's Arena look): in landscape the card at most of the height with the notes
+    /// beside it, in portrait the card over its notes.
     private func arenaInspectorSize(canvas: ArenaCanvas) -> CGSize {
         if canvas.layout.landscape {
             let height = canvas.screen.height * 0.86
-            return CGSize(width: min(canvas.screen.width * 0.42, height * 0.95), height: height)
+            return CGSize(width: min(canvas.screen.width * 0.82, height / BattlefieldLayoutMetrics.magicCardHeightToWidth + 316), height: height)
         }
-        return CGSize(width: canvas.screen.width - 40, height: canvas.screen.height * 0.6)
+        return CGSize(width: canvas.screen.width - 32, height: canvas.screen.height * 0.78)
     }
 
     /// Arrows and effects: drawn layers only, hidden from VoiceOver and touches.
@@ -867,7 +975,7 @@ extension NativeGameView {
         // Only where the corner pop-up would ask it: never a payment, the opening hand, the starting roll or a browser's.
         guard targetableIds.isEmpty, !startingRollVisible, !isPromptDetailOpen, OpeningHandChoice(snapshot) == nil,
               !InlinePaymentPromptState.isActive(in: snapshot), CompactPromptPopup.shouldShow(for: snapshot, pendingActionId: pendingActionId),
-              arenaModePrompt(snapshot) == nil, arenaAbilityPrompt(snapshot) == nil,
+              arenaModePrompt(snapshot) == nil, arenaAbilityPrompt(snapshot) == nil, !arenaScreenPrompt(snapshot),
               let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId), !CompactPromptPopup.isManaPaymentPrompt(prompt),
               prompt.cards?.isEmpty != false || prompt.confirmation != nil else { return nil }
         let asks = prompt.confirmation != nil || PromptCommandBuilder.isCommanderReplacement(prompt)

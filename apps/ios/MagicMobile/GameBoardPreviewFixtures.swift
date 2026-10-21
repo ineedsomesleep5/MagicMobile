@@ -782,6 +782,79 @@ enum GameBoardPreviewFixtures {
             let labels = state == .playerTargetPrompt ? players.map { $0["displayName"] as! String } : ["Serra Angel", "Isamaru, Hound of Konda"]
             root["promptEnvelopeV2"] = ["id": "preview-target", "method": "GAME_PICK_TARGET", "messageId": 9, "playerId": "human", "responseKind": "target", "message": state == .playerTargetPrompt ? "Choose a player to take the first turn" : "Choose target creature", "required": true, "minChoices": 1, "maxChoices": 1, "targetIds": ids, "targets": zip(ids, labels).map { ["id": $0.0, "label": $0.1] }, "responseCommand": ["type": "choose_target", "promptId": "preview-target", "messageId": 9]]
         }
+        // Visual QA for the Arena screens (docs/ARENA_STYLE.md): MAGICMOBILE_PREVIEW_PROMPT=replacement | starting-player |
+        // piles | pile-split | mana-split | divide puts that question on any fixture.
+        if let kind = ProcessInfo.processInfo.environment["MAGICMOBILE_PREVIEW_PROMPT"] {
+            func prompt(_ id: String, _ method: String, _ kind: String, _ message: String, _ type: String, _ extra: [String: Any]) -> [String: Any] {
+                var value: [String: Any] = ["id": id, "method": method, "messageId": 30, "playerId": "human", "responseKind": kind,
+                                            "message": message, "required": true, "minChoices": 1, "maxChoices": 1,
+                                            "responseCommand": ["type": type, "promptId": id, "messageId": 30]]
+                value.merge(extra) { _, new in new }
+                return value
+            }
+            root["legalActions"] = []
+            switch kind {
+            case "replacement":
+                var zones = players[0]["zones"] as! [String: Any]
+                zones["battlefield"] = ((zones["battlefield"] as? [[String: Any]]) ?? []) + [
+                    card("human-doubling-season", "Doubling Season", "Enchantment", "{4}{G}",
+                         "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead."),
+                    card("human-chatterfang", "Chatterfang, Squirrel General", "Legendary Creature — Squirrel Warrior", "{2}{G}",
+                         "Forestwalk\nIf one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead.", power: 3)]
+                players[0]["zones"] = zones
+                root["players"] = players
+                let doubling = "Doubling Season: If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead."
+                let chatter = "Chatterfang, Squirrel General: If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead."
+                root["promptEnvelopeV2"] = prompt("preview-replacement", "GAME_CHOOSE_CHOICE", "choice", "Choose replacement effect to resolve first",
+                    "resolve_choice", ["choices": [["id": "r1", "label": doubling], ["id": "r2", "label": chatter],
+                                                   ["id": "r3", "label": "Remember answer: " + doubling], ["id": "r4", "label": "Remember answer: " + chatter]]])
+            case "starting-player":
+                root["promptEnvelopeV2"] = prompt("preview-starting", "GAME_TARGET", "target", "Select a starting player", "choose_target",
+                    ["targets": [["id": "human", "label": "You"], ["id": "ai-1", "label": "AI 1"]], "targetIds": ["human", "ai-1"]])
+            case "piles":
+                let one = [card("pile-1", "Lightning Bolt", "Instant", "{R}", "Lightning Bolt deals 3 damage to any target."),
+                           card("pile-2", "Forest", "Basic Land — Forest", "", "")]
+                let two = [card("pile-3", "Serra Angel", "Creature — Angel", "{3}{W}{W}", "Flying, vigilance", power: 4),
+                           card("pile-4", "Opt", "Instant", "{U}", "Scry 1. Draw a card."),
+                           card("pile-5", "Island", "Basic Land — Island", "", "")]
+                root["promptEnvelopeV2"] = prompt("preview-piles", "GAME_CHOOSE_PILE", "pile",
+                    "Choose a pile to put into your hand. The other goes to your graveyard.", "choose_pile",
+                    ["piles": [["id": "1", "label": "Pile 1", "cards": one], ["id": "2", "label": "Pile 2", "cards": two]]])
+            case "pile-split":
+                let cards = ["Lightning Bolt", "Forest", "Serra Angel", "Opt", "Island"].enumerated().map { index, name -> [String: Any] in
+                    var value = card("split-\(index)", name, index.isMultiple(of: 2) ? "Instant" : "Basic Land", "", "")
+                    value["selectable"] = true
+                    return value
+                }
+                root["promptEnvelopeV2"] = prompt("preview-pile-split", "GAME_PICK_TARGET", "target",
+                    "Select cards to put in the first pile (selected 0 of 5)", "choose_target",
+                    ["cards": cards, "targets": [], "minChoices": 1, "maxChoices": 1, "options": ["chosenTargets": []],
+                     "targetIds": cards.map { $0["instanceId"]! }])
+                root["legalActions"] = [["id": "pile-done", "type": "answer_yes_no", "playerId": "human", "label": "Done",
+                                         "promptId": "preview-pile-split", "messageId": 30, "confirmed": false]]
+            case "mana-split":
+                root["promptEnvelopeV2"] = prompt("preview-mana-split", "GAME_GET_MULTI_AMOUNT", "multi_amount", "Distribute mana among colors",
+                    "choose_multi_amount", ["totalMin": 3, "totalMax": 3, "multiAmounts": ["White", "Blue", "Black", "Red", "Green"].enumerated().map { index, color in
+                        ["id": "m\(index)", "label": color, "min": 0, "max": 3, "defaultValue": index == 4 ? 3 : 0] }])
+            case "divide":
+                root["promptEnvelopeV2"] = prompt("preview-divide", "GAME_GET_MULTI_AMOUNT", "multi_amount", "Assign damage among targets",
+                    "choose_multi_amount", ["totalMin": 3, "totalMax": 3, "multiAmounts": [
+                        ["id": "d0", "label": "Serra Angel [4cb]", "min": 1, "max": 3, "defaultValue": 2],
+                        ["id": "d1", "label": "Silvercoat Lion [9a1]", "min": 1, "max": 3, "defaultValue": 1]]])
+            case "artifacts":
+                // Caleb's board (2026-10-20): a few creatures and eight artifacts and enchantments, no question.
+                root["legalActions"] = actions
+                var zones = players[0]["zones"] as! [String: Any]
+                let support = ["Treasure", "Treasure", "Food", "Banner of Kinship", "Goblin Season", "Clue", "Map", "Blood"].enumerated().map { index, name in
+                    card("human-support-\(index)", name, index == 4 ? "Enchantment" : "Token Artifact — \(name)", "", "")
+                }
+                zones["battlefield"] = ((zones["battlefield"] as? [[String: Any]]) ?? []) + support
+                players[0]["zones"] = zones
+                root["players"] = players
+            default:
+                break
+            }
+        }
         if state == .manaPaymentPrompt {
             root["legalActions"] = actions.filter { $0["type"] as? String == "make_mana" }
             var paymentPrompt = root["promptEnvelopeV2"] as! [String: Any]
