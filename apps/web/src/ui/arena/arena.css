@@ -43,6 +43,37 @@
   background: linear-gradient(#7a5426, #3a2410 60%, #20140a); box-shadow: 0 .15em .25em rgba(0,0,0,.5); }
 .acard .tile .tapmark { position: absolute; left: 50%; top: 22%; width: 49%; transform: translateX(-50%); opacity: .72; filter: drop-shadow(0 0 .25em rgba(0,0,0,.7)); }
 .acard .tile .sick { position: absolute; left: 50%; bottom: 3%; width: 17%; transform: translateX(-50%); filter: drop-shadow(0 0 .2em #000); }
+/* Card Frames off (the default): the reference game's battlefield card (CardTile.plainFace on iOS). The card is 15em wide. */
+.acard .plain { position: absolute; inset: 0; filter: var(--dim,) var(--glow,); transition: filter .3s; }
+.acard .plain .pface { position: absolute; inset: 0; border-radius: 1.05em; overflow: hidden; background: #121214;
+  box-shadow: inset 0 0 0 .47em var(--edge), inset 0 0 0 .55em rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.85), .15em .45em .5em rgba(0,0,0,.55);
+  padding: .74em; display: flex; flex-direction: column; }
+.acard .plain.token .pface { border-radius: 50% 50% 1.05em 1.05em / 34% 34% 1.05em 1.05em; }
+/* sizes: the card is 15em wide; each rule below is in its own font size, so its em is noted against the card's */
+.acard .plain .pname { flex: none; font: 600 1.3em/1 var(--serif); height: 1.7em; padding: 0 .58em; display: flex; align-items: center; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; color: #141210; border-bottom: .06em solid rgba(0,0,0,.5);
+  background: linear-gradient(color-mix(in srgb, var(--edge) 32%, transparent), color-mix(in srgb, var(--edge) 32%, transparent)), #ededed; }
+.acard .plain .part { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #2a2018; }
+.acard .plain.token .part { border-radius: 50% 50% 0 0 / 34% 34% 0 0; }
+.acard .plain .part img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.acard .plain .pfallback { position: absolute; inset: 0; display: grid; place-items: center; padding: .5em; text-align: center; font: 700 1.2em/1.1 var(--serif); color: #e8dcc4; }
+.acard .plain .tapmark { position: absolute; left: 50%; top: 50%; width: 42%; transform: translate(-50%, -50%); opacity: .6; filter: drop-shadow(0 0 .2em rgba(0,0,0,.7)); }
+/* the stats box hangs off the bottom-right corner: 42% of the card wide, 21% of it tall, text 16% of its width */
+.acard .plain .pstats { position: absolute; font: 800 2.3em/1 var(--serif); right: -.2em; bottom: -.54em; min-width: 2.75em; min-height: 1.15em; padding: 0 .45em;
+  display: flex; align-items: center; justify-content: center; border-radius: .33em; white-space: nowrap; color: #000; font-variant-numeric: tabular-nums lining-nums;
+  background: linear-gradient(#fafafa, #c2c2c2); box-shadow: inset 0 0 0 1px #333, 0 .07em .13em rgba(0,0,0,.6); }
+.acard .plain .pstats.legend { background: linear-gradient(#ffedad, #dbb35c); }
+.acard .plain .pstats i { font-style: normal; color: rgba(0,0,0,.75); }
+.acard .plain .pstats b.hurt { color: #bf1a14; }
+.acard .plain .pshield { position: absolute; font: 800 2.55em/1 var(--serif); right: -.18em; bottom: -.6em; width: 1.8em; height: 2em; padding-bottom: .27em;
+  display: grid; place-items: center; color: #fff; clip-path: polygon(14% 0, 86% 0, 100% 14%, 100% 55%, 50% 100%, 0 55%, 0 14%);
+  background: linear-gradient(#424242, #0d0d0d); }
+.acard .plain .pshield.battle { background: linear-gradient(#c7381f, #6b140d); }
+.acard .plain .pchips { position: absolute; right: .4em; top: 2.3em; display: flex; flex-direction: column; gap: .2em; }
+.acard .plain .pchips span { font: 900 1.45em/1 var(--serif); min-width: 1.5em; height: 1.5em; padding: 0 .2em; border-radius: .75em; display: grid; place-items: center;
+  color: #fff; background: radial-gradient(circle at 35% 30%, #7af08b, #127a2a); box-shadow: 0 0 0 .07em #dba34c, 0 .07em .14em rgba(0,0,0,.6); }
+.acard.landish.playable { --glow: drop-shadow(0 0 .14em rgba(159,244,255,.75)) drop-shadow(0 0 .45em rgba(80,220,255,.6)); }
+.acard.tapped:not(.atk) .plain { --dim: saturate(.25) brightness(.64); }
 /* glows follow the tavern frame's own outline: drop-shadow traces the painted frame's alpha, never a box (frame-outline glow) */
 .acard.tapped:not(.atk) { --dim: grayscale(.75) brightness(.62); }
 .acard.playable { --glow: drop-shadow(0 0 .16em #9ff4ff) drop-shadow(0 0 .55em rgba(80,220,255,.9)); }

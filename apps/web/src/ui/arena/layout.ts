@@ -66,7 +66,9 @@ export const ARENA = {
   opponentLands: { x: 80, y: 54, w: 360, h: 66 }, viewerLands: { x: 80, y: 290, w: 360, h: 70 },
   opponentSupport: { x: 540, y: 54, w: 332, h: 66 }, viewerSupport: { x: 540, y: 290, w: 160, h: 70 },
   opponentSideY: 116, viewerSideY: 248, opponentCreatureY: 146, viewerCreatureY: 248, creatureLane: { left: 84, right: 872 },
+  /** Tavern frames (Card Frames on) are nearly square; the reference game's cropped cards (off, the default) are wider than tall. */
   tile: { w: 66, h: 71 }, land: { w: 58, h: 62.5 },
+  plainTile: { w: 84, h: 70 }, plainLand: { w: 68, h: 57 },
   stack: { x: 716, y: 60, w: 158, h: 222 },
   zoom: { x: 658, y: 197, w: 244, h: 359 },
   primary: { x: 708, y: 388, w: 176, h: 36 }, secondary: { x: 708, y: 335, w: 176, h: 37 },
@@ -170,10 +172,13 @@ function layPiles(piles: Pile[], places: Map<string, Place>, at: { left?: number
  * artifacts and enchantments in the back row's own section right of centre; an Aura or Equipment tucks behind what it
  * is attached to. Cards shrink as a row fills. `band` splits the top half between several opponents in a pod.
  */
-export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = { index: 0, count: 1 }, geo: Geometry = BASE_GEOMETRY): Map<string, Place> {
+export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = { index: 0, count: 1 }, geo: Geometry = BASE_GEOMETRY,
+  frames = false): Map<string, Place> {
   const places = new Map<string, Place>();
   const far = side === "opp";
   const { ky, grow } = geo;
+  const TILE = frames ? ARENA.tile : ARENA.plainTile;
+  const LAND = frames ? ARENA.land : ARENA.plainLand;
   const ids = new Set(cards.map((c) => c.instanceId));
   const attached = cards.filter((c) => c.attachedToInstanceId && ids.has(c.attachedToInstanceId) && section(c) !== "creatures");
   const loose = cards.filter((c) => !attached.includes(c));
@@ -187,9 +192,9 @@ export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = 
   const lane = slice(ARENA.creatureLane.left, ARENA.creatureLane.right);
   const creatures = pilesOf(by("creatures")).map((p) => ({ ...p, units: p.units + (attached.some((a) => p.cards.some((c) => c.instanceId === a.attachedToInstanceId)) ? 0.15 : 0) }));
   const sides = pilesOf(by("side").sort((a, b) => sideRank(a) - sideRank(b)));
-  const maxTile = ARENA.tile.w * grow;
+  const maxTile = TILE.w * grow;
   const front = fitRow([creatures, sides], lane.right - lane.left, maxTile);
-  const tile = { w: front.card, h: (front.card * ARENA.tile.h) / ARENA.tile.w };
+  const tile = { w: front.card, h: (front.card * TILE.h) / TILE.w };
   const sideWidth = sectionWidth(sides, tile.w, front.spacing);
   const creatureY = (far ? ARENA.opponentCreatureY : ARENA.viewerCreatureY) * ky;
   const fight = (far ? 4.5 : -4.5) * grow;
@@ -200,12 +205,12 @@ export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = 
   // Back row: lands from the left, support right of centre, each in its own lane.
   const landsLane = far ? ARENA.opponentLands : ARENA.viewerLands;
   const supportLane = far ? ARENA.opponentSupport : ARENA.viewerSupport;
-  const maxLand = ARENA.land.w * grow;
+  const maxLand = LAND.w * grow;
   for (const [kind, rect] of [["lands", landsLane], ["support", supportLane]] as const) {
     const piles = pilesOf(by(kind));
     const range = slice(rect.x, rect.x + rect.w);
     const fit = fitRow([piles], range.right - range.left, maxLand);
-    const land = { w: fit.card, h: (fit.card * ARENA.land.h) / ARENA.land.w };
+    const land = { w: fit.card, h: (fit.card * LAND.h) / LAND.w };
     layPiles(piles, places, { left: range.left }, (rect.y + rect.h / 2) * ky, land, fit.spacing, 30, far ? 0.94 : 1);
   }
 

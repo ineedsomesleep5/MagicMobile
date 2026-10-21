@@ -20,6 +20,7 @@ import {
 import { ArenaPile } from "./arena/ArenaPile";
 import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
+import { storage } from "./storage";
 
 const AVATAR = {
   me: (
@@ -100,6 +101,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   const [rollDismissed, setRollDismissed] = useState(false);
   const [steppedAside, setSteppedAside] = useState<string>();
   const [smart, setSmart] = useState(session?.smartPass?.enabled ?? false);
+  // Card Frames (iOS Settings, per board mode): off by default on the Arena board, the reference game's cards.
+  const [frames, setFrames] = useState(() => storage.get("mm.web.cardFrames") === "on");
   const [, setClockTick] = useState(0);
   useEffect(() => { setSmart(session?.smartPass?.enabled ?? false); }, [session]);
   // Development only: the table, for checking a game from the console.
@@ -183,18 +186,20 @@ export function GameScreen({ table }: { table: GameTable }) {
       if (paying) { if (actions.some((a) => a.type === "make_mana")) list.push("payable"); }
       else if (actions.some((a) => a.type !== "make_mana")) list.push("playable");
     }
+    // Lands you could use glow softer, so a full mana row doesn't shout (ArenaOutlineGlow strength 0.65).
+    if (onBattlefield && /\bland\b/i.test(card.card.typeLine)) list.push("landish");
     return list.join(" ");
   };
   const clickAt = (place: Place) => (id: string) => clickCard(id, place);
   if (snapshot && me) {
-    battlefieldPlaces(me.zones.battlefield, "me", undefined, geo).forEach((place, id) => {
+    battlefieldPlaces(me.zones.battlefield, "me", undefined, geo, frames).forEach((place, id) => {
       const card = me.zones.battlefield.find((c) => c.instanceId === id)!;
-      add({ id, place, view: "tile", card, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
+      add({ id, place, view: "tile", card, frames, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
     });
     opponents.forEach((opponent, index) => {
-      battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }, geo).forEach((place, id) => {
+      battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }, geo, frames).forEach((place, id) => {
         const card = opponent.zones.battlefield.find((c) => c.instanceId === id)!;
-        add({ id, place, view: "tile", card, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
+        add({ id, place, view: "tile", card, frames, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
       });
       opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }, geo).forEach((place, i) =>
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
@@ -471,6 +476,9 @@ export function GameScreen({ table }: { table: GameTable }) {
                 <span>Smart pass: {smart ? "on" : "off"}<span className="sub">Passes routine priority; stops in your main phases, and at their attacks and end step when you can play.</span></span>
               </button>
             )}
+            <button type="button" className="arow" onClick={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }}>
+              <span>Card frames: {frames ? "on" : "off"}<span className="sub">On: tavern frames. Off: the reference game's cards (the default).</span></span>
+            </button>
             <button type="button" className="arow oxblood" disabled={!session || finished} onClick={() => { setConfirmConcede(true); setGear(false); }}>Concede</button>
             <button type="button" className="arow" onClick={() => table.leave()}>
               <span>{table.solo ? "Leave the game" : "Leave table"}{table.solo && !finished && <span className="sub">Concedes the game in progress.</span>}</span>

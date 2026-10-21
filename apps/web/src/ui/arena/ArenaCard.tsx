@@ -4,7 +4,7 @@
  * painted by tileArt.paintTile, whose glow is a drop-shadow tracing the frame (the frame-outline glow).
  */
 import { memo, useEffect, useRef, useState } from "react";
-import { type ZoneCard } from "../../core/models";
+import { displayPower, displayToughness, isCreatureCard, type ZoneCard } from "../../core/models";
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols } from "../cardArt";
 import { LEAN, type Place } from "./layout";
@@ -43,6 +43,65 @@ function Tile({ card }: { card: ZoneCard }) {
   );
 }
 
+/** The card's colours as the plain tile's edge: one colour, gold for several, grey for none; lands without a cost take their basic types. */
+function colorEdge(card: ZoneCard): string {
+  const colors = new Set<string>();
+  const cost = (card.card.manaCost ?? "").toUpperCase();
+  for (const symbol of ["W", "U", "B", "R", "G"]) if (cost.includes(symbol)) colors.add(symbol);
+  for (const color of card.card.tokenColors ?? []) {
+    const c = color.toLowerCase();
+    const symbol = ({ w: "W", white: "W", u: "U", blue: "U", b: "B", black: "B", r: "R", red: "R", g: "G", green: "G" } as Record<string, string>)[c];
+    if (symbol) colors.add(symbol);
+  }
+  if (colors.size === 0) {
+    for (const [land, symbol] of [["Plains", "W"], ["Island", "U"], ["Swamp", "B"], ["Mountain", "R"], ["Forest", "G"]]) {
+      if (card.card.typeLine.includes(land)) colors.add(symbol);
+    }
+  }
+  if (colors.size > 1) return "#edbd52";
+  return ({ W: "#f5ebc7", U: "#4085f2", B: "#6b4d7a", R: "#db3824", G: "#38a84d" } as Record<string, string>)[[...colors][0] ?? ""] ?? "#9e9ea8";
+}
+
+/**
+ * Card Frames off, the default (as on the iOS Arena board): the reference game's battlefield card. The card is cropped
+ * below its art: a name bar tinted by its colour, the art, a silver power/toughness box hanging off the corner (a shield
+ * for a planeswalker's loyalty or a battle's defense); a token sits in an arched frame. Its glow traces this outline.
+ */
+function PlainTile({ card }: { card: ZoneCard }) {
+  const token = card.card.isToken === true || /token/i.test(card.card.typeLine);
+  const legendary = /legendary/i.test(card.card.typeLine);
+  const creature = card.isCreaturePermanent ?? isCreatureCard(card);
+  const power = displayPower(card);
+  const toughness = displayToughness(card);
+  const battle = /battle/i.test(card.card.typeLine);
+  const shieldName = battle ? "defense" : "loyalty";
+  const shield = !creature && (battle || /planeswalker/i.test(card.card.typeLine))
+    ? Object.entries(card.counters ?? {}).find(([k]) => k.toLowerCase().includes(shieldName))?.[1] : undefined;
+  const chips = Object.entries(card.counters ?? {}).filter(([k, n]) => n > 0 && !(shield !== undefined && k.toLowerCase().includes(shieldName)));
+  const art = card.card.isToken && card.card.tokenArtwork ? card.card.tokenArtwork.name : card.card.copySourceArtworkName ?? card.card.name;
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className={`plain ${token ? "token" : ""}`} style={{ ["--edge" as string]: colorEdge(card) }}>
+      <div className="pface">
+        {!token && <div className="pname">{card.card.name}</div>}
+        <div className="part">
+          {failed ? <span className="pfallback">{card.card.name}</span>
+            : <img src={cardImageURL(art, "art_crop")} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
+        </div>
+      </div>
+      {card.tapped && !card.isAttacking && TAPMARK}
+      {chips.length > 0 && (
+        <div className="pchips">{chips.slice(0, 2).map(([k, n]) => (
+          <span key={k} title={`${n} ${k}`}>{/\+1\/\+1/.test(k) ? `+${n}` : /-1\/-1/.test(k) ? `−${n}` : n}</span>
+        ))}</div>
+      )}
+      {creature && power !== undefined && toughness !== undefined ? (
+        <div className={`pstats ${legendary ? "legend" : ""}`}>{power}<i>/</i><b className={(card.damage ?? 0) > 0 ? "hurt" : ""}>{toughness}</b></div>
+      ) : shield !== undefined ? <div className={`pshield ${battle ? "battle" : ""}`}>{shield}</div> : null}
+    </div>
+  );
+}
+
 function Face({ name, cost, showCost }: { name: string; cost?: string; showCost: boolean }) {
   const [failed, setFailed] = useState(false);
   const symbols = showCost ? manaSymbols(cost) : [];
@@ -67,6 +126,8 @@ export interface ArenaCardProps {
   place: Place;
   view: CardView;
   card?: ZoneCard;
+  /** Battlefield tiles in the tavern frames (Card Frames on) rather than the reference game's card (off, the default). */
+  frames?: boolean;
   /** For faces without a ZoneCard (stack objects): the printed card to show. */
   name?: string;
   owner?: "me" | "opp";
@@ -81,7 +142,7 @@ export interface ArenaCardProps {
  * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
  * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
  */
-export const ArenaCard = memo(function ArenaCard({ id, place, view, card, name, owner, inHand, classes, label, onClick, onHover }: ArenaCardProps) {
+export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, name, owner, inHand, classes, label, onClick, onHover }: ArenaCardProps) {
   const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
     width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
@@ -99,7 +160,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, name, 
       onMouseLeave={onHover && view !== "back" ? () => onHover(undefined) : undefined}>
       <div className="lean" style={lean}>
         <div className="spin" style={{ transform: `rotate(${place.r ?? 0}deg) scale(${place.s ?? 1})` }}>
-          {view === "tile" && card && <Tile card={card} />}
+          {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} />)}
           {view === "face" && <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />}
           {view === "back" && <div className="back" />}
         </div>
