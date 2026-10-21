@@ -35,6 +35,33 @@ export class OnDeviceStartingRoll {
     if (contenders.size !== 1 || !contenders.has(this.winnerSeatID)) throw EngineError.invalid("Starting-roll winner does not match the dice.");
   }
 
+  /** OnDeviceStartingRoll.generate: everyone rolls a D20, the highest starts, ties reroll among the tied. */
+  static generate(seatIDs: string[], draw: () => number = () => 1 + Math.floor(Math.random() * 20)): OnDeviceStartingRoll {
+    if (seatIDs.length < 2 || seatIDs.length > 4 || new Set(seatIDs).size !== seatIDs.length || seatIDs.some((id) => id.length === 0)) {
+      throw EngineError.invalid("A starting roll needs 2–4 distinct seats.");
+    }
+    let contenders = seatIDs;
+    const rounds: Map<string, number>[] = [];
+    // An extremely unlikely run of ties must fail visibly, not loop forever.
+    for (let round = 0; round < 32; round += 1) {
+      const rolls = new Map<string, number>();
+      for (const seat of contenders) {
+        const value = draw();
+        if (!Number.isInteger(value) || value < 1 || value > 20) throw EngineError.invalid("Invalid D20 value.");
+        rolls.set(seat, value);
+      }
+      rounds.push(rolls);
+      const high = Math.max(...rolls.values());
+      contenders = contenders.filter((seat) => rolls.get(seat) === high);
+      if (contenders.length === 1) {
+        const roll = new OnDeviceStartingRoll(rounds, contenders[0], seatIDs);
+        roll.validate(seatIDs);
+        return roll;
+      }
+    }
+    throw EngineError.invalid("The starting roll tied too many times. Try the match again.");
+  }
+
   static decode(value: J, seatIDs: string[]): OnDeviceStartingRoll {
     const fields = obj(value);
     const rows = arr(get(value, "rounds"));
@@ -98,12 +125,17 @@ export const OnDeviceStartingPlayerChoice = {
   commandForName(snapshot: GameSnapshot, winnerName: string): GameCommand | undefined {
     const matches = snapshot.players.filter((p) => p.displayName === winnerName);
     if (matches.length !== 1) return undefined;
+    return OnDeviceStartingPlayerChoice.commandForPlayerID(snapshot, matches[0].playerId);
+  },
+
+  /** An AI game's local roll names XMage's own player IDs (OnDeviceStartingPlayerChoice.command(winnerPlayerID:)). */
+  commandForPlayerID(snapshot: GameSnapshot, winnerPlayerID: string): GameCommand | undefined {
     const candidates = OnDeviceStartingPlayerChoice.candidateIDs(snapshot);
     const prompt = snapshot.promptEnvelopeV2;
-    if (!candidates || !prompt || snapshot.bridgeRevision === undefined || !candidates.includes(matches[0].playerId)) return undefined;
+    if (!candidates || !prompt || snapshot.bridgeRevision === undefined || !candidates.includes(winnerPlayerID)) return undefined;
     return {
       type: "choose_target", gameId: snapshot.id, playerId: snapshot.viewerPlayerId ?? "human", promptId: prompt.id,
-      messageId: prompt.messageId, targetIds: [matches[0].playerId], expectedBridgeRevision: snapshot.bridgeRevision,
+      messageId: prompt.messageId, targetIds: [winnerPlayerID], expectedBridgeRevision: snapshot.bridgeRevision,
     };
   },
 };

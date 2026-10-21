@@ -75,6 +75,41 @@ select.slot { appearance: none; padding-right: 30px; background-image: linear-gr
 .seats li .grow { flex: 1; }
 .small-print { font-size: 12.5px; color: var(--ink-2); }
 .narrow-note { position: fixed; left: 50%; top: auto; bottom: 12px; z-index: 50; text-align: center; }
+.grow { flex: 1; }
+
+/* ---------- solo setup ---------- */
+.setup { width: min(1040px, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: 22px 24px; }
+.setup-header { display: flex; align-items: center; gap: 12px; }
+.setup-header img { width: 48px; height: 48px; }
+.setup section .panel-title { margin-bottom: 8px; }
+.deck-shelf { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.deck-tile { display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 10px; overflow: hidden; text-align: left; color: var(--parchment);
+  background: rgba(0,0,0,.3); box-shadow: inset 0 0 0 1px rgba(219,163,76,.45), 0 4px 10px rgba(0,0,0,.4); transition: transform .12s ease-out, box-shadow .12s ease-out; }
+.deck-tile img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--leather); }
+.deck-tile .deck-body { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 10px; }
+.deck-tile .deck-name { font: 700 18px/1.05 var(--display); letter-spacing: .03em; color: var(--label); }
+.deck-tile .small-print { font-size: 11.5px; line-height: 1.25; }
+.deck-tile:hover { transform: translateY(-2px); }
+.deck-tile[aria-checked=true] { box-shadow: 0 0 0 2px var(--ember), 0 0 18px 4px rgba(255,128,87,.55), 0 4px 10px rgba(0,0,0,.4); }
+.pips { display: flex; gap: 3px; }
+.pip { width: 16px; height: 16px; background: center/100% no-repeat; }
+.setup-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.option { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; background: rgba(0,0,0,.28); }
+.option-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 36px; }
+.stepper button:disabled { filter: saturate(.15) brightness(.7); cursor: default; }
+.segmented { display: flex; padding: 3px; border-radius: 999px; background: #29140b url(/tavern/leather.webp) center/120px; box-shadow: inset 0 0 0 1.5px var(--brass); }
+.segmented button { border: 0; border-radius: 999px; padding: 7px 16px; background: none; color: var(--ink-2); font: 700 13px/1 var(--serif); }
+.segmented button[aria-pressed=true] { color: #ffe8a8; text-shadow: 0 1px 0 rgba(0,0,0,.75); background: #a74429 url(/tavern/ember.webp) center/cover; }
+.engine-status { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; background: rgba(0,0,0,.28); }
+.engine-status.failed { background: rgba(138,43,38,.45); }
+.engine-status .prompt-message { font-size: 14px; }
+.engine-status .plaque { align-self: flex-start; }
+.progress { position: relative; height: 12px; border-radius: 999px; overflow: hidden; background: rgba(0,0,0,.5);
+  box-shadow: inset 0 0 0 1.5px var(--brass), inset 0 2px 4px rgba(0,0,0,.6); }
+.progress span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(var(--ember-light), var(--rust)); transition: width .2s linear; }
+.progress.busy span { width: 30%; animation: busy 1.3s ease-in-out infinite; }
+@keyframes busy { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .progress.busy span { animation: none; width: 100%; opacity: .5; } .deck-tile { transition: none; } }
 
 /* ---------- game ---------- */
 .game { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr) 196px; }

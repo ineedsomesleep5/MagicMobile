@@ -9,6 +9,7 @@ import { OnDeviceStartingPlayerChoice, OnDeviceStartingRoll, OnDeviceStartingRol
 import { gameEmote, type GameEmote, TableChatText, TableJoinLink } from "../core/tableChat";
 import { TurnClockBoard, TurnClockWire } from "../core/turnClock";
 import { type RelayPeer, RelayTransport } from "../relay/relayTransport";
+import type { GameTable } from "./gameTable";
 import { GuestSession } from "./guestSession";
 import { type BuildIdentity, GuestLobby, HandshakeFailure, Lobby } from "./lobby";
 import { HostRetryPolicy, HostUnavailable, RemoteEngineTransport } from "./remoteEngine";
@@ -38,7 +39,8 @@ export interface TableState {
 
 const now = () => performance.now() / 1000;
 
-export class GuestTable {
+export class GuestTable implements GameTable {
+  readonly solo = false;
   state: TableState = this.initial();
   session?: GuestSession;
   private listeners = new Set<() => void>();
@@ -357,7 +359,7 @@ export class GuestTable {
         }
       }
       if (token !== this.generation) return;
-      const session = new GuestSession(remote, matchID, seatID, this.changed);
+      const session = new GuestSession(remote.request, matchID, seatID, this.changed);
       session.autoCommand = (snapshot) => this.startingPlayerCommand(snapshot);
       this.session = session;
       session.start();

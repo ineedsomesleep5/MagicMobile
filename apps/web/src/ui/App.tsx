@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DeckResolver, type DeckList } from "../core/deckResolver";
 import { TableJoinLink } from "../core/tableChat";
+import type { GameTable } from "../table/gameTable";
 import { GuestTable } from "../table/guestTable";
 import { RELAY_ADAPTER_VERSION } from "../table/lobby";
+import { PreviewRelay } from "../table/previewHost";
 import { setArtResolver } from "./cardArt";
 import { GameScreen } from "./GameScreen";
-import { PreviewRelay } from "../table/previewHost";
+import { Solo } from "./SoloSetup";
+import { storage } from "./storage";
 
-interface Loaded { resolver: DeckResolver; decks: DeckList[] }
+export interface Loaded { resolver: DeckResolver; decks: DeckList[] }
 
-const storage = {
-  get: (key: string) => { try { return localStorage.getItem(key) ?? undefined; } catch { return undefined; } },
-  set: (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* private window */ } },
-};
 
 /** A code from /join/CODE, ?code=CODE or a pasted link. */
 const initialCode = () => {
@@ -20,7 +19,7 @@ const initialCode = () => {
   return TableJoinLink.normalized(path ?? new URLSearchParams(location.search).get("code") ?? "") ?? "";
 };
 
-export const useTable = (table: GuestTable) => {
+export const useTable = (table: GameTable) => {
   useSyncExternalStore((listener) => table.subscribe(listener), () => table.version);
   return table;
 };
@@ -39,10 +38,17 @@ export function App() {
   }, []);
   if (loadError) return <div className="screen"><div className="panel join"><h1 className="title">MagicMobile</h1><p className="error">{loadError}</p></div></div>;
   if (!loaded) return <div className="screen"><div className="panel join"><h1 className="title">MagicMobile</h1><p className="muted">Opening the card catalogue…</p></div></div>;
-  return <Table loaded={loaded} />;
+  return <Home loaded={loaded} />;
 }
 
-function Table({ loaded }: { loaded: Loaded }) {
+/** Solo against the AI on this computer is the front door; a join link or code opens a friend's relay table. */
+function Home({ loaded }: { loaded: Loaded }) {
+  const [mode, setMode] = useState<"solo" | "join">(() =>
+    initialCode() !== "" || location.pathname.startsWith("/join") || new URLSearchParams(location.search).has("preview") ? "join" : "solo");
+  return mode === "join" ? <Table loaded={loaded} onSolo={() => setMode("solo")} /> : <Solo loaded={loaded} onJoin={() => setMode("join")} />;
+}
+
+function Table({ loaded, onSolo }: { loaded: Loaded; onSolo: () => void }) {
   const table = useMemo(() => {
     const identity = { upstreamCommit: loaded.resolver.upstreamCommit, catalogueHash: loaded.resolver.catalogueHash, adapterVersion: RELAY_ADAPTER_VERSION };
     const preview = import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
@@ -68,12 +74,13 @@ function Table({ loaded }: { loaded: Loaded }) {
   if (stage === "room") return <RoomScreen table={table} name={name} deck={deck} resolver={loaded.resolver} decks={loaded.decks} setDeckID={setDeckID} />;
   return (
     <JoinScreen table={table} decks={loaded.decks} resolver={loaded.resolver} name={name} setName={setName} deckID={deck.id}
-      setDeckID={(id) => { setDeckID(id); storage.set("mm.web.deck", id); }} />
+      setDeckID={(id) => { setDeckID(id); storage.set("mm.web.deck", id); }} onSolo={onSolo} />
   );
 }
 
-function JoinScreen({ table, decks, resolver, name, setName, deckID, setDeckID }: {
+function JoinScreen({ table, decks, resolver, name, setName, deckID, setDeckID, onSolo }: {
   table: GuestTable; decks: DeckList[]; resolver: DeckResolver; name: string; setName: (v: string) => void; deckID: string; setDeckID: (v: string) => void;
+  onSolo: () => void;
 }) {
   const [code, setCode] = useState(initialCode);
   const [error, setError] = useState<string>();
@@ -115,6 +122,7 @@ function JoinScreen({ table, decks, resolver, name, setName, deckID, setDeckID }
             {(error || state.stage === "failed") && <div className="error">{error ?? state.status}</div>}
             <button type="submit" className="plaque primary" disabled={name.trim().length === 0 || code.trim().length === 0}>Join table</button>
             <p className="small-print">The host’s phone runs the game. Ask them for the six-letter code on their table screen, and keep this tab in front while you play.</p>
+            <button type="button" className="plaque compact" onClick={onSolo}>Play the XMage AI instead</button>
           </>
         )}
       </form>

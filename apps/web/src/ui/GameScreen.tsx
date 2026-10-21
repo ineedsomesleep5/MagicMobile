@@ -3,7 +3,7 @@ import { type BoardTile, type TileGlow, TableScene } from "../board/TableScene";
 import { EngineDisplayText } from "../core/displayText";
 import { type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type ZoneCard } from "../core/models";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
-import type { GuestTable } from "../table/guestTable";
+import type { GameTable } from "../table/gameTable";
 import { useTable } from "./App";
 import { cardImageURL, manaSymbols } from "./cardArt";
 import { PromptPanel, type Send } from "./PromptPanel";
@@ -17,7 +17,7 @@ const phaseText = (snapshot: GameSnapshot) => EngineDisplayText.phaseLabel(snaps
 const actionsFor = (snapshot: GameSnapshot, id: string) =>
   (snapshot.legalActions ?? []).filter((a) => a.cardInstanceId === id || a.sourceInstanceId === id);
 
-export function GameScreen({ table }: { table: GuestTable }) {
+export function GameScreen({ table }: { table: GameTable }) {
   useTable(table);
   const session = table.session;
   const snapshot = session?.state.snapshot;
@@ -264,7 +264,7 @@ export function GameScreen({ table }: { table: GuestTable }) {
           <h2 className="panel-title">{envelope ? "Your decision" : "Table"}</h2>
           {snapshot ? (
             <PromptPanel snapshot={snapshot} send={send} sendAction={sendAction} pending={pending} waitingFor={waitingFor} />
-          ) : <div className="prompt-message">{table.state.status}</div>}
+          ) : <div className="prompt-message">{table.state.stage === "starting" && <span className="thinking" />} {table.state.status}</div>}
           {session?.hasPending && !session.state.working && session.state.errorMessage && (
             <button type="button" className="plaque compact" onClick={() => session.retryPending().catch(fail)}>Retry</button>
           )}
@@ -276,10 +276,12 @@ export function GameScreen({ table }: { table: GuestTable }) {
           </div>
         )}
         <div className="panel log" style={{ padding: "10px 14px" }}>
-          <div className="tabs">
-            <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>Game log</button>
-            <button type="button" aria-pressed={tab === "chat"} onClick={() => setTab("chat")}>Chat</button>
-          </div>
+          {table.solo ? <h2 className="panel-title">Game log</h2> : (
+            <div className="tabs">
+              <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>Game log</button>
+              <button type="button" aria-pressed={tab === "chat"} onClick={() => setTab("chat")}>Chat</button>
+            </div>
+          )}
           <div className="scroll" style={{ flex: 1, marginTop: 8 }}>
             {tab === "log" ? (
               <ol>{[...(snapshot?.log ?? [])].reverse().map((entry) => <li key={entry.id}>{EngineDisplayText.text(entry.message)}</li>)}</ol>
@@ -293,7 +295,7 @@ export function GameScreen({ table }: { table: GuestTable }) {
         </div>
         <div className="row">
           <button type="button" className="plaque danger compact" onClick={() => setConfirmConcede(true)} disabled={!session || !!finished}>Concede</button>
-          <button type="button" className="plaque compact" onClick={() => table.leave()}>Leave table</button>
+          {(!table.solo || !session) && <button type="button" className="plaque compact" onClick={() => table.leave()}>{table.solo ? "Back to the tavern" : "Leave table"}</button>}
         </div>
       </aside>
 
@@ -314,7 +316,8 @@ export function GameScreen({ table }: { table: GuestTable }) {
                 );
               })}
             </div>
-            <div className="prompt-message">{roll.nextSeatID === undefined ? `${table.state.seatNames[roll.roll.winnerSeatID]} goes first.` : roll.status}</div>
+            <div className="prompt-message">{roll.nextSeatID !== undefined ? roll.status
+              : roll.roll.winnerSeatID === table.state.localSeatID ? "You go first." : `${table.state.seatNames[roll.roll.winnerSeatID]} goes first.`}</div>
             {roll.nextSeatID === table.state.localSeatID && (
               <button type="button" className="plaque primary" disabled={roll.hasRolled || table.state.stage !== "playing"}
                 onClick={() => { try { table.rollStartingPlayer(); } catch (error) { fail(error); } }}>Roll the D20</button>
@@ -327,7 +330,7 @@ export function GameScreen({ table }: { table: GuestTable }) {
         <div className="modal">
           <div className="panel">
             <h2 className="title">Concede?</h2>
-            <p className="muted">You leave this game. The other players are told at once.</p>
+            <p className="muted">{table.solo ? "The AI wins this game." : "You leave this game. The other players are told at once."}</p>
             <div className="row" style={{ justifyContent: "center" }}>
               <button type="button" className="plaque" onClick={() => setConfirmConcede(false)}>Keep playing</button>
               <button type="button" className="plaque danger" onClick={() => { setConfirmConcede(false); table.concede().catch(fail); }}>Concede</button>
@@ -339,11 +342,10 @@ export function GameScreen({ table }: { table: GuestTable }) {
       {(finished || table.state.stage === "failed") && (
         <div className="modal result">
           <div className="panel">
-            <h2 className="title">{finished ? (won ? "Victory" : "Defeat") : "Table closed"}</h2>
-            <p className="muted">{finished
-              ? (snapshot.winnerPlayerIds ?? []).map((id) => snapshot.players.find((p) => p.playerId === id)?.displayName).filter(Boolean).join(", ") + " won the game."
-              : table.state.status}</p>
-            <button type="button" className="plaque primary" onClick={() => table.leave()}>Back to the tavern</button>
+            <h2 className="title">{finished ? (won ? "Victory" : "Defeat") : table.solo ? "Game stopped" : "Table closed"}</h2>
+            <p className="muted">{finished ? resultText(snapshot, viewer) : table.state.status}</p>
+            {table.rematch && <button type="button" className="plaque primary" onClick={() => table.rematch?.()}>Play again</button>}
+            <button type="button" className={`plaque ${table.rematch ? "" : "primary"}`} onClick={() => table.leave()}>Back to the tavern</button>
           </div>
         </div>
       )}
@@ -351,7 +353,15 @@ export function GameScreen({ table }: { table: GuestTable }) {
   );
 }
 
-function ChatInput({ table }: { table: GuestTable }) {
+/** "AI 1 won the game on turn 9." (a draw names no one). */
+function resultText(snapshot: GameSnapshot, viewer: string | undefined) {
+  const winners = (snapshot.winnerPlayerIds ?? []).map((id) => (id === viewer ? "You" : snapshot.players.find((p) => p.playerId === id)?.displayName)).filter(Boolean);
+  const turn = snapshot.turn > 0 ? ` on turn ${snapshot.turn}` : "";
+  if (winners.length === 0) return `The game ended in a draw${turn}.`;
+  return `${winners.join(", ")} won the game${turn}.`;
+}
+
+function ChatInput({ table }: { table: GameTable }) {
   const [text, setText] = useState("");
   return (
     <>

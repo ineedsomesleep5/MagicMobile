@@ -1,14 +1,15 @@
 /**
- * A guest's game: polls the host's engine for this seat's snapshot and answers its prompts. Port of
- * the guest paths of OnDeviceSession.kt (poll schedule, pending response, chosen-ability follow-up).
+ * A seat's game: polls an engine for this seat's snapshot and answers its prompts. Port of the guest
+ * paths of OnDeviceSession.kt (poll schedule, pending response, chosen-ability follow-up). The engine is
+ * a phone host's, through the relay, or this page's own (a solo game against the AI, `schedule: "local"`).
  */
-import { EngineClient, type MatchPoll } from "../core/engineClient";
+import { EngineClient, type EngineTransport, type MatchPoll } from "../core/engineClient";
 import { EngineError, get, type J, jsonEqual, newUuid, str } from "../core/json";
 import { OnDeviceMessageLog } from "../core/messageLog";
 import type { GameCommand, GameSnapshot, LegalAction } from "../core/models";
 import { OnDevicePromptAdapter } from "../core/promptAdapter";
 import { OnDeviceSnapshotAdapter } from "../core/snapshotAdapter";
-import { HostRetryPolicy, type RemoteEngineTransport } from "./remoteEngine";
+import { HostRetryPolicy } from "./remoteEngine";
 
 /** OnDeviceGuestPollSchedule: when a guest at a phone-hosted table polls its host next. */
 export const GuestPollSchedule = {
@@ -25,6 +26,23 @@ export const GuestPollSchedule = {
     if (awaitingAnswer && sinceActionMillis !== undefined && sinceActionMillis < GuestPollSchedule.ANSWER_WINDOW_MILLIS) return { poll: gap };
     const remaining = GuestPollSchedule.HEARTBEAT_MILLIS - sinceLastPollMillis;
     return remaining > gap ? { await: remaining } : { poll: gap };
+  },
+};
+
+/**
+ * When a seat polls the engine in this page (the Web Image worker). That engine holds a poll while the game runs
+ * and answers it at the next published snapshot, so after a change the next poll goes out at once and the engine
+ * sets the pace; AI turns then show as they happen.
+ */
+export const LocalPollSchedule = {
+  /** The player has an open decision: nothing moves until they answer (an answer wakes the loop). */
+  DECIDING_MILLIS: 2_000,
+  /** Backoff while replies come back unchanged (an engine between games answers at once). */
+  IDLE_MILLIS: [16, 60, 250],
+  next(changed: boolean, deciding: boolean, unchangedPolls: number): number {
+    if (deciding) return LocalPollSchedule.DECIDING_MILLIS;
+    if (changed) return 0;
+    return LocalPollSchedule.IDLE_MILLIS[Math.min(unchangedPolls, LocalPollSchedule.IDLE_MILLIS.length) - 1] ?? 0;
   },
 };
 
@@ -55,16 +73,21 @@ export class GuestSession {
   private hostAnnounces = false;
   private refreshing = false;
   private retries = new HostRetryPolicy();
+  private lastChanged = false;
+  private unchangedPolls = 0;
   /** Asked after every applied snapshot: an automatic answer the table wants sent (the D20 winner). */
   autoCommand?: (snapshot: GameSnapshot) => GameCommand | undefined;
 
-  constructor(remote: RemoteEngineTransport, readonly matchID: string, readonly seatID: string, private readonly onChange: () => void) {
-    this.client = new EngineClient(remote.request);
+  constructor(transport: EngineTransport, readonly matchID: string, readonly seatID: string, private readonly onChange: () => void,
+    private readonly schedule: "relay" | "local" = "relay") {
+    this.client = new EngineClient(transport);
   }
 
   start() { void this.loop(); }
 
   stop() { this.stopped = true; this.wakeLoop?.(); }
+
+  get isStopped() { return this.stopped; }
 
   /** The host announced a new revision: poll soon. Repeated or late notices are harmless. */
   noticed(revision: number) {
@@ -73,8 +96,14 @@ export class GuestSession {
     this.wakeLoop?.();
   }
 
-  /** Re-evaluates the poll schedule now (the table's own events, such as the last die settling). */
-  wake() { this.wakeLoop?.(); }
+  /**
+   * Re-evaluates the poll schedule now (the table's own events, such as the last die settling), and offers the
+   * table's automatic answer again: the event may have made it ready without the board changing.
+   */
+  wake() {
+    this.wakeLoop?.();
+    if (this.poll && !this.stopped) this.sendAutoCommand(this.state.snapshot);
+  }
 
   private set(patch: Partial<SessionState>) { this.state = { ...this.state, ...patch }; this.onChange(); }
 
@@ -107,6 +136,13 @@ export class GuestSession {
   }
 
   private async waitForNextPoll() {
+    if (this.schedule === "local") {
+      const prompt = this.poll?.prompt;
+      const deciding = prompt !== undefined && !prompt.submitted && this.pending === undefined && !this.state.working;
+      const delay = LocalPollSchedule.next(this.lastChanged, deciding, this.unchangedPolls);
+      if (delay > 0) await this.sleep(delay);
+      return;
+    }
     for (;;) {
       if (this.stopped) return;
       const now = Date.now();
@@ -128,6 +164,8 @@ export class GuestSession {
       if (next.matchID !== this.matchID || next.seatID !== this.seatID) throw EngineError.unboundPeer();
       if (this.poll && next.revision < this.poll.revision) return;
       const unchanged = this.poll === next || (this.poll !== undefined && jsonEqual(this.poll.raw, next.raw));
+      this.lastChanged = !unchanged;
+      this.unchangedPolls = unchanged ? this.unchangedPolls + 1 : 0;
       this.poll = next;
       if (!unchanged) {
         this.log.ingest(next);
@@ -166,6 +204,10 @@ export class GuestSession {
         return;
       }
     }
+    this.sendAutoCommand(snapshot);
+  }
+
+  private sendAutoCommand(snapshot: GameSnapshot | undefined) {
     if (snapshot && !this.pending && !this.state.working) {
       const command = this.autoCommand?.(snapshot);
       if (command) void this.submit(command, "Starting player", "auto-starting-player").catch(() => { /* retried next poll */ });
