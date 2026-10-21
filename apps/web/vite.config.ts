@@ -57,6 +57,5 @@ export default defineConfig({
   preview: { headers: isolation },
   // The engine worker must be classic: the Web Image wrapper is loaded with importScripts().
   worker: { format: "iife" },
-  build: { rollupOptions: { output: { manualChunks: { three: ["three"] } } } },
   test: { include: ["test/**/*.test.ts"], environment: "node" },
 });

@@ -1,360 +1,583 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { type BoardTile, type TileGlow, TableScene } from "../board/TableScene";
+/**
+ * The game on the horizontal Arena board (docs/ARENA_STYLE.md; the Duel Board Prototype's landscape table, artifact
+ * T5NcAkjCThiA5hfd9Twwwu): the Walnut Tavern plate scaled to the window, every card a table object, the decision in
+ * the corner plaques or on the table, and anything else in a full-table glass browser. Solo games and relay tables
+ * share it; both answer through the same GuestSession.
+ */
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EngineDisplayText } from "../core/displayText";
 import { type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type ZoneCard } from "../core/models";
+import { defaultSmartPass } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
 import { useTable } from "./App";
-import { cardImageURL, manaSymbols } from "./cardArt";
-import { PromptPanel, type Send } from "./PromptPanel";
+import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
+import { Browser, browserKind, type Send } from "./arena/Browsers";
+import {
+  battlefieldPlaces, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, POOL, POS, SIZE, stackPlace, STAGE, TILT,
+} from "./arena/layout";
+import "./arena/arena.css";
+import { cardImageURL } from "./cardArt";
 
-/** Landscape plate sockets (scripts/brand/tavern_layout.json). */
-const SOCKETS = { opponent: { x: 118, y: 76, r: 30 }, life: { x: 118, y: 344, r: 34 }, pass: { x: 846, y: 344 }, rail: { x: 477, y: 416 } };
+const AVATAR = {
+  me: (
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <defs><radialGradient id="avMe" cx=".5" cy=".75" r=".8"><stop offset="0" stopColor="#ffb36a" /><stop offset=".55" stopColor="#8a2a12" /><stop offset="1" stopColor="#2a0c06" /></radialGradient></defs>
+      <rect width="100" height="100" fill="url(#avMe)" /><path d="M50 18c-18 0-28 16-28 34v48h56V52c0-18-10-34-28-34z" fill="#1b0c06" />
+      <path d="M50 30c-9 0-15 10-15 21h30c0-11-6-21-15-21z" fill="#2c140a" /><circle cx="44" cy="50" r="2.6" fill="#ffb070" /><circle cx="56" cy="50" r="2.6" fill="#ffb070" />
+      <circle cx="50" cy="86" r="5" fill="#ff8a3d" opacity=".8" />
+    </svg>
+  ),
+  opp: (
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <defs><radialGradient id="avOpp" cx=".5" cy=".65" r=".8"><stop offset="0" stopColor="#a8dcff" /><stop offset=".55" stopColor="#2a5a96" /><stop offset="1" stopColor="#0a1830" /></radialGradient></defs>
+      <rect width="100" height="100" fill="url(#avOpp)" /><path d="M24 100c2-18 12-26 26-26s24 8 26 26z" fill="#0b1b33" /><circle cx="50" cy="52" r="16" fill="#0b1b33" />
+      <path d="M33 38l6 10 11-12 11 12 6-10v12H33z" fill="#dba34c" /><circle cx="44" cy="53" r="2.2" fill="#c8eaff" /><circle cx="56" cy="53" r="2.2" fill="#c8eaff" />
+    </svg>
+  ),
+};
+const PHASE_ICONS: Record<string, React.ReactNode> = {
+  dia: <svg viewBox="0 0 20 20"><path d="M10 3.5l6.5 6.5-6.5 6.5-6.5-6.5z" /></svg>,
+  card: <svg viewBox="0 0 20 20"><rect x="5" y="2.5" width="10" height="15" rx="2" /></svg>,
+  sword: <svg viewBox="0 0 20 20"><path d="M17.6 2.4l-.5 3L8.6 13.9 6.1 11.4 14.6 2.9z" /><path d="M3.9 10.6l5.5 5.5-1.2 1.2-5.5-5.5z" /><path d="M5.6 15.2l-2.3 2.3-.8-.8 2.3-2.3z" /></svg>,
+  swords: <svg viewBox="0 0 20 20"><path d="M17.6 2.4l-.5 3L8.6 13.9 6.1 11.4 14.6 2.9z" /><path d="M3.9 10.6l5.5 5.5-1.2 1.2-5.5-5.5z" /><path d="M2.4 2.4l3 .5 8.5 8.5-2.5 2.5L2.9 5.4z" /><path d="M16.1 10.6l-5.5 5.5 1.2 1.2 5.5-5.5z" /></svg>,
+  shield: <svg viewBox="0 0 20 20"><path d="M10 2.2l6.4 2.2v5c0 4.2-2.9 6.9-6.4 8.4-3.5-1.5-6.4-4.2-6.4-8.4v-5z" /></svg>,
+  burst: <svg viewBox="0 0 20 20"><path d="M10 1.6l1.9 4.8 4.9-1.9-2.2 4.7 4.3 2.7-5 .8.2 5.1-4.1-3.1-4.1 3.1.2-5.1-5-.8 4.3-2.7-2.2-4.7 4.9 1.9z" /></svg>,
+};
+const GEAR = <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.6 5.1-1.9-.3a7 7 0 0 1-.6 1.5l1.1 1.6-1.9 1.9-1.6-1.1c-.5.3-1 .5-1.5.6l-.3 1.9h-2.7l-.3-1.9a7 7 0 0 1-1.5-.6l-1.6 1.1-1.9-1.9 1.1-1.6c-.3-.5-.5-1-.6-1.5l-1.9-.3v-2.7l1.9-.3c.1-.5.3-1 .6-1.5L4.1 6.9 6 5l1.6 1.1c.5-.3 1-.5 1.5-.6l.3-1.9h2.7l.3 1.9c.5.1 1 .3 1.5.6L15.5 5l1.9 1.9-1.1 1.6c.3.5.5 1 .6 1.5l1.9.3z" /></svg>;
+const SCROLL = <svg viewBox="0 0 16 16"><path d="M4 2h8.5a1.5 1.5 0 0 1 0 3H12v8.5A1.5 1.5 0 0 1 10.5 15H3.5a1.5 1.5 0 0 1 0-3H4z" /></svg>;
+const HOURGLASS = <svg viewBox="0 0 24 24"><path d="M6 2h12v2c0 3-2.2 5.2-4.3 8 2.1 2.8 4.3 5 4.3 8v2H6v-2c0-3 2.2-5.2 4.3-8C8.2 9.2 6 7 6 4zm2 2c0 2 1.6 3.8 4 6.6C14.4 7.8 16 6 16 4z" /></svg>;
 
-const phaseText = (snapshot: GameSnapshot) => EngineDisplayText.phaseLabel(snapshot.step ?? snapshot.phase);
-
-/** Legal actions for one card, grouped by what a tap on it would do. */
+/** Legal actions for one card, grouped by what a click on it would do. */
 const actionsFor = (snapshot: GameSnapshot, id: string) =>
   (snapshot.legalActions ?? []).filter((a) => a.cardInstanceId === id || a.sourceInstanceId === id);
+
+/** XMage's message without markup, ids or counters: one line for the middle of the table. */
+const cleanMessage = (message: string | undefined) =>
+  EngineDisplayText.text(message ?? "").replace(/\s*\[[0-9a-f]{3,}\]/gi, "").split("\n").map((s) => s.trim()).filter(Boolean).join(" · ");
+
+/** Fits the 956 x 440 plate into the window, centred a little high so the hand has room below it. */
+function useStageFit(ref: React.RefObject<HTMLDivElement | null>) {
+  const [fit, setFit] = useState({ scale: 1, left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => {
+      const w = element.clientWidth; const h = element.clientHeight;
+      if (w === 0 || h === 0) return;
+      const scale = Math.min(w / STAGE.width, (h - 24) / STAGE.height);
+      setFit({ scale, left: (w - STAGE.width * scale) / 2, top: Math.max(0, (h - STAGE.height * scale) / 2 - 18 * scale) });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return fit;
+}
+
+interface Plaque { label: string; style: "ember" | "leather" | "label" | "oxblood"; want?: boolean; onClick?: () => void }
 
 export function GameScreen({ table }: { table: GameTable }) {
   useTable(table);
   const session = table.session;
   const snapshot = session?.state.snapshot;
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<TableScene | undefined>(undefined);
-  const [layoutTick, setLayoutTick] = useState(0);
-  const [menu, setMenu] = useState<{ x: number; y: number; actions: LegalAction[] }>();
-  const [inspect, setInspect] = useState<{ card: ZoneCard; x: number; y: number }>();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const fit = useStageFit(wrapRef);
+  const [hovered, setHovered] = useState<string>();
+  const [menu, setMenu] = useState<{ id: string; at: Place; actions: LegalAction[] }>();
   const [toast, setToast] = useState<string>();
-  const [tab, setTab] = useState<"log" | "chat">("log");
+  const [panel, setPanel] = useState<"log" | "chat">();
+  const [gear, setGear] = useState(false);
+  const [zone, setZone] = useState<{ title: string; cards: ZoneCard[] }>();
+  const [playerCard, setPlayerCard] = useState<string>();
   const [confirmConcede, setConfirmConcede] = useState(false);
   const [rollDismissed, setRollDismissed] = useState(false);
+  const [steppedAside, setSteppedAside] = useState<string>();
+  const [smart, setSmart] = useState(session?.smartPass?.enabled ?? false);
   const [, setClockTick] = useState(0);
+  useEffect(() => { setSmart(session?.smartPass?.enabled ?? false); }, [session]);
+  // Development only: the table, for checking a game from the console.
+  useEffect(() => { if (import.meta.env.DEV) Object.assign(window, { __mm: { table } }); }, [table]);
 
   const viewer = snapshot?.viewerPlayerId;
   const me = snapshot?.players.find((p) => p.playerId === viewer);
-  const opponents = snapshot?.players.filter((p) => p.playerId !== viewer) ?? [];
+  const opponents = useMemo(() => snapshot?.players.filter((p) => p.playerId !== viewer) ?? [], [snapshot, viewer]);
   const pending = session?.state.pendingActionID !== undefined || session?.state.working === true;
   const envelope = snapshot?.promptEnvelopeV2;
+  const finished = snapshot !== undefined && isCompleted(snapshot);
   const targetIDs = new Set([...(envelope?.targetIds ?? []), ...(envelope?.targets ?? []).map((t) => t.id)]);
-  const isCombatSelect = envelope?.method === "GAME_SELECT" && envelope?.responseKind === "target";
+  const combatSelect = envelope?.method === "GAME_SELECT" && envelope?.responseKind === "target";
+  const paying = snapshot?.manaPayment?.active === true;
+  const activeIsMe = snapshot?.activePlayerId !== undefined && snapshot.activePlayerId === viewer;
+  const stack = snapshot?.xmage?.stack ?? [];
+  const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 
   const fail = useCallback((error: unknown) => {
     setToast(error instanceof Error ? error.message : String(error));
     window.setTimeout(() => setToast(undefined), 4000);
   }, []);
-
   const send: Send = useCallback((partial, label) => {
     if (!session || !snapshot || !envelope) return;
     session.submit({
       ...partial, gameId: snapshot.id, playerId: snapshot.viewerPlayerId!, promptId: envelope.id, messageId: envelope.messageId,
     } as never, label, `${envelope.id}:${partial.type}:${label}`).catch(fail);
   }, [session, snapshot, envelope, fail]);
-
   const sendAction = useCallback((action: LegalAction) => { setMenu(undefined); session?.send(action).catch(fail); }, [session, fail]);
 
-  /** A tap on a card: answer a target or combat question with it, or offer its legal actions. */
-  const tapCard = useCallback((id: string, at?: { x: number; y: number }) => {
-    if (!snapshot || pending) return;
+  // Which ids a click on the table can answer: battlefield permanents, players and your hand.
+  const onTable = useMemo(() => {
+    const ids = new Set<string>();
+    for (const player of snapshot?.players ?? []) {
+      ids.add(player.playerId);
+      player.zones.battlefield.forEach((c) => ids.add(c.instanceId));
+    }
+    me?.zones.hand.forEach((c) => ids.add(c.instanceId));
+    return (id: string) => ids.has(id);
+  }, [snapshot, me]);
+  // With a D20 roll the table answers XMage's starting-player question itself, so that question never shows.
+  const rawBrowser = browserKind(envelope, onTable);
+  const browser = rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
+  const showBrowser = browser !== undefined && browser !== "mulligan" && steppedAside !== envelope?.id && !pending;
+
+  /** A click on a card: answer a target or combat question with it, or offer its legal actions. */
+  const clickCard = (id: string, at?: Place) => {
+    if (!snapshot || pending || finished) return;
+    setMenu(undefined);
     if (targetIDs.has(id)) { send({ type: "choose_target", targetIds: [id] }, "Choose"); return; }
     const actions = actionsFor(snapshot, id);
     if (actions.length === 1) sendAction(actions[0]);
-    else if (actions.length > 1) setMenu({ x: at?.x ?? 300, y: at?.y ?? 300, actions });
-  }, [snapshot, pending, send, sendAction, targetIDs]);
+    else if (actions.length > 1 && at) setMenu({ id, at, actions });
+  };
 
-  // The Three.js table lives for the whole game.
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const scene = new TableScene(canvas);
-    sceneRef.current = scene;
-    if (import.meta.env.DEV) Object.assign(window, { __mm: { table, scene } });
-    const observer = new ResizeObserver(() => { scene.resize(); setLayoutTick((t) => t + 1); });
-    observer.observe(canvas);
-    return () => { observer.disconnect(); scene.dispose(); sceneRef.current = undefined; };
-  }, []);
-
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    scene.onTileClick = (id) => { const at = scene.screenPosition(id); tapCard(id, at); };
-    scene.onTileHover = (id, card) => {
-      const at = id ? scene.screenPosition(id) : undefined;
-      setInspect(card && at ? { card, x: at.x, y: at.y } : undefined);
-    };
-  }, [tapCard]);
-
-  useLayoutEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene || !snapshot) return;
-    const tiles: BoardTile[] = [];
-    const glowFor = (card: ZoneCard): TileGlow => {
-      if (targetIDs.has(card.instanceId)) return isCombatSelect ? "playable" : "target";
-      if (pending) return "none";
-      // Mana abilities glow only while paying, as on the phones; otherwise every land would.
-      const paying = snapshot.manaPayment?.active === true;
-      return actionsFor(snapshot, card.instanceId).some((a) => paying || a.type !== "make_mana") ? "playable" : "none";
-    };
-    if (me) for (const card of me.zones.battlefield) tiles.push({ card, owner: "me", band: 0, bands: 1, glow: glowFor(card) });
-    opponents.forEach((opponent, band) => {
-      for (const card of opponent.zones.battlefield) tiles.push({ card, owner: "opponent", band, bands: opponents.length, glow: glowFor(card) });
+  // ---------------- cards ----------------
+  const handIDs = me?.zones.hand.map((c) => c.instanceId) ?? [];
+  const mulligan = browser === "mulligan";
+  const handPlayable = snapshot !== undefined && (me?.zones.hand ?? []).some((c) => actionsFor(snapshot, c.instanceId).length > 0 || targetIDs.has(c.instanceId));
+  const handUp = mulligan || (envelope !== undefined && !pending && handPlayable && !paying);
+  const cards = new Map<string, ArenaCardProps>();
+  const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
+  const classFor = (card: ZoneCard, onBattlefield: boolean) => {
+    const list: string[] = [];
+    if (onBattlefield && card.tapped) list.push("tapped");
+    if (onBattlefield && card.isAttacking) list.push("atk");
+    if (onBattlefield && (card.blocking?.length ?? 0) > 0) list.push("blk");
+    if (targetIDs.has(card.instanceId)) list.push(combatSelect ? "can-act" : "targetable");
+    else if (!pending && snapshot && envelope) {
+      const actions = actionsFor(snapshot, card.instanceId);
+      if (paying) { if (actions.some((a) => a.type === "make_mana")) list.push("payable"); }
+      else if (actions.some((a) => a.type !== "make_mana")) list.push("playable");
+    }
+    return list.join(" ");
+  };
+  const clickAt = (place: Place) => (id: string) => clickCard(id, place);
+  if (snapshot && me) {
+    battlefieldPlaces(me.zones.battlefield, "me").forEach((place, id) => {
+      const card = me.zones.battlefield.find((c) => c.instanceId === id)!;
+      add({ id, place, view: "tile", card, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
     });
-    scene.update(tiles);
-  });
+    opponents.forEach((opponent, index) => {
+      battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }).forEach((place, id) => {
+        const card = opponent.zones.battlefield.find((c) => c.instanceId === id)!;
+        add({ id, place, view: "tile", card, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
+      });
+      opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }).forEach((place, i) =>
+        add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
+    });
+    const handPlace = mulligan ? mulliganPlaces(handIDs) : handPlaces(handIDs, handUp, hovered);
+    me.zones.hand.forEach((card) => {
+      const place = handPlace.get(card.instanceId)!;
+      add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true, classes: classFor(card, false),
+        onClick: mulligan ? undefined : clickAt(place), onHover: mulligan ? undefined : setHovered });
+    });
+    stack.slice(0, 4).forEach((item, depth) => {
+      const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
+      add({ id: item.id, place: stackPlace(depth), view: "face", name, card: item.sourceCard, label: item.name, onHover: setHovered });
+    });
+    const command = (player: PlayerGameState, mine: boolean, index: number) => player.zones.command.forEach((card, i) => {
+      const at = mine ? POS.cmdMe : POS.cmdOpp;
+      const size = mine ? SIZE.pile : SIZE.opile;
+      const x = mine ? at.x - i * 48 : at.x + i * 42 + (opponents.length > 1 ? -index * 90 : 0);
+      const place: Place = { x, y: at.y, ...size, r: 0, s: 1, tx: mine ? TILT : 0, z: 12 };
+      add({ id: card.instanceId, place, view: "face", card, owner: mine ? "me" : "opp", classes: classFor(card, false), onClick: mine ? clickAt(place) : undefined, onHover: setHovered });
+    });
+    command(me, true, 0);
+    opponents.forEach((opponent, index) => command(opponent, false, index));
+  }
 
-  // Burn the rope smoothly while a clock runs.
+  // ---------------- corner controls ----------------
+  const myCreatures = me?.zones.battlefield ?? [];
+  let primary: Plaque | undefined;
+  let secondary: Plaque | undefined;
+  if (snapshot && !finished && envelope && !showBrowser && !mulligan) {
+    const act = (action: LegalAction | undefined, style: Plaque["style"], label?: string, want = false): Plaque | undefined =>
+      action && { label: label ?? EngineDisplayText.label(action.label), style, want, onClick: () => sendAction(action) };
+    if (envelope.responseKind === "priority") {
+      primary = act(promptActions.find((a) => a.type === "pass_priority"), "ember", stack.length > 0 ? "Resolve" : "Pass", true);
+    } else if (combatSelect) {
+      const attacking = /attack/i.test(envelope.message);
+      const declared = attacking ? myCreatures.some((c) => c.isAttacking) : myCreatures.some((c) => (c.blocking?.length ?? 0) > 0);
+      primary = act(promptActions.find((a) => a.type === "answer_yes_no"), "ember", attacking ? (declared ? "Attack" : "No Attacks") : (declared ? "Done" : "No Blocks"), true);
+      secondary = act(promptActions.find((a) => a.type === "resolve_choice"), "leather");
+    } else if (paying) {
+      primary = act(promptActions.find((a) => a.type === "cancel_payment"), "leather", "Cancel");
+      secondary = act(promptActions.find((a) => a.type === "resolve_choice"), "leather");
+    } else {
+      const confirming = (a: LegalAction) => Number(a.type === "answer_yes_no" && a.confirmed === true);
+      const ordered = [...promptActions].sort((a, b) => confirming(b) - confirming(a));
+      primary = act(ordered[0], "ember", undefined, true);
+      secondary = act(ordered[1], "leather");
+    }
+  } else if (snapshot && !finished && !envelope) {
+    primary = { label: activeIsMe ? "Resolving…" : "Opponent’s Turn", style: "label" };
+  }
+  const strip = phaseStrip(snapshot?.step);
+  const promptLine = snapshot && envelope && !showBrowser && !mulligan && envelope.responseKind !== "priority"
+    ? cleanMessage(paying ? snapshot.manaPayment?.remainingText ?? envelope.message : envelope.message) : !snapshot ? table.state.status : undefined;
+  const thinking = snapshot && !envelope && !finished ? thinkingPlayerID(snapshot) : undefined;
+  const thinkingName = thinking && thinking !== viewer ? snapshot?.players.find((p) => p.playerId === thinking)?.displayName : undefined;
+
+  // ---------------- the starting roll, the result ----------------
+  const roll = table.state.roll;
+  const showRoll = roll !== undefined && !rollDismissed &&
+    (roll.nextSeatID !== undefined || !snapshot || (snapshot.turn <= 1 && !envelope?.message.toLowerCase().includes("mulligan")));
   useEffect(() => {
+    if (roll && roll.nextSeatID === undefined) { const t = window.setTimeout(() => setRollDismissed(true), 3500); return () => window.clearTimeout(t); }
+  }, [roll?.nextSeatID, roll]);
+  const won = finished && viewer !== undefined && (snapshot!.winnerPlayerIds ?? []).includes(viewer);
+
+  // The relay's turn clock burns its rope smoothly.
+  const rope = table.state.turnClock.rope(table.state.localSeatID, performance.now() / 1000);
+  useEffect(() => {
+    if (!rope) return;
     const timer = window.setInterval(() => setClockTick((t) => t + 1), 250);
     return () => window.clearInterval(timer);
-  }, []);
-
-  const scene = sceneRef.current;
-  void layoutTick;
-  const at = (x: number, y: number) => scene?.project(x, y) ?? { x: 0, y: 0 };
-  const scale = scene?.scaleAt(SOCKETS.life.x, SOCKETS.life.y) ?? 1;
+  }, [rope]);
   const seatOf = (player: PlayerGameState) => Object.entries(table.state.seatNames).find(([, n]) => n === player.displayName)?.[0];
-  const now = performance.now() / 1000;
-  const rope = table.state.turnClock.rope(table.state.localSeatID, now);
-  const waitingFor = snapshot && !isCompleted(snapshot) ? (() => {
-    const thinking = thinkingPlayerID(snapshot);
-    if (thinking) return snapshot.players.find((p) => p.playerId === thinking)?.displayName;
-    const priority = snapshot.priorityPlayerId;
-    return priority && priority !== viewer ? snapshot.players.find((p) => p.playerId === priority)?.displayName : undefined;
-  })() : undefined;
 
-  const medallion = (player: PlayerGameState, socket: { x: number; y: number; r: number }, opponent: boolean, offset = 0) => {
-    const point = at(socket.x, socket.y + offset);
-    const size = socket.r * 2 * scale;
+  const toggleSmart = () => {
+    if (!session) return;
+    const on = !smart;
+    session.smartPass = on ? defaultSmartPass : { ...defaultSmartPass, enabled: false };
+    setSmart(on);
+    if (on) session.wake();
+  };
+
+  const medallion = (player: PlayerGameState, mine: boolean, index: number) => {
+    const at = mine ? POS.faceMe : opponents.length > 1 ? { x: 170 + (560 * (index + 0.5)) / opponents.length, y: POS.faceOpp.y } : POS.faceOpp;
+    const d = mine ? 58 : 50;
+    const targetable = targetIDs.has(player.playerId) && !pending;
     const seat = seatOf(player);
     const clock = rope && rope.seat === seat ? rope : undefined;
-    const targetable = targetIDs.has(player.playerId);
     const bubble = seat ? table.state.bubbles[seat] : undefined;
     const circumference = Math.PI * 2 * 46;
     return (
       <div key={player.playerId}>
-        <button type="button" className={`medallion ${opponent ? "opponent" : ""} ${targetable ? "targetable" : ""} ${isOut(player) ? "out" : ""}`}
-          style={{ left: point.x, top: point.y, width: size, height: size, fontSize: size * 0.42 }}
-          aria-label={`${player.displayName ?? "Player"}, ${player.life} life`}
-          onClick={() => targetable && send({ type: "choose_target", targetIds: [player.playerId] }, player.displayName ?? "Player")}>
-          <span className="life">{player.life}</span>
+        <button type="button" className={`amed ${targetable ? "targetable" : ""} ${isOut(player) ? "out" : ""}`}
+          style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }} aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life`}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (targetable) send({ type: "choose_target", targetIds: [player.playerId] }, player.displayName ?? "Player");
+            else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
+          }}>
+          <div className="av">{mine ? AVATAR.me : AVATAR.opp}</div>
+          <span className="hp">{Math.max(0, player.life)}</span>
           {clock && (
             <svg className="rope" viewBox="0 0 100 100" aria-hidden="true">
-              <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="5" />
               <circle cx="50" cy="50" r="46" fill="none" stroke={clock.strikes > 0 ? "#ff5a2e" : "#ffb36a"} strokeWidth="5" strokeLinecap="round"
-                strokeDasharray={`${circumference * clock.fraction} ${circumference}`} transform="rotate(-90 50 50)"
-                style={{ filter: "drop-shadow(0 0 4px #ff8a3a)" }} />
+                strokeDasharray={`${circumference * clock.fraction} ${circumference}`} transform="rotate(-90 50 50)" />
             </svg>
           )}
         </button>
-        <div className="nameplate" style={{ left: point.x, top: point.y + size / 2 + 6 }}>
-          {player.displayName}{isOut(player) ? " (left)" : ""}
-          <small>Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0} · Grave {player.zones.graveyard.length}</small>
-          {(player.poison > 0 || player.commanderTax > 0 || player.monarch) && (
-            <div className="badge-row">
-              {player.poison > 0 && <span className="tag">Poison {player.poison}</span>}
-              {player.commanderTax > 0 && <span className="tag">Tax {player.commanderTax}</span>}
-              {player.monarch && <span className="tag">Monarch</span>}
-            </div>
-          )}
-          {clock && <small style={{ color: "#ffb36a" }}>{Math.ceil(clock.remaining)} s</small>}
-        </div>
-        {bubble && Date.now() - bubble.at < 3200 && (
-          <div key={bubble.at} className="bubble" style={{ left: point.x, top: point.y - size / 2 - 6 }}>{bubble.emote.text}</div>
+        {!mine && (
+          <div className="aname" style={{ left: at.x + d / 2 + 8, top: at.y }}>
+            {player.displayName}{isOut(player) ? " (left)" : ""}
+            <small>Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}</small>
+            {(player.poison > 0 || player.monarch) && <div className="badges">{player.poison > 0 && <span>Poison {player.poison}</span>}{player.monarch && <span>Monarch</span>}</div>}
+          </div>
         )}
+        {bubble && Date.now() - bubble.at < 3200 && <div key={bubble.at} className="abubble" style={{ left: at.x, top: at.y - d / 2 - 4 }}>{bubble.emote.text}</div>}
       </div>
     );
   };
 
-  const stack = snapshot?.xmage?.stack ?? [];
-  // The pass disc in the plate's socket answers the decision's main action: pass, resolve, done.
-  const primary = (snapshot?.legalActions ?? []).find((a) => a.cardInstanceId === undefined &&
-    (a.type === "pass_priority" || (a.type === "answer_yes_no" && a.confirmed === true)));
-  const primaryLabel = primary?.type === "pass_priority" ? (stack.length > 0 ? "Resolve" : "Pass") : primary ? EngineDisplayText.label(primary.label) : "";
-  const pool = me?.manaPool;
-  const roll = table.state.roll;
-  const showRoll = roll && !rollDismissed && (roll.nextSeatID !== undefined || !snapshot || (snapshot.turn <= 1 && !envelope?.message.toLowerCase().includes("mulligan")));
-  useEffect(() => {
-    if (roll && roll.nextSeatID === undefined) { const t = window.setTimeout(() => setRollDismissed(true), 3500); return () => window.clearTimeout(t); }
-  }, [roll?.nextSeatID, roll]);
+  const piles = (player: PlayerGameState, mine: boolean, index: number) => {
+    const shift = !mine && opponents.length > 1 ? -index * 90 : 0;
+    const lib = mine ? POS.libMe : { x: POS.libOpp.x + shift, y: POS.libOpp.y };
+    const gy = mine ? POS.gyMe : { x: POS.gyOpp.x + shift, y: POS.gyOpp.y };
+    const size = mine ? SIZE.pile : SIZE.opile;
+    const top = player.zones.graveyard.at(-1);
+    const box = (at: { x: number; y: number }) => ({ left: at.x - size.w / 2, top: at.y - size.h / 2, width: size.w, height: size.h });
+    const whose = mine ? "Your" : `${player.displayName ?? "Their"}’s`;
+    return (
+      <div key={`piles-${player.playerId}`}>
+        <div className={`apile ${mine ? "" : "opp"}`} style={box(lib)} aria-label={`Library, ${player.zones.libraryCount ?? 0} cards`}>
+          <div className="deck" /><span className="cnt">{player.zones.libraryCount ?? 0}</span>
+        </div>
+        <button type="button" className={`apile grave ${mine ? "" : "opp"}`} style={box(gy)} aria-label={`${whose} graveyard, ${player.zones.graveyard.length} cards`}
+          onClick={(event) => { event.stopPropagation(); setZone({ title: `${whose} graveyard`, cards: player.zones.graveyard }); }}
+          onMouseEnter={() => top && setHovered(`grave:${top.card.name}`)} onMouseLeave={() => setHovered(undefined)}>
+          {top && <img src={cardImageURL(top.card.name, "normal")} alt="" crossOrigin="anonymous" />}
+          {player.zones.graveyard.length > 0 && <span className="cnt">{player.zones.graveyard.length}</span>}
+        </button>
+      </div>
+    );
+  };
 
-  const hand = me?.zones.hand ?? [];
-  const finished = snapshot && isCompleted(snapshot);
-  const won = finished && viewer !== undefined && (snapshot.winnerPlayerIds ?? []).includes(viewer);
+  // The card under the pointer, large, away from the side it sits on (never for the hand, which pops up instead).
+  const inspected = (() => {
+    if (!hovered || !snapshot) return undefined;
+    if (hovered.startsWith("grave:")) return { name: hovered.slice(6), left: true };
+    if (handIDs.includes(hovered)) return undefined;
+    const item = cards.get(hovered);
+    if (!item || item.view === "back") return undefined;
+    return { name: item.name ?? item.card?.card.name ?? "", left: item.place.x > 560 };
+  })();
+
+  const log = snapshot?.log ?? [];
+  const pool = me?.manaPool;
+  const poolSymbols = pool ? (["W", "U", "B", "R", "G", "C"] as const).flatMap((s) => Array.from({ length: Math.min(pool[s], 6) }, () => s)) : [];
+  const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
-    <div className="game">
-      <div className="board">
-        <canvas ref={canvasRef} aria-label="Game table" />
-        <div className="overlay">
-          {opponents.map((opponent, index) => medallion(opponent, SOCKETS.opponent, true, index * 86))}
-          {me && medallion(me, SOCKETS.life, false)}
-          {pool && (
-            <div className="mana-rail" style={{ left: at(SOCKETS.rail.x, SOCKETS.rail.y).x, top: at(SOCKETS.rail.x, SOCKETS.rail.y).y }}>
-              {(["W", "U", "B", "R", "G", "C"] as const).filter((s) => pool[s] > 0).map((s) => (
-                <span key={s} style={{ backgroundImage: `url(/tavern/mana-${s}.webp)` }}>{pool[s]}</span>
-              ))}
-            </div>
-          )}
-          {primary && (
-            <button type="button" className="pass-disc" disabled={pending}
-              style={{ left: at(SOCKETS.pass.x, SOCKETS.pass.y).x, top: at(SOCKETS.pass.x, SOCKETS.pass.y).y, width: 96 * scale, height: 96 * scale, fontSize: Math.max(12, 17 * scale) }}
-              onClick={() => sendAction(primary)}>{primaryLabel}</button>
-          )}
-          {stack.length > 0 && (
-            <div className="stack-tray" style={{ left: at(477, 205).x, top: at(477, 205).y }}>
-              {stack.slice(0, 3).map((item) => (
-                <img key={item.id} className="stack-card" alt={item.name} title={`${item.name}\n${item.rulesText ?? ""}`}
-                  src={cardImageURL(item.sourceCard?.card.name ?? item.sourceName ?? item.name, "normal")} crossOrigin="anonymous" />
-              ))}
-            </div>
-          )}
-          {inspect && (
-            <div className="inspector" style={{ left: Math.min(inspect.x + 40, (canvasRef.current?.clientWidth ?? 800) - 260), top: Math.max(8, inspect.y - 200) }}>
-              <img src={cardImageURL(inspect.card.card.name, "normal")} alt={inspect.card.card.name} crossOrigin="anonymous" />
-            </div>
-          )}
-          {menu && (
-            <div className="panel popover" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(undefined)}>
-              {menu.actions.map((action) => (
-                <button key={action.id} type="button" className="choice" onClick={() => sendAction(action)}>{action.label}</button>
-              ))}
-              <button type="button" className="choice" onClick={() => setMenu(undefined)}>Cancel</button>
-            </div>
-          )}
-          {toast && <div className="toast">{toast}</div>}
-          {table.state.isSuspended && <div className="toast">{table.state.status}</div>}
+    <div className="arena" ref={wrapRef} onClick={() => { setGear(false); setPlayerCard(undefined); setMenu(undefined); }}>
+      <div className="arena-stage" style={{ transform: `translate(${fit.left}px, ${fit.top}px) scale(${fit.scale})` }} aria-label="Game table">
+        <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined} />
+        <div className="lamp" />
+        {me && piles(me, true, 0)}
+        {opponents.map((o, i) => piles(o, false, i))}
+        <div onClick={stop}>
+          {[...cards.values()].map((props) => <ArenaCard key={props.id} {...props} />)}
         </div>
-      </div>
-
-      <div className="hand" aria-label="Your hand">
-        {hand.length === 0 && <span className="hand-empty">{me ? "Your hand is empty." : "Dealing…"}</span>}
-        {hand.map((card) => {
-          const actions = snapshot ? actionsFor(snapshot, card.instanceId) : [];
-          const target = targetIDs.has(card.instanceId);
+        {opponents.map((o, i) => medallion(o, false, i))}
+        {me && medallion(me, true, 0)}
+        {poolSymbols.map((symbol, i) => {
+          const choice = envelope?.manaChoices?.find((c) => c.manaType === symbol);
           return (
-            <button key={card.instanceId} type="button" className={`hand-card ${actions.length > 0 && !pending ? "playable" : ""} ${target ? "target" : ""}`}
-              aria-label={card.card.name}
-              onClick={(event) => {
-                const rect = (event.currentTarget.closest(".game") as HTMLElement).getBoundingClientRect();
-                tapCard(card.instanceId, { x: event.clientX - rect.left, y: Math.max(20, event.clientY - rect.top - 220) });
-              }}>
-              <img src={cardImageURL(card.card.name, "normal")} alt="" crossOrigin="anonymous" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              {manaSymbols(card.card.manaCost).length > 0 && (
-                <span className="cost">{manaSymbols(card.card.manaCost).map((symbol, index) => (
-                  /^[WUBRGC]$/.test(symbol)
-                    ? <span key={index} className="sym" style={{ backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} />
-                    : <span key={index} className="sym" style={{ backgroundImage: "url(/tavern/mana-generic.webp)" }}>{symbol === "//" ? "" : symbol}</span>
-                ))}</span>
-              )}
-            </button>
+            <button key={`${symbol}-${i}`} type="button" className={`mana-orb ${choice && !pending ? "payable" : ""}`} disabled={!choice || pending}
+              style={{ left: POOL.x + i * POOL.dx, top: POOL.y, backgroundImage: `url(/tavern/mana-${symbol}.webp)` }} aria-label={`${symbol} mana in your pool`}
+              onClick={(event) => { event.stopPropagation(); if (choice) send({ type: "play_mana", manaType: choice.manaType }, choice.label); }} />
           );
         })}
-      </div>
+        {stack.length > 1 && <div className="astack-count" style={{ left: POS.stack.x + POS.stack.w / 2 - 14, top: POS.stack.y - POS.stack.h / 2 - 8 }}>{stack.length}</div>}
 
-      <aside className="side">
-        <div className="panel" style={{ padding: "12px 14px" }}>
-          <div className="status-line">
-            <span className="phase">{snapshot ? `Turn ${snapshot.turn} · ${phaseText(snapshot)}` : "Starting"}</span>
-            <span className="small-print">{table.state.tableCode}</span>
+        {/* Above the raised hand while there is an answer to give (the prototype's controls z-index). */}
+        <div className="acontrols" style={{ zIndex: (primary && primary.style !== "label") || secondary ? 600 : 430 }} onClick={stop}>
+          <div className="aphases" data-side={activeIsMe ? "me" : "opp"} style={{ top: secondary ? 304 : 360 }} aria-hidden="true">
+            <div className="track" />
+            {strip.items.map(([key, icon]) => <span key={key} className={`aph ${icon === "dia" ? "small" : ""} ${strip.current === key ? "on" : ""}`}>{PHASE_ICONS[icon]}</span>)}
           </div>
-          <div className="small-print">{session?.state.errorMessage ?? (table.state.reconnecting ? "Reconnecting to the table…" : session?.state.status ?? table.state.status)}</div>
-        </div>
-        <div className="panel" style={{ padding: "12px 14px" }}>
-          <h2 className="panel-title">{envelope ? "Your decision" : "Table"}</h2>
-          {snapshot ? (
-            <PromptPanel snapshot={snapshot} send={send} sendAction={sendAction} pending={pending} waitingFor={waitingFor} />
-          ) : <div className="prompt-message">{table.state.stage === "starting" && <span className="thinking" />} {table.state.status}</div>}
-          {session?.hasPending && !session.state.working && session.state.errorMessage && (
-            <button type="button" className="plaque compact" onClick={() => session.retryPending().catch(fail)}>Retry</button>
+          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} disabled={pending} onClick={secondary.onClick}>{secondary.label}</button>}
+          {primary ? (
+            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""}`} disabled={primary.style !== "label" && pending}
+              onClick={primary.onClick}>{primary.label}</button>
+          ) : !finished && <div className="ahourglass">{HOURGLASS}</div>}
+          {session && (
+            <button type="button" className={`aff ${smart ? "on" : ""}`} aria-pressed={smart} onClick={toggleSmart}
+              title={smart ? "Smart pass is on: routine priority passes by itself" : "Smart pass is off: you pass every step"}>
+              <svg viewBox="0 0 26 18"><path d="M2 2l9 7-9 7zM14 2l9 7-9 7z" /></svg>
+            </button>
           )}
+          <button type="button" className={`acoin ${panel ? "on" : ""}`} style={{ left: 829, top: 9 }} aria-label="Game log" onClick={() => setPanel(panel ? undefined : "log")}>{SCROLL}</button>
+          <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: 862, top: 9 }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
         </div>
-        {stack.length > 0 && (
-          <div className="panel scroll" style={{ padding: "10px 14px", maxHeight: 160 }}>
-            <h2 className="panel-title">Stack</h2>
-            {stack.map((item) => <div key={item.id} className="small-print"><b>{item.name}</b> {item.rulesText ? `— ${item.rulesText.split("\n")[0]}` : ""}</div>)}
+
+        {promptLine && <div className="aprompt" style={{ top: combatSelect && !/attack/i.test(envelope?.message ?? "") ? 205 : 187 }}>{promptLine}</div>}
+        {thinkingName && <div className="aprompt" style={{ top: 187, opacity: 0.75 }}>{thinkingName} is thinking…</div>}
+
+        {inspected && (
+          <div className="ainspect" style={{ left: inspected.left ? 250 - POS.zoom.w / 2 : POS.zoom.x - POS.zoom.w / 2, top: POS.zoom.y - POS.zoom.h / 2, width: POS.zoom.w }}>
+            <img src={cardImageURL(inspected.name, "normal")} alt={inspected.name} crossOrigin="anonymous" />
           </div>
         )}
-        <div className="panel log" style={{ padding: "10px 14px" }}>
-          {table.solo ? <h2 className="panel-title">Game log</h2> : (
-            <div className="tabs">
-              <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>Game log</button>
-              <button type="button" aria-pressed={tab === "chat"} onClick={() => setTab("chat")}>Chat</button>
+
+        {menu && (
+          <div className="amenu glass" style={{ left: Math.min(STAGE.width - 260, Math.max(10, menu.at.x - 125)), top: Math.max(10, menu.at.y - menu.at.h / 2 - 12 - 46 * (menu.actions.length + 1)), right: "auto" }}
+            onClick={stop}>
+            {menu.actions.map((action) => <button key={action.id} type="button" className="arow" onClick={() => sendAction(action)}>{EngineDisplayText.label(action.label)}</button>)}
+            <button type="button" className="arow" onClick={() => setMenu(undefined)}>Cancel</button>
+          </div>
+        )}
+
+        {playerCard && snapshot && (() => {
+          const player = snapshot.players.find((p) => p.playerId === playerCard);
+          if (!player) return null;
+          const mine = player.playerId === viewer;
+          return (
+            <div className="amenu glass" style={{ left: 520, top: mine ? 230 : 50, right: "auto" }} onClick={stop}>
+              <h3 className="panel-title" style={{ margin: 0 }}>{mine ? "You" : player.displayName}</h3>
+              <div className="small-print" style={{ color: "#efe4cf" }}>
+                Life {player.life} · Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}<br />
+                Graveyard {player.zones.graveyard.length} · Exile {player.zones.exile.length}
+                {player.poison > 0 && <><br />Poison {player.poison}</>}
+                {player.commanderTax > 0 && <><br />Commander tax {player.commanderTax}</>}
+                {Object.entries(player.commanderDamage ?? {}).filter(([, n]) => n > 0).map(([id, n]) => <span key={id}><br />Commander damage {n}</span>)}
+              </div>
+              {player.zones.exile.length > 0 && (
+                <button type="button" className="arow" onClick={() => setZone({ title: `${mine ? "Your" : `${player.displayName ?? "Their"}’s`} exile`, cards: player.zones.exile })}>View exile</button>
+              )}
             </div>
-          )}
-          <div className="scroll" style={{ flex: 1, marginTop: 8 }}>
-            {tab === "log" ? (
-              <ol>{[...(snapshot?.log ?? [])].reverse().map((entry) => <li key={entry.id}>{EngineDisplayText.text(entry.message)}</li>)}</ol>
+          );
+        })()}
+
+        {gear && (
+          <div className="amenu glass" onClick={stop}>
+            <button type="button" className="arow" onClick={() => { setPanel("log"); setGear(false); }}>Game log</button>
+            {!table.solo && <button type="button" className="arow" onClick={() => { setPanel("chat"); setGear(false); }}>Chat</button>}
+            {session && (
+              <button type="button" className="arow" onClick={toggleSmart}>
+                <span>Smart pass: {smart ? "on" : "off"}<span className="sub">Passes routine priority; stops in your main phases, and at their attacks and end step when you can play.</span></span>
+              </button>
+            )}
+            <button type="button" className="arow oxblood" disabled={!session || finished} onClick={() => { setConfirmConcede(true); setGear(false); }}>Concede</button>
+            <button type="button" className="arow" onClick={() => table.leave()}>
+              <span>{table.solo ? "Leave the game" : "Leave table"}{table.solo && !finished && <span className="sub">Concedes the game in progress.</span>}</span>
+            </button>
+          </div>
+        )}
+
+        {panel && (
+          <div className="apanel glass" onClick={stop}>
+            <header>
+              {table.solo ? <h3>Game log</h3> : (
+                <div className="tabs" style={{ flex: 1 }}>
+                  <button type="button" aria-pressed={panel === "log"} onClick={() => setPanel("log")}>Game log</button>
+                  <button type="button" aria-pressed={panel === "chat"} onClick={() => setPanel("chat")}>Chat</button>
+                </div>
+              )}
+              <button type="button" className="close" aria-label="Close" onClick={() => setPanel(undefined)}>✕</button>
+            </header>
+            {panel === "log" ? (
+              <ol className="alog">
+                {[...log].reverse().map((entry) => {
+                  const text = EngineDisplayText.text(entry.message);
+                  const kind = /^TURN \d+/i.test(text) ? "turn" : entry.id.startsWith("local:auto-pass:") ? "auto" : "";
+                  return <li key={entry.id} className={kind}>{text}</li>;
+                })}
+              </ol>
             ) : (
-              <ol>{table.state.chat.map((line) => (
-                <li key={line.id} className={line.isLocal ? "local" : ""}><span className="who">{line.name}:</span> {line.isLocal ? line.text : TableChatFilter.filtered(line.text)}</li>
-              ))}</ol>
+              <>
+                <ol className="alog">{table.state.chat.map((line) => (
+                  <li key={line.id} className={line.isLocal ? "local" : ""}><span className="who">{line.name}:</span> {line.isLocal ? line.text : TableChatFilter.filtered(line.text)}</li>
+                ))}</ol>
+                <ChatInput table={table} />
+              </>
             )}
           </div>
-          {tab === "chat" && <ChatInput table={table} />}
-        </div>
-        <div className="row">
-          <button type="button" className="plaque danger compact" onClick={() => setConfirmConcede(true)} disabled={!session || !!finished}>Concede</button>
-          {(!table.solo || !session) && <button type="button" className="plaque compact" onClick={() => table.leave()}>{table.solo ? "Back to the tavern" : "Leave table"}</button>}
-        </div>
-      </aside>
+        )}
 
-      {showRoll && roll && (
-        <div className="modal">
-          <div className="panel">
-            <h2 className="title">Who goes first?</h2>
-            <div className="dice">
-              {roll.roll.steps.map((step, index) => {
-                const shown = index < roll.revealed;
-                const lastRound = step.roundIndex === roll.roll.rounds.length - 1;
-                const won = shown && roll.nextSeatID === undefined && lastRound && step.seatID === roll.roll.winnerSeatID;
-                return (
-                  <div key={index} className="die">
-                    <div className={`face ${!shown && index === roll.revealed ? "rolling" : ""} ${won ? "won" : shown && roll.nextSeatID === undefined ? "lost" : ""}`}>{shown ? step.value : "?"}</div>
-                    <span className="small-print">{table.state.seatNames[step.seatID] ?? step.seatID}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="prompt-message">{roll.nextSeatID !== undefined ? roll.status
-              : roll.roll.winnerSeatID === table.state.localSeatID ? "You go first." : `${table.state.seatNames[roll.roll.winnerSeatID]} goes first.`}</div>
-            {roll.nextSeatID === table.state.localSeatID && (
-              <button type="button" className="plaque primary" disabled={roll.hasRolled || table.state.stage !== "playing"}
-                onClick={() => { try { table.rollStartingPlayer(); } catch (error) { fail(error); } }}>Roll the D20</button>
-            )}
+        {showBrowser && snapshot && envelope && browser !== undefined && (
+          <div onClick={stop}>
+            <Browser kind={browser} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction} pending={pending} onHide={() => setSteppedAside(envelope.id)} />
           </div>
-        </div>
-      )}
+        )}
+        {browser !== undefined && steppedAside === envelope?.id && (
+          <button type="button" className="aplaque ember" style={{ left: 708, top: 290, width: 176, height: 34, zIndex: 700 }}
+            onClick={(event) => { event.stopPropagation(); setSteppedAside(undefined); }}>Back to the choice</button>
+        )}
 
-      {confirmConcede && (
-        <div className="modal">
-          <div className="panel">
-            <h2 className="title">Concede?</h2>
-            <p className="muted">{table.solo ? "The AI wins this game." : "You leave this game. The other players are told at once."}</p>
-            <div className="row" style={{ justifyContent: "center" }}>
-              <button type="button" className="plaque" onClick={() => setConfirmConcede(false)}>Keep playing</button>
-              <button type="button" className="plaque danger" onClick={() => { setConfirmConcede(false); table.concede().catch(fail); }}>Concede</button>
+        {mulligan && envelope?.confirmation && !showRoll && (
+          <div className="amull" onClick={stop}>
+            <h2 className="title">{(() => {
+              // XMage names the active player only once the first turn begins; the roll knows sooner.
+              const first = roll?.roll.winnerSeatID ?? snapshot?.activePlayerId;
+              if (!first) return "Your opening hand";
+              if (first === viewer || first === table.state.localSeatID) return "You go first";
+              const name = table.state.seatNames[first] ?? snapshot?.players.find((p) => p.playerId === first)?.displayName;
+              return name ? `${name} goes first` : "Your opening hand";
+            })()}</h2>
+            <p>{cleanMessage(envelope.message)}</p>
+            <div className="tips"><span>Click a card to play it</span><span>Click a land for mana while paying</span><span>Hover a card to read it</span></div>
+            <button type="button" className="aplaque leather" style={{ left: 716, top: 340 }} disabled={pending}
+              onClick={() => send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan")}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
+            <button type="button" className="aplaque ember want" style={{ left: 716, top: 388 }} disabled={pending}
+              onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
+          </div>
+        )}
+
+        {zone && (
+          <div className="aoverlay dim" onClick={(event) => { event.stopPropagation(); setZone(undefined); }}>
+            <div className="abrowser">
+              <h2>{zone.title}</h2>
+              <p className="instr">{zone.cards.length === 0 ? "Nothing here yet." : `${zone.cards.length} card${zone.cards.length === 1 ? "" : "s"}, newest last.`}</p>
+              <div className="cards">{zone.cards.map((card) => (
+                <div key={card.instanceId} className="bcard"><img src={cardImageURL(card.card.name, "normal")} alt={card.card.name} crossOrigin="anonymous" /></div>
+              ))}</div>
+              <div className="answers"><button type="button" className="aplaque ember" onClick={() => setZone(undefined)}>Done</button></div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {(finished || table.state.stage === "failed") && (
-        <div className="modal result">
-          <div className="panel">
-            <h2 className="title">{finished ? (won ? "Victory" : "Defeat") : table.solo ? "Game stopped" : "Table closed"}</h2>
-            <p className="muted">{finished ? resultText(snapshot, viewer) : table.state.status}</p>
-            {table.rematch && <button type="button" className="plaque primary" onClick={() => table.rematch?.()}>Play again</button>}
-            <button type="button" className={`plaque ${table.rematch ? "" : "primary"}`} onClick={() => table.leave()}>Back to the tavern</button>
+        {showRoll && roll && (
+          <div className="aoverlay question" onClick={stop}>
+            <div className="aroll glass">
+              <h2 className="title">Who goes first?</h2>
+              <div className="dice">
+                {roll.roll.steps.map((step, index) => {
+                  const shown = index < roll.revealed;
+                  const lastRound = step.roundIndex === roll.roll.rounds.length - 1;
+                  const winner = shown && roll.nextSeatID === undefined && lastRound && step.seatID === roll.roll.winnerSeatID;
+                  return (
+                    <div key={index} className="die">
+                      <div className={`face ${!shown && index === roll.revealed ? "rolling" : ""} ${winner ? "won" : shown && roll.nextSeatID === undefined ? "lost" : ""}`}>{shown ? step.value : "?"}</div>
+                      <span className="small-print" style={{ color: "#efe4cf" }}>{table.state.seatNames[step.seatID] ?? step.seatID}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ margin: 0, font: "600 14px/1.35 var(--serif)" }}>{roll.nextSeatID !== undefined ? roll.status
+                : roll.roll.winnerSeatID === table.state.localSeatID ? "You go first." : `${table.state.seatNames[roll.roll.winnerSeatID]} goes first.`}</p>
+              {roll.nextSeatID === table.state.localSeatID && (
+                <button type="button" className="aplaque ember want" disabled={roll.hasRolled || table.state.stage !== "playing"}
+                  onClick={() => { try { table.rollStartingPlayer(); } catch (error) { fail(error); } }}>Roll the D20</button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {confirmConcede && (
+          <div className="aoverlay question" onClick={stop}>
+            <div className="aquestion glass">
+              <h2>Concede?</h2>
+              <p>{table.solo ? "The AI wins this game." : "You leave this game. The other players are told at once."}</p>
+              <div style={{ display: "flex", gap: 12 }}>
+                <button type="button" className="aplaque leather" onClick={() => setConfirmConcede(false)}>Keep playing</button>
+                <button type="button" className="aplaque oxblood" onClick={() => { setConfirmConcede(false); table.concede().catch(fail); }}>Concede</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(finished || table.state.stage === "failed") && (
+          <div className="aresult" data-win={won ? "true" : "false"} onClick={stop}>
+            <div className="glory" />
+            <div className="box glass">
+              <div className="medal"><div className="av">{AVATAR.me}</div></div>
+              <h2 className="title">{finished ? (won ? "Victory" : "Defeat") : table.solo ? "Game stopped" : "Table closed"}</h2>
+              <div className="rule" />
+              <p>{finished ? resultLine(snapshot!, viewer) : table.state.status}</p>
+              <div className="answers">
+                {table.rematch && <button type="button" className="aplaque ember" onClick={() => table.rematch?.()}>Play again</button>}
+                <button type="button" className={`aplaque ${table.rematch ? "leather" : "ember"}`} onClick={() => table.leave()}>Back to the tavern</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(toast || session?.state.errorMessage || table.state.isSuspended || table.state.reconnecting) && (
+          <div className="atoast">{toast ?? session?.state.errorMessage ?? table.state.status}</div>
+        )}
+        {session?.hasPending && !session.state.working && session.state.errorMessage && (
+          <button type="button" className="aplaque leather" style={{ left: 708, top: 250, width: 176, height: 34, zIndex: 700 }}
+            onClick={(event) => { event.stopPropagation(); session.retryPending().catch(fail); }}>Retry</button>
+        )}
+      </div>
     </div>
   );
 }
 
 /** "AI 1 won the game on turn 9." (a draw names no one). */
-function resultText(snapshot: GameSnapshot, viewer: string | undefined) {
+function resultLine(snapshot: GameSnapshot, viewer: string | undefined) {
   const winners = (snapshot.winnerPlayerIds ?? []).map((id) => (id === viewer ? "You" : snapshot.players.find((p) => p.playerId === id)?.displayName)).filter(Boolean);
   const turn = snapshot.turn > 0 ? ` on turn ${snapshot.turn}` : "";
   if (winners.length === 0) return `The game ended in a draw${turn}.`;

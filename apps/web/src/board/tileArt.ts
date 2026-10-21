@@ -1,7 +1,8 @@
 /**
  * Battlefield tiles in the Walnut Tavern frames (TavernFrameKind in TavernSockets.kt): the card's
  * art crop in the frame's arched window, the frame on top, the name ribbon and the power and
- * toughness gems. Drawn once per look on a canvas that becomes a WebGL texture.
+ * toughness gems. Drawn once per look on a canvas the Arena board shows as the tile; its glow is a CSS
+ * drop-shadow that traces the frame's alpha (the frame-outline glow, apps/web/src/ui/arena/arena.css).
  */
 import { displayPower, displayToughness, isCreatureCard, type ZoneCard } from "../core/models";
 import { loadCardImage } from "../ui/cardArt";
@@ -130,37 +131,4 @@ export const paintTile = (canvas: HTMLCanvasElement, card: ZoneCard, onUpdate: (
   void Promise.all([tavernImage(`frame-${kind}`), tavernImage("ribbon"), tavernImage("gem-power"), tavernImage("gem-toughness")])
     .then(([f, r, p, t]) => { frame = f; ribbon = r; gems = [p, t]; draw(); }).catch(() => undefined);
   if (card.card.name !== "Face-down card") void loadCardImage(artName, "art_crop").then((image) => { if (image) { art = image; draw(); } });
-};
-
-const glowCanvases = new Map<FrameKind, HTMLCanvasElement>();
-
-/**
- * A soft glow that follows the frame's own outline (Caleb: highlights trace the tavern frame, never
- * a rectangle). White, so the material tints it per state. The canvas is 1.3x the tile.
- */
-export const glowCanvas = (kind: FrameKind, onReady: () => void): HTMLCanvasElement => {
-  let canvas = glowCanvases.get(kind);
-  if (canvas) return canvas;
-  canvas = document.createElement("canvas");
-  canvas.width = Math.round(TILE.width * 1.3); canvas.height = Math.round(TILE.height * 1.3);
-  glowCanvases.set(kind, canvas);
-  const target = canvas;
-  void tavernImage(`frame-${kind}`).then((frame) => {
-    // A white silhouette of the frame, blurred outward; the frame's own area is cut back out.
-    const silhouette = document.createElement("canvas");
-    silhouette.width = TILE.width; silhouette.height = TILE.height;
-    const sctx = silhouette.getContext("2d")!;
-    sctx.drawImage(frame, 0, 0, TILE.width, TILE.height);
-    sctx.globalCompositeOperation = "source-in";
-    sctx.fillStyle = "#fff"; sctx.fillRect(0, 0, TILE.width, TILE.height);
-    const ctx = target.getContext("2d")!;
-    const x = (target.width - TILE.width) / 2; const y = (target.height - TILE.height) / 2;
-    ctx.filter = "blur(14px)";
-    for (let pass = 0; pass < 3; pass += 1) ctx.drawImage(silhouette, x - 8, y - 8, TILE.width + 16, TILE.height + 16);
-    ctx.filter = "none";
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.drawImage(silhouette, x + 4, y + 4, TILE.width - 8, TILE.height - 8);
-    onReady();
-  }).catch(() => undefined);
-  return canvas;
 };

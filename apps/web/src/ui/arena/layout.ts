@@ -1,0 +1,153 @@
+/**
+ * Where everything sits on the horizontal Arena board: the Duel Board Prototype's landscape layout ("land": the
+ * reference game's positions on the 956 x 440 Walnut Tavern plate, artifact T5NcAkjCThiA5hfd9Twwwu), filled from real
+ * snapshots. Pure functions of the snapshot, so a card keeps one element as it moves between zones and glides.
+ */
+import { isCreatureCard, type ZoneCard } from "../../core/models";
+
+export const STAGE = { width: 956, height: 440 } as const;
+/** How far battlefield cards lie back on the table (the reference's camera leans forward). */
+export const TILT = 26;
+
+export const POS = {
+  stack: { x: 796, y: 171, w: 175, h: 250 }, zoom: { x: 658, y: 197, w: 244, h: 359 },
+  libMe: { x: 222, y: 405 }, gyMe: { x: 174, y: 405 }, cmdMe: { x: 128, y: 405 },
+  libOpp: { x: 629, y: 9 }, gyOpp: { x: 681, y: 9 }, cmdOpp: { x: 733, y: 9 },
+  faceMe: { x: 478, y: 400 }, faceOpp: { x: 478, y: 25 }, handOpp: { x: 270, y: 10 },
+} as const;
+export const SIZE = { hand: { w: 93, h: 131 }, tile: { w: 66, h: 71 }, land: { w: 58, h: 62.5 }, pile: { w: 42, h: 59 }, opile: { w: 36, h: 50 } } as const;
+const HAND = { cx: 476, upY: 368, upPitch: 92, upSpan: 555, drop: 2.6, tilt: 3.5, maxTilt: 11, downY: 412, downPitch: 33, downSpan: 209, downDrop: 1.5, downS: 0.88, lift: 48, liftDown: 70 };
+const LANDS = { me: { x: 116, y: 325 }, opp: { x: 108, y: 90 }, step: 72, right: 690 };
+const ROWS = { me: 248, opp: 146, pitch: 84, span: 430, cx: 478, left: 226, right: 655 };
+export const MULLIGAN = { cx: 478, y: 200, pitch: 104, w: 112, h: 157 };
+export const POOL = { x: 80, y: 372, dx: 18 };
+
+export interface Place { x: number; y: number; w: number; h: number; r?: number; s?: number; tx?: number; z: number }
+
+export const cardTransform = (p: Place) =>
+  `translate(${(p.x - p.w / 2).toFixed(1)}px,${(p.y - p.h / 2).toFixed(1)}px) perspective(300px) rotateX(${p.tx ?? 0}deg) rotate(${p.r ?? 0}deg) scale(${p.s ?? 1})`;
+
+const isCreature = (card: ZoneCard) => card.isCreaturePermanent ?? isCreatureCard(card);
+/** The front row: creatures, planeswalkers and battles (what fights or gets attacked), as on the reference. */
+const isFront = (card: ZoneCard) => isCreature(card) || /planeswalker|battle/i.test(card.card.typeLine);
+
+/**
+ * One player's permanents. Creatures, planeswalkers and battles stand in the front row near the middle; lands,
+ * artifacts and enchantments lie in name groups in the back row (untapped groups first), as on the reference; auras
+ * and equipment tuck behind what they are attached to. `band` splits the top half between several opponents.
+ */
+export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = { index: 0, count: 1 }): Map<string, Place> {
+  const places = new Map<string, Place>();
+  const far = side === "opp";
+  const scale = far ? 0.92 : 1;
+  const ids = new Set(cards.map((c) => c.instanceId));
+  const attached = cards.filter((c) => c.attachedToInstanceId && ids.has(c.attachedToInstanceId) && !isFront(c));
+  const loose = cards.filter((c) => !attached.includes(c));
+  const front = loose.filter(isFront);
+  const back = loose.filter((c) => !isFront(c));
+
+  // A band of the table: the whole width for one opponent, a slice of it for each in a pod.
+  const sliceLeft = (from: number, to: number) => from + ((to - from) * band.index) / band.count;
+  const sliceRight = (from: number, to: number) => from + ((to - from) * (band.index + 1)) / band.count;
+
+  const rowLeft = sliceLeft(far && band.count > 1 ? 120 : ROWS.left, far && band.count > 1 ? 690 : ROWS.right);
+  const rowRight = sliceRight(far && band.count > 1 ? 120 : ROWS.left, far && band.count > 1 ? 690 : ROWS.right);
+  const span = Math.min(ROWS.span, rowRight - rowLeft);
+  const n = front.length;
+  const pitch = n > 1 ? Math.min(ROWS.pitch, span / (n - 1)) : 0;
+  const width = (n - 1) * pitch;
+  const center = band.count > 1 ? (rowLeft + rowRight) / 2 : Math.max(rowLeft + width / 2, Math.min(ROWS.cx, rowRight - width / 2));
+  front.forEach((card, i) => {
+    const fighting = card.isAttacking === true || (card.blocking?.length ?? 0) > 0;
+    places.set(card.instanceId, {
+      x: center + (i - (n - 1) / 2) * pitch, y: (far ? ROWS.opp : ROWS.me) + (fighting ? (far ? 4.5 : -4.5) : 0), ...SIZE.tile,
+      r: card.tapped && !fighting ? 12 : 0, tx: TILT, s: scale, z: card.isAttacking ? 90 : 60 + i,
+    });
+  });
+
+  const groups: { key: string; cards: ZoneCard[] }[] = [];
+  for (const card of back) {
+    const key = card.card.name + (card.tapped ? "|tapped" : "");
+    let group = groups.find((g) => g.key === key);
+    if (!group) groups.push(group = { key, cards: [] });
+    group.cards.push(card);
+  }
+  groups.sort((a, b) => Number(a.key.endsWith("|tapped")) - Number(b.key.endsWith("|tapped")));
+  const origin = far ? LANDS.opp : LANDS.me;
+  const left = band.count > 1 ? sliceLeft(origin.x, LANDS.right) : origin.x;
+  const right = band.count > 1 ? sliceRight(origin.x, LANDS.right) - SIZE.land.w / 2 : LANDS.right;
+  const widths = groups.map((g) => LANDS.step + (g.cards.length - 1) * 7);
+  const total = widths.reduce((a, b) => a + b, 0) - (widths.length ? LANDS.step : 0);
+  const squeeze = total > right - left && total > 0 ? (right - left) / total : 1;
+  let x = left;
+  groups.forEach((group, gi) => {
+    group.cards.forEach((card, j) => places.set(card.instanceId, {
+      x: x + j * 7 * squeeze, y: origin.y - j * 2, ...SIZE.land, r: card.tapped ? 12 : 0, tx: TILT, s: far ? 0.94 : 1, z: 30 + j,
+    }));
+    x += widths[gi] * squeeze;
+  });
+
+  attached.forEach((card, i) => {
+    const host = places.get(card.attachedToInstanceId!);
+    if (!host) return;
+    places.set(card.instanceId, { ...host, ...SIZE.tile, x: host.x + 9 + i * 4, y: host.y + (far ? 9 : -9) - i * 3, r: card.tapped ? 12 : 0, z: host.z - 1 - i });
+  });
+  return places;
+}
+
+/** The hand along the bottom edge: fanned up when it's yours to play, tucked low otherwise; the card under the pointer pops up. */
+export function handPlaces(ids: string[], up: boolean, hovered?: string): Map<string, Place> {
+  const places = new Map<string, Place>();
+  const n = ids.length;
+  const pitch = n > 1 ? (up ? Math.min(HAND.upPitch, HAND.upSpan / (n - 1)) : Math.min(HAND.downPitch, HAND.downSpan / (n - 1))) : 0;
+  ids.forEach((id, i) => {
+    const off = i - (n - 1) / 2;
+    const x = HAND.cx + off * pitch;
+    let place: Place = up
+      ? { x, y: HAND.upY + HAND.drop * off * off, ...SIZE.hand, r: Math.max(-HAND.maxTilt, Math.min(HAND.maxTilt, off * HAND.tilt)), s: 1, z: 440 + i }
+      : { x, y: HAND.downY + off * off * HAND.downDrop, ...SIZE.hand, r: off * 1.8, s: HAND.downS, z: 200 + i };
+    if (id === hovered) place = { ...place, y: place.y - (up ? HAND.lift : HAND.liftDown), r: 0, s: up ? 1.24 : 1.04, z: 480 };
+    places.set(id, place);
+  });
+  return places;
+}
+
+/** The opponent's hand: card backs fanned upside down along the top edge. */
+export function opponentHandPlaces(count: number, band = { index: 0, count: 1 }): Place[] {
+  const cx = band.count > 1 ? 150 + (520 * (band.index + 0.5)) / band.count : POS.handOpp.x;
+  return Array.from({ length: Math.min(count, 12) }, (_, i) => {
+    const off = i - (Math.min(count, 12) - 1) / 2;
+    return { x: cx + off * 17, y: POS.handOpp.y - off * off * 0.9, ...SIZE.opile, r: 180 - off * 4, s: 1, z: 100 + i };
+  });
+}
+
+/** The stack card on the right; older objects lean in behind the top one. Index 0 is the top. */
+export const stackPlace = (depth: number): Place =>
+  ({ ...POS.stack, x: POS.stack.x - depth * 12, y: POS.stack.y - depth * 10, r: 0, s: 1 - depth * 0.05, z: 300 - depth });
+
+/** The opening hand, large in the middle of the table while the player decides whether to keep it. */
+export function mulliganPlaces(ids: string[]): Map<string, Place> {
+  const places = new Map<string, Place>();
+  const n = ids.length;
+  const pitch = n > 1 ? Math.min(MULLIGAN.pitch, 600 / (n - 1)) : 0;
+  ids.forEach((id, i) => {
+    const off = i - (n - 1) / 2;
+    places.set(id, { x: MULLIGAN.cx + off * pitch, y: MULLIGAN.y + off * off * 2, w: MULLIGAN.w, h: MULLIGAN.h, r: off * 1.4, s: 1, z: 820 + i });
+  });
+  return places;
+}
+
+/** The reference's phase strip: the beginning, main 1, combat (opened up into its steps during combat), main 2, end. */
+export type PhaseKey = "begin" | "main1" | "combat" | "attack" | "block" | "damage" | "endc" | "main2" | "end";
+export function phaseStrip(step: string | undefined): { items: [PhaseKey, "dia" | "card" | "swords" | "sword" | "shield" | "burst"][]; current?: PhaseKey } {
+  const raw = (step ?? "").toUpperCase();
+  const current: PhaseKey | undefined =
+    ["UNTAP", "UPKEEP", "DRAW"].includes(raw) ? "begin" : raw === "PRECOMBAT_MAIN" ? "main1" : raw === "BEGIN_COMBAT" ? "attack"
+      : raw === "DECLARE_ATTACKERS" ? "attack" : raw === "DECLARE_BLOCKERS" ? "block" : raw.includes("COMBAT_DAMAGE") ? "damage"
+        : raw === "END_COMBAT" ? "endc" : raw === "POSTCOMBAT_MAIN" ? "main2" : ["END_TURN", "CLEANUP"].includes(raw) ? "end" : undefined;
+  const combat = current !== undefined && ["attack", "block", "damage", "endc"].includes(current);
+  const items: ReturnType<typeof phaseStrip>["items"] = combat
+    ? [["begin", "dia"], ["main1", "card"], ["attack", "sword"], ["block", "shield"], ["damage", "burst"], ["endc", "dia"], ["main2", "card"], ["end", "dia"]]
+    : [["begin", "dia"], ["main1", "card"], ["combat", "swords"], ["main2", "card"], ["end", "dia"]];
+  return { items, current };
+}
