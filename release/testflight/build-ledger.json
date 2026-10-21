@@ -3,9 +3,9 @@
   "bundleId": "com.calebfeliciano.magicmobile",
   "marketingVersion": "0.1.1",
   "nextBuildFloor": "5000000000",
-  "lastPreparedBuild": "50",
+  "lastPreparedBuild": "55",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "50",
+  "lastUploadedBuild": "55",
   "uploads": [
     {
       "build": "2026062701",
@@ -525,9 +525,44 @@
       "uploadedAt": "2026-10-19T14:53:36.289Z",
       "deliveryUuid": "df487476-56a1-49f8-ad7d-82e9dbe2796c",
       "ipaPath": "build_output/testflight/native-release.KcGUF7/export/MagicMobile.ipa"
+    },
+    {
+      "build": "51",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-20T20:10:28.790Z",
+      "deliveryUuid": "f3cc7414-3111-4003-aff1-8bfdfe444075",
+      "ipaPath": "build_output/testflight/native-release.Z09N0b/export/MagicMobile.ipa"
+    },
+    {
+      "build": "52",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-20T21:14:38.626Z",
+      "deliveryUuid": "b88a63ca-bc91-44cc-ba77-c6b1826034ad",
+      "ipaPath": "build_output/testflight/native-release.jkXFDR/export/MagicMobile.ipa"
+    },
+    {
+      "build": "53",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-21T00:32:58.690Z",
+      "deliveryUuid": "4ecf26d3-1901-49a0-833b-e573fe1027ea",
+      "ipaPath": "build_output/testflight/native-release.BG92zz/export/MagicMobile.ipa"
+    },
+    {
+      "build": "54",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-21T05:36:53.033Z",
+      "deliveryUuid": "070e4c8a-b2b3-42c6-8795-24fb37b7a91f",
+      "ipaPath": "build_output/testflight/native-release.knBWtF/export/MagicMobile.ipa"
+    },
+    {
+      "build": "55",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-21T16:10:25.304Z",
+      "deliveryUuid": "23e7a503-9975-4b3d-a9e1-076b90066325",
+      "ipaPath": "build_output/testflight/native-release.k0Ai7m/export/MagicMobile.ipa"
     }
   ],
-  "lastPreparedAt": "2026-10-19T14:46:10.100Z",
+  "lastPreparedAt": "2026-10-21T16:00:38.388Z",
   "lastPreparedMarketingVersion": "0.1.1",
   "lastUploadedMarketingVersion": "0.1.1",
   "lastInstalledMarketingVersion": "0.1.0",
