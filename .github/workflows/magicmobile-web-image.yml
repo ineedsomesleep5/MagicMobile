@@ -13,10 +13,17 @@ on:
         type: boolean
         default: false
       builder_heap:
-        description: 'native-image builder heap'
-        type: choice
-        options: ['14g', '24g']
+        description: 'native-image builder heap (-Xmx)'
+        type: string
         default: '24g'
+      swap_gb:
+        description: 'Swap file on /mnt in GB (0: none)'
+        type: string
+        default: '16'
+      builder_gc:
+        description: 'Builder GC: g1 or parallel'
+        type: string
+        default: 'g1'
 permissions:
   contents: read
 concurrency:
@@ -27,6 +34,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[web-image]')
     runs-on: ubuntu-24.04
     timeout-minutes: 345
+    env:
+      MM_WEB_HEAP: ${{ inputs.builder_heap || '24g' }}
+      MM_WEB_SWAP_GB: ${{ inputs.swap_gb || '16' }}
+      MM_WEB_GC: ${{ inputs.builder_gc || 'g1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -92,9 +103,10 @@ jobs:
       # built (12 min, 15.5 GB peak) but Chrome refused it: the image heap's 767,914 objects were initialized in nine
       # functions, the largest 57.7 MB, over V8's 7,654,321-byte function limit; 4,000 objects per function instead.
       - name: Add swap on /mnt
+        if: env.MM_WEB_SWAP_GB != '0'
         run: |
           set -euo pipefail
-          sudo fallocate -l 16G /mnt/web-image.swap
+          sudo fallocate -l "${MM_WEB_SWAP_GB}G" /mnt/web-image.swap
           sudo chmod 600 /mnt/web-image.swap
           sudo mkswap /mnt/web-image.swap
           sudo swapon /mnt/web-image.swap
@@ -102,7 +114,6 @@ jobs:
       - name: Web Image build (native-image --tool:svm-wasm, -O2)
         timeout-minutes: 270
         env:
-          MM_WEB_HEAP: ${{ inputs.builder_heap || '24g' }}
           MM_WEB_BUILDER_THREADS: '2'
           MM_WEB_OPT: '2'
           MM_WEB_EXTRA_OPTIONS: >-
@@ -125,6 +136,7 @@ jobs:
           path: |
             packages/web-engine/build/wasm/native-image.log
             packages/web-engine/build/wasm-time*.txt
+            packages/web-engine/build/wasm/wasm-as-time.txt
             packages/web-engine/build/wasm-build-output.json
             packages/web-engine/build/builder-gc.log*
             packages/web-engine/build/watch/

@@ -19,7 +19,8 @@
 # Environment: GRAALVM_HOME (wasm stage; Oracle GraalVM 25.4), MM_WEB_HEAP (builder heap, default 10g),
 # MM_WEB_OPT (native-image optimization level: 2 default, 1, or b for a quick build that needs less memory),
 # MM_WEB_BUILDER_THREADS (default 4; fewer threads compile fewer methods at once, so peak memory is lower),
-# MM_WEB_BUILDER_PATCH (default 1; 0 builds with the stock Web Image builder), MM_WEB_EXTRA_OPTIONS (more
+# MM_WEB_BUILDER_PATCH (default 1; 0 builds with the stock Web Image builder), MM_WEB_GC (g1 default, or parallel),
+# MM_WEB_DEFER_ASSEMBLY (default 1: wasm-as runs after the builder exits), MM_WEB_EXTRA_OPTIONS (more
 # native-image options, e.g. diagnostics), JAVA_HOME for the other stages (JDK 17+).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -108,16 +109,28 @@ stage_wasm() {
     patch=("$(bash "$HERE/builder-patch/build_patch.sh" "$BUILD/builder-patch" | tail -1)"
       -J-Dmagicmobile.webimage.dispatchSkipPackages=mage.,io.magicmobile.)
   fi
+  # Web Image prints the module as text (engine.js.wat) and assembles it with wasm-as while the builder JVM still
+  # holds its heap. wasm_as_deferred.sh records that one command instead, and it runs below once the builder has
+  # exited, so the two never need memory at once. MM_WEB_DEFER_ASSEMBLY=0: the builder assembles it itself.
+  local assembler=()
+  if [[ ${MM_WEB_DEFER_ASSEMBLY:-1} != 0 ]]; then
+    assembler=(-H:WasmAsPath="$HERE/wasm_as_deferred.sh" -EMM_WASM_AS_DEFER -EMM_WASM_AS) # -E: the builder's environment
+    export MM_WASM_AS_DEFER="$out/engine.js.wat" MM_WASM_AS; MM_WASM_AS=$(command -v wasm-as)
+  fi
+  # The driver gives the builder ParallelGC, whose young generation takes up to a third of the heap; with G1 the
+  # long-lived compiled code and image heap can use nearly all of it. MM_WEB_GC=parallel keeps the driver's choice.
+  local gc=()
+  if [[ ${MM_WEB_GC:-g1} == g1 ]]; then gc=(-J-XX:-UseParallelGC -J-XX:+UseG1GC); fi
   local started=$SECONDS
   # --tool:svm-wasm must come first. Options mirror the phone build (native/gluon/pom.xml) where they apply.
   # V8 refuses Wasm functions over 7,654,321 bytes, hence 4,000 image-heap objects per initializer function; the
   # .wat comments (on by default) are never read, and the JS wrapper is small enough to skip Closure.
   "$GRAALVM_HOME/bin/native-image" --tool:svm-wasm \
-    -J-Xmx"$heap" --parallelism="${MM_WEB_BUILDER_THREADS:-4}" \
+    -J-Xmx"$heap" ${gc[@]+"${gc[@]}"} --parallelism="${MM_WEB_BUILDER_THREADS:-4}" \
     -O"${MM_WEB_OPT:-2}" \
     -H:+UnlockExperimentalVMOptions \
     -H:WasmComments=NONE -H:ImageHeapObjectsPerFunction=4000 -H:-ClosureCompiler \
-    ${patch[@]+"${patch[@]}"} \
+    ${patch[@]+"${patch[@]}"} ${assembler[@]+"${assembler[@]}"} \
     -cp "$out/classes:$CP" \
     --initialize-at-run-time=io.magicmobile,mage \
     --initialize-at-build-time="$init" \
@@ -131,6 +144,14 @@ stage_wasm() {
     -H:ReportAnalysisForbiddenType=mage.sets.MagicOnlinePromos:Reachable \
     ${MM_WEB_EXTRA_OPTIONS:-} \
     -o "$out/engine" io.magicmobile.web.WebMain 2>&1 | tee "$out/native-image.log"
+  if [[ -s "$out/engine.js.wat.args" ]]; then
+    local args=() arg assembled=$SECONDS timed=()
+    while IFS= read -r arg; do args+=("$arg"); done < "$out/engine.js.wat.args"
+    # GNU time (CI) records the assembler's own peak memory.
+    if /usr/bin/time -v true >/dev/null 2>&1; then timed=(/usr/bin/time -v -o "$out/wasm-as-time.txt"); fi
+    ${timed[@]+"${timed[@]}"} "$MM_WASM_AS" "${args[@]}" 2>&1 | tee -a "$out/native-image.log"
+    echo "wasm-as after the builder: $((SECONDS - assembled)) s" | tee -a "$out/native-image.log"
+  fi
   [[ -s "$out/engine.js.wasm" ]] || { echo "No engine.js.wasm" >&2; exit 1; }
   echo "wasm build: $((SECONDS - started)) s" | tee -a "$out/native-image.log"
 }

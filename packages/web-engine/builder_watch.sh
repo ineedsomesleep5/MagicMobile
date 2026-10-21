@@ -21,10 +21,12 @@ histo() { # <pid> <label>
 }
 while true; do
   sleep 30
-  pid=$(pgrep -f 'com.oracle.svm.hosted.NativeImageGeneratorRunner' | head -1)
+  # pgrep truncates long command lines (the builder's runs to tens of kilobytes); [G] keeps grep from matching itself.
+  pid=$(grep -l -a 'NativeImage[G]eneratorRunner' /proc/[0-9]*/cmdline 2>/dev/null | head -1 | cut -d/ -f3)
   mem=$(free -m | awk '/Mem:/{printf "used=%sMB avail=%sMB ", $3, $7} /Swap:/{printf "swap=%sMB", $3}')
   rss=; [[ -n $pid ]] && rss=$(ps -o rss= -p "$pid" 2>/dev/null | awk '{printf "%d", $1/1024}')
-  echo "[watch] $(date -u +%T) +$((SECONDS - start))s $mem builder_rss=${rss:-none}MB" >> "$OUT/memory.txt"
+  asm=$(ps -C wasm-as -o rss= 2>/dev/null | awk '{s += $1} END {if (s) printf "%d", s/1024}')
+  echo "[watch] $(date -u +%T) +$((SECONDS - start))s $mem builder_rss=${rss:-none}MB${asm:+ wasm_as_rss=${asm}MB}" >> "$OUT/memory.txt"
   [[ -n $pid && -s $LOG ]] || continue
   for s in 6 7 8; do
     if [[ -z ${taken[$s]:-} ]] && grep -q "\[$s/8\]" "$LOG"; then taken[$s]=1; histo "$pid" "stage$s-start"; [[ $s == 8 ]] && stage8=1; fi
