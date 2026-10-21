@@ -10,9 +10,10 @@
 #   build_web.sh jvm       compile the web mode for HotSpot (build/web-jvm): the JVM harness and the image's input
 #   build_web.sh metadata  reflection metadata (the phone exporter, minus serialization), plus the tracing agent's
 #                          output when build/agent/ exists (see the CI workflow)
-#   build_web.sh wasm      native-image --tool:svm-wasm -> build/wasm (Oracle GraalVM 25.4.4.1.1, which the builder
-#                          patch in builder-patch/ is pinned to, and binaryen's wasm-as). The full engine needs a
-#                          builder heap of several GB: GitHub Actions, never the 8 GB Mac.
+#   build_web.sh wasm      native-image --tool:svm-wasm -> build/wasm (GraalVM 25.4.4.1.1 with the Web Image tool:
+#                          CE with the tool built by ce/build_web_image_tool.sh, or Oracle GraalVM; and binaryen's
+#                          wasm-as). The full engine needs a builder heap of several GB: GitHub Actions, never the
+#                          8 GB Mac.
 #   build_web.sh bundle    build/web for apps/web-play: engine-<hash>.js and engine-<hash>.wasm, named by their
 #                          content so browsers cache them for good, decks, and manifest.json (fetched uncached) naming
 #                          them
@@ -21,8 +22,9 @@
 # Environment: GRAALVM_HOME (wasm stage; Oracle GraalVM 25.4), MM_WEB_HEAP (builder heap, default 10g),
 # MM_WEB_OPT (native-image optimization level: 2 default, 1, or b for a quick build that needs less memory),
 # MM_WEB_BUILDER_THREADS (default 4; fewer threads compile fewer methods at once, so peak memory is lower),
-# MM_WEB_BUILDER_PATCH (default 0, Oracle's builder unmodified; 1: the builder patch, an experiment whose output is
-# not for players, see docs/WEB_ENGINE_M1.md "The licence question"), MM_WEB_GC (parallel default, or g1),
+# MM_WEB_BUILDER_FIXES (the builder fixes in builder-patch/src: none, the default; builtin, a tool built with them by
+# ce/build_web_image_tool.sh; patch, Oracle GraalVM's builder patched at build time, an experiment whose output is not
+# for players, see docs/WEB_ENGINE_M1.md "The licence question"), MM_WEB_GC (parallel default, or g1),
 # MM_WEB_DEFER_ASSEMBLY (default 1: wasm-as runs after the builder exits), MM_WEB_EXTRA_OPTIONS (more
 # native-image options, e.g. diagnostics), JAVA_HOME for the other stages (JDK 17+).
 set -euo pipefail
@@ -47,7 +49,8 @@ upstream_cp() {
   echo "${cp#"$prefix"}"
 }
 toolchain() {
-  if [[ -n "${GRAALVM_HOME:-}" ]]; then "$GRAALVM_HOME/bin/native-image" --version | head -1
+  # All of it: the first line is the same for Oracle GraalVM and GraalVM CE.
+  if [[ -n "${GRAALVM_HOME:-}" ]]; then "$GRAALVM_HOME/bin/native-image" --version | paste -sd';' -
   else echo "${MM_WEB_TOOLCHAIN:?Set GRAALVM_HOME (or MM_WEB_TOOLCHAIN for a JVM-only build)}"; fi
 }
 
@@ -103,15 +106,25 @@ stage_wasm() {
   local configs=(-H:ReflectionConfigurationFiles="$BUILD/metadata/exporter/reflect-config.json")
   if [[ -d "$BUILD/agent" ]]; then configs+=(-H:ConfigurationFileDirectories="$BUILD/agent"); fi
   local init; init=$(paste -sd, "$ENGINE/native/gluon/buildtime-enums.txt")
-  # The builder patch (builder-patch/build_patch.sh), opt-in: compiled methods release their compiler graphs, no
-  # comments are kept for the .wat, and engine fields get no unsafe access dispatch entries (nothing reaches them
-  # through Unsafe; check_skip_packages.py checks it). It modifies Oracle's builder: experiments only.
-  local patch=()
-  if [[ ${MM_WEB_BUILDER_PATCH:-0} == 1 ]]; then
-    python3 "$HERE/builder-patch/check_skip_packages.py" "$out/classes:$CP" mage. io.magicmobile.
-    patch=("$(bash "$HERE/builder-patch/build_patch.sh" "$BUILD/builder-patch" | tail -1)"
-      -J-Dmagicmobile.webimage.dispatchSkipPackages=mage.,io.magicmobile.)
-  fi
+  # The builder fixes (builder-patch/src): compiled methods release their compiler graphs, no comments are kept for
+  # the .wat, and engine fields get no unsafe access dispatch entries (nothing reaches them through Unsafe;
+  # check_skip_packages.py checks it). builtin: the tool was built with them (CE, ce/build_web_image_tool.sh);
+  # patch: Oracle's builder, patched at build time (experiments only).
+  local patch=() fixes=${MM_WEB_BUILDER_FIXES:-none}
+  case $fixes in
+    none) ;;
+    builtin|patch)
+      python3 "$HERE/builder-patch/check_skip_packages.py" "$out/classes:$CP" mage. io.magicmobile.
+      patch=(-J-Dmagicmobile.webimage.dispatchSkipPackages=mage.,io.magicmobile.)
+      if [[ $fixes == patch ]]; then
+        patch+=("$(bash "$HERE/builder-patch/build_patch.sh" "$BUILD/builder-patch" | tail -1)")
+      else
+        unzip -p "$GRAALVM_HOME/lib/svm/tools/svm-wasm/builder/svm-wasm.jar" \
+          com/oracle/svm/hosted/webimage/wasmgc/codegen/WasmGCHeapWriter.class | grep -a -q 'MagicMobile builder patch' ||
+          { echo "MM_WEB_BUILDER_FIXES=builtin, but $GRAALVM_HOME's Web Image tool was built without the fixes" >&2; exit 1; }
+      fi ;;
+    *) echo "MM_WEB_BUILDER_FIXES must be none, builtin or patch" >&2; exit 2 ;;
+  esac
   # Web Image prints the module as text (engine.js.wat) and assembles it with wasm-as while the builder JVM still
   # holds its heap. wasm_as_deferred.sh records that one command instead, and it runs below once the builder has
   # exited, so the two never need memory at once. MM_WEB_DEFER_ASSEMBLY=0: the builder assembles it itself.

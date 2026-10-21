@@ -59,5 +59,9 @@ for jar in svm-wasm.jar svm-wasm-jimfs.jar svm-wasm-guava.jar; do
 done
 props=$(find graal/web-image/mxbuild -name native-image.properties | head -1)
 [[ -n $props ]] || { echo "No native-image.properties under graal/web-image/mxbuild" >&2; exit 1; }
-cp "$props" "$dest/native-image.properties"
-echo "Installed the Web Image tool into $dest:"; ls -la "$dest" "$dest/builder"; cat "$dest/native-image.properties" | head -5
+# CE's runtime image has an empty placeholder module named org.graalvm.extraimage.builder (Oracle's has none), and a
+# runtime-image module wins over the same name on the builder's module path, so the tool's jar must replace it.
+awk '{ print } /^JavaArgs = \\$/ { print "  --upgrade-module-path\\=${.}/builder/svm-wasm.jar \\"; n++ } END { exit n == 1 ? 0 : 1 }' \
+  "$props" > "$dest/native-image.properties" || { echo "No JavaArgs line in $props" >&2; exit 1; }
+echo "Installed the Web Image tool into $dest:"; ls -la "$dest/builder"
+grep -n 'upgrade-module-path\|ImageBuilderModulePath' "$dest/native-image.properties"

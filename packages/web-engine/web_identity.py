@@ -4,17 +4,17 @@
 The phone identity (packages/ondevice-engine/scripts/engine_build_identity.py) covers the adapter sources, the
 upstream pin and its patch scripts. The web build changes the engine's behaviour beyond those (an inline AI search
 on one thread, other stop checks), so it hashes the phone identity together with every web-only input: the
-rewriter, the web sources, the build script (its native-image options), the builder patch and the toolchain. Ranked
-rows must name this value, never the phone's.
+rewriter, the web sources, the build script (its native-image options), the builder fixes, the CE tool build and the
+full toolchain version (Oracle GraalVM and GraalVM CE differ). Ranked rows must name this value, never the phone's.
 
-    web_identity.py --toolchain "<native-image --version first line>" --output <generated Java source root>
+    web_identity.py --toolchain "<native-image --version, lines joined>" --output <generated Java source root>
 """
 import argparse, hashlib, importlib.util
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ENGINE = HERE.parent / 'ondevice-engine'
-WEB_INPUTS = ('web_sources.py', 'web_identity.py', 'build_web.sh', 'builder-patch', 'src', 'src-svm')
+WEB_INPUTS = ('web_sources.py', 'web_identity.py', 'build_web.sh', 'builder-patch', 'ce', 'src', 'src-svm')
 
 
 def phone_identity() -> str:

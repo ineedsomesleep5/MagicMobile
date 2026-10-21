@@ -1,9 +1,11 @@
 name: Web engine (GraalVM Web Image)
-# The real XMage adapter compiled to WebAssembly for desktop browsers (docs/WEB_ENGINE_M1.md). It runs on GitHub's
-# free 16 GB runner. By default with Oracle GraalVM's builder unmodified, as its licence (GFTC) requires: a 24 GB heap
-# over 16 GB of swap. The builder patch (packages/web-engine/builder-patch) fits 12 GB with no swap, but patches
-# Oracle's builder, so it is opt-in for experiments ([builder-patch] in the commit message, or dispatch) and its
-# bundles are not for players ("The licence question" in the doc).
+# The real XMage adapter compiled to WebAssembly for desktop browsers (docs/WEB_ENGINE_M1.md). It runs free on
+# GitHub's 16 GB runner, by default on all-open-source tools: GraalVM Community Edition (GPLv2 with the Classpath
+# Exception) and the Web Image tool built from oracle/graal at CE's commit with the builder fixes in its source
+# (packages/web-engine/ce/build_web_image_tool.sh), which fit a 12 GB heap with no swap.
+# Oracle GraalVM, whose licence (GFTC) allows use unmodified, stays selectable: [oracle] in the commit message (or
+# dispatch toolchain=oracle) builds with its stock builder over 16 GB of swap; [builder-patch] patches its builder at
+# build time, an experiment whose bundle is not for players ("The licence question" in the doc).
 #
 # Rebuilds on its own when engine inputs change on main, but skips inputs it has already built (the plan job's key);
 # on claude/web-engine-* branches when the commit message has [web-image]; or by hand. Ships nothing to players: the
@@ -22,12 +24,21 @@ on:
       - '.github/workflows/magicmobile-web-image.yml'
   workflow_dispatch:
     inputs:
+      toolchain:
+        description: 'ce (GraalVM CE + Web Image built from source, the default) or oracle (Oracle GraalVM over swap)'
+        type: choice
+        options: ['ce', 'oracle']
+        default: 'ce'
+      builder_patch:
+        description: 'Experiment, Oracle only: patch its builder (12 GB, no swap); the bundle is not for players'
+        type: boolean
+        default: false
       force:
         description: 'Build even if a bundle for these inputs already exists'
         type: boolean
         default: false
       phone_regressions:
-        description: 'Also run the phone real-engine regressions (test_real_engine.sh, about 30 minutes)'
+        description: 'Also run the phone real-engine regressions (test_real_engine.sh, about 10 minutes)'
         type: boolean
         default: false
       builder_heap:
@@ -35,13 +46,9 @@ on:
         type: string
         default: ''
       swap_gb:
-        description: 'Add a swap file on /mnt of this many GB (0: none)'
+        description: 'Add a swap file on /mnt of this many GB (0: none; Oracle stock always gets 16)'
         type: string
         default: '0'
-      builder_patch:
-        description: 'Experiment: build with the builder patch (12 GB, no swap); its bundle is not for players'
-        type: boolean
-        default: false
       diagnostics:
         description: 'Builder heap histograms (builder_watch.sh) and native memory tracking; slows the build'
         type: boolean
@@ -52,6 +59,9 @@ permissions:
 concurrency:
   group: web-image-${{ github.ref }}
   cancel-in-progress: false
+env:
+  CE_VERSION: '25.4.4.1.1'
+  CE_ARCHIVE: graalvm-community-jdk-25i4-25.0.4.1.1_linux-x64_bin.tar.gz
 jobs:
   plan:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[web-image]')
@@ -59,19 +69,22 @@ jobs:
     timeout-minutes: 10
     outputs:
       key: ${{ steps.key.outputs.key }}
-      bundle: ${{ steps.key.outputs.bundle }}
+      toolchain: ${{ steps.key.outputs.toolchain }}
       patch: ${{ steps.key.outputs.patch }}
+      bundle: ${{ steps.key.outputs.bundle }}
       build: ${{ steps.key.outputs.build }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - id: key
-        name: Key the build by its inputs; skip inputs that already have a bundle
+        name: Key the build by its inputs and toolchain; skip what already has a bundle
         env:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ inputs.force }}
-          WANT_PATCH: ${{ inputs.builder_patch || contains(github.event.head_commit.message, '[builder-patch]') }}
+          TOOLCHAIN: ${{ inputs.toolchain || 'ce' }}
+          PATCH_INPUT: ${{ inputs.builder_patch }}
+          MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           # Git's hash of each input tree (the on.push.paths list; this file names the toolchain versions).
@@ -79,9 +92,14 @@ jobs:
                          packages/ondevice-engine/scripts packages/ondevice-engine/upstream.lock.json packages/web-engine \
                          .github/workflows/magicmobile-web-image.yml; do echo "$p $(git rev-parse "HEAD:$p")"; done |
                 sha256sum | cut -c1-16)
-          # Patched-builder experiments get their own name, so they never stand in for a licence-clean bundle.
-          bundle=web-engine-bundle-$key; [[ $WANT_PATCH == true ]] && bundle=$bundle-patched
-          { echo "key=$key"; echo "bundle=$bundle"; echo "patch=$WANT_PATCH"; } >> "$GITHUB_OUTPUT"
+          patch=false
+          [[ $MESSAGE == *'[oracle]'* ]] && TOOLCHAIN=oracle
+          if [[ $PATCH_INPUT == true || $MESSAGE == *'[builder-patch]'* ]]; then TOOLCHAIN=oracle patch=true; fi
+          # Each toolchain gets its own bundle name; a patched-builder experiment can never stand in for another.
+          bundle=web-engine-bundle-$key
+          if [[ $TOOLCHAIN == oracle ]]; then bundle=$bundle-oracle; fi
+          if [[ $patch == true ]]; then bundle=$bundle-patched; fi
+          { echo "key=$key"; echo "toolchain=$TOOLCHAIN"; echo "patch=$patch"; echo "bundle=$bundle"; } | tee -a "$GITHUB_OUTPUT"
           existing=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$bundle" \
             --jq '[.artifacts[] | select(.expired | not)] | length')
           if [[ $FORCE == true || $existing == 0 ]]; then
@@ -119,7 +137,29 @@ jobs:
       - name: Phone real-engine regressions (unchanged by the web build)
         if: inputs.phone_regressions || contains(github.event.head_commit.message, '[phone-regressions]')
         run: bash packages/ondevice-engine/scripts/test_real_engine.sh
+      - name: GraalVM CE, pinned and checksummed
+        if: needs.plan.outputs.toolchain == 'ce'
+        run: |
+          set -euo pipefail
+          U="https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-$CE_VERSION/$CE_ARCHIVE"
+          curl -sSfL -o "$RUNNER_TEMP/$CE_ARCHIVE" "$U" && curl -sSfL -o "$RUNNER_TEMP/$CE_ARCHIVE.sha256" "$U.sha256"
+          echo "$(tr -d ' \n' < "$RUNNER_TEMP/$CE_ARCHIVE.sha256")  $RUNNER_TEMP/$CE_ARCHIVE" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/graalvm-ce" && tar xzf "$RUNNER_TEMP/$CE_ARCHIVE" -C "$RUNNER_TEMP/graalvm-ce" --strip-components 1
+          rm "$RUNNER_TEMP/$CE_ARCHIVE"
+          echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm-ce" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/graalvm-ce/bin" >> "$GITHUB_PATH"
+      # The Web Image tool, built from oracle/graal with the builder fixes, only changes with them or with CE.
+      - id: tool-cache
+        if: needs.plan.outputs.toolchain == 'ce'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/graalvm-ce/lib/svm/tools/svm-wasm
+          key: web-image-ce-tool-${{ env.CE_VERSION }}-${{ hashFiles('packages/web-engine/builder-patch/src/**', 'packages/web-engine/builder-patch/rebase.sh', 'packages/web-engine/ce/build_web_image_tool.sh') }}
+      - name: Build the Web Image tool from oracle/graal into CE (cache miss)
+        if: needs.plan.outputs.toolchain == 'ce' && steps.tool-cache.outputs.cache-hit != 'true'
+        run: bash packages/web-engine/ce/build_web_image_tool.sh "$GRAALVM_HOME" "$RUNNER_TEMP/ce-tool"
       - uses: graalvm/setup-graalvm@v1
+        if: needs.plan.outputs.toolchain == 'oracle'
         with:
           version: '25.4'
           distribution: 'graalvm'
@@ -137,12 +177,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Toolchain smoke test (a probe program prints the same in Wasm as on the JVM)
+        run: |
+          set -euo pipefail
+          native-image --version
+          probe="$RUNNER_TEMP/probe"; mkdir -p "$probe/out"
+          "$GRAALVM_HOME/bin/javac" -d "$probe/classes" packages/web-engine/ce/probe/Probe.java
+          jvm=$("$GRAALVM_HOME/bin/java" -cp "$probe/classes" Probe)
+          native-image --tool:svm-wasm -J-Xmx3g -H:+UnlockExperimentalVMOptions -H:WasmComments=NONE -H:-ClosureCompiler \
+            -H:ReflectionConfigurationFiles=packages/web-engine/ce/probe/reflect-config.json -cp "$probe/classes" \
+            -o "$probe/out/probe" Probe > "$probe/build.log" 2>&1 || { cat "$probe/build.log"; exit 1; }
+          wasm=$(node "$probe/out/probe.js" | tail -1)
+          echo "JVM:  $jvm"; echo "Wasm: $wasm"
+          [[ "$jvm" == "$wasm" ]]
       - name: Web sources, JVM compile and the web mode's own game check (no engine thread may start)
         env:
           JAVA_HOME: ${{ env.GRAALVM_HOME }}
         run: |
           set -euo pipefail
-          native-image --version
           wasm-as --version
           bash packages/web-engine/build_web.sh sources
           bash packages/web-engine/build_web.sh jvm
@@ -155,25 +207,28 @@ jobs:
             --agent "$PWD/packages/web-engine/build/agent" --out packages/web-engine/build/metrics/ci-jvm-web.json
           bash packages/web-engine/build_web.sh metadata
       # The settings, and each run that led to them, are in docs/WEB_ENGINE_M1.md ("Fitting the free runner").
-      - name: Choose the build settings (the stock builder over swap, or the patched builder)
-        id: settings
+      - name: Choose the build settings
         env:
+          TOOLCHAIN: ${{ needs.plan.outputs.toolchain }}
+          PATCH: ${{ needs.plan.outputs.patch }}
           HEAP_OVERRIDE: ${{ inputs.builder_heap }}
           SWAP_GB: ${{ inputs.swap_gb || '0' }}
-          WANT_PATCH: ${{ needs.plan.outputs.patch }}
         run: |
           set -euo pipefail
-          if [[ $WANT_PATCH != true ]]; then
-            echo "Oracle GraalVM's builder, unmodified, over swap (the licence-clean default)"
-            patch=0 heap=${HEAP_OVERRIDE:-24g} gc=parallel swap=16
+          if [[ $TOOLCHAIN == ce ]]; then
+            echo "GraalVM CE with the Web Image tool built from source, builder fixes in it (the default)"
+            fixes=builtin heap=${HEAP_OVERRIDE:-12g} gc=g1 swap=$SWAP_GB
+          elif [[ $PATCH != true ]]; then
+            echo "Oracle GraalVM's builder, unmodified, over swap"
+            fixes=none heap=${HEAP_OVERRIDE:-24g} gc=parallel swap=16
           elif bash packages/web-engine/builder-patch/build_patch.sh --check; then
-            echo "::warning::Experiment: the patched builder. This bundle is not for players (docs/WEB_ENGINE_M1.md, \"The licence question\")."
-            patch=1 heap=${HEAP_OVERRIDE:-12g} gc=g1 swap=$SWAP_GB
+            echo "::warning::Experiment: Oracle GraalVM's builder patched. This bundle is not for players (docs/WEB_ENGINE_M1.md, \"The licence question\")."
+            fixes=patch heap=${HEAP_OVERRIDE:-12g} gc=g1 swap=$SWAP_GB
           else
             echo "::error::The builder patch does not match this GraalVM; move it with packages/web-engine/builder-patch/rebase.sh."
             exit 1
           fi
-          { echo "MM_WEB_BUILDER_PATCH=$patch"; echo "MM_WEB_HEAP=$heap"; echo "MM_WEB_GC=$gc"; echo "MM_WEB_SWAP_GB=$swap"; } | tee -a "$GITHUB_ENV"
+          { echo "MM_WEB_BUILDER_FIXES=$fixes"; echo "MM_WEB_HEAP=$heap"; echo "MM_WEB_GC=$gc"; echo "MM_WEB_SWAP_GB=$swap"; } | tee -a "$GITHUB_ENV"
       - name: Add swap on /mnt
         if: env.MM_WEB_SWAP_GB != '0'
         run: |
@@ -206,7 +261,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: web-engine-evidence-${{ needs.plan.outputs.key }}${{ needs.plan.outputs.patch == 'true' && '-patched' || '' }}-${{ github.run_attempt }}
+          name: ${{ needs.plan.outputs.bundle }}-evidence-${{ github.run_attempt }}
           path: |
             packages/web-engine/build/wasm/native-image.log
             packages/web-engine/build/wasm-time*.txt
