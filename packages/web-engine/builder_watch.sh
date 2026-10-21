@@ -2,15 +2,16 @@
 # Watches a running Web Image build (CI only, docs/WEB_ENGINE_M1.md "Fitting the free runner") and records where the
 # builder's memory goes, so a cut can be judged by measurement rather than by the build output's "@ GiB" peaks:
 #   - every 30 s: RAM, swap and the builder JVM's resident set;
-#   - at the start of stages 6, 7 and 8, then every MM_WATCH_EVERY seconds (default 240) during stage 8: a live-object
-#     class histogram (jcmd GC.class_histogram, which runs a full GC first) and, when the builder runs with
+#   - when stages 5, 6 and 7 end (without a terminal, native-image prints a stage's line only when the stage ends),
+#     then every MM_WATCH_EVERY seconds (default 120) while stage 8 writes the image: a live-object class histogram
+#     (jcmd GC.class_histogram, which runs a full GC first) and, when the builder runs with
 #     -XX:NativeMemoryTracking=summary, the JVM's native memory summary.
 #   builder_watch.sh <native-image.log> <output dir>      (runs until killed; start it in the background)
 set -uo pipefail
-LOG=$1 OUT=$2 EVERY=${MM_WATCH_EVERY:-240}
+LOG=$1 OUT=$2 EVERY=${MM_WATCH_EVERY:-120}
 JCMD="${GRAALVM_HOME:+$GRAALVM_HOME/bin/}jcmd"
 mkdir -p "$OUT"
-start=$SECONDS last_histo=-100000 stage8=
+start=$SECONDS last_histo=-100000 writing=
 declare -A taken=()
 histo() { # <pid> <label>
   local t0=$SECONDS f="$OUT/histo-$(printf '%04d' $((SECONDS - start)))s-$2.txt"
@@ -29,8 +30,8 @@ while true; do
   asm=$(ps -C wasm-as -o rss= 2>/dev/null | awk '{s += $1} END {if (s) printf "%d", s/1024}')
   echo "[watch] $(date -u +%T) +$((SECONDS - start))s $mem builder_rss=${rss:-none}MB${asm:+ wasm_as_rss=${asm}MB}" >> "$OUT/memory.txt"
   [[ -n $pid && -s $LOG ]] || continue
-  for s in 6 7 8; do
-    if [[ -z ${taken[$s]:-} ]] && grep -q "\[$s/8\]" "$LOG"; then taken[$s]=1; histo "$pid" "stage$s-start"; [[ $s == 8 ]] && stage8=1; fi
+  for s in 5 6 7; do
+    if [[ -z ${taken[$s]:-} ]] && grep -q "\[$s/8\]" "$LOG"; then taken[$s]=1; histo "$pid" "after-stage$s"; [[ $s == 7 ]] && writing=1; fi
   done
-  if [[ -n $stage8 ]] && (( SECONDS - last_histo >= EVERY )); then histo "$pid" stage8; fi
+  if [[ -n $writing ]] && (( SECONDS - last_histo >= EVERY )); then histo "$pid" stage8; fi
 done

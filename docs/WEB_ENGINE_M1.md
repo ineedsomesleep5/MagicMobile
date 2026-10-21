@@ -68,7 +68,7 @@ What fills the build, and how it came to fit the free runner without swap: next 
 Branch `claude/web-engine-heap` (Claude). **The build now fits GitHub's free 16 GB runner without swap**, in about
 34 minutes for the whole job: run [39626530141](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626530141)
 built with a 12 GB builder heap on G1, peaked at 13.2 GiB of builder memory (14.5 of the runner's 16 GB in use, the
-runner's own small swap file untouched), and its live heap topped out near 10 GB. The module also shrank from
+runner's own small swap file untouched); its live heap peaks at about 9 GB. The module also shrank from
 174.4 MB to 136.7 MB. It takes a patch to GraalVM's Web Image builder: with the stock builder the same settings run
 out of heap (run [39628671876](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628671876)), and **Oracle
 licenses Oracle GraalVM for use unmodified** (below), so whether builds made this way may ship is Caleb's decision.
@@ -131,7 +131,7 @@ compiling**; while writing the image the heap in use rose to 14.4 GB (no full co
 
 | Change | Where | Effect |
 |---|---|---|
-| **Builder patch**: compiled methods release their compiler graphs; no comment strings or nodes kept for the `.wat` with `-H:WasmComments=NONE`; no dispatch entries for fields of `mage.*` and `io.magicmobile.*` unless the analysis registered them as unsafe-accessed | `packages/web-engine/builder-patch/` (8 classes of oracle/graal `95ce1499`, changes marked `MagicMobile`) | heap in use at the peak ~14.4 → ~10 GB; 2.78 million dispatch entries and ~48,000 accessor functions gone; module −37 MB |
+| **Builder patch**: compiled methods release their compiler graphs; no comment strings or nodes kept for the `.wat` with `-H:WasmComments=NONE`; no dispatch entries for fields of `mage.*` and `io.magicmobile.*` unless the analysis registered them as unsafe-accessed | `packages/web-engine/builder-patch/` (8 classes of oracle/graal `95ce1499`, changes marked `MagicMobile`) | heap in use at the peak ~14.4 → ~9 GB (6.3 GB after compiling, from 10.0); 2.78 million dispatch entries and ~48,000 accessor functions gone; module −37 MB |
 | **`wasm-as` after the builder exits**: Web Image's `-H:WasmAsPath` points at `wasm_as_deferred.sh`, which records the final assembly; `build_web.sh` runs it once the JVM has exited | `packages/web-engine/wasm_as_deferred.sh`, `build_web.sh` | the assembler's 6.3 GB no longer adds to the builder's |
 | **G1** for the builder instead of the driver's ParallelGC | `build_web.sh` (`MM_WEB_GC`) | the old generation can use nearly all of the heap |
 | The options every working build needs (`-H:WasmComments=NONE`, `-H:ImageHeapObjectsPerFunction=4000`, `-H:-ClosureCompiler`) moved from the workflow into `build_web.sh`; the web engine identity now also covers `build_web.sh` and the patch | `build_web.sh`, `web_identity.py` | |
@@ -157,12 +157,16 @@ left after full or mixed collections in the image-writing stage.
 | [39618901221](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39618901221) A | stock, ParallelGC | 24 GB over 16 GB swap | 18m20s | ≤ 14.4 GB | 14.6 GiB RSS, 14.9 GB swap | 174.4 / 44.9 MB | built (baseline, with analysis reports) |
 | [39621928534](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39621928534) B | patch: comments, dispatch | 24 GB over 16 GB swap, ParallelGC | 12m50s | ≤ 12.0 GB | 14.7 GiB RSS, 12.2 GB swap | 136.9 / 43.3 MB | built; 10 of 10 games in Chrome |
 | [39626468418](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626468418) C | full patch, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 9m47s | (G1 not pressed) | 14.8 GiB RSS; `wasm-as` 6.3 GB alone | 136.9 / 43.1 MB | built |
-| [39626530141](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626530141) **D** | full patch, deferred `wasm-as`, G1 | **12 GB, no swap** | 10m48s | ~9–10 GB | **13.2 GiB RSS**, 14.5 of 16 GB in use, 0 swap | 136.7 / 43.3 MB | **built; the target configuration** |
+| [39626530141](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39626530141) **D** | full patch, deferred `wasm-as`, G1 | **12 GB, no swap** | 10m48s | ~9 GB | **13.2 GiB RSS**, 14.5 of 16 GB in use, 0 swap | 136.7 / 43.3 MB | **built; the target configuration** |
 | [39628671876](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628671876) F | stock, deferred `wasm-as`, G1 | 13 GB, no swap | — | > 13 GB | 15.5 of 16 GB in use | — | `OutOfMemoryError: Java heap space` writing the image |
 | [39628668397](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628668397) E | stock, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 21m55s | ~12.3–12.9 GB | 14.7 GiB RSS, 12.7 GB swap; `wasm-as` 7.1 GB alone | 174.4 / 45.1 MB | built; GC 20% of the time |
+| [39633234887](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39633234887) H | full patch, deferred `wasm-as`, G1 | 11 GB, no swap | 10m48s | 6.3 GB after compiling, ~8.4–9.3 GB writing | 12.3 GiB RSS, 13.6 of 16 GB in use, 0 swap | — | built; GC 5.8%, histograms |
 | [39628789815](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39628789815) G | stock at `-Os`, deferred `wasm-as`, G1 | 24 GB over 16 GB swap | 15m49s | ~16.4 GB | 14.8 GiB RSS, 11.3 GB swap | 174.3 / 45.0 MB | built; `-Os` saves nothing here |
 
-GC took 29 s of D's build (4.4%), against 167 s for A. The Web Image step took 12 minutes in D and 19 in A (22 in
+With the patch the live heap is 6.3 GB after compiling (10.0 GB stock: the released graphs) and about 8.4–9.3 GB at
+its peak, while the image is written. The workflow uses 12 GB, leaving about 3 GB of heap for a growing card pool;
+11 GB (run H) also works and leaves 2.4 GB of RAM free instead of 1.5. GC took 29 s of D's build (4.4%), against
+167 s for A. The Web Image step took 12 minutes in D and 19 in A (22 in
 M1); the whole job about 34 minutes, of which the JVM games that feed the tracing agent take 10–17.
 
 ### The fitted engine in Chrome

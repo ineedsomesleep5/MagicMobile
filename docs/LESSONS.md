@@ -148,8 +148,9 @@ contradicting one.
   patched-builder output is Caleb's call. Where: docs/WEB_ENGINE_M1.md, "Fitting the free runner".
 - 2026-10-21 (Claude, web engine heap): build-machine traps. The native-image driver gives the builder a clean
   environment, so a `-H:WasmAsPath` wrapper sees your variables only if passed with `-E<NAME>`. Later
-  `-J-XX:-UseParallelGC -J-XX:+UseG1GC` override the driver's ParallelGC. `pgrep -f` and `/proc/*/cmdline` don't find
-  the builder (argument file; procps truncates): take the largest `java` process. Web Image output differs by a few KB
+  `-J-XX:-UseParallelGC -J-XX:+UseG1GC` override the driver's ParallelGC. In CI neither `pgrep -f` nor grepping
+  `/proc/*/cmdline` found the builder by its main class: take the largest `java` process. Without a terminal,
+  native-image prints each `[N/8]` line only when that stage ends. Web Image output differs by a few KB
   between identical builds, so content-hashed names change on every rebuild: rebuild only for changed inputs. To
   compile copies of builder classes, use the class path of every jar in `lib/svm`, `--add-exports` for every package
   of `jdk.internal.vm.ci` (also to `jdk.graal.compiler`) and `jdk.graal.compiler`, and diff `javap -c` against the
