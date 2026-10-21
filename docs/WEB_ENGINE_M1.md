@@ -196,6 +196,7 @@ resident memory and the runner's RAM in use.
 | [39635835998](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39635835998) **final** | the committed workflow and branch, with the phone regressions | 12 GB, no swap | 10m36s | — | 13.2 GiB RSS, 14.5 of 16 GB in use, 0 swap | 136.8 / 43.2 MB | built; phone regressions passed; 39 min in all |
 | [39652956935](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39652956935) S | Oracle with the patch (meant as stock: its commit body named the patch tag) | 12 GB, no swap | 9m55s | — | 13.3 GiB RSS, 0 swap | 137.0 / 43.0 MB | built; led to reading tags from the subject only |
 | [39657809739](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39657809739) **CE** | **GraalVM CE + the tool built from source with the fixes**, deferred `wasm-as`, G1 | **12 GB, no swap** | 11m28s | — | **13.2 GiB RSS, 14.5 of 16 GB in use, 0 swap** | 136.8 / 43.1 MB | **built; the default from now on; 37 min in all (tool 1.5 min)** |
+| [39664967878](https://github.com/ineedsomesleep5/MagicMobile/actions/runs/39664967878) **final CE** | the committed branch, default settings | 12 GB, no swap | 9m54s | — | 13.2 GiB RSS, 14.5 of 16 GB in use, 0 swap | 136.9 / 43.1 MB | built; 31 min in all; bundle `web-engine-bundle-ccd762ba2379153e` |
 
 With the patch the live heap is 6.3 GB after compiling (10.0 GB stock: the released graphs) and about 8.4–9.3 GB at
 its peak, while the image is written. The workflow uses 12 GB, leaving about 3 GB of heap for a growing card pool;
