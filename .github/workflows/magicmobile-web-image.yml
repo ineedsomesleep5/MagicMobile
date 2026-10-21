@@ -1,43 +1,92 @@
 name: Web engine (GraalVM Web Image)
-# Milestone M1 (docs/WEB_ENGINE_M1.md): the real XMage adapter compiled to WebAssembly for desktop browsers.
-# Manual only (dispatch, or a push to a web-engine branch whose commit message has [web-image]): the full engine's
-# Web Image build needs a ~10 GB builder heap, so it runs here, never on the 8 GB Mac.
-# Ships nothing to players. The bundle artifact (build/web) is benchmarked locally with apps/web-play.
+# The real XMage adapter compiled to WebAssembly for desktop browsers (docs/WEB_ENGINE_M1.md). It runs on GitHub's
+# free 16 GB runner: the builder patch (packages/web-engine/builder-patch) brings the build's memory under 16 GB with
+# no swap. If a GraalVM update leaves the patch behind, the build falls back to the stock builder over swap (slower,
+# with little headroom) and warns, so engine updates still rebuild by themselves.
+#
+# Rebuilds on its own when engine inputs change on main, but skips inputs it has already built (the plan job's key);
+# on claude/web-engine-* branches when the commit message has [web-image]; or by hand. Ships nothing to players: the
+# bundle artifact (engine-<hash>.js and .wasm, decks, manifest.json) is what a web host serves (M3).
 on:
   push:
-    branches: ['claude/web-engine-*']
+    branches: [main, 'claude/web-engine-*']
+    # The engine's inputs; keep in step with the plan job's key.
+    paths:
+      - 'packages/ondevice-engine/engine/**'
+      - 'packages/ondevice-engine/platform/**'
+      - 'packages/ondevice-engine/native/**'
+      - 'packages/ondevice-engine/scripts/**'
+      - 'packages/ondevice-engine/upstream.lock.json'
+      - 'packages/web-engine/**'
+      - '.github/workflows/magicmobile-web-image.yml'
   workflow_dispatch:
     inputs:
+      force:
+        description: 'Build even if a bundle for these inputs already exists'
+        type: boolean
+        default: false
       phone_regressions:
         description: 'Also run the phone real-engine regressions (test_real_engine.sh, about 30 minutes)'
         type: boolean
         default: false
       builder_heap:
-        description: 'native-image builder heap (-Xmx)'
+        description: 'Override the builder heap (-Xmx), e.g. 13g'
         type: string
-        default: '24g'
+        default: ''
       swap_gb:
-        description: 'Swap file on /mnt in GB (0: none)'
+        description: 'Add a swap file on /mnt of this many GB (0: none)'
         type: string
-        default: '16'
-      builder_gc:
-        description: 'Builder GC: g1 or parallel'
-        type: string
-        default: 'g1'
+        default: '0'
+      diagnostics:
+        description: 'Builder heap histograms (builder_watch.sh) and native memory tracking; slows the build'
+        type: boolean
+        default: false
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: web-image-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  plan:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[web-image]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      build: ${{ steps.key.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: key
+        name: Key the build by its inputs; skip inputs that already have a bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          # Git's hash of each input tree (the on.push.paths list; this file names the toolchain versions).
+          key=$(for p in packages/ondevice-engine/engine packages/ondevice-engine/platform packages/ondevice-engine/native \
+                         packages/ondevice-engine/scripts packages/ondevice-engine/upstream.lock.json packages/web-engine \
+                         .github/workflows/magicmobile-web-image.yml; do echo "$p $(git rev-parse "HEAD:$p")"; done |
+                sha256sum | cut -c1-16)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=web-engine-bundle-$key" \
+            --jq '[.artifacts[] | select(.expired | not)] | length')
+          if [[ $FORCE == true || $existing == 0 ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::web-engine-bundle-$key already exists for these inputs; not rebuilding (dispatch with force to rebuild)"
+          fi
   web-image:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[web-image]')
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 345
     env:
-      MM_WEB_HEAP: ${{ inputs.builder_heap || '24g' }}
-      MM_WEB_SWAP_GB: ${{ inputs.swap_gb || '16' }}
-      MM_WEB_GC: ${{ inputs.builder_gc || 'g1' }}
+      MM_WEB_BUILD_KEY: ${{ needs.plan.outputs.key }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -94,14 +143,21 @@ jobs:
           node apps/web-play/scripts/jvm-baseline.mjs --web --games 2p:1,4p:2 --cap 600 \
             --agent "$PWD/packages/web-engine/build/agent" --out packages/web-engine/build/metrics/ci-jvm-web.json
           bash packages/web-engine/build_web.sh metadata
-      # Run 39482806260 ran out of a 10 GB heap compiling with 4 threads. Run 39495674113 compiled with 2 threads and laid
-      # out methods within 12 GB at -O2 and -Ob alike, then ran out building the Wasm module (stage 8/8). This run gives
-      # the builder 14 GB backed by swap on /mnt (the runner has about 16 GB of RAM), drops the per-instruction comments
-      # Web Image keeps for its .wat text (-H:WasmComments=NONE) and skips the Closure pass over the small JS wrapper.
-      # Run 39511250420 then spent 43 min in WasmGCHeapWriter at the 12.7 GB usable-heap limit (swap unused) until the
-      # watchdog stopped it. Now: a 24 GB heap that spills into 16 GB of swap, watchdog off, up to 4.5 h. Run 39546958975
-      # built (12 min, 15.5 GB peak) but Chrome refused it: the image heap's 767,914 objects were initialized in nine
-      # functions, the largest 57.7 MB, over V8's 7,654,321-byte function limit; 4,000 objects per function instead.
+      # The settings, and each run that led to them, are in docs/WEB_ENGINE_M1.md ("Fitting the free runner").
+      - name: Choose the build settings (builder patch, or the stock builder over swap)
+        id: settings
+        env:
+          HEAP_OVERRIDE: ${{ inputs.builder_heap }}
+          SWAP_GB: ${{ inputs.swap_gb || '0' }}
+        run: |
+          set -euo pipefail
+          if bash packages/web-engine/builder-patch/build_patch.sh --check; then
+            patch=1 heap=${HEAP_OVERRIDE:-12g} gc=g1 swap=$SWAP_GB
+          else
+            echo "::warning::The builder patch does not match this GraalVM: building with the stock builder over 16 GB of swap. Re-apply the patch (packages/web-engine/builder-patch/build_patch.sh)."
+            patch=0 heap=${HEAP_OVERRIDE:-24g} gc=parallel swap=16
+          fi
+          { echo "MM_WEB_BUILDER_PATCH=$patch"; echo "MM_WEB_HEAP=$heap"; echo "MM_WEB_GC=$gc"; echo "MM_WEB_SWAP_GB=$swap"; } | tee -a "$GITHUB_ENV"
       - name: Add swap on /mnt
         if: env.MM_WEB_SWAP_GB != '0'
         run: |
@@ -114,25 +170,27 @@ jobs:
       - name: Web Image build (native-image --tool:svm-wasm, -O2)
         timeout-minutes: 270
         env:
+          DIAGNOSTICS: ${{ inputs.diagnostics }}
           MM_WEB_BUILDER_THREADS: '2'
           MM_WEB_OPT: '2'
           MM_WEB_EXTRA_OPTIONS: >-
             -H:DeadlockWatchdogInterval=0
-            -H:+PrintHeapHistogram
-            -J-XX:NativeMemoryTracking=summary
             -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
             -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M
         run: |
           set -euo pipefail
           ( while true; do sleep 60; echo "[mem] $(date -u +%T) $(free -m | awk '/Mem:/{print "used="$3"MB avail="$7"MB"} /Swap:/{print "swap="$3"MB"}' | tr '\n' ' ')"; done ) &
-          bash packages/web-engine/builder_watch.sh packages/web-engine/build/wasm/native-image.log packages/web-engine/build/watch &
+          if [[ $DIAGNOSTICS == true ]]; then
+            export MM_WEB_EXTRA_OPTIONS="$MM_WEB_EXTRA_OPTIONS -J-XX:NativeMemoryTracking=summary"
+            bash packages/web-engine/builder_watch.sh packages/web-engine/build/wasm/native-image.log packages/web-engine/build/watch &
+          fi
           /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time.txt >&2)
           bash packages/web-engine/build_web.sh bundle
           ls -la packages/web-engine/build/web
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: web-engine-evidence-${{ github.sha }}
+          name: web-engine-evidence-${{ needs.plan.outputs.key }}-${{ github.run_attempt }}
           path: |
             packages/web-engine/build/wasm/native-image.log
             packages/web-engine/build/wasm-time*.txt
@@ -140,18 +198,19 @@ jobs:
             packages/web-engine/build/wasm-build-output.json
             packages/web-engine/build/builder-gc.log*
             packages/web-engine/build/watch/
-            packages/web-engine/build/wasm/reports/
             packages/web-engine/build/metrics/
+            packages/web-engine/build/agent/
             packages/web-engine/build/web-src/web-sources.json
             packages/web-engine/build/web/manifest.json
             packages/ondevice-engine/evidence/
-          retention-days: 14
+          retention-days: 30
           if-no-files-found: warn
+      # Named by the inputs' key: the plan job of a later run finds it and skips the rebuild while it is unexpired.
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: web-engine-bundle-${{ github.sha }}
+          name: web-engine-bundle-${{ needs.plan.outputs.key }}
           path: packages/web-engine/build/web/
           compression-level: 6
-          retention-days: 14
+          retention-days: 90
           if-no-files-found: error

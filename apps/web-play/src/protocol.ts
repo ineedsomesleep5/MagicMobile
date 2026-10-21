@@ -11,7 +11,7 @@ export const STATE_REQUEST = 1;
 export type WorkerInbound = {
   type: "init";
   engineUrl: string; // the image's JavaScript wrapper (engine.js)
-  wasmUrl: string; // engine.js.wasm
+  wasmUrl: string; // engine-<hash>.wasm (manifest.json names it)
   channel: SharedArrayBuffer;
 };
 

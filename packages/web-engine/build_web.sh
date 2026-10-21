@@ -13,7 +13,9 @@
 #   build_web.sh wasm      native-image --tool:svm-wasm -> build/wasm (Oracle GraalVM 25.4.4.1.1, which the builder
 #                          patch in builder-patch/ is pinned to, and binaryen's wasm-as). The full engine needs a
 #                          builder heap of several GB: GitHub Actions, never the 8 GB Mac.
-#   build_web.sh bundle    build/web: engine.js, engine.js.wasm, decks and manifest.json for apps/web-play
+#   build_web.sh bundle    build/web for apps/web-play: engine-<hash>.js and engine-<hash>.wasm, named by their
+#                          content so browsers cache them for good, decks, and manifest.json (fetched uncached) naming
+#                          them
 #   build_web.sh all       every stage in order
 #
 # Environment: GRAALVM_HOME (wasm stage; Oracle GraalVM 25.4), MM_WEB_HEAP (builder heap, default 10g),
@@ -160,14 +162,22 @@ stage_bundle() {
   [[ -s "$BUILD/wasm/engine.js.wasm" ]] || { echo "Run the wasm stage first" >&2; exit 1; }
   local out="$BUILD/web"; rm -rf "$out"; mkdir -p "$out/decks"
   python3 "$HERE/patch_wrapper.py" "$BUILD/wasm/engine.js" "$out/engine.js"
-  cp "$BUILD/wasm/engine.js.wasm" "$out/engine.js.wasm"
+  cp "$BUILD/wasm/engine.js.wasm" "$out/engine.wasm"
   python3 "$HERE/export_precons.py" --catalogue "$ENGINE/build/generated/catalogue.jsonl" \
     --swift "$REPO/apps/ios/MagicMobile/PreconCatalog.swift" --output "$out/decks"
   python3 - "$out" "$ENGINE" "$BUILD" <<'PY'
-import gzip, hashlib, json, re, sys, time
+import gzip, hashlib, json, os, re, sys, time
 from pathlib import Path
 out, engine, build = (Path(a) for a in sys.argv[1:])
-wasm = (out / 'engine.js.wasm').read_bytes()
+# Content-hashed names: an unchanged file keeps its name (and the browser's cached copy), a changed one gets a new
+# name, so the engine is served immutable and manifest.json is the only file a page revalidates. Web Image builds
+# are not byte-for-byte reproducible, so every rebuild gets new names: rebuild only when the engine changes.
+files = {}
+for kind, plain in (('js', 'engine.js'), ('wasm', 'engine.wasm')):
+    data = (out / plain).read_bytes()
+    files[kind] = f"engine-{hashlib.sha256(data).hexdigest()[:16]}.{kind}"
+    (out / plain).rename(out / files[kind])
+wasm = (out / files['wasm']).read_bytes()
 factory = (engine / 'build/generated/java/io/magicmobile/generated/GeneratedCardFactory.java').read_text()
 identity = re.search(r'VALUE="([^"]+)"', next((build / 'web-generated').rglob('EngineBuildIdentity.java')).read_text()).group(1)
 log = (build / 'wasm/native-image.log').read_text(errors='replace')
@@ -178,12 +188,15 @@ manifest = {
     'engineBuild': identity,
     'toolchain': next((l.strip() for l in log.splitlines() if 'GraalVM' in l and 'Version info' in l), None),
     'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    'buildKey': os.environ.get('MM_WEB_BUILD_KEY'),  # the CI workflow's key for the build's inputs
+    'builderPatch': next((l.strip() for l in log.splitlines() if l.startswith('MagicMobile builder patch:')), None),
+    'files': files,
     'wasm': {'bytes': len(wasm), 'gzip9Bytes': len(gzip.compress(wasm, 9)), 'sha256': hashlib.sha256(wasm).hexdigest()},
     'decks': sorted(p.stem for p in (out / 'decks').glob('*.json')),
     'webSources': json.loads((build / 'web-src/web-sources.json').read_text())['rewrites'],
 }
 (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-print(f"bundle: wasm {len(wasm)/1e6:.1f} MB raw, {manifest['wasm']['gzip9Bytes']/1e6:.1f} MB gzip -9, {identity}")
+print(f"bundle: {files['wasm']} {len(wasm)/1e6:.1f} MB raw, {manifest['wasm']['gzip9Bytes']/1e6:.1f} MB gzip -9, {identity}")
 PY
 }
 

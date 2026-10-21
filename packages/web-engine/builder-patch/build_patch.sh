@@ -2,12 +2,18 @@
 # Builds the Web Image builder patch (docs/WEB_ENGINE_M1.md, "Fitting the free runner") and prints the native-image
 # option that loads it:
 #   build_patch.sh <output dir>   ->   -J--patch-module=org.graalvm.extraimage.builder=<output dir>
+#   build_patch.sh --check        exit 0 when $GRAALVM_HOME is the toolchain the patch was made for, 1 otherwise
 #
-# src/ holds three classes of GraalVM's open-source Web Image builder (GPLv2 with the Classpath Exception), taken
+# src/ holds eight classes of GraalVM's open-source Web Image builder (GPLv2 with the Classpath Exception), taken
 # from oracle/graal commit 95ce1499c8c96ab7d5a6697c5b4bf42160f3b68b, the commit Oracle GraalVM 25.4.4.1.1 was built
-# from; unmodified, they compile to the same bytecode as the shipped classes. The changes (marked "MagicMobile") stop
-# the builder from keeping comments nobody prints and limit the unsafe access dispatch arrays to unsafe-accessed
-# fields, which cuts its peak memory and the module. They only change the builder, never the engine's sources.
+# from; unmodified, they compile to the same bytecode as the shipped classes. The changes, marked "MagicMobile":
+#   - a compiled method lets go of its compiler graph once it is Wasm instructions (WebImageWasmBackend, the id
+#     factory's per-method maps, variables and labels); upstream kept every method's graph to the end of the build;
+#   - no comment strings or nodes are kept for the .wat text when -H:WasmComments=NONE (heap writer, relocations);
+#   - -Dmagicmobile.webimage.dispatchSkipPackages gives the listed packages' fields no unsafe access dispatch entries
+#     unless they are unsafe-accessed (check_skip_packages.py keeps that safe), which upstream gave every field of
+#     every class: 34 MB of the engine's module.
+# They change the builder only; the engine's sources and the image's behaviour are the same.
 #
 # Needs GRAALVM_HOME = Oracle GraalVM 25.4.4.1.1. Any other toolchain is refused: expected.sha256 pins the shipped
 # classes the patch replaces, so a GraalVM update fails here instead of running against stale copies. To move to a
@@ -15,23 +21,25 @@
 # check the unchanged copies compile to the shipped bytecode, and update expected.sha256.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-OUT=${1:?usage: build_patch.sh <output dir>}
+OUT=${1:?usage: build_patch.sh <output dir> | --check}
 : "${GRAALVM_HOME:?Set GRAALVM_HOME to Oracle GraalVM 25.4.4.1.1}"
 JAR="$GRAALVM_HOME/lib/svm/tools/svm-wasm/builder/svm-wasm.jar"
 [[ -s $JAR ]] || { echo "No Web Image builder at $JAR" >&2; exit 1; }
 
 shipped=$(mktemp -d)
 trap 'rm -rf "$shipped"' EXIT
-(cd "$shipped" && unzip -q "$JAR" $(awk '{print $2}' "$HERE/expected.sha256"))
+(cd "$shipped" && unzip -q "$JAR" $(awk '{print $2}' "$HERE/expected.sha256")) || true
 python3 - "$shipped" "$HERE/expected.sha256" <<'PY' || { echo "The Web Image builder classes differ from the ones the patch was made for (see the header of build_patch.sh)" >&2; exit 1; }
 import hashlib, sys
 from pathlib import Path
 root, expected = Path(sys.argv[1]), Path(sys.argv[2])
 bad = [name for digest, name in (l.split() for l in expected.read_text().splitlines() if l.strip())
-       if hashlib.sha256((root / name).read_bytes()).hexdigest() != digest]
-print("\n".join(f"changed: {n}" for n in bad), file=sys.stderr)
-sys.exit(1 if bad else 0)
+       if not (root / name).is_file() or hashlib.sha256((root / name).read_bytes()).hexdigest() != digest]
+if bad:
+    print("\n".join(f"changed: {n}" for n in bad), file=sys.stderr)
+    sys.exit(1)
 PY
+[[ $OUT == --check ]] && { echo "The builder patch applies to $("$GRAALVM_HOME/bin/native-image" --version | head -1)"; exit 0; }
 
 # Compiled on the class path against every builder jar: the class files are the same as a module build's, and
 # --patch-module puts them into org.graalvm.extraimage.builder at build time.

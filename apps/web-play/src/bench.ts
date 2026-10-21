@@ -9,7 +9,14 @@ import { failedToStart, playGame, stats, type GameResult } from "./autoplay.ts";
 import { gameSpec, parseGames, summarize, TARGETS } from "./plan.ts";
 import type { BootTimings } from "./protocol.ts";
 
-type Manifest = { upstream: string; catalogueHash: string; engineBuild: string; wasm: { bytes: number; gzip9Bytes: number }; decks: string[] };
+type Manifest = {
+  upstream: string;
+  catalogueHash: string;
+  engineBuild: string;
+  files?: { js: string; wasm: string }; // content-hashed names; bundles before them used engine.js and engine.js.wasm
+  wasm: { bytes: number; gzip9Bytes: number };
+  decks: string[];
+};
 type MemorySample = { at: number; bytes: number };
 
 type BenchState = {
@@ -121,16 +128,17 @@ async function main() {
   bench.manifest = manifest;
   status(`Loading the engine (${(manifest.wasm.bytes / 1e6).toFixed(0)} MB Wasm)…`);
   const memoryTimer = setInterval(sampleMemory, 5000);
+  const files = manifest.files ?? { js: "engine.js", wasm: "engine.js.wasm" };
   const { transport, timings } = await WorkerTransport.start({
-    engineUrl: new URL(engineBase + "engine.js", location.href).href,
-    wasmUrl: new URL(engineBase + "engine.js.wasm", location.href).href,
+    engineUrl: new URL(engineBase + files.js, location.href).href,
+    wasmUrl: new URL(engineBase + files.wasm, location.href).href,
   });
   const client = new EngineClient(transport);
   status("Engine started; constructing XmageEngine…");
   const capStart = performance.now();
   const capabilities = await client.capabilities();
   const readyAt = performance.now();
-  const wasmEntry = performance.getEntriesByType("resource").find((e) => e.name.endsWith("engine.js.wasm")) as PerformanceResourceTiming | undefined;
+  const wasmEntry = performance.getEntriesByType("resource").find((e) => e.name.endsWith(files.wasm)) as PerformanceResourceTiming | undefined;
   bench.ready = {
     boot: timings,
     capabilitiesMs: readyAt - capStart,

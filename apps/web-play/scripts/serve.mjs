@@ -2,7 +2,7 @@
 // Local static server for the bench. Cross-origin isolated (COOP same-origin + COEP require-corp), which
 // SharedArrayBuffer needs, as /play would be on the site (vercel.json headers). No compression.
 //   /            -> apps/web-play/dist (vite build output)
-//   /engine/...  -> packages/web-engine/build/web (engine.js, engine.js.wasm, manifest.json, decks/)
+//   /engine/...  -> packages/web-engine/build/web (engine-<hash>.js and .wasm, manifest.json, decks/)
 import { createServer } from "node:http";
 import { createReadStream, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -12,6 +12,8 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 export const DIST = resolve(here, "../dist");
 export const ENGINE = resolve(here, "../../../packages/web-engine/build/web");
 
+// engine-<hash>.js / .wasm, and the plain names of bundles made before content hashing.
+const ENGINE_FILE = /engine(-[0-9a-f]{16}\.(js|wasm)|\.js(\.wasm)?)$/;
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -43,9 +45,9 @@ export function startServer({ port = 5178, host = "127.0.0.1", dist = DIST, engi
     const headers = {
       "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
       "Accept-Ranges": "bytes",
-      // The engine behaves like an immutable CDN asset (a real host would content-hash its name, or key a Cache API
-      // entry by engine identity); everything else revalidates with its ETag.
-      "Cache-Control": /engine\.js(\.wasm)?$/.test(file) ? "public, max-age=86400, immutable" : "no-cache",
+      // The engine files are named by their content, so they are immutable, as on a CDN; everything else
+      // (manifest.json first) revalidates with its ETag.
+      "Cache-Control": ENGINE_FILE.test(file) ? "public, max-age=31536000, immutable" : "no-cache",
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
       "Cross-Origin-Resource-Policy": "same-origin",
@@ -85,7 +87,7 @@ export function startServer({ port = 5178, host = "127.0.0.1", dist = DIST, engi
     const length = end - start + 1;
     headers["Content-Length"] = String(length);
     stats.bytes += req.method === "HEAD" ? 0 : length;
-    if (/engine\.js(\.wasm)?$/.test(file) && req.method !== "HEAD") stats.engineBytes += length;
+    if (ENGINE_FILE.test(file) && req.method !== "HEAD") stats.engineBytes += length;
     const entry = (stats.byPath[path] ??= { requests: 0, bytes: 0 });
     entry.requests++;
     entry.bytes += req.method === "HEAD" ? 0 : length;
