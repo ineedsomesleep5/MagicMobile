@@ -475,12 +475,12 @@ extension NativeGameView {
         runCommand(command, label, key)
     }
 
-    func arenaShowNotice(_ text: String) {
+    func arenaShowNotice(_ text: String, seconds: Double = 2.4) {
         onInteractionFeedback(text)
         GameHaptics.warning()
         withAnimation(.easeOut(duration: 0.2)) { arenaNotice = text }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.4))
+            try? await Task.sleep(for: .seconds(seconds))
             if arenaNotice == text { withAnimation(.easeIn(duration: 0.3)) { arenaNotice = nil } }
         }
     }

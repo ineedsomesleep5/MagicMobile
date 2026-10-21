@@ -165,6 +165,8 @@ struct NativeGameView: View {
     @State var arenaRevealID: String?
     /// The Arena board's player card (ArenaPlayerCard), opened from a medallion: whose it is.
     @State var arenaPlayerCardID: String?
+    /// The Arena board's open corner menu ("game" for the gear's, "pass" for the skip pill's), drawn on the table.
+    @State var arenaCornerMenu: String?
     /// Stack objects whose landing has played, so one plays once and not again when the object above it resolves.
     @State var arenaLandedStackIDs: Set<String> = []
     @State var arenaLiftedCardID: String?

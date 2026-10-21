@@ -684,6 +684,15 @@ final class BoardPolishUITests: XCTestCase {
             .press(forDuration: 0.05, thenDragTo: application.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.45)))
         XCTAssertTrue(captured(application, "Sol Ring"), "Carrying the popped card onto the table plays it")
 
+        // The gear's menu is a card on the table, and its Game Log has the Arena look.
+        application.buttons["board.arena.menu"].tap()
+        XCTAssertTrue(application.descendants(matching: .any)["arena.menuCard"].waitForExistence(timeout: 5), "The gear's menu card")
+        application.buttons["Game Log"].tap()
+        XCTAssertTrue(application.buttons["Close game log"].waitForExistence(timeout: 5), "The game log opens")
+        XCTAssertTrue(application.staticTexts["Game Log"].exists, "Its title")
+        captureImage(name: "arena-game-log")
+        application.buttons["Close game log"].tap()
+
         // The hand's touch area reaches up to where cards pop, over your land row; a land there still takes its tap.
         application = launch("mana-payment-prompt", landscape: false)
         let forest = application.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "card-your-lands-forest")).firstMatch

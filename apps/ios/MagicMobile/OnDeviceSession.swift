@@ -442,7 +442,8 @@ final class OnDeviceSession: ObservableObject {
         let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
         return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
                      topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: context.viewerID),
-                     hasResponse: OnDeviceSmartPass.hasResponse(view))
+                     hasResponse: OnDeviceSmartPass.hasResponse(view),
+                     threatensMe: !context.emptyStack && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false))
     }
 
     /// Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for.
@@ -505,6 +506,10 @@ final class OnDeviceSession: ObservableObject {
         while let until = presentationHold.until, until.timeIntervalSinceNow > 0,
               elapsed() < BoardPresentationHold.maximumWait, !Task.isCancelled {
             try? await Task.sleep(for: .seconds(min(until.timeIntervalSinceNow, 0.1)))
+        }
+        // Holding a card to read it holds the pass too, as tapping the reference game's spell does.
+        while presentationHold.reading, elapsed() < BoardPresentationHold.readingWait, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100))
         }
     }
 
@@ -608,10 +613,12 @@ final class OnDeviceSession: ObservableObject {
         // `controlled` is only a viewer marker upstream, not turn-control proof.
         // A routed self-priority prompt and active timer are required to send.
         let selfAuthority = controls.isEmpty && (!priority || timer) && (prompt == nil || priority)
+        // A skip that passes responses still stops for an opponent's removal or sweeper, if you asked to.
+        let threat = !stack.isEmpty && (smartPass ?? .load()).stopForThreats && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false)
         return .init(matchID: poll.matchID, seatID: poll.seatID, viewerID: viewer, activePlayerID: active,
                      turn: turn, phase: poll.phase, localHumanEnabled: allowsSeatScopedAutoYield,
                      foreground: isForeground && !isClosing, emptyStack: stack.isEmpty,
-                     selfAuthority: selfAuthority, resyncRequired: poll.resyncRequired, prompt: prompt)
+                     selfAuthority: selfAuthority, resyncRequired: poll.resyncRequired, prompt: prompt, threatToMe: threat)
     }
 
     func send(action: LegalAction) async throws {

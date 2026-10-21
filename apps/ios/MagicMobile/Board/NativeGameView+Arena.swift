@@ -73,7 +73,16 @@ extension NativeGameView {
         })
         .onChange(of: snapshot.step ?? snapshot.phase) { _, _ in arenaHandOpen = false }
         // A new decision puts a player's card away.
-        .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in arenaPlayerCardID = nil }
+        .onChange(of: snapshot.promptEnvelopeV2?.id) { _, _ in arenaPlayerCardID = nil; arenaCornerMenu = nil }
+        // Reading a card holds smart pass until the inspector closes (BoardPresentationHold.reading).
+        .onChange(of: inspectedCard?.id, initial: true) { _, id in BoardPresentationHold.shared.reading = id != nil }
+        .onDisappear { BoardPresentationHold.shared.reading = false }
+        // Your commander taken by an opponent: say who has it and why it never went home.
+        .onChange(of: ArenaCommanderSteal.taken(in: snapshot)) { old, now in
+            if let taken = now.first(where: { !old.contains($0) }) {
+                arenaShowNotice(ArenaCommanderSteal.notice(taken, snapshot: snapshot), seconds: 7)
+            }
+        }
         .onAppear {
             interactionState.mode = GameBoardInteractionState.mode(for: snapshot, pendingActionId: pendingActionId, selectedCard: selectedCard)
             GameAudio.shared.preload(GameAudio.boardSounds)
@@ -714,7 +723,7 @@ extension NativeGameView {
                 .modifier(FullControlHold(control: nativeTurnControl, swallowNextPass: $arenaSwallowNextPass, tavern: false))
                 .accessibilityIdentifier("board.action.primary")
         }
-        ArenaPassAheadPill()
+        ArenaPassAheadPill(openMenu: { arenaCornerMenu = "pass" })
             .frame(width: canvas.rect(layout.passAhead).width, height: canvas.rect(layout.passAhead).height)
             .position(x: canvas.rect(layout.passAhead).midX, y: canvas.rect(layout.passAhead).midY)
         if let undo = ManaPaymentTray.manaUndoActions(in: snapshot).first(where: { $0.type == "undo_mana" }) {
@@ -750,23 +759,26 @@ extension NativeGameView {
     }
 
     /// The brass gear: the log, the stack, phase stops, full control and the game's settings, in a leather pop-over.
+    /// The gear's menu, as an Arena menu card on the table.
+    private func arenaGameMenuItems(snapshot: GameSnapshot) -> [ArenaMenuItem] {
+        var items = [ArenaMenuItem(id: "log", title: "Game Log", symbol: "list.bullet.rectangle") { isLogOpen = true }]
+        if !snapshot.stackTopFirst.isEmpty {
+            items.append(ArenaMenuItem(id: "stack", title: "Stack (\(snapshot.stackTopFirst.count))", symbol: "square.stack.3d.up") { isTavernStackOpen = true })
+        }
+        items.append(ArenaMenuItem(id: "stops", title: "Phase Stops", symbol: "pause.circle") { arenaShowPhaseStops = true })
+        if let control = nativeTurnControl {
+            items.append(ArenaMenuItem(id: "full-control", title: "Full control", subtitle: control.isFullControl ? "On for this turn" : "Stop at every priority this turn",
+                                       symbol: "hand.raised.fill", lit: control.isFullControl, action: control.toggleFullControl))
+        }
+        if snapshot.source == "xmage-ondevice" {
+            items.append(ArenaMenuItem(id: "more", title: "More actions", symbol: "ellipsis") { openPromptDetails() })
+        }
+        items.append(ArenaMenuItem(id: "settings", title: "Game Settings", symbol: "gearshape.fill") { isGameMenuOpen = true })
+        return items
+    }
+
     private func arenaGameMenu(snapshot: GameSnapshot) -> some View {
-        TavernMenu(arrowEdge: .top) {
-            TavernMenuItem(title: "Game Log", systemImage: "list.bullet.rectangle") { isLogOpen = true }
-            if !snapshot.stackTopFirst.isEmpty {
-                TavernMenuItem(title: "Stack (\(snapshot.stackTopFirst.count))", systemImage: "square.stack.3d.up") { isTavernStackOpen = true }
-            }
-            TavernMenuItem(title: "Phase Stops", systemImage: "pause.circle") { arenaShowPhaseStops = true }
-            if let control = nativeTurnControl {
-                TavernMenuItem(title: control.isFullControl ? "Full control: on (this turn)" : "Full control this turn",
-                               systemImage: "hand.raised.fill", action: control.toggleFullControl)
-            }
-            if snapshot.source == "xmage-ondevice" {
-                TavernMenuItem(title: "More actions", systemImage: "ellipsis") { openPromptDetails() }
-            }
-            TavernMenuDivider()
-            TavernMenuItem(title: "Game Settings", systemImage: "gearshape.fill") { isGameMenuOpen = true }
-        } label: {
+        Button { arenaCornerMenu = "game" } label: {
             ZStack {
                 if let coin = UIImage(named: "tavern-ui-coin") { Image(uiImage: coin).resizable().scaledToFit() }
                 Image(systemName: "gearshape.fill").font(.system(size: 13, weight: .black))
@@ -790,6 +802,22 @@ extension NativeGameView {
                                    y: canvas.y(canvas.layout.landscape ? 196 : 446))
         let targetableIds = GameBoardInteractionState.boardTargetableIds(for: snapshot)
         let abilityPrompt = arenaAbilityPrompt(snapshot)
+        if let menu = arenaCornerMenu {
+            // The gear's menu under the gear; the skip choices above the corner (in portrait above your lands, so the
+            // hand stays in view). A tap anywhere else closes it.
+            Color.black.opacity(0.25).ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { arenaCornerMenu = nil }
+                .accessibilityHidden(true)
+            let items = menu == "game" ? arenaGameMenuItems(snapshot: snapshot) : nativeTurnControl.map(ArenaPassAheadPill.items) ?? []
+            let gear = canvas.point(canvas.layout.menu)
+            ArenaMenuCard(items: items, close: { arenaCornerMenu = nil })
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: menu == "game" ? .topTrailing : .bottomTrailing)
+                .padding(.top, menu == "game" ? gear.y + 26 : 0)
+                .padding(.bottom, menu == "game" ? 0 : canvas.screen.height - canvas.y(canvas.layout.landscape ? 326 : 628))
+                .padding(.trailing, menu == "game" ? max(12, canvas.screen.width - gear.x - 22) : 14)
+                .transition(.scale(scale: 0.95, anchor: menu == "game" ? .topTrailing : .bottomTrailing).combined(with: .opacity))
+        }
         // First, so any decision that comes up draws over it (it also closes when one does).
         if let cardOwner = arenaPlayerCardID, let player = snapshot.players.first(where: { $0.playerId == cardOwner }) {
             // A player's card beside their medallion; a tap anywhere else puts it away.

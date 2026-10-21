@@ -468,6 +468,7 @@ struct AutoPassAfterCastToggle: View {
 struct SmartAutoPassToggle: View {
     @AppStorage(OnDeviceSmartPass.enabledKey) private var isOn = true
     @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwn = false
+    @AppStorage(OnDeviceSmartPass.stopForThreatsKey) private var stopForThreats = true
     @State private var showStops = false
 
     var body: some View {
@@ -477,6 +478,8 @@ struct SmartAutoPassToggle: View {
             TavernToggle(title: "Stop for My Own Spells", isOn: $stopForOwn, identifier: "settings.stopForOwnSpells",
                          subtitle: "Off: your own spells and triggers resolve without a stop, as on Arena.")
                 .disabled(!isOn)
+            TavernToggle(title: "Stop for Removal", isOn: $stopForThreats, identifier: "settings.stopForThreats",
+                         subtitle: "An opponent's spell that destroys, exiles or takes your permanents waits for you, even when you can't answer it.")
             Button { showStops = true } label: {
                 Label("Phase Stops", systemImage: "hand.raised.fill").frame(maxWidth: .infinity)
             }

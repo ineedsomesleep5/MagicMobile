@@ -441,6 +441,28 @@ final class ArenaBoardModelTests: XCTestCase {
         }
     }
 
+    /// Your commander on an opponent's battlefield is noticed, with who has it (Caleb, 2026-10-21: Necromantic Selection).
+    func testCommanderTakenByAnOpponentIsNoticed() throws {
+        func snapshot(theirs: [[String: Any]]) throws -> GameSnapshot {
+            func zones(_ field: [[String: Any]]) -> [String: Any] {
+                ["library": [], "hand": [], "battlefield": field, "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 50]
+            }
+            let players: [[String: Any]] = [
+                ["playerId": "a", "displayName": "You", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones([]),
+                 "commanders": [["id": "c1", "name": "Chatterfang, Squirrel General", "ownerPlayerId": "a"]]],
+                ["playerId": "b", "displayName": "AI 1", "life": 32, "poison": 0, "commanderTax": 0, "zones": zones(theirs)]]
+            let json: [String: Any] = ["id": "match", "phase": "PRECOMBAT_MAIN", "turn": 9, "activePlayerId": "b", "viewerPlayerId": "a",
+                                       "priorityPlayerId": "b", "players": players, "log": []]
+            return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        XCTAssertEqual(ArenaCommanderSteal.taken(in: try snapshot(theirs: [])), [])
+        let stolen = try snapshot(theirs: [["instanceId": "x", "card": ["name": "Chatterfang, Squirrel General", "typeLine": "Legendary Creature"]]])
+        let taken = ArenaCommanderSteal.taken(in: stolen)
+        XCTAssertEqual(taken, ["Chatterfang, Squirrel General|b"])
+        let notice = ArenaCommanderSteal.notice(taken[0], snapshot: stolen)
+        XCTAssertTrue(notice.hasPrefix("AI 1 took Chatterfang, Squirrel General."), notice)
+    }
+
     /// The landscape stack card sits under the opponent's piles and above the raised phase strip and its pills.
     func testLandscapeStackCardClearsThePilesAndTheCorner() {
         let layout = ArenaLayout.landscapeLayout

@@ -13,15 +13,25 @@ struct GameLogDrawer: View {
     var reasons: [String: String] = [:]
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    /// The Arena board's log (Caleb, 2026-10-21): a gold serif title, a divider for each turn, an icon for each event,
+    /// smart pass's lines dimmed, card names in gold, and the card read on the table rather than in a sheet.
+    @Environment(\.arenaBoard) private var arena
     @State private var followingLatest = true
     @State private var inspectedLogCard: ZoneCard?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("LOG")
-                    .font(.caption.weight(.black))
-                    .foregroundStyle(.orange)
+                if arena {
+                    Text("Game Log")
+                        .font(.system(size: 22, weight: .bold, design: .serif))
+                        .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                        .shadow(color: .black, radius: 2)
+                } else {
+                    Text("LOG")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(.orange)
+                }
                 Spacer()
                 Button(action: close) {
                     Image(systemName: "xmark")
@@ -39,6 +49,24 @@ struct GameLogDrawer: View {
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
                         ForEach(log) { entry in
+                            let line = ArenaLogLine(entry)
+                            if arena && line.kind == .turn {
+                                ArenaLogTurnDivider(text: line.text).id(entry.id)
+                            } else if arena && line.kind == .autoPass {
+                                Label(line.text, systemImage: "forward.fill")
+                                    .font(.system(size: 12, weight: .medium, design: .serif).italic())
+                                    .foregroundStyle(.white.opacity(0.45))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id(entry.id)
+                            } else {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            if arena {
+                                Image(systemName: line.symbol)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(line.tint)
+                                    .frame(width: 18)
+                                    .accessibilityHidden(true)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 GameLogText(message: entry.message, usesDarkBackground: true, onInspect: { reference in
                                     // The public log authorizes the printed identity, not a lookup
@@ -78,9 +106,13 @@ struct GameLogDrawer: View {
                                         .accessibilityIdentifier("log.reason")
                                 }
                             }
-                            .padding(.top, GameLogPresentation(entry.message).plainText.hasPrefix("TURN ") ? 12 : 0)
+                            }
+                            // Card names read as gold links on the Arena board, not the system's blue.
+                            .tint(arena ? Color(red: 1, green: 0.84, blue: 0.46) : nil)
+                            .padding(.top, !arena && line.kind == .turn ? 12 : 0)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id(entry.id)
+                            }
                         }
                         Color.clear.frame(height: 1).id("log-bottom")
                             .background(GeometryReader { geometry in
@@ -122,7 +154,18 @@ struct GameLogDrawer: View {
         .padding(10)
         .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
-        .sheet(item: $inspectedLogCard) { card in
+        .overlay {
+            // The Arena board reads a logged card on the table, its Arena inspector over a dim; a tap closes it.
+            if arena, let card = inspectedLogCard {
+                ZStack {
+                    Color.black.opacity(0.6).onTapGesture { inspectedLogCard = nil }
+                    CardInspector(card: card).padding(12)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityAddTraits(.isModal)
+            }
+        }
+        .sheet(item: Binding(get: { arena ? nil : inspectedLogCard }, set: { inspectedLogCard = $0 })) { card in
             VStack(spacing: 8) {
                 HStack {
                     Text("From the game log").font(.caption).foregroundStyle(.secondary)
@@ -140,10 +183,24 @@ struct CompactActionButtonStyle: ButtonStyle {
     var isDanger = false
     var isPrimary = false
     @Environment(\.tavernBoard) private var tavern
+    /// The Arena board: glass rows in a gold hairline, oxblood glass for a destructive one (Caleb, 2026-10-21: the game
+    /// menu's Concede, Start New and Quit were the Hearth board's tooled leather).
+    @Environment(\.arenaBoard) private var arena
+    @Environment(\.isEnabled) private var isEnabled
 
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
-        if tavern && TavernUIKit.available {
+        if arena {
+            configuration.label
+                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .foregroundStyle(isDanger ? Color(red: 1, green: 0.78, blue: 0.72) : ArenaGlass.text)
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 46)
+                .modifier(ArenaGlassRow(primary: isPrimary, danger: isDanger))
+                .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : 0.45)
+                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+        } else if tavern && TavernUIKit.available {
             TavernButtonStyle(kind: isDanger ? .danger : (isPrimary ? .primary : .secondary), compact: true)
                 .makeBody(configuration: configuration)
         } else {
@@ -196,5 +253,66 @@ struct IconButtonStyle: ButtonStyle {
             .overlay(Circle().stroke(.white.opacity(0.16)))
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
+    }
+}
+
+/// One line of the game log as the Arena board shows it: a turn divider, smart pass's quiet line, or an event with
+/// an icon for what happened, read from the engine's public text.
+struct ArenaLogLine {
+    enum Kind { case turn, autoPass, event }
+    let kind: Kind
+    let text: String
+    let symbol: String
+    let tint: Color
+
+    init(_ entry: GameLogEntry) {
+        let plain = GameLogPresentation(entry.message).plainText
+        let lower = plain.lowercased()
+        text = plain
+        if plain.hasPrefix("TURN ") {
+            kind = .turn; symbol = ""; tint = .clear
+            return
+        }
+        if entry.id.hasPrefix("local:auto-pass:") || plain.hasPrefix("Auto-passed") {
+            kind = .autoPass; symbol = "forward.fill"; tint = .white
+            return
+        }
+        kind = .event
+        let gold = Color(red: 1, green: 0.84, blue: 0.46), red = Color(red: 1, green: 0.45, blue: 0.38)
+        let cyan = Color(red: 0.5, green: 0.9, blue: 1), green = Color(red: 0.5, green: 0.9, blue: 0.55)
+        switch true {
+        case lower.contains(" died") || lower.contains("destroy"): symbol = "xmark.octagon.fill"; tint = red
+        case lower.contains("exile"): symbol = "sparkles"; tint = Color(red: 0.75, green: 0.7, blue: 1)
+        case lower.contains("gains control") || lower.contains("from graveyard onto the battlefield"): symbol = "arrow.uturn.left.circle.fill"; tint = red
+        case lower.contains(" casts "): symbol = "wand.and.stars"; tint = gold
+        case lower.contains(" attacks") || lower.contains("attacking") || lower.contains("blocks"): symbol = "bolt.fill"; tint = Color(red: 1, green: 0.6, blue: 0.3)
+        case lower.contains("loses") && lower.contains("life") || lower.contains("damage"): symbol = "heart.slash.fill"; tint = red
+        case lower.contains("gains") && lower.contains("life"): symbol = "heart.fill"; tint = green
+        case lower.contains("draws"): symbol = "rectangle.stack.fill"; tint = cyan
+        case lower.contains(" plays ") || lower.contains("onto the battlefield"): symbol = "square.stack.3d.down.right.fill"; tint = green
+        case lower.contains("activates") || lower.contains("ability"): symbol = "bolt.horizontal.circle.fill"; tint = gold
+        default: symbol = "circle.fill"; tint = .white.opacity(0.35)
+        }
+    }
+}
+
+/// "TURN 9 for AI 1 (40 - 32)" as a gold divider across the log.
+struct ArenaLogTurnDivider: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(ArenaGlass.hairline).frame(height: 1)
+            Text(text.replacingOccurrences(of: "TURN ", with: "Turn ").uppercased())
+                .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.2)
+                .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .fixedSize(horizontal: false, vertical: true)
+            Rectangle().fill(ArenaGlass.hairline).frame(height: 1)
+        }
+        .padding(.top, 14).padding(.bottom, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+        .accessibilityAddTraits(.isHeader)
     }
 }
