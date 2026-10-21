@@ -106,13 +106,16 @@ jobs:
           MM_WEB_BUILDER_THREADS: '2'
           MM_WEB_OPT: '2'
           MM_WEB_EXTRA_OPTIONS: >-
-            -H:WasmComments=NONE -H:-ClosureCompiler -H:DeadlockWatchdogInterval=0 -H:+PrintImageHeapPartitionSizes
+            -H:WasmComments=NONE -H:-ClosureCompiler -H:DeadlockWatchdogInterval=0
             -H:ImageHeapObjectsPerFunction=4000
+            -H:+PrintHeapHistogram -H:+PrintAnalysisCallTree -H:PrintAnalysisCallTreeType=CSV
+            -J-XX:NativeMemoryTracking=summary
             -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
             -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M
         run: |
           set -euo pipefail
           ( while true; do sleep 60; echo "[mem] $(date -u +%T) $(free -m | awk '/Mem:/{print "used="$3"MB avail="$7"MB"} /Swap:/{print "swap="$3"MB"}' | tr '\n' ' ')"; done ) &
+          bash packages/web-engine/builder_watch.sh packages/web-engine/build/wasm/native-image.log packages/web-engine/build/watch &
           /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time.txt >&2)
           bash packages/web-engine/build_web.sh bundle
           ls -la packages/web-engine/build/web
@@ -125,6 +128,8 @@ jobs:
             packages/web-engine/build/wasm-time*.txt
             packages/web-engine/build/wasm-build-output.json
             packages/web-engine/build/builder-gc.log*
+            packages/web-engine/build/watch/
+            packages/web-engine/build/wasm/reports/
             packages/web-engine/build/metrics/
             packages/web-engine/build/web-src/web-sources.json
             packages/web-engine/build/web/manifest.json
