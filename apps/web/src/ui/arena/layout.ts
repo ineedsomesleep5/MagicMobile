@@ -63,7 +63,12 @@ export const POS = {
   faceMe: { x: 478, y: 400 }, faceOpp: { x: 478, y: 25 }, handOpp: { x: 270, y: 10 },
 } as const;
 export const SIZE = { hand: { w: 93, h: 131 }, tile: { w: 66, h: 71 }, land: { w: 58, h: 62.5 }, pile: { w: 42, h: 59 }, opile: { w: 36, h: 50 } } as const;
-const HAND = { cx: 476, upY: 368, upPitch: 92, upSpan: 555, drop: 2.6, tilt: 3.5, maxTilt: 11, downY: 412, downPitch: 33, downSpan: 209, downDrop: 1.5, downS: 0.88, lift: 48, liftDown: 70 };
+/**
+ * The hand. Raised, it is the prototype's fan. Resting, it follows Arena's desktop client rather than the phone: spread
+ * between your piles and the corner plaques (pitch near a card's width) and tucked so the top of each card shows
+ * (name, cost, art).
+ */
+const HAND = { cx: 476, upY: 368, upPitch: 92, upSpan: 555, drop: 2.6, tilt: 3.5, maxTilt: 11, downY: 428, downPitch: 62, downSpan: 300, downDrop: 0.8, downS: 0.92, lift: 48, liftDown: 70 };
 const LANDS = { me: { x: 116, y: 325 }, opp: { x: 108, y: 90 }, step: 72, right: 690 };
 const ROWS = { me: 248, opp: 146, pitch: 84, span: 430, cx: 478, left: 226, right: 655 };
 export const MULLIGAN = { cx: 478, y: 200, pitch: 104, w: 112, h: 157 };
@@ -161,7 +166,7 @@ export function handPlaces(ids: string[], up: boolean, hovered?: string, geo: Ge
     const x = HAND.cx + off * pitch;
     let place: Place = up
       ? { x, y: fromBottom(HAND.upY) + HAND.drop * off * off, ...size, r: Math.max(-HAND.maxTilt, Math.min(HAND.maxTilt, off * HAND.tilt)), s: 1, z: 440 + i }
-      : { x, y: fromBottom(HAND.downY) + off * off * HAND.downDrop, ...size, r: off * 1.8, s: HAND.downS, z: 200 + i };
+      : { x, y: fromBottom(HAND.downY) + off * off * HAND.downDrop, ...size, r: off * 1.2, s: HAND.downS, z: 200 + i };
     if (id === hovered) place = { ...place, y: place.y - (up ? HAND.lift : HAND.liftDown) * g, r: 0, s: up ? 1.24 : 1.04, z: 480 };
     places.set(id, place);
   });

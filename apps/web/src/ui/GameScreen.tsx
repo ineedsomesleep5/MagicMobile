@@ -88,6 +88,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const T = (y: number) => y * geo.grow;
   const B = (y: number) => geo.height - (STAGE.height - y) * geo.grow;
   const [hovered, setHovered] = useState<string>();
+  const [handRaised, setHandRaised] = useState(false);
   const [menu, setMenu] = useState<{ id: string; at: Place; actions: LegalAction[] }>();
   const [toast, setToast] = useState<string>();
   const [panel, setPanel] = useState<"log" | "chat">();
@@ -156,8 +157,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   // ---------------- cards ----------------
   const handIDs = me?.zones.hand.map((c) => c.instanceId) ?? [];
   const mulligan = browser === "mulligan";
-  const handPlayable = snapshot !== undefined && (me?.zones.hand ?? []).some((c) => actionsFor(snapshot, c.instanceId).length > 0 || targetIDs.has(c.instanceId));
-  const handUp = mulligan || (envelope !== undefined && !pending && handPlayable && !paying);
+  // As on Arena's desktop client the hand rests low, showing the top of each card, and fans up while the pointer is on
+  // it; the prototype raised it whenever you could play (a touch screen's answer), which covered your lands.
+  const handUp = mulligan || handRaised;
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
   const classFor = (card: ZoneCard, onBattlefield: boolean) => {
@@ -346,7 +348,21 @@ export function GameScreen({ table }: { table: GameTable }) {
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
-    <div className="arena" ref={wrapRef} onClick={() => { setGear(false); setPlayerCard(undefined); setMenu(undefined); }}>
+    <div className="arena" ref={wrapRef} onClick={() => { setGear(false); setPlayerCard(undefined); setMenu(undefined); }}
+      onPointerMove={(event) => {
+        // The hand rises while the pointer is over it: below the top of the fan as it stands, within its width.
+        if (mulligan || handIDs.length === 0) return;
+        const bounds = wrapRef.current!.getBoundingClientRect();
+        const x = (event.clientX - bounds.left - geo.left) / geo.scale;
+        const y = (event.clientY - bounds.top - geo.top) / geo.scale;
+        const fan = [...handPlaces(handIDs, handRaised, undefined, geo).values()];
+        const top = Math.min(...fan.map((p) => p.y - (p.h * (p.s ?? 1)) / 2)) - 6;
+        const left = Math.min(...fan.map((p) => p.x - p.w / 2)) - 12;
+        const right = Math.max(...fan.map((p) => p.x + p.w / 2)) + 12;
+        const over = y > top && x > left && x < right;
+        if (over !== handRaised) setHandRaised(over);
+      }}
+      onPointerLeave={() => setHandRaised(false)}>
       <div className="arena-stage" aria-label="Game table"
         style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})` }}>
         <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined}
@@ -492,7 +508,8 @@ export function GameScreen({ table }: { table: GameTable }) {
 
         {mulligan && envelope?.confirmation && !showRoll && (
           <div className="amull" onClick={stop}>
-            <h2 className="title">{(() => {
+            {/* Below the opponent's medallion, above the cards. */}
+            <h2 className="title" style={{ top: Y(62) }}>{(() => {
               // XMage names the active player only once the first turn begins; the roll knows sooner.
               const first = roll?.roll.winnerSeatID ?? snapshot?.activePlayerId;
               if (!first) return "Your opening hand";
@@ -500,7 +517,7 @@ export function GameScreen({ table }: { table: GameTable }) {
               const name = table.state.seatNames[first] ?? snapshot?.players.find((p) => p.playerId === first)?.displayName;
               return name ? `${name} goes first` : "Your opening hand";
             })()}</h2>
-            <p style={{ top: Y(52) }}>{cleanMessage(envelope.message)}</p>
+            <p style={{ top: Y(62) + 36 }}>{cleanMessage(envelope.message)}</p>
             <div className="tips" style={{ top: B(352) }}><span>Click a card to play it</span><span>Click a land for mana while paying</span><span>Hover a card to read it</span></div>
             <button type="button" className="aplaque leather" style={{ left: 716, top: B(340) }} disabled={pending}
               onClick={() => send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan")}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
