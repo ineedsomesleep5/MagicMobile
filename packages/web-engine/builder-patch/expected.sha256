@@ -1,0 +1,6 @@
+2c8c8e327693ebd27fc4d1c7cb86009441233b1211a74e780d75bcb2da1b4572  com/oracle/svm/hosted/webimage/wasm/codegen/WasmCodeGenTool.class
+815da1132f733180fac71055864955ac72f475757b29f7e1e33817e9d1f9455b  com/oracle/svm/hosted/webimage/wasmgc/codegen/WasmGCHeapWriter$1.class
+a284136deaae877bd411818fa93cb7689269456f87689058f730a73eb5d16248  com/oracle/svm/hosted/webimage/wasmgc/codegen/WasmGCHeapWriter$ObjectData.class
+53e9aceb9afee31996c3ff11e8201d1ef82b54d613a0d2589b6bb431d8c8a67a  com/oracle/svm/hosted/webimage/wasmgc/codegen/WasmGCHeapWriter.class
+3cf9391ed0331fcd61f0f855e7858ba216da6f07a368d7f9a80778d9954410e4  com/oracle/svm/hosted/webimage/wasmgc/codegen/WebImageWasmGCCodeGen$1.class
+68a40a8a9186999557c3506777f9822e6242afb8a2636fc7541719f3a235fa9b  com/oracle/svm/hosted/webimage/wasmgc/codegen/WebImageWasmGCCodeGen.class

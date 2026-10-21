@@ -106,9 +106,8 @@ jobs:
           MM_WEB_BUILDER_THREADS: '2'
           MM_WEB_OPT: '2'
           MM_WEB_EXTRA_OPTIONS: >-
-            -H:WasmComments=NONE -H:-ClosureCompiler -H:DeadlockWatchdogInterval=0
-            -H:ImageHeapObjectsPerFunction=4000
-            -H:+PrintHeapHistogram -H:+PrintAnalysisCallTree -H:PrintAnalysisCallTreeType=CSV
+            -H:DeadlockWatchdogInterval=0
+            -H:+PrintHeapHistogram
             -J-XX:NativeMemoryTracking=summary
             -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
             -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M

@@ -10,15 +10,17 @@
 #   build_web.sh jvm       compile the web mode for HotSpot (build/web-jvm): the JVM harness and the image's input
 #   build_web.sh metadata  reflection metadata (the phone exporter, minus serialization), plus the tracing agent's
 #                          output when build/agent/ exists (see the CI workflow)
-#   build_web.sh wasm      native-image --tool:svm-wasm -> build/wasm (Oracle GraalVM 25.1+ and binaryen's wasm-as).
-#                          The full engine needs a ~10 GB builder heap: GitHub Actions, never the 8 GB Mac.
+#   build_web.sh wasm      native-image --tool:svm-wasm -> build/wasm (Oracle GraalVM 25.4.4.1.1, which the builder
+#                          patch in builder-patch/ is pinned to, and binaryen's wasm-as). The full engine needs a
+#                          builder heap of several GB: GitHub Actions, never the 8 GB Mac.
 #   build_web.sh bundle    build/web: engine.js, engine.js.wasm, decks and manifest.json for apps/web-play
 #   build_web.sh all       every stage in order
 #
 # Environment: GRAALVM_HOME (wasm stage; Oracle GraalVM 25.4), MM_WEB_HEAP (builder heap, default 10g),
 # MM_WEB_OPT (native-image optimization level: 2 default, 1, or b for a quick build that needs less memory),
 # MM_WEB_BUILDER_THREADS (default 4; fewer threads compile fewer methods at once, so peak memory is lower),
-# JAVA_HOME for the other stages (JDK 17+).
+# MM_WEB_BUILDER_PATCH (default 1; 0 builds with the stock Web Image builder), MM_WEB_EXTRA_OPTIONS (more
+# native-image options, e.g. diagnostics), JAVA_HOME for the other stages (JDK 17+).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
@@ -97,12 +99,25 @@ stage_wasm() {
   local configs=(-H:ReflectionConfigurationFiles="$BUILD/metadata/exporter/reflect-config.json")
   if [[ -d "$BUILD/agent" ]]; then configs+=(-H:ConfigurationFileDirectories="$BUILD/agent"); fi
   local init; init=$(paste -sd, "$ENGINE/native/gluon/buildtime-enums.txt")
+  # The builder patch (builder-patch/build_patch.sh) keeps no comments the build never prints, so compiled methods
+  # don't hold on to their compiler graphs, and gives engine fields no unsafe access dispatch entries (nothing
+  # reaches them through Unsafe; check_skip_packages.py checks it). MM_WEB_BUILDER_PATCH=0: the stock builder.
+  local patch=()
+  if [[ ${MM_WEB_BUILDER_PATCH:-1} != 0 ]]; then
+    python3 "$HERE/builder-patch/check_skip_packages.py" "$out/classes:$CP" mage. io.magicmobile.
+    patch=("$(bash "$HERE/builder-patch/build_patch.sh" "$BUILD/builder-patch" | tail -1)"
+      -J-Dmagicmobile.webimage.dispatchSkipPackages=mage.,io.magicmobile.)
+  fi
   local started=$SECONDS
   # --tool:svm-wasm must come first. Options mirror the phone build (native/gluon/pom.xml) where they apply.
+  # V8 refuses Wasm functions over 7,654,321 bytes, hence 4,000 image-heap objects per initializer function; the
+  # .wat comments (on by default) are never read, and the JS wrapper is small enough to skip Closure.
   "$GRAALVM_HOME/bin/native-image" --tool:svm-wasm \
     -J-Xmx"$heap" --parallelism="${MM_WEB_BUILDER_THREADS:-4}" \
     -O"${MM_WEB_OPT:-2}" \
     -H:+UnlockExperimentalVMOptions \
+    -H:WasmComments=NONE -H:ImageHeapObjectsPerFunction=4000 -H:-ClosureCompiler \
+    ${patch[@]+"${patch[@]}"} \
     -cp "$out/classes:$CP" \
     --initialize-at-run-time=io.magicmobile,mage \
     --initialize-at-build-time="$init" \
