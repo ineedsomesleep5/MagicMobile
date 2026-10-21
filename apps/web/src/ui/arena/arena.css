@@ -1,6 +1,7 @@
 /* The horizontal Arena board (docs/ARENA_STYLE.md), ported from the Duel Board Prototype's landscape layout:
    the Walnut Tavern plate, Arena positions and timing, glass for everything that isn't a table object. */
-.arena { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--canvas); user-select: none; -webkit-user-select: none; }
+/* clip, not hidden: a hidden box can still be scrolled by scrollIntoView (a focused or clicked control), which shifted the board */
+.arena { position: relative; width: 100%; height: 100%; overflow: hidden; overflow: clip; background: var(--canvas); user-select: none; -webkit-user-select: none; }
 /* overflow stays visible: on a tall window the hand shows whole below the plate instead of running off its edge */
 .arena-stage { position: absolute; left: 0; top: 0; width: 956px; height: 440px; transform-origin: 0 0; border-radius: 14px;
   background: #2a1a10 url(/arena/table.jpg) center/100% 100% no-repeat; }

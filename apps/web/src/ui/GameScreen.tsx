@@ -167,7 +167,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   const mulligan = browser === "mulligan";
   // As on Arena's desktop client the hand rests low, showing the top of each card, and fans up while the pointer is on
   // it; the prototype raised it whenever you could play (a touch screen's answer), which covered your lands.
-  const handUp = mulligan || handRaised;
+  // A decision on the table (paying, choosing a permanent or player, combat) keeps the hand resting (ArenaHandPosture).
+  const boardDecision = paying || combatSelect || (envelope !== undefined && targetIDs.size > 0 && !(me?.zones.hand ?? []).some((c) => targetIDs.has(c.instanceId)));
+  const handUp = mulligan || (handRaised && !boardDecision);
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
   const classFor = (card: ZoneCard, onBattlefield: boolean) => {
