@@ -35,8 +35,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 345
     env:
-      MM_WEB_HEAP: ${{ inputs.builder_heap || '24g' }}
-      MM_WEB_SWAP_GB: ${{ inputs.swap_gb || '16' }}
+      MM_WEB_HEAP: ${{ inputs.builder_heap || '12g' }}
+      MM_WEB_SWAP_GB: ${{ inputs.swap_gb || '0' }}
       MM_WEB_GC: ${{ inputs.builder_gc || 'g1' }}
     steps:
       - uses: actions/checkout@v4
