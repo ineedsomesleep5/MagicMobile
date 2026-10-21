@@ -120,17 +120,26 @@ When a parity case or golden changes for the apps, run `npm --prefix apps/web te
 Solo games and relay tables play on the horizontal Arena board (`docs/ARENA_STYLE.md`), a port of the Duel Board
 Prototype's landscape table (artifact T5NcAkjCThiA5hfd9Twwwu) driven by real snapshots:
 
-- `src/ui/arena/layout.ts`: the prototype's positions on the 956 x 440 plate (the reference game's, scaled): the
-  opponent's lands and creatures at the top, yours below, the fanned hand along the bottom edge (raised when you can
-  play, tucked otherwise), libraries, graveyards and command zones at the corners, the stack card on the right.
-- `src/ui/arena/ArenaCard.tsx`: every card is one element that glides between hand, stack and battlefield.
-  Battlefield tiles are the tavern frames painted by `src/board/tileArt.ts`; highlights are a CSS drop-shadow that
-  traces the painted frame (the frame-outline glow): cyan playable, light cyan target, gold for combat choices,
-  orange while paying, red attacking. Tapped tiles tilt 12° and grey under a tap arrow.
+The iOS Arena build is the baseline (Caleb, 2026-10-21): what it does, the web does, and web improvements stack on it.
+
+- `src/ui/arena/layout.ts`: iOS `ArenaLayout.landscape` on the 956-point plate: the opponent's lands and creatures at
+  the top, yours below (lands from the left, support permanents on the right, planeswalkers and battles at the front
+  row's end), the hand along the bottom edge (resting low, fanned up under the pointer), piles and medallion
+  bottom-left, the stack card on the right. Every card on the table leans with it (`ArenaTableLean`).
+- `src/ui/arena/ArenaCard.tsx`: every card is one element that glides between hand, stack and battlefield. With
+  Card Frames off (the default, as on iOS) battlefield cards are the reference game's plain tiles; on, the tavern
+  frames from `src/board/tileArt.ts`. Highlights are a CSS drop-shadow tracing the card's outline (the frame-outline
+  glow). Abilities and triggers on the stack are Arena ability cards (`AbilityCard.tsx`).
+- `src/ui/arena/Symbols.tsx`: the real Magic card back (libraries, the opponent's hand) and Scryfall's flat mana
+  symbols (hand costs, floating mana, rules text). The Arena board has no 3D tavern pips.
+- `src/ui/arena/Browsers.tsx`: the iOS browsers. No panel: the table dims under a serif title, the cards stand in the
+  middle, answers sit under them as plaques, the card it's about stands on the right, and View Battlefield steps a
+  browser aside. Question stage, mode and ability cards, choices (cards a choice names, colour symbols, search,
+  Remember my choice), players as medallions, damage splits with lethal marks, pile wells, zones with Cast plaques,
+  the stack. Numbers take the reference's pill in the button corner (hold − / + to repeat, arrow keys, Enter).
 - `src/ui/GameScreen.tsx`: the corner plaques (Pass / Resolve / Attack / No Blocks / Cancel and a secondary), the
-  phase strip, the smart-pass pill, medallions, mana pool, menu and game log in glass, the Arena mulligan, D20 roll
-  and result screens. `src/ui/arena/Browsers.tsx`: full-table glass browsers for everything not answered by
-  clicking the table (questions, choices, modes, abilities, card picks, piles, numbers, splits, who starts).
+  phase strip, the smart-pass pill, medallions, menu and game log in glass, the Arena mulligan, D20 roll and result
+  screens.
 
 **Any window shape.** The board is 956 points wide and as tall as the window's shape allows, from 440 points
 (2.17:1) to 717 (4:3); it re-flows live on resize. Positions in the middle of the table stretch in proportion, your
@@ -149,5 +158,7 @@ more than a few percent:
 - **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
   against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator
   builds have no engine) and play it to the end from desktop Chrome; pods are untested.
-- No sounds or card moments yet; cards glide between zones, but there are no target arcs, strikes or spell landings.
+- No sounds or card moments yet; cards glide between zones and spells settle on the stack, but there are no target
+  arcs or strikes.
+- No Auto Pay yet (iOS `ArenaAutoPay`): you tap each land while paying.
 - The vertical (portrait) Arena layout isn't ported; the web board is horizontal only.

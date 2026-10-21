@@ -136,6 +136,14 @@ contradicting one.
 
 ## Website
 
+- 2026-10-21 (Claude, web Arena board): three traps. (1) The page is cross-origin isolated (COEP require-corp), so a
+  CSS `background-image` from another origin is blocked; Scryfall's card back and mana symbols load only as
+  `<img crossorigin="anonymous">`. `curl -I` without an `Origin` header shows no `access-control-allow-origin` on
+  backs.scryfall.io or svgs.scryfall.io; with one it does. (2) Sorting every untapped pile before the tapped ones moved
+  the next land under the pointer when you tapped one, so the next click hit the tapped land. Rows keep XMage's order,
+  as on iOS (`pilesOf` in `layout.ts`). (3) While the desktop app's browser pane is hidden, screenshots lag a render
+  behind; check what changed with `javascript_tool` before trusting a screenshot. Where: `apps/web/src/ui/arena/`.
+
 - 2026-10-21 (Claude, web solo M3): two traps running the Web Image engine under Vite's dev server. (1) Every hot
   reload of the module that created the engine made a new `LocalEngine`, so each edit started another ~1 GB worker
   while the old one kept running; after a few edits the tab stalled and a reload hung. The engine singleton lives on
