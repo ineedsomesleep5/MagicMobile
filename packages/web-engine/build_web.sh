@@ -21,7 +21,8 @@
 # Environment: GRAALVM_HOME (wasm stage; Oracle GraalVM 25.4), MM_WEB_HEAP (builder heap, default 10g),
 # MM_WEB_OPT (native-image optimization level: 2 default, 1, or b for a quick build that needs less memory),
 # MM_WEB_BUILDER_THREADS (default 4; fewer threads compile fewer methods at once, so peak memory is lower),
-# MM_WEB_BUILDER_PATCH (default 1; 0 builds with the stock Web Image builder), MM_WEB_GC (g1 default, or parallel),
+# MM_WEB_BUILDER_PATCH (default 0, Oracle's builder unmodified; 1: the builder patch, an experiment whose output is
+# not for players, see docs/WEB_ENGINE_M1.md "The licence question"), MM_WEB_GC (parallel default, or g1),
 # MM_WEB_DEFER_ASSEMBLY (default 1: wasm-as runs after the builder exits), MM_WEB_EXTRA_OPTIONS (more
 # native-image options, e.g. diagnostics), JAVA_HOME for the other stages (JDK 17+).
 set -euo pipefail
@@ -102,11 +103,11 @@ stage_wasm() {
   local configs=(-H:ReflectionConfigurationFiles="$BUILD/metadata/exporter/reflect-config.json")
   if [[ -d "$BUILD/agent" ]]; then configs+=(-H:ConfigurationFileDirectories="$BUILD/agent"); fi
   local init; init=$(paste -sd, "$ENGINE/native/gluon/buildtime-enums.txt")
-  # The builder patch (builder-patch/build_patch.sh) keeps no comments the build never prints, so compiled methods
-  # don't hold on to their compiler graphs, and gives engine fields no unsafe access dispatch entries (nothing
-  # reaches them through Unsafe; check_skip_packages.py checks it). MM_WEB_BUILDER_PATCH=0: the stock builder.
+  # The builder patch (builder-patch/build_patch.sh), opt-in: compiled methods release their compiler graphs, no
+  # comments are kept for the .wat, and engine fields get no unsafe access dispatch entries (nothing reaches them
+  # through Unsafe; check_skip_packages.py checks it). It modifies Oracle's builder: experiments only.
   local patch=()
-  if [[ ${MM_WEB_BUILDER_PATCH:-1} != 0 ]]; then
+  if [[ ${MM_WEB_BUILDER_PATCH:-0} == 1 ]]; then
     python3 "$HERE/builder-patch/check_skip_packages.py" "$out/classes:$CP" mage. io.magicmobile.
     patch=("$(bash "$HERE/builder-patch/build_patch.sh" "$BUILD/builder-patch" | tail -1)"
       -J-Dmagicmobile.webimage.dispatchSkipPackages=mage.,io.magicmobile.)
@@ -119,10 +120,11 @@ stage_wasm() {
     assembler=(-H:WasmAsPath="$HERE/wasm_as_deferred.sh" -EMM_WASM_AS_DEFER -EMM_WASM_AS) # -E: the builder's environment
     export MM_WASM_AS_DEFER="$out/engine.js.wat" MM_WASM_AS; MM_WASM_AS=$(command -v wasm-as)
   fi
-  # The driver gives the builder ParallelGC, whose young generation takes up to a third of the heap; with G1 the
-  # long-lived compiled code and image heap can use nearly all of it. MM_WEB_GC=parallel keeps the driver's choice.
+  # The driver gives the builder ParallelGC, whose young generation takes up to a third of the heap. MM_WEB_GC=g1 lets
+  # the long-lived compiled code and image heap use nearly all of it (the patched build's 12 GB fits only so); the
+  # stock build over swap is faster on ParallelGC (docs/WEB_ENGINE_M1.md, runs A and E).
   local gc=()
-  if [[ ${MM_WEB_GC:-g1} == g1 ]]; then gc=(-J-XX:-UseParallelGC -J-XX:+UseG1GC); fi
+  if [[ ${MM_WEB_GC:-parallel} == g1 ]]; then gc=(-J-XX:-UseParallelGC -J-XX:+UseG1GC); fi
   local started=$SECONDS
   # --tool:svm-wasm must come first. Options mirror the phone build (native/gluon/pom.xml) where they apply.
   # V8 refuses Wasm functions over 7,654,321 bytes, hence 4,000 image-heap objects per initializer function; the
