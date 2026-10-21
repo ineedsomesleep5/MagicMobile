@@ -51,13 +51,13 @@ mx/mx -p graal/web-image --java-home "$jdk_dir" build --dependencies "$dists"
 
 dest="$CE/lib/svm/tools/svm-wasm"
 rm -rf "$dest"; mkdir -p "$dest/builder"
-for dist in SVM_WASM SVM_WASM_JIMFS SVM_WASM_GUAVA; do
-  jar=$(mx/mx -p graal/web-image --java-home "$jdk_dir" paths --output "$dist" | tail -1)
-  cp "$jar" "$dest/builder/"
+# mx writes the distributions under the suite's mxbuild/; the macro names them by their default jar names.
+for jar in svm-wasm.jar svm-wasm-jimfs.jar svm-wasm-guava.jar; do
+  found=$(find graal/web-image/mxbuild -name "$jar" -path '*dists*' | head -1)
+  [[ -n $found ]] || { echo "No $jar under graal/web-image/mxbuild" >&2; find graal/web-image/mxbuild -name '*.jar' >&2; exit 1; }
+  cp "$found" "$dest/builder/"
 done
-support=$(mx/mx -p graal/web-image --java-home "$jdk_dir" paths --output NATIVE_IMAGE_WASM_SUPPORT | tail -1)
-props=$( { [[ -d $support ]] && find "$support" -name native-image.properties; } | head -1)
-if [[ -z $props && -f $support ]]; then mkdir -p support && tar xf "$support" -C support && props=$(find support -name native-image.properties | head -1); fi
-[[ -n $props ]] || { echo "No native-image.properties in $support" >&2; exit 1; }
+props=$(find graal/web-image/mxbuild -name native-image.properties | head -1)
+[[ -n $props ]] || { echo "No native-image.properties under graal/web-image/mxbuild" >&2; exit 1; }
 cp "$props" "$dest/native-image.properties"
 echo "Installed the Web Image tool into $dest:"; ls -la "$dest" "$dest/builder"; cat "$dest/native-image.properties" | head -5
