@@ -437,6 +437,14 @@ contradicting one.
   iOS 26.5 simulator stopped turning apps when a UI test set `XCUIDevice.shared.orientation`: ProfileHistoryUITests'
   "Landscape charts sit side by side" failed alone and in order, and its recording stayed portrait. Rebooting the
   simulator (shutdown, boot) fixed it with no code change. Check the recording before debugging a rotation failure.
+- 2026-10-21 (Claude, Arena hand): a slide along the tucked hand skipped cards because the hit test gave a popped card
+  its whole enlarged width, which covers its neighbours' strips, and ignored the fan's tilt. Scrubbing now maps the
+  finger to each card's visible strip at the finger's height along its rotation (`ArenaHandFan.scrubCard`), with a small
+  dead zone. Taps still prefer the popped card so a second tap plays it.
+- 2026-10-21 (Claude, Arena fixtures): the card-choice browser opens only for `choose_target` prompts with
+  `maxChoices == 1` (`PortraitInteractionPolicy.cardChoiceKey`): XMage asks one pick at a time and reports earlier picks
+  in `options.chosenTargets`. A fixture asking for five picks at once never opened it. Long SwiftUI modifier chains
+  with ternaries over colours (a split's number badge) time out the type checker; build such views from small helpers.
 - 2026-10-20 (Claude, Arena panels): the prompt-detail sheet opens by itself for every ability, order, amount and
   search question (`PortraitInteractionPolicy.detailChoiceKey`, read in six places in NativeGameView). A board that answers
   one of those in its own view has to filter the key (`boardDetailChoiceKey`), or the sheet covers its view. Showing a

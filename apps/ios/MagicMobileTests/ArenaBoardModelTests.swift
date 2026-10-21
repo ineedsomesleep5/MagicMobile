@@ -351,4 +351,62 @@ final class ArenaBoardModelTests: XCTestCase {
         XCTAssertEqual(ArenaExtraHand.cards(for: player, actions: actions).map(\.instanceId), ["g1", "e1"])
         XCTAssertTrue(ArenaExtraHand.cards(for: player, actions: []).isEmpty)
     }
+
+    /// Caleb's replacement-effect question: two answers and their "Remember answer" twins become two cards and a toggle.
+    func testChoiceListPairsRememberedAnswersAndNamesTheCard() {
+        let options = ArenaChoiceList.options([
+            ("a", "Doubling Season: If an effect would create one or more tokens, it creates twice that many instead."),
+            ("b", "Chatterfang, Squirrel General: If one or more tokens would be created, those plus that many Squirrels are created."),
+            ("c", "Remember answer: Doubling Season: If an effect would create one or more tokens, it creates twice that many instead."),
+            ("d", "Remember answer: Chatterfang, Squirrel General: If one or more tokens would be created, those plus that many Squirrels are created."),
+        ])
+        XCTAssertEqual(options.map(\.id), ["a", "b"])
+        XCTAssertEqual(options.map(\.rememberID), ["c", "d"])
+        XCTAssertEqual(options.map(\.name), ["Doubling Season", "Chatterfang, Squirrel General"])
+        XCTAssertTrue(options[0].text.hasPrefix("If an effect"))
+        XCTAssertNil(ArenaChoiceList.options([("x", "Elf")]).first?.name, "a plain word names no card")
+        XCTAssertEqual(ArenaChoiceList.options([("y", "Doubling Season [8f2]: If an effect would create tokens…")]).first?.name,
+                       "Doubling Season", "XMage's id after the name")
+        XCTAssertEqual(ArenaChoiceList.colorSymbol("Red"), "R")
+        XCTAssertEqual(ArenaChoiceList.colorSymbol("Green mana"), "G")
+        XCTAssertNil(ArenaChoiceList.colorSymbol("Goblin"))
+    }
+
+    func testLoyaltyCostsSplitFromPlaneswalkerAbilities() {
+        XCTAssertEqual(ArenaLoyalty.split("+1: Create a 2/2 black Zombie.")?.cost, "+1")
+        XCTAssertEqual(ArenaLoyalty.split("-4: Each player sacrifices two creatures.")?.cost, "−4")
+        XCTAssertEqual(ArenaLoyalty.split("−9: Each opponent chooses…")?.text, "Each opponent chooses…")
+        XCTAssertEqual(ArenaLoyalty.split("0: Draw a card.")?.cost, "0")
+        XCTAssertNil(ArenaLoyalty.split("Whenever a creature dies, draw a card."))
+    }
+
+    /// The X pill steps through XMage's values and starts at the most your mana pays.
+    func testAmountRangeStepsAndAffordableX() {
+        let range = ArenaAmountRange(amounts: [0, 1, 2, 3, 4, 5, 6, 7], minimum: nil, maximum: nil)
+        XCTAssertEqual(range.step(3, by: 5), 7)
+        XCTAssertEqual(range.step(3, by: -5), 0)
+        XCTAssertEqual(range.step(3, by: 1), 4)
+        XCTAssertEqual(ArenaAmountRange(amounts: nil, minimum: 1, maximum: nil).maximum, 100, "an open maximum stops 99 above")
+        XCTAssertEqual(ArenaAmountRange(amounts: nil, minimum: -3, maximum: -1).values, [-3, -2, -1], "XMage's own bounds, negative too")
+        XCTAssertEqual(ArenaAmountRange(amounts: [0, 2, 4], minimum: nil, maximum: nil).clamp(3), 2)
+        XCTAssertEqual(ArenaAmountRange.affordableX(cost: "{X}{R}", sources: 11), 10, "Devil's Play with eleven mana")
+        XCTAssertEqual(ArenaAmountRange.affordableX(cost: "{X}{X}{G}{U}", sources: 8), 3, "Hydroid Krasis-style double X")
+        XCTAssertEqual(ArenaAmountRange.affordableX(cost: "{X}{2}{R}", sources: 2), 0)
+        XCTAssertNil(ArenaAmountRange.affordableX(cost: "{2}{R}", sources: 9))
+    }
+
+    func testSplitRowsNameTheirCardAndLethalDamage() {
+        XCTAssertEqual(ArenaSplit.name(of: "Grizzly Bears, P/T: 2/2"), "Grizzly Bears")
+        XCTAssertEqual(ArenaSplit.name(of: "Serra Angel [4cb]"), "Serra Angel")
+        XCTAssertEqual(ArenaSplit.lethal(toughness: 4, damage: 1, deathtouch: false), 3)
+        XCTAssertEqual(ArenaSplit.lethal(toughness: 4, damage: 0, deathtouch: true), 1)
+        XCTAssertEqual(ArenaSplit.lethal(toughness: 2, damage: 5, deathtouch: false), 1)
+    }
+
+    func testGlossaryExplainsTheKeywordsACardHas() {
+        let entries = ArenaKeywordGlossary.entries(rules: "Flying, vigilance\nFlashback {1}{G}")
+        XCTAssertEqual(entries.map(\.keyword), ["Flying", "Vigilance", "Flashback"])
+        XCTAssertTrue(ArenaKeywordGlossary.entries(rules: "Flashback {2}").allSatisfy { $0.keyword != "Flash" }, "flashback isn't flash")
+        XCTAssertTrue(ArenaKeywordGlossary.entries(rules: "Equipped creature gets +1/+1.").isEmpty, "equipped isn't equip")
+    }
 }

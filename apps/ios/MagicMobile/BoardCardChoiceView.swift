@@ -624,12 +624,14 @@ private struct ConfirmChrome: ViewModifier {
 /// answers. "View Battlefield" steps the browser aside. Answers are the same one-at-a-time native answers as the
 /// panel's (CardChoicePlan).
 extension BoardCardChoiceView {
-    private enum ArenaZones { case scry, surveil }
+    private enum ArenaZones { case scry, surveil, piles }
 
     private var arenaZones: ArenaZones? {
         guard let kind = draftKind else { return nil }
         if kind == .scry { return .scry }
         if kind == .selection, prompt.message.lowercased().contains("surveil") { return .surveil }
+        // Fact or Fiction, Liliana: the cards you pick make the first pile, the rest the second.
+        if kind == .selection, prompt.message.lowercased().contains("first pile") { return .piles }
         return nil
     }
 
@@ -642,6 +644,7 @@ extension BoardCardChoiceView {
         default: break
         }
         if text.contains("surveil") { return "Surveil" }
+        if text.contains("first pile") { return "Separate into two piles" }
         if text.contains("discard") { return "Discard" }
         if text.contains("search") || text.contains("from your library") { return "Search your library" }
         if text.contains("graveyard") { return "Choose from a graveyard" }
@@ -653,6 +656,7 @@ extension BoardCardChoiceView {
         switch arenaZones {
         case .scry: return "Tap a card to move it between the bottom and the top of your library."
         case .surveil: return "Tap a card to move it between the top of your library and your graveyard."
+        case .piles: return "Tap a card to move it between the piles."
         case nil: break
         }
         let message = PromptDisplayText.clean(CardChoicePlan.context(prompt))
@@ -797,9 +801,14 @@ extension BoardCardChoiceView {
 
     /// Scry's Bottom and Top, surveil's Library and Graveyard: two wells side by side (stacked in portrait).
     private func arenaZoneWells(_ zones: ArenaZones, width: CGFloat, landscape: Bool, available: CGFloat) -> some View {
-        let left: (title: String, ids: [String], top: Bool) = zones == .scry ? ("Bottom", draftIDs, false) : ("Graveyard", draftIDs, false)
-        let right: (title: String, ids: [String], top: Bool) = zones == .scry ? ("Top", topIDs, true)
-            : ("Library", selectableIDs.filter { !draftIDs.contains($0) }, true)
+        let rest = selectableIDs.filter { !draftIDs.contains($0) }
+        let left: (title: String, ids: [String], top: Bool)
+        let right: (title: String, ids: [String], top: Bool)
+        switch zones {
+        case .scry: left = ("Bottom", draftIDs, false); right = ("Top", topIDs, true)
+        case .surveil: left = ("Graveyard", draftIDs, false); right = ("Library", rest, true)
+        case .piles: left = ("Pile 1", draftIDs, false); right = ("Pile 2", rest, true)
+        }
         // Side by side, each well as wide as its cards (an empty one keeps room for one), the cards shrinking so all fit.
         let slots = CGFloat(max(1, left.ids.count) + max(1, right.ids.count))
         let fitted = landscape ? max(64, min(width, (available - 14 - 4 * 10) / slots - 10)) : width

@@ -44,6 +44,9 @@ struct BoardFXOverlay: View {
     /// The Arena board keeps the stack's top card on the table, so a spell lands there with a flare of light instead of
     /// a centre showcase, and a permanent arrives straight from that card. A commander keeps its whole moment.
     var arena = false
+    /// The objects on the stack now: a spell the Arena board never saw there (cast and resolved between two snapshots)
+    /// is shown at the stack card's place for its reveal instead.
+    var arenaStackIDs: Set<String> = []
 
     /// Cards that just left the battlefield no longer report bounds; keep their last rectangle.
     @State private var lastKnownBounds: [String: CGRect] = [:]
@@ -185,9 +188,15 @@ struct BoardFXOverlay: View {
                 guard let origin = rect(id) else { return nil }
                 let target = destination == .hand ? anchors.handPoint(playerID) : anchors.playerPoint(playerID)
                 return BoardFXFlight(effect: effect, card: card, kind: .depart(from: origin, to: target, destination: destination))
-            case let .spellCast(_, _, controllerID, _, weight):
-                // The Arena board's stack card carries every spell, commanders too (gold rim and crown).
-                if arena { return nil }
+            case let .spellCast(stackID, _, controllerID, _, weight):
+                // The Arena board's stack card carries every spell, commanders too (gold rim and crown); one that never
+                // reached the board's stack still shows there while it's revealed.
+                if arena {
+                    // Only with nothing on the stack: a spell that resolved while the next one is shown stays gone.
+                    guard weight != .ability, arenaStackIDs.isEmpty, !arenaStackIDs.contains(stackID) else { return nil }
+                    return BoardFXFlight(effect: effect, card: card, kind: .cast(from: anchors.stackPoint, to: anchors.stackPoint, weight: weight),
+                                         tavern: tavern)
+                }
                 // On the tavern table a commander rises out of its owner's medallion.
                 let origin = tavern && weight == .commander ? anchors.playerPoint(controllerID ?? anchors.viewerID) : anchors.handPoint(controllerID)
                 return BoardFXFlight(effect: effect, card: card,
@@ -212,7 +221,7 @@ struct BoardFXOverlay: View {
             // The Arena stack card: a burst of light as the spell lands on it, then it stays readable there. A commander
             // gets a wider gold burst, no showcase.
             guard motion else { return }
-            let window = min(1, elapsed / 0.7)
+            let window = min(1, elapsed / max(0.3, fx.duration * 0.9))
             BoardFXPainter.rays(at: anchors.stackPoint, color: weight == .ability || weight == .commander ? BoardFXPainter.gold : tint.color,
                                 radius: weight == .commander ? 190 : weight == .big ? 170 : 130, progress: window, elapsed: elapsed, in: &context)
         case let .spellCast(stackID, name, controllerID, tint, weight) where tavern && weight == .commander:

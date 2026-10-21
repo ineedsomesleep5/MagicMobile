@@ -161,6 +161,8 @@ struct NativeGameView: View {
     @State var arenaTriggerPlan: [String] = []
     /// The trigger-order prompt the plan last answered ("id:messageId"): it is never answered twice.
     @State var arenaTriggerSent: String?
+    /// The opponent's spell being revealed on the Arena stack card (its first moments there).
+    @State var arenaRevealID: String?
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
     @State var arenaNotice: String?
@@ -210,8 +212,8 @@ struct NativeGameView: View {
     func boardDetailChoiceKey(_ snapshot: GameSnapshot) -> String? {
         if isArenaBoard, let prompt = snapshot.promptEnvelopeV2, prompt.abilities?.isEmpty == false,
            (prompt.responseCommand?.type ?? "").lowercased() == "choose_ability" { return nil }
-        // Its modes too, in ArenaModeBrowser.
-        if isArenaBoard, snapshot.promptEnvelopeV2?.modes?.isEmpty == false { return nil }
+        // Its modes too, in ArenaModeBrowser, and the choices, players, numbers, splits and piles its other screens take.
+        if isArenaBoard, snapshot.promptEnvelopeV2?.modes?.isEmpty == false || arenaScreenPrompt(snapshot) { return nil }
         return PortraitInteractionPolicy.detailChoiceKey(snapshot)
     }
 
@@ -1124,7 +1126,7 @@ struct NativeGameView: View {
 
     func ingestBoardFX(_ snapshot: GameSnapshot) {
         let level = BoardFXLevel.resolved(stored: boardFXLevel, reduceMotion: GameBoardMotion.reduced(accessibilityReduceMotion))
-        let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt)
+        let scheduled = boardFX.ingest(snapshot, level: level, now: Date(), holdUntil: turnBannerEndsAt, pace: isArenaBoard ? .arena : .hearth)
         BoardPresentationHold.shared.record(BoardFXRevisionKey(snapshot: snapshot), until: boardFX.smartPassHoldUntil)
         guard !scheduled.isEmpty else { return }
         BoardFXHaptics.play(scheduled, viewerID: snapshot.viewerID)
@@ -1187,7 +1189,8 @@ struct NativeGameView: View {
             opponentHandPoint: CGPoint(x: opponentRect.midX, y: opponentRect.minY - 40),
             playerLabels: Dictionary(snapshot.players.map { ($0.playerId, snapshot.playerLabel($0.playerId)) }, uniquingKeysWith: { first, _ in first }))
         return BoardFXOverlay(effects: boardFX.active, subjects: boardFX.subjects, cardBounds: bounds, anchors: anchors,
-                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) }, tavern: isTavernBoard, arena: isArenaBoard)
+                              clock: boardFXClock, prune: { boardFX.prune(now: Date()) }, tavern: isTavernBoard, arena: isArenaBoard,
+                              arenaStackIDs: Set(snapshot.stackTopFirst.map(\.id)))
     }
 
     func boardObservation<Content: View>(_ content: Content, snapshot: GameSnapshot) -> some View {
