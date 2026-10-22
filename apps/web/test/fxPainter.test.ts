@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { type BoardFXEvent, BoardFXScheduler } from "../src/core/boardEvents";
-import { paint, type PaintContext } from "../src/ui/arena/fxPainter";
+import { noise, paint, type PaintContext } from "../src/ui/arena/fxPainter";
 
 /** A 2D context that records the drawing calls it gets and accepts any property. */
 function recordingContext() {
@@ -70,5 +70,16 @@ describe("effects painter", () => {
     const { ctx, calls } = recordingContext();
     paint(ctx, fx, 0.5, k);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("particle noise", () => {
+  it("is BoardFXPainter.noise's 64-bit mix, always in 0..1", () => {
+    // Reference values from an independent implementation of the Swift function.
+    expect([noise(3, 5, 7), noise(9, 69, 4), noise(0, 0, 0), noise(-12, 3, 1)]).toEqual([0.7886, 0.9485, 0, 0.9775]);
+    for (let seed = 0; seed < 40; seed++) for (let i = 0; i < 80; i++) for (let salt = 1; salt < 5; salt++) {
+      const value = noise(seed, i, salt);
+      expect(value >= 0 && value < 1).toBe(true);
+    }
   });
 });

@@ -30,11 +30,15 @@ export const easeIn = (t: number) => Math.pow(Math.min(Math.max(t, 0), 1), 2.2);
 /** 0 → 1 → 0 envelope over progress with linear fades. */
 export const fadeWindow = (p: number, fadeIn: number, fadeOut: number) =>
   p < fadeIn ? Math.max(0, p / fadeIn) : p > fadeOut ? Math.max(0, 1 - (p - fadeOut) / Math.max(0.001, 1 - fadeOut)) : 1;
-/** Deterministic 0..1 noise, so particles need no stored state. */
+const MASK64 = (1n << 64n) - 1n;
+/**
+ * Deterministic 0..1 noise, so particles need no stored state: BoardFXPainter.noise's 64-bit mix exactly, so particles
+ * fall where they do on iOS. (A 32-bit version went negative after its last XOR and drew a negative radius.)
+ */
 export function noise(seed: number, index: number, salt: number): number {
-  let x = (Math.imul(seed, 73856093) ^ Math.imul(index, 19349663) ^ Math.imul(salt, 83492791)) >>> 0;
-  x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x846ca68b) >>> 0; x ^= x >>> 16;
-  return (x % 10000) / 10000;
+  let x = ((BigInt(seed) * 73856093n) ^ (BigInt(index) * 19349663n) ^ (BigInt(salt) * 83492791n)) & MASK64;
+  x ^= x >> 33n; x = (x * 0xff51afd7ed558ccdn) & MASK64; x ^= x >> 33n; x = (x * 0xc4ceb9fe1a85ec53n) & MASK64; x ^= x >> 33n;
+  return Number(x % 10000n) / 10000;
 }
 
 function withAlpha(color: string, alpha: number) {

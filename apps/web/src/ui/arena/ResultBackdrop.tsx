@@ -16,6 +16,11 @@ export function ResultBackdrop({ victory }: { victory: boolean }) {
     const start = performance.now();
     let frame = 0;
     const draw = () => {
+      // A frame that can't be drawn is skipped; the backdrop keeps going.
+      try { paintFrame(); } catch (error) { console.warn("result backdrop frame skipped", error); }
+      frame = requestAnimationFrame(draw);
+    };
+    const paintFrame = () => {
       const ratio = Math.min(2, window.devicePixelRatio || 1);
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * ratio) || canvas.height !== Math.round(h * ratio)) { canvas.width = Math.round(w * ratio); canvas.height = Math.round(h * ratio); }
@@ -64,7 +69,6 @@ export function ResultBackdrop({ victory }: { victory: boolean }) {
         }
         ctx.restore();
       }
-      frame = requestAnimationFrame(draw);
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
