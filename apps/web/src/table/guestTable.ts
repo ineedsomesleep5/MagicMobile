@@ -5,11 +5,13 @@
  */
 import { EngineError, EngineJson, get, int, type J, keysEqual, obj, sameUuid, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
+import { loadSmartPass } from "../core/smartPass";
 import { OnDeviceStartingPlayerChoice, OnDeviceStartingRoll, OnDeviceStartingRollProgress } from "../core/startingRoll";
 import { gameEmote, type GameEmote, TableChatText, TableJoinLink } from "../core/tableChat";
 import { TurnClockBoard, TurnClockWire } from "../core/turnClock";
 import { type RelayPeer, RelayTransport } from "../relay/relayTransport";
 import type { GameTable } from "./gameTable";
+import { storage } from "../ui/storage";
 import { GuestSession } from "./guestSession";
 import { type BuildIdentity, GuestLobby, HandshakeFailure, Lobby } from "./lobby";
 import { HostRetryPolicy, HostUnavailable, RemoteEngineTransport } from "./remoteEngine";
@@ -360,6 +362,8 @@ export class GuestTable implements GameTable {
       }
       if (token !== this.generation) return;
       const session = new GuestSession(remote.request, matchID, seatID, this.changed);
+      // Smart pass plays a relay seat's routine priority too, with the player's own stops (iOS attaches tables with it).
+      session.smartPass = loadSmartPass(storage.get);
       session.autoCommand = (snapshot) => this.startingPlayerCommand(snapshot);
       this.session = session;
       session.start();

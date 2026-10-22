@@ -176,6 +176,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   const [cornerMenu, setCornerMenu] = useState<"game" | "pass">();
   /** Phase Stops or Game Settings, in glass on the table. */
   const [sheet, setSheet] = useState<"stops" | "settings" | "actions">();
+  /** The prompt whose player choice was opened from a medallion as a panel (several picks). */
+  const [playerPanel, setPlayerPanel] = useState<string>();
   const [zone, setZone] = useState<{ title: string; cards: ZoneCard[] }>();
   const [playerCard, setPlayerCard] = useState<string>();
   const [confirmConcede, setConfirmConcede] = useState(false);
@@ -390,7 +392,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   }, [snapshot, me]);
   // With a D20 roll the table answers XMage's starting-player question itself, so that question never shows.
   const rawBrowser = browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
-  const browser = rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
+  const browser = playerPanel !== undefined && playerPanel === envelope?.id ? "players"
+    : rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
   // Auto Pay answers its own colour question; it never opens the choice browser.
   const autoPayColour = autoPaying && envelope?.responseKind.toLowerCase() === "choice";
   // A chosen trigger order answers the ordering prompts it covers; the browser stays shut for them.
@@ -840,7 +843,9 @@ export function GameScreen({ table }: { table: GameTable }) {
           aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : ""}`}
           onClick={(event) => {
             event.stopPropagation();
-            if (targetable) send({ type: "choose_target", targetIds: [player.playerId] }, player.displayName ?? "Player");
+            // A player target with several picks opens its panel (arenaSubmitPlayerTarget); one pick answers here.
+            if (targetable && ((envelope?.maxChoices ?? 1) > 1 || (envelope?.minChoices ?? 1) > 1)) setPlayerPanel(envelope?.id);
+            else if (targetable) send({ type: "choose_target", targetIds: [player.playerId] }, player.displayName ?? "Player");
             else if (ready) setMenu({ id: "commander", at: { x: at.x + 110, y: at.y, w: d, h: d, z: 0 }, actions: commandActions });
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
