@@ -136,6 +136,16 @@ contradicting one.
 
 ## Website
 
+- 2026-10-22 (Claude, web Arena parity, later): (1) A canvas `arc` with a slightly negative radius throws
+  `IndexSizeError`, and thrown inside a React effect it unmounts the whole tree: a game went blank on turn 15. The
+  painter now clamps radii, skips a mark that throws, and sits in an error boundary (`FXBoundary`); a painter test
+  runs every event kind against a recording context. (2) Scryfall's `cards/named?exact=` never finds tokens ("Zombie
+  Token" 404s); iOS searches `!"Zombie" t:token` and picks the printing whose name, type, rules, colours and P/T match
+  (`core/tokenArt.ts`). The driver's `notFound` list in each game's summary shows any picture still asked for by name.
+  (3) Checking that reading a card holds smart pass needs the inspector opened while the reveal still holds the pass
+  (within about 0.8 s of the AI's spell): opened later, the pass has already been decided and the check proves nothing.
+  (4) A subagent running git in the same worktree can leave `index.lock` for a moment; retry the commit instead of
+  deleting the lock.
 - 2026-10-22 (Claude, web Arena parity): four traps checking the board on the real engine. (1) The desktop app's
   browser pane runs as a background page whenever the app window isn't in front, even with the pane shown and
   `document.visibilityState` "visible": `requestAnimationFrame` fires about once a second, so effect flights never drew
