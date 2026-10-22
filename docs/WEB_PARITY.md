@@ -257,6 +257,11 @@ the board's flights, banners and reveals, and console errors.
 | game G | Token Triumph vs Chaos Incarnate | AI won, turn 20 | 15 drags, Auto Pay ×8, All Attack ×2, 80 smart passes, no page errors, no missing resources; the player card; the red hit flare |
 | game H | Draconic Destruction vs Grave Danger | AI won, turn 17 (two lands all game) | painted: arrivals 21, casts 16, departures 2, attacks 20, strikes 13, life 5, counters 1; screenshots of each first kind; no page errors, nothing missing |
 | game I | First Flight vs Chaos Incarnate | AI won, turn 21 | the reading hold held 3 s; Fiery Confluence's six-card wipe with its cascade and recap; 12 drags, Auto Pay ×8, All Attack ×2, 81 smart passes; no page errors; one token zoom asked Scryfall by name (fixed in 7e6357ae) |
+| final 1 | Draconic Destruction vs Chaos Incarnate | AI won, turn 19 | drag casts 8, Auto Pay 8, triggers 7, All Attack 2, reading hold held; no wipe; no errors, nothing missing |
+| final 2 | First Flight vs Chaos Incarnate | **won**, turn 24 | drag casts 19, Auto Pay 13, triggers 11, All Attack 4; no wipe; one uncaught canvas error on the win screen (negative particle noise, fixed in 143e1479) |
+| final 3 | Token Triumph vs Grave Danger | conceded through the menu, turn 25 | drag casts 23, Auto Pay 16, triggers 49, All Attack 8, blocks 9; no wipe; no errors |
+| final 4 | Draconic Destruction vs Grave Danger | AI won, turn 15 | drag casts 9, triggers 6; no Auto Pay or All Attack came up; no errors |
+| final 5 | First Flight vs Grave Danger | AI won, turn 17 | drag casts 7, Auto Pay 7, triggers 7, All Attack 6; no wipe; no errors |
 
 ## Android follow-ups
 

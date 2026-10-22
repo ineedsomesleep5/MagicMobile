@@ -146,6 +146,10 @@ contradicting one.
   (within about 0.8 s of the AI's spell): opened later, the pass has already been decided and the check proves nothing.
   (4) A subagent running git in the same worktree can leave `index.lock` for a moment; retry the commit instead of
   deleting the lock.
+  (5) A 32-bit port of a 64-bit hash went negative: in JavaScript `x ^= x >>> 16` yields a *signed* int32 even when
+  `x` was unsigned, so `x % 10000` was negative and the particle noise ran -1..1. It put sparks in the wrong places and
+  threw on a win screen weeks later. Port Swift's `UInt64` arithmetic with BigInt (or `>>> 0` after every XOR) and test
+  the range against an independent implementation.
 - 2026-10-22 (Claude, web Arena parity): four traps checking the board on the real engine. (1) The desktop app's
   browser pane runs as a background page whenever the app window isn't in front, even with the pane shown and
   `document.visibilityState` "visible": `requestAnimationFrame` fires about once a second, so effect flights never drew
