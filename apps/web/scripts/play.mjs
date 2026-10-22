@@ -99,7 +99,8 @@ const look = () => {
     stack: (snap.xmage?.stack ?? []).length,
     actions: (snap.legalActions ?? []).map((a) => ({ id: a.id, type: a.type, label: a.label, card: a.cardName, cardId: a.cardInstanceId, cost: a.manaCost, confirmed: a.confirmed })),
     buttons: [...document.querySelectorAll(".acontrols .aplaque, .bfoot .aplaque, .aplaque")].filter((b) => !b.disabled).map((b) => b.textContent),
-    hand: me?.zones.hand.length ?? 0, creatures: me?.zones.battlefield.filter((c) => /creature/i.test(c.card.typeLine)).length ?? 0,
+    hand: me?.zones.hand.length ?? 0, handIds: me?.zones.hand.map((c) => c.instanceId) ?? [],
+    browser: document.querySelector(".bstage, .bframe") !== null, creatures: me?.zones.battlefield.filter((c) => /creature/i.test(c.card.typeLine)).length ?? 0,
   };
 };
 
@@ -130,7 +131,7 @@ function decide(state, memory) {
         // Cast the way a player does: carry the card from the hand onto the table (one with a single cast action).
         const card = spells[0];
         const sameCard = acts.filter((a) => a.cardId === card.cardId && (a.type === "cast_spell" || a.type === "play_land"));
-        return sameCard.length === 1 && card.cardId ? { drag: card.cardId, action: card.id } : { action: card.id };
+        return sameCard.length === 1 && card.cardId && state.handIds.includes(card.cardId) ? { drag: card.cardId, action: card.id } : { action: card.id };
       }
     }
     // Let smart pass act first; pass by hand only when it stopped for a response.
@@ -153,6 +154,8 @@ function decide(state, memory) {
     const done = acts.find((a) => a.type === "answer_yes_no");
     return done ? { action: done.id } : undefined;
   }
+  // A question on the table (yes/no, the commander's zone): its main answer, the ember plaque, as a player clicks it.
+  if (p.confirmation && state.browser) return { clickIn: ".bstage .answers .aplaque.ember" };
   if (p.targets.length) return { submit: { type: "choose_target", targetIds: [p.targets[0]] }, label: "Choose" };
   if (p.abilities.length) return { submit: { type: "choose_ability", abilityId: p.abilities[0] }, label: "Ability" };
   if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [p.modes[0]] }, label: "Mode" };
@@ -203,13 +206,26 @@ async function play(page, game) {
     }
     if (Date.now() - started > 45 * 60_000) throw new Error("Game took longer than 45 minutes");
     const move = decide(state, memory);
-    if (move?.drag) {
+    if (move?.clickIn) {
+      const plaque = page.locator(move.clickIn).first();
+      if (await plaque.count() > 0) {
+        const label = await plaque.textContent();
+        await plaque.click({ timeout: 3000 }).catch(() => {});
+        await page.evaluate((name) => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "click", label: name }), label);
+      }
+    } else if (move?.drag) {
       // Carry the hand card onto the table with the mouse, as a player does (ArenaLayout.drops decides).
       const card = page.locator(`.acard[data-id="${move.drag}"]`);
-      const box = await card.boundingBox().catch(() => null);
+      const box = await card.count() > 0 ? await card.boundingBox({ timeout: 2000 }).catch(() => null) : null;
       if (box) {
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        // The hand fans up under the pointer: hover, let the fan settle, then press the card where it now stands.
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3, { steps: 4 });
+        await page.waitForTimeout(450);
+        const raised = await card.boundingBox({ timeout: 2000 }).catch(() => null) ?? box;
+        await page.mouse.move(raised.x + raised.width / 2, raised.y + raised.height / 3, { steps: 2 });
+        await page.waitForTimeout(120);
+        const settled = await card.boundingBox({ timeout: 2000 }).catch(() => null) ?? raised;
+        await page.mouse.move(settled.x + settled.width / 2, settled.y + settled.height / 3);
         await page.mouse.down();
         await page.mouse.move(640, 330, { steps: 12 });
         await page.mouse.up();

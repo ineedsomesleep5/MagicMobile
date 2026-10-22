@@ -772,6 +772,52 @@ export function GameScreen({ table }: { table: GameTable }) {
             })}
           </svg>
         )}
+        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackOpen && !zone && (() => {
+          // The top of the stack points at its targets, a spell as well as an ability, with a reticle on each target while it
+          // waits; an ability without targets points back at its source (ArenaStackArc, ArenaTargetReticle).
+          const top = stack[0];
+          const ability = isStackAbility(top);
+          const targetIds = top.targetIds ?? [];
+          const ids = targetIds.length > 0 ? targetIds : ability && top.sourceInstanceId ? [top.sourceInstanceId] : [];
+          const targets = ids.flatMap((id) => {
+            const place = places.current.get(id);
+            if (place) return [{ x: place.x, y: place.y, size: Math.min(place.w, place.h) }];
+            return snapshot.players.some((p) => p.playerId === id) ? [{ ...anchors.player(id), size: ARENA.viewerMedallion.d * geo.grow }] : [];
+          });
+          if (targets.length === 0) return null;
+          const theirs = top.controllerId !== undefined && top.controllerId !== viewer;
+          const color = theirs ? "#ff6145" : "#8cd9ff";
+          const card = stackPlace(0, geo);
+          const start = { x: card.x - card.w / 2, y: card.y - card.h / 2 + card.h * 0.24 };
+          return (
+            <svg key={top.id} className="aarcs" viewBox={`0 0 ${STAGE.width} ${geo.height}`} style={{ height: geo.height }} aria-hidden="true">
+              {targets.map((t, i) => {
+                const c = { x: (start.x + t.x) / 2, y: Math.min(start.y, t.y) - Math.abs(start.x - t.x) * 0.25 - 30 };
+                const d = `M${start.x},${start.y} Q${c.x},${c.y} ${t.x},${t.y}`;
+                return (
+                  <g key={i} fill="none" strokeLinecap="round">
+                    <path className="draw" d={d} pathLength={1} stroke={color} strokeOpacity={0.35} strokeWidth={9} />
+                    <path className="draw" d={d} pathLength={1} stroke={color} strokeWidth={3} />
+                    <path className="draw" d={d} pathLength={1} stroke="#fff" strokeOpacity={0.85} strokeWidth={1} />
+                  </g>
+                );
+              })}
+              {targetIds.length > 0 && targets.map((t, i) => {
+                const r = Math.max(34, t.size * 0.62) / 2;
+                return (
+                  <g key={`r${i}`} className="reticle" style={{ transformOrigin: `${t.x}px ${t.y}px` }} stroke={color} fill="none">
+                    <circle cx={t.x} cy={t.y} r={r} strokeWidth={7} strokeOpacity={0.35} />
+                    <circle cx={t.x} cy={t.y} r={r} strokeWidth={2.2} />
+                    <circle cx={t.x} cy={t.y} r={r * 0.64} stroke="#fff" strokeOpacity={0.8} strokeWidth={0.8} />
+                    {[0, 90, 180, 270].map((a) => (
+                      <line key={a} x1={t.x} y1={t.y - r - r * 0.2} x2={t.x} y2={t.y - r + r * 0.2} strokeWidth={2.6} transform={`rotate(${a} ${t.x} ${t.y})`} />
+                    ))}
+                  </g>
+                );
+              })}
+            </svg>
+          );
+        })()}
         {carrying && carry && (() => {
           // The carried card follows the pointer, half again its size and leaning with the drag; over the table it settles a
           // little smaller with an ember shadow when it can be played, and the table's edge lights warm.
@@ -792,6 +838,8 @@ export function GameScreen({ table }: { table: GameTable }) {
           );
         })()}
         {fxLevel !== "off" && <BoardFXOverlay active={fx.active} subjects={fx.director.subjects} frames={frames} anchors={anchors}
+          height={geo.height} pixelRatio={geo.scale * (typeof window !== "undefined" ? window.devicePixelRatio : 1)}
+          grabbed={(id) => { const moved = movedFrom.current.get(id); return moved && fxNow() - moved.at < 2 ? moved.place : undefined; }}
           stackIDs={new Set(stack.map((o) => o.id))} rect={(id) => {
             const moved = movedFrom.current.get(id);
             return moved && fxNow() - moved.at < 0.6 ? moved.place : places.current.get(id);

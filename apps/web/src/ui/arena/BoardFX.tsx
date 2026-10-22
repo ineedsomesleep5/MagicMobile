@@ -4,12 +4,13 @@
  * home (hand, library), an attacker charges what it hits, a stolen card is dragged across, and a spell that never
  * reached the stack card is shown there. Placements follow BoardFXFlight.placement; times come from the scheduler.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ActiveBoardFX, BoardFXZone } from "../../core/boardEvents";
 import { BoardFXScheduler, subjectID } from "../../core/boardEvents";
 import type { ZoneCard } from "../../core/models";
 import { Face, PlainTile, Tile } from "./ArenaCard";
-import { LEAN, type Place } from "./layout";
+import { paint } from "./fxPainter";
+import { LEAN, type Place, STAGE } from "./layout";
 import { fxNow } from "./useBoardFX";
 
 interface Point { x: number; y: number }
@@ -122,10 +123,36 @@ export interface BoardFXOverlayProps {
   frames: boolean;
   /** Objects on the stack now: a spell the stack card never showed is shown there only with nothing else on it. */
   stackIDs: Set<string>;
+  /** The board's height in points, and how many device pixels a point takes (for a sharp canvas). */
+  height: number;
+  pixelRatio: number;
+  /** Where a stolen card was before it moved. */
+  grabbed(id: string): Place | undefined;
 }
 
-export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackIDs }: BoardFXOverlayProps) {
+export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackIDs, height, pixelRatio, grabbed }: BoardFXOverlayProps) {
   const [now, setNow] = useState(fxNow);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The marks between the flights, painted every frame while effects play (BoardFXOverlay's Canvas).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const ratio = Math.max(1, Math.min(3, pixelRatio));
+    if (canvas.width !== Math.round(STAGE.width * ratio) || canvas.height !== Math.round(height * ratio)) {
+      canvas.width = Math.round(STAGE.width * ratio); canvas.height = Math.round(height * ratio);
+    }
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, STAGE.width, height);
+    const box = (place: Place | undefined) => place && { x: place.x - place.w / 2, y: place.y - place.h / 2, w: place.w, h: place.h };
+    for (const fx of active) {
+      const elapsed = now - fx.start - fx.scheduled.delay;
+      if (elapsed < 0 || elapsed > fx.scheduled.duration) continue;
+      paint(ctx, fx.scheduled, elapsed / fx.scheduled.duration, {
+        rect: (id) => box(rect(id)), player: anchors.player, stack: anchors.stack, viewerID: anchors.viewerID, subjects, grabbed: (id) => box(grabbed(id)),
+      });
+    }
+  });
   const running = active.some((fx) => fx.start + fx.scheduled.end > now - 0.05);
   useEffect(() => {
     if (!running) return;
@@ -169,7 +196,7 @@ export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackI
       }
       case "controlChanged": {
         const to = rect(event.cardID);
-        if (to) kind = { kind: "pulled", from: to, to };
+        if (to) kind = { kind: "pulled", from: grabbed(event.cardID) ?? to, to };
         break;
       }
       default: break;
@@ -179,6 +206,7 @@ export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackI
 
   return (
     <div className="afx" aria-hidden="true">
+      <canvas ref={canvasRef} className="afxpaint" style={{ width: STAGE.width, height }} />
       {flights.map(({ id, kind, card, p, duration }) => {
         const at = placement(kind, p, duration);
         if (!at) return null;

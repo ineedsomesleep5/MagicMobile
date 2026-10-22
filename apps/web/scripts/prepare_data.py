@@ -72,3 +72,12 @@ for source_file in sorted(audio_in.iterdir()):
         converted += 1
 if converted or copied:
     print(f'Prepared {converted} converted and {copied} copied sounds')
+
+# The card moments' sprite strips (BoardFXCardMoments.swift: tavern-fx-counter-*, tavern-fx-exile-ring), twelve frames each.
+fx_out = out / 'fx'
+fx_out.mkdir(parents=True, exist_ok=True)
+for name in ('tavern-fx-counter-plus', 'tavern-fx-counter-minus', 'tavern-fx-counter-loyalty', 'tavern-fx-counter-coin', 'tavern-fx-exile-ring'):
+    folder = repo / 'apps/ios/MagicMobile/Assets.xcassets' / f'{name}.imageset'
+    pngs = sorted(folder.glob('*.png'))
+    if pngs:
+        shutil.copyfile(pngs[-1], fx_out / f'{name}.png')

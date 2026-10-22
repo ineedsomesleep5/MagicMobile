@@ -506,3 +506,11 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
   background: url(/tavern/coin.webp) center/100%; font: 900 16px/1 var(--serif); color: #401f0a; animation: amenuIn .16s ease-out both; }
 /* combat arrows over the table, under the hand */
 .aarrows { position: absolute; left: 0; top: 0; width: 956px; z-index: 150; pointer-events: none; overflow: visible; }
+/* the stack card's arcs to its targets (drawn in over 0.45 s) and the reticles on them (after 0.35 s, from 1.6x) */
+.aarcs { position: absolute; left: 0; top: 0; width: 956px; z-index: 160; pointer-events: none; overflow: visible; }
+.aarcs .draw { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: aarcDraw .45s ease-out forwards; }
+@keyframes aarcDraw { to { stroke-dashoffset: 0; } }
+.aarcs .reticle { opacity: 0; transform: scale(1.6); animation: areticle .3s cubic-bezier(.34,1.56,.64,1) .35s forwards; filter: drop-shadow(0 0 2px rgba(0,0,0,.6)); }
+@keyframes areticle { to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .aarcs .draw { animation: none; stroke-dashoffset: 0; } .aarcs .reticle { animation: none; opacity: 1; transform: none; } }
+.afxpaint { position: absolute; left: 0; top: 0; pointer-events: none; }
