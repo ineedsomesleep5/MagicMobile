@@ -1056,3 +1056,36 @@ enum ArenaSweepRecap {
         return spell.map { "\($0): \(what)" } ?? "\(graveyard + exile + other) permanents left the battlefield: \(what)"
     }
 }
+
+/// A chosen trigger order's decisions, apart from the view's state (parity/trigger-plan-cases.json; the web's TriggerPlan
+/// runs the same cases). `plan`: ability ids in the order they go on the stack; `sent`: the ordering prompt
+/// ("id:messageId") last answered from it.
+enum ArenaTriggerPlan {
+    /// `resolveOrder` runs first to last; XMage asks which goes on the stack first, which resolves last.
+    static func start(_ resolveOrder: [XmagePromptAbility]) -> [String] { resolveOrder.reversed().map(\.id) }
+
+    /// The plan answers this ordering prompt by itself: it offers a planned trigger and hasn't been answered yet. A prompt
+    /// the plan already answered and still showing (a refused pick) goes back to the browser.
+    static func answers(plan: [String], sent: String?, snapshot: GameSnapshot) -> Bool {
+        guard !plan.isEmpty, let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
+              prompt.isTriggerOrder, let abilities = prompt.abilities else { return false }
+        return "\(prompt.id):\(prompt.messageId)" != sent && abilities.contains { plan.contains($0.id) }
+    }
+
+    /// The next pick of a chosen trigger order. Triggers XMage no longer offers are on the stack and leave the plan; a
+    /// target question for one of them keeps it; your next priority, or an ordering prompt with none of its triggers
+    /// (the last one XMage places itself), ends it.
+    static func step(plan: [String], sent: String?, snapshot: GameSnapshot, pending: Bool)
+        -> (plan: [String], sent: String?, pick: XmagePromptAbility?) {
+        guard !plan.isEmpty, !pending, let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId) else { return (plan, sent, nil) }
+        guard prompt.isTriggerOrder, let abilities = prompt.abilities, !abilities.isEmpty else {
+            if prompt.responseKind == "priority" || prompt.responseCommand?.type == "pass_priority" { return ([], nil, nil) }
+            return (plan, sent, nil)
+        }
+        let remaining = plan.filter { id in abilities.contains { $0.id == id } }
+        guard let next = remaining.first, let ability = abilities.first(where: { $0.id == next }) else { return (remaining, nil, nil) }
+        let key = "\(prompt.id):\(prompt.messageId)"
+        guard key != sent else { return (remaining, sent, nil) }
+        return (remaining, key, ability)
+    }
+}

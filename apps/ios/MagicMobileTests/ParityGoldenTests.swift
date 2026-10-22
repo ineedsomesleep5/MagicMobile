@@ -280,6 +280,37 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// trigger-plan-cases.json: a chosen trigger order answering XMage's ordering prompts (ArenaTriggerPlan). The web's
+    /// TriggerPlan (apps/web test/triggerPlan.test.ts) runs the same cases.
+    func testTriggerPlanCasesOnBothPlatforms() throws {
+        let root = try caseFile("trigger-plan-cases.json")
+        let viewer = try XCTUnwrap(root["viewer"] as? String)
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let name = item["name"] as? String ?? ""
+            let order = try JSONDecoder().decode([XmagePromptAbility].self, from: JSONSerialization.data(withJSONObject:
+                (item["resolveOrder"] as! [String]).map { ["id": $0, "label": $0] }))
+            var plan = ArenaTriggerPlan.start(order)
+            XCTAssertEqual(plan, item["plan"] as? [String], name)
+            var sent = item["sent"] as? String
+            for (index, step) in (item["steps"] as? [[String: Any]] ?? []).enumerated() {
+                let at = "\(name) · step \(index + 1)"
+                let p = try XCTUnwrap(step["prompt"] as? [String: Any])
+                let prompt: [String: Any] = ["id": p["id"]!, "messageId": p["messageId"]!, "playerId": p["playerId"]!, "method": p["method"]!,
+                                             "responseKind": p["responseKind"]!, "message": "",
+                                             "abilities": (p["abilities"] as? [String] ?? []).map { ["id": $0, "label": $0] },
+                                             "responseCommand": ["type": p["command"]!]]
+                let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: [
+                    "id": "g", "phase": "main1", "turn": 3, "players": [], "log": [], "viewerPlayerId": viewer, "promptEnvelopeV2": prompt]))
+                XCTAssertEqual(ArenaTriggerPlan.answers(plan: plan, sent: sent, snapshot: snapshot), step["answers"] as? Bool, "\(at) · answers")
+                let result = ArenaTriggerPlan.step(plan: plan, sent: sent, snapshot: snapshot, pending: step["pending"] as? Bool ?? false)
+                plan = result.plan; sent = result.sent
+                XCTAssertEqual(result.pick?.id, step["pick"] as? String, "\(at) · pick")
+                XCTAssertEqual(plan, step["plan"] as? [String], "\(at) · plan")
+                XCTAssertEqual(sent, step["sent"] as? String, "\(at) · sent")
+            }
+        }
+    }
+
     /// parity/replay: real web games' engine polls, replayed through the iOS code. For every poll: the prompt, smart pass's
     /// decision with the default settings, Auto Pay's next step and the board events since the previous poll. The web runs
     /// the same polls (apps/web test/replay.test.ts) and must produce this golden exactly.

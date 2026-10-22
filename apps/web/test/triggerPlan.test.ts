@@ -36,3 +36,31 @@ describe("trigger plan", () => {
     expect(plan.active).toBe(false);
   });
 });
+
+describe("trigger plan shared cases", () => {
+  it("runs parity/trigger-plan-cases.json as iOS does (ArenaTriggerPlan)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const root: any = JSON.parse(readFileSync(join(__dirname, "..", "..", "android", "core", "src", "test", "resources", "parity", "trigger-plan-cases.json"), "utf8"));
+    for (const item of root.cases) {
+      const plan = new TriggerPlan();
+      const prompt = { id: "p1", messageId: 1, method: "GAME_PICK_ABILITY", playerId: root.viewer, responseKind: "ability", message: "" } as never;
+      const start = plan.start(item.resolveOrder.map((id: string) => ({ id, label: id })), prompt, false);
+      expect(plan.plan, item.name).toEqual(item.plan);
+      expect(start?.abilityId, item.name).toBe(item.plan[0]);
+      plan.sent = item.sent;
+      for (const [index, step] of item.steps.entries()) {
+        const at = `${item.name} · step ${index + 1}`;
+        const p = step.prompt;
+        const snapshot = { id: "g", phase: "main1", turn: 3, players: [], log: [], viewerPlayerId: root.viewer,
+          promptEnvelopeV2: { id: p.id, messageId: p.messageId, playerId: p.playerId, method: p.method, responseKind: p.responseKind, message: "",
+            abilities: (p.abilities ?? []).map((id: string) => ({ id, label: id })), responseCommand: { type: p.command } } } as never;
+        expect(plan.answers(snapshot), `${at} · answers`).toBe(step.answers);
+        expect(plan.step(snapshot, step.pending)?.abilityId ?? null, `${at} · pick`).toBe(step.pick);
+        expect(plan.plan, `${at} · plan`).toEqual(step.plan);
+        expect(plan.sent ?? null, `${at} · sent`).toBe(step.sent);
+      }
+    }
+  });
+});

@@ -1,0 +1,314 @@
+{
+ "about": "A chosen trigger order (iOS ArenaTriggerPlan in NativeGameView+ArenaActions.swift, web TriggerPlan in apps/web/src/ui/arena/triggerPlan.ts). resolveOrder is the player's order, first resolves first; plan is what start() returns. Each step is one settled snapshot: its prompt (abilities by id; command is the responseCommand type), whether an answer is pending, then the expected answers() before the step and the pick, plan and sent after it. sent starts as the prompt the first pick answered.",
+ "viewer": "me",
+ "cases": [
+  {
+   "name": "three triggers ordered at once, each later prompt answered from the plan",
+   "resolveOrder": [
+    "a",
+    "b",
+    "c"
+   ],
+   "plan": [
+    "c",
+    "b",
+    "a"
+   ],
+   "sent": "p1:1",
+   "steps": [
+    {
+     "prompt": {
+      "id": "p1",
+      "messageId": 1,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a",
+       "b",
+       "c"
+      ]
+     },
+     "pending": false,
+     "answers": false,
+     "pick": null,
+     "plan": [
+      "c",
+      "b",
+      "a"
+     ],
+     "sent": "p1:1"
+    },
+    {
+     "prompt": {
+      "id": "p2",
+      "messageId": 2,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a",
+       "b"
+      ]
+     },
+     "pending": false,
+     "answers": true,
+     "pick": "b",
+     "plan": [
+      "b",
+      "a"
+     ],
+     "sent": "p2:2"
+    },
+    {
+     "prompt": {
+      "id": "p3",
+      "messageId": 3,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a"
+      ]
+     },
+     "pending": false,
+     "answers": true,
+     "pick": "a",
+     "plan": [
+      "a"
+     ],
+     "sent": "p3:3"
+    },
+    {
+     "prompt": {
+      "id": "p4",
+      "messageId": 4,
+      "playerId": "me",
+      "method": "GAME_SELECT",
+      "responseKind": "priority",
+      "command": "pass_priority"
+     },
+     "pending": false,
+     "answers": false,
+     "pick": null,
+     "plan": [],
+     "sent": null
+    }
+   ]
+  },
+  {
+   "name": "a target question for one of them keeps the plan",
+   "resolveOrder": [
+    "a",
+    "b"
+   ],
+   "plan": [
+    "b",
+    "a"
+   ],
+   "sent": "p1:1",
+   "steps": [
+    {
+     "prompt": {
+      "id": "t1",
+      "messageId": 2,
+      "playerId": "me",
+      "method": "GAME_TARGET",
+      "responseKind": "target",
+      "command": "choose_target"
+     },
+     "pending": false,
+     "answers": false,
+     "pick": null,
+     "plan": [
+      "b",
+      "a"
+     ],
+     "sent": "p1:1"
+    },
+    {
+     "prompt": {
+      "id": "p2",
+      "messageId": 3,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a"
+      ]
+     },
+     "pending": false,
+     "answers": true,
+     "pick": "a",
+     "plan": [
+      "a"
+     ],
+     "sent": "p2:3"
+    }
+   ]
+  },
+  {
+   "name": "an answer on its way waits",
+   "resolveOrder": [
+    "a",
+    "b"
+   ],
+   "plan": [
+    "b",
+    "a"
+   ],
+   "sent": "p1:1",
+   "steps": [
+    {
+     "prompt": {
+      "id": "p2",
+      "messageId": 2,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a"
+      ]
+     },
+     "pending": true,
+     "answers": true,
+     "pick": null,
+     "plan": [
+      "b",
+      "a"
+     ],
+     "sent": "p1:1"
+    },
+    {
+     "prompt": {
+      "id": "p2",
+      "messageId": 2,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a"
+      ]
+     },
+     "pending": false,
+     "answers": true,
+     "pick": "a",
+     "plan": [
+      "a"
+     ],
+     "sent": "p2:2"
+    }
+   ]
+  },
+  {
+   "name": "a refused pick, the same prompt still showing, goes back to the browser",
+   "resolveOrder": [
+    "a",
+    "b"
+   ],
+   "plan": [
+    "b",
+    "a"
+   ],
+   "sent": "p1:1",
+   "steps": [
+    {
+     "prompt": {
+      "id": "p1",
+      "messageId": 1,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a",
+       "b"
+      ]
+     },
+     "pending": false,
+     "answers": false,
+     "pick": null,
+     "plan": [
+      "b",
+      "a"
+     ],
+     "sent": "p1:1"
+    }
+   ]
+  },
+  {
+   "name": "an ordering prompt with none of its triggers (XMage places the last itself) clears what was sent",
+   "resolveOrder": [
+    "a",
+    "b"
+   ],
+   "plan": [
+    "b",
+    "a"
+   ],
+   "sent": "p1:1",
+   "steps": [
+    {
+     "prompt": {
+      "id": "p2",
+      "messageId": 2,
+      "playerId": "me",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "x",
+       "y"
+      ]
+     },
+     "pending": false,
+     "answers": false,
+     "pick": null,
+     "plan": [],
+     "sent": null
+    }
+   ]
+  },
+  {
+   "name": "an opponent's prompt is not answered",
+   "resolveOrder": [
+    "a",
+    "b"
+   ],
+   "plan": [
+    "b",
+    "a"
+   ],
+   "sent": "p1:1",
+   "steps": [
+    {
+     "prompt": {
+      "id": "p2",
+      "messageId": 2,
+      "playerId": "ai",
+      "method": "GAME_PICK_ABILITY",
+      "responseKind": "ability",
+      "command": "choose_ability",
+      "abilities": [
+       "a"
+      ]
+     },
+     "pending": false,
+     "answers": false,
+     "pick": null,
+     "plan": [
+      "b",
+      "a"
+     ],
+     "sent": "p1:1"
+    }
+   ]
+  }
+ ]
+}
