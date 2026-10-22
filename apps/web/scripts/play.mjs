@@ -31,7 +31,7 @@ mkdirSync(out, { recursive: true });
 
 /** Installed in the page: records the session's answers, the snapshots and the board's effects into window.__rec. */
 const recorder = () => {
-  const rec = { t0: performance.now(), sends: [], snaps: [], fx: [], errors: [] };
+  const rec = { t0: performance.now(), sends: [], snaps: [], fx: [], errors: [], painted: {}, shots: [] };
   window.__rec = rec;
   const now = () => Math.round(performance.now() - rec.t0);
   const install = () => {
@@ -73,6 +73,18 @@ const recorder = () => {
     const reveal = document.querySelector(".acard[style*='z-index: 650']") ? "reveal" : undefined;
     const key = JSON.stringify([flights, hidden > 0, banner, notice, reveal]);
     if (key !== last) { rec.fx.push({ t: now(), flights, hidden, banner, notice, reveal }); last = key; }
+    // Each board effect the painter drew, by kind, counted once (its event object marks it), and the first time a kind
+    // is on screen, asked for a screenshot (the driver takes it between moves).
+    const fx = window.__mm?.fx?.current;
+    const clock = performance.now() / 1000;
+    for (const active of fx?.active ?? []) {
+      const at = clock - active.start - active.scheduled.delay;
+      if (at < 0 || at > active.scheduled.duration || active.scheduled.event.__seen) continue;
+      active.scheduled.event.__seen = true;
+      const kind = active.scheduled.event.type;
+      rec.painted[kind] = (rec.painted[kind] ?? 0) + 1;
+      if (rec.painted[kind] === 1 && !["spellCast", "enteredBattlefield"].includes(kind)) rec.shots.push(kind);
+    }
     if (rec.fx.length > 6000) rec.fx.splice(0, 2000);
     requestAnimationFrame(frame);
   };
@@ -90,7 +102,7 @@ const look = () => {
   return {
     ready: true, turn: snap.turn, step: snap.step, mine: snap.activePlayerId === snap.viewerPlayerId, over: snap.gameStatus === "completed",
     winners: snap.winnerPlayerIds ?? [], viewer: snap.viewerPlayerId, working: s.state.working || s.state.pendingActionID !== undefined,
-    error: s.state.errorMessage, life: snap.players.map((p) => p.life),
+    error: s.state.errorMessage, life: [me?.life, ...snap.players.filter((p) => p !== me).map((p) => p.life)],
     prompt: env && { id: env.id, mine: env.playerId === snap.viewerPlayerId, method: env.method, kind: env.responseKind, message: env.message,
       targets: env.targetIds ?? env.targets?.map((t) => t.id) ?? [], choices: (env.choices ?? []).map((c) => c.id), abilities: (env.abilities ?? []).map((a) => a.id),
       modes: (env.modes ?? []).map((m) => m.id), players: (env.players ?? []).map((p) => p.id), cards: (env.cards ?? []).map((c) => c.instanceId),
@@ -98,14 +110,19 @@ const look = () => {
     paying: snap.manaPayment?.active === true || ["mana", "pay_cost", "cost", "x_mana"].includes((env?.responseKind ?? "").toLowerCase()),
     autoPaying: [...document.querySelectorAll(".aplaque")].some((b) => b.textContent === "Paying…"),
     stack: (snap.xmage?.stack ?? []).length,
+    theirTop: (() => { const top = snap.xmage?.stack?.[0]; return top && top.controllerId !== snap.viewerPlayerId ? top.id : undefined; })(),
     actions: (snap.legalActions ?? []).map((a) => ({ id: a.id, type: a.type, label: a.label, card: a.cardName, cardId: a.cardInstanceId, cost: a.manaCost, confirmed: a.confirmed })),
     buttons: [...document.querySelectorAll(".acontrols .aplaque, .bfoot .aplaque, .aplaque")].filter((b) => !b.disabled).map((b) => b.textContent),
     hand: me?.zones.hand.length ?? 0, handIds: me?.zones.hand.map((c) => c.instanceId) ?? [],
     browser: document.querySelector(".bstage, .bframe") !== null, creatures: me?.zones.battlefield.filter((c) => /creature/i.test(c.card.typeLine)).length ?? 0,
+    allCreatures: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine)).length,
   };
 };
 
 const manaValue = (cost) => (cost ?? "").match(/\{[^}]+\}/g)?.reduce((n, sym) => n + (/^\{\d+\}$/.test(sym) ? Number(sym.slice(1, -1)) : sym === "{X}" ? 0 : 1), 0) ?? 0;
+
+const SWEEPERS = ["Sweltering Suns", "Chain Reaction", "Cleansing Nova", "Time Wipe", "Citywide Bust", "Magmaquake", "Blasphemous Act", "Deadly Tempest",
+  "Necromantic Selection"];
 
 /** The policy's next move for a look, or undefined to wait. */
 function decide(state, memory) {
@@ -126,7 +143,10 @@ function decide(state, memory) {
     if (state.mine && /MAIN/.test(state.step ?? "") && state.stack === 0) {
       const land = acts.find((a) => a.type === "play_land");
       if (land) return { action: land.id };
-      const spells = acts.filter((a) => a.type === "cast_spell" && !memory.failed.has(a.id)).sort((a, b) => manaValue(a.cost) - manaValue(b.cost));
+      // A sweeper first once three or more creatures are out (each game should show a board wipe), else the cheapest.
+      const sweeper = (a) => SWEEPERS.some((name) => (a.label ?? "").includes(name)) && state.allCreatures >= 3 ? -100 : 0;
+      const spells = acts.filter((a) => a.type === "cast_spell" && !memory.failed.has(a.id))
+        .sort((a, b) => sweeper(a) - sweeper(b) || manaValue(a.cost) - manaValue(b.cost));
       if (spells.length && memory.casts < 3) {
         memory.casts += 1;
         // Cast the way a player does: carry the card from the hand onto the table (one with a single cast action).
@@ -188,7 +208,7 @@ async function play(page, game) {
     if (state.ready && state.over) break;
     if (state.ready && state.turn !== lastTurn) {
       lastTurn = state.turn; memory.casts = 0;
-      console.log(`game ${game} turn ${state.turn} life ${state.life.join("/")} ${state.mine ? "yours" : "theirs"}`);
+      console.log(`game ${game} turn ${state.turn} life you ${state.life.join(" / them ")} ${state.mine ? "yours" : "theirs"}`);
       // --shots 6,12: the open game log at the start of those turns, for a look at the log against a real game.
       if (shots.has(state.turn)) {
         const button = page.getByRole("button", { name: "Game log", exact: true });
@@ -222,6 +242,21 @@ async function play(page, game) {
       break;
     }
     if (Date.now() - started > 45 * 60_000) throw new Error("Game took longer than 45 minutes");
+    // Once a game, read the AI's spell on the stack for 3 s (right-click): smart pass must wait for the inspector to close.
+    if (!memory.readTest && state.ready && state.theirTop && state.prompt?.mine && state.prompt.kind === "priority") {
+      memory.readTest = true;
+      const card = page.locator(`.acard[data-id="${state.theirTop}"]`);
+      if (await card.count() > 0) {
+        await card.click({ button: "right", timeout: 2000 }).catch(() => {});
+        await page.evaluate(() => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "inspect-open" }));
+        await page.waitForTimeout(3000);
+        await page.keyboard.press("Escape");
+        await page.evaluate(() => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "inspect-close" }));
+      }
+    }
+    // The first time each kind of effect plays, a picture of it (evidence for docs/WEB_PARITY.md section 7).
+    const wanted = await page.evaluate(() => window.__rec.shots.splice(0));
+    for (const kind of wanted) await page.screenshot({ path: join(out, `game-${game}-fx-${kind}.png`) });
     const move = decide(state, memory);
     if (move?.clickIn) {
       const plaque = page.locator(move.clickIn).first();
@@ -286,7 +321,7 @@ async function play(page, game) {
   const count = (type) => rec.sends.filter((e) => e.type === type).length;
   const clicks = (label) => rec.sends.filter((e) => e.type === "click" && e.label === label).length;
   return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, drags: count("drag"), autoPay: clicks("Auto Pay"), allAttack: clicks("All Attack"),
-    smartPasses: rec.sends.filter((e) => e.by === "smart").length, wipes: rec.fx.filter((f) => f.notice).map((f) => f.notice), errors: rec.errors };
+    smartPasses: rec.sends.filter((e) => e.by === "smart").length, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.
