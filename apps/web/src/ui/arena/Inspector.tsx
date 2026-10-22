@@ -3,14 +3,15 @@
  * it, and beside it glass notes say what it is right now, what its keywords mean, its rules when the picture can't show
  * them, and what is attached to it. Opened by a right-click or a held mouse button; a click anywhere or Esc closes it.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { glossaryEntries, liveState } from "../../core/arenaBoard";
 import type { ZoneCard } from "../../core/models";
-import { cardImageURL } from "../cardArt";
+import { CardArt } from "../cardArt";
 import { RulesText } from "./Symbols";
 
 export function Inspector({ card, name, battlefield, height, close }: { card?: ZoneCard; name: string; battlefield: ZoneCard[]; height: number; close: () => void }) {
   const [artMissing, setArtMissing] = useState(false);
+  const missing = useCallback(() => setArtMissing(true), []);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     window.addEventListener("keydown", key);
@@ -23,13 +24,12 @@ export function Inspector({ card, name, battlefield, height, close }: { card?: Z
   const showsRules = (artMissing || card?.card.isToken === true) && rules.length > 0;
   const hasNotes = state.length > 0 || glossary.length > 0 || showsRules || attached.length > 0;
   const cardHeight = Math.min(height * 0.86, 520);
-  const art = card?.card.isToken && card.card.tokenArtwork ? card.card.tokenArtwork.name : card?.card.copySourceArtworkName ?? name;
   return (
     <div className="ainspector" onClick={(e) => { e.stopPropagation(); close(); }} role="dialog" aria-label={`${name}, inspector`}>
       <div className="row" style={{ height: cardHeight }}>
         <div className="big" style={{ width: cardHeight / 1.395, height: cardHeight }}>
           {artMissing ? <div className="fallback">{name}</div>
-            : <img src={cardImageURL(art, "large")} alt="" crossOrigin="anonymous" onError={() => setArtMissing(true)} />}
+            : <CardArt card={card?.card ?? { name, typeLine: "" }} version="large" onMissing={missing} />}
         </div>
         {hasNotes && (
           <div className="notes">

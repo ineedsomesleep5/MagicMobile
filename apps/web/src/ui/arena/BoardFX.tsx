@@ -4,7 +4,7 @@
  * home (hand, library), an attacker charges what it hits, a stolen card is dragged across, and a spell that never
  * reached the stack card is shown there. Placements follow BoardFXFlight.placement; times come from the scheduler.
  */
-import { useEffect, useRef, useState } from "react";
+import { Component, type ReactNode, useEffect, useRef, useState } from "react";
 import type { ActiveBoardFX, BoardFXZone } from "../../core/boardEvents";
 import { BoardFXScheduler, subjectID } from "../../core/boardEvents";
 import type { ZoneCard } from "../../core/models";
@@ -130,6 +130,14 @@ export interface BoardFXOverlayProps {
   grabbed(id: string): Place | undefined;
 }
 
+/** Effects decorate the board: one that fails drops out for the rest of the game, and the game goes on. */
+export class FXBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) { console.warn("board effects stopped", error); }
+  render() { return this.state.failed ? null : this.props.children; }
+}
+
 export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackIDs, height, pixelRatio, grabbed }: BoardFXOverlayProps) {
   const [now, setNow] = useState(fxNow);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,9 +156,15 @@ export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackI
     for (const fx of active) {
       const elapsed = now - fx.start - fx.scheduled.delay;
       if (elapsed < 0 || elapsed > fx.scheduled.duration) continue;
-      paint(ctx, fx.scheduled, elapsed / fx.scheduled.duration, {
-        rect: (id) => box(rect(id)), player: anchors.player, stack: anchors.stack, viewerID: anchors.viewerID, subjects, grabbed: (id) => box(grabbed(id)),
-      });
+      // A mark that cannot be drawn (a degenerate shape) is skipped; effects never stop the game.
+      try {
+        paint(ctx, fx.scheduled, elapsed / fx.scheduled.duration, {
+          rect: (id) => box(rect(id)), player: anchors.player, stack: anchors.stack, viewerID: anchors.viewerID, subjects, grabbed: (id) => box(grabbed(id)),
+        });
+      } catch (error) {
+        ctx.restore();
+        console.warn("board effect skipped", error);
+      }
     }
   });
   const running = active.some((fx) => fx.start + fx.scheduled.end > now - 0.05);

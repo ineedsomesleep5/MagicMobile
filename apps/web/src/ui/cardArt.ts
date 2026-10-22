@@ -3,7 +3,11 @@
  * their exact compiled printing; anything else (tokens, unknown printings) falls back to the name.
  * Requests are spaced ~80 ms apart, as Scryfall asks, and every image is cached for the session.
  */
+import { createElement, useEffect, useState } from "react";
 import type { DeckResolver } from "../core/deckResolver";
+import { tokenArtworkName } from "../core/gameStats";
+import type { CardIdentity, TokenArtworkIdentity } from "../core/models";
+import { matchTokenArtwork, safeTokenSearchName, type TokenArtwork, tokenImage, tokenSearchQuery, tokensFromSearch } from "../core/tokenArt";
 
 export type ArtVersion = "normal" | "large" | "art_crop";
 
@@ -28,14 +32,72 @@ export const manaSymbolURL = (symbol: string): string =>
 
 const images = new Map<string, Promise<HTMLImageElement | undefined>>();
 let nextSlot = 0;
+/** Milliseconds to wait before the next Scryfall request, keeping them ~80 ms apart. */
+const slot = () => {
+  const wait = Math.max(0, nextSlot - Date.now());
+  nextSlot = Date.now() + wait + 80;
+  return wait;
+};
+
+const tokenSearches = new Map<string, Promise<TokenArtwork[]>>();
+/** Every token printing with this exact name (three pages at most), searched once a session. */
+function searchTokens(name: string): Promise<TokenArtwork[]> {
+  const query = tokenSearchQuery(name);
+  let found = tokenSearches.get(query);
+  if (!found) {
+    found = (async () => {
+      const tokens: TokenArtwork[] = [];
+      for (let page = 1; page <= 3; page++) {
+        await new Promise((resolve) => setTimeout(resolve, slot()));
+        const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&page=${page}`;
+        const response = await fetch(url).catch(() => undefined);
+        if (!response || response.status === 404 || !response.ok) break;
+        const body = await response.json().catch(() => undefined) as { data?: Record<string, unknown>[]; has_more?: boolean } | undefined;
+        if (!body || !Array.isArray(body.data)) break;
+        tokens.push(...tokensFromSearch(body.data));
+        if (!body.has_more) break;
+      }
+      return tokens;
+    })();
+    tokenSearches.set(query, found);
+  }
+  return found;
+}
+
+/** A token's picture, the printing that matches what the engine shows (NativeDeckArtwork's token path), or undefined. */
+export async function tokenArtURL(identity: TokenArtworkIdentity, version: ArtVersion): Promise<string | undefined> {
+  if (!safeTokenSearchName(tokenArtworkName(identity.name))) return undefined;
+  const candidates = await searchTokens(identity.name);
+  const match = matchTokenArtwork(candidates, identity);
+  return match && tokenImage(candidates, match, version);
+}
+
+/**
+ * The picture for a card on the table: a copy's source card, a token's matched printing, else the card by name. A token
+ * resolves after a search, so this is undefined until then and null when there is none.
+ */
+export function useCardArtURL(card: CardIdentity, version: ArtVersion): string | null | undefined {
+  const token = card.isToken === true && !card.copySourceArtworkName ? card.tokenArtwork : undefined;
+  const plain = token ? undefined : cardImageURL(card.copySourceArtworkName ?? card.name, version);
+  const key = token ? JSON.stringify(token) + version : "";
+  const [resolved, setResolved] = useState<{ key: string; url: string | null }>();
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    void tokenArtURL(token, version).then((url) => { if (live) setResolved({ key, url: url ?? null }); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (plain) return plain;
+  return resolved?.key === key ? resolved.url : undefined;
+}
 
 /** A decoded, CORS-clean image, or undefined when Scryfall has none. */
-export const loadCardImage = (name: string, version: ArtVersion): Promise<HTMLImageElement | undefined> => {
-  const key = `${version}|${name}`;
+export const loadCardImage = (name: string, version: ArtVersion, url = cardImageURL(name, version)): Promise<HTMLImageElement | undefined> => {
+  const key = `${version}|${url}`;
   let pending = images.get(key);
   if (!pending) {
-    const wait = Math.max(0, nextSlot - Date.now());
-    nextSlot = Date.now() + wait + 80;
+    const wait = slot();
     pending = new Promise((resolve) => {
       setTimeout(() => {
         const image = new Image();
@@ -43,7 +105,7 @@ export const loadCardImage = (name: string, version: ArtVersion): Promise<HTMLIm
         image.decoding = "async";
         image.onload = () => resolve(image);
         image.onerror = () => resolve(undefined);
-        image.src = cardImageURL(name, version);
+        image.src = url;
       }, wait);
     });
     images.set(key, pending);
@@ -62,3 +124,10 @@ export const manaSymbols = (cost: string | undefined): string[] => {
   }
   return symbols;
 };
+
+/** A card's picture as an image, nothing while a token's printing is found or when there is none. */
+export function CardArt({ card, version, onMissing }: { card: CardIdentity; version: ArtVersion; onMissing?: () => void }) {
+  const url = useCardArtURL(card, version);
+  useEffect(() => { if (url === null) onMissing?.(); }, [url, onMissing]);
+  return url ? createElement("img", { key: url, src: url, alt: "", crossOrigin: "anonymous", draggable: false, onError: onMissing }) : null;
+}

@@ -6,7 +6,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { displayPower, displayToughness, isCreatureCard, type ZoneCard } from "../../core/models";
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
-import { cardImageURL, manaSymbols } from "../cardArt";
+import { cardImageURL, manaSymbols, useCardArtURL } from "../cardArt";
 import { AbilityCard } from "./AbilityCard";
 import { LEAN, type Place } from "./layout";
 import { CardBack, ManaSymbol } from "./Symbols";
@@ -80,15 +80,15 @@ export function PlainTile({ card }: { card: ZoneCard }) {
   const shield = !creature && (battle || /planeswalker/i.test(card.card.typeLine))
     ? Object.entries(card.counters ?? {}).find(([k]) => k.toLowerCase().includes(shieldName))?.[1] : undefined;
   const chips = Object.entries(card.counters ?? {}).filter(([k, n]) => n > 0 && !(shield !== undefined && k.toLowerCase().includes(shieldName)));
-  const art = card.card.isToken && card.card.tokenArtwork ? card.card.tokenArtwork.name : card.card.copySourceArtworkName ?? card.card.name;
+  const art = useCardArtURL(card.card, "art_crop");
   const [failed, setFailed] = useState(false);
   return (
     <div className={`plain ${token ? "token" : ""}`} style={{ ["--edge" as string]: colorEdge(card) }}>
       <div className="pface">
         {!token && <div className="pname">{card.card.name}</div>}
         <div className="part">
-          {failed ? <span className="pfallback">{card.card.name}</span>
-            : <img src={cardImageURL(art, "art_crop")} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
+          {failed || art === null ? <span className="pfallback">{card.card.name}</span>
+            : art && <img key={art} src={art} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
         </div>
       </div>
       {card.tapped && !card.isAttacking && TAPMARK}

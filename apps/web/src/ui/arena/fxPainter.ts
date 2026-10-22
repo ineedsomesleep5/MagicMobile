@@ -69,7 +69,7 @@ export function shockwave(ctx: Ctx, at: Point, color: string, maxRadius: number,
   ctx.globalCompositeOperation = "lighter";
   ctx.globalAlpha = 1 - p;
   ctx.strokeStyle = color; ctx.lineWidth = 1 + 5 * (1 - p);
-  ctx.beginPath(); ctx.arc(at.x, at.y, 8 + (maxRadius - 8) * easeOut(p), 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(at.x, at.y, Math.max(0, 8 + (maxRadius - 8) * easeOut(p)), 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
 }
 

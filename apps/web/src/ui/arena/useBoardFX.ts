@@ -6,8 +6,8 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  type ActiveBoardFX, BoardFXDirector, type BoardFXLevel, BoardFXScheduler, BoardPresentationHold, displayName, displaySourceCard, revisionKey, stackTopFirst,
-  sweepRecap,
+  type ActiveBoardFX, BoardFXDirector, type BoardFXLevel, BoardFXScheduler, BoardPresentationHold, displayName, displaySourceCard, revisionKey,
+  type ScheduledBoardFX, stackTopFirst, sweepRecap,
 } from "../../core/boardEvents";
 import type { CardIdentity, GameSnapshot } from "../../core/models";
 import { BOARD_SOUNDS, boardCues, drawCues, gameAudio } from "../audio";
@@ -20,6 +20,26 @@ export const TURN_BANNER = 0.9;
 
 export interface TurnBanner { key: string; start: number; end: number; mine: boolean; name?: string }
 
+export interface Impact { id: number; amplitude: number; flare: boolean }
+
+/**
+ * NativeGameView.ingestBoardFX's shakes: the viewer losing life (12 points and a red flare for five or more, else 6), a
+ * hit of five or more on an opponent (5), a commander touching down (6), at most three per batch.
+ */
+export function boardShakes(scheduled: ScheduledBoardFX[], viewerID: string): { at: number; amplitude: number; flare: boolean }[] {
+  const shakes: { at: number; amplitude: number; flare: boolean }[] = [];
+  for (const fx of scheduled) {
+    const event = fx.event;
+    if (event.type === "lifeChanged" && event.delta < 0) {
+      if (event.playerID === viewerID) shakes.push({ at: fx.delay, amplitude: event.delta <= -5 ? 12 : 6, flare: event.delta <= -5 });
+      else if (event.delta <= -5) shakes.push({ at: fx.delay, amplitude: 5, flare: false });
+    } else if (event.type === "enteredBattlefield" && event.entrance === "commander") {
+      shakes.push({ at: fx.landing, amplitude: 6, flare: false });
+    }
+  }
+  return shakes.slice(0, 3);
+}
+
 export interface BoardFX {
   active: ActiveBoardFX[];
   director: BoardFXDirector;
@@ -30,6 +50,8 @@ export interface BoardFX {
   banner?: TurnBanner;
   /** A board wipe's recap for the caption, with when it goes. */
   recap?: { text: string; until: number };
+  /** The last hit that shakes the board (full effects): its amplitude in points, and whether it flares red. */
+  impact?: Impact;
   /** Card ids whose tile a flight stands in for right now. */
   hidden(now: number): Set<string>;
 }
@@ -40,6 +62,8 @@ export function useBoardFX(snapshot: GameSnapshot | undefined, session: GuestSes
   const [version, setVersion] = useState(0);
   const [banner, setBanner] = useState<TurnBanner>();
   const [recap, setRecap] = useState<{ text: string; until: number }>();
+  const [impact, setImpact] = useState<Impact>();
+  const shakeTimers = useRef<number[]>([]);
   const lastKey = useRef<string | undefined>(undefined);
   const lastTop = useRef<{ id: string; name: string } | undefined>(undefined);
   const bannerEnd = useRef<number | undefined>(undefined);
@@ -70,6 +94,12 @@ export function useBoardFX(snapshot: GameSnapshot | undefined, session: GuestSes
       const casts = new Map<string, CardIdentity>();
       for (const object of stackTopFirst(snapshot)) { const source = displaySourceCard(object); if (source) casts.set(object.id, source.card); }
       gameAudio.playCues(boardCues(scheduled, snapshot.viewerPlayerId ?? "", arrivals, casts));
+    }
+    // The board shakes as a hit lands, scaled to it; five or more to you flares red.
+    if (level === "full") {
+      for (const shake of boardShakes(scheduled, snapshot.viewerPlayerId ?? "")) {
+        shakeTimers.current.push(window.setTimeout(() => setImpact((last) => ({ id: (last?.id ?? 0) + 1, amplitude: shake.amplitude, flare: shake.flare })), shake.at * 1000));
+      }
     }
     const handCount = snapshot.players.find((p) => p.playerId === snapshot.viewerPlayerId)?.zones.hand.length ?? 0;
     if (lastHand.current?.game === snapshot.id) drawCues(lastHand.current.count, handCount).forEach((sound) => gameAudio.play(sound));
@@ -114,10 +144,10 @@ export function useBoardFX(snapshot: GameSnapshot | undefined, session: GuestSes
     }
   });
 
-  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
+  useEffect(() => () => [...timers.current, ...shakeTimers.current].forEach((t) => window.clearTimeout(t)), []);
 
   return {
-    active: director.active, director, hold, version, banner, recap,
+    active: director.active, director, hold, version, banner, recap, impact,
     hidden(now: number) {
       const hidden = new Set<string>();
       const motion = director.cardMotion(snapshot?.viewerPlayerId ?? "");

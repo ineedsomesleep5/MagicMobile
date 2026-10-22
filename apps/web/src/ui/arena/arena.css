@@ -235,9 +235,27 @@
 .apanel .close { width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,.45); box-shadow: inset 0 0 0 1px rgba(232,190,110,.6); color: #fad584; font: 800 13px/1 var(--serif); }
 .apanel .tabs button { color: rgba(243,234,216,.7); background: rgba(0,0,0,.35); }
 .apanel .tabs button[aria-pressed=true] { color: #221713; background: #fad584; }
-.alog { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font: 500 12.5px/1.3 var(--serif); color: #efe4cf; }
-.alog li.turn { margin: 8px 0 3px; padding-top: 6px; border-top: 1px solid rgba(232,190,110,.4); font: 800 10px/1 var(--serif); letter-spacing: .14em; text-transform: uppercase; color: #fad584; }
-.alog li.auto { color: rgba(239,228,207,.45); font-style: italic; }
+.alogwrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.alog { flex: 1; min-height: 0; overflow: auto; list-style: none; margin: 0; padding: 0 2px 0 0; display: flex; flex-direction: column; gap: 10px; font: 500 13px/1.35 var(--serif); color: #fff; }
+.alog li.empty { color: rgba(255,255,255,.6); }
+.alog li.turn { display: flex; align-items: center; gap: 10px; padding: 14px 0 2px; font: 800 11px/1 var(--serif); letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; color: #fad584; }
+.alog li.turn i { flex: 1; height: 1px; background: rgba(232,190,110,.42); }
+.alog li.turn span { overflow: hidden; text-overflow: ellipsis; }
+.alog li.auto { display: flex; align-items: center; gap: 6px; font: italic 500 12px/1.3 var(--serif); color: rgba(255,255,255,.45); }
+.alog li.auto svg { width: 11px; height: 11px; flex: none; fill: currentColor; }
+.alog li.event { display: flex; align-items: flex-start; gap: 8px; }
+.alog li.event > svg { width: 12px; height: 12px; flex: none; margin: 3px 3px 0; fill: currentColor; }
+.alog li.event > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.alog .text { white-space: pre-line; overflow-wrap: anywhere; }
+.alog .text .player { color: #73dbd1; font-weight: 700; }
+.alog .text .card { color: #ffd675; font-style: italic; }
+.alog .text .bold { font-weight: 700; }
+.alog .text .italic { font-style: italic; }
+.alog .text button.link { all: unset; cursor: pointer; color: #ffd675; font-style: italic; }
+.alog .text button.link:hover, .alog .text button.link:focus-visible { text-decoration: underline; }
+.alog .reason { font: italic 500 11.5px/1.25 var(--serif); color: rgba(255,255,255,.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alatest { position: absolute; right: 8px; bottom: 8px; padding: 6px 12px; border-radius: 14px; background: linear-gradient(#ffe2a0, #d9a84f); color: #221713; font: 800 12px/1 var(--serif); box-shadow: 0 2px 8px rgba(0,0,0,.6); }
+.alog.chat { gap: 4px; font-size: 12.5px; color: #efe4cf; }
 .alog li.local { color: var(--label); }
 .alog .who { font-weight: 800; }
 
@@ -532,3 +550,6 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .aresult .summary .top span { flex: 1; display: grid; font: 800 14px/1.2 var(--serif); color: #fff; }
 .aresult .summary .top small { font: 900 10px/1 var(--serif); letter-spacing: 1.2px; color: #c9a45c; }
 .aresult .summary .top b { font: 900 15px/1 ui-rounded, system-ui, sans-serif; color: #efe4cf; }
+
+/* BoardHitVignette: a red edge that flares when you take five or more. */
+.avignette { position: absolute; inset: 0; z-index: 900; pointer-events: none; opacity: 0; background: radial-gradient(ellipse farthest-corner at 50% 50%, transparent 0%, transparent 50%, rgba(217,13,5,.55) 100%); }

@@ -25,17 +25,19 @@ import { isStackAbility } from "./arena/AbilityCard";
 import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
 import { Inspector } from "./arena/Inspector";
+import { GameLog } from "./arena/GameLog";
+import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
 import { combatPhase, commandersTaken, commanderTakenNotice } from "../core/arenaBoard";
 import { GameStats } from "../core/gameStats";
-import { BoardFXOverlay, type FXAnchors } from "./arena/BoardFX";
+import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { ArenaPile } from "./arena/ArenaPile";
 import { AVATAR } from "./arena/avatars";
 import { ManaSymbol, RulesText } from "./arena/Symbols";
 import "./arena/arena.css";
-import { cardImageURL } from "./cardArt";
+import { CardArt, cardImageURL } from "./cardArt";
 import { storage } from "./storage";
 import { gameAudio, SOUND_KEYS } from "./audio";
 
@@ -177,6 +179,26 @@ export function GameScreen({ table }: { table: GameTable }) {
   const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
   const fxLevel: BoardFXLevel = resolvedLevel(fxSetting, reduceMotion);
   const fx = useBoardFX(snapshot, session, fxLevel);
+  const combatReasons = useRef(new CombatLogReasons());
+  const stageRef = useRef<HTMLDivElement>(null);
+  const vignetteRef = useRef<HTMLDivElement>(null);
+  // BoardImpactShake: sideways travel decaying over the hit (big hits also jolt down), and BoardHitVignette's red edge.
+  useEffect(() => {
+    const impact = fx.impact;
+    if (!impact) return;
+    const amplitude = impact.amplitude;
+    const frames = Array.from({ length: 25 }, (_, i) => {
+      const t = i / 24, decay = 1 - t;
+      const x = Math.sin(t * Math.PI * 6) * amplitude * decay;
+      const y = amplitude > 8 ? Math.abs(Math.sin(t * Math.PI * 4)) * amplitude * 0.35 * decay : 0;
+      return { translate: `${x.toFixed(2)}px ${y.toFixed(2)}px` };
+    });
+    stageRef.current?.animate?.(frames, { duration: amplitude > 8 ? 500 : 360, easing: "linear" });
+    if (impact.flare) {
+      vignetteRef.current?.animate?.([{ opacity: 0 }, { opacity: 1, offset: 0.12 / 0.97, easing: "ease-in" }, { opacity: 1, offset: 0.27 / 0.97, easing: "ease-in" }, { opacity: 0 }],
+        { duration: 970 });
+    }
+  }, [fx.impact]);
   const fxRef = useRef(fx);
   fxRef.current = fx;
   /** Where each card lies, kept after it leaves so its departure starts there; and where a card was before its last move. */
@@ -772,9 +794,82 @@ export function GameScreen({ table }: { table: GameTable }) {
   })();
 
   const log = snapshot?.log ?? [];
+  // One line of combat context under damage and deaths, decided as each entry first appears (CombatLogReasons).
+  const logReasons = useMemo(() => { if (snapshot) combatReasons.current.observe(snapshot); return combatReasons.current.reasons; }, [snapshot]);
   const pool = me?.manaPool;
   const poolSymbols = pool ? (["W", "U", "B", "R", "G", "C"] as const).map((s) => [s, pool[s]] as const).filter(([, n]) => n > 0) : [];
   const stop = (event: React.MouseEvent) => event.stopPropagation();
+
+  // The desktop keys for iOS's touches (docs/WEB_PARITY.md, Desktop input): Space taps the primary plaque and a 0.6 s hold
+  // of it (or of the plaque) turns on Full control; Enter confirms a browser; Esc closes the top layer; Ctrl/Cmd+Z undoes mana.
+  const undoMana = snapshot && paying && !autoPaying ? manaUndoActions(snapshot).find((a) => a.type === "undo_mana") : undefined;
+  const closeTop = browseZoom ? () => setBrowseZoom(undefined) : menu ? () => setMenu(undefined) : cornerMenu ? () => setCornerMenu(undefined)
+    : playerCard ? () => setPlayerCard(undefined) : confirmConcede ? () => setConfirmConcede(false) : sheet ? () => setSheet(undefined)
+    : zone ? () => setZone(undefined) : stackOpen ? () => setStackOpen(false) : panel ? () => setPanel(undefined) : undefined;
+  const keys = useRef<{ primary?: () => void; fullControl?: () => void; undo?: () => void; close?: () => void; reading: boolean }>({ reading: false });
+  keys.current = {
+    primary: primary?.onClick && !primary.disabled && !(primary.style !== "label" && pending) ? primary.onClick : undefined,
+    fullControl: session && !finished ? () => session.toggleFullControl() : undefined,
+    undo: undoMana && !pending ? () => sendAction(undoMana) : undefined,
+    close: closeTop, reading: reading !== undefined,
+  };
+  /** A hold that turned Full control on swallows the press that ends it (FullControlHold.swallowNextPass). */
+  const swallowPass = useRef(0);
+  const plaqueHold = useRef<number | undefined>(undefined);
+  const startHold = () => {
+    window.clearTimeout(plaqueHold.current);
+    plaqueHold.current = window.setTimeout(() => {
+      plaqueHold.current = undefined;
+      keys.current.fullControl?.();
+      swallowPass.current = performance.now() + 1500;
+    }, 600);
+  };
+  /** Ends a hold; true when the press should still act (the hold had not yet turned Full control on). */
+  const endHold = () => {
+    const pending = plaqueHold.current !== undefined;
+    window.clearTimeout(plaqueHold.current);
+    plaqueHold.current = undefined;
+    if (!pending && swallowPass.current > performance.now()) { swallowPass.current = 0; return false; }
+    return true;
+  };
+  useEffect(() => {
+    const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    const down = (event: KeyboardEvent) => {
+      if (typing(event.target) || event.altKey) return;
+      gameAudio.unlock();
+      const current = keys.current;
+      if (event.key === " " && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        if (!event.repeat && !current.reading && (current.primary || current.fullControl)) startHold();
+      } else if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
+        const confirm = [...document.querySelectorAll<HTMLButtonElement>(".bfoot .aplaque.ember")].filter((b) => !b.disabled);
+        if (confirm.length === 1 && !current.reading) { event.preventDefault(); confirm[0].click(); }
+      } else if (event.key === "Escape") {
+        // The inspector closes itself first.
+        if (!current.reading && current.close) { event.preventDefault(); current.close(); }
+      } else if ((event.key === "z" || event.key === "Z") && (event.metaKey || event.ctrlKey) && !event.shiftKey && current.undo) {
+        event.preventDefault();
+        current.undo();
+      }
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.key !== " " || typing(event.target)) return;
+      event.preventDefault();
+      if (plaqueHold.current === undefined && swallowPass.current === 0) return;
+      if (endHold()) keys.current.primary?.();
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.clearTimeout(plaqueHold.current); };
+  }, []);
+  // A hidden tab neither smart-passes nor skips; showing it again picks up where the table is (scene phase on iOS).
+  useEffect(() => {
+    if (!session) return;
+    const update = () => session.setForeground(document.visibilityState !== "hidden");
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, [session]);
 
   return (
     <div className="arena" ref={wrapRef} onClick={() => { setCornerMenu(undefined); setPlayerCard(undefined); setMenu(undefined); }}
@@ -795,7 +890,8 @@ export function GameScreen({ table }: { table: GameTable }) {
         if (over !== handRaised) setHandRaised(over);
       }}
       onPointerLeave={() => setHandRaised(false)}>
-      <div className="arena-stage" aria-label="Game table"
+      <div className="avignette" ref={vignetteRef} aria-hidden="true" />
+      <div className="arena-stage" aria-label="Game table" ref={stageRef}
         style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})` }}>
         <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined}
           style={{ height: 220 * geo.ky, top: snapshot ? Y(activeIsMe ? 205 : 15) : undefined }} />
@@ -896,13 +992,13 @@ export function GameScreen({ table }: { table: GameTable }) {
             </>
           );
         })()}
-        {fxLevel !== "off" && <BoardFXOverlay active={fx.active} subjects={fx.director.subjects} frames={frames} anchors={anchors}
+        {fxLevel !== "off" && <FXBoundary><BoardFXOverlay active={fx.active} subjects={fx.director.subjects} frames={frames} anchors={anchors}
           height={geo.height} pixelRatio={geo.scale * (typeof window !== "undefined" ? window.devicePixelRatio : 1)}
           grabbed={(id) => { const moved = movedFrom.current.get(id); return moved && fxNow() - moved.at < 2 ? moved.place : undefined; }}
           stackIDs={new Set(stack.map((o) => o.id))} rect={(id) => {
             const moved = movedFrom.current.get(id);
             return moved && fxNow() - moved.at < 0.6 ? moved.place : places.current.get(id);
-          }} />}
+          }} /></FXBoundary>}
         {opponents.map((o, i) => medallion(o, false, i))}
         {me && medallion(me, true, 0)}
         {poolSymbols.length > 0 && (
@@ -937,7 +1033,10 @@ export function GameScreen({ table }: { table: GameTable }) {
             disabled={(pending && secondary.label !== "Stop") || secondary.disabled} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
             <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""} ${primary.subtitle ? "sub" : ""}`} style={{ top: B(ARENA.primary.y) }}
-              disabled={(primary.style !== "label" && pending) || primary.disabled} onClick={primary.onClick}>
+              disabled={(primary.style !== "label" && pending) || primary.disabled}
+              onPointerDown={(e) => { if (e.button === 0 && session && !finished) startHold(); }}
+              onPointerLeave={() => { window.clearTimeout(plaqueHold.current); plaqueHold.current = undefined; }}
+              onClick={() => { if (endHold()) primary.onClick?.(); }}>
               {primary.label}{primary.subtitle && <small>{primary.subtitle}</small>}
             </button>
           ) : !finished && <div className="ahourglass" style={{ top: B(ARENA.primary.y) }}>{HOURGLASS}</div>}
@@ -1068,25 +1167,20 @@ export function GameScreen({ table }: { table: GameTable }) {
         {panel && (
           <div className="apanel glass" onClick={stop}>
             <header>
-              {table.solo ? <h3>Game log</h3> : (
+              {table.solo ? <h3>Game Log</h3> : (
                 <div className="tabs" style={{ flex: 1 }}>
-                  <button type="button" aria-pressed={panel === "log"} onClick={() => setPanel("log")}>Game log</button>
+                  <button type="button" aria-pressed={panel === "log"} onClick={() => setPanel("log")}>Game Log</button>
                   <button type="button" aria-pressed={panel === "chat"} onClick={() => setPanel("chat")}>Chat</button>
                 </div>
               )}
               <button type="button" className="close" aria-label="Close" onClick={() => setPanel(undefined)}>✕</button>
             </header>
             {panel === "log" ? (
-              <ol className="alog">
-                {[...log].reverse().map((entry) => {
-                  const text = EngineDisplayText.text(entry.message);
-                  const kind = /^TURN \d+/i.test(text) ? "turn" : entry.id.startsWith("local:auto-pass:") ? "auto" : "";
-                  return <li key={entry.id} className={kind}>{text}</li>;
-                })}
-              </ol>
+              // The public log names a printed card, not a lookup of that object's current (possibly hidden) state.
+              <GameLog log={log} reasons={logReasons} inspect={(reference) => setReading({ id: reference.objectID, name: reference.name })} />
             ) : (
               <>
-                <ol className="alog">{table.state.chat.map((line) => (
+                <ol className="alog chat">{table.state.chat.map((line) => (
                   <li key={line.id} className={line.isLocal ? "local" : ""}><span className="who">{line.name}:</span> {line.isLocal ? line.text : TableChatFilter.filtered(line.text)}</li>
                 ))}</ol>
                 <ChatInput table={table} />
@@ -1210,7 +1304,7 @@ export function GameScreen({ table }: { table: GameTable }) {
                     </div>
                     {top && (
                       <div className="top">
-                        <img src={cardImageURL(top.card?.card.tokenArtwork?.name ?? top.card?.card.copySourceArtworkName ?? top.name, "art_crop")} alt="" crossOrigin="anonymous" />
+                        <CardArt card={top.card?.card ?? { name: top.name, typeLine: "" }} version="art_crop" />
                         <span><small>TOP ATTACKER</small>{top.name}</span>
                         <b>{top.damage} dmg</b>
                       </div>

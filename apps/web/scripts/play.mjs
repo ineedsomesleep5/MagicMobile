@@ -22,6 +22,7 @@ const url = args.url ?? "http://127.0.0.1:5181/?debug";
 const games = Number(args.games ?? 1);
 const out = args.out ?? "/tmp/magicmobile-autoplay";
 const maxTurns = Number(args.turns ?? 40);
+const shots = new Set(String(args.shots ?? "").split(",").filter(Boolean).map(Number));
 const deckNames = {
   "token-triumph": "Token Triumph", "first-flight": "First Flight", "grave-danger": "Grave Danger", "chaos-incarnate": "Chaos Incarnate",
   "draconic-destruction": "Draconic Destruction",
@@ -188,6 +189,14 @@ async function play(page, game) {
     if (state.ready && state.turn !== lastTurn) {
       lastTurn = state.turn; memory.casts = 0;
       console.log(`game ${game} turn ${state.turn} life ${state.life.join("/")} ${state.mine ? "yours" : "theirs"}`);
+      // --shots 6,12: the open game log at the start of those turns, for a look at the log against a real game.
+      if (shots.has(state.turn)) {
+        const button = page.getByRole("button", { name: "Game log", exact: true });
+        await button.click().catch(() => {});
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: join(out, `game-${game}-log-turn-${state.turn}.png`) });
+        await button.click().catch(() => {});
+      }
     }
     // A decision nothing answers for two minutes is a stall: say what it was and concede.
     const stuckKey = state.prompt ? `${state.prompt.id}:${state.prompt.message}` : "none";
