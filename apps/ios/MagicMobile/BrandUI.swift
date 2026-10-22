@@ -351,8 +351,44 @@ private struct BrandButtonFace<Label: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
 
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
-        if TavernUIKit.available { tavernFace } else { plainFace }
+        if arena { arenaFace } else if TavernUIKit.available { tavernFace } else { plainFace }
+    }
+
+    /// The Arena menus: the board's capsule plaques (ember for the call to action, leather for the rest).
+    private var arenaFace: some View {
+        let primary = kind == .primary
+        return label
+            .pressSound(primary ? .uiConfirm : nil, isPressed: pressed)
+            .font(.system(size: primary ? 19 : 16, weight: .bold, design: .serif))
+            .foregroundStyle(primary ? Color(red: 1, green: 0.94, blue: 0.78)
+                             : kind == .destructive ? Color(red: 1, green: 0.8, blue: 0.72) : TavernPalette.parchment)
+            .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: primary ? 52 : 46)
+            .contentShape(Capsule())
+            .background {
+                Group {
+                    switch kind {
+                    case .primary: TavernFill(material: .ember)
+                    case .secondary: TavernFill(material: .leather)
+                    case .destructive: TavernFill(material: .leather).overlay(MagicPalette.oxblood.opacity(0.7))
+                    }
+                }
+                .clipShape(Capsule())
+                .padding(3)
+            }
+            .overlay { TavernCapsuleRim() }
+            .shadow(color: primary ? BrandTheme.ember.opacity(isEnabled ? 0.5 : 0) : .black.opacity(0.45),
+                    radius: primary ? 12 : 4, y: primary ? 0 : 2)
+            .saturation(isEnabled ? 1 : 0.15)
+            .opacity(isEnabled ? 1 : 0.55)
+            .brightness(pressed ? 0.06 : 0)
+            .scaleEffect(pressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: pressed)
     }
 
     /// Walnut & Ember: a riveted brass plaque, ember glass for the call to action, leather for
@@ -465,7 +501,28 @@ struct BrandIconButton: View {
     let systemImage: String
     let action: () -> Void
 
+    @Environment(\.arenaBoard) private var arena
+
     var body: some View {
+        if arena {
+            Button(action: action) {
+                VStack(spacing: 5) {
+                    ArenaEmblem(symbol: systemImage, size: 18)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
+                        .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                    Text(title).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                }
+                .frame(minWidth: 72, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(BrandPressStyle())
+        } else {
+            tavernButton
+        }
+    }
+
+    private var tavernButton: some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 // A round brass medallion with a leather face.
@@ -498,60 +555,6 @@ struct BrandPressStyle: ButtonStyle {
             .brightness(configuration.isPressed ? -0.06 : 0)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
     }
-}
-
-// MARK: - Hero card
-
-/// The selected commander presented like a prize: floating, catching the light, with a
-/// warm halo and a pedestal shadow.
-struct HeroCommanderCard: View {
-    let name: String?
-    var namespace: Namespace.ID? = nil
-    var width: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.brandAmbientMotion) private var ambient
-    @State private var start = Date()
-
-    var body: some View {
-        let height = width / 0.716
-        let still = reduceMotion || !ambient
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { timeline in
-            let t = still ? 0 : timeline.date.timeIntervalSince(start)
-            ZStack {
-                Ellipse()
-                    .fill(RadialGradient(colors: [BrandTheme.ember.opacity(0.42), .clear], center: .center,
-                                         startRadius: 0, endRadius: width * 0.9))
-                    .frame(width: width * 1.9, height: height * 1.2)
-                    .opacity(0.55 + 0.15 * sin(t * 1.1))
-                    .blur(radius: 10)
-                Ellipse()
-                    .fill(.black.opacity(0.6))
-                    .frame(width: width * (0.8 - 0.05 * sin(t * 0.9)), height: 16)
-                    .blur(radius: 8)
-                    .offset(y: height * 0.56)
-                CommanderDeckPortrait(name: name, namespace: namespace)
-                    .frame(width: width, height: height)
-                    .overlay {
-                        // Light sliding across the card face as it turns.
-                        LinearGradient(colors: [.clear, .white.opacity(0.2), .clear],
-                                       startPoint: UnitPoint(x: -0.2 + 1.4 * frac(t / 5), y: 0),
-                                       endPoint: UnitPoint(x: 0.3 + 1.4 * frac(t / 5), y: 1))
-                            .blendMode(.plusLighter)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .allowsHitTesting(false)
-                    }
-                    .rotation3DEffect(.degrees(6 * sin(t * 0.55)), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
-                    .rotation3DEffect(.degrees(3 * sin(t * 0.4 + 1)), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
-                    .rotationEffect(.degrees(-3 + 1.2 * sin(t * 0.6)))
-                    .offset(y: -5 * sin(t * 0.9))
-                    .shadow(color: BrandTheme.ember.opacity(0.3), radius: 22)
-            }
-        }
-        .frame(width: width * 1.3, height: height * 1.12)
-        .accessibilityHidden(true)
-    }
-
-    private func frac(_ x: Double) -> Double { x - floor(x) }
 }
 
 /// "VS" medallion between two decks.
@@ -719,8 +722,18 @@ struct TavernToggle: View {
     /// A line of explanation under the title, in faded parchment.
     var subtitle: String? = nil
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        if arena {
+            // Arena's Options use checkboxes, not switches.
+            ArenaCheckbox(title: title, isOn: $isOn, subtitle: subtitle, identifier: identifier)
+        } else {
+            tavernToggle
+        }
+    }
+
+    private var tavernToggle: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -755,8 +768,17 @@ struct TavernSlider: View {
     var range: ClosedRange<Double> = 0...1
     let label: String
     var identifier: String? = nil
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        if arena {
+            ArenaSlider(value: $value, range: range, label: label, identifier: identifier)
+        } else {
+            tavernSlider
+        }
+    }
+
+    private var tavernSlider: some View {
         GeometryReader { proxy in
             let fraction = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
             let knob: CGFloat = 22
@@ -825,8 +847,18 @@ struct TavernStepper: View {
     let range: ClosedRange<Int>
     var identifier: String? = nil
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
+        if arena {
+            // The title already says the value ("AI skill: 3").
+            ArenaStepper(title: title, value: $value, range: range, identifier: identifier, showsValue: false)
+        } else {
+            tavernStepper
+        }
+    }
+
+    private var tavernStepper: some View {
         HStack(spacing: 12) {
             Text(title)
                 .font(.system(size: 16, weight: .semibold, design: .serif))
@@ -876,8 +908,63 @@ struct TavernPicker<Value: Hashable>: View {
     /// Off when a caption above already names the choice.
     var showsTitle = true
 
+    @Environment(\.arenaBoard) private var arena
+    /// The parchment slot's rust, kept here: Deck Studio's palette turned to the Arena menus' gold.
+    private var rust: Color { Color(red: 0.60, green: 0.23, blue: 0.10) }
+
     private var current: String {
         sections.flatMap(\.options).first { $0.value == selection }?.label ?? "Choose"
+    }
+
+    /// The Arena menus' dropdown: the choice in light type on dark glass in the gold hairline.
+    private var arenaSlot: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                if showsTitle { ArenaCaps(text: title, size: 9.5) }
+                Text(current)
+                    .font(ArenaMenuStyle.font(15, .semibold))
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(ArenaMenuStyle.gold)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: showsTitle ? 50 : 44, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 1).opacity(0.75))
+        .contentShape(Rectangle())
+    }
+
+    private var parchmentSlot: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                if showsTitle {
+                    Text(title.uppercased())
+                        .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(1.4)
+                        .foregroundStyle(rust)
+                }
+                Text(current)
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .foregroundStyle(TavernPalette.ink)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(rust)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .background {
+            TavernFill(material: .parchment)
+                .overlay(LinearGradient(colors: [.black.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
+        .contentShape(Rectangle())
     }
 
     var body: some View {
@@ -898,32 +985,7 @@ struct TavernPicker<Value: Hashable>: View {
                 }
             }
         } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 1) {
-                    if showsTitle {
-                        Text(title.uppercased())
-                            .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(1.4)
-                            .foregroundStyle(DeckStudioPalette.accent)
-                    }
-                    Text(current)
-                        .font(.system(size: 16, weight: .semibold, design: .serif))
-                        .foregroundStyle(TavernPalette.ink)
-                        .lineLimit(1).minimumScaleFactor(0.75)
-                }
-                Spacer(minLength: 6)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(DeckStudioPalette.accent)
-            }
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .background {
-                TavernFill(material: .parchment)
-                    .overlay(LinearGradient(colors: [.black.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
-            .contentShape(Rectangle())
+            if arena { arenaSlot } else { parchmentSlot }
         }
         .buttonStyle(BrandPressStyle())
         .accessibilityLabel("\(title), \(current)")

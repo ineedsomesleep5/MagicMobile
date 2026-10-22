@@ -19,7 +19,6 @@ struct OnDeviceRootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicType
-    @Namespace private var commanderTransition
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
@@ -44,6 +43,9 @@ struct OnDeviceRootView: View {
     @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwnSpells = false
     @AppStorage(OnDeviceSmartPass.stopForThreatsKey) private var stopForThreats = true
     @AppStorage("magicmobile.onlineMode") private var playOnline = false
+    @Environment(\.openURL) private var openURL
+    /// The menus are Arena's everywhere; in a game the Hearth board keeps its own look.
+    @AppStorage(BoardMode.key) private var boardMode = BoardMode.defaultValue
     @State private var showSetup = false
     @State private var showAppearance = false
     @State private var showUpdates = false
@@ -85,6 +87,12 @@ struct OnDeviceRootView: View {
     /// The friend a challenge is waiting on, and its mode.
     @State private var challengeTarget: (name: String, mode: PlayMode)?
     @State private var lobby: LobbyScreen?
+    /// The Play panel over the menu (Arena's blade), its way to play and its tab.
+    @State private var playPanel = false
+    @AppStorage(ArenaPlayMode.storageKey) private var playModeRaw = ArenaPlayMode.quick.rawValue
+    @State private var playTab: ArenaPlayTab = .find
+    /// Bumped once your decks' colours are read from the card catalogue (their boxes' pips).
+    @State private var deckColorsRevision = 0
     @AppStorage("magicmobile.quick.opponentBracket") private var quickBracket = 0
     @AppStorage("magicmobile.quick.opponentDeck") private var quickDeckID = ""
     @AppStorage("magicmobile.quick.aiSkill") private var quickSkill = 3
@@ -99,7 +107,8 @@ struct OnDeviceRootView: View {
     @State private var bracketRevision = 0
     @State private var rankedConnectTask: Task<Void, Never>?
 
-    private enum LobbyScreen: Equatable { case chooser, quick, rankedHall, leaderboard, ranked, profile }
+    /// The pages under the menu's top bar besides home (Play is the panel over them).
+    private enum LobbyScreen: Equatable { case rankedHall, leaderboard, profile }
 
     private struct ActiveMatch: Equatable {
         let mode: PlayMode
@@ -351,24 +360,10 @@ struct OnDeviceRootView: View {
         let menu = ZStack {
             if activeGame {
                 game
+                    .environment(\.arenaBoard, BoardMode.resolved(boardMode) == .arena)
             } else {
                 BrandTheme.canvas.ignoresSafeArea()
-                if showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true) {
-                    setupContent
-                } else if let lobby {
-                    lobbyContent(lobby)
-                        .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
-                } else {
-                    TavernMainMenu(deckName: selectedDeck?.name ?? "Choose a deck", playerName: playerDisplayName,
-                                   play: { lobby = .chooser }, decks: openDecks,
-                                   settings: { showAppearance = true }, news: { showUpdates = true },
-                                   commanderName: selectedDeck?.commander?.cardName,
-                                   commanderNamespace: reduceMotion ? nil : commanderTransition,
-                                   downloads: { showDownloads = true }, howToPlay: { showHowToPlay = true },
-                                   friends: { showFriends = true },
-                                   friendsBadge: account.onlineFriendCount + account.incomingCount + account.unreadMessages,
-                                   profile: { lobby = .profile }, rank: profileRecord.rank.position)
-                }
+                arenaMenu
             }
         }
         // The roll's own answer to "Select a starting player" stays quiet while it is on its way.
@@ -376,6 +371,7 @@ struct OnDeviceRootView: View {
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: showSetup)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.26), value: lobby)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.88), value: playPanel)
         .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: activeGame)
         // Menu ambience pauses while anything covers the menu.
         .environment(\.brandAmbientMotion, !menuSheetOpen)
@@ -398,22 +394,14 @@ struct OnDeviceRootView: View {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
                                 engineReady: setup.identity != nil)
         }
-        .overlay {
-            if !activeGame, matchmaker.isSearching {
-                RankedSearchOverlay(phase: matchmaker.phase, rank: profileRecord.rank.position,
-                                    playAI: { matchmaker.skipToAI() }, cancel: { matchmaker.cancel() })
-                    .transition(.opacity)
-            }
-        }
-        .overlay {
-            if !activeGame, challenges.isWaiting, let target = challengeTarget {
-                ChallengeWaitingOverlay(friend: target.name, mode: target.mode, rank: profileRecord.rank.position,
-                                        cancel: { challenges.cancelOutgoing() })
-                    .transition(.opacity)
-            }
+        // A search or a challenge waits in the Play panel (Arena's blade: Play turns into Cancel under a timer).
+        .onChange(of: matchmaker.isSearching) { _, searching in if searching { playPanel = true } }
+        .onChange(of: activeGame) { _, live in if live { playPanel = false } }
+        .onChange(of: challenges.isWaiting) { _, waiting in
+            if waiting { playTab = .friends; playPanel = true }
         }
         .overlay(alignment: .top) {
-            if menuIsFree, lobby == nil || lobby == .chooser, !challenges.isWaiting, activeMatch == nil,
+            if menuIsFree, lobby == nil, !challenges.isWaiting, activeMatch == nil,
                let invite = challenges.incoming.first {
                 ChallengeInviteBanner(challenge: invite, accept: { acceptChallenge(invite) },
                                       decline: { Task { await challenges.decline(invite) } })
@@ -483,18 +471,19 @@ struct OnDeviceRootView: View {
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
+        // Every menu, sheet and overlay wears the Arena look (the game sets its own board's).
+        .environment(\.arenaBoard, true)
     }
 
-    /// Decks is a spell book (Caleb, 2026-10-05): the book opens on the tavern table, then Deck Studio is
-    /// its first page; Done closes it again (GrimoireStage).
+    /// Decks is the Arena menus' Decks tab (Caleb, 2026-10-22; it was a spell book that opened on the table).
     private func openDecks() {
         guard !showImport else { return }
-        // The book makes its own sound as it opens (GrimoireStage).
-        GrimoireStage.shared.open { showImport = true }
+        playPanel = false
+        showImport = true
     }
 
     private func closeDecks() {
-        GrimoireStage.shared.close { showImport = false }
+        showImport = false
     }
 
     /// A join link: open the online table setup with its code and join right away with the
@@ -594,6 +583,7 @@ struct OnDeviceRootView: View {
         .onChange(of: library.decks.map(\.id)) { _, _ in
             if !activeGame { restoreSetupPreferences() }
         }
+        .task(id: library.decks.map(\.id)) { await rememberDeckColors() }
         // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
         .onChange(of: selectedDeckID, initial: true) { _, id in CardArtChoices.shared.select(deckID: id) }
         .onChange(of: portraitModeEnabled) { _, enabled in
@@ -615,6 +605,25 @@ struct OnDeviceRootView: View {
             case "profile": lobby = .profile
             case "rankedHall": lobby = .rankedHall
             case "leaderboard": lobby = .leaderboard
+            case "play": openPlayPanel()
+            case "play-cycle":
+                // The deck boxes opening and shutting, for a screen recording.
+                openPlayPanel()
+                let first = selectedDeckID
+                for next in ["precon:\(PreconCatalog.all[1].id)", "precon:\(PreconCatalog.all[3].id)", first] {
+                    try? await Task.sleep(for: .seconds(2.5))
+                    selectedDeckID = next
+                }
+            case "play-ranked", "queue": openPlayPanel(.ranked)
+            case "play-custom": openPlayPanel(.custom)
+            case "play-friends": playTab = .friends; playPanel = true
+            case "play-recent": playTab = .recent; playPanel = true
+            case "decks": openDecks()
+            case "custom": showSetup = true
+            case "settings": showAppearance = true
+            case "updates": showUpdates = true
+            case "downloads": showDownloads = true
+            case "learn": showHowToPlay = true
             case "friends", "public", "search", "messages", "conversation": showFriends = true
             default: break
             }
@@ -1106,7 +1115,7 @@ struct OnDeviceRootView: View {
             // Quick Match deals a new opponent; Ranked looks for the next match.
             switch mode {
             case .quick: startQuickMatch()
-            case .ranked: lobby = .ranked; findRankedMatch()
+            case .ranked: openPlayPanel(.ranked); findRankedMatch()
             default: startAI()
             }
         }
@@ -1155,24 +1164,11 @@ struct OnDeviceRootView: View {
     @ViewBuilder
     private func lobbyContent(_ screen: LobbyScreen) -> some View {
         switch screen {
-        case .chooser:
-            PlayModeChooser(rank: profileRecord.rank.position, seasonName: RankLadder.seasonName(profileRecord.rank.season),
-                            quick: { lobby = .quick }, ranked: { lobby = .rankedHall },
-                            custom: { lobby = nil; showSetup = true }, back: { lobby = nil })
-        case .quick:
-            QuickMatchView(deckBracket: selectedDeckBracket, opponentBracket: $quickBracket, opponentDeckID: $quickDeckID,
-                           aiSkill: $quickSkill, startingPlayerMode: $aiStartingPlayerMode, mayStart: mayStartSolo,
-                           status: setup.identity == nil ? setup.status : nil, start: startQuickMatch,
-                           back: { lobby = .chooser }) { playDeckSlot }
         case .rankedHall:
-            RankedHallView(account: account, rank: profileRecord.rank, play: { lobby = .ranked }, leaderboard: { lobby = .leaderboard },
-                           profile: { lobby = .profile }, back: { lobby = .chooser })
+            RankedHallView(account: account, rank: profileRecord.rank, play: { openPlayPanel(.ranked) }, leaderboard: { lobby = .leaderboard },
+                           profile: { lobby = .profile }, back: { lobby = nil })
         case .leaderboard:
             RankedLeaderboardView(account: account, back: { lobby = .rankedHall })
-        case .ranked:
-            RankedLobbyView(rank: profileRecord.rank, deckBracket: selectedDeckBracket, canSearchPeople: account.rankedQueue != nil,
-                            mayStart: mayStartSolo, status: setup.identity == nil ? setup.status : nil, find: findRankedMatch,
-                            profile: { lobby = .profile }, back: { lobby = .rankedHall }) { playDeckSlot }
         case .profile:
             PlayerProfileView(record: profileRecord, account: account, playerName: account.username ?? playerDisplayName,
                               deckCommanders: library.decks.compactMap { $0.deckList.commander?.cardName } + AIDeckPool.all.map(\.commander),
@@ -1180,11 +1176,222 @@ struct OnDeviceRootView: View {
         }
     }
 
-    private var playDeckSlot: some View {
-        PlayDeckSection(deckName: selectedDeck?.name, commander: selectedDeck?.commander?.cardName, bracket: selectedDeckBracket,
-                        canDeclare: selectedDeckID.hasPrefix("local:"), deckID: $selectedDeckID, sections: deckPickerSections,
-                        editDecks: openDecks, explainBracket: { showBracketSheet = true })
-            .disabled(setup.isBusy || matchmaker.isSearching)
+    // MARK: - Arena menus
+
+    /// Every menu page under Arena's top bar, over the 3D tavern room (Caleb, 2026-10-22).
+    private var arenaMenu: some View {
+        GeometryReader { proxy in
+            let compact = proxy.size.width < proxy.size.height
+            ZStack(alignment: .top) {
+                ArenaRoomBackdrop(dim: lobby == nil && !showSetup ? 0 : 0.55)
+                Group {
+                    if showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true) {
+                        setupContent
+                    } else if let lobby {
+                        lobbyContent(lobby)
+                            .transition(.opacity)
+                    } else {
+                        ArenaHomeView(content: homeContent, compact: compact)
+                    }
+                }
+                .padding(.top, ArenaMenuStyle.barHeight)
+                .environment(\.arenaMenuBackdrop, true)
+                // Only the room shows behind the Play panel, darkened.
+                .opacity(playPanel ? 0 : 1)
+                if playPanel {
+                    ArenaPlayPanel(model: playModel, compact: compact)
+                        .padding(.top, ArenaMenuStyle.barHeight)
+                        .transition(reduceMotion ? .opacity : .move(edge: compact ? .bottom : .trailing).combined(with: .opacity))
+                }
+                ArenaTopBar(selected: menuTab, compact: compact, select: selectMenuTab, rank: profileRecord.rank.position,
+                            openRank: { selectMenuTab(.ranked) },
+                            unread: account.incomingCount + account.unreadMessages > 0,
+                            messages: { showFriends = true }, updates: { showUpdates = true },
+                            downloads: { showDownloads = true }, settings: { showAppearance = true })
+            }
+        }
+    }
+
+    /// The top bar's lit tab for what the menu shows.
+    private var menuTab: ArenaMenuTab {
+        if showImport { return .decks }
+        switch lobby {
+        case .profile: return .profile
+        case .rankedHall, .leaderboard: return .ranked
+        case nil: return .home
+        }
+    }
+
+    private func selectMenuTab(_ tab: ArenaMenuTab) {
+        // A table being set up or left keeps its page until it's done.
+        if (setup.isBusy || setup.needsLeave), tab != .learn { return }
+        switch tab {
+        case .learn:
+            showHowToPlay = true
+            return
+        case .decks:
+            openDecks()
+            return
+        case .home: lobby = nil
+        case .profile: lobby = .profile
+        case .ranked: lobby = .rankedHall
+        }
+        showSetup = false
+        if !matchmaker.isSearching && !challenges.isWaiting { playPanel = false }
+    }
+
+    private func openPlayPanel(_ mode: ArenaPlayMode? = nil) {
+        if let mode { playModeRaw = mode.rawValue; playTab = .find }
+        GameAudio.shared.play(.uiOpen)
+        playPanel = true
+    }
+
+    private var homeContent: ArenaHomeContent {
+        let rank = profileRecord.rank
+        let season = RankLadder.seasonName(rank.season)
+        let commander = selectedDeck?.commander?.cardName
+        return ArenaHomeContent(
+            features: [
+                ArenaFeature(id: "ranked", kicker: String(localized: "Ranked season"), title: season,
+                             detail: String(localized: "Climb from Bronze to Mythic. Your deck's bracket sets who you meet."),
+                             art: "Atarka, World Render", colors: ["R", "G"], action: { selectMenuTab(.ranked) }),
+                ArenaFeature(id: "board", kicker: String(localized: "New"), title: String(localized: "The Arena board"),
+                             detail: String(localized: "Corner controls, a tucked hand and the stack on the right. Switch boards in Settings."),
+                             art: "Gishath, Sun's Avatar", colors: ["R", "G", "W"], action: { showUpdates = true }),
+                ArenaFeature(id: "friends", kicker: String(localized: "Friends"), title: String(localized: "Bring a friend to the table"),
+                             detail: String(localized: "Send a challenge, or share a table code to play iPhone against Android."),
+                             art: "Isperia, Supreme Judge", colors: ["W", "U"], action: { showFriends = true }),
+                // The tip jar (it was a strip at the foot of the old menu): the support page, in the browser.
+                ArenaFeature(id: "support", kicker: String(localized: "Support"), title: String(localized: "Enjoying MagicMobile?"),
+                             detail: String(localized: "Help cover server costs. Tips open in your browser; the app stays free with no ads."),
+                             art: "Smothering Tithe", colors: ["W"], action: { openURL(SupportProject.url) }),
+            ],
+            tiles: [
+                ArenaHomeTile(id: "quick", title: String(localized: "Quick Match"), subtitle: String(localized: "One AI at your deck's level"),
+                              art: commander ?? "Krenko, Mob Boss", colors: selectedDeckColors, action: { openPlayPanel(.quick) }),
+                ArenaHomeTile(id: "ranked", title: String(localized: "Ranked"),
+                              subtitle: rank.position.tier == .mythic ? rank.position.title
+                                : String(localized: "\(rank.position.title) · \(rank.position.pips) of \(RankPosition.pipsPerDivision) pips"),
+                              art: "Edgar Markov", colors: ["R", "W", "B"], action: { openPlayPanel(.ranked) }),
+                ArenaHomeTile(id: "learn", title: HowToPlayText.title, subtitle: String(localized: "Learn at the table, one step at a time"),
+                              art: "Teferi, Temporal Archmage", colors: ["U"], action: { showHowToPlay = true }),
+            ],
+            deck: selectedDeckBox,
+            rank: rank.position, wins: rank.wins, losses: rank.losses,
+            friendsOnline: account.onlineFriendCount, unread: account.incomingCount + account.unreadMessages > 0,
+            play: { openPlayPanel() }, friends: { showFriends = true }, updates: { showUpdates = true },
+            downloads: { showDownloads = true }, openDeck: { openPlayPanel() }, openRank: { selectMenuTab(.ranked) })
+    }
+
+    /// The chosen deck as a deck box.
+    private var selectedDeckBox: ArenaDeckBoxModel? {
+        guard let deck = selectedDeck else { return nil }
+        return ArenaDeckBoxModel(id: selectedDeckID, name: deck.name, commander: deck.commander?.cardName, colors: selectedDeckColors,
+                                 subtitle: selectedDeckBracket?.name ?? "")
+    }
+
+    /// Every deck as a box, by shelf: your own, the precons, then the included decks by bracket.
+    private var deckBoxSections: [ArenaDeckSection] {
+        _ = bracketRevision
+        _ = deckColorsRevision
+        let mine = library.decks.map { record -> ArenaDeckBoxModel in
+            let id = "local:\(record.id)"
+            let report = BracketRules.bundled.evaluate(record.deckList)
+            let bracket = DeckBracketPreference.effective(minimum: report.minimum,
+                                                          declared: DeckBracketPreference.declared(id, in: MagicMobilePreferences.current))
+            let commanders = DeckStudioDraftPresentation.commanders(NativeDeckDraft(deck: record.deckList))
+            return ArenaDeckBoxModel(id: id, name: record.name, commander: record.deckList.commander?.cardName,
+                                     colors: DeckStudioDeckColors.colors(for: commanders) ?? [], subtitle: bracket.name)
+        }
+        let precons = PreconCatalog.all.map {
+            ArenaDeckBoxModel(id: "precon:\($0.id)", name: $0.name, commander: $0.commander, colors: $0.colors.map(String.init),
+                              subtitle: CommanderBracket.core.name)
+        }
+        let included = CommanderBracket.allCases.compactMap { bracket -> ArenaDeckSection? in
+            let decks = AIDeckPool.bracketDecks.filter { $0.bracket == bracket }
+            guard !decks.isEmpty else { return nil }
+            return ArenaDeckSection(id: "included-\(bracket.rawValue)", title: String(localized: "Included · \(bracket.name)"),
+                                    decks: decks.map { ArenaDeckBoxModel(id: $0.playerDeckID, name: $0.name, commander: $0.commander,
+                                                                         colors: $0.colors.map(String.init), subtitle: bracket.name) })
+        }
+        return [ArenaDeckSection(id: "mine", title: String(localized: "My Decks"), decks: mine, offersNewDeck: true),
+                ArenaDeckSection(id: "precons", title: String(localized: "Precons"), decks: precons)] + included
+    }
+
+    /// Development fixture (MAGICMOBILE_UI_TEST_OPEN=queue): the Play panel as a ranked search runs.
+    private var fixtureSearch: RankedMatchmaker.Phase? {
+        #if DEBUG
+        if SocialFixtures.openScreen == "queue" { return .searching(since: Self.fixtureLaunch) }
+        #endif
+        return nil
+    }
+    private static let fixtureLaunch = Date()
+
+    /// Reads your decks' colours from the card catalogue once, off the main thread, for their boxes' pips.
+    private func rememberDeckColors() async {
+        let decks = library.decks.map { DeckStudioDraftPresentation.commanders(NativeDeckDraft(deck: $0.deckList)) }
+        guard decks.contains(where: { DeckStudioDeckColors.colors(for: $0) == nil }),
+              let metadata = try? await Task.detached(priority: .utility, operation: { try NativeDeckMetadataCatalogue.bundled() }).value
+        else { return }
+        for commanders in decks { DeckStudioDeckColors.remember(commanders: commanders, metadata: metadata) }
+        deckColorsRevision += 1
+    }
+
+    /// The last few games, to set up again.
+    private var recentGames: [ArenaRecentGame] {
+        let decks = allDeckIDs
+        var seen = Set<String>()
+        return profileRecord.matches.sorted { $0.date > $1.date }.compactMap { match -> ArenaRecentGame? in
+            let key = "\(match.mode.rawValue)|\(match.deckID)"
+            guard decks.contains(match.deckID), seen.insert(key).inserted else { return nil }
+            let mode: String
+            switch match.mode {
+            case .quick: mode = String(localized: "Quick Match")
+            case .ranked: mode = String(localized: "Ranked")
+            case .casual: mode = String(localized: "Custom")
+            }
+            let foe = match.opponents.first?.name ?? String(localized: "the table")
+            return ArenaRecentGame(id: match.id.uuidString, mode: match.mode, deckID: match.deckID,
+                                   title: "\(mode) · \(match.deckName)", detail: String(localized: "vs \(foe)"),
+                                   won: match.outcome == .draw ? nil : match.outcome == .win)
+        }
+        .prefix(6).map { $0 }
+    }
+
+    private var playModel: ArenaPlayPanelModel {
+        ArenaPlayPanelModel(
+            sections: deckBoxSections, selectedDeckID: $selectedDeckID, deckName: selectedDeck?.name, deckBracket: selectedDeckBracket,
+            mode: Binding(get: { ArenaPlayMode(rawValue: playModeRaw) ?? .quick }, set: { playModeRaw = $0.rawValue }),
+            tab: $playTab,
+            quickBracket: $quickBracket, quickDeckID: $quickDeckID, quickSkill: $quickSkill, startingPlayer: $aiStartingPlayerMode,
+            rank: profileRecord.rank, canSearchPeople: account.rankedQueue != nil,
+            search: matchmaker.isSearching ? matchmaker.phase : fixtureSearch,
+            waitingFor: challenges.isWaiting ? challengeTarget?.name : nil,
+            playerMode: playerMode, mayStart: mayStartSolo,
+            status: setup.identity == nil || setup.isBusy ? setup.status : nil,
+            recent: recentGames,
+            close: { playPanel = false },
+            newDeck: { openDecks() },
+            explainBracket: { showBracketSheet = true },
+            startQuick: startQuickMatch, findRanked: findRankedMatch,
+            cancelSearch: { matchmaker.cancel() }, playAINow: { matchmaker.skipToAI() },
+            cancelChallenge: { challenges.cancelOutgoing() },
+            openCustom: { playPanel = false; showSetup = true },
+            rankedHall: { playPanel = false; lobby = .rankedHall },
+            leaderboard: { playPanel = false; lobby = .leaderboard },
+            challengeFriend: { showFriends = true },
+            hostOnline: { playerMode.wrappedValue = "online"; playPanel = false; showSetup = true },
+            joinOnline: { playerMode.wrappedValue = "online"; playPanel = false; showSetup = true },
+            gameCenter: { playerMode.wrappedValue = "gamecenter"; playPanel = false; showSetup = true },
+            chooseRecent: { game in
+                selectedDeckID = game.deckID
+                switch game.mode {
+                case .quick: playModeRaw = ArenaPlayMode.quick.rawValue
+                case .ranked: playModeRaw = ArenaPlayMode.ranked.rawValue
+                case .casual: playModeRaw = ArenaPlayMode.custom.rawValue
+                }
+                playTab = .find
+            })
     }
 
     @ViewBuilder
@@ -1560,213 +1767,225 @@ struct OnDeviceRootView: View {
         + library.decks.map { NativeDownloadDeck(id: "local:\($0.id)", deck: $0.deckList) }
     }
 
+    /// The custom table (Arena's custom game page): your seat on the left, the table on the right, Start in the corner.
     private var setupContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Button {
-                        GameAudio.shared.play(.uiBack)
-                        showSetup = false
-                    } label: { Label("Main menu", systemImage: "chevron.left") }
-                        .font(.body.weight(.semibold))
-                        .disabled(setup.isBusy || setup.needsLeave)
-                    Spacer()
+        GeometryReader { proxy in
+            let wide = proxy.size.width > proxy.size.height && !dynamicType.isAccessibilitySize
+            VStack(spacing: 0) {
+                TavernScreenHeader(title: String(localized: "Custom Table"), backTitle: String(localized: "Main menu"), back: {
+                    showSetup = false
+                    openPlayPanel(.custom)
+                }) {
                     Button {
                         GameAudio.shared.play(.uiOpen)
                         showAppearance = true
-                    } label: { Image(systemName: "gearshape.fill") }
+                    } label: { ArenaEmblem(symbol: "gearshape.fill", size: 17).frame(width: 44, height: 44) }
+                        .buttonStyle(BrandPressStyle())
                         .accessibilityLabel("Settings")
                 }
-                Text("Your next game.").brandTitle(34)
-                Text("Choose your deck. Take your seat.")
-                    .font(.subheadline).foregroundStyle(CommanderPresentation.secondary)
-                setupDecks
-                VStack(alignment: .leading, spacing: 12) {
-                    BrandDivider(title: "Your seat")
-                    TextField("Player name", text: $playerDisplayName)
-                        .textContentType(.nickname).autocorrectionDisabled()
-                        .modifier(TavernFieldChrome(tavern: true))
-                        .disabled(account.username != nil)
-                        .accessibilityIdentifier("ondevice.playerName")
-                    if account.username != nil {
-                        Button("Your profile name. Change it in Friends.") { showFriends = true }
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text("Choose a name with 1–24 characters.").font(.caption).foregroundStyle(.secondary)
+                .disabled(setup.isBusy || setup.needsLeave)
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                ScrollView {
+                    let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 14)) : AnyLayout(VStackLayout(spacing: 14))
+                    layout {
+                        setupSeat
+                            .frame(maxWidth: wide ? 330 : .infinity)
+                        setupTable
                     }
-                    TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
-                    TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: deckPickerSections)
-                    Button(action: openDecks) { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
-                        .buttonStyle(CommanderActionStyle(primary: false))
-                    NativeArtworkPreferenceView()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+                    .frame(maxWidth: 900)
+                    .frame(maxWidth: .infinity)
                 }
-                .commanderPanel()
-                .disabled(setup.isBusy || (setup.needsLeave && !editableInRoom))
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Picker("Players", selection: playerMode) {
-                        Text("AI").tag("ai")
-                        Text("Game Center").tag("gamecenter")
-                        Text("Online").tag("online")
-                    }.pickerStyle(.segmented).disabled(setup.isBusy || setup.needsLeave)
-                    if playWithFriends {
-                        if !(playOnline && setup.multiplayer?.isRelayTable == true) {
-                            TavernPicker(title: "Human players", selection: $playerCount,
-                                         sections: [.init(options: (2...4).map { ("\($0) players", $0) })])
-                                .disabled(setup.isBusy || setup.needsLeave)
-                        }
-                        if playOnline {
-                            RelayTablePanel(multiplayer: setup.multiplayer, code: $relayJoinCode, mayEnter: mayStart && !setup.needsLeave,
-                                            locked: setup.isBusy || setup.needsLeave,
-                                            aiCount: gameCenterAICountBinding, maxAI: max(0, 4 - playerCount),
-                                            aiDeckSelection: aiDeckSelection, aiSkill: $aiSkill,
-                                            deckName: selectedDeck?.name, localCommander: selectedDeck?.commander?.cardName,
-                                            host: {
-                                                guard let deck = selectedDeck else { return }
-                                                Task { await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: playerCount,
-                                                                             aiDecks: gameCenterAIDecks, aiSkill: aiSkill) }
-                                            },
-                                            join: { code in
-                                                guard let deck = selectedDeck else { return }
-                                                setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
-                                            },
-                                            ready: {
-                                                guard let deck = selectedDeck else { return }
-                                                setup.readyForMatch(name: playerDisplayName, deck: deck)
-                                            })
-                        } else {
-                            TavernStepper(title: "AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
-                                          range: 0...max(0, 4 - playerCount), identifier: "ondevice.gameCenterAI.count")
-                                .disabled(setup.isBusy || setup.needsLeave)
-                            ForEach(0..<gameCenterAICount, id: \.self) { index in
-                                TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
-                                             sections: aiDeckPickerSections,
-                                             identifier: "ondevice.gameCenterAI.deck.\(index + 1)")
-                                    .disabled(setup.isBusy || setup.needsLeave)
-                            }
-                            if gameCenterAICount > 0 {
-                                TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10)
-                                    .disabled(setup.isBusy || setup.needsLeave)
-                                Text("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Text("Every player needs the same app version and must keep the app open during the match.")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text(setup.multiplayer?.status ?? setup.status).font(.callout)
-                            if let room = setup.multiplayer?.room {
-                                MatchRoomView(room: room, deckName: selectedDeck?.name,
-                                              localCommander: selectedDeck?.commander?.cardName) {
-                                    guard let deck = selectedDeck else { return }
-                                    setup.readyForMatch(name: playerDisplayName, deck: deck)
-                                }
-                            }
-                            if setup.multiplayer?.isAuthenticated != true {
-                                Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
-                                    .buttonStyle(CommanderActionStyle(primary: false))
-                                    .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
-                            }
-                            Button("Find players") { startMatchmaking() }
-                                .buttonStyle(CommanderActionStyle())
-                                .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
-                        }
-                    } else {
-                        TavernStepper(title: "AI opponents: \(opponentCount)", value: $opponentCount, range: 1...3,
-                                      identifier: "ondevice.aiCount")
-                            .disabled(setup.isBusy || setup.needsLeave)
-                        ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("AI \(index + 1) deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                                TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
-                                             sections: aiDeckPickerSections,
-                                             identifier: "ondevice.aiDeck.\(index + 1)", showsTitle: false)
-                                    .disabled(setup.isBusy || setup.needsLeave)
-                            }
-                        }
-                        TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10, identifier: "onDevice.aiSkill")
-                            .disabled(setup.isBusy || setup.needsLeave)
-                        Text("Higher skill levels allow more thinking and may slow turns.").font(.caption).foregroundStyle(.secondary)
-                        Picker("Who goes first?", selection: $aiStartingPlayerMode) {
-                            Text("Choose").tag("choose")
-                            Text("Roll D20").tag("roll")
-                        }
-                        .pickerStyle(.segmented)
-                        .disabled(setup.isBusy || setup.needsLeave)
-                        .accessibilityIdentifier("ondevice.ai.startingPlayerMode")
-                        Text(aiStartingPlayerMode == "roll"
-                             ? "Everyone rolls a D20. The highest roll starts; ties reroll."
-                             : "Choose the starting player when the match begins.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Button("Start game") { startAI() }
-                            .buttonStyle(CommanderActionStyle()).disabled(!mayStart)
-                    }
-                }
-                .commanderPanel()
-                Text(setup.status).font(.caption).foregroundStyle(.secondary)
-                if setup.needsLeave {
-                    Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
-                        .buttonStyle(CommanderActionStyle(primary: false))
-                        .disabled(setup.isBusy || session.isWorking)
-                }
-                if setup.identity == nil {
-                    Button("Retry loading local catalogue") { setup.prepare() }
-                        .buttonStyle(CommanderActionStyle(primary: false))
-                }
-                if diagnostics.report != nil {
-                    Button("Engine error report") { showDiagnostics = true }
-                        .accessibilityIdentifier("ondevice.diagnostics")
-                }
+                .scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("lobby.scroll")
             }
-            .foregroundStyle(CommanderPresentation.ink)
-            .tint(CommanderPresentation.accent)
-            .frame(maxWidth: 640).padding(16).frame(maxWidth: .infinity)
         }
-        .scrollDismissesKeyboard(.interactively)
-        .background(BrandBackdrop(cards: false).ignoresSafeArea())
+        .foregroundStyle(ArenaMenuStyle.text)
+        .tint(ArenaMenuStyle.gold)
     }
 
-    private var setupDecks: some View {
-        let layout = dynamicType.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 20))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: 24))
-        return layout {
-            VStack(alignment: .center, spacing: 10) {
-                CommanderDeckPortrait(name: selectedDeck?.commander?.cardName,
-                                       namespace: reduceMotion ? nil : commanderTransition)
-                    .frame(width: 112, height: 156)
-                Text("Your deck").font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                Text(selectedDeck?.name ?? "Choose a deck").font(.headline).fixedSize(horizontal: false, vertical: true)
-                OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
-                                         startIssues: setup.startIssues) { cards in
-                    studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); openDecks()
-                }.disabled(setup.isBusy)
-            }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
-            VStack(alignment: .center, spacing: 10) {
-                if playWithFriends {
-                    Image(systemName: "person.2.fill")
-                        .font(.largeTitle).foregroundStyle(CommanderPresentation.secondary)
-                        .frame(width: 112, height: 156)
-                        .background(CommanderPresentation.surface, in: RoundedRectangle(cornerRadius: 12))
-                    Text(playOnline ? "iPhone + Android" : "Game Center")
-                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                    Text("\(playerCount) seats").font(.headline)
-                } else {
-                    CommanderDeckPortrait(name: aiPrecon?.deckList.commander?.cardName)
-                        .frame(width: 112, height: 156)
-                    Text("\(opponentCount) AI \(opponentCount == 1 ? "opponent" : "opponents")")
-                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
-                    Text(opponentCount == 1 ? (aiPrecon?.name ?? "Choose opponents") : "Choose each deck below")
-                        .font(.headline).fixedSize(horizontal: false, vertical: true)
+    /// Your seat: your deck as an open deck box, your name, the deck picker and the deck's check.
+    private var setupSeat: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ArenaCaps(text: String(localized: "Your seat"))
+            HStack(alignment: .top, spacing: 14) {
+                if let box = selectedDeckBox {
+                    ArenaDeckBox(deck: box, selected: true, width: 120)
+                        .padding(.top, ArenaBoxGeometry(width: 120).rise)
                 }
-            }.frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(selectedDeck?.name ?? String(localized: "Choose a deck")).font(ArenaMenuStyle.font(17, .bold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let commander = selectedDeck?.commander?.cardName {
+                        Text(commander).font(ArenaMenuStyle.font(12, .medium)).italic().foregroundStyle(ArenaMenuStyle.dim)
+                    }
+                    if let bracket = selectedDeckBracket {
+                        Button { showBracketSheet = true } label: {
+                            Text(bracket.title).font(ArenaMenuStyle.font(11, .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                                .frame(minHeight: 30).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("play.deck.bracket")
+                    }
+                }
+            }
+            OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
+                                     startIssues: setup.startIssues) { cards in
+                studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); openDecks()
+            }.disabled(setup.isBusy)
+            TextField("Player name", text: $playerDisplayName)
+                .textContentType(.nickname).autocorrectionDisabled()
+                .modifier(TavernFieldChrome(tavern: true))
+                .disabled(account.username != nil)
+                .accessibilityIdentifier("ondevice.playerName")
+            if account.username != nil {
+                Button("Your profile name. Change it in Friends.") { showFriends = true }
+                    .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            } else {
+                Text("Choose a name with 1–24 characters.").font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            }
+            TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: deckPickerSections)
+            Button(action: openDecks) { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
+                .buttonStyle(CommanderActionStyle(primary: false))
+            TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
+            NativeArtworkPreferenceView()
         }
-        .padding(.vertical, 12)
-        .overlay(alignment: .top) {
-            if !dynamicType.isAccessibilitySize {
-                VersusMedallion(size: 50).padding(.top, 12 + 156 / 2 - 25)
+        .arenaCard()
+        .disabled(setup.isBusy || (setup.needsLeave && !editableInRoom))
+    }
+
+    /// The table: who sits at it (AI, Game Center or an online table) and their decks, then Start.
+    private var setupTable: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ArenaCaps(text: String(localized: "The table"))
+            ArenaSegmented(options: [("AI", "ai"), ("Game Center", "gamecenter"), ("Online", "online")],
+                           selection: playerMode, stretch: true)
+                .disabled(setup.isBusy || setup.needsLeave)
+            if playWithFriends {
+                if !(playOnline && setup.multiplayer?.isRelayTable == true) {
+                    TavernPicker(title: "Human players", selection: $playerCount,
+                                 sections: [.init(options: (2...4).map { ("\($0) players", $0) })])
+                        .disabled(setup.isBusy || setup.needsLeave)
+                }
+                if playOnline {
+                    RelayTablePanel(multiplayer: setup.multiplayer, code: $relayJoinCode, mayEnter: mayStart && !setup.needsLeave,
+                                    locked: setup.isBusy || setup.needsLeave,
+                                    aiCount: gameCenterAICountBinding, maxAI: max(0, 4 - playerCount),
+                                    aiDeckSelection: aiDeckSelection, aiSkill: $aiSkill,
+                                    deckName: selectedDeck?.name, localCommander: selectedDeck?.commander?.cardName,
+                                    host: {
+                                        guard let deck = selectedDeck else { return }
+                                        Task { await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: playerCount,
+                                                                     aiDecks: gameCenterAIDecks, aiSkill: aiSkill) }
+                                    },
+                                    join: { code in
+                                        guard let deck = selectedDeck else { return }
+                                        setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
+                                    },
+                                    ready: {
+                                        guard let deck = selectedDeck else { return }
+                                        setup.readyForMatch(name: playerDisplayName, deck: deck)
+                                    })
+                } else {
+                    TavernStepper(title: "AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
+                                  range: 0...max(0, 4 - playerCount), identifier: "ondevice.gameCenterAI.count")
+                        .disabled(setup.isBusy || setup.needsLeave)
+                    ForEach(0..<gameCenterAICount, id: \.self) { index in
+                        TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
+                                     sections: aiDeckPickerSections,
+                                     identifier: "ondevice.gameCenterAI.deck.\(index + 1)")
+                            .disabled(setup.isBusy || setup.needsLeave)
+                    }
+                    if gameCenterAICount > 0 {
+                        TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10)
+                            .disabled(setup.isBusy || setup.needsLeave)
+                        setupNote("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
+                    }
+                    setupNote("Every player needs the same app version and must keep the app open during the match.")
+                    Text(setup.multiplayer?.status ?? setup.status).font(ArenaMenuStyle.font(13, .medium))
+                    if let room = setup.multiplayer?.room {
+                        MatchRoomView(room: room, deckName: selectedDeck?.name,
+                                      localCommander: selectedDeck?.commander?.cardName) {
+                            guard let deck = selectedDeck else { return }
+                            setup.readyForMatch(name: playerDisplayName, deck: deck)
+                        }
+                    }
+                    if setup.multiplayer?.isAuthenticated != true {
+                        Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
+                            .buttonStyle(CommanderActionStyle(primary: false))
+                            .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
+                    }
+                    Button("Find players") { startMatchmaking() }
+                        .buttonStyle(ArenaPlayButtonStyle(fontSize: 19))
+                        .frame(height: 48)
+                        .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
+                }
+            } else {
+                setupOpponents
+                TavernStepper(title: "AI opponents: \(opponentCount)", value: $opponentCount, range: 1...3,
+                              identifier: "ondevice.aiCount")
+                    .disabled(setup.isBusy || setup.needsLeave)
+                ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
+                    VStack(alignment: .leading, spacing: 4) {
+                        ArenaCaps(text: "AI \(index + 1) deck", size: 9.5)
+                        TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
+                                     sections: aiDeckPickerSections,
+                                     identifier: "ondevice.aiDeck.\(index + 1)", showsTitle: false)
+                            .disabled(setup.isBusy || setup.needsLeave)
+                    }
+                }
+                TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10, identifier: "onDevice.aiSkill")
+                    .disabled(setup.isBusy || setup.needsLeave)
+                setupNote("Higher skill levels allow more thinking and may slow turns.")
+                ArenaCaps(text: String(localized: "Who goes first"), size: 9.5)
+                ArenaSegmented(options: [("Choose", "choose"), ("Roll D20", "roll")], selection: $aiStartingPlayerMode, stretch: true)
+                    .disabled(setup.isBusy || setup.needsLeave)
+                setupNote(aiStartingPlayerMode == "roll"
+                          ? "Everyone rolls a D20. The highest roll starts; ties reroll."
+                          : "Choose the starting player when the match begins.")
+                Button("Start game") { startAI() }
+                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 20))
+                    .frame(height: 50)
+                    .disabled(!mayStart)
+            }
+            setupNote(setup.status)
+            if setup.needsLeave {
+                Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
+                    .buttonStyle(CommanderActionStyle(primary: false))
+                    .disabled(setup.isBusy || session.isWorking)
+            }
+            if setup.identity == nil {
+                Button("Retry loading local catalogue") { setup.prepare() }
+                    .buttonStyle(CommanderActionStyle(primary: false))
+            }
+            if diagnostics.report != nil {
+                Button("Engine error report") { showDiagnostics = true }
+                    .font(ArenaMenuStyle.font(13, .semibold))
+                    .accessibilityIdentifier("ondevice.diagnostics")
             }
         }
+        .arenaCard()
+    }
+
+    /// The AI seats as closed deck boxes.
+    private var setupOpponents: some View {
+        HStack(spacing: 10) {
+            ForEach(Array(aiPrecons.enumerated()), id: \.offset) { _, deck in
+                ArenaDeckBox(deck: ArenaDeckBoxModel(id: deck.id, name: deck.name, commander: deck.deckList.commander?.cardName,
+                                                     colors: deck.colors.map(String.init), subtitle: deck.bracket.name),
+                             width: 96)
+            }
+            Spacer(minLength: 0)
+        }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Selected decks")
+        .accessibilityLabel("Opponents")
+    }
+
+    private func setupNote(_ text: String) -> some View {
+        Text(text).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// A session error stays up until updates resume or it is dismissed: polling has stopped, and a
