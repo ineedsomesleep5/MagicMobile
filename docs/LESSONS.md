@@ -136,6 +136,14 @@ contradicting one.
 
 ## Website
 
+- 2026-10-21 (Claude, web on Vercel): Vercel's Hobby plan refuses any static file over 100 MB, and the engine module
+  is 137 MB. **Fix:** `stage_vercel.mjs` ships it gzipped (44 MB) and the worker unpacks it with DecompressionStream
+  before the hash check. Vercel serves the `.gz` as `application/gzip` with no Content-Encoding, so the browser leaves
+  it alone. Also: `vercel link` writes a `.env.local` holding a token into the folder it links, so the staged folder
+  carries a `.vercelignore` for it. Preview URLs need a Vercel login, but the project's production URL doesn't. The
+  in-app browser's javascript tool gives up after 45 s: poll in short calls. Where: `apps/web/scripts/stage_vercel.mjs`,
+  `apps/web/README.md` ("Hosted on Vercel").
+
 - 2026-10-21 (Claude, web Arena board): three traps. (1) The page is cross-origin isolated (COEP require-corp), so a
   CSS `background-image` from another origin is blocked; Scryfall's card back and mana symbols load only as
   `<img crossorigin="anonymous">`. `curl -I` without an `Origin` header shows no `access-control-allow-origin` on

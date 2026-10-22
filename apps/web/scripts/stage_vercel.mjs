@@ -56,6 +56,8 @@ await writeFile(join(out, "vercel.json"), JSON.stringify({
       { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
       { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
       { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+      // Unlisted until Caleb decides between public and private: no search engine indexes it.
+      { key: "X-Robots-Tag", value: "noindex, nofollow" },
     ] },
     { source: "/engine/manifest.json", headers: revalidate },
     { source: "/engine/decks/(.*)", headers: revalidate },
@@ -66,12 +68,15 @@ await writeFile(join(out, "vercel.json"), JSON.stringify({
   rewrites: [{ source: "/(.*)", destination: "/index.html" }],
 }, null, 2) + "\n");
 
+// `vercel link` leaves a token in .env.local here: never upload it.
+await writeFile(join(out, ".vercelignore"), ".env*\n.gitignore\n");
+
 // Vercel refuses a file over the limit only after uploading everything else; fail here instead.
 const walk = async (dir) => (await Promise.all((await readdir(dir, { withFileTypes: true })).map(async (entry) => {
   const path = join(dir, entry.name);
   return entry.isDirectory() ? walk(path) : [{ path, size: (await stat(path)).size }];
 }))).flat();
-const files = (await walk(out)).filter((f) => !f.path.includes(`${out}/.vercel/`));
+const files = (await walk(out)).filter((f) => !f.path.includes(`${out}/.vercel/`) && !/\/\.(env|gitignore|vercelignore)/.test(f.path));
 const big = files.filter((f) => f.size > LIMIT);
 if (big.length > 0) fail(`over 100 MB: ${big.map((f) => f.path).join(", ")}`);
 const total = files.reduce((sum, f) => sum + f.size, 0);

@@ -152,6 +152,31 @@ more than a few percent:
 | `public/arena/table.jpg` | 956 x 440 (2.17:1) | the prototype's plate |
 | `table-195.jpg`, `table-169.jpg`, `table-1610.jpg`, `table-43.jpg` | 956 x 490, 538, 598, 717 | `scripts/render_arena_plates.sh` (Blender, the Arena renderer from `claude/arena-mode`, layouts in `scripts/arena_plates.json`) |
 
+## Hosted on Vercel (unlisted)
+
+https://magicmobile-web.vercel.app is the Vercel project `magicmobile-web` on Caleb's account (2026-10-21). It is
+unlisted: nothing links to it and every response carries `X-Robots-Tag: noindex`, until Caleb decides between public
+and private. It is a static deploy of a local build, since the engine isn't in git. To redeploy:
+
+```
+npm --prefix apps/web run build
+node apps/web/scripts/stage_vercel.mjs
+cd apps/web/.vercel-deploy && npx vercel@65.0.0 deploy --prod
+```
+
+`stage_vercel.mjs` copies `dist` and the engine into `apps/web/.vercel-deploy` (git-ignored). It gzips the module and
+writes a `vercel.json` with the isolation headers. The folder keeps its `.vercel` link to the project between runs
+(on a new machine: `npx vercel link --project magicmobile-web` inside it first).
+
+Limits on the free Hobby plan:
+- No static file over 100 MB. The module (137 MB) ships gzipped (44 MB) and the worker unpacks it.
+- 100 GB of transfer a month: about 2,000 first-time engine downloads. Returning players load the engine from their
+  browser's cache.
+- Non-commercial use only.
+
+Cloudflare's static assets have no transfer limit and allow commercial use, but cap files at 25 MiB, so the gzip copy
+would have to be split into parts.
+
 ## Not done yet
 
 - Ranked, friends, sign-in and deck import (later web steps); only the five precons are offered.
