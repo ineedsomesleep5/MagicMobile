@@ -42,23 +42,39 @@ async function prune(cache: Cache, sha256: string) {
   } catch { /* best effort */ }
 }
 
+/**
+ * The module, downloaded with progress. A hosted copy comes gzipped (Vercel's free plan takes no file over 100 MB)
+ * and is unpacked here, unless the server already sent it with Content-Encoding and the browser unpacked it.
+ */
 async function download(init: WorkerInit): Promise<Blob> {
-  const reply = await nativeFetch(init.wasmUrl, { cache: "no-store" });
+  const gzip = init.wasmGzipUrl !== undefined && init.wasmGzipBytes !== undefined;
+  const reply = await nativeFetch(gzip ? init.wasmGzipUrl! : init.wasmUrl, { cache: "no-store" });
   if (!reply.ok || !reply.body) throw new Error(`The engine download failed (HTTP ${reply.status}).`);
-  const reader = reply.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const unpack = gzip && !/gzip/i.test(reply.headers.get("content-encoding") ?? "");
+  const total = unpack ? init.wasmGzipBytes! : init.wasmBytes;
   let loaded = 0;
   let posted = 0;
+  // Progress counts the bytes as they arrive, before any unpacking.
+  const counted = reply.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      loaded += chunk.byteLength;
+      const now = performance.now();
+      if (now - posted > 100) { posted = now; post({ type: "progress", loaded, total }); }
+      controller.enqueue(chunk);
+    },
+  }));
+  const body = unpack ? counted.pipeThrough(new DecompressionStream("gzip") as unknown as ReadableWritablePair<Uint8Array, Uint8Array>) : counted;
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value);
-    loaded += value.byteLength;
-    const now = performance.now();
-    if (now - posted > 100) { posted = now; post({ type: "progress", loaded, total: init.wasmBytes }); }
+    bytes += value.byteLength;
   }
-  post({ type: "progress", loaded, total: init.wasmBytes });
-  if (loaded !== init.wasmBytes) throw new Error(`The engine download stopped early (${loaded} of ${init.wasmBytes} bytes). Reload to try again.`);
+  post({ type: "progress", loaded, total });
+  if (bytes !== init.wasmBytes) throw new Error(`The engine download stopped early (${bytes} of ${init.wasmBytes} bytes). Reload to try again.`);
   return new Blob(chunks as BlobPart[], { type: "application/wasm" });
 }
 

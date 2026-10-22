@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/web", "run", "dev", "--", "--port", "5173", "--strictPort"],
       "port": 5173
+    },
+    {
+      "name": "web-staged",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd apps/web && ENGINE_DIR=.vercel-deploy/engine npx vite preview --outDir .vercel-deploy --port 5174 --strictPort --host 127.0.0.1"],
+      "port": 5174
     }
   ]
 }

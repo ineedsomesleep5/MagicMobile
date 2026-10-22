@@ -16,6 +16,9 @@ export interface WorkerInit {
   wasmUrl: string; // engine.js.wasm, kept in the Cache API under its content hash
   wasmSha256: string; // from the engine's manifest.json
   wasmBytes: number;
+  /** A gzip copy to download instead (static hosts cap file sizes: Vercel's free plan at 100 MB), and its size. */
+  wasmGzipUrl?: string;
+  wasmGzipBytes?: number;
   channel: SharedArrayBuffer;
 }
 

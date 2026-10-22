@@ -11,9 +11,12 @@ export interface EngineManifest {
   engineBuild: string;
   upstream: string;
   catalogueHash: string;
-  /** Content-hashed file names (builds since the CE engine); older bundles use engine.js and engine.js.wasm. */
-  files?: { js: string; wasm: string };
-  wasm: { bytes: number; sha256: string };
+  /**
+   * Content-hashed file names (builds since the CE engine); older bundles use engine.js and engine.js.wasm. A hosted
+   * copy (scripts/stage_vercel.mjs) ships the module gzipped as `wasmGzip` only, which the worker unpacks.
+   */
+  files?: { js: string; wasm: string; wasmGzip?: string };
+  wasm: { bytes: number; sha256: string; gzipBytes?: number };
 }
 
 export interface EngineLoadState {
@@ -144,7 +147,8 @@ export class LocalEngine {
     if (!reply.ok) throw new Error(`The engine is not on this server (manifest: HTTP ${reply.status}). See apps/web/README.md for where to put it.`);
     const manifest = await reply.json() as EngineManifest;
     if (!/^[0-9a-f]{64}$/.test(manifest.wasm?.sha256 ?? "") || !(manifest.wasm?.bytes > 0)) throw new Error("The engine manifest is incomplete.");
-    this.set({ manifest, total: manifest.wasm.bytes });
+    const gzip = manifest.files?.wasmGzip && manifest.wasm.gzipBytes ? { url: url(manifest.files.wasmGzip), bytes: manifest.wasm.gzipBytes } : undefined;
+    this.set({ manifest, total: gzip?.bytes ?? manifest.wasm.bytes });
 
     const worker = new Worker(new URL("./engine.worker.ts", import.meta.url), { name: "xmage-web-image" });
     const channel = new SharedArrayBuffer(CHANNEL_HEADER_BYTES + CHANNEL_BYTES);
@@ -174,7 +178,7 @@ export class LocalEngine {
       };
       worker.postMessage({
         type: "init", engineUrl: url(manifest.files?.js ?? "engine.js"), wasmUrl: url(manifest.files?.wasm ?? "engine.js.wasm"), wasmSha256: manifest.wasm.sha256,
-        wasmBytes: manifest.wasm.bytes, channel,
+        wasmBytes: manifest.wasm.bytes, wasmGzipUrl: gzip?.url, wasmGzipBytes: gzip?.bytes, channel,
       });
     });
   }
