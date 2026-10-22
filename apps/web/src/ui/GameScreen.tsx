@@ -26,6 +26,7 @@ import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./aren
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
 import { Inspector } from "./arena/Inspector";
 import { StatusBadge } from "./arena/StatusBadge";
+import { ResultBackdrop } from "./arena/ResultBackdrop";
 import { ORBIT, orbitOffsets, orbitOrder, orbitShown, statusBadges } from "../core/playerStatus";
 import { GameLog } from "./arena/GameLog";
 import { CombatLogReasons } from "../core/gameLog";
@@ -1484,7 +1485,7 @@ export function GameScreen({ table }: { table: GameTable }) {
           const top = summary.topCard;
           return (
             <div className="aresult" data-win={won ? "true" : "false"} onClick={stop}>
-              <div className="glory" />
+              <ResultBackdrop victory={won} />
               <div className="box glass">
                 <div className="medal"><div className="av">{AVATAR.me}</div></div>
                 <h2 className="title">{title.toUpperCase()}</h2>

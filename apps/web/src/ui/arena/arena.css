@@ -268,11 +268,6 @@
 .amull .choices .aplaque { position: relative; flex: 1; height: 40px; min-width: 0; }
 .aroll { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 420px; padding: 18px 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .aresult { position: absolute; inset: 0; z-index: 900; background: rgba(14,8,4,.72); display: grid; place-items: center; overflow: hidden; }
-.aresult .glory { position: absolute; left: 50%; top: 50%; width: 900px; height: 900px; margin: -450px 0 0 -450px; border-radius: 50%; pointer-events: none; opacity: 0;
-  background: repeating-conic-gradient(from 0deg, rgba(255,214,140,.22) 0 5deg, transparent 5deg 15deg);
-  -webkit-mask: radial-gradient(circle, #000 8%, transparent 62%); mask: radial-gradient(circle, #000 8%, transparent 62%); animation: aglory 1s ease-out .15s forwards, aspin 40s linear infinite; }
-.aresult[data-win=false] .glory { display: none; }
-@keyframes aglory { to { opacity: 1; } } @keyframes aspin { to { rotate: 360deg; } }
 .aresult .box { position: relative; z-index: 2; width: 360px; padding: 24px 0 22px; display: flex; flex-direction: column; align-items: center; gap: 11px; }
 .aresult .medal { position: relative; width: 120px; height: 120px; border-radius: 50%; margin-bottom: 2px; animation: amedalUp .8s cubic-bezier(.2,1.4,.4,1) both; filter: drop-shadow(0 10px 18px rgba(0,0,0,.7)); }
 .aresult .medal .av { position: absolute; inset: 13%; border-radius: 50%; overflow: hidden; background: #2a1408; }
@@ -289,7 +284,7 @@
 .aresult .answers { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .ainspect { position: absolute; z-index: 850; pointer-events: none; filter: drop-shadow(0 14px 26px rgba(0,0,0,.7)); }
 .ainspect img { display: block; width: 100%; border-radius: 12px; }
-@media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .aplaque.ember.want, .ahourglass svg { animation: none; } .aresult .glory { animation: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .aplaque.ember.want, .ahourglass svg { animation: none; } }
 
 /* An ability as the reference shows it (ArenaAbilityCard): 15em wide, 0.72 of its height; the source's colour frames it. */
 .ability-card { position: relative; width: 15em; height: 20.83em; border-radius: .75em; box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), 0 .6em 1.2em rgba(0,0,0,.6);
@@ -665,3 +660,9 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
   background: linear-gradient(rgba(60,46,36,.92), rgba(28,20,15,.92)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.42), 0 1px 3px rgba(0,0,0,.5); }
 .azonepill svg { width: 12px; height: 12px; fill: currentColor; }
 .azonepill b { font: 800 12px/1 var(--serif); font-variant-numeric: tabular-nums; }
+
+/* GameResultBackdrop's wash under its canvas. */
+.aresult .abackdrop { position: absolute; inset: 0; pointer-events: none; }
+.aresult .abackdrop.win { background: radial-gradient(ellipse 60% 60% at 50% 42%, rgba(158,117,31,.62), rgba(102,71,18,.46)); }
+.aresult .abackdrop.loss { background: radial-gradient(ellipse 60% 60% at 50% 42%, rgba(107,13,10,.62), rgba(51,5,5,.5)); }
+.aresult .abackdrop canvas { width: 100%; height: 100%; display: block; }
