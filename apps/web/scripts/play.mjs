@@ -87,6 +87,7 @@ const recorder = () => {
       active.scheduled.event.__seen = true;
       const kind = active.scheduled.event.type;
       rec.painted[kind] = (rec.painted[kind] ?? 0) + 1;
+      if (kind === "spellCast" && active.scheduled.event.weight === "ability") rec.painted.trigger = (rec.painted.trigger ?? 0) + 1;
       if (rec.painted[kind] === 1 && !["spellCast", "enteredBattlefield"].includes(kind)) rec.shots.push(kind);
     }
     if (rec.fx.length > 6000) rec.fx.splice(0, 2000);
@@ -193,6 +194,17 @@ function decide(state, memory) {
   return first ? { action: first.id } : undefined;
 }
 
+/** Concedes through the board: the gear menu, Game Settings, Concede and its confirmation. */
+async function concedeByMenu(page) {
+  try {
+    await page.getByRole("button", { name: "Game menu" }).click({ timeout: 3000 });
+    await page.getByRole("menuitem", { name: "Game Settings" }).click({ timeout: 3000 });
+    await page.locator(".asettings .aplaque.oxblood", { hasText: "Concede" }).click({ timeout: 3000 });
+    await page.locator(".aquestion .aplaque.oxblood", { hasText: "Concede" }).click({ timeout: 3000 });
+    return true;
+  } catch { return false; }
+}
+
 async function play(page, game) {
   await page.goto(url);
   if (args.polls) await page.evaluate(() => { window.__recordPolls = true; });
@@ -244,7 +256,9 @@ async function play(page, game) {
       break;
     }
     if (state.ready && state.turn > maxTurns) {
-      await page.evaluate(() => window.__mm.table.concede());
+      // Concede the way a player does: the gear, Game Settings, Concede, then confirm.
+      memory.conceded = await concedeByMenu(page);
+      if (!memory.conceded) await page.evaluate(() => window.__mm.table.concede());
       await page.waitForTimeout(3000);
       break;
     }
@@ -334,7 +348,14 @@ async function play(page, game) {
   const count = (type) => rec.sends.filter((e) => e.type === type).length;
   const clicks = (label) => rec.sends.filter((e) => e.type === "click" && e.label === label).length;
   return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, drags: count("drag"), autoPay: clicks("Auto Pay"), allAttack: clicks("All Attack"),
-    smartPasses: rec.sends.filter((e) => e.by === "smart").length, readHold: memory.readResult ?? "not tested", notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
+    smartPasses: rec.sends.filter((e) => e.by === "smart").length, readHold: memory.readResult ?? "not tested",
+    // The end goal's list for each game (docs/WEB_PARITY.md): a drag cast, Auto Pay, a trigger, All Attack, a board wipe, and a concede or a win.
+    covered: {
+      dragCast: count("drag") > 0, autoPay: clicks("Auto Pay") > 0, trigger: (rec.painted.trigger ?? 0) > 0, allAttack: clicks("All Attack") > 0,
+      wipe: [...new Set(rec.fx.filter((f) => f.notice && /: \d+ (to the graveyard|exiled|returned)/.test(f.notice)).map((f) => f.notice))],
+      ended: won ? "won" : memory.conceded ? "conceded by the menu" : final.over ? "lost" : "stopped",
+    },
+    notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.
