@@ -667,26 +667,35 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
  * A zone opened from the table (ArenaZoneBrowser): graveyard, exile, the command zone side by side on the dimmed table,
  * an ember plaque under each card you can use (Cast, or the action's own name), Done to close.
  */
-export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, height, inspect, close }: {
+export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, height, inspect, close, targetIDs, chooseTarget }: {
   title: string; cards: ZoneCard[]; snapshot: GameSnapshot; pending: boolean; sendAction: SendAction; height: number; inspect?: Inspect; close: () => void;
+  /** Cards the open prompt can target: each gets Choose (ArenaZoneBrowser.runTargetAction). */
+  targetIDs?: ReadonlySet<string>; chooseTarget?: (card: ZoneCard) => void;
 }) {
   const actions = (card: ZoneCard) => (snapshot.legalActions ?? []).filter((a) => (a.cardInstanceId === card.instanceId || a.sourceInstanceId === card.instanceId) && a.type !== "make_mana");
-  const usable = cards.some((c) => actions(c).length > 0);
-  const detail = cards.length === 0 ? "Nothing here yet."
-    : usable ? "Play a card from here, or point at one to read it."
-      : cards.length === 1 ? "1 card. Point at it to read it." : `${cards.length} cards, newest last. Point at one to read it.`;
-  const width = Math.min(height * 0.46, 250) / 1.4;
+  const targetable = (card: ZoneCard) => chooseTarget !== undefined && (targetIDs?.has(card.instanceId) ?? false);
+  const detail = cards.length === 0 ? (title.includes("Library") || title.includes("library") ? "The library is face down. Only a revealed top card shows here." : "No cards here.")
+    : cards.some(targetable) ? "Choose a card."
+      : cards.some((c) => actions(c).length > 0) ? "Play a card from here, or point at one to read it."
+        : cards.length === 1 ? "1 card. Point at it to read it." : `${cards.length} cards. Point at one to read it.`;
+  const width = Math.min(220, height * 0.5) / 1.4;
   return (
     <Frame title={title} detail={detail} snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close} back="Back to the zone"
       footer={<button type="button" className="aplaque ember" onClick={close}>Done</button>}>
       {cards.map((card) => {
         const list = actions(card);
+        const target = targetable(card);
         return (
-          <div key={card.instanceId} className={`bcard ${list.length > 0 ? "usable" : ""}`} style={{ width }}>
+          <div key={card.instanceId} className={`bcard ${target ? "target" : list.length > 0 ? "usable" : ""}`} style={{ width }}>
             <Printed name={card.card.name} width={width} inspect={inspect} />
+            {target && <button type="button" className="aplaque ember" disabled={pending} aria-label={`Choose ${card.card.name}`} onClick={() => chooseTarget!(card)}>Choose</button>}
             {list.slice(0, 3).map((action) => (
               <button key={action.id} type="button" className="aplaque ember" disabled={pending}
-                onClick={() => { inspect?.(undefined); close(); sendAction(action); }}>
+                onClick={() => {
+                  // Casting a spell leaves the zone (GameplayAffordances.dismissesZone); other actions keep it open.
+                  if (action.type === "cast_spell") { inspect?.(undefined); close(); }
+                  sendAction(action);
+                }}>
                 {list.length === 1 && action.type === "cast_spell" ? "Cast" : EngineDisplayText.label(action.label)}</button>
             ))}
           </div>

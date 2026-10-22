@@ -58,6 +58,8 @@ const ZONE_GLYPHS = {
   hand: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 18c-2.2 0-3.6-1.4-4.4-3.4L1.4 11c-.3-.8.6-1.4 1.2-.8L4.5 12V4.2a1 1 0 0 1 2 0V9h.6V2.8a1 1 0 0 1 2 0V9h.6V3.4a1 1 0 0 1 2 0V9h.6V5a1 1 0 0 1 2 0v7c0 3.4-2.2 6-5.2 6z" /></svg>,
 };
 
+const EYE = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5.5 4 2.2 7 1 10c1.2 3 4.5 6 9 6s7.8-3 9-6c-1.2-3-4.5-6-9-6zm0 9.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7zm0-5.3a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6z" /></svg>;
+const EYE_OPEN = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4C5.5 4 2.2 7 1 10c1.2 3 4.5 6 9 6s7.8-3 9-6c-1.2-3-4.5-6-9-6z" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="10" cy="10" r="2.6" /></svg>;
 const SUN = <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4.2" /><path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.6 3.6l2.1 2.1M14.3 14.3l2.1 2.1M3.6 16.4l2.1-2.1M14.3 5.7l2.1-2.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
 const MOON = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.2A8 8 0 1 0 17.8 13 6.4 6.4 0 0 1 13.5 2.2z" /></svg>;
 
@@ -171,7 +173,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   /** The gear's menu or the pass-ahead pill's skip choices, as a menu card on the table. */
   const [cornerMenu, setCornerMenu] = useState<"game" | "pass">();
   /** Phase Stops or Game Settings, in glass on the table. */
-  const [sheet, setSheet] = useState<"stops" | "settings">();
+  const [sheet, setSheet] = useState<"stops" | "settings" | "actions">();
   const [zone, setZone] = useState<{ title: string; cards: ZoneCard[] }>();
   const [playerCard, setPlayerCard] = useState<string>();
   const [confirmConcede, setConfirmConcede] = useState(false);
@@ -696,6 +698,8 @@ export function GameScreen({ table }: { table: GameTable }) {
       const ordered = [...promptActions].sort((a, b) => confirming(b) - confirming(a));
       primary = act(ordered[0], "ember", undefined, true);
       secondary = act(ordered[1], "leather");
+      // A decision with nothing on the table or in the corner opens the full list (GameActionDockModel's "Choices").
+      if (!primary && targetIDs.size === 0 && (snapshot.legalActions ?? []).length > 0) primary = { label: "Choices", style: "leather", onClick: () => setSheet("actions") };
     }
   } else if (snapshot && !finished && !envelope) {
     primary = { label: waitingTitle, style: "label" };
@@ -762,6 +766,8 @@ export function GameScreen({ table }: { table: GameTable }) {
     { id: "stops", title: "Phase Stops", glyph: "stops", action: () => setSheet("stops") },
     ...(session ? [{ id: "full-control", title: "Full control", subtitle: fullControl ? "On for this turn" : "Stop at every priority this turn", glyph: "fullControl",
       lit: fullControl, action: () => session.toggleFullControl() }] : []),
+    // Everything you can do right now, in one list (the prompt details iOS opens from More actions).
+    ...(session && (snapshot?.legalActions ?? []).length > 0 ? [{ id: "more", title: "More actions", glyph: "more", action: () => setSheet("actions") }] : []),
     { id: "settings", title: "Game Settings", glyph: "settings", action: () => setSheet("settings") },
   ];
   // Your commander on an opponent's battlefield is named, with why (ArenaCommanderSteal): 7 s in the caption.
@@ -855,6 +861,22 @@ export function GameScreen({ table }: { table: GameTable }) {
     return (
       <div key={`piles-${player.playerId}`}>
         <ArenaPile {...at(spots.library)} size={size} count={player.zones.libraryCount ?? 0} kind="library" label={`${whose} library`} />
+        {(() => {
+          // A revealed top card (Courser of Kruphix, Future Sight…) lies face up on the deck (TopOfLibraryCard), lit when you can play it.
+          const top = player.zones.library[0];
+          if (!top || top.card.name === "Hidden card") return null;
+          const playable = mine && !pending && actionsFor(snapshot!, top.instanceId).some((a) => a.type === "cast_spell" || a.type === "play_land");
+          const spot = at(spots.library);
+          return (
+            <button type="button" className={`atoplib ${playable ? "playable" : ""}`} style={{ left: spot.x, top: spot.y, height: size.h, width: size.h / 1.395 }}
+              aria-label={`Top of ${mine ? "your" : `${player.displayName ?? "their"}’s`} library: ${top.card.name}${playable ? ", you can play it" : ""}`}
+              onClick={(e) => { e.stopPropagation(); setZone({ title: `Top of ${mine ? "your" : `${player.displayName ?? "their"}’s`} library`, cards: [top] }); }}
+              onMouseEnter={() => hover(top.card.name)} onMouseLeave={() => hover(undefined)}>
+              <CardArt card={top.card} version="normal" />
+              <i aria-hidden="true">{EYE}</i>
+            </button>
+          );
+        })()}
         <ArenaPile {...at(spots.graveyard)} size={size} count={player.zones.graveyard.length} kind="graveyard" label={`${whose} graveyard`}
           top={player.zones.graveyard.at(-1)?.card.name} onOpen={open("graveyard")} onHover={hover} />
         {player.zones.exile.length > 0 && (
@@ -1100,6 +1122,22 @@ export function GameScreen({ table }: { table: GameTable }) {
             return moved && fxNow() - moved.at < 0.6 ? moved.place : places.current.get(id);
           }} /></FXBoundary>}
         {opponents.map((o, i) => medallion(o, false, i))}
+        {snapshot && (() => {
+          // Revealed and looked-at cards as two small chips between the opponent's piles and the gear (arenaRevealedChips).
+          const revealed = snapshot.xmage?.revealed.flatMap((z) => z.cards) ?? [];
+          const lookedAt = snapshot.xmage?.lookedAt.flatMap((z) => z.cards) ?? [];
+          if (revealed.length === 0 && lookedAt.length === 0) return null;
+          const pill = (label: string, cards: ZoneCard[], glyph: React.ReactNode) => (
+            <button type="button" className="azonepill" aria-label={`${label}, ${cards.length === 1 ? "1 card" : `${cards.length} cards`}`}
+              onClick={(e) => { e.stopPropagation(); setZone({ title: label, cards }); }}>{glyph}<b>{cards.length}</b></button>
+          );
+          return (
+            <div className="azonepills" style={{ left: 818, top: T(12) }}>
+              {revealed.length > 0 && pill("Revealed", revealed, EYE)}
+              {lookedAt.length > 0 && pill("Looked at", lookedAt, EYE_OPEN)}
+            </div>
+          );
+        })()}
         {me && medallion(me, true, 0)}
         {poolSymbols.length > 0 && (
           <div className="afloat" style={{ left: ARENA.floatingMana.x - 14, top: B(ARENA.floatingMana.y) }} onClick={stop}>
@@ -1265,6 +1303,21 @@ export function GameScreen({ table }: { table: GameTable }) {
         {sheet === "stops" && (
           <Panel title="Phase Stops" close={() => setSheet(undefined)}><PhaseStops settings={smartSettings} onChange={updateSmartPass} /></Panel>
         )}
+        {sheet === "actions" && snapshot && (
+          <Panel title="More actions" close={() => setSheet(undefined)}>
+            <div className="amore">
+              {(snapshot.legalActions ?? []).map((action) => {
+                const source = action.cardInstanceId ?? action.sourceInstanceId;
+                const card = source ? snapshot.players.flatMap((p) => [...p.zones.battlefield, ...p.zones.hand, ...p.zones.graveyard, ...p.zones.exile, ...p.zones.command]).find((c) => c.instanceId === source) : undefined;
+                return (
+                  <button key={action.id} type="button" className="arow" disabled={pending} onClick={() => { setSheet(undefined); sendAction(action); }}>
+                    <span><b><RulesText text={EngineDisplayText.label(action.label)} /></b>{card && <small>{card.card.name}</small>}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Panel>
+        )}
         {sheet === "settings" && (
           <Panel title="Game Settings" close={() => setSheet(undefined)}>
             <div className="asettings">
@@ -1375,7 +1428,8 @@ export function GameScreen({ table }: { table: GameTable }) {
         {zone && snapshot && (
           <div onClick={stop}>
             <ZoneBrowser title={zone.title} cards={zone.cards} snapshot={snapshot} pending={pending} sendAction={sendAction} height={geo.height}
-              inspect={inspect} close={() => setZone(undefined)} />
+              inspect={inspect} close={() => setZone(undefined)} targetIDs={targetIDs}
+              chooseTarget={envelope ? (card) => send({ type: "choose_target", targetIds: [card.instanceId] }, card.card.name) : undefined} />
           </div>
         )}
 
