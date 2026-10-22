@@ -268,6 +268,7 @@ rather than filed, because filing an issue is public and waits for Caleb's word:
 - Stop for Removal and the skip modes' threat stop (`smart-pass-cases.json`): `OnDeviceSmartPass.kt`.
 - Auto Pay (`auto-pay-cases.json`): Android has no Auto Pay.
 - The Arena board's rules (`arena-board-cases.json`) and answer actions (`answer-action-cases.json`).
+- The trigger order plan (`trigger-plan-cases.json`): a port of `ArenaTriggerPlan`.
 - The recorded-game replay (`replay/*.deflate` against `golden/replay-*.json`): Android needs the same trace, read with
   `java.util.zip.Inflater(true)` (raw DEFLATE).
 
