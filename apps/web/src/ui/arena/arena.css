@@ -605,3 +605,43 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .plain .pbadges b { background: #c9a45c; color: #221f1e; font: 900 calc(var(--badge) * .45)/1 var(--serif); }
 .plain .pcopy { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); padding: .1em .45em; border-radius: 1em; pointer-events: none; z-index: 2;
   font: 800 1.5em/1.1 var(--serif); letter-spacing: .08em; color: #c9a45c; background: rgba(0,0,0,.72); box-shadow: inset 0 0 0 .05em rgba(201,164,92,.55); }
+
+/* ArenaHeroMedallion: an ember glow behind it on its owner's turn. */
+.amed.active::before { content: ""; position: absolute; inset: -2.5%; border-radius: 50%; background: rgba(255,120,40,.7); filter: blur(calc(var(--d) * .1)); z-index: -1; }
+
+/* TavernStatusBadge: a leather coin in a brass ring, its symbol, its count on a brass coin at the corner. */
+.astatus { position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; color: var(--tint);
+  background: radial-gradient(circle at 40% 30%, #4d2b17, #4a2e1e 60%); box-shadow: inset 0 0 0 1.6px #c9a45c, 0 1px 2px rgba(0,0,0,.5); }
+.astatus.lethal { box-shadow: inset 0 0 0 2.4px #f2331f, 0 1px 2px rgba(0,0,0,.5); }
+.astatus > svg { width: 52%; height: 52%; fill: currentColor; filter: drop-shadow(0 0 2px var(--tint)); }
+.astatus .art { position: absolute; inset: 2px; border-radius: 50%; overflow: hidden; }
+.astatus .art img { width: 100%; height: 100%; object-fit: cover; }
+.astatus .shield { position: absolute; left: 4%; top: 4%; width: 30%; height: 30%; fill: #f3e6c8; filter: drop-shadow(0 0 1.5px #000); }
+.astatus .count { position: absolute; right: -12%; bottom: -10%; width: 50%; height: 50%; min-width: 12px; min-height: 12px; border-radius: 50%; display: grid; place-items: center;
+  background: url(/tavern/coin.webp) center/100%; color: #401f0a; font: 900 8px/1 var(--serif); }
+.aorbit { position: absolute; transform: translate(-50%, -50%); z-index: 466; pointer-events: none; }
+.aorbit.more { display: grid; place-items: center; border-radius: 50%; background: url(/tavern/coin.webp) center/100%; color: #401f0a; font: 900 9px/1 var(--serif); }
+
+/* ArenaPlayerCard: a glass card on the table. */
+.aplayercard { position: absolute; width: 300px; z-index: 880; border-radius: 18px; padding: 14px; display: grid; gap: 12px; max-height: 80%; overflow: auto; }
+.aplayercard header { display: flex; align-items: center; gap: 12px; }
+.aplayercard .portrait { width: 44px; height: 44px; flex: none; border-radius: 50%; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(232,190,110,.42); background: #2a1408; }
+.aplayercard .portrait svg { width: 100%; height: 100%; display: block; }
+.aplayercard header > div:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.aplayercard header b { font: 700 17px/1.1 var(--serif); color: #f3ead8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aplayercard header small { font: 800 13px/1 var(--serif); color: #fad685; }
+.aplayercard .close { width: 32px; height: 32px; flex: none; background: none; color: rgba(243,234,216,.8); font: 900 13px/1 var(--serif); }
+.aplayercard .statuses { display: grid; gap: 6px; }
+.aplayercard .statuses > div { display: flex; align-items: center; gap: 10px; font: 600 13px/1.25 var(--serif); color: #f3ead8; }
+.aplayercard .statuses > div.lethal { color: #ff9e85; }
+.aplayercard .zonegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 8px; }
+.aplayercard .zonegrid button { min-height: 64px; display: grid; justify-items: center; align-content: center; gap: 3px; border-radius: 10px; color: #f3ead8;
+  background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
+.aplayercard .zonegrid button svg { width: 17px; height: 17px; fill: currentColor; }
+.aplayercard .zonegrid button b { font: 800 13px/1 var(--serif); font-variant-numeric: tabular-nums; }
+.aplayercard .zonegrid button small { font: 800 8px/1 var(--serif); letter-spacing: .1em; }
+.aplayercard .zonegrid button.lit { color: #ffe6b3; background: rgba(255,170,80,.16); box-shadow: inset 0 0 0 1px rgba(255,190,110,.8), 0 0 12px rgba(255,150,60,.6); animation: abreathe 2.2s ease-in-out infinite; }
+.aplayercard .named { display: grid; gap: 6px; }
+.aplayercard .named button { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px; border-radius: 10px; text-align: left;
+  color: #f3ead8; font: 600 13px/1.25 var(--serif); background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
+.aplayercard .named button b { font-weight: 800; font-variant-numeric: tabular-nums; }

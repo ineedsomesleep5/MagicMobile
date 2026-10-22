@@ -196,6 +196,14 @@ async function play(page, game) {
         await page.waitForTimeout(700);
         await page.screenshot({ path: join(out, `game-${game}-log-turn-${state.turn}.png`) });
         await button.click().catch(() => {});
+        // The opponent's player card, then the stack browser when there is a stack.
+        const medallion = page.locator(".amed").first();
+        if (await medallion.count() > 0) {
+          await medallion.click({ timeout: 2000 }).catch(() => {});
+          await page.waitForTimeout(400);
+          await page.screenshot({ path: join(out, `game-${game}-card-turn-${state.turn}.png`) });
+          await page.keyboard.press("Escape");
+        }
       }
     }
     // A decision nothing answers for two minutes is a stall: say what it was and concede.

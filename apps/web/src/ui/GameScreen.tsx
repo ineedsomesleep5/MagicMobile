@@ -25,6 +25,8 @@ import { isStackAbility } from "./arena/AbilityCard";
 import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
 import { Inspector } from "./arena/Inspector";
+import { StatusBadge } from "./arena/StatusBadge";
+import { ORBIT, orbitOffsets, orbitOrder, orbitShown, statusBadges } from "../core/playerStatus";
 import { GameLog } from "./arena/GameLog";
 import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
@@ -47,6 +49,15 @@ const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare
  * The phase strip (ArenaPhaseStrip): eight icons on a brass track, the part of the turn already played lit in the turn's
  * colour, the current step lit; moving on sends a spark along the track, then the icon ignites. A click opens Phase Stops.
  */
+/** The player card's zone icons (ArenaPlayerCard.zones). */
+const ZONE_GLYPHS = {
+  command: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 15h16l1-9-5 4-4-6-4 6-5-4zM2 16.5h16V18H2z" /></svg>,
+  graveyard: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M17 2C8 2 3 6.5 3 12.5c0 1.6.4 3 1 4.3L2.5 18.4l1.1 1.1 1.6-1.6c1.3.8 2.8 1.2 4.3 1.2C15 19.1 18 13 17 2zM6 15.5c2.5-3.4 5.4-6 9-8-3 2.6-5.6 5.3-7.8 9.2z" /></svg>,
+  exile: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 1l1.6 4.6L14 7.2 9.6 8.8 8 13.4 6.4 8.8 2 7.2l4.4-1.6zM15 10l.9 2.4 2.4.9-2.4.9L15 16.6l-.9-2.4-2.4-.9 2.4-.9z" /></svg>,
+  library: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 3h3.5v14H2.5zM7 3h3.5v14H7zM11.6 4.2l3.3-1 3.6 13.3-3.3 1z" /></svg>,
+  hand: <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 18c-2.2 0-3.6-1.4-4.4-3.4L1.4 11c-.3-.8.6-1.4 1.2-.8L4.5 12V4.2a1 1 0 0 1 2 0V9h.6V2.8a1 1 0 0 1 2 0V9h.6V3.4a1 1 0 0 1 2 0V9h.6V5a1 1 0 0 1 2 0v7c0 3.4-2.2 6-5.2 6z" /></svg>,
+};
+
 const SUN = <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4.2" /><path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.6 3.6l2.1 2.1M14.3 14.3l2.1 2.1M3.6 16.4l2.1-2.1M14.3 5.7l2.1-2.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
 const MOON = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.2A8 8 0 1 0 17.8 13 6.4 6.4 0 0 1 13.5 2.2z" /></svg>;
 
@@ -619,16 +630,23 @@ export function GameScreen({ table }: { table: GameTable }) {
   const myCreatures = me?.zones.battlefield ?? [];
   let primary: Plaque | undefined;
   let secondary: Plaque | undefined;
+  // arenaWaitingTitle: whose turn it is while you wait.
+  const waitingTitle = !snapshot || activeIsMe || !snapshot.activePlayerId ? "Waiting…"
+    : opponents.length > 1 ? `${snapshot.players.find((p) => p.playerId === snapshot.activePlayerId)?.displayName ?? "Opponent"}’s Turn` : "Opponent’s Turn";
   if (snapshot && !finished && envelope && !showBrowser && !mulligan && !amountPill) {
     const act = (action: LegalAction | undefined, style: Plaque["style"], label?: string, want = false): Plaque | undefined =>
       action && { label: label ?? EngineDisplayText.label(action.label), style, want, onClick: () => sendAction(action) };
-    if (envelope.responseKind === "priority") {
+    // An answer on its way: the corner waits (GameActionDockModel's waiting mode); payments and combat keep their own.
+    const answering = pending && !paying && !combat;
+    if (answering) {
+      primary = { label: "Waiting…", style: "label" };
+    } else if (envelope.responseKind === "priority") {
       // The reference's short words: Next to move on, End Turn late in your turn, Resolve over a stack, Pass otherwise.
       const pass = promptActions.find((a) => a.type === "pass_priority");
       const phase = phaseIndex(snapshot.step ?? snapshot.phase);
       const title: [string, string?] = stack.length > 0 ? ["Resolve"] : !activeIsMe ? ["Pass"]
         : phase === 0 ? ["Next", "To Main"] : phase === 1 ? ["Next", "To Combat"] : phase === 2 ? ["Next", "To Main 2"] : ["End Turn"];
-      primary = pass && { ...act(pass, "ember", title[0], true)!, subtitle: title[1] };
+      primary = pass ? { ...act(pass, "ember", title[0], true)!, subtitle: title[1] } : { label: waitingTitle, style: "label" };
       // Resolve All: one pass that keeps passing until the stack has resolved (GameplayAffordances.resolveStackCommand).
       if (pass && (snapshot.xmage?.stack.length ?? 0) >= 2 && session?.supportedAnswerActions.has("passUntilStackResolved")) {
         const command: GameCommand = { type: "pass_priority", gameId: snapshot.id, playerId: pass.playerId, promptId: pass.promptId, messageId: pass.messageId,
@@ -680,11 +698,23 @@ export function GameScreen({ table }: { table: GameTable }) {
       secondary = act(ordered[1], "leather");
     }
   } else if (snapshot && !finished && !envelope) {
-    primary = { label: activeIsMe || !snapshot.activePlayerId ? "Waiting…"
-      : opponents.length > 1 ? `${snapshot.players.find((p) => p.playerId === snapshot.activePlayerId)?.displayName ?? "Opponent"}’s Turn` : "Opponent’s Turn", style: "label" };
+    primary = { label: waitingTitle, style: "label" };
   }
-  const promptLine = snapshot && envelope && !showBrowser && !mulligan && envelope.responseKind !== "priority"
-    ? cleanMessage(paying ? snapshot.manaPayment?.remainingText ?? envelope.message : envelope.message) : !snapshot ? table.state.status : undefined;
+  // arenaCaptionText: what the table asks of you in a few words: a payment, a combat declaration, a target on the board.
+  const promptLine = (() => {
+    if (!snapshot) return table.state.status;
+    if (!envelope || showBrowser || mulligan) return undefined;
+    if (paying) {
+      const clean = cleanMessage(snapshot.manaPayment?.remainingText ?? envelope.message);
+      return clean.length === 0 ? "Pay the cost" : clean.startsWith("{") ? `Pay ${clean}` : clean;
+    }
+    const players = new Set(snapshot.players.map((p) => p.playerId));
+    const attackers = new Set(snapshot.players.flatMap((p) => p.zones.battlefield).filter((c) => c.isAttacking).map((c) => c.instanceId));
+    if (combat === "attackers") return [...targetIDs].some((id) => players.has(id)) ? "Choose who to attack." : "Choose attackers.";
+    if (combat === "blockers") return [...targetIDs].some((id) => attackers.has(id) && !myCreatures.some((c) => c.instanceId === id)) ? "Choose the attacker to block." : "Choose blockers.";
+    if (boardTargetableIds(snapshot).size > 0) return cleanMessage(envelope.message.length === 0 ? "Choose a target." : envelope.message);
+    return undefined;
+  })();
   const thinking = snapshot && !envelope && !finished ? thinkingPlayerID(snapshot) : undefined;
   const thinkingName = thinking && thinking !== viewer ? snapshot?.players.find((p) => p.playerId === thinking)?.displayName : undefined;
 
@@ -769,7 +799,7 @@ export function GameScreen({ table }: { table: GameTable }) {
     const circumference = Math.PI * 2 * 46;
     return (
       <div key={player.playerId}>
-        <button type="button" className={`amed ${targetable ? "targetable" : ready ? "ready" : ""} ${isOut(player) ? "out" : ""}`}
+        <button type="button" className={`amed ${targetable ? "targetable" : ready ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
           style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }}
           aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : ""}`}
           onClick={(event) => {
@@ -787,13 +817,25 @@ export function GameScreen({ table }: { table: GameTable }) {
             </svg>
           )}
         </button>
-        {!mine && (
-          <div className="aname under" style={{ left: at.x, top: at.y + d / 2 + 4 }}>
-            {player.displayName}{isOut(player) ? " (left)" : ""}
-            <small>Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}</small>
-            {(player.poison > 0 || player.monarch) && <div className="badges">{player.poison > 0 && <span>Poison {player.poison}</span>}{player.monarch && <span>Monarch</span>}</div>}
-          </div>
+        {/* Several opponents need their names; iOS's one opponent seat shows none (its card names them). */}
+        {!mine && opponents.length > 1 && (
+          <div className="aname under" style={{ left: at.x, top: at.y + d / 2 + 4 }}>{player.displayName}{isOut(player) ? " (left)" : ""}</div>
         )}
+        {/* Commander damage, poison, the monarch… curve round the opponent's medallion, toward the table (TavernEffectOrbitBadges). */}
+        {!mine && (() => {
+          const radius = d / 2 + 14 * geo.grow;
+          const shown = orbitShown(statusBadges(player, snapshot ?? undefined), 5);
+          const slots = orbitOffsets(shown.badges.length + (shown.more > 0 ? 1 : 0), radius, 90);
+          const size = radius * ORBIT.badgeShare;
+          return (
+            <>
+              {shown.badges.map((badge, i) => (
+                <div key={badge.id} className="aorbit" style={{ left: at.x + slots[i].x, top: at.y + slots[i].y }}><StatusBadge badge={badge} size={size} /></div>
+              ))}
+              {shown.more > 0 && <div className="aorbit more" style={{ left: at.x + slots[slots.length - 1].x, top: at.y + slots[slots.length - 1].y, width: size * 0.8, height: size * 0.8 }}>+{shown.more}</div>}
+            </>
+          );
+        })()}
         {bubble && Date.now() - bubble.at < 3200 && <div key={bubble.at} className="abubble" style={{ left: at.x, top: at.y - d / 2 - 4 }}>{bubble.emote.text}</div>}
       </div>
     );
@@ -847,8 +889,6 @@ export function GameScreen({ table }: { table: GameTable }) {
   })();
 
   const log = snapshot?.log ?? [];
-  // A new prompt closes the corner menu and the player card.
-  useEffect(() => { setCornerMenu(undefined); setPlayerCard(undefined); }, [envelope?.id]);
   // One line of combat context under damage and deaths, decided as each entry first appears (CombatLogReasons).
   const logReasons = useMemo(() => { if (snapshot) combatReasons.current.observe(snapshot); return combatReasons.current.reasons; }, [snapshot]);
   const pool = me?.manaPool;
@@ -1164,26 +1204,54 @@ export function GameScreen({ table }: { table: GameTable }) {
         )}
 
         {playerCard && snapshot && (() => {
+          // ArenaPlayerCard: portrait, name and life; each status in words; the zones with their counts, lit where you
+          // can play from; the named exile zones and revealed cards.
           const player = snapshot.players.find((p) => p.playerId === playerCard);
           if (!player) return null;
           const mine = player.playerId === viewer;
+          const name = mine ? "You" : player.displayName ?? "Opponent";
+          const plays = mine && !pending ? (snapshot.legalActions ?? []).filter((a) => (a.type === "cast_spell" || a.type === "play_land") && a.playerId === player.playerId) : [];
+          const lit = (cards: ZoneCard[]) => cards.some((c) => plays.some((a) => a.cardInstanceId === c.instanceId || a.sourceInstanceId === c.instanceId));
+          const zones = player.zones;
+          const label = (zoneTitle: string) => (mine ? zoneTitle : `${player.displayName ?? "Opponent"} · ${zoneTitle}`);
+          const icons = [
+            ...(zones.command.length > 0 || (player.commanders ?? []).length > 0 ? [{ key: "command", name: "Command", glyph: ZONE_GLYPHS.command, cards: zones.command, count: zones.command.length }] : []),
+            { key: "graveyard", name: "Graveyard", glyph: ZONE_GLYPHS.graveyard, cards: zones.graveyard, count: zones.graveyard.length },
+            { key: "exile", name: "Exile", glyph: ZONE_GLYPHS.exile, cards: zones.exile, count: zones.exile.length },
+            { key: "library", name: "Library", glyph: ZONE_GLYPHS.library, cards: zones.library, count: zones.libraryCount ?? zones.library.length },
+            ...(!mine ? [{ key: "hand", name: "Hand", glyph: ZONE_GLYPHS.hand, cards: zones.hand, count: zones.handCount ?? zones.hand.length }] : []),
+          ].filter((icon) => icon.count > 0 || icon.key === "command" || icon.key === "library");
+          const named = snapshot.xmage ? ([["exileZones", "Exile"], ["companion", "Companion"], ["revealed", "Revealed"], ["lookedAt", "Looked at"]] as const)
+            .flatMap(([kind, title]) => snapshot.xmage![kind].map((group) => ({ id: `${kind}-${group.id}`, title: EngineDisplayText.label(group.name ?? "", title), cards: group.cards }))) : [];
+          const badges = orbitOrder(statusBadges(player, snapshot));
           return (
-            <div className="amenu glass" style={mine ? { left: 40, top: B(250), right: "auto" } : { left: 520, top: T(60), right: "auto" }} onClick={stop}>
-              <h3 className="panel-title" style={{ margin: 0 }}>{mine ? "You" : player.displayName}</h3>
-              <div className="small-print" style={{ color: "#efe4cf" }}>
-                Life {player.life} · Hand {player.zones.handCount ?? player.zones.hand.length} · Library {player.zones.libraryCount ?? 0}<br />
-                Graveyard {player.zones.graveyard.length} · Exile {player.zones.exile.length}
-                {player.poison > 0 && <><br />Poison {player.poison}</>}
-                {player.commanderTax > 0 && <><br />Commander tax {player.commanderTax}</>}
-                {Object.entries(player.commanderDamage ?? {}).filter(([, n]) => n > 0).map(([id, n]) => <span key={id}><br />Commander damage {n}</span>)}
-              </div>
-              {player.zones.command.length > 0 && (
-                <button type="button" className="arow" onClick={() => setZone({ title: `${mine ? "Your" : `${player.displayName ?? "Their"}’s`} command zone`, cards: player.zones.command })}>
-                  <span>Command zone<span className="sub">{player.zones.command.map((c) => c.card.name).join(", ")}</span></span>
-                </button>
+            <div className="aplayercard glass" style={mine ? { left: 40, bottom: geo.height - B(330) } : { left: 520, top: T(60) }} onClick={stop}
+              role="dialog" aria-label={`${name}’s card`}>
+              <header>
+                <div className="portrait">{mine ? AVATAR.me : AVATAR.opp}</div>
+                <div><b>{name}</b><small>{isOut(player) ? "Out of the game" : `${player.life} life`}</small></div>
+                <button type="button" className="close" aria-label={`Close ${name}’s card`} onClick={() => setPlayerCard(undefined)}>✕</button>
+              </header>
+              {badges.length > 0 && (
+                <div className="statuses">{badges.map((badge) => (
+                  <div key={badge.id} className={badge.nearLethal ? "lethal" : ""}><StatusBadge badge={badge} size={26} /><span>{badge.label}</span></div>
+                ))}</div>
               )}
-              {player.zones.exile.length > 0 && (
-                <button type="button" className="arow" onClick={() => setZone({ title: `${mine ? "Your" : `${player.displayName ?? "Their"}’s`} exile`, cards: player.zones.exile })}>View exile</button>
+              <div className="zonegrid">{icons.map((icon) => {
+                const on = mine && (icon.key === "command" ? commandActions.length > 0 : icon.key !== "hand" && lit(icon.cards));
+                return (
+                  <button key={icon.key} type="button" className={on ? "lit" : ""} aria-label={on ? `${icon.name}, ${icon.count}, you can play from it` : `${icon.name}, ${icon.count}`}
+                    onClick={() => { setPlayerCard(undefined); setZone({ title: label(icon.key === "library" ? (icon.cards.length > 0 ? "Library · revealed top card" : "Library") : icon.key === "hand" ? "Hand — visible cards" : icon.name), cards: icon.cards }); }}>
+                    {icon.glyph}<b>{icon.count}</b><small>{icon.name.toUpperCase()}</small>
+                  </button>
+                );
+              })}</div>
+              {named.length > 0 && (
+                <div className="named">{named.map((zone) => (
+                  <button key={zone.id} type="button" onClick={() => { setPlayerCard(undefined); setZone({ title: zone.title, cards: zone.cards }); }}>
+                    <span>{zone.title}</span><b>{zone.cards.length}</b>
+                  </button>
+                ))}</div>
               )}
             </div>
           );
