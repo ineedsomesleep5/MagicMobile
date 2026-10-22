@@ -31,7 +31,7 @@ mkdirSync(out, { recursive: true });
 
 /** Installed in the page: records the session's answers, the snapshots and the board's effects into window.__rec. */
 const recorder = () => {
-  const rec = { t0: performance.now(), sends: [], snaps: [], fx: [], errors: [], painted: {}, shots: [] };
+  const rec = { t0: performance.now(), sends: [], snaps: [], fx: [], errors: [], painted: {}, shots: [], polls: [] };
   window.__rec = rec;
   const now = () => Math.round(performance.now() - rec.t0);
   const install = () => {
@@ -51,8 +51,12 @@ const recorder = () => {
     };
   };
   let lastKey = "";
+  let lastPoll;
   setInterval(() => {
     install();
+    // --polls: every engine poll the seat applied, raw, for the replay fixtures (test/replay.test.ts).
+    const poll = window.__mm?.table?.session?.poll;
+    if (window.__recordPolls && poll && poll !== lastPoll) { lastPoll = poll; rec.polls.push(poll.raw); }
     const snap = window.__mm?.table?.session?.state.snapshot;
     if (!snap) return;
     const top = snap.xmage?.stack?.[0];
@@ -189,6 +193,7 @@ function decide(state, memory) {
 
 async function play(page, game) {
   await page.goto(url);
+  if (args.polls) await page.evaluate(() => { window.__recordPolls = true; });
   await page.addScriptTag({ content: `(${recorder.toString()})()` });
   const start = page.getByRole("button", { name: "Start the game" });
   await start.waitFor({ timeout: 180_000 });
@@ -321,7 +326,9 @@ async function play(page, game) {
   const rec = await page.evaluate(() => window.__rec);
   const won = final.winners.includes(final.viewer);
   await page.screenshot({ path: join(out, `game-${game}-end.png`) });
-  writeFileSync(join(out, `game-${game}.json`), JSON.stringify({ final: { turn: final.turn, life: final.life, won }, ...rec }, null, 1));
+  const { polls, ...kept } = rec;
+  if (args.polls) writeFileSync(join(out, `game-${game}-polls.json`), JSON.stringify(polls));
+  writeFileSync(join(out, `game-${game}.json`), JSON.stringify({ final: { turn: final.turn, life: final.life, won }, ...kept }, null, 1));
   const count = (type) => rec.sends.filter((e) => e.type === type).length;
   const clicks = (label) => rec.sends.filter((e) => e.type === "click" && e.label === label).length;
   return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, drags: count("drag"), autoPay: clicks("Auto Pay"), allAttack: clicks("All Attack"),

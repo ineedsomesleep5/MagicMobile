@@ -23,6 +23,18 @@ npm --prefix apps/web test           # parity goldens, shared cases, smart pass,
 npm --prefix apps/web run build      # typecheck + static bundle in apps/web/dist
 ```
 
+Games against the AI can be played by a script, in headless desktop Chrome on the real engine (the installed Chrome;
+`playwright-core` drives it). Serve the static build with `npx --prefix apps/web vite preview --port 5182`, then:
+
+```bash
+zsh scripts/dev/heavy.sh "web autoplay" -- node apps/web/scripts/play.mjs --url "http://127.0.0.1:5182/?debug" --me token-triumph --ai chaos-incarnate --games 1 --out /tmp/autoplay
+```
+
+It plays through the board's own controls (drag to cast, Auto Pay, All Attack, the browsers) and writes what the
+board did per game: every answer and who sent it, the effects it painted (with a picture of each kind), banners,
+reveals, the reading-hold check, missing resources and console errors. `--shots 6,10` adds pictures of the log and a
+player card at those turns; `--polls` saves the raw engine polls for the replay fixtures.
+
 That run (`claude/web-engine-heap`, GraalVM Community Edition) gives a 137 MB module (43 MB gzip). The M1 bundle
 (run 39599683802, Oracle GraalVM, `engine.js`/`engine.js.wasm`) also works. `ENGINE_DIR=/path/to/bundle` points the
 dev server elsewhere. In the Claude desktop app, the `web-solo` entry in `.claude/launch.json` starts the same server.
@@ -112,6 +124,14 @@ held to the same goldens the apps use:
 | `startingRoll.ts`, lobby, RPC, relay parts | `test/guestFlow.test.ts` against a scripted host |
 | `smartPass.ts`, `messageLog.ts` auto-pass lines | `test/smartPass.test.ts` (the cases of `OnDeviceSmartPassTest.kt`) |
 | `startingRoll.ts` generator, solo table | `test/soloFlow.test.ts` against a scripted local engine |
+| `boardEvents.ts` (board events, the Arena pace, holds, the wipe recap) | `arena-pace-cases.json`, `combat-cases.json` (`test/arenaPace.test.ts`) |
+| `smartPass.ts` Stop for Removal, skip modes | `smart-pass-cases.json` (`test/smartPass.test.ts`) |
+| `autoPay.ts` | `auto-pay-cases.json` (`test/autoPay.test.ts`) |
+| `arenaBoard.ts`, `promptAdapter.ts` answer actions | `arena-board-cases.json`, `answer-action-cases.json` |
+| `gameLog.ts` (the log reader, combat reasons) | `text-cases.json` goldens, `combat-cases.json` log section (`test/gameLog.test.ts`) |
+| `gameStats.ts` | `game-summary-cases.json` |
+| `cardChoicePlan.ts`, `tokenArt.ts`, `playerStatus.ts` | the iOS unit tests' cases, ported (`test/cardChoicePlan.test.ts`, `test/tokenArt.test.ts`, `test/playerStatus.test.ts`) |
+| the whole decision path (prompt, smart pass, Auto Pay, board events) | `parity/replay/*.json`, real games' polls, against iOS's trace in `parity/golden/replay-*.json` (`test/replay.test.ts`) |
 
 When a parity case or golden changes for the apps, run `npm --prefix apps/web test` too.
 
@@ -120,7 +140,10 @@ When a parity case or golden changes for the apps, run `npm --prefix apps/web te
 Solo games and relay tables play on the horizontal Arena board (`docs/ARENA_STYLE.md`), a port of the Duel Board
 Prototype's landscape table (artifact T5NcAkjCThiA5hfd9Twwwu) driven by real snapshots:
 
-The iOS Arena build is the baseline (Caleb, 2026-10-21): what it does, the web does, and web improvements stack on it.
+The iOS Arena build is the reference (Caleb, 2026-10-21 and 2026-10-22): what it does, the web does, laid out for a
+mouse and keyboard. `docs/WEB_PARITY.md` is the checklist, row by row with how each was checked, and lists the desktop
+mapping (hover reads and pops, right-click or a held button opens the inspector, drag plays, Space passes and a held
+Space is Full control, Enter confirms, Esc closes, Ctrl/Cmd+Z undoes mana) and what is intentionally different.
 
 - `src/ui/arena/layout.ts`: iOS `ArenaLayout.landscape` on the 956-point plate: the opponent's lands and creatures at
   the top, yours below (lands from the left, support permanents on the right, planeswalkers and battles at the front
@@ -183,7 +206,6 @@ would have to be split into parts.
 - **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
   against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator
   builds have no engine) and play it to the end from desktop Chrome; pods are untested.
-- No sounds or card moments yet; cards glide between zones and spells settle on the stack, but there are no target
-  arcs or strikes.
-- No Auto Pay yet (iOS `ArenaAutoPay`): you tap each land while paying.
+- The out-of-game screens (iOS's Arena home, Play panel, deck boxes, options) are not ported; setup is still the
+  tavern form (docs/WEB_PARITY.md section 9).
 - The vertical (portrait) Arena layout isn't ported; the web board is horizontal only.
