@@ -3,12 +3,16 @@
  * paths of OnDeviceSession.kt (poll schedule, pending response, chosen-ability follow-up). The engine is
  * a phone host's, through the relay, or this page's own (a solo game against the AI, `schedule: "local"`).
  */
+import { BoardPresentationHold, revisionKey, stackTopFirst, displayName } from "../core/boardEvents";
 import { EngineClient, type EngineTransport, type MatchPoll } from "../core/engineClient";
 import { EngineError, get, type J, jsonEqual, newUuid, str } from "../core/json";
 import { OnDeviceMessageLog } from "../core/messageLog";
 import type { GameCommand, GameSnapshot, LegalAction } from "../core/models";
 import { OnDevicePromptAdapter } from "../core/promptAdapter";
-import { situation, SMART_PASS_ACTION_PREFIX, type SmartPassSettings, stepFromEngine, passPrompt } from "../core/smartPass";
+import {
+  passPrompt, situation, SMART_PASS_ACTION_PREFIX, type SmartPassSettings, STOP_MESSAGES, stepFromEngine, threatensViewer, YIELD_PASS_ACTION_PREFIX,
+  yieldContext, type YieldContext, type YieldMode, YieldModes, YieldPolicy,
+} from "../core/smartPass";
 import { OnDeviceSnapshotAdapter } from "../core/snapshotAdapter";
 import { HostRetryPolicy } from "./remoteEngine";
 
@@ -57,10 +61,19 @@ export interface SessionState {
   errorMessage?: string;
   pendingActionID?: string;
   working: boolean;
+  /** A skip (End Turn, Skip to my turn) is passing for the player. */
+  autoPassing: boolean;
+  /** The running skip's line, or why the last one stopped. */
+  autoPassStatus: string;
+  /** Full control is on for the turn being played: smart pass stops at every priority. */
+  fullControl: boolean;
 }
 
+const nowSeconds = () => performance.now() / 1000;
+const pause = (millis: number) => new Promise<void>((resolve) => setTimeout(resolve, millis));
+
 export class GuestSession {
-  state: SessionState = { status: "Connecting", working: false };
+  state: SessionState = { status: "Connecting", working: false, autoPassing: false, autoPassStatus: "", fullControl: false };
   private readonly client: EngineClient;
   private poll?: MatchPoll;
   private log = new OnDeviceMessageLog();
@@ -82,6 +95,15 @@ export class GuestSession {
   smartPass?: SmartPassSettings;
   private smartPassing = false;
   private smartPassedPromptID?: string;
+  /** What the board is still showing (the board attaches it); smart pass lets it finish before passing. */
+  presentationHold?: BoardPresentationHold;
+  /** The page is visible; a hidden tab neither smart-passes nor skips. */
+  private foreground = true;
+  /** Full control (holding the primary, or the skip menu): smart pass stops at every priority until this turn ends. */
+  private fullControlTurn?: number;
+  /** The skip modes (OnDeviceYieldPolicy): local scheduling of ordinary passes, never an engine skip command. */
+  private yieldPolicy = new YieldPolicy();
+  private yieldGeneration = 0;
 
   constructor(transport: EngineTransport, readonly matchID: string, readonly seatID: string, private readonly onChange: () => void,
     private readonly schedule: "relay" | "local" = "relay") {
@@ -186,6 +208,8 @@ export class GuestSession {
           pendingActionID: this.pending ? this.state.pendingActionID : undefined,
         });
         this.followUp(next, snapshot);
+        if (this.state.fullControl !== this.isFullControl) this.set({ fullControl: this.isFullControl });
+        if (this.state.errorMessage) this.stopAutoPass(STOP_MESSAGES.interrupted);
         this.scheduleSmartPass();
       }
     } finally {
@@ -220,33 +244,149 @@ export class GuestSession {
     }
   }
 
+  /** The seat's yield context, with the threat stop when the player asked for it. */
+  private get yieldContextNow(): YieldContext | undefined {
+    if (!this.poll) return undefined;
+    const threat = (this.smartPass?.stopForThreats ?? true) && this.state.snapshot !== undefined && threatensViewer(this.state.snapshot);
+    return yieldContext(this.poll, this.foreground, threat);
+  }
+
+  private get currentTurn() { return this.state.snapshot?.turn; }
+
+  /** Full control is on for the turn being played. */
+  get isFullControl() { return this.fullControlTurn !== undefined && this.fullControlTurn === this.currentTurn; }
+
+  /** Turns Full control for this turn on or off; turning it on keeps an unsent smart pass from going. */
+  toggleFullControl() {
+    this.fullControlTurn = this.isFullControl ? undefined : this.currentTurn;
+    this.set({ fullControl: this.isFullControl });
+    if (!this.isFullControl) this.scheduleSmartPass();
+  }
+
+  /** The page was hidden or shown: a hidden tab cancels an unsent smart pass and stops a skip. */
+  setForeground(value: boolean) {
+    this.foreground = value;
+    if (!value) this.stopAutoPass();
+    else this.scheduleSmartPass();
+  }
+
   /**
    * Passes this seat's ordinary priority when it has nothing to play, or nothing it stops for (OnDeviceSession
-   * .scheduleSmartPass): the same pass a tap sends, once per prompt; a failure is left to the player, never retried.
+   * .scheduleSmartPass): the same pass a tap sends, once per prompt; a failure is left to the player, never retried. It
+   * first lets the board finish what it is showing, then checks the same prompt is still a pass.
    */
   private scheduleSmartPass() {
     const settings = this.smartPass;
     const poll = this.poll;
     const snapshot = this.state.snapshot;
     if (!settings || !poll || !snapshot?.viewerPlayerId || this.smartPassing || this.stopped || this.pending || this.chosenAbility ||
-      this.state.working || this.state.pendingActionID !== undefined) return;
-    const value = situation(poll, true);
+      this.state.working || this.state.pendingActionID !== undefined || this.state.autoPassing || this.isFullControl || this.state.errorMessage) return;
+    const value = situation(poll, this.foreground, snapshot);
     const prompt = value && passPrompt(value, settings);
     if (!value || !prompt || prompt.id === this.smartPassedPromptID) return;
-    this.smartPassedPromptID = prompt.id;
-    const label = snapshot.xmage?.stack[0]?.name ?? stepFromEngine(value.step)?.title ?? "Priority";
-    this.log.noteAutoPass(label, prompt.id);
     this.smartPassing = true;
-    this.submit({
-      type: "pass_priority", gameId: this.matchID, playerId: snapshot.viewerPlayerId, promptId: prompt.id, messageId: prompt.revision,
-      expectedBridgeRevision: snapshot.bridgeRevision,
-    }, "Pass priority", SMART_PASS_ACTION_PREFIX + prompt.id)
-      .catch(() => { /* the player passes by hand */ })
-      .finally(() => { this.smartPassing = false; });
+    void (async () => {
+      // The response lane frees right after the answer that led here.
+      for (let i = 0; i < 150 && (this.state.working || this.refreshing); i++) await pause(20);
+      await this.waitForBoardPresentation();
+      const now = this.poll;
+      const current = now && this.smartPass ? (() => { const v = situation(now, this.foreground, this.state.snapshot); return v && passPrompt(v, this.smartPass!); })() : undefined;
+      const board = this.state.snapshot;
+      if (this.stopped || this.state.working || this.pending || this.state.pendingActionID !== undefined || this.state.autoPassing || this.isFullControl ||
+        !current || !board?.viewerPlayerId || current.id !== prompt.id || current.revision !== prompt.revision || current.id === this.smartPassedPromptID) {
+        this.smartPassing = false;
+        return;
+      }
+      this.smartPassedPromptID = current.id;
+      const label = stackTopFirst(board)[0] ? displayName(stackTopFirst(board)[0]) : stepFromEngine(value.step)?.title ?? "Priority";
+      this.log.noteAutoPass(label, current.id);
+      let sent = false;
+      try {
+        await this.submit({
+          type: "pass_priority", gameId: this.matchID, playerId: board.viewerPlayerId, promptId: current.id, messageId: current.revision,
+          expectedBridgeRevision: board.bridgeRevision,
+        }, "Pass priority", SMART_PASS_ACTION_PREFIX + current.id);
+        sent = true;
+      } catch { /* the player passes by hand */ }
+      this.smartPassing = false;
+      // The answer's own refresh may already show the next routine priority.
+      if (sent) this.scheduleSmartPass();
+    })();
   }
 
-  /** A legal action the board offered. */
+  /**
+   * Lets the board finish what it is showing before smart pass moves the game on (OnDeviceSession
+   * .waitForBoardPresentation): first the board takes in the published snapshot, then its held effects play out (at most
+   * BoardPresentationHold.maximumWait), and a card being read holds the pass until it closes (at most a minute).
+   */
+  private async waitForBoardPresentation() {
+    const hold = this.presentationHold;
+    const snapshot = this.state.snapshot;
+    if (!hold || !snapshot) return;
+    const key = revisionKey(snapshot);
+    const start = nowSeconds();
+    const elapsed = () => nowSeconds() - start;
+    while (hold.ingested !== key && elapsed() < BoardPresentationHold.ingestWait && !this.stopped) await pause(20);
+    while (hold.until !== undefined && hold.until > nowSeconds() && elapsed() < BoardPresentationHold.maximumWait && !this.stopped) {
+      await pause(Math.min(hold.until - nowSeconds(), 0.1) * 1000);
+    }
+    while (hold.reading && elapsed() < BoardPresentationHold.readingWait && !this.stopped) await pause(100);
+  }
+
+  // ---------------- skips (OnDeviceSession.startYield) ----------------
+
+  canStartYield(mode: YieldMode) {
+    const context = this.yieldContextNow;
+    return !this.state.autoPassing && !this.pending && !this.state.errorMessage && context !== undefined && YieldPolicy.canStart(context, mode);
+  }
+
+  /** Cancellable local scheduling of ordinary passes until the mode's end, never an engine skip command. */
+  startYield(mode: YieldMode) {
+    const context = this.yieldContextNow;
+    if (!this.canStartYield(mode) || !context || !this.yieldPolicy.start(context, nowSeconds(), mode)) return;
+    const generation = ++this.yieldGeneration;
+    this.set({ autoPassing: true, autoPassStatus: YieldModes[mode].status });
+    void (async () => {
+      try {
+        while (!this.stopped && this.yieldGeneration === generation && this.state.autoPassing) {
+          await pause(300);
+          if (this.yieldGeneration !== generation || !this.state.autoPassing) return;
+          if (this.state.working || this.refreshing) continue;
+          // A new poll, never just the rendered snapshot, authorizes each pass.
+          await this.refresh();
+          if (this.yieldGeneration !== generation || !this.state.autoPassing || this.state.working) continue;
+          const now = this.yieldContextNow;
+          if (!now) { this.stopAutoPass(STOP_MESSAGES.interrupted); return; }
+          const decision = this.yieldPolicy.evaluate(now, nowSeconds());
+          if (decision.kind === "wait") continue;
+          if (decision.kind === "stop") { this.stopAutoPass(STOP_MESSAGES[decision.reason]); return; }
+          const prompt = this.poll?.prompt;
+          const snapshot = this.state.snapshot;
+          if (this.pending || !prompt || !snapshot?.viewerPlayerId || prompt.id !== decision.prompt.id || prompt.revision !== decision.prompt.revision) continue;
+          this.yieldPolicy.recordPass(decision.prompt);
+          await this.submit({
+            type: "pass_priority", gameId: this.matchID, playerId: snapshot.viewerPlayerId, promptId: prompt.id, messageId: prompt.revision,
+            expectedBridgeRevision: snapshot.bridgeRevision,
+          }, "Pass priority", YIELD_PASS_ACTION_PREFIX + prompt.id, true);
+        }
+      } catch {
+        // Keep an uncertain pending answer for the Retry control; scheduling never retries or retargets.
+        if (this.yieldGeneration === generation) this.stopAutoPass(STOP_MESSAGES.interrupted);
+      }
+    })();
+  }
+
+  /** Stops a running skip; a pass already sent may still finish. */
+  stopAutoPass(reason = "Auto-pass stopped. A pass already sent may still finish.") {
+    if (!this.state.autoPassing && !this.yieldPolicy.isActive) return;
+    this.yieldGeneration += 1;
+    this.yieldPolicy.stop();
+    this.set({ autoPassing: false, autoPassStatus: reason });
+  }
+
+  /** A legal action the board offered. Any action of the player's own stops a running skip. */
   send(action: LegalAction) {
+    this.stopAutoPass();
     const snapshot = this.state.snapshot;
     if (!snapshot) return Promise.reject(EngineError.invalid("The game is still loading."));
     return this.submit({
@@ -258,7 +398,9 @@ export class GuestSession {
     }, action.label, action.id);
   }
 
-  async submit(command: GameCommand, label: string, actionID: string) {
+  /** Sends an answer; one the player chose (not a skip's pass, `fromSkip`) stops a running skip. */
+  async submit(command: GameCommand, label: string, actionID: string, fromSkip = false) {
+    if (!fromSkip && !actionID.startsWith(SMART_PASS_ACTION_PREFIX) && !actionID.startsWith("auto-")) this.stopAutoPass();
     const snapshot = this.state.snapshot;
     const prompt = this.poll?.prompt;
     if (this.state.working || this.stopped) throw EngineError.invalid("Wait for the current operation before responding");
@@ -280,6 +422,7 @@ export class GuestSession {
 
   /** Retries the exact pending answer (same request ID) after a timeout or busy host. */
   async retryPending() {
+    this.stopAutoPass();
     if (!this.pending || this.state.working) throw EngineError.invalid("There is no pending response to retry");
     this.set({ working: true });
     await this.performPending();
@@ -305,6 +448,7 @@ export class GuestSession {
 
   /** The browser player concedes; the host plays on or ends the game. */
   async concede() {
+    this.stopAutoPass();
     await this.client.concede(this.matchID, this.seatID);
     this.wakeLoop?.();
   }

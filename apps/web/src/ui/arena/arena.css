@@ -400,3 +400,36 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .apill .aplaque { position: relative; width: 150px; height: 38px; font-size: 15px; }
 @media (prefers-reduced-motion: reduce) { .bcard.usable img.bprinted { animation: none; } .abrowse, .abrowse > * { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .acard.landing .spin, .acard.landing .spin::before { animation: none; } }
+
+/* ---------- board effects (BoardFXOverlay, Arena pace) ---------- */
+/* a flight stands in for its tile until it lands */
+.acard.fx-hidden { opacity: 0 !important; transition: none !important; pointer-events: none; }
+.afx { position: absolute; inset: 0; pointer-events: none; z-index: 700; }
+.acard.fxflight, .acard.fxflight > .lean, .acard.fxflight .spin { transition: none !important; }
+.acard.fxflight { cursor: default; filter: drop-shadow(0 calc(6px + 10px * var(--lift, 0)) calc(10px + 8px * var(--lift, 0)) rgba(0,0,0,.55)); }
+/* a card leaving for the graveyard burns away from the bottom with an ember edge; exile burns cold */
+.acard.fxflight.burn .spin { -webkit-mask-image: linear-gradient(to top, transparent calc(var(--burn) * 100% - 4%), #000 calc(var(--burn) * 100% + 10%));
+  mask-image: linear-gradient(to top, transparent calc(var(--burn) * 100% - 4%), #000 calc(var(--burn) * 100% + 10%)); }
+.acard.fxflight.burn { filter: drop-shadow(0 0 calc(4px + 10px * var(--burn)) rgba(255,133,31,calc(.9 - .6 * var(--burn)))) brightness(calc(1 + .5 * var(--burn))); }
+.acard.fxflight.burn.exile { filter: drop-shadow(0 0 calc(4px + 12px * var(--burn)) rgba(191,235,255,calc(.95 - .6 * var(--burn)))) brightness(calc(1 + .7 * var(--burn))) saturate(calc(1 - .6 * var(--burn))); }
+
+/* the Arena turn banner: a slim gold title on a brass hairline that draws out from the middle, a sweep of light (BoardTurnBanner.arenaBanner) */
+.abanner { position: absolute; left: 50%; width: 420px; height: 70px; margin-left: -210px; display: grid; place-items: center; pointer-events: none; z-index: 720;
+  --accent: #ffcc5c; animation: abannerIn .28s ease-out both; }
+.abanner.theirs { --accent: #9ebdff; }
+.abanner.out { animation: abannerOut .35s ease-in both; }
+.abanner .line { position: absolute; left: 30px; right: 30px; top: 50%; height: 2px; margin-top: 4px;
+  background: linear-gradient(90deg, transparent, var(--accent), #ffeeb3, var(--accent), transparent); box-shadow: 0 0 8px var(--accent);
+  transform-origin: 50% 50%; animation: abannerLine .28s ease-out both; }
+.abanner .glow { position: absolute; inset: 0 60px; background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent) 35%, transparent), transparent 70%); mix-blend-mode: screen; }
+.abanner b { position: relative; top: -12px; font: 700 26px/1 var(--serif); letter-spacing: 1.5px; color: transparent;
+  background: linear-gradient(180deg, #fff, var(--accent)); -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.85)) drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 70%, transparent)); }
+.abanner b::after { content: attr(data-text); position: absolute; inset: 0; color: transparent;
+  background: linear-gradient(90deg, transparent 0 40%, rgba(255,255,255,.95) 50%, transparent 60% 100%) no-repeat; background-size: 46px 100%;
+  -webkit-background-clip: text; background-clip: text; animation: abannerSweep .7s .12s ease-in-out both; }
+@keyframes abannerIn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: scale(1); } }
+@keyframes abannerOut { to { opacity: 0; transform: translateY(-30px) scale(.6); } }
+@keyframes abannerLine { from { transform: scaleX(.02); } to { transform: scaleX(1); } }
+@keyframes abannerSweep { from { background-position: -46px 0; } to { background-position: calc(100% + 46px) 0; } }
+@media (prefers-reduced-motion: reduce) { .abanner, .abanner .line, .abanner b::after { animation: none; } }

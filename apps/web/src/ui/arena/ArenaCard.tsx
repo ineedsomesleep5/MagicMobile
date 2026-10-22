@@ -24,7 +24,7 @@ const SICK = (
   </svg>
 );
 
-function Tile({ card }: { card: ZoneCard }) {
+export function Tile({ card }: { card: ZoneCard }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const key = tileKey(card);
   useEffect(() => {
@@ -69,7 +69,7 @@ function colorEdge(card: ZoneCard): string {
  * below its art: a name bar tinted by its colour, the art, a silver power/toughness box hanging off the corner (a shield
  * for a planeswalker's loyalty or a battle's defense); a token sits in an arched frame. Its glow traces this outline.
  */
-function PlainTile({ card }: { card: ZoneCard }) {
+export function PlainTile({ card }: { card: ZoneCard }) {
   const token = card.card.isToken === true || /token/i.test(card.card.typeLine);
   const legendary = /legendary/i.test(card.card.typeLine);
   const creature = card.isCreaturePermanent ?? isCreatureCard(card);
@@ -104,7 +104,7 @@ function PlainTile({ card }: { card: ZoneCard }) {
   );
 }
 
-function Face({ name, cost, showCost }: { name: string; cost?: string; showCost: boolean }) {
+export function Face({ name, cost, showCost }: { name: string; cost?: string; showCost: boolean }) {
   const [failed, setFailed] = useState(false);
   const symbols = showCost ? manaSymbols(cost) : [];
   return (

@@ -5,6 +5,7 @@
  * share it; both answer through the same GuestSession.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
 import { type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type ZoneCard } from "../core/models";
 import { defaultSmartPass } from "../core/smartPass";
@@ -18,6 +19,8 @@ import {
   STAGE,
 } from "./arena/layout";
 import { isStackAbility } from "./arena/AbilityCard";
+import { BoardFXOverlay, type FXAnchors } from "./arena/BoardFX";
+import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { ArenaPile } from "./arena/ArenaPile";
 import { AVATAR } from "./arena/avatars";
 import { ManaSymbol, RulesText } from "./arena/Symbols";
@@ -93,10 +96,22 @@ export function GameScreen({ table }: { table: GameTable }) {
   const stackSeen = useRef(new Map<string, number>());
   // Card Frames (iOS Settings, per board mode): off by default on the Arena board, the reference game's cards.
   const [frames, setFrames] = useState(() => storage.get("mm.web.cardFrames") === "on");
+  // Board effects (iOS magicmobile.boardEffectsLevel): Full by default; the system's Reduce Motion caps it at Reduced.
+  const [fxSetting, setFxSetting] = useState(() => storage.get("mm.web.boardEffects") ?? "full");
+  const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  const fxLevel: BoardFXLevel = resolvedLevel(fxSetting, reduceMotion);
+  const fx = useBoardFX(snapshot, session, fxLevel);
+  const fxRef = useRef(fx);
+  fxRef.current = fx;
+  /** Where each card lies, kept after it leaves so its departure starts there; and where a card was before its last move. */
+  const places = useRef(new Map<string, Place>());
+  const movedFrom = useRef(new Map<string, { place: Place; at: number }>());
+  /** An opponent's spell is revealed larger toward the middle for its first 1.3 s, then settles onto the stack card. */
+  const [revealID, setRevealID] = useState<string>();
   const [, setClockTick] = useState(0);
   useEffect(() => { setSmart(session?.smartPass?.enabled ?? false); }, [session]);
   // Development only: the table, for checking a game from the console.
-  useEffect(() => { if (import.meta.env.DEV) Object.assign(window, { __mm: { table } }); }, [table]);
+  useEffect(() => { if (import.meta.env.DEV) Object.assign(window, { __mm: { table, fx: fxRef } }); }, [table]);
 
   const viewer = snapshot?.viewerPlayerId;
   const me = snapshot?.players.find((p) => p.playerId === viewer);
@@ -152,6 +167,31 @@ export function GameScreen({ table }: { table: GameTable }) {
     if (actions.length === 1) sendAction(actions[0]);
     else if (actions.length > 1 && at) setMenu({ id, at, actions });
   };
+
+  // An opponent's spell (not an ability) holds the reveal for its first 1.3 s, then settles (arenaBeginReveal).
+  const topObject = stack[0];
+  useEffect(() => {
+    if (!topObject || reduceMotion || fxLevel === "off" || isStackAbility(topObject) || !topObject.controllerId || topObject.controllerId === viewer) return;
+    setRevealID(topObject.id);
+    const timer = window.setTimeout(() => setRevealID((id) => (id === topObject.id ? undefined : id)), 1300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topObject?.id]);
+  // Reading the spell on the stack card (the pointer on it) holds smart pass, as holding a card open does on iOS.
+  const readingStack = hovered !== undefined && stack.some((o) => o.id === hovered);
+  useEffect(() => { fx.hold.reading = readingStack; }, [fx.hold, readingStack]);
+  useEffect(() => () => { fx.hold.reading = false; }, [fx.hold]);
+  // Redraw when the turn banner starts and ends, and when the wipe recap goes.
+  const [, setFxTick] = useState(0);
+  useEffect(() => {
+    const now = fxNow();
+    const marks = [fx.banner?.start, fx.banner?.end, fx.banner && fx.banner.end + 0.4, fx.recap?.until].filter((t): t is number => t !== undefined && t > now);
+    const timers = marks.map((t) => window.setTimeout(() => setFxTick((v) => v + 1), (t - now) * 1000 + 20));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [fx.banner, fx.recap]);
+  const fxClock = fxNow();
+  const showBanner = fx.banner !== undefined && fxClock >= fx.banner.start && fxClock < fx.banner.end + 0.35 && !showBrowser && !finished;
+  const notice = fx.recap && fx.recap.until > fxClock ? fx.recap.text : undefined;
 
   // ---------------- cards ----------------
   const now = performance.now();
@@ -209,7 +249,8 @@ export function GameScreen({ table }: { table: GameTable }) {
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true, classes: classFor(card, false),
         onClick: mulligan ? undefined : clickAt(place), onHover: mulligan ? undefined : setHovered });
     });
-    stack.slice(0, 4).forEach((item, depth) => {
+    // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
+    stack.slice(0, 1).forEach((item, depth) => {
       const name = item.sourceCard?.card.name ?? item.sourceName ?? item.name;
       const ability = isStackAbility(item);
       const source = item.sourceCard ?? (item.sourceInstanceId ? battlefieldCard(item.sourceInstanceId) : undefined);
@@ -218,12 +259,29 @@ export function GameScreen({ table }: { table: GameTable }) {
       const firstSeen = stackSeen.current.get(item.id) ?? now;
       stackSeen.current.set(item.id, firstSeen);
       const landing = depth === 0 && now - firstSeen < 650;
+      const base = stackPlace(depth, geo);
+      // Low enough that the larger card clears the opponent's piles above the stack card.
+      const place = revealID === item.id ? { ...base, x: base.x - base.w * 0.8, y: base.y + base.h * 0.14, s: 1.2, z: 650 } : base;
       add({
-        id: item.id, place: stackPlace(depth, geo), view: "face", name, card: item.sourceCard, label: item.name,
+        id: item.id, place, view: "face", name, card: item.sourceCard, label: item.name,
         ability: ability ? { source, name: item.sourceName ?? item.name, text: item.rulesText ?? item.name } : undefined,
         classes: [landing ? "landing" : "", commander ? "commander" : ""].join(" "), onHover: setHovered, onClick: () => setStackOpen(true),
       });
     });
+  }
+  // Remember where every card lies (a departure starts there) and where it was before it last moved (a steal starts there).
+  {
+    const at = fxNow();
+    cards.forEach((props, id) => {
+      const before = places.current.get(id);
+      if (before && (Math.abs(before.x - props.place.x) > 2 || Math.abs(before.y - props.place.y) > 2)) movedFrom.current.set(id, { place: before, at });
+      places.current.set(id, props.place);
+    });
+    if (places.current.size > 600) places.current = new Map([...cards].map(([id, props]) => [id, props.place]));
+    if (movedFrom.current.size > 400) movedFrom.current.clear();
+    // A flight stands in for its tile until it lands.
+    const hidden = fx.hidden(at);
+    hidden.forEach((id) => { const props = cards.get(id); if (props) cards.set(id, { ...props, classes: `${props.classes ?? ""} fx-hidden` }); });
   }
   // Your commander is cast from your medallion, as on the iOS Arena board: it glows while the commander can be cast.
   const commandActions = snapshot && me && !pending ? me.zones.command.flatMap((c) => actionsFor(snapshot, c.instanceId)) : [];
@@ -353,6 +411,18 @@ export function GameScreen({ table }: { table: GameTable }) {
     );
   };
 
+  // Where flights start and end (BoardFXAnchors): the stack card, each player's medallion and hand.
+  const anchors: FXAnchors = {
+    viewerID: viewer,
+    stack: (() => { const p = stackPlace(0, geo); return { x: p.x, y: p.y }; })(),
+    player: (id) => {
+      if (id === viewer) return { x: ARENA.viewerMedallion.x, y: B(ARENA.viewerMedallion.y) };
+      const index = Math.max(0, opponents.findIndex((o) => o.playerId === id));
+      return { x: opponents.length > 1 ? 150 + (650 * (index + 0.5)) / opponents.length : ARENA.opponentMedallion.x, y: T(ARENA.opponentMedallion.y) };
+    },
+    hand: (id) => (id === viewer ? { x: (handRoom.left + handRoom.right) / 2, y: B(ARENA.hand.downY) } : { x: ARENA.opponentHand.x, y: T(ARENA.opponentHand.y) + 20 }),
+  };
+
   // The card under the pointer, large, away from the side it sits on (never for the hand, which pops up instead).
   const inspected = (() => {
     if (browseZoom) return browseZoom;
@@ -396,6 +466,11 @@ export function GameScreen({ table }: { table: GameTable }) {
         <div onClick={stop}>
           {[...cards.values()].map((props) => <ArenaCard key={props.id} {...props} />)}
         </div>
+        {fxLevel !== "off" && <BoardFXOverlay active={fx.active} subjects={fx.director.subjects} frames={frames} anchors={anchors}
+          stackIDs={new Set(stack.map((o) => o.id))} rect={(id) => {
+            const moved = movedFrom.current.get(id);
+            return moved && fxNow() - moved.at < 0.6 ? moved.place : places.current.get(id);
+          }} />}
         {opponents.map((o, i) => medallion(o, false, i))}
         {me && medallion(me, true, 0)}
         {poolSymbols.length > 0 && (
@@ -444,8 +519,17 @@ export function GameScreen({ table }: { table: GameTable }) {
           <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: ARENA.menu.x - 14, top: T(ARENA.menu.y) - 14 }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
         </div>
 
-        {promptLine && <div className="aprompt" style={{ top: Y(ARENA.captionY) }}><span><RulesText text={promptLine} /></span></div>}
-        {thinkingName && <div className="aprompt" style={{ top: Y(ARENA.captionY), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
+        {notice && !showBrowser ? <div className="aprompt notice" style={{ top: Y(ARENA.captionY) }}><span>{notice}</span></div> : <>
+          {promptLine && <div className="aprompt" style={{ top: Y(ARENA.captionY) }}><span><RulesText text={promptLine} /></span></div>}
+          {thinkingName && <div className="aprompt" style={{ top: Y(ARENA.captionY), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
+        </>}
+        {showBanner && fx.banner && (
+          <div key={fx.banner.key} className={`abanner ${fx.banner.mine ? "mine" : "theirs"} ${fxClock >= fx.banner.end ? "out" : ""}`} style={{ top: Y(ARENA.captionY) - 20 }}
+            role="status" aria-label={`${fx.banner.mine ? "Your turn" : `${fx.banner.name ?? "Opponent"}’s turn`}, turn ${snapshot?.turn ?? ""}`}>
+            <i className="line" /><i className="glow" />
+            <b data-text={fx.banner.mine ? "Your turn" : `${fx.banner.name ?? "Opponent"}’s turn`}>{fx.banner.mine ? "Your turn" : `${fx.banner.name ?? "Opponent"}’s turn`}</b>
+          </div>
+        )}
 
         {inspected && (
           <div className="ainspect" style={{
@@ -503,6 +587,12 @@ export function GameScreen({ table }: { table: GameTable }) {
             )}
             <button type="button" className="arow" onClick={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }}>
               <span>Card frames: {frames ? "on" : "off"}<span className="sub">On: tavern frames. Off: the reference game's cards (the default).</span></span>
+            </button>
+            <button type="button" className="arow" onClick={() => {
+              const next = ({ full: "reduced", reduced: "off", off: "full" } as Record<string, string>)[fxSetting] ?? "full";
+              setFxSetting(next); storage.set("mm.web.boardEffects", next);
+            }}>
+              <span>Effects: {({ full: "Full", reduced: "Reduced", off: "Off" } as Record<string, string>)[fxSetting] ?? "Full"}</span>
             </button>
             <button type="button" className="arow oxblood" disabled={!session || finished} onClick={() => { setConfirmConcede(true); setGear(false); }}>Concede</button>
             <button type="button" className="arow" onClick={() => table.leave()}>
