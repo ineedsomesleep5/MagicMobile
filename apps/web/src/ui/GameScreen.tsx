@@ -8,7 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
 import { type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type ZoneCard } from "../core/models";
-import { defaultSmartPass } from "../core/smartPass";
+import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
 import { useTable } from "./App";
@@ -19,6 +19,8 @@ import {
   STAGE,
 } from "./arena/layout";
 import { isStackAbility } from "./arena/AbilityCard";
+import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
+import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
 import { BoardFXOverlay, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { ArenaPile } from "./arena/ArenaPile";
@@ -66,7 +68,20 @@ function useGeometry(ref: React.RefObject<HTMLDivElement | null>) {
   return geo;
 }
 
-interface Plaque { label: string; style: "ember" | "leather" | "label" | "oxblood"; want?: boolean; onClick?: () => void }
+interface Plaque { label: string; subtitle?: string; style: "ember" | "leather" | "label" | "oxblood"; want?: boolean; disabled?: boolean; onClick?: () => void }
+
+/** The phase of a step, as the tavern's phase track counts them (TavernPhaseTrack.describe): 0 beginning … 4 end. */
+function phaseIndex(step: string | undefined): number | undefined {
+  switch ((step ?? "").toLowerCase().replaceAll("_", "-")) {
+    case "beginning": case "untap": case "upkeep": case "draw": return 0;
+    case "precombat-main": case "main1": return 1;
+    case "combat": case "begin-combat": case "declare-attackers": case "declare-blockers": case "first-combat-damage": case "first-strike-damage":
+    case "combat-damage": case "end-combat": return 2;
+    case "postcombat-main": case "main2": return 3;
+    case "ending": case "end": case "end-turn": case "cleanup": return 4;
+    default: return undefined;
+  }
+}
 
 export function GameScreen({ table }: { table: GameTable }) {
   useTable(table);
@@ -83,14 +98,22 @@ export function GameScreen({ table }: { table: GameTable }) {
   const [menu, setMenu] = useState<{ id: string; at: Place; actions: LegalAction[] }>();
   const [toast, setToast] = useState<string>();
   const [panel, setPanel] = useState<"log" | "chat">();
-  const [gear, setGear] = useState(false);
+  /** The gear's menu or the pass-ahead pill's skip choices, as a menu card on the table. */
+  const [cornerMenu, setCornerMenu] = useState<"game" | "pass">();
+  /** Phase Stops or Game Settings, in glass on the table. */
+  const [sheet, setSheet] = useState<"stops" | "settings">();
   const [zone, setZone] = useState<{ title: string; cards: ZoneCard[] }>();
   const [playerCard, setPlayerCard] = useState<string>();
   const [confirmConcede, setConfirmConcede] = useState(false);
   const [rollDismissed, setRollDismissed] = useState(false);
   /** A card under the pointer in a browser (the table's own hover is `hovered`). */
   const [browseZoom, setBrowseZoom] = useState<{ name: string; left: boolean }>();
-  const [smart, setSmart] = useState(session?.smartPass?.enabled ?? false);
+  const [smartSettings, setSmartSettings] = useState<SmartPassSettings>(() => session?.smartPass ?? loadSmartPass(storage.get));
+  const updateSmartPass = (next: SmartPassSettings) => {
+    setSmartSettings(next);
+    saveSmartPass(next, storage.set);
+    session?.setSmartPass(next);
+  };
   const [stackOpen, setStackOpen] = useState(false);
   /** When each stack object first showed, so its landing plays once. */
   const stackSeen = useRef(new Map<string, number>());
@@ -109,9 +132,13 @@ export function GameScreen({ table }: { table: GameTable }) {
   /** An opponent's spell is revealed larger toward the middle for its first 1.3 s, then settles onto the stack card. */
   const [revealID, setRevealID] = useState<string>();
   const [, setClockTick] = useState(0);
-  useEffect(() => { setSmart(session?.smartPass?.enabled ?? false); }, [session]);
+  useEffect(() => { if (session?.smartPass) setSmartSettings(session.smartPass); }, [session]);
   // Development only: the table, for checking a game from the console.
-  useEffect(() => { if (import.meta.env.DEV) Object.assign(window, { __mm: { table, fx: fxRef } }); }, [table]);
+  // Development, or `?debug` on any build: the table and the board's effects, for checking a game from the console or a
+  // headless driver (scripts/play.mjs).
+  useEffect(() => {
+    if (import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")) Object.assign(window, { __mm: { table, fx: fxRef } });
+  }, [table]);
 
   const viewer = snapshot?.viewerPlayerId;
   const me = snapshot?.players.find((p) => p.playerId === viewer);
@@ -121,7 +148,16 @@ export function GameScreen({ table }: { table: GameTable }) {
   const finished = snapshot !== undefined && isCompleted(snapshot);
   const targetIDs = new Set([...(envelope?.targetIds ?? []), ...(envelope?.targets ?? []).map((t) => t.id)]);
   const combatSelect = envelope?.method === "GAME_SELECT" && envelope?.responseKind === "target";
-  const paying = snapshot?.manaPayment?.active === true;
+  const paying = snapshot !== undefined && (snapshot.manaPayment?.active === true || paymentPrompt(snapshot) !== undefined);
+  /** Auto Pay running: one tap per settled snapshot (ArenaAutoPayRun). */
+  const autoPay = useRef<AutoPayRun | undefined>(undefined);
+  const [autoPaying, setAutoPaying] = useState(false);
+  /** A short line that replaces the caption for a moment (arenaShowNotice: 2.4 s unless said otherwise). */
+  const [notice, setNotice] = useState<{ text: string; until: number }>();
+  const showNotice = useCallback((text: string, seconds = 2.4) => {
+    setNotice({ text, until: fxNow() + seconds });
+    window.setTimeout(() => setNotice((n) => (n && n.until <= fxNow() + 0.05 ? undefined : n)), seconds * 1000 + 50);
+  }, []);
   const activeIsMe = snapshot?.activePlayerId !== undefined && snapshot.activePlayerId === viewer;
   const stack = snapshot?.xmage?.stack ?? [];
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
@@ -138,6 +174,26 @@ export function GameScreen({ table }: { table: GameTable }) {
   }, [session, snapshot, envelope, fail]);
   const sendAction = useCallback((action: LegalAction) => { setMenu(undefined); session?.send(action).catch(fail); }, [session, fail]);
 
+  // Every answer from XMage steps Auto Pay once it has landed: a new revision, a new prompt, or the pending answer
+  // clearing (ArenaAutoPayDriver).
+  const helperKey = `${snapshot?.bridgeRevision ?? -1}|${envelope?.id ?? ""}|${envelope?.messageId ?? -1}|${session?.state.pendingActionID ?? ""}|${session?.state.working}`;
+  useEffect(() => {
+    if (!autoPaying || !session) return;
+    const timer = window.setTimeout(() => {
+      const run = autoPay.current;
+      const current = session.state.snapshot;
+      if (!run || !current) return;
+      const move = run.step(current, session.state.working || session.state.pendingActionID !== undefined);
+      const end = (text?: string) => { autoPay.current = undefined; setAutoPaying(false); if (text) showNotice(text); };
+      if (move.kind === "action") session.send(move.action).catch((error) => { end(); fail(error); });
+      else if (move.kind === "command") session.submit(move.command, move.label, move.actionID).catch((error) => { end(); fail(error); });
+      else if (move.kind === "stop") end(move.notice);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [helperKey, autoPaying, session, showNotice, fail]);
+  // A stopped run forgets its state.
+  useEffect(() => { if (!autoPaying) autoPay.current = undefined; }, [autoPaying]);
+
   // Which ids a click on the table can answer: battlefield permanents, players and your hand.
   const onTable = useMemo(() => {
     const ids = new Set<string>();
@@ -151,7 +207,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   // With a D20 roll the table answers XMage's starting-player question itself, so that question never shows.
   const rawBrowser = browserKind(envelope, onTable, (name) => snapshot !== undefined && cardNamed(snapshot, name) !== undefined);
   const browser = rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
-  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending;
+  // Auto Pay answers its own colour question; it never opens the choice browser.
+  const autoPayColour = autoPaying && envelope?.responseKind.toLowerCase() === "choice";
+  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending && !autoPayColour;
   // A number takes the button corner (ArenaAmountPill), with the board in view.
   const amountPill = browser === "amount" && !finished;
   const inspect: Inspect = setBrowseZoom;
@@ -191,7 +249,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   }, [fx.banner, fx.recap]);
   const fxClock = fxNow();
   const showBanner = fx.banner !== undefined && fxClock >= fx.banner.start && fxClock < fx.banner.end + 0.35 && !showBrowser && !finished;
-  const notice = fx.recap && fx.recap.until > fxClock ? fx.recap.text : undefined;
+  const caption = notice && notice.until > fxClock ? notice.text : fx.recap && fx.recap.until > fxClock ? fx.recap.text : undefined;
 
   // ---------------- cards ----------------
   const now = performance.now();
@@ -294,15 +352,31 @@ export function GameScreen({ table }: { table: GameTable }) {
     const act = (action: LegalAction | undefined, style: Plaque["style"], label?: string, want = false): Plaque | undefined =>
       action && { label: label ?? EngineDisplayText.label(action.label), style, want, onClick: () => sendAction(action) };
     if (envelope.responseKind === "priority") {
-      primary = act(promptActions.find((a) => a.type === "pass_priority"), "ember", stack.length > 0 ? "Resolve" : "Pass", true);
+      // The reference's short words: Next to move on, End Turn late in your turn, Resolve over a stack, Pass otherwise.
+      const pass = promptActions.find((a) => a.type === "pass_priority");
+      const phase = phaseIndex(snapshot.step ?? snapshot.phase);
+      const title: [string, string?] = stack.length > 0 ? ["Resolve"] : !activeIsMe ? ["Pass"]
+        : phase === 0 ? ["Next", "To Main"] : phase === 1 ? ["Next", "To Combat"] : phase === 2 ? ["Next", "To Main 2"] : ["End Turn"];
+      primary = pass && { ...act(pass, "ember", title[0], true)!, subtitle: title[1] };
     } else if (combatSelect) {
       const attacking = /attack/i.test(envelope.message);
       const declared = attacking ? myCreatures.some((c) => c.isAttacking) : myCreatures.some((c) => (c.blocking?.length ?? 0) > 0);
       primary = act(promptActions.find((a) => a.type === "answer_yes_no"), "ember", attacking ? (declared ? "Attack" : "No Attacks") : (declared ? "Done" : "No Blocks"), true);
       secondary = act(promptActions.find((a) => a.type === "resolve_choice"), "leather");
     } else if (paying) {
-      primary = act(promptActions.find((a) => a.type === "cancel_payment"), "leather", "Cancel");
-      secondary = act(promptActions.find((a) => a.type === "resolve_choice"), "leather");
+      // Auto Pay (arenaPaymentButtons): lit when its plan pays the whole cost, dimmed otherwise (the sources on the table
+      // still take clicks); "Paying…" and Stop while it runs; Cancel beside it.
+      const cancel = manaUndoActions(snapshot).find((a) => a.type === "cancel_payment" || a.type === "cancel_mana_payment");
+      if (autoPaying) {
+        primary = { label: "Paying…", style: "ember", disabled: true };
+        secondary = { label: "Stop", style: "leather", onClick: () => { autoPay.current = undefined; setAutoPaying(false); } };
+      } else {
+        primary = { label: "Auto Pay", style: "ember", want: true, disabled: !autoPayReady(snapshot), onClick: () => {
+          autoPay.current = new AutoPayRun();
+          setAutoPaying(true);
+        } };
+        secondary = cancel && { label: "Cancel", style: "leather", onClick: () => sendAction(cancel) };
+      }
     } else {
       const confirming = (a: LegalAction) => Number(a.type === "answer_yes_no" && a.confirmed === true);
       const ordered = [...promptActions].sort((a, b) => confirming(b) - confirming(a));
@@ -310,7 +384,8 @@ export function GameScreen({ table }: { table: GameTable }) {
       secondary = act(ordered[1], "leather");
     }
   } else if (snapshot && !finished && !envelope) {
-    primary = { label: activeIsMe ? "Resolving…" : "Opponent’s Turn", style: "label" };
+    primary = { label: activeIsMe || !snapshot.activePlayerId ? "Waiting…"
+      : opponents.length > 1 ? `${snapshot.players.find((p) => p.playerId === snapshot.activePlayerId)?.displayName ?? "Opponent"}’s Turn` : "Opponent’s Turn", style: "label" };
   }
   const strip = phaseStrip(snapshot?.step);
   const promptLine = snapshot && envelope && !showBrowser && !mulligan && envelope.responseKind !== "priority"
@@ -336,13 +411,39 @@ export function GameScreen({ table }: { table: GameTable }) {
   }, [rope]);
   const seatOf = (player: PlayerGameState) => Object.entries(table.state.seatNames).find(([, n]) => n === player.displayName)?.[0];
 
-  const toggleSmart = () => {
-    if (!session) return;
-    const on = !smart;
-    session.smartPass = on ? defaultSmartPass : { ...defaultSmartPass, enabled: false };
-    setSmart(on);
-    if (on) session.wake();
-  };
+  // The skip choices in a few words each (ArenaPassAheadPill.items).
+  const skipping = session?.state.autoPassing === true;
+  const fullControl = session?.state.fullControl === true;
+  const passItems: MenuItem[] = session ? [
+    { id: "skip-responses", title: "To end of turn", subtitle: "Skips responses", glyph: "skipResponses", enabled: session.canStartYield("endTurnSkippingResponses"),
+      action: () => session.startYield("endTurnSkippingResponses") },
+    { id: "skip-to-my-turn", title: "To my turn", subtitle: "Skips responses", glyph: "toMyTurn", enabled: session.canStartYield("untilMyTurn"),
+      action: () => session.startYield("untilMyTurn") },
+    { id: "end-turn", title: "To end of turn", subtitle: "Stops if they respond", glyph: "endTurn", enabled: session.canStartYield("safeEndTurn"),
+      action: () => session.startYield("safeEndTurn") },
+    { id: "full-control", title: "Full control", subtitle: fullControl ? "On for this turn" : "Stop at every priority this turn", glyph: "fullControl", lit: fullControl,
+      action: () => session.toggleFullControl() },
+  ] : [];
+  const canSkip = passItems.slice(0, 3).some((item) => item.enabled);
+  // The gear's menu (arenaGameMenuItems).
+  const gameItems: MenuItem[] = [
+    { id: "log", title: "Game Log", glyph: "log", action: () => setPanel("log") },
+    ...(!table.solo ? [{ id: "chat", title: "Chat", glyph: "chat", action: () => setPanel("chat") }] : []),
+    ...(stack.length > 0 ? [{ id: "stack", title: `Stack (${stack.length})`, glyph: "stack", action: () => setStackOpen(true) }] : []),
+    { id: "stops", title: "Phase Stops", glyph: "stops", action: () => setSheet("stops") },
+    ...(session ? [{ id: "full-control", title: "Full control", subtitle: fullControl ? "On for this turn" : "Stop at every priority this turn", glyph: "fullControl",
+      lit: fullControl, action: () => session.toggleFullControl() }] : []),
+    { id: "settings", title: "Game Settings", glyph: "settings", action: () => setSheet("settings") },
+  ];
+  // A new prompt closes the corner menu and the player card.
+  useEffect(() => { setCornerMenu(undefined); setPlayerCard(undefined); }, [envelope?.id, envelope?.messageId]);
+  // A skip that stops by itself says why, in the caption.
+  const autoPassStatus = session?.state.autoPassStatus;
+  const wasSkipping = useRef(false);
+  useEffect(() => {
+    if (wasSkipping.current && !skipping && autoPassStatus && !autoPassStatus.includes("may still finish")) showNotice(autoPassStatus, 3);
+    wasSkipping.current = skipping;
+  }, [skipping, autoPassStatus, showNotice]);
 
   const medallion = (player: PlayerGameState, mine: boolean, index: number) => {
     const spot = mine ? ARENA.viewerMedallion : ARENA.opponentMedallion;
@@ -440,7 +541,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   return (
-    <div className="arena" ref={wrapRef} onClick={() => { setGear(false); setPlayerCard(undefined); setMenu(undefined); }}
+    <div className="arena" ref={wrapRef} onClick={() => { setCornerMenu(undefined); setPlayerCard(undefined); setMenu(undefined); }}
       onPointerMove={(event) => {
         // The hand rises while the pointer is over it: below the top of the fan as it stands, within its width.
         if (mulligan || covered || handIDs.length === 0) return;
@@ -503,23 +604,36 @@ export function GameScreen({ table }: { table: GameTable }) {
             <div className="track" />
             {strip.items.map(([key, icon]) => <span key={key} className={`aph ${icon === "dia" ? "small" : ""} ${strip.current === key ? "on" : ""}`}>{PHASE_ICONS[icon]}</span>)}
           </div>
-          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(ARENA.secondary.y) }} disabled={pending} onClick={secondary.onClick}>{secondary.label}</button>}
+          {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(ARENA.secondary.y) }}
+            disabled={(pending && secondary.label !== "Stop") || secondary.disabled} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
-            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""}`} style={{ top: B(ARENA.primary.y) }} disabled={primary.style !== "label" && pending}
-              onClick={primary.onClick}>{primary.label}</button>
+            <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""} ${primary.subtitle ? "sub" : ""}`} style={{ top: B(ARENA.primary.y) }}
+              disabled={(primary.style !== "label" && pending) || primary.disabled} onClick={primary.onClick}>
+              {primary.label}{primary.subtitle && <small>{primary.subtitle}</small>}
+            </button>
           ) : !finished && <div className="ahourglass" style={{ top: B(ARENA.primary.y) }}>{HOURGLASS}</div>}
+          {(() => {
+            // Undo the last mana while a payment allows it (ArenaBoardViews undo pill).
+            const undo = snapshot && paying ? manaUndoActions(snapshot).find((a) => a.type === "undo_mana") : undefined;
+            return undo && !autoPaying && (
+              <button type="button" className="aundo" style={{ left: 650, top: B(343) }} disabled={pending} onClick={() => sendAction(undo)}>Undo <span aria-hidden="true">↶</span></button>
+            );
+          })()}
           {session && (
-            <button type="button" className={`aff ${smart ? "on" : ""}`} aria-pressed={smart} onClick={toggleSmart}
+            // Pass ahead: the skip choices while you play, Stop while the table skips for you.
+            <button type="button" className={`aff ${skipping ? "on" : ""}`} disabled={!skipping && !canSkip}
               style={{ left: ARENA.passAhead.x, top: B(ARENA.passAhead.y), width: ARENA.passAhead.w, height: ARENA.passAhead.h }}
-              title={smart ? "Smart pass is on: routine priority passes by itself" : "Smart pass is off: you pass every step"}>
+              aria-label={skipping ? "Stop skipping" : "Skip options"} title={skipping ? autoPassStatus : undefined}
+              onClick={() => (skipping ? session.stopAutoPass() : setCornerMenu("pass"))}>
               <svg viewBox="0 0 26 18"><path d="M2 2l9 7-9 7zM14 2l9 7-9 7z" /></svg>
             </button>
           )}
+          {fullControl && primary && <div className="afullcontrol" style={{ left: ARENA.primary.x + ARENA.primary.w / 2, top: B(ARENA.primary.y) - 14 }}>Full control</div>}
           <button type="button" className={`acoin ${panel ? "on" : ""}`} style={{ left: ARENA.log.x - 14, top: T(ARENA.log.y) - 14 }} aria-label="Game log" onClick={() => setPanel(panel ? undefined : "log")}>{SCROLL}</button>
-          <button type="button" className={`acoin ${gear ? "on" : ""}`} style={{ left: ARENA.menu.x - 14, top: T(ARENA.menu.y) - 14 }} aria-label="Menu" onClick={() => setGear(!gear)}>{GEAR}</button>
+          <button type="button" className={`acoin ${cornerMenu === "game" ? "on" : ""}`} style={{ left: ARENA.menu.x - 14, top: T(ARENA.menu.y) - 14 }} aria-label="Game menu" onClick={() => setCornerMenu(cornerMenu === "game" ? undefined : "game")}>{GEAR}</button>
         </div>
 
-        {notice && !showBrowser ? <div className="aprompt notice" style={{ top: Y(ARENA.captionY) }}><span>{notice}</span></div> : <>
+        {caption && !showBrowser ? <div className="aprompt notice" style={{ top: Y(ARENA.captionY) }}><span>{caption}</span></div> : <>
           {promptLine && <div className="aprompt" style={{ top: Y(ARENA.captionY) }}><span><RulesText text={promptLine} /></span></div>}
           {thinkingName && <div className="aprompt" style={{ top: Y(ARENA.captionY), opacity: 0.75 }}>{thinkingName} is thinking…</div>}
         </>}
@@ -576,29 +690,34 @@ export function GameScreen({ table }: { table: GameTable }) {
           );
         })()}
 
-        {gear && (
-          <div className="amenu glass" onClick={stop}>
-            <button type="button" className="arow" onClick={() => { setPanel("log"); setGear(false); }}>Game log</button>
-            {!table.solo && <button type="button" className="arow" onClick={() => { setPanel("chat"); setGear(false); }}>Chat</button>}
-            {session && (
-              <button type="button" className="arow" onClick={toggleSmart}>
-                <span>Smart pass: {smart ? "on" : "off"}<span className="sub">Passes routine priority; stops in your main phases, and at their attacks and end step when you can play.</span></span>
-              </button>
-            )}
-            <button type="button" className="arow" onClick={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }}>
-              <span>Card frames: {frames ? "on" : "off"}<span className="sub">On: tavern frames. Off: the reference game's cards (the default).</span></span>
-            </button>
-            <button type="button" className="arow" onClick={() => {
-              const next = ({ full: "reduced", reduced: "off", off: "full" } as Record<string, string>)[fxSetting] ?? "full";
-              setFxSetting(next); storage.set("mm.web.boardEffects", next);
-            }}>
-              <span>Effects: {({ full: "Full", reduced: "Reduced", off: "Off" } as Record<string, string>)[fxSetting] ?? "Full"}</span>
-            </button>
-            <button type="button" className="arow oxblood" disabled={!session || finished} onClick={() => { setConfirmConcede(true); setGear(false); }}>Concede</button>
-            <button type="button" className="arow" onClick={() => table.leave()}>
-              <span>{table.solo ? "Leave the game" : "Leave table"}{table.solo && !finished && <span className="sub">Concedes the game in progress.</span>}</span>
-            </button>
-          </div>
+        {cornerMenu && (
+          // The gear's menu under the gear; the skip choices above the corner. A click anywhere else closes it.
+          <MenuCard items={cornerMenu === "game" ? gameItems : passItems} close={() => setCornerMenu(undefined)}
+            style={cornerMenu === "game" ? { right: STAGE.width - ARENA.menu.x - 8, top: T(ARENA.menu.y) + 26 } : { right: 14, bottom: geo.height - Y(326) }} />
+        )}
+        {sheet === "stops" && (
+          <Panel title="Phase Stops" close={() => setSheet(undefined)}><PhaseStops settings={smartSettings} onChange={updateSmartPass} /></Panel>
+        )}
+        {sheet === "settings" && (
+          <Panel title="Game Settings" close={() => setSheet(undefined)}>
+            <div className="asettings">
+              <label><Check on={smartSettings.enabled} label="Smart Auto-Pass" onToggle={() => updateSmartPass({ ...smartSettings, enabled: !smartSettings.enabled })} />Smart Auto-Pass</label>
+              <label><Check on={smartSettings.stopForThreats} label="Stop for Removal" onToggle={() => updateSmartPass({ ...smartSettings, stopForThreats: !smartSettings.stopForThreats })} />Stop for Removal</label>
+              <label><Check on={smartSettings.stopForOwnSpells} label="Stop for My Own Spells" onToggle={() => updateSmartPass({ ...smartSettings, stopForOwnSpells: !smartSettings.stopForOwnSpells })} />Stop for My Own Spells</label>
+              <label><Check on={frames} label="Card Frames" onToggle={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }} />Card Frames</label>
+              <div className="seg" role="group" aria-label="Effects"><span>Effects</span>
+                {(["full", "reduced", "off"] as const).map((level) => (
+                  <button key={level} type="button" aria-pressed={fxSetting === level} onClick={() => { setFxSetting(level); storage.set("mm.web.boardEffects", level); }}>
+                    {({ full: "Full", reduced: "Reduced", off: "Off" })[level]}
+                  </button>
+                ))}
+              </div>
+              <div className="actions">
+                <button type="button" className="aplaque oxblood inline" disabled={!session || finished} onClick={() => { setSheet(undefined); setConfirmConcede(true); }}>Concede</button>
+                <button type="button" className="aplaque leather inline" onClick={() => table.leave()}>{table.solo ? "Quit" : "Leave Table"}</button>
+              </div>
+            </div>
+          </Panel>
         )}
 
         {panel && (

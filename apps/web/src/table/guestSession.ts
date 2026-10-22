@@ -263,6 +263,12 @@ export class GuestSession {
     if (!this.isFullControl) this.scheduleSmartPass();
   }
 
+  /** Smart pass settings changed (Game Settings or Phase Stops); applies from the next prompt. */
+  setSmartPass(settings: SmartPassSettings) {
+    this.smartPass = settings;
+    this.scheduleSmartPass();
+  }
+
   /** The page was hidden or shown: a hidden tab cancels an unsent smart pass and stops a skip. */
   setForeground(value: boolean) {
     this.foreground = value;

@@ -74,6 +74,26 @@ export interface SmartPassSettings {
 }
 export const defaultSmartPass: SmartPassSettings = { enabled: true, stops: defaultStops, stopForOwnSpells: false, stopForThreats: true };
 
+/** Where the settings live (the iOS UserDefaults keys' web names). */
+export const SMART_PASS_KEYS = {
+  enabled: "mm.web.smartAutoPass", stops: "mm.web.phaseStops", stopForOwnSpells: "mm.web.stopForOwnSpells", stopForThreats: "mm.web.stopForThreats",
+} as const;
+
+/** Settings.load: smart pass on, Stop for Own Spells off, Stop for Removal on, the default stops unless some were saved. */
+export function loadSmartPass(read: (key: string) => string | undefined): SmartPassSettings {
+  return {
+    enabled: read(SMART_PASS_KEYS.enabled) !== "off", stops: decodeStops(read(SMART_PASS_KEYS.stops)),
+    stopForOwnSpells: read(SMART_PASS_KEYS.stopForOwnSpells) === "on", stopForThreats: read(SMART_PASS_KEYS.stopForThreats) !== "off",
+  };
+}
+
+export function saveSmartPass(settings: SmartPassSettings, write: (key: string, value: string) => void) {
+  write(SMART_PASS_KEYS.enabled, settings.enabled ? "on" : "off");
+  write(SMART_PASS_KEYS.stops, encodeStops(settings.stops));
+  write(SMART_PASS_KEYS.stopForOwnSpells, settings.stopForOwnSpells ? "on" : "off");
+  write(SMART_PASS_KEYS.stopForThreats, settings.stopForThreats ? "on" : "off");
+}
+
 /** Stored stops: a sorted comma list; nothing stored means the defaults, an empty string means no stops. */
 export const encodeStops = (stops: ReadonlySet<string>) => [...stops].sort().join(",");
 export const decodeStops = (raw: string | undefined | null): Set<string> =>

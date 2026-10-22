@@ -433,3 +433,47 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 @keyframes abannerLine { from { transform: scaleX(.02); } to { transform: scaleX(1); } }
 @keyframes abannerSweep { from { background-position: -46px 0; } to { background-position: calc(100% + 46px) 0; } }
 @media (prefers-reduced-motion: reduce) { .abanner, .abanner .line, .abanner b::after { animation: none; } }
+/* undo the last mana while paying: a small glass pill beside the corner (ArenaBoardViews' undo pill) */
+.aundo { position: absolute; width: 52px; height: 26px; border-radius: 13px; display: grid; place-items: center; font: 700 11px/1 var(--serif); color: #f5cc7a;
+  background: linear-gradient(rgba(30,22,16,.86), rgba(12,9,7,.9)); box-shadow: inset 0 0 0 1px rgba(245,204,122,.45), 0 2px 6px rgba(0,0,0,.5); z-index: 600; }
+.aundo:disabled { opacity: .45; }
+
+/* ---------- menus and panels on the table (ArenaMenuCard, ArenaPanelOverlay) ---------- */
+.ascrim { position: absolute; inset: -400px; z-index: 790; background: rgba(0,0,0,.25); }
+.amenucard { position: absolute; z-index: 795; width: 280px; padding: 10px; border-radius: 16px; display: grid; gap: 8px; animation: amenuIn .16s ease-out both; }
+@keyframes amenuIn { from { opacity: 0; transform: scale(.95); } }
+.amenucard .arow { min-height: 46px; padding: 6px 12px; gap: 12px; background: linear-gradient(rgba(255,240,210,.06), rgba(0,0,0,.18)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.35); }
+.amenucard .arow:hover:not(:disabled) { background: linear-gradient(rgba(255,220,150,.14), rgba(0,0,0,.1)); }
+.amenucard .arow.lit { box-shadow: inset 0 0 0 1.5px #ffb36a, 0 0 10px rgba(255,140,60,.35); }
+.amenucard .arow:disabled { opacity: .45; cursor: default; }
+.amenucard .arow b { display: block; font: 600 16px/1.15 var(--serif); }
+.amenucard .arow small { display: block; font: 500 11px/1.2 var(--serif); opacity: .65; }
+.amenucard .glyph { width: 22px; height: 18px; flex: none; display: grid; place-items: center; color: #fad685; }
+.amenucard .glyph svg { width: 17px; height: 17px; fill: currentColor; }
+.amenucard .arow.lit .glyph { color: #ff9e4d; }
+.aoverlay.panelveil { background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 805; }
+.apanel2 { max-height: 92%; overflow: auto; border-radius: 22px; padding: 16px 20px 20px; animation: apanelIn .3s cubic-bezier(.3,1.2,.5,1) both; color: #f3ead8; }
+@keyframes apanelIn { from { opacity: 0; transform: scale(.94); } }
+.apanel2 header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.apanel2 h3 { margin: 0; font: 700 22px/1.1 var(--serif); color: #fad685; }
+.apanel2 .close { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.06); color: #f3ead8; }
+.acheck { width: 26px; height: 26px; display: grid; place-items: center; background: none; padding: 0; }
+.acheck svg { width: 18px; height: 18px; fill: none; stroke: rgba(250,214,133,.5); stroke-width: 1.6; }
+.acheck.on svg { stroke: #ff9e4d; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 4px rgba(255,140,60,.6)); }
+.phasestops .explain { margin: 0 0 12px; font: 13px/1.35 var(--serif); opacity: .75; }
+.phasestops .grid { display: grid; grid-template-columns: 1fr 76px 76px; align-items: center; row-gap: 2px; }
+.phasestops .grid > b { font: 800 10px/1 var(--serif); letter-spacing: .08em; text-align: center; color: #e2b867; padding-bottom: 4px; }
+.phasestops .row { display: contents; }
+.phasestops .row > span { font: 600 14px/30px var(--serif); }
+.phasestops .row > .acheck { justify-self: center; }
+.aplaque.inline { position: relative; min-width: 140px; height: 38px; margin: 14px auto 0; }
+.asettings { display: grid; gap: 6px; }
+.asettings label { display: flex; align-items: center; gap: 10px; font: 600 15px/1.2 var(--serif); }
+.asettings .seg { display: flex; align-items: center; gap: 6px; margin-top: 6px; font: 600 15px/1 var(--serif); }
+.asettings .seg span { margin-right: 6px; }
+.asettings .seg button { padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,.05); color: #f3ead8; font: 600 13px/1 var(--serif); }
+.asettings .seg button[aria-pressed=true] { box-shadow: inset 0 -2px 0 #ffb36a; color: #ffe08f; }
+.asettings .actions { display: flex; gap: 12px; justify-content: center; }
+.afullcontrol { position: absolute; transform: translate(-50%, -100%); z-index: 601; padding: 3px 8px; border-radius: 8px; pointer-events: none;
+  font: 800 9px/1 var(--serif); letter-spacing: .1em; text-transform: uppercase; color: #ffe08f; background: rgba(20,14,10,.9); box-shadow: inset 0 0 0 1px #ffb36a; }
+.aff:disabled { opacity: .45; cursor: default; }
