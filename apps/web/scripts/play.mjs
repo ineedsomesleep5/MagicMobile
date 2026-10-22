@@ -118,7 +118,8 @@ const look = () => {
     theirTop: (() => { const top = snap.xmage?.stack?.[0]; return top && top.controllerId !== snap.viewerPlayerId ? top.id : undefined; })(),
     actions: (snap.legalActions ?? []).map((a) => ({ id: a.id, type: a.type, label: a.label, card: a.cardName, cardId: a.cardInstanceId, cost: a.manaCost, confirmed: a.confirmed })),
     buttons: [...document.querySelectorAll(".acontrols .aplaque, .bfoot .aplaque, .aplaque")].filter((b) => !b.disabled).map((b) => b.textContent),
-    hand: me?.zones.hand.length ?? 0, handIds: me?.zones.hand.map((c) => c.instanceId) ?? [],
+    hand: me?.zones.hand.length ?? 0, handIds: me?.zones.hand.map((c) => c.instanceId) ?? [], handNames: me?.zones.hand.map((c) => c.card.name) ?? [],
+    chosen: Array.isArray(env?.options?.chosenTargets) ? env.options.chosenTargets : [],
     browser: document.querySelector(".bstage, .bframe") !== null, creatures: me?.zones.battlefield.filter((c) => /creature/i.test(c.card.typeLine)).length ?? 0,
     allCreatures: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine)).length,
   };
@@ -134,7 +135,15 @@ function decide(state, memory) {
   const p = state.prompt;
   if (!state.ready || state.over || state.working || !p || !p.mine) return undefined;
   const acts = state.actions;
-  if (/mulligan/i.test(p.message)) return { submit: { type: "answer_yes_no", confirmed: false }, label: "Keep" };
+  if (/mulligan/i.test(p.message)) {
+    // --want-sweeper: mulligan (at most twice) for a hand holding a board wipe, so the game is likely to show one.
+    const sweeper = state.handNames.some((name) => SWEEPERS.includes(name));
+    if (args["want-sweeper"] && !sweeper && (memory.mulligans ?? 0) < 2) {
+      memory.mulligans = (memory.mulligans ?? 0) + 1;
+      return { submit: { type: "answer_yes_no", confirmed: true }, label: "Mulligan" };
+    }
+    return { submit: { type: "answer_yes_no", confirmed: false }, label: "Keep" };
+  }
   // A number (X, an amount): the pill in the button corner, at the value it starts on (the most your mana pays for X).
   if (p.kind === "amount" || /value for \{?x\}?/i.test(p.message)) return { clickIn: ".apill .pgo" };
   if (state.paying) {
@@ -185,6 +194,13 @@ function decide(state, memory) {
   // A question on the table (yes/no, the commander's zone): its main answer, the ember plaque, as a player clicks it.
   if (p.confirmation && state.browser) return { clickIn: ".bstage .answers .aplaque.ember" };
   if (p.targets.length) return { submit: { type: "choose_target", targetIds: [p.targets[0]] }, label: "Choose" };
+  // Cards to pick one at a time (the cards a mulligan puts on the bottom, a discard): the next one not yet chosen until
+  // XMage's count is met, then its Done.
+  const counted = /\(selected (\d+) of (\d+)/i.exec(p.message);
+  if (p.cards.length && (!counted || Number(counted[1]) < Number(counted[2]))) {
+    const next = p.cards.find((id) => !state.chosen.includes(id));
+    if (next) return { submit: { type: "choose_target", targetIds: [next] }, label: "Choose" };
+  }
   if (p.abilities.length) return { submit: { type: "choose_ability", abilityId: p.abilities[0] }, label: "Ability" };
   if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [p.modes[0]] }, label: "Mode" };
   if (p.players.length) return { submit: { type: "choose_player", playerIds: [p.players[0]] }, label: "Player" };
