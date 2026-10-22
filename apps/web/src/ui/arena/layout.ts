@@ -61,6 +61,8 @@ export const ARENA = {
   opponentHand: { x: 478, y: 4, card: { w: 36, h: 50 }, pitch: 30 },
   viewerMedallion: { x: 84, y: 402, d: 56 },
   opponentMedallion: { x: 478, y: 25, d: 50 },
+  /** Where a drawn card shows itself before joining the hand (ArenaLayout.draw, centre and width). */
+  draw: { x: 739, y: 261, w: 106 },
   viewerPiles: { graveyard: { x: 147, y: 404 }, library: { x: 201, y: 404 }, exile: { x: 255, y: 404 }, size: { w: 42, h: 59 } },
   opponentPiles: { exile: { x: 652, y: 30 }, library: { x: 704, y: 30 }, graveyard: { x: 756, y: 30 }, size: { w: 36, h: 50 } },
   opponentLands: { x: 80, y: 54, w: 360, h: 66 }, viewerLands: { x: 80, y: 290, w: 360, h: 70 },
@@ -234,7 +236,7 @@ export function battlefieldPlaces(cards: ZoneCard[], side: "me" | "opp", band = 
 /**
  * The hand (ArenaHandFanLayout): resting, it is tucked along the bottom edge with the cards' tops just under your lands;
  * raised (the pointer on it, as on Arena's desktop client), it fans up, the arc flattening as it grows and the whole fan
- * rising until its outer corners clear the floor. The card under the pointer pops up.
+ * rising until its outer corners clear the floor. The card under the pointer pops up, whole (1.18x resting).
  */
 export function handPlaces(ids: string[], up: boolean, hovered?: string, geo: Geometry = BASE_GEOMETRY,
   /** Resting, the fan stays between your piles and the controls corner (their edges, in board points). */
@@ -260,7 +262,11 @@ export function handPlaces(ids: string[], up: boolean, hovered?: string, geo: Ge
     let place: Place = up
       ? { x, y: fromBottom(H.upY) - rise + drop * off * off, ...card, r: Math.max(-H.maxTilt, Math.min(H.maxTilt, off * H.tilt)), s: 1, z: 440 + i }
       : { x, y: fromBottom(H.downY) + off * off * H.downDrop, ...card, r: off * 1.8, s: 1, z: 200 + i };
-    if (id === hovered) place = { ...place, y: place.y - (up ? H.lift : H.liftDown) * g, r: 0, s: up ? 1.24 : 1.04, z: 480 };
+    // The popped card shows whole and upright (ArenaHandFan.liftedPoint): never lower than where it clears the bottom edge.
+    if (id === hovered) {
+      const s = up ? 1.24 : 1.18;
+      place = { ...place, y: Math.min(place.y - (up ? H.lift : H.liftDown) * g, geo.height - (card.h * s) / 2 - 8), r: 0, s, z: 480 };
+    }
     places.set(id, place);
   });
   return places;
@@ -340,4 +346,28 @@ export function drops(point: { x: number; y: number }, start: { x: number; y: nu
 export function pileThickness(count: number, height: number) {
   const thickness = count > 0 ? Math.max(1.5, count * height * 0.0055) : 0;
   return { thickness, layers: Math.min(16, Math.round(thickness / 1.1)) };
+}
+
+/**
+ * The hand card under a pointer sliding along the resting fan (ArenaHandFan.scrubCard): each card owns the strip of it
+ * that shows, measured at the pointer's height along its tilt, so the pop moves one card at a time; the popped card's
+ * larger picture is ignored, and the pointer must pass a few points into the next strip before the pop moves on.
+ */
+export function scrubHand(ids: string[], rest: Map<string, Place>, point: { x: number; y: number }, current?: string): string | undefined {
+  if (ids.length === 0) return undefined;
+  const left = (index: number) => {
+    const place = rest.get(ids[index])!;
+    const angle = ((place.r ?? 0) * Math.PI) / 180;
+    // Cards turn about their centre here.
+    const centerline = place.x + (place.y - point.y) * Math.tan(angle);
+    return centerline - (place.w * (place.s ?? 1)) / 2 / Math.max(0.5, Math.cos(angle));
+  };
+  let index = 0;
+  for (let i = ids.length - 1; i >= 0; i--) if (left(i) <= point.x) { index = i; break; }
+  const at = current === undefined ? -1 : ids.indexOf(current);
+  if (at >= 0 && at !== index) {
+    const next = at + 1 < ids.length ? left(at + 1) : Infinity;
+    if (point.x >= left(at) - 6 && point.x < next + 6) return ids[at];
+  }
+  return ids[index];
 }

@@ -231,6 +231,7 @@ async function play(page, game) {
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3, { steps: 4 });
         await page.waitForTimeout(450);
         const raised = await card.boundingBox({ timeout: 2000 }).catch(() => null) ?? box;
+        if (!memory.popShot) { memory.popShot = true; await page.screenshot({ path: join(out, `game-${game}-pop.png`) }); }
         await page.mouse.move(raised.x + raised.width / 2, raised.y + raised.height / 3, { steps: 2 });
         await page.waitForTimeout(120);
         const settled = await card.boundingBox({ timeout: 2000 }).catch(() => null) ?? raised;
@@ -289,8 +290,11 @@ try {
     const consoleErrors = [];
     page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
     page.on("pageerror", (e) => consoleErrors.push(String(e)));
+    // Which resources were missing (card art, sounds), once each.
+    const notFound = new Set();
+    page.on("response", (r) => { if (r.status() >= 400) notFound.add(`${r.status()} ${r.url().split("?")[0]}${r.url().includes("exact=") ? "?" + r.url().split("?")[1].split("&")[0] : ""}`); });
     const result = await play(page, game);
-    results.push({ ...result, consoleErrors });
+    results.push({ ...result, consoleErrors: consoleErrors.filter((e) => !e.startsWith("Failed to load resource")), notFound: [...notFound] });
     console.log(JSON.stringify(results.at(-1)));
     await page.close();
   }

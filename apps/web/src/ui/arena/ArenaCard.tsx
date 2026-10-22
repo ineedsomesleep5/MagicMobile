@@ -122,6 +122,9 @@ export function Face({ name, cost, showCost }: { name: string; cost?: string; sh
   );
 }
 
+const FLAME = <svg viewBox="0 0 20 20"><path d="M10 1c1 3.2 5.5 5.6 5.5 10.4A5.5 5.5 0 0 1 4.5 11.6c0-2.3 1.1-3.9 2.3-5.1.1 1.6.8 2.8 2 3.4C8.4 6.6 9.2 3.6 10 1z" /></svg>;
+const SPARKLES = <svg viewBox="0 0 20 20"><path d="M8 1l1.6 4.6L14 7.2 9.6 8.8 8 13.4 6.4 8.8 2 7.2l4.4-1.6zM15 10l.9 2.4 2.4.9-2.4.9L15 16.6l-.9-2.4-2.4-.9 2.4-.9z" /></svg>;
+
 export interface ArenaCardProps {
   id: string;
   place: Place;
@@ -135,6 +138,8 @@ export interface ArenaCardProps {
   name?: string;
   owner?: "me" | "opp";
   inHand?: boolean;
+  /** A card played from your graveyard or exile, at the fan's end: its zone (ArenaExtraCardShimmer). */
+  extraZone?: string;
   classes?: string;
   label?: string;
   onClick?: (id: string, event: React.MouseEvent) => void;
@@ -149,7 +154,7 @@ export interface ArenaCardProps {
  * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
  * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
  */
-export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, classes, label, onClick, onHover, onPress, onInspect }: ArenaCardProps) {
+export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, extraZone, classes, label, onClick, onHover, onPress, onInspect }: ArenaCardProps) {
   const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
     width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
@@ -160,7 +165,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
   const printed = name ?? card?.card.name ?? "";
   return (
     <div className={`acard ${classes ?? ""}`} data-id={id} data-view={view} data-o={owner} style={style} role={onClick ? "button" : undefined}
-      aria-label={label ?? (view === "back" ? "Card" : printed)} tabIndex={onClick ? 0 : undefined}
+      aria-label={label ?? (view === "back" ? "Card" : extraZone ? `${printed}, playable from your ${extraZone.toLowerCase()}` : printed)} tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? (event) => onClick(id, event) : undefined}
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}
       onPointerDown={onPress ? (event) => { if (event.button === 0) onPress(id, event); } : undefined}
@@ -172,6 +177,9 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
           {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} />)}
           {view === "face" && (ability ? <AbilityCard source={ability.source} name={ability.name} text={ability.text} />
             : <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />)}
+          {view === "face" && extraZone && (
+            <div className="ashimmer" aria-hidden="true"><i>{extraZone.toLowerCase() === "graveyard" ? FLAME : SPARKLES}</i></div>
+          )}
           {view === "back" && <CardBack />}
         </div>
       </div>

@@ -65,3 +65,22 @@ describe("arena geometry", () => {
     }
   });
 });
+
+describe("the resting hand's pop", () => {
+  it("pops the card whole and upright, clear of the bottom edge, and slides card by card", async () => {
+    const { handPlaces, scrubHand, BASE_GEOMETRY } = await import("../src/ui/arena/layout");
+    const ids = ["a", "b", "c", "d", "e"];
+    const rest = handPlaces(ids, false, undefined, BASE_GEOMETRY);
+    const popped = handPlaces(ids, false, "c", BASE_GEOMETRY).get("c")!;
+    expect(popped.s).toBe(1.18);
+    expect(popped.r).toBe(0);
+    expect(popped.y + (popped.h * 1.18) / 2).toBeLessThanOrEqual(BASE_GEOMETRY.height - 8 + 1e-9);
+    const y = rest.get("c")!.y;
+    // Each card owns the strip of it that shows: from its left edge to the next card's.
+    const lefts = ids.map((id) => rest.get(id)!.x - rest.get(id)!.w / 2);
+    expect(ids.map((_, i) => scrubHand(ids, rest, { x: lefts[i] + 2, y }))).toEqual(ids);
+    // A few points into the next strip the pop stays put; further in it moves on.
+    expect(scrubHand(ids, rest, { x: lefts[3] + 4, y }, "c")).toBe("c");
+    expect(scrubHand(ids, rest, { x: lefts[3] + 8, y }, "c")).toBe("d");
+  });
+});

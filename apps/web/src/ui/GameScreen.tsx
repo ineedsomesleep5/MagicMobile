@@ -18,7 +18,7 @@ import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
 import { AmountPill, Browser, browserKind, cardNamed, type Inspect, type Send, StackBrowser, ZoneBrowser } from "./arena/Browsers";
 import {
-  ARENA, BASE_GEOMETRY, battlefieldPlaces, drops, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, stackPlace,
+  ARENA, BASE_GEOMETRY, battlefieldPlaces, drops, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, scrubHand, stackPlace,
   STAGE,
 } from "./arena/layout";
 import { isStackAbility } from "./arena/AbilityCard";
@@ -29,7 +29,7 @@ import { GameLog } from "./arena/GameLog";
 import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
-import { combatPhase, commandersTaken, commanderTakenNotice } from "../core/arenaBoard";
+import { combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
 import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
@@ -47,6 +47,9 @@ const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare
  * The phase strip (ArenaPhaseStrip): eight icons on a brass track, the part of the turn already played lit in the turn's
  * colour, the current step lit; moving on sends a spark along the track, then the icon ignites. A click opens Phase Stops.
  */
+const SUN = <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="4.2" /><path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.6 3.6l2.1 2.1M14.3 14.3l2.1 2.1M3.6 16.4l2.1-2.1M14.3 5.7l2.1-2.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+const MOON = <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 2.2A8 8 0 1 0 17.8 13 6.4 6.4 0 0 1 13.5 2.2z" /></svg>;
+
 function PhaseStrip({ step, side, top, onOpen }: { step?: string; side: "me" | "opp"; top: number; onOpen: () => void }) {
   const { items, current } = phaseStrip(step);
   const width = ARENA.phaseStrip.w;
@@ -147,9 +150,12 @@ export function GameScreen({ table }: { table: GameTable }) {
   const T = (y: number) => y * geo.grow;
   const B = (y: number) => geo.height - (STAGE.height - y) * geo.grow;
   const [hovered, setHovered] = useState<string>();
-  const [handRaised, setHandRaised] = useState(false);
+  /** The hand card popped up whole, the one under the pointer (ArenaHandFan's liftedCardID). */
+  const [popped, setPopped] = useState<string>();
   const [menu, setMenu] = useState<{ id: string; at: Place; actions: LegalAction[] }>();
-  const [toast, setToast] = useState<string>();
+  /** A failed answer or session error, up for 8 s (OnDeviceRootView.bannerError); a session error stays until dismissed. */
+  const [bannerError, setBannerError] = useState<string>();
+  const [dismissedError, setDismissedError] = useState<string>();
   const [panel, setPanel] = useState<"log" | "chat">();
   /** The gear's menu or the pass-ahead pill's skip choices, as a menu card on the table. */
   const [cornerMenu, setCornerMenu] = useState<"game" | "pass">();
@@ -254,8 +260,9 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   const fail = useCallback((error: unknown) => {
     gameAudio.play("ui-error");
-    setToast(error instanceof Error ? error.message : String(error));
-    window.setTimeout(() => setToast(undefined), 4000);
+    const message = error instanceof Error ? error.message : String(error);
+    setBannerError(message);
+    window.setTimeout(() => setBannerError((current) => (current === message ? undefined : current)), 8000);
   }, []);
   const send: Send = useCallback((partial, label) => {
     if (!session || !snapshot || !envelope) return;
@@ -400,6 +407,15 @@ export function GameScreen({ table }: { table: GameTable }) {
     };
     window.addEventListener("pointermove", cancel); window.addEventListener("pointerup", cancel);
   };
+  /** A click on a hand card: a target answer takes it; the popped card plays (ArenaHandFan.play); another pops first. */
+  const clickHand = (id: string) => {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    if (!snapshot || pending || finished) return;
+    setMenu(undefined);
+    if (targetIDs.has(id)) { clickCard(id); return; }
+    if (popped !== id) { setPopped(id); gameAudio.play("card-pickup"); return; }
+    playFromHand(id);
+  };
   /** Pressing a hand card may start carrying it to the table (ArenaHandFan's drag). */
   const pressHand = (id: string, event: React.PointerEvent) => {
     pressCard(id, event);
@@ -431,11 +447,12 @@ export function GameScreen({ table }: { table: GameTable }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carry?.id]);
   /** A card let go over the table (DragCastDropResolver): its one play goes at once, several open the choice, none says so. */
-  const dropCard = (id: string) => {
+  const dropCard = (id: string) => playFromHand(id);
+  const playFromHand = (id: string) => {
     if (!snapshot) return;
-    const card = me?.zones.hand.find((c) => c.instanceId === id);
+    const card = [...(me?.zones.hand ?? []), ...extraHand].find((c) => c.instanceId === id);
     const plays = actionsFor(snapshot, id).filter((a) => a.type === "play_land" || a.type === "cast_spell");
-    if (plays.length === 1) { if (plays[0].type === "cast_spell") gameAudio.play("card-play"); sendAction(plays[0]); setHandRaised(false); }
+    if (plays.length === 1) { if (plays[0].type === "cast_spell") gameAudio.play("card-play"); sendAction(plays[0]); setPopped(undefined); }
     else if (plays.length > 1) setMenu({ id, at: { x: STAGE.width / 2, y: Y(ARENA.captionY) + 120, w: 0, h: 0, z: 0 }, actions: plays });
     else showNotice(`${card?.card.name ?? "That card"} is not currently playable`);
   };
@@ -478,14 +495,42 @@ export function GameScreen({ table }: { table: GameTable }) {
   })();
   const handIDs = me?.zones.hand.map((c) => c.instanceId) ?? [];
   const mulligan = browser === "mulligan";
-  // As on Arena's desktop client the hand rests low, showing the top of each card, and fans up while the pointer is on
-  // it; the prototype raised it whenever you could play (a touch screen's answer), which covered your lands.
-  // A decision on the table (paying, choosing a permanent or player, combat) keeps the hand resting (ArenaHandPosture).
-  const boardDecision = paying || combatSelect || (envelope !== undefined && targetIDs.size > 0 && !(me?.zones.hand ?? []).some((c) => targetIDs.has(c.instanceId)));
+  // Cards you can play from your graveyard or exile join the fan's right end (ArenaExtraHand).
+  const extraHand = snapshot && me && !mulligan ? extraHandCards(me, snapshot.legalActions ?? []) : [];
+  const fanIDs = [...handIDs, ...extraHand.map((c) => c.instanceId)];
+  // A card that joins the hand after the opening hand flies in from your deck, shows itself at the draw spot, then
+  // joins the fan (ArenaHandFan.noteArrivals): 0 at the deck, 1 on show, 2 home; up to three, a quarter second apart.
+  const [arrivals, setArrivals] = useState<ReadonlyMap<string, number>>(new Map());
+  const knownHand = useRef<{ game: string; ids: Set<string> } | undefined>(undefined);
+  const arrivalTimers = useRef<number[]>([]);
+  useEffect(() => {
+    if (!snapshot) return;
+    const previous = knownHand.current;
+    knownHand.current = { game: snapshot.id, ids: new Set(handIDs) };
+    if (!previous || previous.game !== snapshot.id || reduceMotion || mulligan) return;
+    const fresh = handIDs.filter((id) => !previous.ids.has(id));
+    if (fresh.length === 0 || fresh.length > 3) return;
+    const set = (id: string, phase: number | undefined) => setArrivals((current) => {
+      const next = new Map(current);
+      if (phase === undefined) next.delete(id); else next.set(id, phase);
+      return next;
+    });
+    fresh.forEach((id, offset) => {
+      set(id, 0);
+      const delay = offset * 250 + 20;
+      arrivalTimers.current.push(window.setTimeout(() => set(id, 1), delay),
+        window.setTimeout(() => set(id, 2), delay + 900), window.setTimeout(() => set(id, undefined), delay + 1140));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handIDs.join(",")]);
+  useEffect(() => () => arrivalTimers.current.forEach((t) => window.clearTimeout(t)), []);
   // A browser over the table keeps the hand resting under its veil.
   const covered = showBrowser || zone !== undefined || stackOpen;
   const carrying = carry?.moved === true;
-  const handUp = mulligan || (handRaised && !boardDecision && !covered && !carrying);
+  // The hand rests tucked along the bottom edge; the card under the pointer pops up whole (ArenaHandPosture: the
+  // landscape board never opens the fan). A browser over the table or a carried card puts the pop down.
+  const handUp = mulligan;
+  const shownPop = !covered && !carrying && !mulligan && popped !== undefined && fanIDs.includes(popped) ? popped : undefined;
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
   const classFor = (card: ZoneCard, onBattlefield: boolean) => {
@@ -517,12 +562,20 @@ export function GameScreen({ table }: { table: GameTable }) {
       opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }, geo).forEach((place, i) =>
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
     });
-    const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(handIDs, handUp, hovered, geo, handRoom);
-    me.zones.hand.forEach((card) => {
-      const place = handPlace.get(card.instanceId)!;
+    const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(fanIDs, handUp, shownPop, geo, handRoom);
+    [...me.zones.hand, ...(mulligan ? [] : extraHand)].forEach((card) => {
+      const home = handPlace.get(card.instanceId)!;
+      const arrival = arrivals.get(card.instanceId);
+      const extra = extraHand.includes(card);
+      // On its way in: at the deck, then whole at the draw spot, then home.
+      const P = ARENA.viewerPiles;
+      const place: Place = arrival === 0
+        ? { ...home, x: ARENA.viewerMedallion.x + (P.library.x - ARENA.viewerMedallion.x) * geo.grow, y: B(P.library.y), r: 0, s: (P.size.w * geo.grow) / home.w, z: 950 }
+        : arrival === 1 ? { ...home, x: ARENA.draw.x, y: Y(ARENA.draw.y), r: 0, s: (ARENA.draw.w * geo.grow) / home.w, z: 950 } : home;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
-        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""}`,
-        onClick: mulligan ? () => inspectCard(card.instanceId) : clickAt(place), onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand,
+        extraZone: extra ? actionsFor(snapshot, card.instanceId).find((a) => a.sourceZone)?.sourceZone ?? (me.zones.graveyard.includes(card) ? "graveyard" : "exile") : undefined,
+        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""}`,
+        onClick: mulligan ? () => inspectCard(card.instanceId) : clickHand, onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand,
         onInspect: inspectCard });
     });
     // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
@@ -794,6 +847,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   })();
 
   const log = snapshot?.log ?? [];
+  // A new prompt closes the corner menu and the player card.
+  useEffect(() => { setCornerMenu(undefined); setPlayerCard(undefined); }, [envelope?.id]);
   // One line of combat context under damage and deaths, decided as each entry first appears (CombatLogReasons).
   const logReasons = useMemo(() => { if (snapshot) combatReasons.current.observe(snapshot); return combatReasons.current.reasons; }, [snapshot]);
   const pool = me?.manaPool;
@@ -876,20 +931,25 @@ export function GameScreen({ table }: { table: GameTable }) {
       onPointerDownCapture={() => gameAudio.unlock()}
       onClickCapture={(event) => { if ((event.target as Element).closest?.(".aplaque, .aff, .acoin, .amenucard .arow, .aundo")) gameAudio.play("ui-tap"); }}
       onPointerMove={(event) => {
-        // The hand rises while the pointer is over it: below the top of the fan as it stands, within its width.
-        if (mulligan || covered || handIDs.length === 0) return;
-        const bounds = wrapRef.current!.getBoundingClientRect();
-        const x = (event.clientX - bounds.left - geo.left) / geo.scale;
-        const y = (event.clientY - bounds.top - geo.top) / geo.scale;
-        const fan = [...handPlaces(handIDs, handRaised, undefined, geo, handRoom).values()];
-        const top = Math.min(...fan.map((p) => p.y - (p.h * (p.s ?? 1)) / 2)) - 6;
-        // Never over your piles: a click on the graveyard raised the hand over it.
+        // Along the resting hand the card under the pointer pops up (ArenaHandFan.panned); the popped card keeps it while
+        // the pointer is on its picture; anywhere else puts it down.
+        if (mulligan || covered || carrying || fanIDs.length === 0) { if (popped) setPopped(undefined); return; }
+        const point = toBoard(event.clientX, event.clientY);
+        const rest = handPlaces(fanIDs, false, undefined, geo, handRoom);
+        const fan = [...rest.values()];
+        const top = Math.min(...fan.map((p) => p.y - (p.h * (p.s ?? 1)) / 2));
+        // Never over your piles.
         const left = Math.max(handRoom.left, Math.min(...fan.map((p) => p.x - p.w / 2)) - 12);
         const right = Math.max(...fan.map((p) => p.x + p.w / 2)) + 12;
-        const over = y > top && x > left && x < right;
-        if (over !== handRaised) setHandRaised(over);
+        const lifted = popped ? handPlaces(fanIDs, false, popped, geo, handRoom).get(popped) : undefined;
+        const onLifted = lifted !== undefined && Math.abs(point.x - lifted.x) <= (lifted.w * (lifted.s ?? 1)) / 2 &&
+          Math.abs(point.y - lifted.y) <= (lifted.h * (lifted.s ?? 1)) / 2;
+        let next: string | undefined;
+        if (point.y >= top - 12 && point.x > left && point.x < right) next = scrubHand(fanIDs, rest, point, popped);
+        else if (onLifted) next = popped;
+        if (next !== popped) setPopped(next);
       }}
-      onPointerLeave={() => setHandRaised(false)}>
+      onPointerLeave={() => setPopped(undefined)}>
       <div className="avignette" ref={vignetteRef} aria-hidden="true" />
       <div className="arena-stage" aria-label="Game table" ref={stageRef}
         style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})` }}>
@@ -1029,6 +1089,17 @@ export function GameScreen({ table }: { table: GameTable }) {
         <div className="acontrols" style={{ zIndex: (primary && primary.style !== "label") || secondary ? 600 : 430 }} onClick={stop}>
           <PhaseStrip step={snapshot?.step} side={activeIsMe ? "me" : "opp"} top={B(secondary ? ARENA.phaseStrip.raisedY : ARENA.phaseStrip.y) - 10}
             onOpen={() => setSheet("stops")} />
+          {/* TavernTableHints: day or night as a small coin, the storm count, above the strip when they matter. */}
+          {snapshot && (snapshot.dayNight || (snapshot.stormCount ?? 0) > 0) && (
+            <div className="ahints" style={{ left: ARENA.phaseStrip.x + ARENA.phaseStrip.w / 2, top: B(secondary ? ARENA.phaseStrip.raisedY : ARENA.phaseStrip.y) - 18 - 9 }}>
+              {snapshot.dayNight && (
+                <i className={`daynight ${snapshot.dayNight === "night" ? "night" : "day"}`} role="img" aria-label={`It's ${snapshot.dayNight}`}>
+                  {snapshot.dayNight === "night" ? MOON : SUN}
+                </i>
+              )}
+              {(snapshot.stormCount ?? 0) > 0 && <b className="storm" aria-label={`Storm count ${snapshot.stormCount}`}>STORM {snapshot.stormCount}</b>}
+            </div>
+          )}
           {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(ARENA.secondary.y) }}
             disabled={(pending && secondary.label !== "Stop") || secondary.disabled} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
@@ -1320,13 +1391,31 @@ export function GameScreen({ table }: { table: GameTable }) {
           );
         })()}
 
-        {(toast || session?.state.errorMessage || table.state.isSuspended || table.state.reconnecting) && (
-          <div className="atoast">{toast ?? session?.state.errorMessage ?? table.state.status}</div>
-        )}
-        {session?.hasPending && !session.state.working && session.state.errorMessage && (
-          <button type="button" className="aplaque leather" style={{ left: 708, top: B(250), width: 176, height: 34, zIndex: 700 }}
-            onClick={(event) => { event.stopPropagation(); session.retryPending().catch(fail); }}>Retry</button>
-        )}
+        {(() => {
+          // The recovery banner (OnDeviceRootView.recoveryBanner): what went wrong, and Refresh, Retry response, Leave.
+          const sticky = session?.state.errorMessage && session.state.errorMessage !== dismissedError ? session.state.errorMessage : undefined;
+          const message = bannerError ?? sticky;
+          const waiting = table.state.isSuspended || table.state.reconnecting;
+          if (!message && !waiting) return null;
+          return (
+            <div className="arecovery" role="alert" onClick={stop}>
+              {message ? (
+                <div className="line">
+                  <span>{message}</span>
+                  <button type="button" className="seal" aria-label="Dismiss notification"
+                    onClick={() => { if (message === session?.state.errorMessage) setDismissedError(message); setBannerError(undefined); }}>✕</button>
+                </div>
+              ) : <div className="line"><span>{table.state.status}</span></div>}
+              <div className="actions">
+                {session && <button type="button" className="aplaque ember inline" disabled={session.state.working} onClick={() => { session.refresh().catch(fail); }}>Refresh</button>}
+                {session?.hasPending && (
+                  <button type="button" className="aplaque leather inline" disabled={session.state.working} onClick={() => { session.retryPending().catch(fail); }}>Retry response</button>
+                )}
+                <button type="button" className="aplaque oxblood inline" onClick={() => table.leave()}>Leave</button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
