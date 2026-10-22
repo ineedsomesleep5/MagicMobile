@@ -8,8 +8,8 @@
 import { useEffect, useRef, useState } from "react";
 import { EngineDisplayText } from "../../core/displayText";
 import {
-  displayToughness, type GameCommand, type GameSnapshot, isCreatureCard, type LegalAction, pileNumber, type PlayerGameState, promptKind,
-  type PromptEnvelopeV2, type XmagePromptPile, type XmageStackObject, type ZoneCard,
+  displayToughness, type GameCommand, type GameSnapshot, isCreatureCard, isUuid, type LegalAction, pileNumber, type PlayerGameState, promptKind,
+  type PromptEnvelopeV2, type XmagePromptAbility, type XmagePromptPile, type XmageStackObject, type ZoneCard,
 } from "../../core/models";
 import { cardImageURL } from "../cardArt";
 import { AbilityCard, isStackAbility } from "./AbilityCard";
@@ -287,7 +287,19 @@ interface Props {
   /** The board's height in points (440 to 717), which sizes the cards. */
   height: number;
   inspect?: Inspect;
+  /** Answer actions this engine accepts (remembered answers and trigger order). */
+  answerActions?: ReadonlySet<string>;
+  /** Orders every trigger at once: `resolveOrder` first resolves first (the board's trigger plan answers the rest). */
+  orderTriggers?: (resolveOrder: XmagePromptAbility[], remember: boolean) => void;
 }
+
+/** XMage offers to remember this yes/no answer (PromptEnvelopeV2.canRememberAnswer). */
+export const canRememberAnswer = (envelope: PromptEnvelopeV2) => {
+  const options = envelope.options ?? {};
+  const original = typeof options.originalId === "string" ? options.originalId : undefined;
+  const message = typeof options.autoAnswerMessage === "string" ? options.autoAnswerMessage : undefined;
+  return envelope.method === "GAME_ASK" && original !== undefined && isUuid(original) && message !== undefined && message.length > 0;
+};
 
 /** XMage's own answers to the prompt (Cancel, Done), less the ones a browser makes itself. */
 const promptAnswers = (snapshot: GameSnapshot, ...except: string[]) =>
@@ -310,7 +322,10 @@ export function Browser(props: Props & { kind: Exclude<BrowserKind, "mulligan" |
 }
 
 /** A question the Arena way (ArenaQuestionStage; the reference's "Pay 2 life?"): its card in the middle, answers under it. */
-function QuestionStage({ snapshot, envelope, send, sendAction, pending, height, inspect }: Props) {
+function QuestionStage({ snapshot, envelope, send, sendAction, pending, height, inspect, answerActions }: Props) {
+  const [remember, setRemember] = useState(false);
+  const rememberable = envelope.confirmation !== undefined && canRememberAnswer(envelope) && answerActions?.has("rememberAnswer") === true;
+  const remembering = rememberable && remember ? { answerActions: ["rememberAnswer"] } : {};
   const { object, card } = questionSubject(snapshot, envelope);
   const subject = object ? sourceName(object) : card?.card.name;
   const { title, detail } = headline(envelope.message, subject, object !== undefined && isStackAbility(object));
@@ -324,9 +339,9 @@ function QuestionStage({ snapshot, envelope, send, sendAction, pending, height, 
         <div className="answers">
           {confirmation ? (
             <>
-              <button type="button" className="aplaque ember" disabled={pending} onClick={() => send({ type: "answer_yes_no", confirmed: true }, confirmation.yesLabel ?? "Yes")}>
+              <button type="button" className="aplaque ember" disabled={pending} onClick={() => send({ type: "answer_yes_no", confirmed: true, ...remembering }, confirmation.yesLabel ?? "Yes")}>
                 {confirmation.yesLabel ?? "Yes"}</button>
-              <button type="button" className="aplaque leather" disabled={pending} onClick={() => send({ type: "answer_yes_no", confirmed: false }, confirmation.noLabel ?? "No")}>
+              <button type="button" className="aplaque leather" disabled={pending} onClick={() => send({ type: "answer_yes_no", confirmed: false, ...remembering }, confirmation.noLabel ?? "No")}>
                 {confirmation.noLabel ?? "No"}</button>
             </>
           ) : (envelope.choices ?? []).map((choice) => (
@@ -335,6 +350,7 @@ function QuestionStage({ snapshot, envelope, send, sendAction, pending, height, 
           ))}
           {plaques(promptAnswers(snapshot, "answer_yes_no", "resolve_choice"), sendAction, pending)}
         </div>
+        {rememberable && <label className="bremember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Don’t ask again this game</label>}
       </div>
     </Veil>
   );
@@ -365,23 +381,46 @@ function ModeBrowser({ snapshot, envelope, send, sendAction, pending, height, in
   );
 }
 
-/** Abilities and triggers as the reference's ability cards in a row; a click picks one (to order triggers, XMage asks for
- * the one that goes on the stack first, then the next). */
-function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height, inspect }: Props) {
-  const ordering = /trigger|goes to the stack first/i.test(envelope.message);
-  const { title, line } = ordering
-    ? { title: "Order your triggers", line: "Choose the one that goes on the stack first: it resolves last." }
+/**
+ * Abilities and triggers as the reference's ability cards in a row (ArenaAbilityBrowser). Choosing an ability: a click
+ * picks it. Ordering triggers: clicks number them in the order they resolve (1 resolves first); Done (from all but one
+ * numbered) or Auto Order hands the whole order to the board, which answers XMage's one-at-a-time questions itself.
+ */
+function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height, inspect, answerActions, orderTriggers }: Props) {
+  const ordering = envelope.method === "GAME_PICK_ABILITY" && orderTriggers !== undefined;
+  const [picked, setPicked] = useState<string[]>([]);
+  const [remember, setRemember] = useState(false);
+  const abilities = envelope.abilities!;
+  const { title, line } = ordering ? { title: "Order your triggers", line: "Tap them in the order they resolve: 1 resolves first." }
     : heading(envelope, "Choose an ability");
   const width = Math.min(height * 0.5, 280) * 0.72;
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const ready = picked.length >= abilities.length - 1;
+  const footer = ordering ? (
+    <>
+      {answerActions?.has("rememberTriggerFirst") && (
+        <label className="bremember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Always put my last-resolving pick first</label>
+      )}
+      <button type="button" className="aplaque leather" disabled={pending} onClick={() => orderTriggers!(abilities, false)}>Auto Order</button>
+      <button type="button" className="aplaque ember" disabled={pending || !ready} onClick={() => {
+        const chosen = picked.map((id) => abilities.find((a) => a.id === id)!).filter(Boolean);
+        orderTriggers!([...chosen, ...abilities.filter((a) => !picked.includes(a.id))], remember);
+      }}>{ready ? "Done" : `${picked.length} of ${abilities.length}`}</button>
+    </>
+  ) : plaques(promptAnswers(snapshot, "choose_ability"), sendAction, pending);
   return (
-    <Frame title={title} detail={line} snapshot={snapshot} k={height / 440} inspect={inspect}
-      footer={plaques(promptAnswers(snapshot, "choose_ability"), sendAction, pending)}>
-      {envelope.abilities!.map((ability) => (
-        <button key={ability.id} type="button" className="bpick" disabled={pending} {...hover(inspect, ability.sourceCard?.card.name ?? ability.sourceName)}
-          onClick={() => send({ type: "choose_ability", abilityId: ability.id }, ability.label)}>
-          <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={width} />
-        </button>
-      ))}
+    <Frame title={title} detail={line} snapshot={snapshot} k={height / 440} inspect={inspect} footer={footer}>
+      {abilities.map((ability) => {
+        const number = picked.indexOf(ability.id) + 1;
+        return (
+          <button key={ability.id} type="button" className={`bpick ${number > 0 ? "numbered" : ""}`} disabled={pending}
+            {...hover(inspect, ability.sourceCard?.card.name ?? ability.sourceName)}
+            onClick={() => (ordering ? toggle(ability.id) : send({ type: "choose_ability", abilityId: ability.id }, ability.label))}>
+            <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={width} />
+            {number > 0 && <span className="bcoin" aria-label={`Resolves ${number}`}>{number}</span>}
+          </button>
+        );
+      })}
     </Frame>
   );
 }

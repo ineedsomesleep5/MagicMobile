@@ -164,6 +164,8 @@ export interface GameCommand {
   promptId?: string; messageId?: number; choiceIds?: string[]; targetIds?: string[]; cardInstanceIds?: string[]; modeIds?: string[];
   pile?: number; amount?: number; amounts?: number[]; orderedIds?: string[]; manaType?: string; playerIds?: string[];
   confirmed?: boolean; expectedBridgeRevision?: number;
+  /** Standing instructions this answer asks for (docs/PROTOCOL.md answer actions): rememberAnswer, rememberTriggerFirst, passUntilStackResolved. */
+  answerActions?: string[];
 }
 
 // ---- decoders ----

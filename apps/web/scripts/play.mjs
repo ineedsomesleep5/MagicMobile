@@ -168,7 +168,20 @@ async function play(page, game) {
     if (await roll.isVisible().catch(() => false) && await roll.isEnabled().catch(() => false)) await roll.click().catch(() => {});
     const state = await page.evaluate(look);
     if (state.ready && state.over) break;
-    if (state.ready && state.turn !== lastTurn) { lastTurn = state.turn; memory.casts = 0; }
+    if (state.ready && state.turn !== lastTurn) {
+      lastTurn = state.turn; memory.casts = 0;
+      console.log(`game ${game} turn ${state.turn} life ${state.life.join("/")} ${state.mine ? "yours" : "theirs"}`);
+    }
+    // A decision nothing answers for two minutes is a stall: say what it was and concede.
+    const stuckKey = state.prompt ? `${state.prompt.id}:${state.prompt.message}` : "none";
+    if (stuckKey !== memory.stuckKey) { memory.stuckKey = stuckKey; memory.stuckSince = Date.now(); }
+    else if (state.prompt?.mine && Date.now() - memory.stuckSince > 120_000) {
+      console.log(`game ${game} stalled on ${JSON.stringify(state.prompt)} actions ${JSON.stringify(state.actions)}`);
+      await page.screenshot({ path: join(out, `game-${game}-stall.png`) });
+      await page.evaluate(() => window.__mm.table.concede());
+      await page.waitForTimeout(3000);
+      break;
+    }
     if (state.ready && state.turn > maxTurns) {
       await page.evaluate(() => window.__mm.table.concede());
       await page.waitForTimeout(3000);

@@ -139,13 +139,17 @@ export interface ArenaCardProps {
   label?: string;
   onClick?: (id: string, event: React.MouseEvent) => void;
   onHover?: (id: string | undefined) => void;
+  /** A hand card: pressing it may start carrying it to the table. */
+  onPress?: (id: string, event: React.PointerEvent) => void;
+  /** Right-click (or a long press) reads the card in the inspector. */
+  onInspect?: (id: string) => void;
 }
 
 /**
  * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
  * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
  */
-export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, classes, label, onClick, onHover }: ArenaCardProps) {
+export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, classes, label, onClick, onHover, onPress, onInspect }: ArenaCardProps) {
   const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
     width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
@@ -159,6 +163,8 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
       aria-label={label ?? (view === "back" ? "Card" : printed)} tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? (event) => onClick(id, event) : undefined}
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}
+      onPointerDown={onPress ? (event) => { if (event.button === 0) onPress(id, event); } : undefined}
+      onContextMenu={onInspect && view !== "back" ? (event) => { event.preventDefault(); onInspect(id); } : undefined}
       onMouseEnter={onHover && view !== "back" ? () => onHover(id) : undefined}
       onMouseLeave={onHover && view !== "back" ? () => onHover(undefined) : undefined}>
       <div className="lean" style={lean}>

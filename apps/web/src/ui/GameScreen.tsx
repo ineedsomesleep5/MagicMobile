@@ -7,7 +7,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
-import { type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type ZoneCard } from "../core/models";
+import {
+  type GameCommand, type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type XmagePromptAbility, type ZoneCard,
+} from "../core/models";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
@@ -15,12 +17,16 @@ import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
 import { AmountPill, Browser, browserKind, cardNamed, type Inspect, type Send, StackBrowser, ZoneBrowser } from "./arena/Browsers";
 import {
-  ARENA, BASE_GEOMETRY, battlefieldPlaces, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, stackPlace,
+  ARENA, BASE_GEOMETRY, battlefieldPlaces, drops, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, stackPlace,
   STAGE,
 } from "./arena/layout";
 import { isStackAbility } from "./arena/AbilityCard";
 import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./arena/autoPayRun";
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
+import { Inspector } from "./arena/Inspector";
+import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
+import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
+import { combatPhase } from "../core/arenaBoard";
 import { BoardFXOverlay, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { ArenaPile } from "./arena/ArenaPile";
@@ -109,6 +115,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   /** A card under the pointer in a browser (the table's own hover is `hovered`). */
   const [browseZoom, setBrowseZoom] = useState<{ name: string; left: boolean }>();
   const [smartSettings, setSmartSettings] = useState<SmartPassSettings>(() => session?.smartPass ?? loadSmartPass(storage.get));
+  const [passAfterCast, setPassAfterCast] = useState(() => storage.get("mm.web.autoPassAfterCast") !== "off");
   const updateSmartPass = (next: SmartPassSettings) => {
     setSmartSettings(next);
     saveSmartPass(next, storage.set);
@@ -129,6 +136,11 @@ export function GameScreen({ table }: { table: GameTable }) {
   /** Where each card lies, kept after it leaves so its departure starts there; and where a card was before its last move. */
   const places = useRef(new Map<string, Place>());
   const movedFrom = useRef(new Map<string, { place: Place; at: number }>());
+  /** The card being read in the inspector (a right-click or a held mouse button), which holds smart pass while open. */
+  const [reading, setReading] = useState<{ id: string; name: string; card?: ZoneCard }>();
+  /** A hand card being carried to the table: where it started and where the pointer is, in board points. */
+  const [carry, setCarry] = useState<{ id: string; start: { x: number; y: number }; point: { x: number; y: number }; moved: boolean }>();
+  const suppressClick = useRef(false);
   /** An opponent's spell is revealed larger toward the middle for its first 1.3 s, then settles onto the stack card. */
   const [revealID, setRevealID] = useState<string>();
   const [, setClockTick] = useState(0);
@@ -147,11 +159,21 @@ export function GameScreen({ table }: { table: GameTable }) {
   const envelope = snapshot?.promptEnvelopeV2;
   const finished = snapshot !== undefined && isCompleted(snapshot);
   const targetIDs = new Set([...(envelope?.targetIds ?? []), ...(envelope?.targets ?? []).map((t) => t.id)]);
-  const combatSelect = envelope?.method === "GAME_SELECT" && envelope?.responseKind === "target";
+  // Which combat declaration the table asks for (ArenaCombatPhase): XMage's target prompt in the declare steps.
+  const combat = snapshot ? combatPhase(snapshot) : undefined;
+  const combatSelect = combat !== undefined;
   const paying = snapshot !== undefined && (snapshot.manaPayment?.active === true || paymentPrompt(snapshot) !== undefined);
   /** Auto Pay running: one tap per settled snapshot (ArenaAutoPayRun). */
   const autoPay = useRef<AutoPayRun | undefined>(undefined);
   const [autoPaying, setAutoPaying] = useState(false);
+  /** All Attack sending one creature per answer (ArenaAttackQueue). */
+  const attackQueue = useRef<AttackQueue | undefined>(undefined);
+  const [attacking, setAttacking] = useState(false);
+  /** Creatures you declared, in order: Take Back undoes the latest. */
+  const declarationOrder = useRef<string[]>([]);
+  /** A chosen trigger order answering XMage's one-at-a-time ordering prompts (arenaTriggerPlan). */
+  const triggerPlan = useRef(new TriggerPlan()).current;
+  const [planning, setPlanning] = useState(false);
   /** A short line that replaces the caption for a moment (arenaShowNotice: 2.4 s unless said otherwise). */
   const [notice, setNotice] = useState<{ text: string; until: number }>();
   const showNotice = useCallback((text: string, seconds = 2.4) => {
@@ -177,6 +199,49 @@ export function GameScreen({ table }: { table: GameTable }) {
   // Every answer from XMage steps Auto Pay once it has landed: a new revision, a new prompt, or the pending answer
   // clearing (ArenaAutoPayDriver).
   const helperKey = `${snapshot?.bridgeRevision ?? -1}|${envelope?.id ?? ""}|${envelope?.messageId ?? -1}|${session?.state.pendingActionID ?? ""}|${session?.state.working}`;
+  const sendTriggerPick = useCallback((pick: TriggerPick) => {
+    const current = session?.state.snapshot;
+    if (!session || !current?.viewerPlayerId) return;
+    session.submit({
+      type: "choose_ability", gameId: current.id, playerId: current.viewerPlayerId, promptId: pick.responsePromptId, messageId: pick.messageId,
+      abilityId: pick.abilityId, answerActions: pick.remember ? ["rememberTriggerFirst"] : undefined, expectedBridgeRevision: current.bridgeRevision,
+    }, "Put a trigger on the stack", `${pick.promptId}-${pick.abilityId}`).catch(fail);
+  }, [session, fail]);
+  useEffect(() => {
+    if (!planning || !session) return;
+    const timer = window.setTimeout(() => {
+      const current = session.state.snapshot;
+      if (!current) return;
+      const pick = triggerPlan.step(current, session.state.working || session.state.pendingActionID !== undefined);
+      if (pick) sendTriggerPick(pick);
+      if (!triggerPlan.active) setPlanning(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [helperKey, planning, session, triggerPlan, sendTriggerPick]);
+  useEffect(() => {
+    if (!attacking || !session) return;
+    const timer = window.setTimeout(() => {
+      const queue = attackQueue.current;
+      const current = session.state.snapshot;
+      if (!queue || !current?.viewerPlayerId) return;
+      const move = queue.step(current, session.state.working || session.state.pendingActionID !== undefined);
+      if (move.kind === "send") {
+        const prompt = current.promptEnvelopeV2!;
+        if (queue.done) { attackQueue.current = undefined; setAttacking(false); }
+        session.submit({ type: "choose_target", gameId: current.id, playerId: current.viewerPlayerId, promptId: prompt.responseCommand?.promptId ?? prompt.id,
+          messageId: prompt.messageId, targetIds: [move.id], expectedBridgeRevision: current.bridgeRevision }, "Attack", `${prompt.id}:attack:${move.id}`)
+          .catch((error) => { attackQueue.current = undefined; setAttacking(false); fail(error); });
+      } else if (move.kind === "end") { attackQueue.current = undefined; setAttacking(false); }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [helperKey, attacking, session, fail]);
+  const orderTriggers = useCallback((resolveOrder: XmagePromptAbility[], remember: boolean) => {
+    const prompt = session?.state.snapshot?.promptEnvelopeV2;
+    if (!prompt) return;
+    const first = triggerPlan.start(resolveOrder, prompt, remember);
+    setPlanning(true);
+    if (first) sendTriggerPick(first);
+  }, [session, triggerPlan, sendTriggerPick]);
   useEffect(() => {
     if (!autoPaying || !session) return;
     const timer = window.setTimeout(() => {
@@ -209,7 +274,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   const browser = rawBrowser === "players" && table.state.roll !== undefined ? undefined : rawBrowser;
   // Auto Pay answers its own colour question; it never opens the choice browser.
   const autoPayColour = autoPaying && envelope?.responseKind.toLowerCase() === "choice";
-  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending && !autoPayColour;
+  // A chosen trigger order answers the ordering prompts it covers; the browser stays shut for them.
+  const planAnswers = planning && snapshot !== undefined && triggerPlan.answers(snapshot);
+  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending && !autoPayColour && !planAnswers;
   // A number takes the button corner (ArenaAmountPill), with the board in view.
   const amountPill = browser === "amount" && !finished;
   const inspect: Inspect = setBrowseZoom;
@@ -218,13 +285,83 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   /** A click on a card: answer a target or combat question with it, or offer its legal actions. */
   const clickCard = (id: string, at?: Place) => {
+    if (suppressClick.current) { suppressClick.current = false; return; }
     if (!snapshot || pending || finished) return;
     setMenu(undefined);
-    if (targetIDs.has(id)) { send({ type: "choose_target", targetIds: [id] }, "Choose"); return; }
+    if (targetIDs.has(id)) {
+      if (combatSelect) declarationOrder.current = [...declarationOrder.current.filter((x) => x !== id), id];
+      send({ type: "choose_target", targetIds: [id] }, "Choose");
+      return;
+    }
     const actions = actionsFor(snapshot, id);
     if (actions.length === 1) sendAction(actions[0]);
     else if (actions.length > 1 && at) setMenu({ id, at, actions });
   };
+  /** Board points for a pointer position. */
+  const toBoard = (clientX: number, clientY: number) => {
+    const bounds = wrapRef.current!.getBoundingClientRect();
+    return { x: (clientX - bounds.left - geo.left) / geo.scale, y: (clientY - bounds.top - geo.top) / geo.scale };
+  };
+  /** Opens the inspector on a card (CardInspector): its printed face, live state, glossary and attachments. */
+  const inspectCard = (id: string) => {
+    const zoneCard = snapshot?.players.flatMap((p) => [...p.zones.battlefield, ...p.zones.hand, ...p.zones.graveyard, ...p.zones.exile, ...p.zones.command])
+      .find((c) => c.instanceId === id);
+    const object = stack.find((o) => o.id === id);
+    const name = zoneCard?.card.name ?? object?.sourceCard?.card.name ?? object?.sourceName ?? object?.name;
+    if (name) setReading({ id, name, card: zoneCard ?? object?.sourceCard });
+  };
+  // Holding the mouse button on a card for 0.35 s reads it, as a held finger does on iOS.
+  const holdTimer = useRef<number | undefined>(undefined);
+  const pressCard = (id: string, event: React.PointerEvent) => {
+    window.clearTimeout(holdTimer.current);
+    const at = { x: event.clientX, y: event.clientY };
+    holdTimer.current = window.setTimeout(() => { suppressClick.current = true; setCarry(undefined); inspectCard(id); }, 350);
+    const cancel = (e: PointerEvent) => {
+      if (e.type !== "pointermove" || Math.hypot(e.clientX - at.x, e.clientY - at.y) > 6) {
+        window.clearTimeout(holdTimer.current);
+        window.removeEventListener("pointermove", cancel); window.removeEventListener("pointerup", cancel);
+      }
+    };
+    window.addEventListener("pointermove", cancel); window.addEventListener("pointerup", cancel);
+  };
+  /** Pressing a hand card may start carrying it to the table (ArenaHandFan's drag). */
+  const pressHand = (id: string, event: React.PointerEvent) => {
+    pressCard(id, event);
+    if (!snapshot || pending || finished || mulligan) return;
+    const start = toBoard(event.clientX, event.clientY);
+    setCarry({ id, start, point: start, moved: false });
+  };
+  useEffect(() => {
+    if (!carry) return;
+    const move = (e: PointerEvent) => setCarry((c) => {
+      if (!c) return c;
+      const point = toBoard(e.clientX, e.clientY);
+      return { ...c, point, moved: c.moved || Math.hypot(point.x - c.start.x, point.y - c.start.y) > 6 };
+    });
+    const up = () => setCarry((c) => {
+      if (c?.moved) {
+        suppressClick.current = true;
+        if (drops(c.point, c.start, geo)) dropCard(c.id);
+      }
+      return undefined;
+    });
+    const cancel = () => setCarry(undefined);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", cancel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carry?.id]);
+  /** A card let go over the table (DragCastDropResolver): its one play goes at once, several open the choice, none says so. */
+  const dropCard = (id: string) => {
+    if (!snapshot) return;
+    const card = me?.zones.hand.find((c) => c.instanceId === id);
+    const plays = actionsFor(snapshot, id).filter((a) => a.type === "play_land" || a.type === "cast_spell");
+    if (plays.length === 1) { sendAction(plays[0]); setHandRaised(false); }
+    else if (plays.length > 1) setMenu({ id, at: { x: STAGE.width / 2, y: Y(ARENA.captionY) + 120, w: 0, h: 0, z: 0 }, actions: plays });
+    else showNotice(`${card?.card.name ?? "That card"} is not currently playable`);
+  };
+
 
   // An opponent's spell (not an ability) holds the reveal for its first 1.3 s, then settles (arenaBeginReveal).
   const topObject = stack[0];
@@ -237,7 +374,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   }, [topObject?.id]);
   // Reading the spell on the stack card (the pointer on it) holds smart pass, as holding a card open does on iOS.
   const readingStack = hovered !== undefined && stack.some((o) => o.id === hovered);
-  useEffect(() => { fx.hold.reading = readingStack; }, [fx.hold, readingStack]);
+  useEffect(() => { fx.hold.reading = readingStack || reading !== undefined; }, [fx.hold, readingStack, reading]);
   useEffect(() => () => { fx.hold.reading = false; }, [fx.hold]);
   // Redraw when the turn banner starts and ends, and when the wipe recap goes.
   const [, setFxTick] = useState(0);
@@ -269,7 +406,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   const boardDecision = paying || combatSelect || (envelope !== undefined && targetIDs.size > 0 && !(me?.zones.hand ?? []).some((c) => targetIDs.has(c.instanceId)));
   // A browser over the table keeps the hand resting under its veil.
   const covered = showBrowser || zone !== undefined || stackOpen;
-  const handUp = mulligan || (handRaised && !boardDecision && !covered);
+  const carrying = carry?.moved === true;
+  const handUp = mulligan || (handRaised && !boardDecision && !covered && !carrying);
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
   const classFor = (card: ZoneCard, onBattlefield: boolean) => {
@@ -291,12 +429,12 @@ export function GameScreen({ table }: { table: GameTable }) {
   if (snapshot && me) {
     battlefieldPlaces(me.zones.battlefield, "me", undefined, geo, frames).forEach((place, id) => {
       const card = me.zones.battlefield.find((c) => c.instanceId === id)!;
-      add({ id, place, view: "tile", card, frames, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
+      add({ id, place, view: "tile", card, frames, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered, onPress: pressCard, onInspect: inspectCard });
     });
     opponents.forEach((opponent, index) => {
       battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }, geo, frames).forEach((place, id) => {
         const card = opponent.zones.battlefield.find((c) => c.instanceId === id)!;
-        add({ id, place, view: "tile", card, frames, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered });
+        add({ id, place, view: "tile", card, frames, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered, onPress: pressCard, onInspect: inspectCard });
       });
       opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }, geo).forEach((place, i) =>
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
@@ -304,8 +442,9 @@ export function GameScreen({ table }: { table: GameTable }) {
     const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(handIDs, handUp, hovered, geo, handRoom);
     me.zones.hand.forEach((card) => {
       const place = handPlace.get(card.instanceId)!;
-      add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true, classes: classFor(card, false),
-        onClick: mulligan ? undefined : clickAt(place), onHover: mulligan ? undefined : setHovered });
+      add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
+        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""}`,
+        onClick: mulligan ? undefined : clickAt(place), onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand, onInspect: inspectCard });
     });
     // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
     stack.slice(0, 1).forEach((item, depth) => {
@@ -323,7 +462,7 @@ export function GameScreen({ table }: { table: GameTable }) {
       add({
         id: item.id, place, view: "face", name, card: item.sourceCard, label: item.name,
         ability: ability ? { source, name: item.sourceName ?? item.name, text: item.rulesText ?? item.name } : undefined,
-        classes: [landing ? "landing" : "", commander ? "commander" : ""].join(" "), onHover: setHovered, onClick: () => setStackOpen(true),
+        classes: [landing ? "landing" : "", commander ? "commander" : ""].join(" "), onHover: setHovered, onClick: () => setStackOpen(true), onInspect: inspectCard,
       });
     });
   }
@@ -358,11 +497,36 @@ export function GameScreen({ table }: { table: GameTable }) {
       const title: [string, string?] = stack.length > 0 ? ["Resolve"] : !activeIsMe ? ["Pass"]
         : phase === 0 ? ["Next", "To Main"] : phase === 1 ? ["Next", "To Combat"] : phase === 2 ? ["Next", "To Main 2"] : ["End Turn"];
       primary = pass && { ...act(pass, "ember", title[0], true)!, subtitle: title[1] };
-    } else if (combatSelect) {
-      const attacking = /attack/i.test(envelope.message);
-      const declared = attacking ? myCreatures.some((c) => c.isAttacking) : myCreatures.some((c) => (c.blocking?.length ?? 0) > 0);
-      primary = act(promptActions.find((a) => a.type === "answer_yes_no"), "ember", attacking ? (declared ? "Attack" : "No Attacks") : (declared ? "Done" : "No Blocks"), true);
-      secondary = act(promptActions.find((a) => a.type === "resolve_choice"), "leather");
+      // Resolve All: one pass that keeps passing until the stack has resolved (GameplayAffordances.resolveStackCommand).
+      if (pass && (snapshot.xmage?.stack.length ?? 0) >= 2 && session?.supportedAnswerActions.has("passUntilStackResolved")) {
+        const command: GameCommand = { type: "pass_priority", gameId: snapshot.id, playerId: pass.playerId, promptId: pass.promptId, messageId: pass.messageId,
+          expectedBridgeRevision: snapshot.bridgeRevision, answerActions: ["passUntilStackResolved"] };
+        secondary = { label: "Resolve All", style: "leather", onClick: () => session.submit(command, "Resolve the stack", `resolve-stack-${pass.promptId ?? ""}`).catch(fail) };
+      }
+    } else if (combat) {
+      // arenaCombatButtons: the count of what you declared finishes it; All Attack before anything is declared; Take Back after.
+      const declared = declaredCount(snapshot, combat);
+      const done = promptActions.find((a) => a.type === "answer_yes_no" && a.confirmed !== false);
+      const finish: Plaque | undefined = done && { label: finishTitle(combat, declared), style: declared === 0 ? "leather" : "ember", want: declared > 0, onClick: () => sendAction(done) };
+      const targetable = boardTargetableIds(snapshot);
+      const candidates = myCreatures.filter((c) => (combat === "attackers" ? c.isAttacking === true : (c.blocking?.length ?? 0) > 0) && targetable.has(c.instanceId));
+      const latest = [...declarationOrder.current].reverse().find((id) => candidates.some((c) => c.instanceId === id)) ?? candidates.at(-1)?.instanceId;
+      const back: Plaque | undefined = latest !== undefined ? { label: "Take Back", style: "leather", onClick: () => {
+        declarationOrder.current = declarationOrder.current.filter((x) => x !== latest);
+        send({ type: "choose_target", targetIds: [latest] }, "Take back");
+        showNotice(`Took back ${myCreatures.find((c) => c.instanceId === latest)?.card.name ?? "the creature"}`);
+      } } : undefined;
+      const everyone = combat === "attackers" && declared === 0 && !attacking ? allAttackTargets(snapshot) : undefined;
+      if (attacking) {
+        primary = { label: "Attacking…", style: "ember", disabled: true };
+        secondary = { label: "Stop", style: "leather", onClick: () => { attackQueue.current = undefined; setAttacking(false); } };
+      } else if (everyone && everyone.length > 0) {
+        primary = { label: "All Attack", style: "ember", want: true, onClick: () => { attackQueue.current = new AttackQueue(everyone); setAttacking(true); } };
+        secondary = finish;
+      } else {
+        primary = finish;
+        secondary = declared > 0 ? back : undefined;
+      }
     } else if (paying) {
       // Auto Pay (arenaPaymentButtons): lit when its plan pays the whole cost, dimmed otherwise (the sources on the table
       // still take clicks); "Paying…" and Stop while it runs; Cancel beside it.
@@ -567,6 +731,51 @@ export function GameScreen({ table }: { table: GameTable }) {
         <div onClick={stop}>
           {[...cards.values()].map((props) => <ArenaCard key={props.id} {...props} />)}
         </div>
+        {snapshot && (snapshot.xmage?.combat.length ?? 0) > 0 && !showBrowser && (
+          // Combat on the table (ArenaCombatArrows): red arcs from attackers to what they attack, grey once blocked, gold from
+          // blockers to the attacker they hold.
+          <svg className="aarrows" viewBox={`0 0 ${STAGE.width} ${geo.height}`} style={{ height: geo.height }} aria-hidden="true">
+            {combatArrows(snapshot.xmage!.combat).map((arrow, index) => {
+              const from = places.current.get(arrow.from);
+              const target = places.current.get(arrow.to);
+              const to = target ? { x: target.x, y: target.y }
+                : (!arrow.toKind || arrow.toKind.toLowerCase() === "player") && snapshot.players.some((p) => p.playerId === arrow.to) ? anchors.player(arrow.to) : undefined;
+              if (!from || !to) return null;
+              const color = arrow.kind === "attack" ? "#ff5233" : arrow.kind === "blockedAttack" ? "#8a8a8a" : "#ffd173";
+              const lift = Math.min(60, Math.hypot(to.x - from.x, to.y - from.y) * 0.25);
+              const c = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - lift };
+              const angle = Math.atan2(to.y - c.y, to.x - c.x);
+              const head = (sign: number) => `${to.x - 12 * Math.cos(angle + sign * Math.PI / 6)},${to.y - 12 * Math.sin(angle + sign * Math.PI / 6)}`;
+              const d = `M${from.x},${from.y} Q${c.x},${c.y} ${to.x},${to.y}`;
+              return (
+                <g key={index} stroke={color} fill="none" strokeLinecap="round">
+                  <path d={d} strokeWidth={9} strokeOpacity={0.35} />
+                  <path d={d} strokeWidth={3} strokeOpacity={0.95} />
+                  <path d={`M${head(-1)} L${to.x},${to.y} L${head(1)}`} strokeWidth={3} />
+                </g>
+              );
+            })}
+          </svg>
+        )}
+        {carrying && carry && (() => {
+          // The carried card follows the pointer, half again its size and leaning with the drag; over the table it settles a
+          // little smaller with an ember shadow when it can be played, and the table's edge lights warm.
+          const card = me?.zones.hand.find((c) => c.instanceId === carry.id);
+          if (!card) return null;
+          const over = drops(carry.point, carry.start, geo);
+          const playable = snapshot !== undefined && actionsFor(snapshot, carry.id).some((a) => a.type === "play_land" || a.type === "cast_spell");
+          const w = ARENA.hand.card.w * geo.handGrow; const h = ARENA.hand.card.h * geo.handGrow;
+          const tilt = Math.max(-12, Math.min(12, (carry.point.x - carry.start.x) * 0.06));
+          return (
+            <>
+              {over && <div className="adropglow" aria-hidden="true" />}
+              <div className={`acarry ${over && playable ? "hot" : ""}`} aria-hidden="true"
+                style={{ width: w, height: h, left: carry.point.x - w / 2, top: carry.point.y - 10 - h / 2, transform: `rotate(${tilt.toFixed(1)}deg) scale(${over ? 1.38 : 1.5})` }}>
+                <img src={cardImageURL(card.card.name, "normal")} alt="" crossOrigin="anonymous" draggable={false} />
+              </div>
+            </>
+          );
+        })()}
         {fxLevel !== "off" && <BoardFXOverlay active={fx.active} subjects={fx.director.subjects} frames={frames} anchors={anchors}
           stackIDs={new Set(stack.map((o) => o.id))} rect={(id) => {
             const moved = movedFrom.current.get(id);
@@ -704,6 +913,11 @@ export function GameScreen({ table }: { table: GameTable }) {
               <label><Check on={smartSettings.enabled} label="Smart Auto-Pass" onToggle={() => updateSmartPass({ ...smartSettings, enabled: !smartSettings.enabled })} />Smart Auto-Pass</label>
               <label><Check on={smartSettings.stopForThreats} label="Stop for Removal" onToggle={() => updateSmartPass({ ...smartSettings, stopForThreats: !smartSettings.stopForThreats })} />Stop for Removal</label>
               <label><Check on={smartSettings.stopForOwnSpells} label="Stop for My Own Spells" onToggle={() => updateSmartPass({ ...smartSettings, stopForOwnSpells: !smartSettings.stopForOwnSpells })} />Stop for My Own Spells</label>
+              {session?.supportedAnswerActions.has("autoPassAfterCast") && (
+                <label><Check on={passAfterCast} label="Pass After Casting" onToggle={() => {
+                  const on = !passAfterCast; setPassAfterCast(on); storage.set("mm.web.autoPassAfterCast", on ? "on" : "off"); session.setAutoPassAfterCast(on);
+                }} />Pass After Casting</label>
+              )}
               <label><Check on={frames} label="Card Frames" onToggle={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }} />Card Frames</label>
               <div className="seg" role="group" aria-label="Effects"><span>Effects</span>
                 {(["full", "reduced", "off"] as const).map((level) => (
@@ -712,6 +926,16 @@ export function GameScreen({ table }: { table: GameTable }) {
                   </button>
                 ))}
               </div>
+              {session && (session.state.rememberedAnswers > 0 || session.state.rememberedTriggerOrders > 0) && (
+                <div className="actions">
+                  {session.state.rememberedAnswers > 0 && (
+                    <button type="button" className="aplaque leather inline" onClick={() => session.forgetRememberedAnswers()}>Ask Again ({session.state.rememberedAnswers} answered)</button>
+                  )}
+                  {session.state.rememberedTriggerOrders > 0 && (
+                    <button type="button" className="aplaque leather inline" onClick={() => session.forgetTriggerOrder()}>Ask Trigger Order Again</button>
+                  )}
+                </div>
+              )}
               <div className="actions">
                 <button type="button" className="aplaque oxblood inline" disabled={!session || finished} onClick={() => { setSheet(undefined); setConfirmConcede(true); }}>Concede</button>
                 <button type="button" className="aplaque leather inline" onClick={() => table.leave()}>{table.solo ? "Quit" : "Leave Table"}</button>
@@ -753,7 +977,7 @@ export function GameScreen({ table }: { table: GameTable }) {
         {showBrowser && snapshot && envelope && (
           <div onClick={stop}>
             <Browser key={`${envelope.id}:${envelope.messageId}`} kind={browser} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction}
-              pending={pending} height={geo.height} inspect={inspect} />
+              pending={pending} height={geo.height} inspect={inspect} answerActions={session?.supportedAnswerActions} orderTriggers={orderTriggers} />
           </div>
         )}
         {amountPill && snapshot && envelope && (() => {
@@ -786,6 +1010,10 @@ export function GameScreen({ table }: { table: GameTable }) {
           </div>
         )}
 
+        {reading && snapshot && (
+          <Inspector card={reading.card} name={reading.name} battlefield={snapshot.players.flatMap((p) => p.zones.battlefield)} height={geo.height}
+            close={() => setReading(undefined)} />
+        )}
         {stackOpen && snapshot && (
           <div onClick={stop}>
             <StackBrowser snapshot={snapshot} height={geo.height} inspect={inspect} close={() => setStackOpen(false)} />

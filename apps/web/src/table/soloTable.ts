@@ -5,7 +5,7 @@
  * mode the table rolls D20s (the player taps their own die, the AI's rolls itself) and answers it with the winner.
  */
 import { EngineClient } from "../core/engineClient";
-import { EngineError, get, type J, type JObject, str } from "../core/json";
+import { arr, EngineError, get, type J, type JObject, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
 import { loadSmartPass } from "../core/smartPass";
 import { storage } from "../ui/storage";
@@ -94,7 +94,11 @@ export class SoloTable implements GameTable {
         if (this.engine.state.stage === "failed") this.fail(this.engine.state.error ?? "The engine stopped.");
       });
       this.set({ status: "Shuffling up…" });
-      const created = await new EngineClient(transport.request).call("create", { configuration: soloConfiguration(this.setup) });
+      const client = new EngineClient(transport.request);
+      // The engine's optional answer actions (remembered answers, trigger order, pass after casting).
+      const capabilities = await client.call("capabilities").catch(() => undefined);
+      const answerActions = (arr(get(capabilities, "answerActions")) ?? []).map((a) => str(a)).filter((a): a is string => a !== undefined);
+      const created = await client.call("create", { configuration: soloConfiguration(this.setup) });
       const matchID = str(get(created, "matchId"));
       if (!matchID) throw EngineError.invalid("The engine did not name the new match.");
       this.matchID = matchID;
@@ -102,6 +106,8 @@ export class SoloTable implements GameTable {
       const session = new GuestSession(transport.request, matchID, SOLO_SEAT, () => this.sessionChanged(), "local");
       session.autoCommand = (snapshot) => this.startingCommand(snapshot);
       session.smartPass = loadSmartPass(storage.get);
+      session.supportedAnswerActions = new Set(answerActions);
+      session.setAutoPassAfterCast(storage.get("mm.web.autoPassAfterCast") !== "off");
       this.session = session;
       session.start();
       this.set({ stage: "playing", status: "Playing the XMage AI on this computer." });

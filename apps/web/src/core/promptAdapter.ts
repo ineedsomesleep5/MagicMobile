@@ -482,4 +482,26 @@ export const OnDevicePromptAdapter = {
         throw invalid(`Incompatible command ${command.type} for ${prompt.kind}`);
     }
   },
+
+  /** The engine's answer actions for a command's requested ones, only where they fit this prompt (docs/PROTOCOL.md). */
+  answerActions(requested: string[], command: GameCommand, prompt: EnginePrompt): J[] {
+    return requested.map((type): J => {
+      const options = obj(prompt.payload.options);
+      if (type === "rememberAnswer" && prompt.kind === "ASK" && command.type === "answer_yes_no") {
+        if (str(options?.originalId) === undefined || str(options?.autoAnswerMessage) === undefined) throw invalid("This question cannot be remembered");
+        return { type, scope: "ability" };
+      }
+      if (type === "rememberTriggerFirst" && prompt.kind === "PICK_ABILITY" && command.type === "choose_ability") return { type };
+      if (type === "passUntilStackResolved" && prompt.kind === "SELECT" && command.type === "pass_priority" && str(prompt.payload.selectMode) === "priority") {
+        return { type };
+      }
+      throw invalid(`${type} does not fit this decision`);
+    });
+  },
+
+  /** The answer with standing instructions attached; unchanged when there are none. */
+  withActions(answer: J, actions: J[]): J {
+    const fields = obj(answer);
+    return actions.length === 0 || !fields ? answer : { ...fields, actions };
+  },
 };

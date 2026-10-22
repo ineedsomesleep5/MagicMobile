@@ -57,6 +57,7 @@ class ScriptedEngine {
         return { ...recorded, viewerId: SOLO_SEAT, revision: 5, prompt: startingPrompt, events: [] };
       }
       case "respond": this.answered = get(request.command, "answer") ?? null; return { accepted: true, revision: 6 };
+      case "capabilities": return { protocol: 1, answerActions: ["rememberAnswer", "rememberTriggerFirst", "passUntilStackResolved", "autoPassAfterCast"] };
       case "concede": this.conceded = true; return {};
       case "destroy": this.destroyed = true; return {};
       default: throw new Error("unexpected " + String(request.op));
@@ -95,7 +96,8 @@ describe("solo table", () => {
     const table = new SoloTable(script.engine(), { name: "Caleb", ...decks(), aiSkill: 2, startingPlayerMode: "roll" }, () => { left = true; });
     await table.start();
     expect(table.state.stage).toBe("playing");
-    expect(script.requests[0].op).toBe("create");
+    // The engine's answer actions first (capabilities), then the match.
+    expect(script.requests.slice(0, 2).map((r) => r.op)).toEqual(["capabilities", "create"]);
 
     // XMage asks the human (seat player1 chooses) who starts: the table rolls instead, the player first.
     await until(() => table.state.roll !== undefined);
@@ -107,7 +109,8 @@ describe("solo table", () => {
     await until(() => script.answered !== undefined, 8_000);
     const winner = table.state.roll!.roll.winnerSeatID;
     expect([VIEWER, OPPONENT]).toContain(winner);
-    expect(script.answered).toEqual({ kind: "uuid", value: winner });
+    // The player's standing preference (pass after casting, on) rides on their first answer.
+    expect(script.answered).toEqual({ kind: "uuid", value: winner, actions: [{ type: "autoPassAfterCast", enabled: true }] });
     expect(table.state.roll!.revealed).toBe(table.state.roll!.roll.steps.length);
 
     await table.concede();

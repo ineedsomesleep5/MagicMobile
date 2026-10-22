@@ -67,13 +67,22 @@ export interface SessionState {
   autoPassStatus: string;
   /** Full control is on for the turn being played: smart pass stops at every priority. */
   fullControl: boolean;
+  /** Questions and trigger orders this seat asked XMage to remember this game, for the "forget" controls. */
+  rememberedAnswers: number;
+  rememberedTriggerOrders: number;
 }
 
 const nowSeconds = () => performance.now() / 1000;
 const pause = (millis: number) => new Promise<void>((resolve) => setTimeout(resolve, millis));
 
 export class GuestSession {
-  state: SessionState = { status: "Connecting", working: false, autoPassing: false, autoPassStatus: "", fullControl: false };
+  state: SessionState = {
+    status: "Connecting", working: false, autoPassing: false, autoPassStatus: "", fullControl: false, rememberedAnswers: 0, rememberedTriggerOrders: 0,
+  };
+  /** Answer actions this game's engine accepts (its `answerActions` capability); empty on older engines. */
+  supportedAnswerActions = new Set<string>();
+  /** Standing instructions waiting for this seat's next answer of any kind (a preference, a reset), by type. */
+  private standingActions = new Map<string, J>();
   private readonly client: EngineClient;
   private poll?: MatchPoll;
   private log = new OnDeviceMessageLog();
@@ -263,6 +272,25 @@ export class GuestSession {
     if (!this.isFullControl) this.scheduleSmartPass();
   }
 
+  /** Passing priority after casting a spell (Game Settings), sent with this seat's next answer. */
+  setAutoPassAfterCast(enabled: boolean) {
+    if (this.supportedAnswerActions.has("autoPassAfterCast")) this.standingActions.set("autoPassAfterCast", { type: "autoPassAfterCast", enabled });
+  }
+
+  /** Forget every remembered answer (asked again from the next one). */
+  forgetRememberedAnswers() {
+    if (!this.supportedAnswerActions.has("resetRememberedAnswers")) return;
+    this.standingActions.set("resetRememberedAnswers", { type: "resetRememberedAnswers" });
+    this.set({ rememberedAnswers: 0 });
+  }
+
+  /** Forget every remembered trigger order. */
+  forgetTriggerOrder() {
+    if (!this.supportedAnswerActions.has("resetTriggerOrder")) return;
+    this.standingActions.set("resetTriggerOrder", { type: "resetTriggerOrder" });
+    this.set({ rememberedTriggerOrders: 0 });
+  }
+
   /** Smart pass settings changed (Game Settings or Phase Stops); applies from the next prompt. */
   setSmartPass(settings: SmartPassSettings) {
     this.smartPass = settings;
@@ -416,7 +444,10 @@ export class GuestSession {
       (command.expectedBridgeRevision !== undefined && command.expectedBridgeRevision !== snapshot.bridgeRevision)) {
       throw EngineError.invalid("The game or decision changed. Refresh before choosing again.");
     }
-    const answer = OnDevicePromptAdapter.answer(command, prompt, snapshot.viewerPlayerId!);
+    const requested = (command.answerActions ?? []).filter((type) => this.supportedAnswerActions.has(type));
+    const standing = [...this.standingActions.values()];
+    const answer = OnDevicePromptAdapter.withActions(OnDevicePromptAdapter.answer(command, prompt, snapshot.viewerPlayerId!),
+      [...OnDevicePromptAdapter.answerActions(requested, command, prompt), ...standing]);
     const source = command.sourceInstanceId ?? command.cardInstanceId;
     if (["make_mana", "activate_ability", "play_land", "cast_spell"].includes(command.type) && command.abilityId && source) {
       this.chosenAbility = { sourceID: source, abilityID: command.abilityId, activationPromptID: prompt.id };
@@ -424,6 +455,11 @@ export class GuestSession {
     this.pending = { promptId: prompt.id, promptRevision: prompt.revision, answer, requestID: newUuid(), label };
     this.set({ pendingActionID: actionID, working: true });
     await this.performPending();
+    // Delivered: the standing instructions went with it (one changed meanwhile is a new value and stays queued), and what
+    // was remembered is counted for the forget controls.
+    for (const [type, value] of [...this.standingActions]) if (standing.includes(value)) this.standingActions.delete(type);
+    if (requested.includes("rememberAnswer")) this.set({ rememberedAnswers: this.state.rememberedAnswers + 1 });
+    if (requested.includes("rememberTriggerFirst")) this.set({ rememberedTriggerOrders: this.state.rememberedTriggerOrders + 1 });
   }
 
   /** Retries the exact pending answer (same request ID) after a timeout or busy host. */

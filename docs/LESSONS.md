@@ -136,6 +136,17 @@ contradicting one.
 
 ## Website
 
+- 2026-10-22 (Claude, web Arena parity): four traps checking the board on the real engine. (1) The desktop app's
+  browser pane runs as a background page whenever the app window isn't in front, even with the pane shown and
+  `document.visibilityState` "visible": `requestAnimationFrame` fires about once a second, so effect flights never drew
+  and the board looked broken. Check animation and timing in headless Chrome (`apps/web/scripts/play.mjs`, which records
+  the session's passes, the board's holds, flights and banners per game). (2) Vite's dev server reloads the whole page
+  when a non-component module changes (`guestSession.ts`, `core/*`), and a reload drops the game: a driver kept looping
+  on the setup screen for 18 minutes. Play long games against `vite preview` of a static build, not the dev server.
+  (3) playwright-core 1.63 looks for headless shell build 1243 while the Mac's cache has 1217/1223: launch the installed
+  Chrome with `channel: "chrome"` instead of downloading browsers. (4) An Edit that put `\u2028` in a regex wrote the raw
+  line-separator character, and esbuild failed with "Unterminated regular expression" pointing at the next line; write
+  such escapes with a script and check with `grep -c $'\xe2\x80\xa8'`.
 - 2026-10-21 (Claude, web on Vercel): Vercel's Hobby plan refuses any static file over 100 MB, and the engine module
   is 137 MB. **Fix:** `stage_vercel.mjs` ships it gzipped (44 MB) and the worker unpacks it with DecompressionStream
   before the hash check. Vercel serves the `.gz` as `application/gzip` with no Content-Encoding, so the browser leaves

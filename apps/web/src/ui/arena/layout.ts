@@ -314,6 +314,19 @@ export function phaseStrip(step: string | undefined): { items: [PhaseKey, "dia" 
   return { items, current };
 }
 
+/**
+ * ArenaLayout.drops: a card carried from `start` and let go at `point` (board points) plays when it is over the table
+ * (above the hand), out of the controls corner, and was carried up at least 24 points or 80 in any direction; a short
+ * slide along the hand puts it back. The table's lower edge and the corner keep their distance from the board's bottom.
+ */
+export const DROP = { lift: 24, carry: 80, area: { x: 0, y: 0, w: 956, h: 352 }, corner: { x: 640, y: 300, w: 316, h: 140 } } as const;
+export function drops(point: { x: number; y: number }, start: { x: number; y: number }, geo: Geometry = BASE_GEOMETRY): boolean {
+  const fromBottom = (y: number) => geo.height - (STAGE.height - y) * geo.grow;
+  const inArea = point.x >= DROP.area.x && point.x <= DROP.area.x + DROP.area.w && point.y >= DROP.area.y && point.y <= fromBottom(DROP.area.y + DROP.area.h);
+  const inCorner = point.x >= DROP.corner.x && point.x <= DROP.corner.x + DROP.corner.w && point.y >= fromBottom(DROP.corner.y);
+  return inArea && !inCorner && (start.y - point.y >= DROP.lift || Math.hypot(point.x - start.x, point.y - start.y) >= DROP.carry);
+}
+
 /** ArenaPileStack: how thick a pile of `count` cards stands, and how many slivers draw it. */
 export function pileThickness(count: number, height: number) {
   const thickness = count > 0 ? Math.max(1.5, count * height * 0.0055) : 0;

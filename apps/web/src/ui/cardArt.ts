@@ -5,7 +5,7 @@
  */
 import type { DeckResolver } from "../core/deckResolver";
 
-export type ArtVersion = "normal" | "art_crop";
+export type ArtVersion = "normal" | "large" | "art_crop";
 
 let resolver: DeckResolver | undefined;
 export const setArtResolver = (value: DeckResolver) => { resolver = value; };

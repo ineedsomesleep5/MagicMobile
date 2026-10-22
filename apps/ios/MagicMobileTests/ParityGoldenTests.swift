@@ -432,6 +432,129 @@ final class ParityGoldenTests: XCTestCase {
         }
     }
 
+    /// arena-board-cases.json: the Arena board's small helpers. The web port (apps/web test/arenaBoard.test.ts) runs the
+    /// same cases.
+    func testArenaBoardCasesOnBothPlatforms() throws {
+        let root = try caseFile("arena-board-cases.json")
+        for item in try XCTUnwrap(root["drops"] as? [[String: Any]]) {
+            let point = item["point"] as! [Double], start = item["start"] as! [Double]
+            XCTAssertEqual(ArenaLayout.landscapeLayout.drops(at: CGPoint(x: point[0], y: point[1]), from: CGPoint(x: start[0], y: start[1])),
+                           item["drops"] as? Bool, "drops · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["glossary"] as? [[String: Any]]) {
+            XCTAssertEqual(ArenaKeywordGlossary.entries(rules: item["rules"] as! String).map(\.keyword), item["keywords"] as? [String],
+                           "glossary · \(item["rules"] ?? "")")
+        }
+        func zones(_ field: [[String: Any]]) -> [String: Any] {
+            ["library": [], "hand": [], "battlefield": field, "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 1, "libraryCount": 50]
+        }
+        for item in try XCTUnwrap(root["commanderTaken"] as? [[String: Any]]) {
+            let theirs = (item["theirs"] as! [String]).enumerated().map { ["instanceId": "x\($0.offset)", "card": ["name": $0.element, "typeLine": "Legendary Creature"]] }
+            let players: [[String: Any]] = [
+                ["playerId": "a", "displayName": "You", "life": 40, "poison": 0, "commanderTax": 0, "zones": zones([]),
+                 "commanders": [["id": "c1", "name": "Chatterfang, Squirrel General", "ownerPlayerId": "a"]]],
+                ["playerId": "b", "displayName": "AI 1", "life": 32, "poison": 0, "commanderTax": 0, "zones": zones(theirs)]]
+            let json: [String: Any] = ["id": "match", "phase": "PRECOMBAT_MAIN", "turn": 9, "activePlayerId": "b", "viewerPlayerId": "a",
+                                       "priorityPlayerId": "b", "players": players, "log": []]
+            let snapshot = try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+            let taken = ArenaCommanderSteal.taken(in: snapshot)
+            XCTAssertEqual(taken, item["taken"] as? [String], "commander · \(item["name"] ?? "")")
+            if let start = item["noticeStarts"] as? String {
+                XCTAssertTrue(ArenaCommanderSteal.notice(taken[0], snapshot: snapshot).hasPrefix(start), "commander · \(item["name"] ?? "")")
+            }
+        }
+        func card(_ id: String, _ name: String) -> ZoneCard {
+            ZoneCard(instanceId: id, card: CardIdentity(name: name, typeLine: "Sorcery", oracleText: nil), tapped: nil,
+                     summoningSickness: nil, cardIcons: nil, counters: nil, power: nil, toughness: nil, isCreaturePermanent: nil,
+                     damage: nil, isAttacking: nil, blocking: nil, attachedToInstanceId: nil)
+        }
+        let extraZones = PlayerZones(library: [], hand: [card("h1", "Shock")], battlefield: [],
+                                     graveyard: [card("g1", "Think Twice"), card("g2", "Lava Spike")],
+                                     exile: [card("e1", "Light Up the Stage"), card("e2", "Gone")], command: [], stack: [])
+        let player = PlayerGameState(playerId: "p1", displayName: "You", life: 40, poison: 0, commanderTax: 0, manaPool: nil,
+                                     zones: extraZones, commanderDamage: nil)
+        for item in try XCTUnwrap(root["extraHand"] as? [[String: Any]]) {
+            let actions: [LegalAction] = try (item["casts"] as! [String]).map { id in
+                try JSONDecoder().decode(LegalAction.self, from: JSONSerialization.data(withJSONObject:
+                    ["id": "cast-\(id)", "type": "cast_spell", "playerId": "p1", "label": "Cast", "cardInstanceId": id]))
+            }
+            XCTAssertEqual(ArenaExtraHand.cards(for: player, actions: actions).map(\.instanceId), item["cards"] as? [String],
+                           "extra hand · \(item["name"] ?? "")")
+        }
+        for item in try XCTUnwrap(root["handPosture"] as? [[String: Any]]) {
+            let s = item["situation"] as? [String: Bool] ?? [:]
+            let posture = ArenaHandPosture.resolve(.init(opened: s["opened"] ?? false, spread: s["spread"] ?? false,
+                                                         boardDecision: s["boardDecision"] ?? false, dragging: s["dragging"] ?? false,
+                                                         spectating: s["spectating"] ?? false))
+            let name: String
+            switch posture { case .raised: name = "raised"; case .resting: name = "resting"; case .spread: name = "spread" }
+            XCTAssertEqual(name, item["posture"] as? String, "posture · \(s)")
+        }
+        for item in try XCTUnwrap(root["loyalty"] as? [[String: Any]]) {
+            let split = ArenaLoyalty.split(item["text"] as! String)
+            XCTAssertEqual(split?.cost, item["cost"] as? String, "loyalty · \(item["text"] ?? "")")
+            if let rest = item["rest"] as? String { XCTAssertEqual(split?.text, rest) }
+        }
+        for item in try XCTUnwrap(root["amounts"] as? [[String: Any]]) {
+            let range = ArenaAmountRange(amounts: item["amounts"] as? [Int], minimum: item["minimum"] as? Int, maximum: item["maximum"] as? Int)
+            for step in item["steps"] as? [[Int]] ?? [] { XCTAssertEqual(range.step(step[0], by: step[1]), step[2]) }
+            if let maximum = item["max"] as? Int { XCTAssertEqual(range.maximum, maximum) }
+            if let values = item["values"] as? [Int] { XCTAssertEqual(range.values, values) }
+            for clamp in item["clamp"] as? [[Int]] ?? [] { XCTAssertEqual(range.clamp(clamp[0]), clamp[1]) }
+        }
+        for item in try XCTUnwrap(root["affordableX"] as? [[String: Any]]) {
+            XCTAssertEqual(ArenaAmountRange.affordableX(cost: item["cost"] as! String, sources: item["sources"] as! Int), item["x"] as? Int)
+        }
+        for item in try XCTUnwrap(root["split"] as? [[String: Any]]) { XCTAssertEqual(ArenaSplit.name(of: item["label"] as! String), item["name"] as? String) }
+        for item in try XCTUnwrap(root["lethal"] as? [[String: Any]]) {
+            XCTAssertEqual(ArenaSplit.lethal(toughness: item["toughness"] as! Int, damage: item["damage"] as! Int, deathtouch: item["deathtouch"] as! Bool),
+                           item["lethal"] as? Int)
+        }
+        for item in try XCTUnwrap(root["choices"] as? [[String: Any]]) {
+            let options = ArenaChoiceList.options((item["options"] as! [[String]]).map { (id: $0[0], label: $0[1]) })
+            XCTAssertEqual(options.map(\.id), item["ids"] as? [String])
+            XCTAssertEqual(options.map(\.rememberID), (item["remember"] as! [Any]).map { $0 as? String })
+            XCTAssertEqual(options.map(\.name), (item["names"] as! [Any]).map { $0 as? String })
+        }
+        for pair in try XCTUnwrap(root["colors"] as? [[Any]]) {
+            XCTAssertEqual(ArenaChoiceList.colorSymbol(pair[0] as! String), pair[1] as? String, "colour · \(pair[0])")
+        }
+    }
+
+    /// answer-action-cases.json: which answer actions a decision can carry. The web port (apps/web
+    /// test/answerActions.test.ts) runs the same cases.
+    func testAnswerActionCasesOnBothPlatforms() throws {
+        let root = try caseFile("answer-action-cases.json")
+        let viewer = try XCTUnwrap(root["viewer"] as? String)
+        func value(_ any: Any) throws -> MagicMobileOnDevice.JSONValue {
+            try MagicMobileOnDevice.JSONValue.decode(JSONSerialization.data(withJSONObject: any, options: [.fragmentsAllowed]))
+        }
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let at = "answer actions · \(item["name"] ?? "")"
+            let spec = try XCTUnwrap(item["prompt"] as? [String: Any])
+            var payload: [String: Any] = ["message": "Engine question", "required": true, "options": [String: Any]()]
+            payload.merge(spec["payload"] as? [String: Any] ?? [:]) { _, new in new }
+            let prompt = try EnginePrompt(value(["promptId": "real-prompt", "revision": 37, "kind": spec["kind"]!, "payload": payload, "submitted": false,
+                                                 "responseTypes": spec["types"]!, "min": 0, "max": 0]))
+            let fields = try XCTUnwrap(item["command"] as? [String: Any])
+            let command = GameCommand(type: fields["type"] as! String, gameId: "match", playerId: viewer,
+                                      sourceInstanceId: fields["sourceInstanceId"] as? String, abilityId: fields["abilityId"] as? String,
+                                      promptId: prompt.id, messageId: 37, confirmed: fields["confirmed"] as? Bool)
+            let requested = item["requested"] as? [String] ?? []
+            let envelope = try OnDevicePromptAdapter.presentation(prompt, viewerPlayerID: viewer, cards: []).envelope
+            if let remember = item["canRemember"] as? Bool { XCTAssertEqual(envelope.canRememberAnswer, remember, at) }
+            if let order = item["triggerOrder"] as? Bool { XCTAssertEqual(envelope.isTriggerOrder, order, at) }
+            if item["error"] as? Bool == true {
+                XCTAssertThrowsError(try OnDevicePromptAdapter.answerActions(requested, command: command, prompt: prompt), at)
+                continue
+            }
+            let actions = try OnDevicePromptAdapter.answerActions(requested, command: command, prompt: prompt)
+            XCTAssertEqual(actions, try value(item["actions"]!).array, at)
+            let answer = OnDevicePromptAdapter.answer(try OnDevicePromptAdapter.answer(for: command, prompt: prompt, viewerPlayerID: viewer), with: actions)
+            XCTAssertEqual(answer, try value(item["answer"]!), at)
+        }
+    }
+
     /// resume-cases.json: the save/resume strings, files, launch outcomes, prompt detail and
     /// game-over rule. ParityGoldenTest.kt runs the same cases on Android.
     @MainActor

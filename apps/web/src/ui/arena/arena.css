@@ -477,3 +477,32 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .afullcontrol { position: absolute; transform: translate(-50%, -100%); z-index: 601; padding: 3px 8px; border-radius: 8px; pointer-events: none;
   font: 800 9px/1 var(--serif); letter-spacing: .1em; text-transform: uppercase; color: #ffe08f; background: rgba(20,14,10,.9); box-shadow: inset 0 0 0 1px #ffb36a; }
 .aff:disabled { opacity: .45; cursor: default; }
+
+/* ---------- carrying a hand card to the table (ArenaHandFan's drag) ---------- */
+.acard.carried { opacity: 0 !important; }
+.acarry { position: absolute; z-index: 2000; pointer-events: none; border-radius: 6px; overflow: hidden; transform-origin: 50% 50%;
+  box-shadow: 0 8px 10px rgba(0,0,0,.7); transition: transform .12s ease-out, box-shadow .2s; }
+.acarry img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.acarry.hot { box-shadow: 0 8px 16px rgba(240,120,50,.75), 0 0 18px rgba(255,140,60,.6); }
+/* the table's edge lights warm while a card is over it: no box, light along the rim */
+.adropglow { position: absolute; inset: 0; z-index: 1990; pointer-events: none; border-radius: 14px; mix-blend-mode: screen;
+  box-shadow: inset 0 0 18px 16px rgba(255,120,50,.45), inset 0 0 0 1.5px rgba(255,214,140,.7); animation: aglowIn .2s ease-out both; }
+@keyframes aglowIn { from { opacity: 0; } }
+
+/* ---------- the inspector (CardInspector, Arena look) ---------- */
+.ainspector { position: absolute; inset: 0; z-index: 900; background: rgba(0,0,0,.45); display: grid; place-items: center; animation: aglowIn .15s ease-out both; }
+.ainspector .row { display: flex; gap: 16px; align-items: center; }
+.ainspector .big { border-radius: 4.5% / 3.2%; overflow: hidden; box-shadow: 0 18px 40px rgba(0,0,0,.7); background: #0d0a08; flex: none; }
+.ainspector .big img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ainspector .big .fallback { display: grid; place-items: center; height: 100%; padding: 20px; font: 700 22px/1.2 var(--serif); color: var(--parchment-ink); background: url(/tavern/parchment.webp) center/200px; }
+.ainspector .notes { width: 300px; max-height: 100%; overflow: auto; display: grid; gap: 10px; align-content: start; }
+.ainspector .note { padding: 12px 14px; display: grid; gap: 4px; font: 500 13px/1.35 var(--serif); }
+.ainspector .note .label { font: 900 10px/1 var(--serif); letter-spacing: .12em; color: #e2b867; margin-bottom: 2px; }
+.ainspector .note p { margin: 0; } .ainspector .note p b { color: #fad685; }
+/* trigger order: a gold rim and a numbered coin on each picked trigger (TavernCoin) */
+.bpick.numbered { transform: scale(1.04); filter: drop-shadow(0 0 8px rgba(255,190,77,.9)); }
+.bpick.numbered > :first-child { box-shadow: 0 0 0 3px #ffd166; border-radius: .75em; }
+.bcoin { position: absolute; left: 50%; top: -17px; width: 34px; height: 34px; margin-left: -17px; border-radius: 50%; display: grid; place-items: center;
+  background: url(/tavern/coin.webp) center/100%; font: 900 16px/1 var(--serif); color: #401f0a; animation: amenuIn .16s ease-out both; }
+/* combat arrows over the table, under the hand */
+.aarrows { position: absolute; left: 0; top: 0; width: 956px; z-index: 150; pointer-events: none; overflow: visible; }
