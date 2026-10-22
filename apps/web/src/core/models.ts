@@ -91,6 +91,8 @@ export interface LegalAction {
   playerIds?: string[]; choiceIds?: string[]; cardInstanceIds?: string[]; modeIds?: string[]; orderedIds?: string[];
   amount?: number; amounts?: number[]; manaType?: string; manaTypes?: string[]; pile?: number; confirmed?: boolean; pay?: boolean;
   useCommandZone?: boolean; messageId?: number; shortLabel?: string; attackers?: AttackDeclaration[]; blockers?: BlockDeclaration[];
+  /** Mana a make_mana action adds (gateway fixtures; the on-device engine leaves Auto Pay to read the label). */
+  producedMana?: string[];
 }
 
 export interface ChoicePromptOption { id: string; label: string; cardInstanceId?: string }
@@ -258,7 +260,7 @@ export const decodeLegalAction = (value: J): LegalAction => ({
   amount: oInt(get(value, "amount")), amounts: ints(get(value, "amounts")), manaType: oStr(get(value, "manaType")),
   manaTypes: strings(get(value, "manaTypes")), pile: opt(get(value, "pile"), flexibleInt), confirmed: oBool(get(value, "confirmed")),
   pay: oBool(get(value, "pay")), useCommandZone: oBool(get(value, "useCommandZone")), messageId: oInt(get(value, "messageId")),
-  shortLabel: oStr(get(value, "shortLabel")),
+  shortLabel: oStr(get(value, "shortLabel")), producedMana: strings(get(value, "producedMana")),
 });
 
 export const decodeEnvelope = (value: J): PromptEnvelopeV2 => ({

@@ -1,0 +1,1380 @@
+{
+  "about": "Smart pass (OnDeviceSmartPass), Stop for Removal (threatensViewer) and the skip modes (OnDeviceYieldPolicy). Contexts are patches over `context`; a prompt patch merges into its prompt, null removes it. passPrompt cases give the Situation fields and Settings patches over `settings`; yield scenarios start the mode on `start` (a patch) and evaluate each step (a patch over the base context, not the previous step), recording the pass when `record` is set; `pass` expects that step's prompt. Shared cases: ParityGoldenTests.swift (iOS), apps/web test/smartPass.test.ts; Android's OnDeviceSmartPass has no threat stops yet (docs/WEB_PARITY.md).",
+  "context": {
+    "matchID": "match",
+    "seatID": "seat",
+    "viewerID": "viewer",
+    "activePlayerID": "viewer",
+    "turn": 3,
+    "phase": "running",
+    "localHumanEnabled": true,
+    "foreground": true,
+    "emptyStack": true,
+    "selfAuthority": true,
+    "resyncRequired": false,
+    "threatToMe": false,
+    "prompt": {
+      "id": "prompt",
+      "revision": 10,
+      "kind": "SELECT",
+      "selectMode": "priority",
+      "allowsBoolean": true,
+      "submitted": false,
+      "manaPlayerID": "viewer"
+    }
+  },
+  "settings": {
+    "enabled": true,
+    "stops": [
+      "mine.main1",
+      "mine.main2",
+      "theirs.declareAttackers",
+      "theirs.end"
+    ],
+    "stopForOwnSpells": false,
+    "stopForThreats": true
+  },
+  "modes": {
+    "safeEndTurn": {
+      "duration": 60,
+      "passLimit": 64
+    },
+    "endTurnSkippingResponses": {
+      "duration": 120,
+      "passLimit": 256
+    },
+    "untilMyTurn": {
+      "duration": 180,
+      "passLimit": 256
+    }
+  },
+  "steps": {
+    "UPKEEP": "upkeep",
+    "DRAW": "draw",
+    "precombat-main": "main1",
+    "PRECOMBAT_MAIN": "main1",
+    "BEGIN_COMBAT": "beginCombat",
+    "DECLARE_ATTACKERS": "declareAttackers",
+    "DECLARE_BLOCKERS": "declareBlockers",
+    "FIRST_COMBAT_DAMAGE": "combatDamage",
+    "COMBAT_DAMAGE": "combatDamage",
+    "END_COMBAT": "endCombat",
+    "POSTCOMBAT_MAIN": "main2",
+    "END_TURN": "end",
+    "CLEANUP": "end",
+    "UNTAP": null
+  },
+  "passPrompt": [
+    {
+      "name": "nothing to play passes",
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": true
+    },
+    {
+      "name": "nothing to play passes with a stack",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": true
+    },
+    {
+      "name": "your main phase is a default stop",
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": true
+      },
+      "pass": false
+    },
+    {
+      "name": "your second main is a default stop",
+      "situation": {
+        "step": "POSTCOMBAT_MAIN",
+        "hasPlay": true
+      },
+      "pass": false
+    },
+    {
+      "name": "their end step is a default stop",
+      "context": {
+        "activePlayerID": "other"
+      },
+      "situation": {
+        "step": "END_TURN",
+        "hasPlay": true
+      },
+      "pass": false
+    },
+    {
+      "name": "their attack with an answer stops",
+      "context": {
+        "activePlayerID": "other"
+      },
+      "situation": {
+        "step": "DECLARE_ATTACKERS",
+        "hasPlay": true
+      },
+      "pass": false
+    },
+    {
+      "name": "your upkeep is no stop",
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true
+      },
+      "pass": true
+    },
+    {
+      "name": "their main phase is no stop",
+      "context": {
+        "activePlayerID": "other"
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": true
+      },
+      "pass": true
+    },
+    {
+      "name": "an older engine's stack with a play stops",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true
+      },
+      "pass": false
+    },
+    {
+      "name": "an unknown step never passes a play",
+      "situation": {
+        "step": "mystery",
+        "hasPlay": true
+      },
+      "pass": false
+    },
+    {
+      "name": "a stop you added holds",
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true
+      },
+      "settings": {
+        "stops": [
+          "mine.upkeep"
+        ]
+      },
+      "pass": false
+    },
+    {
+      "name": "a stop you removed passes",
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": true
+      },
+      "settings": {
+        "stops": [
+          "mine.upkeep"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "name": "your own trigger resolves",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true,
+        "topStackIsMine": true,
+        "hasResponse": true
+      },
+      "pass": true
+    },
+    {
+      "name": "unless you stop for your own spells",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true,
+        "topStackIsMine": true,
+        "hasResponse": true
+      },
+      "settings": {
+        "stopForOwnSpells": true
+      },
+      "pass": false
+    },
+    {
+      "name": "an answer to their spell stops",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true,
+        "topStackIsMine": false,
+        "hasResponse": true
+      },
+      "pass": false
+    },
+    {
+      "name": "nothing answers their spell: it resolves",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true,
+        "topStackIsMine": false,
+        "hasResponse": false
+      },
+      "pass": true
+    },
+    {
+      "name": "an older engine without controllers keeps the stop",
+      "context": {
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "UPKEEP",
+        "hasPlay": true,
+        "hasResponse": true
+      },
+      "pass": false
+    },
+    {
+      "name": "their attack with an answer stops at a stop",
+      "context": {
+        "activePlayerID": "other"
+      },
+      "situation": {
+        "step": "DECLARE_ATTACKERS",
+        "hasPlay": true,
+        "hasResponse": true
+      },
+      "pass": false
+    },
+    {
+      "name": "their attack with nothing that answers it passes",
+      "context": {
+        "activePlayerID": "other"
+      },
+      "situation": {
+        "step": "DECLARE_ATTACKERS",
+        "hasPlay": true,
+        "hasResponse": false
+      },
+      "pass": true
+    },
+    {
+      "name": "main phases keep their stops whatever the response flag says",
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": true,
+        "hasResponse": false
+      },
+      "pass": false
+    },
+    {
+      "name": "Stop for Removal: their sweeper waits for you, answer or not",
+      "context": {
+        "activePlayerID": "other",
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false,
+        "topStackIsMine": false,
+        "hasResponse": false,
+        "threatensMe": true
+      },
+      "pass": false
+    },
+    {
+      "name": "Stop for Removal off lets it resolve",
+      "context": {
+        "activePlayerID": "other",
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false,
+        "topStackIsMine": false,
+        "hasResponse": false,
+        "threatensMe": true
+      },
+      "settings": {
+        "stopForThreats": false
+      },
+      "pass": true
+    },
+    {
+      "name": "a harmless spell of theirs still passes",
+      "context": {
+        "activePlayerID": "other",
+        "emptyStack": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false,
+        "topStackIsMine": false,
+        "hasResponse": false,
+        "threatensMe": false
+      },
+      "pass": true
+    },
+    {
+      "name": "floating mana is yours to spend",
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false,
+        "manaFloating": true
+      },
+      "pass": false
+    },
+    {
+      "name": "smart pass off passes nothing",
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "settings": {
+        "enabled": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers a question",
+      "context": {
+        "prompt": {
+          "kind": "ASK"
+        }
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers declaring attackers",
+      "context": {
+        "prompt": {
+          "selectMode": "attackers"
+        }
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers declaring blockers",
+      "context": {
+        "prompt": {
+          "selectMode": "blockers"
+        }
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers an answer already sent",
+      "context": {
+        "prompt": {
+          "submitted": true
+        }
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers another player's priority",
+      "context": {
+        "prompt": {
+          "manaPlayerID": "other"
+        }
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers no prompt",
+      "context": {
+        "prompt": null
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers no authority",
+      "context": {
+        "selfAuthority": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers a resync",
+      "context": {
+        "resyncRequired": true
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers the background",
+      "context": {
+        "foreground": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers a seat not local",
+      "context": {
+        "localHumanEnabled": false
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    },
+    {
+      "name": "never answers a game that ended",
+      "context": {
+        "phase": "ended"
+      },
+      "situation": {
+        "step": "PRECOMBAT_MAIN",
+        "hasPlay": false
+      },
+      "pass": false
+    }
+  ],
+  "threats": [
+    {
+      "name": "a sweeper",
+      "text": "Destroy all creatures, then return a creature card put into a graveyard this way.",
+      "controller": "b",
+      "targets": [],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": true
+    },
+    {
+      "name": "removal aimed at your creature",
+      "text": "Destroy target creature.",
+      "controller": "b",
+      "targets": [
+        "mine-1"
+      ],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": true
+    },
+    {
+      "name": "an edict",
+      "text": "Each opponent sacrifices a creature.",
+      "controller": "b",
+      "targets": [],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": true
+    },
+    {
+      "name": "a steal of everything",
+      "text": "Gain control of all creatures target player controls.",
+      "controller": "b",
+      "targets": [
+        "a"
+      ],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": true
+    },
+    {
+      "name": "a spell aimed at you",
+      "text": "Target player discards two cards.",
+      "controller": "b",
+      "targets": [
+        "a"
+      ],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": true
+    },
+    {
+      "name": "an ability aimed at you is no threat",
+      "text": "Target player loses 1 life.",
+      "controller": "b",
+      "targets": [
+        "a"
+      ],
+      "objectType": "ABILITY",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": false
+    },
+    {
+      "name": "their spell aimed at their own creature",
+      "text": "Target creature gets +3/+3 until end of turn.",
+      "controller": "b",
+      "targets": [
+        "theirs-1"
+      ],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": false
+    },
+    {
+      "name": "card draw touches nothing of yours",
+      "text": "Draw two cards.",
+      "controller": "b",
+      "targets": [],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": false
+    },
+    {
+      "name": "your own sweeper",
+      "text": "Destroy all creatures.",
+      "controller": "a",
+      "targets": [],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": false
+    },
+    {
+      "name": "nothing of yours to lose",
+      "text": "Destroy all creatures.",
+      "controller": "b",
+      "targets": [],
+      "objectType": "SPELL",
+      "battlefield": [],
+      "threatens": false
+    },
+    {
+      "name": "a bounce of everything",
+      "text": "Return all nonland permanents to their owners' hands.",
+      "controller": "b",
+      "targets": [],
+      "objectType": "SPELL",
+      "battlefield": [
+        "mine-1"
+      ],
+      "threatens": true
+    }
+  ],
+  "yield": [
+    {
+      "name": "a pass is sent once per prompt and never for a stale one",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "expect": "pass",
+          "record": true
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        },
+        {
+          "now": 3,
+          "context": {
+            "prompt": null
+          },
+          "expect": "wait"
+        },
+        {
+          "now": 4,
+          "context": {
+            "prompt": {
+              "id": "next",
+              "revision": 11,
+              "submitted": true
+            }
+          },
+          "expect": "wait"
+        },
+        {
+          "now": 5,
+          "context": {
+            "prompt": {
+              "id": "next",
+              "revision": 11
+            }
+          },
+          "expect": "pass"
+        },
+        {
+          "now": 6,
+          "context": {
+            "prompt": {
+              "id": "next",
+              "revision": 9
+            }
+          },
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at the stack",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false
+          },
+          "expect": "stop:stack"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at authority",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "selfAuthority": false
+          },
+          "expect": "stop:controlChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at a resync",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "resyncRequired": true
+          },
+          "expect": "stop:interrupted"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at a new turn",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "turn": 4
+          },
+          "expect": "stop:turnChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at another active player",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "activePlayerID": "other"
+          },
+          "expect": "stop:turnChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at another match",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "matchID": "other"
+          },
+          "expect": "stop:controlChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at another seat",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "seatID": "other"
+          },
+          "expect": "stop:controlChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at another viewer",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "viewerID": "other"
+          },
+          "expect": "stop:controlChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at the background",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "foreground": false
+          },
+          "expect": "stop:interrupted"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at a seat not local",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "localHumanEnabled": false
+          },
+          "expect": "stop:unavailable"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at a failed game",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "phase": "failed"
+          },
+          "expect": "stop:unavailable"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at a closed game",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "phase": "closed"
+          },
+          "expect": "stop:unavailable"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at an ended game",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "phase": "ended"
+          },
+          "expect": "stop:unavailable"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at a question",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "prompt": {
+              "kind": "ASK"
+            }
+          },
+          "expect": "stop:decision"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at declaring attackers",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "prompt": {
+              "selectMode": "attackers"
+            }
+          },
+          "expect": "stop:decision"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at declaring blockers",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "prompt": {
+              "selectMode": "blockers"
+            }
+          },
+          "expect": "stop:decision"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops at another player's priority",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "prompt": {
+              "manaPlayerID": "other"
+            }
+          },
+          "expect": "stop:controlChanged"
+        },
+        {
+          "now": 2,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "End Turn stops after 60 seconds",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 59.9,
+          "expect": "pass"
+        },
+        {
+          "now": 60,
+          "expect": "stop:limit"
+        }
+      ]
+    },
+    {
+      "name": "a stopped skip waits for an explicit restart",
+      "mode": "safeEndTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "stop": true
+        },
+        {
+          "now": 1,
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "endTurnSkippingResponses passes on the stack but never answers a question",
+      "mode": "endTurnSkippingResponses",
+      "start": {
+        "emptyStack": false
+      },
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false
+          },
+          "expect": "pass"
+        },
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false,
+            "prompt": {
+              "kind": "PICK_TARGET"
+            }
+          },
+          "expect": "stop:decision"
+        },
+        {
+          "now": 2,
+          "context": {
+            "emptyStack": false
+          },
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "endTurnSkippingResponses stops for an opponent's removal",
+      "mode": "endTurnSkippingResponses",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false,
+            "threatToMe": true
+          },
+          "expect": "stop:threat"
+        }
+      ]
+    },
+    {
+      "name": "endTurnSkippingResponses stops at its time limit",
+      "mode": "endTurnSkippingResponses",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 119.5,
+          "expect": "pass"
+        },
+        {
+          "now": 120,
+          "expect": "stop:limit"
+        }
+      ]
+    },
+    {
+      "name": "untilMyTurn passes on the stack but never answers a question",
+      "mode": "untilMyTurn",
+      "start": {
+        "emptyStack": false
+      },
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false
+          },
+          "expect": "pass"
+        },
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false,
+            "prompt": {
+              "kind": "PICK_TARGET"
+            }
+          },
+          "expect": "stop:decision"
+        },
+        {
+          "now": 2,
+          "context": {
+            "emptyStack": false
+          },
+          "expect": "wait"
+        }
+      ]
+    },
+    {
+      "name": "untilMyTurn stops for an opponent's removal",
+      "mode": "untilMyTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "emptyStack": false,
+            "threatToMe": true
+          },
+          "expect": "stop:threat"
+        }
+      ]
+    },
+    {
+      "name": "untilMyTurn stops at its time limit",
+      "mode": "untilMyTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 179.5,
+          "expect": "pass"
+        },
+        {
+          "now": 180,
+          "expect": "stop:limit"
+        }
+      ]
+    },
+    {
+      "name": "Skip to my turn crosses opponents' turns and stops before your next priority",
+      "mode": "untilMyTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "expect": "pass"
+        },
+        {
+          "now": 2,
+          "context": {
+            "turn": 4,
+            "activePlayerID": "opponent2",
+            "emptyStack": false
+          },
+          "expect": "pass"
+        },
+        {
+          "now": 2,
+          "context": {
+            "turn": 5,
+            "activePlayerID": "opponent3",
+            "emptyStack": false
+          },
+          "expect": "pass"
+        },
+        {
+          "now": 3,
+          "context": {
+            "turn": 6,
+            "activePlayerID": "viewer"
+          },
+          "expect": "stop:turnChanged"
+        }
+      ]
+    },
+    {
+      "name": "an extra turn of yours ends Skip to my turn",
+      "mode": "untilMyTurn",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "turn": 4
+          },
+          "expect": "stop:turnChanged"
+        }
+      ]
+    },
+    {
+      "name": "Skip to my turn arms while the opponent thinks",
+      "mode": "untilMyTurn",
+      "start": {
+        "activePlayerID": "opponent",
+        "prompt": null
+      },
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "activePlayerID": "opponent",
+            "prompt": null
+          },
+          "expect": "wait"
+        },
+        {
+          "now": 2,
+          "context": {
+            "turn": 4,
+            "activePlayerID": "viewer"
+          },
+          "expect": "stop:turnChanged"
+        }
+      ]
+    },
+    {
+      "name": "End turn skipping responses stops at the first new turn",
+      "mode": "endTurnSkippingResponses",
+      "start": {},
+      "started": true,
+      "steps": [
+        {
+          "now": 1,
+          "context": {
+            "turn": 4,
+            "activePlayerID": "opponent"
+          },
+          "expect": "stop:turnChanged"
+        }
+      ]
+    },
+    {
+      "name": "End Turn can't start with a stack",
+      "mode": "safeEndTurn",
+      "start": {
+        "emptyStack": false
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "End Turn can't start on the opponent's turn",
+      "mode": "safeEndTurn",
+      "start": {
+        "activePlayerID": "opponent"
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "skipping responses can't start while the opponent thinks",
+      "mode": "endTurnSkippingResponses",
+      "start": {
+        "activePlayerID": "opponent",
+        "prompt": null
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on ASK",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "ASK"
+        }
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on PICK_TARGET",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "PICK_TARGET"
+        }
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on AMOUNT",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "AMOUNT"
+        }
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on MULTI_AMOUNT",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "MULTI_AMOUNT"
+        }
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on PLAY_MANA",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "PLAY_MANA"
+        }
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on PLAY_X_MANA",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "PLAY_X_MANA"
+        }
+      },
+      "started": false,
+      "steps": []
+    },
+    {
+      "name": "no skip starts on CHOOSE_CHOICE",
+      "mode": "untilMyTurn",
+      "start": {
+        "prompt": {
+          "kind": "CHOOSE_CHOICE"
+        }
+      },
+      "started": false,
+      "steps": []
+    }
+  ],
+  "automaticPass": {
+    "smart-pass-p1": true,
+    "auto-pass-p1": true,
+    "pass_priority-p1": false,
+    "cast-spell-42": false,
+    "auto-ability-7": false,
+    "starting-roll-p1": false
+  }
+}

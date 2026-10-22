@@ -99,3 +99,93 @@ describe("smart pass", () => {
     expect(log.entries.map((e) => e.message)).toEqual(["Auto-passed: Upkeep · Draw"]);
   });
 });
+
+// ---------------- smart-pass-cases.json: the same cases iOS runs (ParityGoldenTests) ----------------
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { GameSnapshot } from "../src/core/models";
+import {
+  decodeStops, encodeStops, isAutomaticPass, type SmartPassSettings, threatensViewer, YieldModes, YieldPolicy, type YieldMode,
+} from "../src/core/smartPass";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const cases: any = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "apps/android/core/src/test/resources/parity/smart-pass-cases.json"), "utf8"));
+
+/** A context patch over the cases' base: a prompt patch merges into its prompt, null removes it. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function patched(patch: any = {}): YieldContext {
+  const base = cases.context;
+  const prompt = "prompt" in patch ? (patch.prompt === null ? undefined : { ...base.prompt, ...patch.prompt }) : { ...base.prompt };
+  const value = { ...base, ...patch, prompt };
+  if (value.activePlayerID === null) delete value.activePlayerID;
+  return value;
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const caseSettings = (patch: any = {}): SmartPassSettings => {
+  const merged = { ...cases.settings, ...patch };
+  return { ...merged, stops: new Set(merged.stops) };
+};
+
+describe("smart-pass-cases.json", () => {
+  it("names steps and stores stops like the apps", () => {
+    for (const [raw, key] of Object.entries(cases.steps)) expect(stepFromEngine(raw)?.key ?? null, raw).toBe(key);
+    expect([...defaultSmartPass.stops].sort()).toEqual([...cases.settings.stops].sort());
+    expect({ ...defaultSmartPass, stops: [...defaultSmartPass.stops].sort() }).toEqual({ ...cases.settings, stops: [...cases.settings.stops].sort() });
+    expect(decodeStops(undefined)).toEqual(new Set(cases.settings.stops));
+    expect(decodeStops("")).toEqual(new Set());
+    expect(decodeStops(encodeStops(defaultStops))).toEqual(defaultStops);
+    for (const [mode, value] of Object.entries(cases.modes)) {
+      const { duration, passLimit } = YieldModes[mode as YieldMode];
+      expect({ duration, passLimit }, mode).toEqual(value);
+    }
+    for (const [id, automatic] of Object.entries(cases.automaticPass)) expect(isAutomaticPass(id), id).toBe(automatic);
+  });
+
+  it("passes or stops like the apps", () => {
+    for (const item of cases.passPrompt) {
+      const s = item.situation;
+      const value: Situation = {
+        context: patched(item.context), step: s.step, hasPlay: s.hasPlay ?? false, manaFloating: s.manaFloating ?? false,
+        topStackIsMine: s.topStackIsMine, hasResponse: s.hasResponse ?? true, threatensMe: s.threatensMe ?? false,
+      };
+      expect(passPrompt(value, caseSettings(item.settings)) !== undefined, item.name).toBe(item.pass);
+    }
+  });
+
+  it("reads threats like the apps", () => {
+    for (const item of cases.threats) {
+      const zones = (battlefield: string[]) => ({
+        library: [], hand: [], graveyard: [], exile: [], command: [], stack: [], handCount: 1, libraryCount: 50,
+        battlefield: battlefield.map((id) => ({ instanceId: id, card: { name: "Bear", typeLine: "Creature" } })),
+      });
+      const snapshot = {
+        id: "match", source: "xmage-ondevice", phase: "PRECOMBAT_MAIN", turn: 3, activePlayerId: "b", viewerPlayerId: "a", log: [],
+        players: [{ playerId: "a", life: 40, poison: 0, commanderTax: 0, zones: zones(item.battlefield) },
+          { playerId: "b", life: 40, poison: 0, commanderTax: 0, zones: zones([]) }],
+        xmage: { stack: [{ id: "s1", objectId: "s1", objectType: item.objectType, name: "Spell", rulesText: item.text, controllerId: item.controller, targetIds: item.targets }] },
+      } as unknown as GameSnapshot;
+      expect(threatensViewer(snapshot), item.name).toBe(item.threatens);
+    }
+  });
+
+  it("skips like the apps", () => {
+    for (const scenario of cases.yield) {
+      const policy = new YieldPolicy();
+      const start = patched(scenario.start);
+      expect(YieldPolicy.canStart(start, scenario.mode), `${scenario.name} · canStart`).toBe(scenario.started);
+      expect(policy.start(start, 0, scenario.mode), `${scenario.name} · start`).toBe(scenario.started);
+      for (const [index, step] of scenario.steps.entries()) {
+        const at = `${scenario.name} · step ${index}`;
+        if (step.stop) { policy.stop(); continue; }
+        const value = patched(step.context);
+        const decision = policy.evaluate(value, step.now);
+        const summary = decision.kind === "stop" ? `stop:${decision.reason}` : decision.kind;
+        expect(summary, at).toBe(step.expect);
+        if (decision.kind === "pass") {
+          expect(decision.prompt, at).toEqual(value.prompt);
+          if (step.record) policy.recordPass(decision.prompt);
+        }
+      }
+    }
+  });
+});
