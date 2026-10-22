@@ -242,16 +242,20 @@ async function play(page, game) {
       break;
     }
     if (Date.now() - started > 45 * 60_000) throw new Error("Game took longer than 45 minutes");
-    // Once a game, read the AI's spell on the stack for 3 s (right-click): smart pass must wait for the inspector to close.
-    if (!memory.readTest && state.ready && state.theirTop && state.prompt?.mine && state.prompt.kind === "priority") {
-      memory.readTest = true;
+    // Once a game, read the AI's spell on the stack for 3 s (right-click) while its reveal still holds smart pass: the pass
+    // must wait for the inspector to close (BoardPresentationHold.reading).
+    if (state.theirTop && state.theirTop !== memory.topSeen) { memory.topSeen = state.theirTop; memory.topSeenAt = Date.now(); }
+    if (!memory.readTest && state.ready && state.theirTop && Date.now() - memory.topSeenAt < 800 && state.prompt?.mine && state.prompt.kind === "priority") {
       const card = page.locator(`.acard[data-id="${state.theirTop}"]`);
       if (await card.count() > 0) {
+        memory.readTest = true;
         await card.click({ button: "right", timeout: 2000 }).catch(() => {});
-        await page.evaluate(() => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "inspect-open" }));
+        const opened = await page.evaluate(() => { const t = Math.round(performance.now() - window.__rec.t0); window.__rec.sends.push({ t, type: "inspect-open" }); return t; });
         await page.waitForTimeout(3000);
+        const passedWhileReading = await page.evaluate((from) => window.__rec.sends.some((x) => x.t > from && x.by === "smart"), opened);
         await page.keyboard.press("Escape");
         await page.evaluate(() => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "inspect-close" }));
+        memory.readResult = passedWhileReading ? "smart pass went while the card was being read" : "smart pass waited 3 s for the inspector";
       }
     }
     // The first time each kind of effect plays, a picture of it (evidence for docs/WEB_PARITY.md section 7).
@@ -321,7 +325,7 @@ async function play(page, game) {
   const count = (type) => rec.sends.filter((e) => e.type === type).length;
   const clicks = (label) => rec.sends.filter((e) => e.type === "click" && e.label === label).length;
   return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, drags: count("drag"), autoPay: clicks("Auto Pay"), allAttack: clicks("All Attack"),
-    smartPasses: rec.sends.filter((e) => e.by === "smart").length, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
+    smartPasses: rec.sends.filter((e) => e.by === "smart").length, readHold: memory.readResult ?? "not tested", notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.

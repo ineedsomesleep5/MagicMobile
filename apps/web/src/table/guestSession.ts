@@ -90,6 +90,8 @@ export class GuestSession {
   private rounds = new TableRounds();
   private pending?: Submission;
   private chosenAbility?: ChosenAbility;
+  /** A follow-up ability question being answered for the player: its snapshot, held back until that fails. */
+  private heldAbility?: { promptID: string; snapshot: GameSnapshot };
   private stopped = false;
   private wakeLoop?: () => void;
   private lastActionAt?: number;
@@ -217,9 +219,13 @@ export class GuestSession {
           this.pending = undefined;
         }
         const status = ({ ended: "Game complete", failed: "Game stopped", closed: "Game closed", starting: "Starting game" } as Record<string, string>)[next.phase] ?? "Live";
+        // XMage's "which ability" follow-up for an ability the player already picked is answered without being shown: its
+        // snapshot is held back (the board waits) and published only if that answer fails (heldAbilitySnapshot).
+        const autoAbility = snapshot ? this.chosenAbilityAnswer(next) : undefined;
+        this.heldAbility = autoAbility && snapshot && next.prompt ? { promptID: next.prompt.id, snapshot } : undefined;
         this.set({
-          snapshot, phase: next.phase, status, errorMessage: str(get(get(next.raw, "failure"), "message")),
-          pendingActionID: this.pending ? this.state.pendingActionID : undefined,
+          snapshot: this.heldAbility ? this.state.snapshot : snapshot, phase: next.phase, status, errorMessage: str(get(get(next.raw, "failure"), "message")),
+          pendingActionID: autoAbility ? `auto-ability-${autoAbility}` : this.pending ? this.state.pendingActionID : undefined,
         });
         this.followUp(next, snapshot);
         if (this.state.fullControl !== this.isFullControl) this.set({ fullControl: this.isFullControl });
@@ -231,24 +237,46 @@ export class GuestSession {
     }
   }
 
+  /** The ability the player already picked, when this poll is XMage asking which one (and offers it). */
+  private chosenAbilityAnswer(poll: MatchPoll): string | undefined {
+    const prompt = poll.prompt;
+    const chosen = this.chosenAbility;
+    if (!chosen || !prompt || prompt.submitted || prompt.id === chosen.activationPromptID) return undefined;
+    const rows = prompt.payload.abilities;
+    const offered = ["CHOOSE_ABILITY", "PICK_ABILITY"].includes(prompt.kind) && Array.isArray(rows) &&
+      rows.some((row) => str(get(row, "id")) === chosen.abilityID);
+    return offered ? chosen.abilityID : undefined;
+  }
+
   /** Answers XMage's "which ability" follow-up for the exact ability the player tapped, and the table's automatic answers. */
   private followUp(poll: MatchPoll, snapshot: GameSnapshot | undefined) {
     const prompt = poll.prompt;
     const chosen = this.chosenAbility;
     if (chosen && prompt && !prompt.submitted && prompt.id !== chosen.activationPromptID) {
-      const rows = poll.prompt?.payload.abilities;
-      const offered = ["CHOOSE_ABILITY", "PICK_ABILITY"].includes(prompt.kind) && Array.isArray(rows) &&
-        rows.some((row) => str(get(row, "id")) === chosen.abilityID);
+      const ability = this.chosenAbilityAnswer(poll);
       this.chosenAbility = undefined;
-      if (offered && snapshot) {
+      if (ability && snapshot) {
+        const held = this.heldAbility;
+        // The board shows the old snapshot meanwhile; the answer goes against XMage's prompt.
+        this.set({ pendingActionID: undefined });
         void this.submit({
-          type: "choose_ability", gameId: this.matchID, playerId: snapshot.viewerPlayerId ?? "human", abilityId: chosen.abilityID,
+          type: "choose_ability", gameId: this.matchID, playerId: snapshot.viewerPlayerId ?? "human", abilityId: ability,
           promptId: prompt.id, messageId: prompt.revision,
-        }, "Choose ability", `auto-ability-${chosen.abilityID}`).catch(() => { /* the player answers it by hand */ });
+        }, "Choose ability", `auto-ability-${ability}`).then(() => { if (this.heldAbility === held) this.heldAbility = undefined; })
+          .catch(() => this.publishHeldAbility());
         return;
       }
     }
     this.sendAutoCommand(snapshot);
+  }
+
+  /** Shows the held ability question so the player can answer it by hand. */
+  private publishHeldAbility() {
+    const held = this.heldAbility;
+    this.heldAbility = undefined;
+    if (held && this.poll?.prompt?.id === held.promptID) this.set({ snapshot: held.snapshot });
+    if (this.state.pendingActionID?.startsWith("auto-ability-")) this.set({ pendingActionID: undefined });
+    this.scheduleSmartPass();
   }
 
   private sendAutoCommand(snapshot: GameSnapshot | undefined) {

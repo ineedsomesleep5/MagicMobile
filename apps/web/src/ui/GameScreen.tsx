@@ -806,7 +806,7 @@ export function GameScreen({ table }: { table: GameTable }) {
     const circumference = Math.PI * 2 * 46;
     return (
       <div key={player.playerId}>
-        <button type="button" className={`amed ${targetable ? "targetable" : ready ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
+        <button type="button" className={`amed ${targetable ? (combat === "attackers" ? "targetable attack" : "targetable") : ready ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
           style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }}
           aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : ""}`}
           onClick={(event) => {

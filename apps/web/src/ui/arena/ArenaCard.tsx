@@ -179,7 +179,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
     : undefined;
   const printed = name ?? card?.card.name ?? "";
   return (
-    <div className={`acard ${classes ?? ""}`} data-id={id} data-view={view} data-o={owner} data-hand={inHand ? "" : undefined} style={style} role={onClick ? "button" : undefined}
+    <div className={`acard ${classes ?? ""} ${view === "tile" && card?.phasedIn === false ? "phased" : ""}`} data-id={id} data-view={view} data-o={owner} data-hand={inHand ? "" : undefined} style={style} role={onClick ? "button" : undefined}
       aria-label={label ?? (view === "back" ? "Card" : extraZone ? `${printed}, playable from your ${extraZone.toLowerCase()}` : printed)} tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? (event) => onClick(id, event) : undefined}
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}
@@ -190,6 +190,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
       <div className="lean" style={lean}>
         <div className="spin" style={{ transform: `rotate(${place.r ?? 0}deg) scale(${place.s ?? 1})` }}>
           {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} width={place.w} />)}
+          {view === "tile" && card?.phasedIn === false && <span className="aphased">Phased out</span>}
           {view === "face" && (ability ? <AbilityCard source={ability.source} name={ability.name} text={ability.text} />
             : <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />)}
           {view === "face" && extraZone && (
