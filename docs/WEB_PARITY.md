@@ -125,17 +125,17 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
 | 4.01 | Resting hand tucked at the bottom edge; raised fan geometry | `ArenaHandFanLayout.slot` | done | `ui/arena/layout.ts` | unit | `test/arenaLayout.test.ts` |
-| 4.02 | One card pops whole (rises 92 pt, 1.18x, upright); moving along the hand moves the pop card by card | `ArenaHandFan.tapped`, `scrubCard` | partial (hover raises the fan, lifts the hovered card) | `ui/GameScreen.tsx` | game | |
+| 4.02 | One card pops whole (rises 92 pt, 1.18x, upright); moving along the hand moves the pop card by card | `ArenaHandFan.tapped`, `scrubCard` | done | `ui/arena/layout.ts (handPlaces, scrubHand), ui/GameScreen.tsx` | unit + game | test/arenaLayout.test.ts; game F: the hovered card pops whole and upright (c9fc612e) |
 | 4.03 | Drag a hand card: it follows the pointer at 1.5x with a tilt, 1.38x and an ember shadow over the table | `ArenaHandFan.panned`, `dragPreview` | done | `ui/GameScreen.tsx (carry)` | game | game D: 15 drag casts |
 | 4.04 | Drop rule: inside the play area, outside the controls corner, after 24 pt up or 80 pt any way; otherwise it snaps back | `ArenaLayout.drops` | done | `ui/arena/layout.ts (drops)` | shared + game | arena-board drops cases pass on iOS and web; as 4.03 |
 | 4.05 | While carrying over the table its edge lights warm (no box) | `NativeGameView+Arena.arenaTable` | done | `ui/GameScreen.tsx (.adropglow)` | game | |
-| 4.06 | A drop with several actions opens the action choice at the table centre; a refusal shows feedback | `panEnded`, `DragActionChoicePopup` | partial (click menu) | `ui/GameScreen.tsx` | game | |
+| 4.06 | A drop with several actions opens the action choice at the table centre; a refusal shows feedback | `panEnded`, `DragActionChoicePopup` | done | `ui/GameScreen.tsx (playFromHand)` | game | one play goes at once; several open the choice at the table centre; none says "is not currently playable" |
 | 4.07 | The hand rests during payments, targets, combat, choices, dragging, spectating | `ArenaHandPosture.resolve` | done | `ui/GameScreen.tsx` | game | 2026-10-21 |
-| 4.08 | A step change lowers the hand; a click on the empty table drops a popped card, then lowers the hand | `arenaTapTable`, `arenaBoard onChange` | partial | `ui/GameScreen.tsx` | game | |
+| 4.08 | A step change lowers the hand; a click on the empty table drops a popped card, then lowers the hand | `arenaTapTable`, `arenaBoard onChange` | done | `ui/GameScreen.tsx` | game | the pop follows the pointer along the hand; leaving the hand puts it down (desktop hover for the tap) |
 | 4.09 | Read a hand card (hold on iOS): right-click or a 0.35 s mouse hold opens the inspector | `ArenaHandFan.held` | done | `ui/GameScreen.tsx (pressCard), ui/arena/Inspector.tsx` | game | |
-| 4.10 | Cards playable from graveyard or exile join the fan's right end with a violet shimmer | `ArenaExtraHand`, `ArenaExtraCardShimmer` | missing | | unit + game | |
-| 4.11 | Draws fly from the library (0.5 s), show at the draw spot (0.4 s), join the hand (0.22 s), staggered 0.25 s, at most 3 | `ArenaHandFan.noteArrivals` | missing | | game | |
-| 4.12 | Hand up 0.22 s ease-out with overshoot, down 0.18 s | `postureAnimation` | partial | `ui/arena/arena.css` | game | |
+| 4.10 | Cards playable from graveyard or exile join the fan's right end with a violet shimmer | `ArenaExtraHand`, `ArenaExtraCardShimmer` | done | `core/arenaBoard.ts (extraHandCards), ui/arena/ArenaCard.tsx (.ashimmer)` | shared | arena-board extraHand cases; violet-cyan edge and its zone mark (c9fc612e) |
+| 4.11 | Draws fly from the library (0.5 s), show at the draw spot (0.4 s), join the hand (0.22 s), staggered 0.25 s, at most 3 | `ArenaHandFan.noteArrivals` | done | `ui/GameScreen.tsx (arrivals)` | game | game F: a drawn card mid-flight to the fan (c9fc612e) |
+| 4.12 | Hand up 0.22 s ease-out with overshoot, down 0.18 s | `postureAnimation` | done | `ui/arena/arena.css ([data-hand])` | game | the pop springs in 0.24 s; the landscape board never raises the fan (ArenaHandPosture) |
 | 4.13 | Spread-hand tab (portrait) | `ArenaHandPosture.spread` | n/a (desktop hand always fits; hover reads) | | | |
 
 ## 5. Triggers, prompts and remembered answers (priority 5)
@@ -154,15 +154,15 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 5.10 | "Resolve All" secondary with 2+ stack objects: one pass carrying `passUntilStackResolved` | `GameplayAffordances.resolveStackCommand` | done | `ui/GameScreen.tsx` | shared | as 5.04 |
 | 5.11 | XMage's "which ability" follow-up answered with the exact ability; its snapshot stays hidden unless that fails | `chosenAbilityAnswer`, `heldAbilitySnapshot` | partial (question flashes) | `table/guestSession.ts` | unit | |
 | 5.12 | Commander taken notice (7 s) | `ArenaCommanderSteal` | done | `core/arenaBoard.ts, ui/GameScreen.tsx` | shared | arena-board commanderTaken cases |
-| 5.13 | Main button titles: Resolve; Next (TO MAIN / TO COMBAT / TO MAIN 2); End Turn; Pass; waiting labels | `arenaPassTitle`, `arenaWaitingTitle` | partial | `ui/GameScreen.tsx` | unit | |
-| 5.14 | Prompt corner: the prompt's main action, else "Choices"; secondary the next action | `arenaButtonPlan` | partial | `ui/GameScreen.tsx` | game | |
+| 5.13 | Main button titles: Resolve; Next (TO MAIN / TO COMBAT / TO MAIN 2); End Turn; Pass; waiting labels | `arenaPassTitle`, `arenaWaitingTitle` | done | `ui/GameScreen.tsx` | game | Resolve / Next (To Main, To Combat, To Main 2) / End Turn / Pass; Waiting… while an answer is pending; Opponent’s Turn (41174270) |
+| 5.14 | Prompt corner: the prompt's main action, else "Choices"; secondary the next action | `arenaButtonPlan` | done | `ui/GameScreen.tsx` | game | the prompt’s main action, else Choices (opens More actions); the next action second (b37576cb) |
 | 5.15 | Question stage, mode, choice, player, split, pile browsers | `ArenaBoardViews.swift` | done | `ui/arena/Browsers.tsx` | unit + game | `test/arenaBrowsers.test.ts`, 2026-10-21 |
 | 5.16 | Card choice browsers: effect titles (Scry, Surveil…), wells (BOTTOM / TOP…), multi-select with order coins, "2 OF 3", search over 6 | `BoardCardChoiceView.arenaStage` | partial | `ui/arena/Browsers.tsx` | game | |
 | 5.17 | Response cue on your own priority outside your empty-stack main | `BoardResponseCue.make` | n/a | |  | the response cue is the Hearth board's side rail; the Arena board has none |
-| 5.18 | Captions: "Choose attackers." and the rest | `arenaCaptionText` | partial | `ui/GameScreen.tsx` | unit | |
+| 5.18 | Captions: "Choose attackers." and the rest | `arenaCaptionText` | done | `ui/GameScreen.tsx (promptLine)` | game | arenaCaptionText: Pay {cost}, Choose attackers / who to attack, Choose blockers / the attacker to block, a board target’s message (41174270) |
 | 5.19 | Keyword glossary in the inspector | `ArenaKeywordGlossary` | done | `core/arenaBoard.ts, ui/arena/Inspector.tsx` | shared | arena-board glossary cases |
 | 5.20 | A player-target prompt with more than one pick opens its panel | `arenaSubmitPlayerTarget` | partial | `ui/GameScreen.tsx` | game | |
-| 5.21 | Prompts no browser takes fall back to a glass pop-up with "Open choices" | `CompactPromptPopup` | missing | | game | |
+| 5.21 | Prompts no browser takes fall back to a glass pop-up with "Open choices" | `CompactPromptPopup` | partial | `ui/GameScreen.tsx (More actions)` | game | More actions lists every legal action; iOS’s compact pop-up (1,063 lines) is not ported |
 
 ## 6. Combat (priority 6)
 
@@ -175,7 +175,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 6.05 | Combat arrows: red attack, grey blocked, gold block, amber dashed preview | `ArenaCombatArrows` | done | `ui/arena/combat.ts, ui/GameScreen.tsx` | unit + game | game D end screen: red attack arcs |
 | 6.06 | Attackers glow #ff5a2e (keep colour while tapped), blockers #ffd38a | `arenaGlow` | done | `ui/arena/arena.css` | game | 2026-10-21 |
 | 6.07 | Declared attackers and blockers stay selectable to undo | `OnDevicePromptAdapter.presentation` | done | `core/promptAdapter.ts` | shared | `prompt-cases.json` |
-| 6.08 | Combat keyword badges on attackers and blockers | `ArenaBattlefieldCard` | missing | | game | |
+| 6.08 | Combat keyword badges on attackers and blockers | `ArenaBattlefieldCard` | done | `core/models.ts (abilityBadgePlan), ui/arena/ArenaCard.tsx` | unit | on the Arena board iOS shows keywords as the tile’s icon row, not labelled combat badges; test/arenaBoard.test.ts (46537300) |
 
 ## 7. Effects and sounds (priority 7)
 
@@ -194,7 +194,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 7.11 | Attack and block marks | `BoardFXOverlay` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
 | 7.12 | Strike trails and impact | `BoardFXOverlay` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
 | 7.13 | Life change floats at the medallion; the number rolls | `BoardFXOverlay`, `ArenaHeroMedallion` | partial (built) | `ui/arena/fxPainter.ts (lifeChanged)` | game | port of the BoardFXPainter moment; game check pending |
-| 7.14 | Board shake and red vignette when you take 5+ | `BoardImpactShake`, `BoardHitVignette` | done | `ui/arena/useBoardFX.ts (boardShakes), ui/GameScreen.tsx` | unit | test/boardShake.test.ts (80b1f186) |
+| 7.14 | Board shake and red vignette when you take 5+ | `BoardImpactShake`, `BoardHitVignette` | done | `ui/arena/useBoardFX.ts (boardShakes), ui/GameScreen.tsx` | unit + game | test/boardShake.test.ts; game G: the red flare at the edges as the AI hit for 9 |
 | 7.15 | Turn banner: "Your turn" / "<Name>’s turn", 0.9 s | `BoardTurnBanner.arenaBanner` | done | `ui/arena/useBoardFX.ts` | game | game D |
 | 7.16 | Sounds: board cues by event (casts by type, arrivals by land and creature type, attacks, blocks, strikes, deaths, exile, counters, steal, life), UI cues (tap, pickup, play, draw, open/close, error, response alert, turn, victory/defeat), cooldowns; `.caf` converted to `.m4a` | `GameAudio.swift`, `BoardFXSound.cues`, `GameSoundSignature` | done | `ui/audio.ts, ui/arena/useBoardFX.ts` | unit | test/audio.test.ts; 99 recordings converted by prepare_data.py |
 
@@ -204,27 +204,27 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 |---|---|---|---|---|---|---|
 | 8.01 | Corner plaques, ember / leather / quiet label, pressed state | `ArenaPlaqueButtonStyle` | done | `ui/GameScreen.tsx` | game | 2026-10-21 |
 | 8.02 | Phase strip: 8 icons always, lit track to the current step, spark along the track, ignite | `ArenaPhaseStrip` | done | `ui/GameScreen.tsx (PhaseStrip)` | game | |
-| 8.03 | Day/night coin and storm count above the strip when they matter | `TavernTableHints` | missing | | game | |
-| 8.04 | Gear menu: Game Log, Stack (N), Phase Stops, Full control, Game Settings | `arenaGameMenuItems` | partial | `ui/GameScreen.tsx` | game | |
-| 8.05 | A new prompt closes the corner menu and the player card | `arenaBoard onChange` | missing | | game | |
+| 8.03 | Day/night coin and storm count above the strip when they matter | `TavernTableHints` | done | `ui/GameScreen.tsx (.ahints)` | unit | day/night coin and STORM tag above the strip (c9fc612e) |
+| 8.04 | Gear menu: Game Log, Stack (N), Phase Stops, Full control, Game Settings | `arenaGameMenuItems` | done | `ui/GameScreen.tsx (gameItems)` | game | Game Log, Stack (N), Phase Stops, Full control, More actions, Game Settings |
+| 8.05 | A new prompt closes the corner menu and the player card | `arenaBoard onChange` | done | `ui/GameScreen.tsx` | game | a new prompt id or message closes both |
 | 8.06 | Stack card: only the top object; tab with the count opens the stack browser; it closes when the stack empties | `ArenaStackCard`, `arenaTable` | done | `ui/GameScreen.tsx` | game | |
-| 8.07 | Stack browser: count coin, YOUR RESPONSE / WAITING, numbered coins, RESOLVES NEXT, Stop skipping / Resolve All / Done | `ArenaStackBrowser` | partial | `ui/arena/Browsers.tsx` | game | |
-| 8.08 | Zone browser: Cast plaques, Choose for targets, library wording | `ArenaZoneBrowser` | partial | `ui/arena/Browsers.tsx` | game | |
-| 8.09 | Revealed and Looked-at chips by the opponent's piles | `arenaRevealedChips` | missing | | game | |
-| 8.10 | Top of library revealed face up on the deck, playable | `TopOfLibraryCard` | missing | | game | |
-| 8.11 | Player card: portrait, life, status badges, zone grid with counts, lit where you can cast from, named exile zones | `ArenaPlayerCard` | partial | `ui/GameScreen.tsx` | game | |
-| 8.12 | Medallion glows ember on its owner's turn; status badges around it | `ArenaHeroMedallion`, `TavernEffectOrbitBadges` | partial | `ui/GameScreen.tsx` | game | |
+| 8.07 | Stack browser: count coin, YOUR RESPONSE / WAITING, numbered coins, RESOLVES NEXT, Stop skipping / Resolve All / Done | `ArenaStackBrowser` | done | `ui/arena/Browsers.tsx (StackBrowser)` | game | count coin, YOUR RESPONSE / WAITING, numbered coins, gold rim and RESOLVES NEXT, owner, targets, Stop skipping / Resolve All / Done (46537300) |
+| 8.08 | Zone browser: Cast plaques, Choose for targets, library wording | `ArenaZoneBrowser` | done | `ui/arena/Browsers.tsx (ZoneBrowser)` | game | Cast / action plaques, Choose for targets, iOS’s wording, closes only on a cast (b37576cb) |
+| 8.09 | Revealed and Looked-at chips by the opponent's piles | `arenaRevealedChips` | done | `ui/GameScreen.tsx (.azonepills)` | game | Revealed and Looked at chips at (818, 12) (b37576cb) |
+| 8.10 | Top of library revealed face up on the deck, playable | `TopOfLibraryCard` | done | `ui/GameScreen.tsx (.atoplib)` | game | face up on the deck, tilted 8°, ember when playable, opens the zone (b37576cb) |
+| 8.11 | Player card: portrait, life, status badges, zone grid with counts, lit where you can cast from, named exile zones | `ArenaPlayerCard` | done | `ui/GameScreen.tsx (.aplayercard), core/playerStatus.ts` | unit + game | test/playerStatus.test.ts; game G: AI 1’s card with Command, Graveyard, Library, Hand and its named exile zone (41174270) |
+| 8.12 | Medallion glows ember on its owner's turn; status badges around it | `ArenaHeroMedallion`, `TavernEffectOrbitBadges` | done | `ui/GameScreen.tsx (.amed.active, .aorbit), ui/arena/StatusBadge.tsx` | unit + game | game G: the ember glow on the active player’s medallion; status badges orbit the opponent’s |
 | 8.13 | Game log: gold title, turn dividers, an icon per event, smart pass lines dimmed, card links that open the inspector, oldest at the top, "Latest actions ↓" | `GameLogDrawer` Arena look | done | `core/gameLog.ts, ui/arena/GameLog.tsx` | shared + game | text-cases log goldens and combat-cases log reasons pass; game D screenshots at turns 5, 9, 13 |
 | 8.14 | Inspector: dim 0.45, the card large, live-state notes, glossary, rules when the art can't show them, attachments, double-faced cards turn | `CardInspector.arenaBody` | done | `ui/arena/Inspector.tsx` | game | |
 | 8.15 | Opening hand: "OPENING HAND", message, a large fan dealt in, Mulligan / Keep; click a card to enlarge | `OpeningHandOverlay` | done | `ui/GameScreen.tsx (.amull)` | game | game A-game D: Keep |
-| 8.16 | Result: gold rays and motes on a win, ash on a loss; reason line and game summary | `GameCompletionOverlay`, `GameResultBackdrop` | partial | `ui/GameScreen.tsx (.aresult)` | game | game D: DEFEAT, winner, 10 rounds, combat damage, top attacker; rays/ash backdrop not ported |
-| 8.17 | Notices replace the caption for 2.4 s; rejected actions inline under the caption | `arenaShowNotice`, `ActionRejectionInlineView` | partial (toast) | `ui/GameScreen.tsx` | game | |
-| 8.18 | Tiles: counters (2 chips), COPY tag, keyword badges bottom left | `ArenaBattlefieldCard` | partial | `ui/arena/ArenaCard.tsx` | game | |
-| 8.19 | Rows shrink to 70 % before scrolling | `ArenaRowFit.fit` | partial (overlap) | `ui/arena/layout.ts` | unit | |
+| 8.16 | Result: gold rays and motes on a win, ash on a loss; reason line and game summary | `GameCompletionOverlay`, `GameResultBackdrop` | done | `ui/arena/ResultBackdrop.tsx, ui/GameScreen.tsx` | game | game D, game G: DEFEAT, winner, rounds, combat damage, creatures destroyed, top attacker with token art; the backdrop canvas ported after |
+| 8.17 | Notices replace the caption for 2.4 s; rejected actions inline under the caption | `arenaShowNotice`, `ActionRejectionInlineView` | done | `ui/GameScreen.tsx (showNotice, .arecovery)` | game | notices take the caption for 2.4 s; on-device iOS shows errors in its recovery banner (Refresh, Retry response, Leave), so the web does too (c9fc612e) |
+| 8.18 | Tiles: counters (2 chips), COPY tag, keyword badges bottom left | `ArenaBattlefieldCard` | done | `ui/arena/ArenaCard.tsx (PlainTile)` | unit + game | two counter chips, COPY tag on token copies, the icon row bottom left (46537300) |
+| 8.19 | Rows shrink to 70 % before scrolling | `ArenaRowFit.fit` | done | `ui/arena/layout.ts (fitRow)` | unit | cards shrink to 70 %; past that the web overlaps where iOS scrolls (see Intentionally different) |
 | 8.20 | Turn labels count rounds | `TableRounds` | done | `core/models.ts (TableRounds), ui/GameScreen.tsx` | unit + game | game D: 20 turns read as 10 |
 | 8.21 | Combo loop: offer, repeat modes, forecast, stop reasons | `ComboLoop.swift`, `OnDeviceSession` | missing | | shared + game | |
 | 8.22 | The local poll pace shows every AI action (engine-held poll; iOS polls 0.3 s / 0.12 s chain) | `OnDeviceLocalPollSchedule` | done (different mechanism, same result) | `table/guestSession.ts` | game | 2026-10-21 |
-| 8.23 | Tokens show the Scryfall printing that matches their name, type, rules, colours and printed P/T; a copy shows its source card | `NativeDeckArtwork.imageData` (token path), `NativeAssetStore.matchTokenArtwork`, `NativeArtworkCatalogue.searchToken` | done (game check pending) | `core/tokenArt.ts`, `ui/cardArt.ts` | unit + game | test/tokenArt.test.ts runs the iOS tests' cases (80b1f186); game D showed blank token tiles before the fix |
+| 8.23 | Tokens show the Scryfall printing that matches their name, type, rules, colours and printed P/T; a copy shows its source card | `NativeDeckArtwork.imageData` (token path), `NativeAssetStore.matchTokenArtwork`, `NativeArtworkCatalogue.searchToken` | done | `core/tokenArt.ts, ui/cardArt.ts` | unit + game | test/tokenArt.test.ts; game E, game F, game G: token tiles show their printing, no missing art (notFound empty) |
 
 ## 9. Out of game (priority 8, after every gameplay row)
 
@@ -250,6 +250,9 @@ the board's flights, banners and reveals, and console errors.
 | game B | Token Triumph vs Chaos Incarnate | AI won, turn 11 | 43 smart passes, no page errors (the driver's drags pressed a neighbouring card; fixed) |
 | game C | First Flight vs Chaos Incarnate | page blanked turn 15 | 6 drags, Auto Pay ×6, All Attack ×1, 58 smart passes; a negative canvas radius threw inside an effect and React unmounted the table. Fixed: radii clamp, the painter skips a failing mark, effects sit in an error boundary (80b1f186) |
 | game D | Token Triumph vs Grave Danger | AI won, turn 20 | 15 drag casts, Auto Pay ×8, All Attack ×6, 15 attack declarations, 10 trigger/question answers, 95 smart passes, 56 banners, 31 reveals, no page errors; the log at turns 5, 9, 13; the result screen with its summary. Token tiles were blank (8.23, fixed after) |
+| game E | Token Triumph vs Chaos Incarnate | AI won, turn 17 | 16 drags, Auto Pay ×13, All Attack ×4, 95 smart passes, no page errors; token tiles with their printings |
+| game F | First Flight vs Grave Danger | AI won, turn 15 | the hand pops one card; a drawn card flies in; 5 drags, Auto Pay ×5, All Attack ×4, 70 smart passes, no page errors, no missing resources |
+| game G | Token Triumph vs Chaos Incarnate | AI won, turn 20 | 15 drags, Auto Pay ×8, All Attack ×2, 80 smart passes, no page errors, no missing resources; the player card; the red hit flare |
 
 ## Android follow-ups
 
@@ -266,6 +269,9 @@ Rows whose shared cases Android can't run yet. Each needs a port into `apps/andr
 - Hover reads a card where iOS needs a hold; the full inspector is a right-click.
 - Keyboard shortcuts (Desktop input above) have no iOS counterpart.
 - Polling: the browser engine holds a poll and answers at the next snapshot, where iOS polls on a timer (8.22).
+- A full battlefield row overlaps its cards once they reach 70 % instead of scrolling sideways (8.19).
+- Hovering the hand pops the card under the pointer; iOS pops it on a tap or a slide (4.02, 4.08).
+- With several AI opponents each medallion keeps a name under it; iOS shows one opponent seat at a time.
 
 ## Log
 
