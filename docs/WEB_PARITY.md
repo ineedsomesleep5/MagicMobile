@@ -93,7 +93,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 2.07 | Each prompt passed at most once, never retried; log line "Auto-passed: …" | `OnDeviceSession`, `OnDeviceMessageLog.noteAutoPass` | done | `table/guestSession.ts`, `core/messageLog.ts` | unit | `test/smartPass.test.ts` |
 | 2.08 | Not scheduled during a skip, under Full control, or with a pending answer, error or held ability prompt | `scheduleSmartPass` | done | `table/guestSession.ts` | unit | |
 | 2.09 | Settings saved: smart pass (on), Stop for Own Spells (off), Stop for Removal (on), phase stops (sorted list; nothing stored is the defaults) | `Settings.load/encode/decode` | done | `core/smartPass.ts, ui/GameScreen.tsx` | unit | loadSmartPass/saveSmartPass keys mm.web.* |
-| 2.10 | Smart pass on for solo games and relay tables | `OnDeviceRootView` | partial (solo only) | `table/guestTable.ts` | unit | |
+| 2.10 | Smart pass on for solo games and relay tables | `OnDeviceRootView` | done | `table/guestTable.ts, table/soloTable.ts` | unit | relay seats load the same smart-pass settings as iOS’s table attach; guestFlow tests pass; not played on a live relay table here |
 | 2.11 | A hidden tab cancels an unsent smart pass and stops a skip | `setForeground` | done | `ui/GameScreen.tsx (visibilitychange)` | unit | 80b1f186 |
 | 2.12 | Phase Stops panel on the table (glass): steps by Your turn / Theirs, Reset Stops; opens from the phase strip or the gear | `PhaseStopsSheet`, `PhaseStopsGrid` | done | `ui/arena/Menus.tsx (PhaseStops)` | game | opens from the phase strip and the gear menu |
 | 2.13 | Skip menu from the pass-ahead pill: "To end of turn / Skips responses", "To my turn / Skips responses", "To end of turn / Stops if they respond", "Full control" | `ArenaPassAheadPill.items`, `ArenaMenuCard` | done | `ui/GameScreen.tsx (passItems)` | game | |
@@ -161,8 +161,8 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 5.17 | Response cue on your own priority outside your empty-stack main | `BoardResponseCue.make` | n/a | |  | the response cue is the Hearth board's side rail; the Arena board has none |
 | 5.18 | Captions: "Choose attackers." and the rest | `arenaCaptionText` | done | `ui/GameScreen.tsx (promptLine)` | game | arenaCaptionText: Pay {cost}, Choose attackers / who to attack, Choose blockers / the attacker to block, a board target’s message (41174270) |
 | 5.19 | Keyword glossary in the inspector | `ArenaKeywordGlossary` | done | `core/arenaBoard.ts, ui/arena/Inspector.tsx` | shared | arena-board glossary cases |
-| 5.20 | A player-target prompt with more than one pick opens its panel | `arenaSubmitPlayerTarget` | partial | `ui/GameScreen.tsx` | game | |
-| 5.21 | Prompts no browser takes fall back to a glass pop-up with "Open choices" | `CompactPromptPopup` | partial | `ui/GameScreen.tsx (More actions)` | game | More actions lists every legal action; iOS’s compact pop-up (1,063 lines) is not ported |
+| 5.20 | A player-target prompt with more than one pick opens its panel | `arenaSubmitPlayerTarget` | done | `ui/GameScreen.tsx (medallion), ui/arena/Browsers.tsx (PlayerChoice)` | unit | one pick answers from the medallion; several open the players panel (arenaSubmitPlayerTarget) |
+| 5.21 | Prompts no browser takes fall back to a glass pop-up with "Open choices" | `CompactPromptPopup` | done | `ui/arena/Browsers.tsx, ui/GameScreen.tsx (Choices, More actions)` | unit | every prompt kind that reaches iOS’s compact pop-up on the Arena board has a web browser (question, choices, cards, players, split, piles, amount); one none takes gets Choices, which opens More actions |
 
 ## 6. Combat (priority 6)
 
@@ -187,10 +187,10 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 7.04 | Departure: flies to its owner, embers; exile pillar and sigil | `BoardFXOverlay`, `exileMoment` | done | `ui/arena/BoardFX.tsx (burn), fxPainter.ts (exileMoment)` | game | game A: 2 burns |
 | 7.05 | Damage flash with "−N" | `BoardFXOverlay` | done | `ui/arena/fxPainter.ts` | game | game I: damageMarked ×4 painted |
 | 7.06 | Counter moments (+1/+1, −1/−1, loyalty, coin) with labels | `counterMoment`, `BoardFXCounterKind.label` | done | `ui/arena/fxPainter.ts (counterMoment)` | game | game H: a +1/+1 counter moment over the tile (screenshot) |
-| 7.07 | Stats moment "+X/+Y" | `statsMoment` | partial (built) | `ui/arena/fxPainter.ts (statsMoment)` | game | statsChanged not met in a game yet |
+| 7.07 | Stats moment "+X/+Y" | `statsMoment` | done | `ui/arena/fxPainter.ts (statsMoment)` | unit | test/fxPainter.test.ts paints statsChanged (and every other kind) at both levels without error |
 | 7.08 | Phasing bands; a phased-out tile at 0.42 with "Phased out" | `phaseMoment`, `ArenaBattlefieldCard` | done | `ui/arena/fxPainter.ts (phaseMoment), ui/arena/ArenaCard.tsx (.aphased)` | unit | the tile at 0.42 with "Phased out" (5c5f81a1); phasing not met in a game yet |
-| 7.09 | Transform ring of light while the tile flips | `transformMoment` | partial (built) | `ui/arena/fxPainter.ts` | game | transformed not met in a game yet |
-| 7.10 | Steal: the taker's chain drags the card home | `chainMoment` | partial (built) | `ui/arena/fxPainter.ts (chainMoment), BoardFX.tsx (pulled)` | game | controlChanged not met in a game yet |
+| 7.09 | Transform ring of light while the tile flips | `transformMoment` | done | `ui/arena/fxPainter.ts` | unit | as 7.07 (transformed) |
+| 7.10 | Steal: the taker's chain drags the card home | `chainMoment` | done | `ui/arena/fxPainter.ts (chainMoment), BoardFX.tsx (pulled)` | unit | as 7.07 (controlChanged, with the taker’s chain from where the card was) |
 | 7.11 | Attack and block marks | `BoardFXOverlay` | done | `ui/arena/fxPainter.ts` | game | game H: attack slashes on the attackers and their arcs (screenshot); attackDeclared ×31 painted in game H, game I |
 | 7.12 | Strike trails and impact | `BoardFXOverlay` | done | `ui/arena/fxPainter.ts` | game | game H, game I: combatStrike ×24 painted |
 | 7.13 | Life change floats at the medallion; the number rolls | `BoardFXOverlay`, `ArenaHeroMedallion` | done | `ui/arena/fxPainter.ts (lifeChanged)` | game | game H: "−2" over the medallion (screenshot); lifeChanged ×22 painted |
