@@ -156,6 +156,8 @@ export interface GameSnapshot {
   promptEnvelopeV2?: PromptEnvelopeV2; xmage?: XmageMobileSnapshot; bridgeRevision?: number; xmageCycle?: number;
   pendingStatus?: string; manaPayment?: ManaPayment; gameStatus?: GameStatus; winnerPlayerIds?: string[]; viewerPlayerId?: string;
   dayNight?: string; stormCount?: number;
+  /** Presentation only: the round the turn labels show (TableRounds). */
+  round?: number;
 }
 
 /** A command the board asks the session to send (Swift `GameCommand`). */
@@ -358,6 +360,53 @@ export const decodeXmage = (value: J): XmageMobileSnapshot => {
 // ---- computed properties ----
 
 export const isCompleted = (s: GameSnapshot) => s.gameStatus === "completed";
+
+/**
+ * The round the turn labels show (iOS TableRounds): XMage's turn counts every player's turn, so turn 9 of a two-player
+ * game is round 5. Counted as polls arrive from the first player's turns; `round` is presentation only.
+ */
+export class TableRounds {
+  private gameID?: string;
+  private leader?: string;
+  private lastTurn = 0;
+  private lastActive?: string;
+  private round = 1;
+
+  static estimate(turn: number, playersIn: number) {
+    const n = Math.max(1, playersIn);
+    return Math.max(1, Math.floor((Math.max(1, turn) + n - 1) / n));
+  }
+
+  /** The round for this snapshot, or undefined before the first turn has begun. */
+  observe(snapshot: GameSnapshot): number | undefined {
+    const turn = snapshot.turn;
+    const active = snapshot.activePlayerId;
+    if (turn <= 0 || !active) return this.lastTurn > 0 ? this.round : undefined;
+    const living = snapshot.players.filter((p) => !isOut(p)).map((p) => p.playerId);
+    const n = Math.max(1, living.length);
+    if (snapshot.id !== this.gameID || turn < this.lastTurn) { Object.assign(this, new TableRounds()); this.gameID = snapshot.id; }
+    if (this.lastTurn === 0) {
+      // First sight of the game: turn 1 (or a turn that starts a round by the count) names the leader.
+      this.round = TableRounds.estimate(turn, n);
+      this.leader = (turn - 1) % n === 0 ? active : undefined;
+    } else if (turn > this.lastTurn) {
+      if (turn - this.lastTurn > 1) this.round += Math.floor((turn - this.lastTurn - 1) / n);
+      if (this.leader !== undefined && living.includes(this.leader)) {
+        if (active === this.leader && this.lastActive !== this.leader) this.round += 1;
+      } else if (this.leader !== undefined) this.leader = active;
+      else {
+        this.round = TableRounds.estimate(turn, n);
+        if ((turn - 1) % n === 0) this.leader = active;
+      }
+    }
+    this.lastTurn = turn;
+    this.lastActive = active;
+    return this.round;
+  }
+}
+
+/** The turn the labels show: the round, else XMage's turns over the players still in. */
+export const displayTurn = (s: GameSnapshot) => (s.round !== undefined ? Math.max(1, s.round) : TableRounds.estimate(s.turn, s.players.filter((p) => !isOut(p)).length));
 export const viewerID = (s: GameSnapshot) => s.viewerPlayerId ?? "human";
 export const isOut = (p: PlayerGameState) => p.hasLeft === true;
 export const human = (s: GameSnapshot) => s.players.find((p) => p.playerId === viewerID(s));

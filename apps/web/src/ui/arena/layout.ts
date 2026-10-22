@@ -288,30 +288,39 @@ export const stackPlace = (depth: number, geo: Geometry = BASE_GEOMETRY): Place 
 
 /** The opening hand, large in the middle of the table while the player decides whether to keep it. */
 export function mulliganPlaces(ids: string[], geo: Geometry = BASE_GEOMETRY): Map<string, Place> {
+  // OpeningHandOverlay: up to 116 points wide, overlapping by half a card, each card turned 5° more than the last about
+  // its foot and dropping a little toward the ends; the fan sits just above the board's middle.
   const places = new Map<string, Place>();
   const n = ids.length;
-  const g = geo.handGrow;
-  const pitch = n > 1 ? Math.min(MULLIGAN.pitch * g, 600 / (n - 1)) : 0;
+  const width = Math.min(116 * geo.handGrow, (STAGE.width - 56) / (Math.max(n, 1) * 0.5 + 0.62));
+  const height = width * 1.395;
+  const step = Math.min(width * 0.52, (STAGE.width - 64 - width) / Math.max(n - 1, 1));
+  const mid = (n - 1) / 2;
+  const centerY = geo.height / 2 - 4;
   ids.forEach((id, i) => {
-    const off = i - (n - 1) / 2;
-    places.set(id, { x: MULLIGAN.cx + off * pitch, y: MULLIGAN.y * geo.ky + off * off * 2, w: MULLIGAN.w * g, h: MULLIGAN.h * g, r: off * 1.4, s: 1, z: 820 + i });
+    const off = i - mid;
+    const r = off * 5;
+    // Turned about the card's foot: the centre swings away from the foot's position.
+    const swing = (r * Math.PI) / 180;
+    places.set(id, { x: MULLIGAN.cx + off * step + Math.sin(swing) * height / 2, y: centerY + Math.abs(off) ** 2 * 2.2 + (1 - Math.cos(swing)) * height / 2,
+      w: width, h: height, r, s: 1, z: 820 + i });
   });
   return places;
 }
 
-/** The reference's phase strip: the beginning, main 1, combat (opened up into its steps during combat), main 2, end. */
-export type PhaseKey = "begin" | "main1" | "combat" | "attack" | "block" | "damage" | "endc" | "main2" | "end";
-export function phaseStrip(step: string | undefined): { items: [PhaseKey, "dia" | "card" | "swords" | "sword" | "shield" | "burst"][]; current?: PhaseKey } {
-  const raw = (step ?? "").toUpperCase();
-  const current: PhaseKey | undefined =
-    ["UNTAP", "UPKEEP", "DRAW"].includes(raw) ? "begin" : raw === "PRECOMBAT_MAIN" ? "main1" : raw === "BEGIN_COMBAT" ? "attack"
-      : raw === "DECLARE_ATTACKERS" ? "attack" : raw === "DECLARE_BLOCKERS" ? "block" : raw.includes("COMBAT_DAMAGE") ? "damage"
-        : raw === "END_COMBAT" ? "endc" : raw === "POSTCOMBAT_MAIN" ? "main2" : ["END_TURN", "CLEANUP"].includes(raw) ? "end" : undefined;
-  const combat = current !== undefined && ["attack", "block", "damage", "endc"].includes(current);
-  const items: ReturnType<typeof phaseStrip>["items"] = combat
-    ? [["begin", "dia"], ["main1", "card"], ["attack", "sword"], ["block", "shield"], ["damage", "burst"], ["endc", "dia"], ["main2", "card"], ["end", "dia"]]
-    : [["begin", "dia"], ["main1", "card"], ["combat", "swords"], ["main2", "card"], ["end", "dia"]];
-  return { items, current };
+/** The reference's phase strip (ArenaPhaseStrip): all eight steps of a turn, always shown; `current` is the lit one. */
+export type PhaseKey = "begin" | "main1" | "attack" | "block" | "damage" | "endc" | "main2" | "end";
+export const PHASE_ITEMS: [PhaseKey, "dia" | "card" | "sword" | "shield" | "burst"][] = [
+  ["begin", "dia"], ["main1", "card"], ["attack", "sword"], ["block", "shield"], ["damage", "burst"], ["endc", "dia"], ["main2", "card"], ["end", "dia"],
+];
+export function phaseStrip(step: string | undefined): { items: typeof PHASE_ITEMS; current?: number } {
+  const raw = (step ?? "").toLowerCase().replaceAll("_", "-");
+  const index: Record<string, number> = {
+    beginning: 0, untap: 0, upkeep: 0, draw: 0, "precombat-main": 1, main1: 1, combat: 2, "begin-combat": 2, "declare-attackers": 2,
+    "declare-blockers": 3, "first-combat-damage": 4, "first-strike-damage": 4, "combat-damage": 4, "end-combat": 5, "postcombat-main": 6, main2: 6,
+    ending: 7, end: 7, "end-turn": 7, cleanup: 7,
+  };
+  return { items: PHASE_ITEMS, current: index[raw] };
 }
 
 /**

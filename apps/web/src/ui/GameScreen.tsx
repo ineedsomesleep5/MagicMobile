@@ -8,7 +8,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
 import {
-  type GameCommand, type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type XmagePromptAbility, type ZoneCard,
+  displayTurn, type GameCommand, type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type XmagePromptAbility,
+  type ZoneCard,
 } from "../core/models";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
@@ -26,7 +27,8 @@ import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus
 import { Inspector } from "./arena/Inspector";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
-import { combatPhase } from "../core/arenaBoard";
+import { combatPhase, commandersTaken, commanderTakenNotice } from "../core/arenaBoard";
+import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { ArenaPile } from "./arena/ArenaPile";
@@ -36,6 +38,48 @@ import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
 import { storage } from "./storage";
 import { gameAudio, SOUND_KEYS } from "./audio";
+
+const PHASE_TITLES = ["Beginning", "Main phase 1", "Declare attackers", "Declare blockers", "Combat damage", "End of combat", "Main phase 2", "End step"];
+
+/**
+ * The phase strip (ArenaPhaseStrip): eight icons on a brass track, the part of the turn already played lit in the turn's
+ * colour, the current step lit; moving on sends a spark along the track, then the icon ignites. A click opens Phase Stops.
+ */
+function PhaseStrip({ step, side, top, onOpen }: { step?: string; side: "me" | "opp"; top: number; onOpen: () => void }) {
+  const { items, current } = phaseStrip(step);
+  const width = ARENA.phaseStrip.w;
+  const spacing = (width - 12) / items.length;
+  const x = (i: number) => 6 + spacing * (i + 0.5);
+  const [spark, setSpark] = useState<{ from: number; to: number; key: number; duration: number }>();
+  const [ignite, setIgnite] = useState(0);
+  const previous = useRef(current);
+  useEffect(() => {
+    const old = previous.current;
+    previous.current = current;
+    if (old === undefined || current === undefined || old === current || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setSpark(undefined); return; }
+    const duration = 0.22 + Math.min(0.26, Math.abs(x(current) - x(old)) * 0.0022);
+    const key = Date.now();
+    setSpark({ from: old, to: current, key, duration });
+    const timer = window.setTimeout(() => { setSpark((s) => (s?.key === key ? undefined : s)); setIgnite(key); }, duration * 1000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+  return (
+    <button type="button" className="aphases" data-side={side} style={{ top }} onClick={onOpen}
+      aria-label={current !== undefined ? `${PHASE_TITLES[current]}, phase stops` : "Phase stops"}>
+      <i className="track" />
+      {current !== undefined && current > 0 && <i className="lit" style={{ left: x(0), width: x(current) - x(0) }} />}
+      {items.map(([key, icon], i) => {
+        const on = i === current && spark === undefined;
+        return (
+          <span key={key} className={`aph ${icon === "dia" ? "small" : ""} ${on ? "on" : ""} ${on && ignite ? "ignite" : ""}`} data-ignite={on ? ignite : undefined}
+            style={{ left: x(i) }}>{PHASE_ICONS[icon]}</span>
+        );
+      })}
+      {spark && <i key={spark.key} className="spark" style={{ left: x(spark.from), ["--to" as string]: `${x(spark.to) - x(spark.from)}px`, animationDuration: `${spark.duration}s` }} />}
+    </button>
+  );
+}
 
 const PHASE_ICONS: Record<string, React.ReactNode> = {
   dia: <svg viewBox="0 0 20 20"><path d="M10 3.5l6.5 6.5-6.5 6.5-6.5-6.5z" /></svg>,
@@ -456,7 +500,8 @@ export function GameScreen({ table }: { table: GameTable }) {
       const place = handPlace.get(card.instanceId)!;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
         classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""}`,
-        onClick: mulligan ? undefined : clickAt(place), onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand, onInspect: inspectCard });
+        onClick: mulligan ? () => inspectCard(card.instanceId) : clickAt(place), onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand,
+        onInspect: inspectCard });
     });
     // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
     stack.slice(0, 1).forEach((item, depth) => {
@@ -563,7 +608,6 @@ export function GameScreen({ table }: { table: GameTable }) {
     primary = { label: activeIsMe || !snapshot.activePlayerId ? "Waiting…"
       : opponents.length > 1 ? `${snapshot.players.find((p) => p.playerId === snapshot.activePlayerId)?.displayName ?? "Opponent"}’s Turn` : "Opponent’s Turn", style: "label" };
   }
-  const strip = phaseStrip(snapshot?.step);
   const promptLine = snapshot && envelope && !showBrowser && !mulligan && envelope.responseKind !== "priority"
     ? cleanMessage(paying ? snapshot.manaPayment?.remainingText ?? envelope.message : envelope.message) : !snapshot ? table.state.status : undefined;
   const thinking = snapshot && !envelope && !finished ? thinkingPlayerID(snapshot) : undefined;
@@ -577,6 +621,9 @@ export function GameScreen({ table }: { table: GameTable }) {
     if (roll && roll.nextSeatID === undefined) { const t = window.setTimeout(() => setRollDismissed(true), 3500); return () => window.clearTimeout(t); }
   }, [roll?.nextSeatID, roll]);
   const won = finished && viewer !== undefined && (snapshot!.winnerPlayerIds ?? []).includes(viewer);
+  // What happened this game, for the result screen (GameStats).
+  const stats = useRef(new GameStats());
+  useEffect(() => { if (snapshot) stats.current.record(snapshot); }, [snapshot]);
   useEffect(() => { if (finished) gameAudio.play(won ? "victory" : "defeat", 0.25); }, [finished, won]);
 
   // The relay's turn clock burns its rope smoothly.
@@ -612,6 +659,18 @@ export function GameScreen({ table }: { table: GameTable }) {
       lit: fullControl, action: () => session.toggleFullControl() }] : []),
     { id: "settings", title: "Game Settings", glyph: "settings", action: () => setSheet("settings") },
   ];
+  // Your commander on an opponent's battlefield is named, with why (ArenaCommanderSteal): 7 s in the caption.
+  const taken = snapshot ? commandersTaken(snapshot).join(",") : "";
+  const lastTaken = useRef<string[]>([]);
+  useEffect(() => {
+    const now = taken ? taken.split(",") : [];
+    const fresh = now.find((entry) => !lastTaken.current.includes(entry));
+    if (fresh && snapshot) showNotice(commanderTakenNotice(fresh, snapshot), 7);
+    lastTaken.current = now;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taken]);
+  // The stack browser closes once the stack empties, so it doesn't reopen with the next spell.
+  useEffect(() => { if (stack.length === 0) setStackOpen(false); }, [stack.length]);
   // A new prompt closes the corner menu and the player card.
   useEffect(() => { setCornerMenu(undefined); setPlayerCard(undefined); }, [envelope?.id, envelope?.messageId]);
   // A skip that stops by itself says why, in the caption.
@@ -872,10 +931,8 @@ export function GameScreen({ table }: { table: GameTable }) {
 
         {/* Above the raised hand while there is an answer to give (the prototype's controls z-index). */}
         <div className="acontrols" style={{ zIndex: (primary && primary.style !== "label") || secondary ? 600 : 430 }} onClick={stop}>
-          <div className="aphases" data-side={activeIsMe ? "me" : "opp"} style={{ top: B(secondary ? ARENA.phaseStrip.raisedY : ARENA.phaseStrip.y) - 10 }} aria-hidden="true">
-            <div className="track" />
-            {strip.items.map(([key, icon]) => <span key={key} className={`aph ${icon === "dia" ? "small" : ""} ${strip.current === key ? "on" : ""}`}>{PHASE_ICONS[icon]}</span>)}
-          </div>
+          <PhaseStrip step={snapshot?.step} side={activeIsMe ? "me" : "opp"} top={B(secondary ? ARENA.phaseStrip.raisedY : ARENA.phaseStrip.y) - 10}
+            onOpen={() => setSheet("stops")} />
           {secondary && <button type="button" className={`aplaque abtn2 ${secondary.style}`} style={{ top: B(ARENA.secondary.y) }}
             disabled={(pending && secondary.label !== "Stop") || secondary.disabled} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
@@ -1055,22 +1112,18 @@ export function GameScreen({ table }: { table: GameTable }) {
         })()}
 
         {mulligan && envelope?.confirmation && !showRoll && (
+          // The opening hand (OpeningHandOverlay): XMage's question over the fanned hand, Mulligan and Keep under it.
           <div className="amull" onClick={stop}>
-            {/* Below the opponent's medallion, above the cards. */}
-            <h2 className="title" style={{ top: Y(62) }}>{(() => {
-              // XMage names the active player only once the first turn begins; the roll knows sooner.
-              const first = roll?.roll.winnerSeatID ?? snapshot?.activePlayerId;
-              if (!first) return "Your opening hand";
-              if (first === viewer || first === table.state.localSeatID) return "You go first";
-              const name = table.state.seatNames[first] ?? snapshot?.players.find((p) => p.playerId === first)?.displayName;
-              return name ? `${name} goes first` : "Your opening hand";
-            })()}</h2>
-            <p style={{ top: Y(62) + 36 }}>{cleanMessage(envelope.message)}</p>
-            <div className="tips" style={{ top: B(352) }}><span>Click a card to play it</span><span>Click a land for mana while paying</span><span>Hover a card to read it</span></div>
-            <button type="button" className="aplaque leather" style={{ left: 716, top: B(340) }} disabled={pending}
-              onClick={() => { gameAudio.play("shuffle"); send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan"); }}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
-            <button type="button" className="aplaque ember want" style={{ left: 716, top: B(388) }} disabled={pending}
-              onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
+            <div className="head" style={{ top: geo.height / 2 - 175 }}>
+              <b>OPENING HAND</b>
+              <h2>{cleanMessage(envelope.message)}</h2>
+            </div>
+            <div className="choices" style={{ top: geo.height / 2 + 112 }}>
+              <button type="button" className="aplaque leather" disabled={pending}
+                onClick={() => { gameAudio.play("shuffle"); send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan"); }}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
+              <button type="button" className="aplaque ember want" disabled={pending}
+                onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
+            </div>
           </div>
         )}
 
@@ -1131,21 +1184,47 @@ export function GameScreen({ table }: { table: GameTable }) {
           </div>
         )}
 
-        {(finished || table.state.stage === "failed") && (
-          <div className="aresult" data-win={won ? "true" : "false"} onClick={stop}>
-            <div className="glory" />
-            <div className="box glass">
-              <div className="medal"><div className="av">{AVATAR.me}</div></div>
-              <h2 className="title">{finished ? (won ? "Victory" : "Defeat") : table.solo ? "Game stopped" : "Table closed"}</h2>
-              <div className="rule" />
-              <p>{finished ? resultLine(snapshot!, viewer) : table.state.status}</p>
-              <div className="answers">
-                {table.rematch && <button type="button" className="aplaque ember" onClick={() => table.rematch?.()}>Play again</button>}
-                <button type="button" className={`aplaque ${table.rematch ? "leather" : "ember"}`} onClick={() => table.leave()}>Back to the tavern</button>
+        {(finished || table.state.stage === "failed") && (() => {
+          // The result (GameCompletionOverlay, Arena look): your medallion rising in gold or falling grey, the title, who won,
+          // what happened, New Game and Main Menu.
+          const winners = snapshot?.winnerPlayerIds ?? [];
+          const title = !finished ? (table.solo ? "Game stopped" : "Table closed") : winners.length === 0 ? "Game Over" : won ? "Victory" : "Defeat";
+          const names = winners.map((id) => (id === viewer ? "You" : snapshot?.players.find((p) => p.playerId === id)?.displayName ?? "Opponent"));
+          const winnerText = !finished ? table.state.status : names.length === 0 ? "XMage has completed the match." : names.length === 1 && names[0] === "You" ? "You won the match." : `Winner: ${names.join(", ")}`;
+          const summary = stats.current;
+          const top = summary.topCard;
+          return (
+            <div className="aresult" data-win={won ? "true" : "false"} onClick={stop}>
+              <div className="glory" />
+              <div className="box glass">
+                <div className="medal"><div className="av">{AVATAR.me}</div></div>
+                <h2 className="title">{title.toUpperCase()}</h2>
+                <div className="rule" />
+                <p>{winnerText}</p>
+                {finished && summary.turns > 0 && snapshot && (
+                  <div className="summary">
+                    <div className="tiles">
+                      <span><b>{displayTurn(snapshot)}</b>Turns</span>
+                      <span><b>{summary.combatDamage}</b>Combat damage</span>
+                      <span><b>{summary.creaturesDestroyed}</b>Creatures destroyed</span>
+                    </div>
+                    {top && (
+                      <div className="top">
+                        <img src={cardImageURL(top.card?.card.tokenArtwork?.name ?? top.card?.card.copySourceArtworkName ?? top.name, "art_crop")} alt="" crossOrigin="anonymous" />
+                        <span><small>TOP ATTACKER</small>{top.name}</span>
+                        <b>{top.damage} dmg</b>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="answers">
+                  {table.rematch && <button type="button" className="aplaque ember" onClick={() => table.rematch?.()}>New Game</button>}
+                  <button type="button" className={`aplaque ${table.rematch ? "leather" : "ember"}`} onClick={() => table.leave()}>Main Menu</button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {(toast || session?.state.errorMessage || table.state.isSuspended || table.state.reconnecting) && (
           <div className="atoast">{toast ?? session?.state.errorMessage ?? table.state.status}</div>
@@ -1159,13 +1238,6 @@ export function GameScreen({ table }: { table: GameTable }) {
   );
 }
 
-/** "AI 1 won the game on turn 9." (a draw names no one). */
-function resultLine(snapshot: GameSnapshot, viewer: string | undefined) {
-  const winners = (snapshot.winnerPlayerIds ?? []).map((id) => (id === viewer ? "You" : snapshot.players.find((p) => p.playerId === id)?.displayName)).filter(Boolean);
-  const turn = snapshot.turn > 0 ? ` on turn ${snapshot.turn}` : "";
-  if (winners.length === 0) return `The game ended in a draw${turn}.`;
-  return `${winners.join(", ")} won the game${turn}.`;
-}
 
 function ChatInput({ table }: { table: GameTable }) {
   const [text, setText] = useState("");

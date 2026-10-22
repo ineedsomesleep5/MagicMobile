@@ -7,7 +7,7 @@ import { BoardPresentationHold, revisionKey, stackTopFirst, displayName } from "
 import { EngineClient, type EngineTransport, type MatchPoll } from "../core/engineClient";
 import { EngineError, get, type J, jsonEqual, newUuid, str } from "../core/json";
 import { OnDeviceMessageLog } from "../core/messageLog";
-import type { GameCommand, GameSnapshot, LegalAction } from "../core/models";
+import { type GameCommand, type GameSnapshot, type LegalAction, TableRounds } from "../core/models";
 import { OnDevicePromptAdapter } from "../core/promptAdapter";
 import {
   passPrompt, situation, SMART_PASS_ACTION_PREFIX, type SmartPassSettings, STOP_MESSAGES, stepFromEngine, threatensViewer, YIELD_PASS_ACTION_PREFIX,
@@ -86,6 +86,8 @@ export class GuestSession {
   private readonly client: EngineClient;
   private poll?: MatchPoll;
   private log = new OnDeviceMessageLog();
+  /** Presentation only: the round the board's turn labels show. */
+  private rounds = new TableRounds();
   private pending?: Submission;
   private chosenAbility?: ChosenAbility;
   private stopped = false;
@@ -207,7 +209,10 @@ export class GuestSession {
         this.log.ingest(next);
         let snapshot = this.state.snapshot;
         if (next.phase === "closed") snapshot = undefined;
-        else if (next.snapshot !== undefined) snapshot = OnDeviceSnapshotAdapter.snapshot(next, this.seatID, this.log.entries);
+        else if (next.snapshot !== undefined) {
+          snapshot = OnDeviceSnapshotAdapter.snapshot(next, this.seatID, this.log.entries);
+          snapshot.round = this.rounds.observe(snapshot);
+        }
         if (this.pending && (next.prompt?.id !== this.pending.promptId || next.prompt?.revision !== this.pending.promptRevision)) {
           this.pending = undefined;
         }
