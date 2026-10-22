@@ -48,3 +48,27 @@ for name in ('2p-priority', '2p-battlefield', '2p-combat', '2p-stack', '2p-mana'
     (out / 'preview' / f'{name}.json').write_bytes((fixtures / f'{name}.json').read_bytes())
 (out / 'precons.json').write_text(json.dumps({'decks': decks}, ensure_ascii=False))
 print('Prepared', len(data['cards']), 'printings and', len(decks), 'precons for catalogue', data['catalogueHash'][:12])
+
+# The game's sounds (apps/ios/MagicMobile/Resources/Audio, GameAudio.swift): browsers can't decode the short cues'
+# .caf, so they become AAC .m4a with macOS afconvert; the .m4a files are copied. Skipped where afconvert is missing
+# (Linux CI runs no audio); the board plays silently without them.
+import shutil, subprocess
+audio_in = repo / 'apps/ios/MagicMobile/Resources/Audio'
+audio_out = out / 'audio'
+audio_out.mkdir(parents=True, exist_ok=True)
+converter = shutil.which('afconvert')
+converted = copied = 0
+for source_file in sorted(audio_in.iterdir()):
+    if source_file.suffix not in ('.caf', '.m4a'):
+        continue
+    target = audio_out / (source_file.stem + '.m4a')
+    if target.exists() and target.stat().st_mtime >= source_file.stat().st_mtime:
+        continue
+    if source_file.suffix == '.m4a':
+        shutil.copyfile(source_file, target)
+        copied += 1
+    elif converter:
+        subprocess.run([converter, '-f', 'm4af', '-d', 'aac', str(source_file), str(target)], check=True, capture_output=True)
+        converted += 1
+if converted or copied:
+    print(f'Prepared {converted} converted and {copied} copied sounds')

@@ -35,6 +35,7 @@ import { ManaSymbol, RulesText } from "./arena/Symbols";
 import "./arena/arena.css";
 import { cardImageURL } from "./cardArt";
 import { storage } from "./storage";
+import { gameAudio, SOUND_KEYS } from "./audio";
 
 const PHASE_ICONS: Record<string, React.ReactNode> = {
   dia: <svg viewBox="0 0 20 20"><path d="M10 3.5l6.5 6.5-6.5 6.5-6.5-6.5z" /></svg>,
@@ -116,6 +117,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const [browseZoom, setBrowseZoom] = useState<{ name: string; left: boolean }>();
   const [smartSettings, setSmartSettings] = useState<SmartPassSettings>(() => session?.smartPass ?? loadSmartPass(storage.get));
   const [passAfterCast, setPassAfterCast] = useState(() => storage.get("mm.web.autoPassAfterCast") !== "off");
+  const [soundsOn, setSoundsOn] = useState(() => storage.get(SOUND_KEYS.effects) !== "off");
   const updateSmartPass = (next: SmartPassSettings) => {
     setSmartSettings(next);
     saveSmartPass(next, storage.set);
@@ -185,6 +187,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const promptActions = (snapshot?.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined);
 
   const fail = useCallback((error: unknown) => {
+    gameAudio.play("ui-error");
     setToast(error instanceof Error ? error.message : String(error));
     window.setTimeout(() => setToast(undefined), 4000);
   }, []);
@@ -277,6 +280,12 @@ export function GameScreen({ table }: { table: GameTable }) {
   // A chosen trigger order answers the ordering prompts it covers; the browser stays shut for them.
   const planAnswers = planning && snapshot !== undefined && triggerPlan.answers(snapshot);
   const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending && !autoPayColour && !planAnswers;
+  // A decision that needs you opens with the response alert; panels open and close with their sounds.
+  useEffect(() => { if (showBrowser) gameAudio.play("response-alert"); }, [showBrowser, envelope?.id]);
+  const firstStack = useRef(true);
+  useEffect(() => { if (firstStack.current) { firstStack.current = false; return; } gameAudio.play(stackOpen ? "ui-open" : "ui-close"); }, [stackOpen]);
+  const firstPanel = useRef(true);
+  useEffect(() => { if (firstPanel.current) { firstPanel.current = false; return; } gameAudio.play(panel === "log" ? "page-flip" : panel ? "ui-open" : "ui-close"); }, [panel]);
   // A number takes the button corner (ArenaAmountPill), with the board in view.
   const amountPill = browser === "amount" && !finished;
   const inspect: Inspect = setBrowseZoom;
@@ -294,6 +303,7 @@ export function GameScreen({ table }: { table: GameTable }) {
       return;
     }
     const actions = actionsFor(snapshot, id);
+    if (actions.length === 1 && actions[0].type === "cast_spell") gameAudio.play("card-play");
     if (actions.length === 1) sendAction(actions[0]);
     else if (actions.length > 1 && at) setMenu({ id, at, actions });
   };
@@ -336,7 +346,9 @@ export function GameScreen({ table }: { table: GameTable }) {
     const move = (e: PointerEvent) => setCarry((c) => {
       if (!c) return c;
       const point = toBoard(e.clientX, e.clientY);
-      return { ...c, point, moved: c.moved || Math.hypot(point.x - c.start.x, point.y - c.start.y) > 6 };
+      const moved = c.moved || Math.hypot(point.x - c.start.x, point.y - c.start.y) > 6;
+      if (moved && !c.moved) gameAudio.play("card-pickup");
+      return { ...c, point, moved };
     });
     const up = () => setCarry((c) => {
       if (c?.moved) {
@@ -357,7 +369,7 @@ export function GameScreen({ table }: { table: GameTable }) {
     if (!snapshot) return;
     const card = me?.zones.hand.find((c) => c.instanceId === id);
     const plays = actionsFor(snapshot, id).filter((a) => a.type === "play_land" || a.type === "cast_spell");
-    if (plays.length === 1) { sendAction(plays[0]); setHandRaised(false); }
+    if (plays.length === 1) { if (plays[0].type === "cast_spell") gameAudio.play("card-play"); sendAction(plays[0]); setHandRaised(false); }
     else if (plays.length > 1) setMenu({ id, at: { x: STAGE.width / 2, y: Y(ARENA.captionY) + 120, w: 0, h: 0, z: 0 }, actions: plays });
     else showNotice(`${card?.card.name ?? "That card"} is not currently playable`);
   };
@@ -565,6 +577,7 @@ export function GameScreen({ table }: { table: GameTable }) {
     if (roll && roll.nextSeatID === undefined) { const t = window.setTimeout(() => setRollDismissed(true), 3500); return () => window.clearTimeout(t); }
   }, [roll?.nextSeatID, roll]);
   const won = finished && viewer !== undefined && (snapshot!.winnerPlayerIds ?? []).includes(viewer);
+  useEffect(() => { if (finished) gameAudio.play(won ? "victory" : "defeat", 0.25); }, [finished, won]);
 
   // The relay's turn clock burns its rope smoothly.
   const rope = table.state.turnClock.rope(table.state.localSeatID, performance.now() / 1000);
@@ -706,6 +719,8 @@ export function GameScreen({ table }: { table: GameTable }) {
 
   return (
     <div className="arena" ref={wrapRef} onClick={() => { setCornerMenu(undefined); setPlayerCard(undefined); setMenu(undefined); }}
+      onPointerDownCapture={() => gameAudio.unlock()}
+      onClickCapture={(event) => { if ((event.target as Element).closest?.(".aplaque, .aff, .acoin, .amenucard .arow, .aundo")) gameAudio.play("ui-tap"); }}
       onPointerMove={(event) => {
         // The hand rises while the pointer is over it: below the top of the fan as it stands, within its width.
         if (mulligan || covered || handIDs.length === 0) return;
@@ -918,6 +933,7 @@ export function GameScreen({ table }: { table: GameTable }) {
                   const on = !passAfterCast; setPassAfterCast(on); storage.set("mm.web.autoPassAfterCast", on ? "on" : "off"); session.setAutoPassAfterCast(on);
                 }} />Pass After Casting</label>
               )}
+              <label><Check on={soundsOn} label="Sounds" onToggle={() => { const on = !soundsOn; setSoundsOn(on); storage.set(SOUND_KEYS.effects, on ? "on" : "off"); }} />Sounds</label>
               <label><Check on={frames} label="Card Frames" onToggle={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }} />Card Frames</label>
               <div className="seg" role="group" aria-label="Effects"><span>Effects</span>
                 {(["full", "reduced", "off"] as const).map((level) => (
@@ -1004,7 +1020,7 @@ export function GameScreen({ table }: { table: GameTable }) {
             <p style={{ top: Y(62) + 36 }}>{cleanMessage(envelope.message)}</p>
             <div className="tips" style={{ top: B(352) }}><span>Click a card to play it</span><span>Click a land for mana while paying</span><span>Hover a card to read it</span></div>
             <button type="button" className="aplaque leather" style={{ left: 716, top: B(340) }} disabled={pending}
-              onClick={() => send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan")}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
+              onClick={() => { gameAudio.play("shuffle"); send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan"); }}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
             <button type="button" className="aplaque ember want" style={{ left: 716, top: B(388) }} disabled={pending}
               onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
           </div>
@@ -1048,7 +1064,7 @@ export function GameScreen({ table }: { table: GameTable }) {
                 : roll.roll.winnerSeatID === table.state.localSeatID ? "You go first." : `${table.state.seatNames[roll.roll.winnerSeatID]} goes first.`}</p>
               {roll.nextSeatID === table.state.localSeatID && (
                 <button type="button" className="aplaque ember want" disabled={roll.hasRolled || table.state.stage !== "playing"}
-                  onClick={() => { try { table.rollStartingPlayer(); } catch (error) { fail(error); } }}>Roll the D20</button>
+                  onClick={() => { try { gameAudio.play("dice-roll"); table.rollStartingPlayer(); } catch (error) { fail(error); } }}>Roll the D20</button>
               )}
             </div>
           </div>
@@ -1112,7 +1128,7 @@ function ChatInput({ table }: { table: GameTable }) {
         <button type="submit" className="plaque compact">Send</button>
       </form>
       <div className="emotes">
-        {GameEmotes.map((emote) => <button key={emote.raw} type="button" onClick={() => table.sendEmote(emote)}>{emote.text}</button>)}
+        {GameEmotes.map((emote) => <button key={emote.raw} type="button" onClick={() => { gameAudio.play("emote"); table.sendEmote(emote); }}>{emote.text}</button>)}
       </div>
     </>
   );

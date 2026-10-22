@@ -159,7 +159,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
     : undefined;
   const printed = name ?? card?.card.name ?? "";
   return (
-    <div className={`acard ${classes ?? ""}`} data-view={view} data-o={owner} style={style} role={onClick ? "button" : undefined}
+    <div className={`acard ${classes ?? ""}`} data-id={id} data-view={view} data-o={owner} style={style} role={onClick ? "button" : undefined}
       aria-label={label ?? (view === "back" ? "Card" : printed)} tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? (event) => onClick(id, event) : undefined}
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}

@@ -6,10 +6,11 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  type ActiveBoardFX, BoardFXDirector, type BoardFXLevel, BoardFXScheduler, BoardPresentationHold, displayName, revisionKey, stackTopFirst,
+  type ActiveBoardFX, BoardFXDirector, type BoardFXLevel, BoardFXScheduler, BoardPresentationHold, displayName, displaySourceCard, revisionKey, stackTopFirst,
   sweepRecap,
 } from "../../core/boardEvents";
-import type { GameSnapshot } from "../../core/models";
+import type { CardIdentity, GameSnapshot } from "../../core/models";
+import { BOARD_SOUNDS, boardCues, drawCues, gameAudio } from "../audio";
 import type { GuestSession } from "../../table/guestSession";
 
 export const fxNow = () => performance.now() / 1000;
@@ -44,6 +45,7 @@ export function useBoardFX(snapshot: GameSnapshot | undefined, session: GuestSes
   const bannerEnd = useRef<number | undefined>(undefined);
   const lastTurnKey = useRef<string | undefined>(undefined);
   const timers = useRef<number[]>([]);
+  const lastHand = useRef<{ game: string; count: number } | undefined>(undefined);
 
   // The session waits on this board's hold.
   useEffect(() => {
@@ -61,6 +63,18 @@ export function useBoardFX(snapshot: GameSnapshot | undefined, session: GuestSes
     const now = fxNow();
     const scheduled = director.ingest(snapshot, level, now, bannerEnd.current, "arena");
     hold.record(key, director.smartPassHoldUntil);
+    // The board's sounds, each timed to the effect it accompanies (BoardFXSound.play), and a draw's (GameSoundSignature).
+    if (scheduled.length > 0) {
+      const arrivals = new Map<string, { card: CardIdentity; isToken: boolean }>();
+      for (const card of snapshot.players.flatMap((p) => p.zones.battlefield)) arrivals.set(card.instanceId, { card: card.card, isToken: card.card.isToken === true });
+      const casts = new Map<string, CardIdentity>();
+      for (const object of stackTopFirst(snapshot)) { const source = displaySourceCard(object); if (source) casts.set(object.id, source.card); }
+      gameAudio.playCues(boardCues(scheduled, snapshot.viewerPlayerId ?? "", arrivals, casts));
+    }
+    const handCount = snapshot.players.find((p) => p.playerId === snapshot.viewerPlayerId)?.zones.hand.length ?? 0;
+    if (lastHand.current?.game === snapshot.id) drawCues(lastHand.current.count, handCount).forEach((sound) => gameAudio.play(sound));
+    else gameAudio.preload(BOARD_SOUNDS);
+    lastHand.current = { game: snapshot.id, count: handCount };
     // A spell that just left the stack and took three or more permanents with it is named in the caption.
     const top = stackTopFirst(snapshot)[0];
     const resolved = lastTop.current && !stackTopFirst(snapshot).some((o) => o.id === lastTop.current!.id) ? lastTop.current.name : undefined;
@@ -92,6 +106,8 @@ export function useBoardFX(snapshot: GameSnapshot | undefined, session: GuestSes
         const start = busy !== undefined && busy > now ? Math.min(busy, now + BoardFXScheduler.maximumHold) : now;
         bannerEnd.current = start + TURN_BANNER;
         const mine = snapshot.activePlayerId !== undefined && snapshot.activePlayerId === snapshot.viewerPlayerId;
+        // A chime when your turn begins (not the first).
+        if (mine) gameAudio.play("turn-you", Math.max(0, start - now));
         const name = snapshot.players.find((p) => p.playerId === snapshot.activePlayerId)?.displayName;
         setBanner({ key: turnKey, start, end: start + TURN_BANNER, mine, name });
       }

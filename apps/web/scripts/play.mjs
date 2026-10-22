@@ -97,7 +97,8 @@ const look = () => {
     paying: snap.manaPayment?.active === true || ["mana", "pay_cost", "cost", "x_mana"].includes((env?.responseKind ?? "").toLowerCase()),
     autoPaying: [...document.querySelectorAll(".aplaque")].some((b) => b.textContent === "Paying…"),
     stack: (snap.xmage?.stack ?? []).length,
-    actions: (snap.legalActions ?? []).map((a) => ({ id: a.id, type: a.type, label: a.label, card: a.cardName, cost: a.manaCost, confirmed: a.confirmed })),
+    actions: (snap.legalActions ?? []).map((a) => ({ id: a.id, type: a.type, label: a.label, card: a.cardName, cardId: a.cardInstanceId, cost: a.manaCost, confirmed: a.confirmed })),
+    buttons: [...document.querySelectorAll(".acontrols .aplaque, .bfoot .aplaque, .aplaque")].filter((b) => !b.disabled).map((b) => b.textContent),
     hand: me?.zones.hand.length ?? 0, creatures: me?.zones.battlefield.filter((c) => /creature/i.test(c.card.typeLine)).length ?? 0,
   };
 };
@@ -124,12 +125,24 @@ function decide(state, memory) {
       const land = acts.find((a) => a.type === "play_land");
       if (land) return { action: land.id };
       const spells = acts.filter((a) => a.type === "cast_spell" && !memory.failed.has(a.id)).sort((a, b) => manaValue(a.cost) - manaValue(b.cost));
-      if (spells.length && memory.casts < 3) { memory.casts += 1; return { action: spells[0].id, cast: true }; }
+      if (spells.length && memory.casts < 3) {
+        memory.casts += 1;
+        // Cast the way a player does: carry the card from the hand onto the table (one with a single cast action).
+        const card = spells[0];
+        const sameCard = acts.filter((a) => a.cardId === card.cardId && (a.type === "cast_spell" || a.type === "play_land"));
+        return sameCard.length === 1 && card.cardId ? { drag: card.cardId, action: card.id } : { action: card.id };
+      }
     }
     // Let smart pass act first; pass by hand only when it stopped for a response.
     if (Date.now() - (memory.promptSeen.get(p.id) ?? Date.now()) < 6000) { if (!memory.promptSeen.has(p.id)) memory.promptSeen.set(p.id, Date.now()); return undefined; }
     const pass = acts.find((a) => a.type === "pass_priority");
     return pass ? { action: pass.id, manualPass: true } : undefined;
+  }
+  if (state.buttons.includes("All Attack") && !memory.allAttack.has(p.id)) { memory.allAttack.add(p.id); return { click: "All Attack" }; }
+  if (state.buttons.includes("Auto Order")) return { click: "Auto Order" };
+  const finish = state.buttons.find((b) => /^(\d+ Attackers?|No Attacks|\d+ Blockers?|No Blocks)$/.test(b));
+  if (finish && !state.buttons.includes("Attacking…") && (state.mine ? /Attacker/.test(finish) || memory.allAttack.size > 0 : true)) {
+    if (!memory.finished.has(p.id)) { memory.finished.add(p.id); return { click: finish }; }
   }
   if (p.method === "GAME_SELECT" && p.kind === "target") {
     // Combat: attackers on your turn (everything that can), no blocks on theirs.
@@ -160,7 +173,8 @@ async function play(page, game) {
   await page.locator(".deck-shelf").nth(1).locator(".deck-tile", { hasText: deckNames[args.ai ?? "grave-danger"] }).click();
   for (let i = 0; i < 360 && !(await start.isEnabled()); i++) await page.waitForTimeout(500);
   await start.click();
-  const memory = { casts: 0, failed: new Set(), attacked: new Set(), promptSeen: new Map(), turn: 0, autoPaid: new Set() };
+  const memory = { casts: 0, failed: new Set(), attacked: new Set(), promptSeen: new Map(), turn: 0, autoPaid: new Set(), allAttack: new Set(), finished: new Set(),
+    drags: 0 };
   const started = Date.now();
   let lastTurn = 0;
   for (;;) {
@@ -189,7 +203,22 @@ async function play(page, game) {
     }
     if (Date.now() - started > 45 * 60_000) throw new Error("Game took longer than 45 minutes");
     const move = decide(state, memory);
-    if (move?.click) {
+    if (move?.drag) {
+      // Carry the hand card onto the table with the mouse, as a player does (ArenaLayout.drops decides).
+      const card = page.locator(`.acard[data-id="${move.drag}"]`);
+      const box = await card.boundingBox().catch(() => null);
+      if (box) {
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 3, { steps: 4 });
+        await page.mouse.down();
+        await page.mouse.move(640, 330, { steps: 12 });
+        await page.mouse.up();
+        memory.drags += 1;
+        await page.evaluate(() => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "drag" }));
+      } else if (move.action) {
+        await page.evaluate(async (id) => { const s = window.__mm.table.session; const a = s.state.snapshot.legalActions.find((x) => x.id === id); if (a) await s.send(a); }, move.action);
+      }
+    } else if (move?.click) {
       const button = page.getByRole("button", { name: move.click, exact: true });
       if (await button.isEnabled().catch(() => false)) {
         await button.click().catch(() => {});
@@ -220,7 +249,10 @@ async function play(page, game) {
   const won = final.winners.includes(final.viewer);
   await page.screenshot({ path: join(out, `game-${game}-end.png`) });
   writeFileSync(join(out, `game-${game}.json`), JSON.stringify({ final: { turn: final.turn, life: final.life, won }, ...rec }, null, 1));
-  return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, errors: rec.errors };
+  const count = (type) => rec.sends.filter((e) => e.type === type).length;
+  const clicks = (label) => rec.sends.filter((e) => e.type === "click" && e.label === label).length;
+  return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, drags: count("drag"), autoPay: clicks("Auto Pay"), allAttack: clicks("All Attack"),
+    smartPasses: rec.sends.filter((e) => e.by === "smart").length, wipes: rec.fx.filter((f) => f.notice).map((f) => f.notice), errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.
