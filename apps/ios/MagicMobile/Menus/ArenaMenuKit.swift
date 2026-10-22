@@ -178,15 +178,16 @@ struct ArenaTopBar: View {
             GameAudio.shared.play(.uiTap)
             select(tab)
         } label: {
-            VStack(spacing: 3) {
-                ArenaEmblem(symbol: tab.symbol, size: compact ? 20 : 18, lit: lit)
-                if !compact {
-                    Text(tab.title).font(ArenaMenuStyle.font(10, .semibold))
-                        .foregroundStyle(lit ? Color.white : ArenaMenuStyle.text.opacity(0.7))
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                }
+            // Every emblem in the same box and every label on one line, so the labels share a baseline.
+            VStack(spacing: 2) {
+                ArenaEmblem(symbol: tab.symbol, size: 17, lit: lit)
+                    .frame(width: 26, height: 22)
+                Text(tab.title).font(ArenaMenuStyle.font(compact ? 9 : 10, .semibold))
+                    .foregroundStyle(lit ? Color.white : ArenaMenuStyle.text.opacity(0.7))
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                    .frame(height: 12)
             }
-            .frame(width: compact ? 50 : 64)
+            .frame(width: compact ? 56 : 64)
             .frame(maxHeight: .infinity)
             .background {
                 if lit { LinearGradient(colors: [.clear, ArenaMenuStyle.ember.opacity(0.18)], startPoint: .top, endPoint: .bottom) }
@@ -474,7 +475,7 @@ struct ArenaOptionRow: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                     if let detail {
                         Text(detail).font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1).minimumScaleFactor(0.85)
                     }
                 }
                 Spacer(minLength: 6)
@@ -486,7 +487,8 @@ struct ArenaOptionRow: View {
                 }
             }
             .padding(.horizontal, 4)
-            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, minHeight: detail == nil ? 38 : 46, alignment: .leading)
             .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
             .contentShape(Rectangle())
         }
@@ -550,6 +552,8 @@ struct ArenaSlider: View {
     var range: ClosedRange<Double> = 0...1
     let label: String
     var identifier: String? = nil
+    /// What VoiceOver reads for the value, when a percentage isn't right ("AI skill: 3").
+    var valueText: String? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -576,6 +580,7 @@ struct ArenaSlider: View {
         .overlay {
             Slider(value: $value, in: range) { Text(label) }
                 .opacity(0.02)
+                .modifier(ArenaAccessibilityValue(text: valueText))
                 .accessibilityIdentifier(identifier ?? label)
         }
     }
@@ -750,5 +755,13 @@ extension EnvironmentValues {
     var arenaMenuBackdrop: Bool {
         get { self[ArenaMenuBackdropKey.self] }
         set { self[ArenaMenuBackdropKey.self] = newValue }
+    }
+}
+
+/// An accessibility value only when there is one to give (otherwise the control keeps its own).
+private struct ArenaAccessibilityValue: ViewModifier {
+    let text: String?
+    @ViewBuilder func body(content: Content) -> some View {
+        if let text { content.accessibilityValue(text) } else { content }
     }
 }

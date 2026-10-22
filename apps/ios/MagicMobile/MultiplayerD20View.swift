@@ -194,13 +194,13 @@ struct MultiplayerD20View: View {
         return steps[playedStepCount].seatID
     }
 
-    /// The title plate: leather in a brass frame, the skip plaque riveted at its corner. In landscape it is one
+    /// The title plate (the board's panel), the skip plaque at its corner. In landscape it is one
     /// line tall so the table keeps the room.
     private func header(wide: Bool) -> some View {
         Group {
             if wide {
                 HStack(alignment: .center, spacing: 12) {
-                    BinderTag(text: "STARTING ROLL", material: .ember, jewel: true)
+                    TavernTag(text: "STARTING ROLL", leather: true, accent: TavernPalette.ember)
                     VStack(alignment: .leading, spacing: 1) {
                         headlineText(wide: true)
                         detailText
@@ -211,7 +211,7 @@ struct MultiplayerD20View: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .center) {
-                        BinderTag(text: "STARTING ROLL", material: .ember, jewel: true)
+                        TavernTag(text: "STARTING ROLL", leather: true, accent: TavernPalette.ember)
                         Spacer(minLength: 8)
                         skipPlaque
                     }
@@ -223,8 +223,8 @@ struct MultiplayerD20View: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
         .padding(.vertical, wide ? 4 : 12)
-        .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 12)).padding(2) }
-        .overlay { TavernBrassFrame(scale: 0.5) }
+        // Leather in brass on the Hearth board, glass on the Arena board.
+        .modifier(TavernPanelChrome(tavern: true, cornerRadius: 12))
         .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
     }
 
@@ -249,7 +249,7 @@ struct MultiplayerD20View: View {
     @ViewBuilder private var skipPlaque: some View {
         if !playbackFinished && !reduceMotion {
             Button { skipAnimation = true } label: { Text("Skip") }
-                .buttonStyle(BinderPlaqueButtonStyle())
+                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
                 .accessibilityLabel("Skip animation")
                 .accessibilityIdentifier("multiplayerD20.skipAnimation")
         }

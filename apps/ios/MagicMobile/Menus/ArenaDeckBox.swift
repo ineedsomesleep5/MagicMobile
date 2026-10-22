@@ -34,7 +34,8 @@ struct ArenaDeckBox: View {
                 ArenaBoxContents(geometry: g, commander: deck.commander, colors: deck.colors)
             }
             .overlay(alignment: .topLeading) {
-                if let tag = deck.tag {
+                // On a shut box only: an open one shows its cards, and the chosen deck says so beside the boxes.
+                if let tag = deck.tag, openness < 0.05 {
                     Text(tag)
                         .font(ArenaMenuStyle.font(8.5, .heavy)).tracking(0.8)
                         .foregroundStyle(ArenaMenuStyle.gold)
@@ -123,9 +124,20 @@ private struct ArenaBoxBody<Art: View, Inside: View>: View {
                 .frame(width: g.width - g.side * 0.5, height: g.boxHeight - g.top + rise)
                 .offset(x: g.side * 0.5, y: -rise)
                 .opacity(Double(min(1, openness * 3)))
-            // The lid: its top and its front band, stamped like Arena's; it lifts with the back.
+            // Shut: the lid's top and its front band, stamped like Arena's. Open: the band gives way to the lid
+            // standing raised and tilted back on the back wall, the deck's art on its top.
             ArenaBoxLid(geometry: g, art: art)
-                .offset(y: -rise)
+                .opacity(Double(max(0, 1 - openness * 2)))
+            art()
+                .frame(width: g.frontWidth, height: g.frontHeight * 0.34)
+                .clipped()
+                .overlay(Color.black.opacity(0.38))
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.black.opacity(0.85)).frame(height: 2) }
+                .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.25)).frame(height: 1) }
+                .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .rotation3DEffect(.degrees(62), axis: (x: 1, y: 0, z: 0), anchor: .bottom, perspective: 0.55)
+                .offset(x: g.side * 0.5, y: -rise - g.frontHeight * 0.34 + 1)
+                .opacity(Double(openness))
             // The deck itself, risen out of the box when open.
             inside()
                 .offset(y: (1 - openness) * g.frontHeight * 0.55)
@@ -143,12 +155,16 @@ private struct ArenaBoxBody<Art: View, Inside: View>: View {
             .mask(alignment: .bottom) {
                 Rectangle().frame(height: g.boxHeight - frontTop)
             }
-            // The folded edge of the open front, catching the light.
+            // The folded edge of the open front: a lit lip with its shadow under it.
             .overlay(alignment: .top) {
-                LinearGradient(colors: [Color.white.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 2.5)
-                    .padding(.top, frontTop - g.top)
-                    .opacity(Double(openness))
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 3)
+                    LinearGradient(colors: [Color.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 5)
+                }
+                .padding(.top, frontTop - g.top)
+                .opacity(Double(openness))
             }
             .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 3, bottomTrailingRadius: 2, style: .continuous))
             .offset(y: g.top)
@@ -181,6 +197,7 @@ private struct ArenaBoxLid<Art: View>: View {
             ArenaBoxTop(side: g.side)
                 .fill(LinearGradient(colors: [Color(red: 0.22, green: 0.22, blue: 0.23), Color(red: 0.09, green: 0.09, blue: 0.10)],
                                      startPoint: .top, endPoint: .bottom))
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.22)).frame(height: 1) }
                 .frame(width: g.width, height: g.top)
             ZStack {
                 LinearGradient(colors: [Color(red: 0.11, green: 0.11, blue: 0.12), Color(red: 0.04, green: 0.04, blue: 0.045)],
@@ -215,11 +232,12 @@ private struct ArenaBoxContents: View {
         let height = g.frontHeight * 1.12
         let cardWidth = height * 0.716
         ZStack(alignment: .top) {
-            ForEach(0..<3, id: \.self) { index in
+            // Two backs fanned behind the commander, one to each side of it, and one standing behind.
+            ForEach([(-0.30, -7.0), (0.16, 5.0), (0.30, 9.0)], id: \.0) { offset, angle in
                 ArenaCardBack()
                     .frame(width: cardWidth * 0.92, height: height * 0.92)
-                    .rotationEffect(.degrees(Double(index - 1) * 7), anchor: .bottom)
-                    .offset(x: CGFloat(index - 1) * g.frontWidth * 0.2 + g.frontWidth * 0.08, y: CGFloat(abs(index - 1)) * 3)
+                    .rotationEffect(.degrees(angle), anchor: .bottom)
+                    .offset(x: g.frontWidth * offset, y: 3)
                     .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
             }
             NativeCardArtworkView(name: commander ?? "", variant: .board, contentMode: .fit) { _, _ in
@@ -269,7 +287,8 @@ private struct ArenaBoxSide: Shape {
         var path = Path()
         path.move(to: CGPoint(x: 0, y: top + cut * openness))
         path.addLine(to: CGPoint(x: rect.maxX, y: -rise * openness))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - top))
+        // The far edge a little shorter than the near one: the side recedes.
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - top * 2.2))
         path.addLine(to: CGPoint(x: 0, y: rect.maxY))
         path.closeSubpath()
         return path
@@ -327,6 +346,8 @@ struct ArenaPips: View {
                 ForEach(shown, id: \.self) { ManaSymbolView(symbol: $0, size: size) }
             }
         }
+        // Arena's pips are saturated; Scryfall's symbols are pale.
+        .saturation(1.9)
         .shadow(color: .black.opacity(0.8), radius: 1.5, y: 1)
         .accessibilityHidden(true)
     }

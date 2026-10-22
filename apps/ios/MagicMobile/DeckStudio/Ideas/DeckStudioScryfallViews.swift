@@ -145,7 +145,7 @@ struct DeckStudioOnlineSearch: View {
                 ScrollView { DeckStudioScryfallReference(name: card.name, initialCard: card).padding(20) }
                     .binderLeaf("Card reference", trailing: BinderLeafAction(title: "Done") { selected = nil })
                     .background(GrimoirePaper())
-            }.preferredColorScheme(.light).grimoirePage(.loose)
+            }.preferredColorScheme(.dark).grimoirePage(.loose)
         }
     }
     private func submitSearch() {

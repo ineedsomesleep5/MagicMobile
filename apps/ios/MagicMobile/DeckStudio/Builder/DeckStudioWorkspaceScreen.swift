@@ -173,19 +173,19 @@ struct DeckStudioWorkspaceScreen: View {
                     ScrollView { DeckStudioValidationPanel(state: validation, deck: deck, resolver: resolver, play: preparePlay).padding(20) }
                         .background(GrimoirePaper())
                         .binderLeaf("Validate deck", trailing: BinderLeafAction(title: "Done") { showValidation = false })
-                }.preferredColorScheme(.light).grimoirePage(.loose)
+                }.preferredColorScheme(.dark).grimoirePage(.loose)
             }
             .sheet(isPresented: $showRename) {
                 NavigationStack {
                     GrimoireForm { TextField("Deck name", text: Binding(get: { model.draft.name }, set: { name in model.change { $0.name = name } })) }
                         .binderLeaf("Rename deck", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.rename.done") { showRename = false })
-                }.presentationDetents([.medium]).preferredColorScheme(.light).grimoirePage(.loose)
+                }.presentationDetents([.medium]).preferredColorScheme(.dark).grimoirePage(.loose)
             }
             .sheet(isPresented: $showArtworkPreferences) {
                 NavigationStack {
                     GrimoireForm { NativeArtworkPreferenceView() }
                         .binderLeaf("Artwork & privacy", trailing: BinderLeafAction(title: "Done") { showArtworkPreferences = false })
-                }.preferredColorScheme(.light).grimoirePage(.loose)
+                }.preferredColorScheme(.dark).grimoirePage(.loose)
             }
             .binderConfirm("Save your changes?", isPresented: $confirmClose,
                            message: model.recoveryBlocked ? "Recovery is paused to preserve unreadable data. Save this deck before closing to keep your edits, or cancel to continue editing." : "Your existing saved deck is unchanged until you save. An incomplete deck can remain a local draft.") {
@@ -200,7 +200,7 @@ struct DeckStudioWorkspaceScreen: View {
             .onDisappear { model.persistRecovery(); browser.pause(); combos.cancel(); validation.cancelPending() }
             // The workspace's confirmations sit outside binderScreen(), so they get a host of their own.
             .binderOverlayHost()
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
         .grimoireSwipe(next: { turnChapter(by: 1) }, previous: { turnChapter(by: -1) })
     }

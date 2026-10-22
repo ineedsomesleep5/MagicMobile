@@ -422,7 +422,8 @@ struct OnDeviceRootView: View {
         .sheet(isPresented: $showBracketSheet) { bracketSheet }
         return social
         .overlay(alignment: .bottom) { if !startingRollVisible { recoveryBanner } }
-        .overlay { startingRollOverlay }
+        // The roll belongs to the table: it wears the chosen board's look.
+        .overlay { startingRollOverlay.environment(\.arenaBoard, BoardMode.resolved(boardMode) == .arena) }
         // The versus intro plays first, over the opaque starting roll that follows it.
         .overlay {
             if activeGame, let versusIntro {
@@ -452,12 +453,6 @@ struct OnDeviceRootView: View {
             resume.notice = nil
         }
         .environment(\.nativeTurnControl, turnControl)
-        .fullScreenCover(isPresented: $showImport, onDismiss: { studioFocus = nil }) {
-            DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID,
-                               isGameLive: { [setup = self.setup] in setup.needsLeave || setup.isBusy }, focus: studioFocus, preparePlay: {
-                showImport = false; showSetup = true
-            }, close: closeDecks)
-        }
         .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
         .background {
             if let multiplayer = setup.multiplayer {
@@ -618,7 +613,7 @@ struct OnDeviceRootView: View {
             case "play-custom": openPlayPanel(.custom)
             case "play-friends": playTab = .friends; playPanel = true
             case "play-recent": playTab = .recent; playPanel = true
-            case "decks": openDecks()
+            case "decks", "deck": openDecks()
             case "custom": showSetup = true
             case "settings": showAppearance = true
             case "updates": showUpdates = true
@@ -1183,9 +1178,16 @@ struct OnDeviceRootView: View {
         GeometryReader { proxy in
             let compact = proxy.size.width < proxy.size.height
             ZStack(alignment: .top) {
-                ArenaRoomBackdrop(dim: lobby == nil && !showSetup ? 0 : 0.55)
+                ArenaRoomBackdrop(dim: lobby == nil && !showSetup && !showImport ? 0 : (showImport ? 0.72 : 0.55))
                 Group {
-                    if showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true) {
+                    if showImport {
+                        // The Decks tab: Deck Studio under the top bar, as Arena's Decks page.
+                        DeckStudioRootView(library: library, selectedDeckID: $selectedDeckID,
+                                           isGameLive: { [setup = self.setup] in setup.needsLeave || setup.isBusy }, focus: studioFocus,
+                                           preparePlay: { showImport = false; openPlayPanel() }, close: closeDecks)
+                            .onDisappear { studioFocus = nil }
+                            .transition(.opacity)
+                    } else if showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true) {
                         setupContent
                     } else if let lobby {
                         lobbyContent(lobby)
@@ -1237,6 +1239,7 @@ struct OnDeviceRootView: View {
         case .ranked: lobby = .rankedHall
         }
         showSetup = false
+        showImport = false
         if !matchmaker.isSearching && !challenges.isWaiting { playPanel = false }
     }
 
@@ -1344,15 +1347,9 @@ struct OnDeviceRootView: View {
         return profileRecord.matches.sorted { $0.date > $1.date }.compactMap { match -> ArenaRecentGame? in
             let key = "\(match.mode.rawValue)|\(match.deckID)"
             guard decks.contains(match.deckID), seen.insert(key).inserted else { return nil }
-            let mode: String
-            switch match.mode {
-            case .quick: mode = String(localized: "Quick Match")
-            case .ranked: mode = String(localized: "Ranked")
-            case .casual: mode = String(localized: "Custom")
-            }
             let foe = match.opponents.first?.name ?? String(localized: "the table")
-            return ArenaRecentGame(id: match.id.uuidString, mode: match.mode, deckID: match.deckID,
-                                   title: "\(mode) · \(match.deckName)", detail: String(localized: "vs \(foe)"),
+            return ArenaRecentGame(id: match.id.uuidString, mode: match.mode, deckID: match.deckID, deckName: match.deckName,
+                                   commander: match.commander, colors: match.colors, detail: String(localized: "vs \(foe)"),
                                    won: match.outcome == .draw ? nil : match.outcome == .win)
         }
         .prefix(6).map { $0 }
@@ -1390,7 +1387,6 @@ struct OnDeviceRootView: View {
                 case .ranked: playModeRaw = ArenaPlayMode.ranked.rawValue
                 case .casual: playModeRaw = ArenaPlayMode.custom.rawValue
                 }
-                playTab = .find
             })
     }
 
@@ -1767,7 +1763,8 @@ struct OnDeviceRootView: View {
         + library.decks.map { NativeDownloadDeck(id: "local:\($0.id)", deck: $0.deckList) }
     }
 
-    /// The custom table (Arena's custom game page): your seat on the left, the table on the right, Start in the corner.
+    /// The custom table as Arena's event page (Caleb, 2026-10-22): your deck on the left, the seats on the right, and Start
+    /// pinned in the corner.
     private var setupContent: some View {
         GeometryReader { proxy in
             let wide = proxy.size.width > proxy.size.height && !dynamicType.isAccessibilitySize
@@ -1775,216 +1772,367 @@ struct OnDeviceRootView: View {
                 TavernScreenHeader(title: String(localized: "Custom Table"), backTitle: String(localized: "Main menu"), back: {
                     showSetup = false
                     openPlayPanel(.custom)
-                }) {
-                    Button {
-                        GameAudio.shared.play(.uiOpen)
-                        showAppearance = true
-                    } label: { ArenaEmblem(symbol: "gearshape.fill", size: 17).frame(width: 44, height: 44) }
-                        .buttonStyle(BrandPressStyle())
-                        .accessibilityLabel("Settings")
-                }
+                })
                 .disabled(setup.isBusy || setup.needsLeave)
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
                 ScrollView {
-                    let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 14)) : AnyLayout(VStackLayout(spacing: 14))
+                    let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 22)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 18))
                     layout {
-                        setupSeat
-                            .frame(maxWidth: wide ? 330 : .infinity)
+                        setupSeat(wide: wide)
+                            .frame(width: wide ? 250 : nil, alignment: .leading)
                         setupTable
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                    .padding(.top, 4)
+                    // Room for the pinned Start bar.
+                    .padding(.bottom, 84)
                     .frame(maxWidth: 900)
                     .frame(maxWidth: .infinity)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .accessibilityIdentifier("lobby.scroll")
             }
+            .overlay(alignment: .bottom) { setupStartBar }
         }
         .foregroundStyle(ArenaMenuStyle.text)
         .tint(ArenaMenuStyle.gold)
     }
 
-    /// Your seat: your deck as an open deck box, your name, the deck picker and the deck's check.
-    private var setupSeat: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ArenaCaps(text: String(localized: "Your seat"))
-            HStack(alignment: .top, spacing: 14) {
-                if let box = selectedDeckBox {
-                    ArenaDeckBox(deck: box, selected: true, width: 120)
-                        .padding(.top, ArenaBoxGeometry(width: 120).rise)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(selectedDeck?.name ?? String(localized: "Choose a deck")).font(ArenaMenuStyle.font(17, .bold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let commander = selectedDeck?.commander?.cardName {
-                        Text(commander).font(ArenaMenuStyle.font(12, .medium)).italic().foregroundStyle(ArenaMenuStyle.dim)
+    /// Your seat: what the table is, your deck as an open box, your name on a plate, the deck's check.
+    private func setupSeat(wide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(String(localized: "Choose every seat yourself: up to three AI opponents, an online table with iPhone and Android, or Game Center."))
+                .font(ArenaMenuStyle.font(13, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+                .fixedSize(horizontal: false, vertical: true)
+            if let box = selectedDeckBox {
+                let width: CGFloat = wide ? 150 : 124
+                ArenaDeckBox(deck: box, selected: true, width: width)
+                    .padding(.top, ArenaBoxGeometry(width: width).rise * 1.6 + 8)
+            }
+            if let bracket = selectedDeckBracket {
+                Button { showBracketSheet = true } label: {
+                    HStack(spacing: 4) {
+                        Text(bracket.title).font(ArenaMenuStyle.font(11, .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                        Image(systemName: "info.circle").font(.system(size: 10, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
                     }
-                    if let bracket = selectedDeckBracket {
-                        Button { showBracketSheet = true } label: {
-                            Text(bracket.title).font(ArenaMenuStyle.font(11, .bold)).foregroundStyle(ArenaMenuStyle.gold)
-                                .frame(minHeight: 30).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("play.deck.bracket")
-                    }
+                    .frame(minHeight: 30).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("play.deck.bracket")
             }
             OnDeviceSetupDeckDetails(deckID: selectedDeckID, deck: selectedDeck, resolver: setup.deckResolver,
                                      startIssues: setup.startIssues) { cards in
                 studioFocus = DeckStudioPlaySelection.FixRequest(deckID: selectedDeckID, cards: cards); openDecks()
             }.disabled(setup.isBusy)
-            TextField("Player name", text: $playerDisplayName)
-                .textContentType(.nickname).autocorrectionDisabled()
-                .modifier(TavernFieldChrome(tavern: true))
-                .disabled(account.username != nil)
-                .accessibilityIdentifier("ondevice.playerName")
-            if account.username != nil {
-                Button("Your profile name. Change it in Friends.") { showFriends = true }
-                    .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-            } else {
-                Text("Choose a name with 1–24 characters.").font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            setupNamePlate
+            Button(String(localized: "Change deck")) {
+                showSetup = false
+                openPlayPanel(.custom)
             }
-            TavernPicker(title: "Your deck", selection: $selectedDeckID, sections: deckPickerSections)
-            Button(action: openDecks) { Label("Browse, import or edit decks", systemImage: "rectangle.stack.badge.plus") }
-                .buttonStyle(CommanderActionStyle(primary: false))
-            TavernToggle(title: "Auto-Rotate", isOn: $portraitModeEnabled)
-            NativeArtworkPreferenceView()
+            .buttonStyle(ArenaPillButtonStyle())
+            .disabled(setup.isBusy || setup.needsLeave)
+            .accessibilityIdentifier("setup.changeDeck")
         }
-        .arenaCard()
         .disabled(setup.isBusy || (setup.needsLeave && !editableInRoom))
     }
 
-    /// The table: who sits at it (AI, Game Center or an online table) and their decks, then Start.
+    /// Your name on a black plate, as at the table; it can be written on until you sign in.
+    private var setupNamePlate: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                TextField("Player name", text: $playerDisplayName)
+                    .textContentType(.nickname).autocorrectionDisabled()
+                    .textFieldStyle(.plain)
+                    .font(ArenaMenuStyle.font(15, .bold))
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .disabled(account.username != nil)
+                    .accessibilityIdentifier("ondevice.playerName")
+                if account.username == nil {
+                    Image(systemName: "pencil").font(.system(size: 12, weight: .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 38)
+            .background(Capsule().fill(Color.black.opacity(0.9)))
+            .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
+            if account.username != nil {
+                Button("Your profile name. Change it in Friends.") { showFriends = true }
+                    .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            } else {
+                setupNote("Choose a name with 1–24 characters.")
+            }
+        }
+    }
+
+    /// The table: who sits at it, then for the AI the seats, its skill and who goes first.
     private var setupTable: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ArenaCaps(text: String(localized: "The table"))
-            ArenaSegmented(options: [("AI", "ai"), ("Game Center", "gamecenter"), ("Online", "online")],
-                           selection: playerMode, stretch: true)
-                .disabled(setup.isBusy || setup.needsLeave)
+            ArenaCaps(text: String(localized: "Players"))
+            HStack(spacing: 10) {
+                setupTile("AI", symbol: "cpu", on: playerMode.wrappedValue == "ai", identifier: "setup.mode.ai") { playerMode.wrappedValue = "ai" }
+                setupTile("Online", symbol: "globe", on: playerMode.wrappedValue == "online", identifier: "setup.mode.online") { playerMode.wrappedValue = "online" }
+                setupTile("Game Center", symbol: "gamecontroller.fill", on: playerMode.wrappedValue == "gamecenter",
+                          identifier: "setup.mode.gamecenter") { playerMode.wrappedValue = "gamecenter" }
+            }
+            .disabled(setup.isBusy || setup.needsLeave)
             if playWithFriends {
-                if !(playOnline && setup.multiplayer?.isRelayTable == true) {
-                    TavernPicker(title: "Human players", selection: $playerCount,
-                                 sections: [.init(options: (2...4).map { ("\($0) players", $0) })])
-                        .disabled(setup.isBusy || setup.needsLeave)
-                }
-                if playOnline {
-                    RelayTablePanel(multiplayer: setup.multiplayer, code: $relayJoinCode, mayEnter: mayStart && !setup.needsLeave,
-                                    locked: setup.isBusy || setup.needsLeave,
-                                    aiCount: gameCenterAICountBinding, maxAI: max(0, 4 - playerCount),
-                                    aiDeckSelection: aiDeckSelection, aiSkill: $aiSkill,
-                                    deckName: selectedDeck?.name, localCommander: selectedDeck?.commander?.cardName,
-                                    host: {
-                                        guard let deck = selectedDeck else { return }
-                                        Task { await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: playerCount,
-                                                                     aiDecks: gameCenterAIDecks, aiSkill: aiSkill) }
-                                    },
-                                    join: { code in
-                                        guard let deck = selectedDeck else { return }
-                                        setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
-                                    },
-                                    ready: {
-                                        guard let deck = selectedDeck else { return }
-                                        setup.readyForMatch(name: playerDisplayName, deck: deck)
-                                    })
-                } else {
-                    TavernStepper(title: "AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
-                                  range: 0...max(0, 4 - playerCount), identifier: "ondevice.gameCenterAI.count")
-                        .disabled(setup.isBusy || setup.needsLeave)
-                    ForEach(0..<gameCenterAICount, id: \.self) { index in
-                        TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
-                                     sections: aiDeckPickerSections,
-                                     identifier: "ondevice.gameCenterAI.deck.\(index + 1)")
-                            .disabled(setup.isBusy || setup.needsLeave)
-                    }
-                    if gameCenterAICount > 0 {
-                        TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10)
-                            .disabled(setup.isBusy || setup.needsLeave)
-                        setupNote("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
-                    }
-                    setupNote("Every player needs the same app version and must keep the app open during the match.")
-                    Text(setup.multiplayer?.status ?? setup.status).font(ArenaMenuStyle.font(13, .medium))
-                    if let room = setup.multiplayer?.room {
-                        MatchRoomView(room: room, deckName: selectedDeck?.name,
-                                      localCommander: selectedDeck?.commander?.cardName) {
-                            guard let deck = selectedDeck else { return }
-                            setup.readyForMatch(name: playerDisplayName, deck: deck)
-                        }
-                    }
-                    if setup.multiplayer?.isAuthenticated != true {
-                        Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
-                            .buttonStyle(CommanderActionStyle(primary: false))
-                            .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
-                    }
-                    Button("Find players") { startMatchmaking() }
-                        .buttonStyle(ArenaPlayButtonStyle(fontSize: 19))
-                        .frame(height: 48)
-                        .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
-                }
+                setupFriendsTable
             } else {
-                setupOpponents
-                TavernStepper(title: "AI opponents: \(opponentCount)", value: $opponentCount, range: 1...3,
-                              identifier: "ondevice.aiCount")
-                    .disabled(setup.isBusy || setup.needsLeave)
-                ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
-                    VStack(alignment: .leading, spacing: 4) {
-                        ArenaCaps(text: "AI \(index + 1) deck", size: 9.5)
-                        TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
-                                     sections: aiDeckPickerSections,
-                                     identifier: "ondevice.aiDeck.\(index + 1)", showsTitle: false)
-                            .disabled(setup.isBusy || setup.needsLeave)
-                    }
+                setupRule
+                ArenaCaps(text: String(localized: "Seats"))
+                setupSeats
+                setupRule
+                HStack {
+                    ArenaCaps(text: String(localized: "AI skill"))
+                    Spacer()
+                    Text("\(aiSkill)").font(ArenaMenuStyle.font(15, .bold)).monospacedDigit().foregroundStyle(ArenaMenuStyle.gold)
                 }
-                TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10, identifier: "onDevice.aiSkill")
+                ArenaSlider(value: Binding(get: { Double(aiSkill) }, set: { aiSkill = min(10, max(1, Int($0.rounded()))) }),
+                            range: 1...10, label: "AI skill", identifier: "onDevice.aiSkill", valueText: "AI skill: \(aiSkill)")
                     .disabled(setup.isBusy || setup.needsLeave)
                 setupNote("Higher skill levels allow more thinking and may slow turns.")
-                ArenaCaps(text: String(localized: "Who goes first"), size: 9.5)
-                ArenaSegmented(options: [("Choose", "choose"), ("Roll D20", "roll")], selection: $aiStartingPlayerMode, stretch: true)
-                    .disabled(setup.isBusy || setup.needsLeave)
+                setupRule
+                ArenaCaps(text: String(localized: "Who goes first"))
+                HStack(spacing: 10) {
+                    setupTile("Choose", symbol: "hand.point.up.left.fill", on: aiStartingPlayerMode == "choose",
+                              identifier: "setup.first.choose") { aiStartingPlayerMode = "choose" }
+                    setupTile("Roll D20", symbol: "dice.fill", on: aiStartingPlayerMode == "roll",
+                              identifier: "setup.first.roll") { aiStartingPlayerMode = "roll" }
+                }
+                .disabled(setup.isBusy || setup.needsLeave)
                 setupNote(aiStartingPlayerMode == "roll"
                           ? "Everyone rolls a D20. The highest roll starts; ties reroll."
                           : "Choose the starting player when the match begins.")
-                Button("Start game") { startAI() }
-                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 20))
-                    .frame(height: 50)
-                    .disabled(!mayStart)
             }
-            setupNote(setup.status)
             if setup.needsLeave {
                 Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
-                    .buttonStyle(CommanderActionStyle(primary: false))
+                    .buttonStyle(ArenaPillButtonStyle())
                     .disabled(setup.isBusy || session.isWorking)
             }
             if setup.identity == nil {
                 Button("Retry loading local catalogue") { setup.prepare() }
-                    .buttonStyle(CommanderActionStyle(primary: false))
+                    .buttonStyle(ArenaPillButtonStyle())
             }
             if diagnostics.report != nil {
                 Button("Engine error report") { showDiagnostics = true }
-                    .font(ArenaMenuStyle.font(13, .semibold))
+                    .buttonStyle(ArenaPillButtonStyle())
                     .accessibilityIdentifier("ondevice.diagnostics")
             }
         }
-        .arenaCard()
     }
 
-    /// The AI seats as closed deck boxes.
-    private var setupOpponents: some View {
-        HStack(spacing: 10) {
-            ForEach(Array(aiPrecons.enumerated()), id: \.offset) { _, deck in
-                ArenaDeckBox(deck: ArenaDeckBoxModel(id: deck.id, name: deck.name, commander: deck.deckList.commander?.cardName,
-                                                     colors: deck.colors.map(String.init), subtitle: deck.bracket.name),
-                             width: 96)
-            }
-            Spacer(minLength: 0)
+    /// Online and Game Center: the table code or the room, and the people at the table.
+    @ViewBuilder private var setupFriendsTable: some View {
+        if !(playOnline && setup.multiplayer?.isRelayTable == true) {
+            TavernPicker(title: "Human players", selection: $playerCount,
+                         sections: [.init(options: (2...4).map { ("\($0) players", $0) })])
+                .disabled(setup.isBusy || setup.needsLeave)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Opponents")
+        if playOnline {
+            RelayTablePanel(multiplayer: setup.multiplayer, code: $relayJoinCode, mayEnter: mayStart && !setup.needsLeave,
+                            locked: setup.isBusy || setup.needsLeave,
+                            aiCount: gameCenterAICountBinding, maxAI: max(0, 4 - playerCount),
+                            aiDeckSelection: aiDeckSelection, aiSkill: $aiSkill,
+                            deckName: selectedDeck?.name, localCommander: selectedDeck?.commander?.cardName,
+                            host: {
+                                guard let deck = selectedDeck else { return }
+                                Task { await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: playerCount,
+                                                             aiDecks: gameCenterAIDecks, aiSkill: aiSkill) }
+                            },
+                            join: { code in
+                                guard let deck = selectedDeck else { return }
+                                setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
+                            },
+                            ready: {
+                                guard let deck = selectedDeck else { return }
+                                setup.readyForMatch(name: playerDisplayName, deck: deck)
+                            })
+        } else {
+            TavernStepper(title: "AI opponents: \(gameCenterAICount)", value: gameCenterAICountBinding,
+                          range: 0...max(0, 4 - playerCount), identifier: "ondevice.gameCenterAI.count")
+                .disabled(setup.isBusy || setup.needsLeave)
+            ForEach(0..<gameCenterAICount, id: \.self) { index in
+                TavernPicker(title: "AI \(index + 1) deck", selection: aiDeckSelection(index),
+                             sections: aiDeckPickerSections,
+                             identifier: "ondevice.gameCenterAI.deck.\(index + 1)")
+                    .disabled(setup.isBusy || setup.needsLeave)
+            }
+            if gameCenterAICount > 0 {
+                TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10)
+                    .disabled(setup.isBusy || setup.needsLeave)
+                setupNote("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
+            }
+            setupNote("Every player needs the same app version and must keep the app open during the match.")
+            if let room = setup.multiplayer?.room {
+                MatchRoomView(room: room, deckName: selectedDeck?.name,
+                              localCommander: selectedDeck?.commander?.cardName) {
+                    guard let deck = selectedDeck else { return }
+                    setup.readyForMatch(name: playerDisplayName, deck: deck)
+                }
+            }
+            if setup.multiplayer?.isAuthenticated != true {
+                Button("Sign in to Game Center") { setup.multiplayer?.authenticate() }
+                    .buttonStyle(ArenaPillButtonStyle())
+                    .disabled(setup.multiplayer == nil || setup.isBusy || setup.needsLeave)
+            }
+        }
+    }
+
+    /// The AI seats as deck boxes: tap one for its deck, its × empties it, and a + seat adds an opponent.
+    private var setupSeats: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .bottom, spacing: 12) {
+                ForEach(0..<min(3, max(1, opponentCount)), id: \.self) { index in
+                    setupSeat(index)
+                }
+                if opponentCount < 3 {
+                    Button { addAISeat() } label: {
+                        VStack(spacing: 4) {
+                            ArenaNewDeckBox(width: 92)
+                            Text(String(localized: "Add AI")).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                        }
+                    }
+                    .buttonStyle(BrandPressStyle())
+                    .accessibilityLabel(String(localized: "Add an AI opponent"))
+                    .accessibilityIdentifier("ondevice.aiSeat.add")
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .scrollIndicators(.hidden)
+        .disabled(setup.isBusy || setup.needsLeave)
+    }
+
+    private func setupSeat(_ index: Int) -> some View {
+        let deck = AIDeckPool.deck(id: aiDeckSelection(index).wrappedValue)
+        return VStack(spacing: 4) {
+            TavernMenu(arrowEdge: .top, scrollHeight: 420, scrollAnchor: AnyHashable(aiDeckSelection(index).wrappedValue)) {
+                ForEach(Array(aiDeckPickerSections.enumerated()), id: \.offset) { _, section in
+                    if let heading = section.title { ArenaCaps(text: heading, size: 9.5).padding(.top, 4) }
+                    ForEach(Array(section.options.enumerated()), id: \.offset) { _, option in
+                        TavernMenuItem(title: option.label, systemImage: option.value == aiDeckSelection(index).wrappedValue ? "checkmark" : nil) {
+                            aiDeckSelection(index).wrappedValue = option.value
+                        }
+                        .id(AnyHashable(option.value))
+                    }
+                }
+            } label: {
+                ArenaDeckBox(deck: ArenaDeckBoxModel(id: deck?.id ?? "seat-\(index)", name: deck?.name ?? String(localized: "Choose a deck"),
+                                                     commander: deck?.deckList.commander?.cardName,
+                                                     colors: deck.map { $0.colors.map(String.init) } ?? [],
+                                                     subtitle: deck?.bracket.name ?? ""),
+                             width: 92)
+            }
+            .accessibilityLabel("AI \(index + 1) deck, \(deck?.name ?? "Choose")")
+            .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
+            Text(String(localized: "AI \(index + 1)")).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+        }
+        .overlay(alignment: .topTrailing) {
+            if opponentCount > 1 {
+                Button { removeAISeat(index) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(ArenaMenuStyle.text)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Color.black.opacity(0.85)))
+                        .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 0.8))
+                        .frame(width: 34, height: 34).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .offset(x: 10, y: -10)
+                .accessibilityLabel(String(localized: "Remove AI \(index + 1)"))
+                .accessibilityIdentifier("ondevice.aiSeat.remove.\(index + 1)")
+            }
+        }
+    }
+
+    private func addAISeat() {
+        guard opponentCount < 3 else { return }
+        let index = opponentCount
+        let taken = Set((0..<index).map { aiDeckSelection($0).wrappedValue })
+        if AIDeckPool.deck(id: aiDeckSelection(index).wrappedValue) == nil || taken.contains(aiDeckSelection(index).wrappedValue) {
+            aiDeckSelection(index).wrappedValue = (PreconCatalog.all.map(\.id).first { !taken.contains($0) }) ?? aiPreconID
+        }
+        opponentCount = index + 1
+    }
+
+    private func removeAISeat(_ index: Int) {
+        guard opponentCount > 1 else { return }
+        var ids = [aiPreconID, aiPrecon2ID, aiPrecon3ID]
+        ids.remove(at: index)
+        ids.append("")
+        aiPreconID = ids[0]; aiPrecon2ID = ids[1]; aiPrecon3ID = ids[2]
+        opponentCount -= 1
+    }
+
+    /// A choice as a tile: an emblem in a glass circle over its name, lit when chosen.
+    private func setupTile(_ title: String, symbol: String, on: Bool, identifier: String, action: @escaping () -> Void) -> some View {
+        Button {
+            GameAudio.shared.play(.uiTap)
+            action()
+        } label: {
+            VStack(spacing: 5) {
+                ArenaEmblem(symbol: symbol, size: 17, lit: on)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+                    .overlay(Circle().strokeBorder(on ? AnyShapeStyle(ArenaMenuStyle.metal) : AnyShapeStyle(ArenaGlass.hairline), lineWidth: on ? 1.6 : 0.9))
+                Text(title).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(on ? Color.white : ArenaMenuStyle.dim)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: 110)
+            .padding(.vertical, 8)
+            .background {
+                if on {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.07))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.6))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var setupRule: some View {
+        Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.3).padding(.vertical, 2)
+    }
+
+    /// The pinned bar: what the table is doing, and Start (or Find players) in the corner, as Arena pins Play.
+    private var setupStartBar: some View {
+        HStack(spacing: 12) {
+            Text(setup.status).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            if !playWithFriends {
+                Button { startAI() } label: { Text(String(localized: "Start")) }
+                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 21))
+                    .frame(width: 200, height: 46)
+                    .disabled(!mayStart)
+                    .accessibilityLabel("Start game")
+            } else if !playOnline {
+                Button { startMatchmaking() } label: { Text(String(localized: "Find players")) }
+                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 19))
+                    .frame(width: 200, height: 46)
+                    .disabled(!mayStart || setup.multiplayer?.isAuthenticated != true)
+                    .accessibilityLabel("Find players")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 9)
+        // A strip of dark glass along the foot of the page, edged in the hairline: the page scrolls under it.
+        .background {
+            LinearGradient(colors: [Color(red: 0.06, green: 0.06, blue: 0.075).opacity(0.96), Color.black.opacity(0.97)],
+                           startPoint: .top, endPoint: .bottom)
+                .overlay(alignment: .top) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.6) }
+                .ignoresSafeArea(edges: [.bottom, .horizontal])
+        }
     }
 
     private func setupNote(_ text: String) -> some View {
-        Text(text).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+        Text(text).font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -2639,20 +2787,20 @@ private struct RelayTablePanel: View {
                 if aiCount > 0 {
                     TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10).disabled(locked)
                     Text("The host’s AI choices apply to everyone. Higher skill may slow turns.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                 }
                 Text("Share the invite link, or friends type the table code. Every player needs this app version and keeps it open during the match.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                 Button("Host a table", action: host)
-                    .buttonStyle(CommanderActionStyle())
+                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 18))
+                    .frame(height: 46)
                     .disabled(!mayEnter)
                     .accessibilityIdentifier("ondevice.relay.host")
                 BrandDivider(title: "or join")
                 TextField("Table code", text: $code)
                     .textInputAutocapitalization(.characters).autocorrectionDisabled()
-                    .font(.body.monospaced())
-                    .padding(12).background(CommanderPresentation.canvas, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BrandTheme.border, lineWidth: 1))
+                    .modifier(TavernFieldChrome(tavern: true))
+                    .font(.system(size: 17, weight: .bold, design: .serif)).tracking(2)
                     .onChange(of: code) { _, value in
                         let clean = String(value.uppercased().filter { "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains($0) }.prefix(6))
                         if clean != value { code = clean }
@@ -2660,7 +2808,7 @@ private struct RelayTablePanel: View {
                     .disabled(locked)
                     .accessibilityIdentifier("ondevice.relay.code")
                 Button("Join table") { join(code) }
-                    .buttonStyle(CommanderActionStyle(primary: false))
+                    .buttonStyle(BrandButtonStyle(kind: .secondary))
                     .disabled(!mayEnter || code.count != 6)
                     .accessibilityIdentifier("ondevice.relay.join")
             }
@@ -2671,17 +2819,17 @@ private struct RelayTablePanel: View {
     private func activeTable(_ multiplayer: OnDeviceMultiplayer) -> some View {
         if let tableCode = multiplayer.tableCode {
             VStack(spacing: 6) {
-                Text("TABLE CODE").font(.caption.weight(.bold)).tracking(1.4).foregroundStyle(CommanderPresentation.secondary)
+                Text("TABLE CODE").font(ArenaMenuStyle.font(10.5, .heavy)).tracking(1.6).foregroundStyle(ArenaMenuStyle.gold)
                 Text(stride(from: 0, to: tableCode.count, by: 3).map { start -> String in
                     let from = tableCode.index(tableCode.startIndex, offsetBy: start)
                     return String(tableCode[from..<tableCode.index(from, offsetBy: min(3, tableCode.count - start))])
                 }.joined(separator: " "))
-                    .font(.system(size: 34, weight: .black, design: .monospaced)).tracking(2)
+                    .font(.system(size: 34, weight: .black, design: .serif)).tracking(3).foregroundStyle(ArenaMenuStyle.text)
                     .accessibilityLabel("Table code \(tableCode)")
                     .accessibilityIdentifier("ondevice.relay.tableCode")
                 if multiplayer.room == nil, multiplayer.endpoint == nil, !multiplayer.isFailed {
                     Text("Players \(multiplayer.seatsTaken)/\(max(2, multiplayer.seatsWanted))")
-                        .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                        .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                     if let link = TableJoinLink.url(code: tableCode) {
                         ShareLink(item: link, subject: Text("Join my MagicMobile table"),
                                   message: Text("Tap to join my MagicMobile table (code \(tableCode)).")) {
@@ -2693,9 +2841,10 @@ private struct RelayTablePanel: View {
             }
             .frame(maxWidth: .infinity)
             .padding(12)
-            .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.6))
         }
-        Text(multiplayer.status).font(.callout)
+        Text(multiplayer.status).font(ArenaMenuStyle.font(13, .medium))
         if multiplayer.room == nil, multiplayer.endpoint == nil, !multiplayer.isFailed, !multiplayer.waitingSeats.isEmpty {
             RelayWaitingRoomView(seats: multiplayer.waitingSeats) { multiplayer.removeFromTable($0) }
         }
@@ -2714,28 +2863,26 @@ private struct RelayWaitingRoomView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("AT THE TABLE").font(.caption.weight(.bold)).tracking(1.4)
-                .foregroundStyle(CommanderPresentation.secondary)
+            Text("AT THE TABLE").font(ArenaMenuStyle.font(10.5, .heavy)).tracking(1.6)
+                .foregroundStyle(ArenaMenuStyle.gold)
             ForEach(Array(seats.enumerated()), id: \.element.id) { index, seat in
                 HStack(spacing: 10) {
                     Image(systemName: seat.connected ? "person.crop.circle" : "wifi.exclamationmark")
-                        .font(.title3).foregroundStyle(CommanderPresentation.secondary)
+                        .font(.system(size: 18)).foregroundStyle(ArenaMenuStyle.gold)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
-                            Text(seat.name).font(.headline)
+                            Text(seat.name).font(ArenaMenuStyle.font(15, .bold))
                             if seat.isHost {
-                                Text("HOST").font(.caption2.weight(.black))
-                                    .padding(.horizontal, 5).padding(.vertical, 1)
-                                    .background(CommanderPresentation.accent.opacity(0.25), in: Capsule())
+                                TavernTag(text: "HOST")
                             }
                         }
                         Text(seat.isLocal ? "You" : seat.connected ? "Joined" : "Reconnecting…")
-                            .font(.caption).foregroundStyle(CommanderPresentation.secondary)
+                            .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                     }
                     Spacer()
                     if seat.removable {
                         Button("Remove", role: .destructive) { removal = seat }
-                            .font(.body.weight(.semibold)).foregroundStyle(Color.red)
+                            .font(ArenaMenuStyle.font(14, .semibold)).foregroundStyle(ArenaMenuStyle.loss)
                             .accessibilityLabel("Remove \(seat.name)")
                             .accessibilityIdentifier("ondevice.relay.remove.\(index + 1)")
                     }
@@ -2743,11 +2890,12 @@ private struct RelayWaitingRoomView: View {
             }
             if seats.contains(where: \.removable) {
                 Text("Remove anyone you did not invite. The match room opens when every seat is taken.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
             }
         }
         .padding(12)
-        .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.6))
         .confirmationDialog("Remove \(removal?.name ?? "this player") from the table?",
                             isPresented: Binding(get: { removal != nil }, set: { if !$0 { removal = nil } }),
                             titleVisibility: .visible, presenting: removal) { seat in
@@ -2768,8 +2916,8 @@ private struct MatchRoomView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("MATCH ROOM").font(.caption.weight(.bold)).tracking(1.4)
-                .foregroundStyle(CommanderPresentation.secondary)
+            Text("MATCH ROOM").font(ArenaMenuStyle.font(10.5, .heavy)).tracking(1.6)
+                .foregroundStyle(ArenaMenuStyle.gold)
             ForEach(room.players) { player in
                 let commanders = player.isLocal && !room.localReady ? (localCommander.map { [$0] } ?? []) : player.commanders
                 HStack(spacing: 10) {
@@ -2778,40 +2926,40 @@ private struct MatchRoomView: View {
                         .opacity(player.isReady ? 1 : 0.4)
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
-                            Text(player.name).font(.headline)
+                            Text(player.name).font(ArenaMenuStyle.font(15, .bold))
                             if player.isHost {
-                                Text("HOST").font(.caption2.weight(.black))
-                                    .padding(.horizontal, 5).padding(.vertical, 1)
-                                    .background(CommanderPresentation.accent.opacity(0.25), in: Capsule())
+                                TavernTag(text: "HOST")
                             }
                         }
                         Text(commanders.isEmpty ? (player.isReady ? "Ready" : "Choosing a deck…")
                              : commanders.joined(separator: " & "))
-                            .font(.caption).foregroundStyle(CommanderPresentation.secondary).lineLimit(2)
+                            .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(2)
                     }
                     Spacer()
                     Image(systemName: player.isReady ? "checkmark.circle.fill" : "hourglass")
                         .font(.title3)
-                        .foregroundStyle(player.isReady ? Color.green : CommanderPresentation.secondary)
+                        .foregroundStyle(player.isReady ? ArenaMenuStyle.gold : ArenaMenuStyle.dim)
                         .accessibilityLabel(player.isReady ? "Ready" : "Not ready")
                 }
                 .accessibilityElement(children: .combine)
             }
-            if let aiSummary = room.aiSummary { Text(aiSummary).font(.caption).foregroundStyle(.secondary) }
+            if let aiSummary = room.aiSummary { Text(aiSummary).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim) }
             if room.localReady {
                 Label("You're ready. The game starts when everyone is.", systemImage: "checkmark.seal.fill")
-                    .font(.callout.weight(.semibold)).foregroundStyle(.green)
+                    .font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
             } else {
                 Text("Pick your deck above, then ready up\(deckName.map { " with \($0)" } ?? "").")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                 Button("Ready") { ready() }
-                    .buttonStyle(CommanderActionStyle())
+                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 18))
+                    .frame(height: 46)
                     .disabled(deckName == nil)
                     .accessibilityIdentifier("ondevice.matchRoom.ready")
             }
         }
         .padding(12)
-        .background(CommanderPresentation.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.6))
     }
 }
 

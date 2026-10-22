@@ -122,7 +122,7 @@ struct DeckStudioImportScreen: View {
             .task { metadata = await Task.detached(priority: .userInitiated) { try? NativeDeckMetadataCatalogue.bundled() }.value }
             .task(id: commanderQuery) { await suggestCommanders() }
             .onDisappear { task?.cancel(); listTask?.cancel(); validation.cancelPending() }
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
     }
     /// The binder's head: Cancel as the strap, the page's name stamped beside it.

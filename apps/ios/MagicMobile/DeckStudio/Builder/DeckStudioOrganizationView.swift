@@ -103,7 +103,7 @@ private struct DeckStudioOrganizationSheet: View {
                 Button("Discard changes", role: .destructive) { dismiss() }
             }
             .binderOverlayHost()
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
     private func edit(_ mutate: (inout DeckStudioOrganization) -> Void) {
         guard !busy, var history else { return }

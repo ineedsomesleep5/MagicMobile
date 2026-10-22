@@ -48,7 +48,7 @@ struct DeckStudioReplacementPicker: View {
                     guard !Task.isCancelled, captured == request else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -74,7 +74,7 @@ struct DeckStudioBasicLandsSheet: View {
                          trailing: BinderLeafAction(title: "Apply", identifier: "deckStudio.basics.apply") {
                              if apply(values, draft) { dismiss() } else { error = "The draft changed or these counts exceed its limits. Nothing was partially applied." }
                          })
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -138,7 +138,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     guard !Task.isCancelled, captured == query else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -214,7 +214,7 @@ struct DeckStudioTextEditorSheet: View {
                                 else { error = "The deck changed while you were editing, or this list exceeds its limits. Nothing was applied." }
                             }
                         } ?? (unsupported ? nil : BinderLeafAction(title: DeckStudioPlayText.reviewChanges, identifier: "deckStudio.textEditor.review") { prepareReview() }))
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
     }
     private func prepareReview() {
         do {

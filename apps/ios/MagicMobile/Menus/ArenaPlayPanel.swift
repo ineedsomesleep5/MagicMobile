@@ -52,9 +52,19 @@ struct ArenaRecentGame: Identifiable {
     let id: String
     let mode: PlayMode
     let deckID: String
-    let title: String
+    let deckName: String
+    let commander: String?
+    let colors: [String]
     let detail: String
     let won: Bool?
+
+    var modeTitle: String {
+        switch mode {
+        case .quick: return String(localized: "Quick Match")
+        case .ranked: return String(localized: "Ranked")
+        case .casual: return String(localized: "Custom Table")
+        }
+    }
 }
 
 /// Everything the Play panel shows and does. The root view owns the state; the panel only draws it.
@@ -107,6 +117,11 @@ struct ArenaPlayPanelModel {
     var rankedEligible: Bool { (deckBracket?.rawValue ?? 99) <= rank.position.tier.maxDeckBracket }
 
     var busy: Bool { search != nil || waitingFor != nil }
+
+    /// The chosen deck's box.
+    var selectedDeck: ArenaDeckBoxModel? {
+        sections.lazy.flatMap(\.decks).first { $0.id == selectedDeckID.wrappedValue }
+    }
 }
 
 /// Arena's Play panel (Caleb, 2026-10-22): the room darkened, your decks as boxes on the left, and on the right the
@@ -153,7 +168,8 @@ struct ArenaDeckPicker: View {
         case .friends:
             return (String(localized: "Play with Friends"), String(localized: "Pick your deck, then challenge a friend or share a table code. iPhone and Android play together."))
         case .recent:
-            return (String(localized: "Recently Played"), String(localized: "Pick a game you played to set it up again, or choose another deck."))
+            return (String(localized: "Recently Played"), model.recent.isEmpty ? String(localized: "Your last tables show up here once you've played.")
+                                                                                : String(localized: "Pick a game to set it up again."))
         case .find:
             switch model.mode.wrappedValue {
             case .quick: return (String(localized: "Quick Match"), String(localized: "One AI opponent at your deck's bracket. No rank change."))
@@ -166,6 +182,17 @@ struct ArenaDeckPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if model.tab.wrappedValue == .recent {
+                ArenaRecentShelf(model: model, compact: compact)
+            } else {
+                deckShelves
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("play.decks")
+    }
+
+    private var deckShelves: some View {
             GeometryReader { proxy in
                 let gap: CGFloat = compact ? 10 : 12
                 let usable = proxy.size.width - (compact ? 32 : 48)
@@ -173,11 +200,13 @@ struct ArenaDeckPicker: View {
                 let boxWidth = floor((usable - gap * CGFloat(columns - 1)) / CGFloat(columns))
                 ScrollViewReader { reader in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 6) {
+                        // The shelves themselves are not lazy, so the chosen deck's shelf can be scrolled to before it shows.
+                        VStack(alignment: .leading, spacing: 6) {
                             ForEach(model.sections) { section in
                                 ArenaSectionHeader(title: section.title, count: section.decks.count,
                                                    collapsed: Binding(get: { collapsed.contains(section.id) },
                                                                       set: { if $0 { collapsed.insert(section.id) } else { collapsed.remove(section.id) } }))
+                                    .id("shelf-\(section.id)")
                                 if !collapsed.contains(section.id) {
                                     // Rows leave room for an open box's lid to rise.
                                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(boxWidth), spacing: gap, alignment: .top), count: columns),
@@ -191,7 +220,7 @@ struct ArenaDeckPicker: View {
                                             deckButton(deck, width: boxWidth)
                                         }
                                     }
-                                    .padding(.top, ArenaBoxGeometry(width: boxWidth).rise * 0.6)
+                                    .padding(.top, ArenaBoxGeometry(width: boxWidth).rise + 12)
                                     .padding(.bottom, 10)
                                 }
                             }
@@ -200,10 +229,11 @@ struct ArenaDeckPicker: View {
                         .padding(.bottom, 20)
                     }
                     .scrollIndicators(.hidden)
+                    .opacity(model.busy ? 0.4 : 1)
                     .task {
-                        // Once the shelves are laid out, bring the chosen deck into view.
-                        try? await Task.sleep(for: .milliseconds(350))
-                        reader.scrollTo(model.selectedDeckID.wrappedValue, anchor: .center)
+                        // Once the shelves are laid out, bring the chosen deck into view, a little above the middle.
+                        try? await Task.sleep(for: .milliseconds(250))
+                        if let shelf = shelf(of: model.selectedDeckID.wrappedValue) { reader.scrollTo(shelf, anchor: .top) }
                     }
                     // A deck chosen elsewhere (Recently Played) comes into view; one already showing stays put.
                     .onChange(of: model.selectedDeckID.wrappedValue) { _, id in
@@ -211,9 +241,6 @@ struct ArenaDeckPicker: View {
                     }
                 }
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("play.decks")
     }
 
     private var header: some View {
@@ -224,8 +251,10 @@ struct ArenaDeckPicker: View {
                     .accessibilityAddTraits(.isHeader)
                 Text(heading.detail).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                let rules = ArenaCaps(text: String(localized: "100 cards · up to 4 players"), size: 9.5)
+                if compact { rules }
                 HStack(spacing: 8) {
-                    ArenaCaps(text: String(localized: "Commander · 100 cards · up to 4 players"), size: 9.5)
+                    if !compact { rules }
                     if let bracket = model.deckBracket {
                         Button(action: model.explainBracket) {
                             HStack(spacing: 4) {
@@ -234,7 +263,7 @@ struct ArenaDeckPicker: View {
                             }
                             .padding(.horizontal, 8).frame(height: 20)
                             .background(Capsule().fill(Color.white.opacity(0.06)))
-                            .overlay(Capsule().strokeBorder(bracket.tint, lineWidth: 1))
+                            .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                             .frame(minHeight: 44).contentShape(Rectangle())
                         }
                         .buttonStyle(BrandPressStyle())
@@ -253,6 +282,11 @@ struct ArenaDeckPicker: View {
         .padding(.bottom, 4)
     }
 
+    /// The shelf a deck sits on, as its heading's scroll id.
+    private func shelf(of deckID: String) -> String? {
+        model.sections.first { $0.decks.contains { $0.id == deckID } }.map { "shelf-\($0.id)" }
+    }
+
     private func deckButton(_ deck: ArenaDeckBoxModel, width: CGFloat) -> some View {
         let selected = deck.id == model.selectedDeckID.wrappedValue
         return Button {
@@ -268,12 +302,115 @@ struct ArenaDeckPicker: View {
     }
 }
 
+// MARK: - Recently played
+
+/// Recently Played's left side, as Arena's: a tall tile for each recent table (its deck's art and box, the way you
+/// played, whom you met), or an empty tile that points to Find Match.
+struct ArenaRecentShelf: View {
+    let model: ArenaPlayPanelModel
+    let compact: Bool
+
+    var body: some View {
+        ScrollView(compact ? .horizontal : .vertical) {
+            let layout = compact ? AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+                                 : AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            Group {
+                if model.recent.isEmpty {
+                    empty
+                } else if compact {
+                    layout { ForEach(model.recent) { tile($0) } }
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 12, alignment: .top)],
+                              alignment: .leading, spacing: 14) {
+                        ForEach(model.recent) { tile($0) }
+                    }
+                }
+            }
+            .padding(.horizontal, compact ? 16 : 24)
+            .padding(.vertical, 10)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func isChosen(_ game: ArenaRecentGame) -> Bool {
+        guard game.deckID == model.selectedDeckID.wrappedValue else { return false }
+        switch game.mode {
+        case .quick: return model.mode.wrappedValue == .quick
+        case .ranked: return model.mode.wrappedValue == .ranked
+        case .casual: return model.mode.wrappedValue == .custom
+        }
+    }
+
+    private func tile(_ game: ArenaRecentGame) -> some View {
+        let chosen = isChosen(game)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return Button {
+            GameAudio.shared.play(.uiTap)
+            model.chooseRecent(game)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                ArenaArt(name: game.commander ?? "", colors: game.colors)
+                    .frame(height: 120)
+                    .overlay(alignment: .bottomLeading) {
+                        ArenaPips(colors: game.colors, size: 14).padding(8)
+                    }
+                    .clipShape(shape)
+                ArenaCaps(text: game.modeTitle, size: 9)
+                Text(game.deckName).font(ArenaMenuStyle.font(14, .bold)).foregroundStyle(ArenaMenuStyle.text).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(game.detail).font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let won = game.won {
+                        Text(won ? String(localized: "Won") : String(localized: "Lost"))
+                            .font(ArenaMenuStyle.font(11, .bold))
+                            .foregroundStyle(won ? ArenaMenuStyle.win : ArenaMenuStyle.loss)
+                    }
+                }
+            }
+            .padding(8)
+            .frame(width: compact ? 168 : nil)
+            .background(shape.fill(Color.black.opacity(0.45)))
+            .overlay(shape.strokeBorder(chosen ? AnyShapeStyle(Color(red: 1, green: 0.88, blue: 0.56)) : AnyShapeStyle(ArenaGlass.hairline),
+                                        lineWidth: chosen ? 1.6 : 0.8).opacity(chosen ? 1 : 0.6))
+            .shadow(color: chosen ? Color(red: 1, green: 0.78, blue: 0.36).opacity(0.5) : .clear, radius: 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(chosen ? [.isSelected] : [])
+        .accessibilityIdentifier("recent.\(game.id)")
+    }
+
+    /// No games yet: a dashed tile in the gold hairline, and the way to Find Match.
+    private var empty: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(ArenaMenuStyle.gold.opacity(0.55), style: StrokeStyle(lineWidth: 1.4, dash: [6, 5]))
+                VStack(spacing: 8) {
+                    ArenaEmblem(symbol: "clock.arrow.circlepath", size: 26)
+                    Text(String(localized: "Your last tables show up here"))
+                        .font(ArenaMenuStyle.font(14, .semibold)).foregroundStyle(ArenaMenuStyle.text)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(14)
+            }
+            .frame(width: 190, height: 200)
+            Button(String(localized: "Go to Find Match")) { model.tab.wrappedValue = .find }
+                .buttonStyle(ArenaPillButtonStyle())
+                .accessibilityIdentifier("recent.findMatch")
+        }
+        .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
+    }
+}
+
 // MARK: - Blade
 
 /// The right of the panel (the bottom in portrait): tabs, the ways to play, options, and the Play plaque.
 struct ArenaPlayBlade: View {
     let model: ArenaPlayPanelModel
     let compact: Bool
+    @State private var friendWay: ArenaFriendWay = .challenge
 
     var body: some View {
         VStack(spacing: 0) {
@@ -282,9 +419,12 @@ struct ArenaPlayBlade: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) { options }
                     .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 18)
             }
             .scrollIndicators(.hidden)
+            // The list fades out over the footer's line rather than running into it.
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.88), .init(color: .clear, location: 1)],
+                                 startPoint: .top, endPoint: .bottom))
             .accessibilityIdentifier("lobby.scroll")
             footer
         }
@@ -344,7 +484,7 @@ struct ArenaPlayBlade: View {
                     model.mode.wrappedValue = mode
                 } label: {
                     VStack(spacing: 4) {
-                        ArenaModeGem(mode: mode, rank: model.rank.position, lit: on)
+                        ArenaModeGem(mode: mode, rank: model.rank.position, lit: on, size: compact ? 34 : 40)
                         Text(mode.title).font(ArenaMenuStyle.font(11, .semibold))
                             .foregroundStyle(on ? Color.white : ArenaMenuStyle.dim)
                     }
@@ -368,6 +508,7 @@ struct ArenaPlayBlade: View {
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .padding(.bottom, 4)
+        .opacity(model.busy ? 0.4 : 1)
     }
 
     // MARK: Options
@@ -415,7 +556,7 @@ struct ArenaPlayBlade: View {
     @ViewBuilder private var rankedOptions: some View {
         let rank = model.rank
         HStack(spacing: 12) {
-            RankBadge(position: rank.position, size: 58, showsPips: true)
+            RankBadge(position: rank.position, size: 48, showsPips: true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(rank.position.title).font(ArenaMenuStyle.font(17, .bold)).foregroundStyle(ArenaMenuStyle.text)
                 Text(String(localized: "Season: \(RankLadder.seasonName(rank.season))"))
@@ -424,7 +565,8 @@ struct ArenaPlayBlade: View {
                     .font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ranked.standing")
         ArenaOptionRow(title: String(localized: "Ranked Commander"), value: String(localized: "1v1"), selected: true, identifier: "ranked.format") {}
@@ -436,8 +578,9 @@ struct ArenaPlayBlade: View {
                 .padding(.vertical, 6)
                 .accessibilityIdentifier("ranked.ineligible")
         }
-        Text(model.canSearchPeople ? String(localized: "We look for a player near your rank first. If nobody's searching, an AI takes the seat.")
-                                   : String(localized: "Profiles are offline, so an AI takes the seat. AI games count the same."))
+        Text(model.canSearchPeople ? String(localized: "A player near your rank, or an AI if nobody's searching.")
+                                   : String(localized: "Profiles are offline: an AI takes the seat, and counts the same."))
+            .lineLimit(2)
             .font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 6)
@@ -449,7 +592,7 @@ struct ArenaPlayBlade: View {
         ArenaCaps(text: String(localized: "Players"), size: 9.5).padding(.top, 8).padding(.bottom, 2)
         ArenaOptionRow(title: String(localized: "Against the AI"), detail: String(localized: "One to three AI opponents"),
                        selected: model.playerMode.wrappedValue == "ai", identifier: "custom.ai") { model.playerMode.wrappedValue = "ai" }
-        ArenaOptionRow(title: String(localized: "Online table"), detail: String(localized: "iPhone and Android, with a table code"),
+        ArenaOptionRow(title: String(localized: "Online table"), detail: String(localized: "iPhone & Android · table code"),
                        selected: model.playerMode.wrappedValue == "online", identifier: "custom.online") { model.playerMode.wrappedValue = "online" }
         ArenaOptionRow(title: String(localized: "Game Center"), detail: String(localized: "iPhones nearby or invited"),
                        selected: model.playerMode.wrappedValue == "gamecenter", identifier: "custom.gamecenter") { model.playerMode.wrappedValue = "gamecenter" }
@@ -459,29 +602,35 @@ struct ArenaPlayBlade: View {
     }
 
     @ViewBuilder private var friendsOptions: some View {
-        ArenaOptionRow(title: String(localized: "Challenge a friend"), detail: String(localized: "Quick Match or Ranked, from your friends list"),
-                       chevron: true, identifier: "friends.challenge", action: model.challengeFriend)
-            .padding(.top, 6)
-        ArenaOptionRow(title: String(localized: "Host an online table"), detail: String(localized: "Share its code with anyone"),
-                       chevron: true, identifier: "friends.host", action: model.hostOnline)
-        ArenaOptionRow(title: String(localized: "Join with a code"), detail: String(localized: "A friend's table on iPhone or Android"),
-                       chevron: true, identifier: "friends.join", action: model.joinOnline)
-        ArenaOptionRow(title: String(localized: "Game Center"), detail: String(localized: "Invite iPhones nearby"),
-                       chevron: true, identifier: "friends.gamecenter", action: model.gameCenter)
+        ArenaCaps(text: String(localized: "With friends"), size: 9.5).padding(.top, 8).padding(.bottom, 2)
+        ForEach(ArenaFriendWay.allCases) { way in
+            ArenaOptionRow(title: way.title, detail: way.detail, selected: friendWay == way, identifier: "friends.\(way.rawValue)") {
+                friendWay = way
+            }
+        }
     }
 
+    /// The chosen table's deck as an open box, the way it was played and the deck's bracket.
     @ViewBuilder private var recentOptions: some View {
         if model.recent.isEmpty {
-            Text(String(localized: "Games you play show up here."))
+            Text(String(localized: "Play a game and it waits here, ready to set up again."))
                 .font(ArenaMenuStyle.font(12.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 14)
         } else {
-            ForEach(model.recent) { game in
-                ArenaOptionRow(title: game.title, detail: game.detail,
-                               value: game.won.map { $0 ? String(localized: "Won") : String(localized: "Lost") },
-                               chevron: true, identifier: "recent.\(game.id)") { model.chooseRecent(game) }
+            VStack(spacing: 8) {
+                if let deck = model.selectedDeck {
+                    ArenaDeckBox(deck: deck, selected: true, width: 120)
+                        .padding(.top, ArenaBoxGeometry(width: 120).rise + 6)
+                }
+                ArenaCaps(text: model.mode.wrappedValue == .ranked ? String(localized: "Ranked") : model.mode.wrappedValue == .custom
+                          ? String(localized: "Custom Table") : String(localized: "Quick Match"), size: 10)
+                if let bracket = model.deckBracket {
+                    Text(bracket.title).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                }
             }
-            .padding(.top, 4)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
         }
     }
 
@@ -535,7 +684,14 @@ struct ArenaPlayBlade: View {
     private var primary: (String, String, Bool, () -> Void) {
         switch model.tab.wrappedValue {
         case .friends:
-            return (String(localized: "Challenge"), "play.friends", true, model.challengeFriend)
+            switch friendWay {
+            case .challenge: return (String(localized: "Challenge"), "play.friends", true, model.challengeFriend)
+            case .host: return (String(localized: "Host Table"), "play.friends", true, model.hostOnline)
+            case .join: return (String(localized: "Join Table"), "play.friends", true, model.joinOnline)
+            case .gamecenter: return (String(localized: "Game Center"), "play.friends", true, model.gameCenter)
+            }
+        case .recent where model.recent.isEmpty:
+            return (String(localized: "Find Match"), "play.recent", true, { model.tab.wrappedValue = .find })
         case .recent, .find:
             switch model.mode.wrappedValue {
             case .quick: return (String(localized: "Play"), "quick.start", model.mayStart, model.startQuick)
@@ -551,6 +707,7 @@ struct ArenaModeGem: View {
     let mode: ArenaPlayMode
     let rank: RankPosition
     let lit: Bool
+    var size: CGFloat = 40
 
     var body: some View {
         ZStack {
@@ -563,12 +720,12 @@ struct ArenaModeGem: View {
                 Image(systemName: "bolt.fill").font(.system(size: 17, weight: .black))
                     .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), ArenaMenuStyle.ember], startPoint: .top, endPoint: .bottom))
             case .ranked:
-                RankEmblem(tier: rank.tier, size: 32)
+                RankEmblem(tier: rank.tier, size: size * 0.8)
             case .custom:
                 Image(systemName: "person.3.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(ArenaMenuStyle.metal)
             }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: size, height: size)
         .shadow(color: lit ? ArenaMenuStyle.ember.opacity(0.55) : .clear, radius: 8)
         .accessibilityHidden(true)
     }
@@ -582,13 +739,15 @@ struct ArenaSeam: View {
     @State private var flicker = false
 
     var body: some View {
-        let line = LinearGradient(colors: [ArenaMenuStyle.seam.opacity(0.4), Color(red: 1, green: 0.78, blue: 0.42), ArenaMenuStyle.seam, ArenaMenuStyle.seam.opacity(0.5)],
+        let line = LinearGradient(colors: [ArenaMenuStyle.seam.opacity(0.55), Color(red: 1, green: 0.84, blue: 0.5), ArenaMenuStyle.seam,
+                                           Color(red: 1, green: 0.7, blue: 0.3), ArenaMenuStyle.seam.opacity(0.6)],
                                   startPoint: vertical ? .top : .leading, endPoint: vertical ? .bottom : .trailing)
+        // A burning edge: a bright core, an ember glow around it, a wider haze.
         Rectangle()
             .fill(line)
-            .frame(width: vertical ? 2 : nil, height: vertical ? nil : 2)
-            .shadow(color: ArenaMenuStyle.seam.opacity(flicker ? 0.95 : 0.6), radius: flicker ? 9 : 6)
-            .shadow(color: ArenaMenuStyle.seam.opacity(0.35), radius: 18)
+            .frame(width: vertical ? 3.5 : nil, height: vertical ? nil : 3.5)
+            .shadow(color: ArenaMenuStyle.seam.opacity(flicker ? 1 : 0.7), radius: flicker ? 9 : 7)
+            .shadow(color: Color(red: 1, green: 0.35, blue: 0.1).opacity(0.55), radius: 20)
             .ignoresSafeArea(edges: vertical ? .bottom : [])
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -634,6 +793,30 @@ struct ArenaSearchStatus: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("ranked.search")
+        }
+    }
+}
+
+/// The ways to play with friends in the Play panel's Friends tab.
+enum ArenaFriendWay: String, CaseIterable, Identifiable {
+    case challenge, host, join, gamecenter
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .challenge: return String(localized: "Challenge a friend")
+        case .host: return String(localized: "Host an online table")
+        case .join: return String(localized: "Join with a code")
+        case .gamecenter: return String(localized: "Game Center")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .challenge: return String(localized: "Quick Match or Ranked")
+        case .host: return String(localized: "Share its code with anyone")
+        case .join: return String(localized: "iPhone or Android table")
+        case .gamecenter: return String(localized: "Invite iPhones nearby")
         }
     }
 }

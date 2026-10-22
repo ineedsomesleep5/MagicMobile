@@ -103,8 +103,8 @@ private struct BinderOverlayHostModifier: ViewModifier {
     }
 }
 
-/// The open menu: parchment in a brass edge, under its plaque when there is room below, else over it, and
-/// lined up with the plaque's nearer edge. A long menu scrolls inside the card.
+/// The open menu: Arena's glass card in the gold hairline, under its pill when there is room below, else over it,
+/// and lined up with the pill's nearer edge. A long menu scrolls inside the card.
 private struct BinderMenuCard: View {
     let menu: BinderOverlayHost.Menu
     let origin: CGPoint
@@ -125,11 +125,10 @@ private struct BinderMenuCard: View {
             rows.hidden().accessibilityHidden(true)
             ScrollView { rows }.scrollBounceBehavior(.basedOnSize)
         }
-        .background { GrimoirePaper(tone: .plate) }
+        .background { LinearGradient(colors: [ArenaGlass.top.opacity(0.98), ArenaGlass.bottom.opacity(0.98)], startPoint: .top, endPoint: .bottom) }
         .clipShape(shape)
-        .overlay(shape.strokeBorder(Binder.brass, lineWidth: 1.6))
-        .overlay(shape.inset(by: 3).stroke(Binder.brassDeep.opacity(0.25), lineWidth: 0.6))
-        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 14, y: 6)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { dismiss() }
@@ -338,7 +337,7 @@ struct BinderMenuRowLabel: View {
                 else { Color.clear }
             }
             .frame(width: 22)
-            .foregroundStyle(destructive ? DeckStudioPalette.danger : Binder.brassDeep)
+            .foregroundStyle(destructive ? DeckStudioPalette.danger : ArenaMenuStyle.gold)
             Text(title)
                 .font(.system(size: 16, weight: checked ? .bold : .regular, design: .serif))
                 .foregroundStyle(destructive ? DeckStudioPalette.danger : DeckStudioPalette.ink)
@@ -359,7 +358,7 @@ private struct BinderMenuRowStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(configuration.isPressed ? DeckStudioPalette.ink.opacity(0.08) : .clear)
+            .background(configuration.isPressed ? Color.white.opacity(0.08) : .clear)
             .opacity(isEnabled ? 1 : 0.4)
     }
 }
@@ -505,7 +504,7 @@ struct BinderMenuSubmenu<Content: View>: View {
         Button { withAnimation(.easeOut(duration: 0.15)) { open.toggle() } } label: {
             HStack(spacing: 0) {
                 BinderMenuRowLabel(title: title, systemImage: systemImage)
-                Image(systemName: "chevron.down").font(.system(size: 11, weight: .heavy)).foregroundStyle(Binder.brassDeep)
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .heavy)).foregroundStyle(ArenaMenuStyle.gold)
                     .rotationEffect(.degrees(open ? 180 : 0)).padding(.trailing, 14)
             }
         }
@@ -582,36 +581,37 @@ private struct BinderDialogCard: View {
             .buttonStyle(BinderDialogButtonStyle(dismiss: dismiss))
         }
         .padding(18)
-        .background { GrimoirePaper(tone: .plate).clipShape(shape) }
-        .overlay(shape.strokeBorder(Binder.brass, lineWidth: 2))
-        .overlay { BinderCorners(size: 18, style: .leaf).allowsHitTesting(false) }
-        .shadow(color: .black.opacity(0.45), radius: 20, y: 8)
+        .modifier(ArenaGlassPanel(cornerRadius: 16, opacity: 0.98))
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { if dialog.cancel { dismiss() } }
     }
 }
 
-/// A dialog's buttons: brass for the main choice, oxblood leather for a destructive one, a quiet plaque
-/// for Cancel. Pressing any closes the dialog after its action.
+/// A dialog's buttons as the Arena board's plaques: ember for the main choice, oxblood leather for a destructive
+/// one, leather for Cancel. Pressing any closes the dialog after its action.
 private struct BinderDialogButtonStyle: PrimitiveButtonStyle {
     let dismiss: () -> Void
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
         Button { configuration.trigger(); dismiss() } label: {
             configuration.label
-                .font(.system(size: 16, weight: .heavy, design: .serif))
+                .font(.system(size: 16, weight: .bold, design: .serif))
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(configuration.role == .destructive ? TavernPalette.parchment : Binder.engraved)
+                .foregroundStyle(configuration.role == nil ? Color(red: 1, green: 0.94, blue: 0.78) : TavernPalette.parchment)
+                .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
                 .background {
-                    switch configuration.role {
-                    case .destructive?: ZStack { TavernFill(material: .leather); Binder.dye(Binder.oxblood, 0.7) }.clipShape(shape)
-                    case .cancel?: shape.fill(DeckStudioPalette.ink.opacity(0.06))
-                    default: shape.fill(Binder.brass)
+                    Group {
+                        switch configuration.role {
+                        case .destructive?: TavernFill(material: .leather).overlay(MagicPalette.oxblood.opacity(0.7))
+                        case .cancel?: TavernFill(material: .leather)
+                        default: TavernFill(material: .ember)
+                        }
                     }
+                    .clipShape(Capsule())
+                    .padding(2.5)
                 }
-                .overlay(shape.strokeBorder(configuration.role == .cancel ? DeckStudioPalette.ink.opacity(0.2) : Binder.brassDeep.opacity(0.7), lineWidth: 1))
-                .contentShape(shape)
+                .overlay { TavernCapsuleRim() }
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }

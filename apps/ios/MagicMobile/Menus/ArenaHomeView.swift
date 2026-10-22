@@ -373,10 +373,11 @@ struct ArenaProgressRail: View {
                     Text(title).font(ArenaMenuStyle.font(12, .bold)).foregroundStyle(ArenaMenuStyle.text).lineLimit(1)
                     Text(subtitle).font(ArenaMenuStyle.font(10.5, .semibold)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
                 }
-                .frame(maxWidth: compact ? 92 : 130, alignment: .leading)
+                .frame(maxWidth: compact ? .infinity : 130, alignment: .leading)
             }
             .padding(.leading, 4)
             .padding(.trailing, 12)
+            .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
             .padding(.vertical, 4)
             .background(Capsule().fill(LinearGradient(colors: [Color(red: 0.10, green: 0.11, blue: 0.14).opacity(0.92),
                                                                Color(red: 0.04, green: 0.045, blue: 0.06).opacity(0.94)],

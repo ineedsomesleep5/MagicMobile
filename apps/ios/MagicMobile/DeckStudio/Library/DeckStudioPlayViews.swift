@@ -1,42 +1,31 @@
 import SwiftUI
 
-/// The brand's ember call to action, sized for Deck Studio's ivory surfaces.
-/// `settled` is the calm "✓ Playing" state: nothing left to do.
+/// Deck Studio's Play: the Arena board's ember plaque in the brass capsule rim. `settled` is the calm "✓ Playing"
+/// state on leather: nothing left to do. (`jewel` kept for callers; the plaque carries no jewel.)
 struct DeckStudioPlayButtonStyle: ButtonStyle {
     var settled = false
     var compact = false
-    /// Play's ember jewel (the Meshy-made tavern-binder-jewel) beside the title.
     var jewel = false
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private static let jewelArt = UIImage(named: "tavern-binder-jewel")
-    /// The binder's Play (concept B, 2026-10-06): ember glass set in brass, the kit's tavern ember, with
-    /// an ember jewel. The deck already chosen for play is a plain brass plaque.
+
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: compact ? 9 : 10, style: .continuous)
-        return HStack(spacing: 8) {
-            if jewel, !settled, let art = Self.jewelArt {
-                Image(uiImage: art).resizable().interpolation(.high).frame(width: 30, height: 30)
-                    .shadow(color: .black.opacity(0.5), radius: 1.5, y: 1).accessibilityHidden(true)
-                configuration.label.labelStyle(.titleOnly)
-            } else {
-                configuration.label
-            }
-        }
-        .font(.system(size: compact ? 15 : 17, weight: .heavy, design: .serif))
-            .padding(.horizontal, compact ? 12 : 16).padding(.vertical, compact ? 8 : 10)
+        configuration.label
+            .font(.system(size: compact ? 15 : 17, weight: .bold, design: .serif))
+            .lineLimit(1).minimumScaleFactor(0.75)
+            .padding(.horizontal, compact ? 14 : 18).padding(.vertical, 6)
             .frame(minHeight: compact ? DeckStudioMetrics.touchTarget : DeckStudioMetrics.controlHeight)
-            .foregroundStyle(settled ? Binder.engraved : Color(red: 1, green: 0.94, blue: 0.80))
-            .shadow(color: settled ? Binder.brassLight.opacity(0.7) : .black.opacity(0.65), radius: 0, y: 1)
+            .foregroundStyle(settled ? TavernPalette.parchment : Color(red: 1, green: 0.94, blue: 0.80))
+            .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
             .background {
-                if settled { shape.fill(Binder.brass) }
-                else { TavernFill(material: .ember).clipShape(shape) }
+                Group { if settled { TavernFill(material: .leather) } else { TavernFill(material: .ember) } }
+                    .clipShape(Capsule()).padding(2.5)
             }
-            .overlay(shape.strokeBorder(Binder.brass, lineWidth: 2.5))
-            .overlay(shape.inset(by: 2.5).stroke(.black.opacity(0.35), lineWidth: 0.8))
-            .shadow(color: .black.opacity(configuration.isPressed ? 0.15 : 0.35), radius: configuration.isPressed ? 1 : 3, y: configuration.isPressed ? 0 : 2)
-            .opacity(settled || enabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .overlay { TavernCapsuleRim() }
+            .shadow(color: settled ? .black.opacity(0.4) : ArenaMenuStyle.ember.opacity(enabled ? 0.45 : 0), radius: settled ? 3 : 10, y: settled ? 2 : 0)
+            .opacity(settled || enabled ? 1 : 0.45)
+            .brightness(configuration.isPressed ? 0.06 : 0)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
@@ -132,49 +121,33 @@ struct DeckStudioPlayStatusChip: View {
     }
 }
 
-/// Pinned above the library: which deck the next game uses and whether it is ready, on a band of the
-/// binder's leather with Play's jewel and a brass coin to open it.
+/// Which deck the next game uses and whether it is ready, on a strip of dark glass with a gold chevron.
 struct DeckStudioNowPlayingStrip: View {
     let name: String
     let status: DeckStudioPlayStatus
     let open: () -> Void
-    private static let jewel = UIImage(named: "tavern-binder-jewel")
     var body: some View {
         Button(action: open) {
             HStack(spacing: 10) {
-                Group {
-                    if let art = Self.jewel { Image(uiImage: art).resizable().interpolation(.high) }
-                    else { Image(systemName: "flame.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(TavernPalette.ember) }
-                }
-                .frame(width: 28, height: 28).shadow(color: .black.opacity(0.55), radius: 1.5, y: 1)
+                Image(systemName: "flame.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(ArenaMenuStyle.ember)
+                    .frame(width: 26, height: 26)
                 Text(DeckStudioPlayText.nowPlayingStrip(name, status))
-                    .font(.system(size: 15, weight: .bold, design: .serif))
-                    .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
-                    .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
+                    .font(.system(size: 14, weight: .bold, design: .serif))
+                    .foregroundStyle(ArenaMenuStyle.text)
                     .lineLimit(2).multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
-                BinderStamp(icon: "chevron.right", size: 26)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .heavy)).foregroundStyle(ArenaMenuStyle.gold)
             }
-            .padding(.horizontal, 16).frame(minHeight: DeckStudioMetrics.touchTarget + 8)
+            .padding(.horizontal, 14).frame(minHeight: DeckStudioMetrics.touchTarget + 4)
             .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
         .buttonStyle(DeckStudioArtworkButtonStyle())
         .background {
-            ZStack {
-                TavernFill(material: .leather)
-                Binder.dye(Binder.oxblood, 0.45)
-            }
-            .overlay(alignment: .top) { stitch.padding(.top, 4) }
-            .overlay(alignment: .bottom) { stitch.padding(.bottom, 6) }
-            .overlay(alignment: .bottom) { Rectangle().fill(Binder.brass).frame(height: 2) }
+            Color.black.opacity(0.55)
+                .overlay(alignment: .bottom) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.6) }
         }
-        .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
         .accessibilityHint("Opens your playing deck")
         .accessibilityIdentifier("deckStudio.nowPlaying")
-    }
-    /// The band's stitching.
-    private var stitch: some View {
-        StitchLine().stroke(Binder.thread, style: StrokeStyle(lineWidth: 1, dash: [5, 4])).frame(height: 1).padding(.horizontal, 6)
     }
 }
 
@@ -326,7 +299,7 @@ private struct DeckStudioPlaySheet: View {
             }
         }
         .background(GrimoirePaper().ignoresSafeArea())
-        .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -466,21 +439,18 @@ struct OnDeviceSetupDeckDetails: View {
             if let deck {
                 HStack(spacing: 6) {
                     Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(NativeDeckDraft(deck: deck))))
-                        .font(.caption.monospacedDigit()).foregroundStyle(CommanderPresentation.secondary)
+                        .font(.system(size: 12, weight: .semibold, design: .serif)).monospacedDigit().foregroundStyle(DeckStudioPalette.secondaryInk)
                     if let colors = DeckStudioDeckColors.colors(for: commanders) {
-                        HStack(spacing: 2) {
-                            if colors.isEmpty { ManaSymbolView(symbol: "C", size: 16) }
-                            ForEach(colors, id: \.self) { ManaSymbolView(symbol: $0, size: 16) }
-                        }
+                        ArenaPips(colors: colors, size: 16)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Color identity: " + (colors.isEmpty ? "colorless" : colors.map { ["W": "white", "U": "blue", "B": "black", "R": "red", "G": "green"][$0] ?? $0 }.joined(separator: ", ")))
                     }
                 }
                 if status == .needsFixes {
                     Button { openStudio(fixCards(key: key, deck: deck)) } label: {
-                        Label(status.setupLine, systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold))
+                        Label(status.setupLine, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12, weight: .semibold, design: .serif))
                     }
-                    .foregroundStyle(CommanderPresentation.accent)
+                    .foregroundStyle(DeckStudioPalette.warning)
                     .accessibilityIdentifier("ondevice.deckStatus.fix")
                 }
                 // Ready and not-checked decks show no line (Caleb, 2026-10-03): Start checks the deck anyway.
@@ -497,7 +467,7 @@ struct OnDeviceSetupDeckDetails: View {
                                  hidden: presented.check.issueCount - presented.check.issues.count,
                                  fix: { cards in fixAfterDismiss = cards; issues = nil }, notNow: { issues = nil })
                 .background(GrimoirePaper().ignoresSafeArea())
-                .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+                .foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
         }
     }
 

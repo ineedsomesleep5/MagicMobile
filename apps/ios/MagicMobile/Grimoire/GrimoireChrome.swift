@@ -1,11 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// Deck Studio as a spell book (Caleb, 2026-10-05): every screen is a parchment page of the grimoire
-/// the opening film shows. The page's own colours stay the Deck Studio palette; this file adds what
-/// makes it a book: the paper grain under everything, the shadow in the gutter by the spine, the cut
-/// edges of the leaves beyond the page, ribbon markers for chapters and serif type throughout.
-/// Android draws the same pieces (studio/GrimoireChrome.kt).
+/// Deck Studio's page chrome. It was a spell book's parchment (2026-10-05); since the Arena menus (Caleb,
+/// 2026-10-22) a page is Arena's dark glass in the gold hairline, with gold headings and serif type. The names stay
+/// so the screens keep their layout. Android still draws the book (studio/GrimoireChrome.kt).
 enum Grimoire {
     /// A page lying open in the book, or a loose leaf laid over it (a sheet).
     enum Leaf { case bound, loose }
@@ -36,10 +34,10 @@ extension View {
         modifier(GrimoirePageModifier(leaf: leaf))
     }
 
-    /// A place to write on the page (a search or text field): paler paper inside a hairline of ink.
+    /// A place to write on the page (a search or text field): a darker pane in the gold hairline.
     func grimoireField(cornerRadius: CGFloat) -> some View {
-        background(DeckStudioPalette.surfaceElevated, in: RoundedRectangle(cornerRadius: cornerRadius))
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(DeckStudioPalette.ink.opacity(0.2), lineWidth: 0.8))
+        background(Color.black.opacity(0.5), in: RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
     }
 
     /// Turns the page on a sideways drag anywhere on it: leftward for `next`, rightward for `previous`. The
@@ -215,64 +213,26 @@ extension Grimoire {
     }
 }
 
-/// The book's paper: a parchment tone with the tavern's paper grain multiplied into it.
-///
-/// The grain is baked into one small opaque tile per tone the first time it is asked for, and that
-/// tile is repeated. Blending the texture live would cost an offscreen pass for every page, bar and
-/// panel on screen, on every frame of a scroll.
+/// A page's surface: Arena's dark glass, a little lighter at the top; a plate set into it is a lighter pane.
 struct GrimoirePaper: View {
     enum Tone { case page, plate }
     var tone: Tone = .page
 
     var body: some View {
-        // A shape painted with the tile (made once per tone), so it takes whatever size it is given.
-        if let paint = GrimoirePaperTile.paint(tone) {
-            Rectangle().fill(paint).accessibilityHidden(true)
-        } else {
-            tone == .page ? DeckStudioPalette.background : DeckStudioPalette.surface
+        Group {
+            if tone == .page {
+                LinearGradient(colors: [ArenaGlass.top.opacity(0.94), ArenaGlass.bottom.opacity(0.96)], startPoint: .top, endPoint: .bottom)
+            } else {
+                Color.white.opacity(0.055)
+            }
         }
+        .accessibilityHidden(true)
     }
 }
 
 extension GrimoirePaper {
-    /// The page's paper as a fill for navigation bars, so a bar is the head of the same page.
-    @MainActor static var barStyle: AnyShapeStyle {
-        guard let paint = GrimoirePaperTile.paint(.page) else { return AnyShapeStyle(DeckStudioPalette.background) }
-        return AnyShapeStyle(paint)
-    }
-}
-
-@MainActor
-private enum GrimoirePaperTile {
-    private static var tiles: [GrimoirePaper.Tone: UIImage] = [:]
-    private static var paints: [GrimoirePaper.Tone: ImagePaint] = [:]
-
-    /// The tile as a paint, made once per tone and handed out unchanged.
-    static func paint(_ tone: GrimoirePaper.Tone) -> ImagePaint? {
-        if let paint = paints[tone] { return paint }
-        guard let tile = image(tone) else { return nil }
-        let paint = ImagePaint(image: Image(uiImage: tile))
-        paints[tone] = paint
-        return paint
-    }
-
-    static func image(_ tone: GrimoirePaper.Tone) -> UIImage? {
-        if let tile = tiles[tone] { return tile }
-        guard let grain = UIImage(named: TavernFill.Material.parchment.rawValue) else { return nil }
-        let color = UIColor(tone == .page ? DeckStudioPalette.background : DeckStudioPalette.surface)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = grain.scale
-        format.opaque = true
-        let rect = CGRect(origin: .zero, size: grain.size)
-        let tile = UIGraphicsImageRenderer(size: grain.size, format: format).image { context in
-            color.setFill()
-            context.fill(rect)
-            // A plate (panel) carries a little less grain than the page it lies on.
-            grain.draw(in: rect, blendMode: .multiply, alpha: tone == .page ? 0.26 : 0.2)
-        }
-        tiles[tone] = tile
-        return tile
-    }
+    /// The page's surface as a fill for navigation bars, so a bar is the head of the same page.
+    @MainActor static var barStyle: AnyShapeStyle { AnyShapeStyle(ArenaGlass.top) }
 }
 
 private struct GrimoirePageModifier: ViewModifier {
@@ -283,56 +243,10 @@ private struct GrimoirePageModifier: ViewModifier {
             // Lists and forms on a page show the page, not the system's grouped grey.
             .scrollContentBackground(.hidden)
             .background { GrimoirePaper().ignoresSafeArea() }
-            .overlay { if leaf == .bound { GrimoireSpineOverlay().ignoresSafeArea().allowsHitTesting(false) } }
             .fontDesign(.serif)
-    }
-}
-
-/// What marks a bound page: the gutter's shadow at the spine and the cut edges of the leaves behind
-/// it. Upright the spine is the leading edge. Sideways the book is a spread: the spine runs down the
-/// middle (the screens lay their content out as two pages, clear of it) with leaf edges at both sides.
-struct GrimoireSpineOverlay: View {
-    @Environment(\.dynamicTypeSize) private var dynamicType
-
-    var body: some View {
-        Canvas { context, size in
-            if Grimoire.isSpread(size, accessibilitySize: dynamicType.isAccessibilitySize) {
-                gutter(&context, x: size.width / 2, size: size, leading: true)
-                gutter(&context, x: size.width / 2, size: size, leading: false)
-                edges(&context, size: size, trailing: true)
-                edges(&context, size: size, trailing: false)
-            } else {
-                gutter(&context, x: 0, size: size, leading: false)
-                edges(&context, size: size, trailing: true)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    /// The shadow where a page curves down into the spine at `x`, falling away to one side.
-    private func gutter(_ context: inout GraphicsContext, x: CGFloat, size: CGSize, leading: Bool) {
-        let width = Grimoire.gutterWidth
-        let rect = CGRect(x: leading ? x - width : x, y: 0, width: width, height: size.height)
-        let ink = DeckStudioPalette.ink
-        context.fill(Path(rect), with: .linearGradient(
-            Gradient(stops: [.init(color: ink.opacity(0.34), location: 0), .init(color: ink.opacity(0.12), location: 0.35),
-                             .init(color: .clear, location: 1)]),
-            startPoint: CGPoint(x: leading ? rect.maxX : rect.minX, y: 0),
-            endPoint: CGPoint(x: leading ? rect.minX : rect.maxX, y: 0)))
-    }
-
-    /// The cut edges of the leaves behind this page: a few fine lines down the fore-edge.
-    private func edges(_ context: inout GraphicsContext, size: CGSize, trailing: Bool) {
-        let width = Grimoire.edgeWidth
-        let ink = DeckStudioPalette.ink
-        let origin = trailing ? size.width - width : 0
-        context.fill(Path(CGRect(x: origin, y: 0, width: width, height: size.height)),
-                     with: .linearGradient(Gradient(colors: [ink.opacity(trailing ? 0.02 : 0.16), ink.opacity(trailing ? 0.16 : 0.02)]),
-                                           startPoint: CGPoint(x: origin, y: 0), endPoint: CGPoint(x: origin + width, y: 0)))
-        for index in 0..<4 {
-            let x = origin + (CGFloat(index) + 0.5) * width / 4
-            context.fill(Path(CGRect(x: x, y: 0, width: 0.6, height: size.height)), with: .color(ink.opacity(0.22)))
-        }
+            .foregroundStyle(ArenaMenuStyle.text)
+            .environment(\.arenaBoard, true)
+            .preferredColorScheme(.dark)
     }
 }
 
@@ -357,7 +271,7 @@ struct GrimoireForm<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        Form { Group { content }.listRowBackground(DeckStudioPalette.surfaceElevated) }
+        Form { Group { content }.listRowBackground(Color.white.opacity(0.06)) }
     }
 }
 
@@ -378,28 +292,24 @@ struct GrimoireChoice<Option: Hashable>: View {
     @Binding var selection: Option
 
     var body: some View {
-        // The binder's switch (concept B, 2026-10-06): a dark inset in a brass edge, the chosen option ember glass.
+        // Arena's segmented choice: the chosen option filled gold with dark type.
         HStack(spacing: 0) {
             ForEach(options, id: \.0) { option, label in
                 let chosen = selection == option
                 Button { selection = option } label: {
                     Text(label).font(.system(size: 14, weight: .bold, design: .serif)).lineLimit(1).minimumScaleFactor(0.75)
-                        .foregroundStyle(chosen ? Color(red: 1, green: 0.92, blue: 0.7) : TavernPalette.parchment.opacity(0.72))
-                        .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
+                        .foregroundStyle(chosen ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.dim)
                         .padding(.horizontal, 10).frame(minHeight: 36).frame(maxWidth: .infinity)
                         .background {
-                            if chosen {
-                                TavernFill(material: .ember).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Binder.brassLight.opacity(0.6), lineWidth: 1))
-                            }
+                            if chosen { RoundedRectangle(cornerRadius: 7, style: .continuous).fill(ArenaMenuStyle.goldFill) }
                         }
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(chosen ? [.isSelected] : [])
             }
         }
         .padding(3)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(red: 0.12, green: 0.06, blue: 0.035).opacity(0.88)))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Binder.brass, lineWidth: 1.5))
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
         .frame(minHeight: 44)
         .accessibilityElement(children: .contain).accessibilityLabel(title)
     }
@@ -417,18 +327,18 @@ struct GrimoireSubheading: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title).textCase(.uppercase)
-                .font(.system(size: 12, weight: .semibold, design: .serif)).tracking(1.6)
-                .foregroundStyle(DeckStudioPalette.ink)
+                .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.8)
+                .foregroundStyle(ArenaMenuStyle.gold)
             Spacer()
             if let count {
-                Text("\(count)").font(.system(size: 12, weight: .semibold, design: .serif)).monospacedDigit()
-                    .foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text("\(count)").font(.system(size: 12, weight: .bold, design: .serif)).monospacedDigit()
+                    .foregroundStyle(ArenaMenuStyle.dim)
                     .accessibilityLabel(CardCountText.label(count))
             }
         }
         .padding(.bottom, 5)
         .overlay(alignment: .bottom) {
-            Rectangle().fill(DeckStudioPalette.ink.opacity(0.28)).frame(height: 1).accessibilityHidden(true)
+            Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.45).accessibilityHidden(true)
         }
     }
 }
@@ -442,38 +352,24 @@ struct GrimoireHeading: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(kicker.uppercased())
-                .font(.system(size: 12, weight: .semibold, design: .serif)).tracking(2.2)
-                .foregroundStyle(DeckStudioPalette.accent)
+            ArenaCaps(text: kicker, size: 11)
             Text(title)
-                .font(.system(size: 36, weight: .bold, design: .serif))
-                .foregroundStyle(DeckStudioPalette.ink)
+                .font(.system(size: 30, weight: .bold, design: .serif))
+                .foregroundStyle(ArenaMenuStyle.text)
+                .shadow(color: .black, radius: 2)
             if let subtitle {
-                Text(subtitle).font(.system(size: 15, design: .serif)).italic()
-                    .foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text(subtitle).font(.system(size: 14, design: .serif))
+                    .foregroundStyle(ArenaMenuStyle.dim)
             }
-            GrimoireRule()
         }
     }
 }
 
-/// An inked rule across the page with the sparkle at its centre.
+/// A gold hairline across the page.
 struct GrimoireRule: View {
     var body: some View {
-        HStack(spacing: 8) {
-            line(leading: true)
-            BrandSparkle(size: 9, color: DeckStudioPalette.accent)
-            line(leading: false)
-        }
-        .frame(height: 10)
-        .accessibilityHidden(true)
-    }
-
-    private func line(leading: Bool) -> some View {
-        Rectangle()
-            .fill(LinearGradient(colors: [DeckStudioPalette.ink.opacity(0), DeckStudioPalette.ink.opacity(0.45)],
-                                 startPoint: leading ? .leading : .trailing, endPoint: leading ? .trailing : .leading))
-            .frame(height: 1)
+        Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.5)
+            .accessibilityHidden(true)
     }
 }
 
