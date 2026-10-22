@@ -6,6 +6,7 @@
  * the board in view. They send exactly the commands the old prompt panel sent, so the engine never changes for a look.
  */
 import { useEffect, useRef, useState } from "react";
+import { CardChoicePlan, CardChoicePlanRules } from "../../core/cardChoicePlan";
 import { EngineDisplayText } from "../../core/displayText";
 import {
   displayToughness, type GameCommand, type GameSnapshot, isCreatureCard, isUuid, type LegalAction, pileNumber, type PlayerGameState, promptKind,
@@ -293,6 +294,8 @@ interface Props {
   answerActions?: ReadonlySet<string>;
   /** Orders every trigger at once: `resolveOrder` first resolves first (the board's trigger plan answers the rest). */
   orderTriggers?: (resolveOrder: XmagePromptAbility[], remember: boolean) => void;
+  /** Delivers a drafted card choice one native answer at a time (the board's CardChoicePlan driver). */
+  commitPlan?: (plan: CardChoicePlan) => void;
 }
 
 /** XMage offers to remember this yes/no answer (PromptEnvelopeV2.canRememberAnswer). */
@@ -625,38 +628,138 @@ function PileBrowser({ snapshot, envelope, send, pending, height, inspect }: Pro
   );
 }
 
-/** Cards to choose that aren't on the table (a graveyard, a search): the cards side by side, glowing; a click chooses. */
-function CardChoice({ snapshot, envelope, send, sendAction, pending, height, inspect }: Props) {
+/**
+ * Card choices the reference game's way (BoardCardChoiceView.arenaStage): a title naming the effect (Scry, Surveil,
+ * Search your library…) over one line of instructions, the cards in the middle (scry and surveil in two wells, a click
+ * moving a card across), a search over long lists, and Done. A card is picked first (it rises in a gold rim) and Done
+ * answers; a multi-card choice is drafted here and delivered one native answer at a time (CardChoicePlan).
+ */
+function CardChoice({ snapshot, envelope, send, sendAction, pending, height, inspect, commitPlan }: Props) {
   const cards = envelope.cards ?? [];
   const listed = new Set(cards.map((c) => c.instanceId));
-  const others = (envelope.targets ?? []).filter((t) => !listed.has(t.id));
-  const { title, line } = heading(envelope, "Choose a card");
-  const width = Math.min(height * 0.46, 250) / 1.4;
-  const zoneOf = (card: ZoneCard) => {
-    for (const player of snapshot.players) {
-      for (const [zone, list] of Object.entries(player.zones)) {
-        if (Array.isArray(list) && list.some((c: ZoneCard) => c.instanceId === card.instanceId)) {
-          const whose = player.playerId === snapshot.viewerPlayerId ? "Your" : `${player.displayName ?? "Their"}’s`;
-          return `${whose} ${zone === "battlefield" ? "table" : zone}`;
-        }
-      }
+  const targets = (envelope.targets ?? []).filter((t) => !listed.has(t.id));
+  const selectableIDs = cards.filter((c) => c.selectable !== false).map((c) => c.instanceId);
+  const draftKind = commitPlan && CardChoicePlanRules.supportsDraft(envelope) ? CardChoicePlanRules.kind(envelope) : undefined;
+  const chosen = Array.isArray(envelope.options?.chosenTargets) ? (envelope.options!.chosenTargets as string[]) : [];
+  const [selectedID, setSelectedID] = useState<string>();
+  const [draft, setDraft] = useState<string[]>(() => chosen.filter((id) => selectableIDs.includes(id)));
+  const [topIDs, setTopIDs] = useState<string[]>(() => selectableIDs.filter((id) => !chosen.includes(id)));
+  const [search, setSearch] = useState("");
+  const text = envelope.message.toLowerCase();
+  const zones = draftKind === "scry" ? "scry" : draftKind === "selection" && text.includes("surveil") ? "surveil"
+    : draftKind === "selection" && text.includes("first pile") ? "piles" : undefined;
+  const title = draftKind === "scry" ? "Scry" : draftKind === "topOrder" ? "Order the top of your library" : draftKind === "bottomOrder" ? "Order the bottom of your library"
+    : text.includes("surveil") ? "Surveil" : text.includes("first pile") ? "Separate into two piles" : text.includes("discard") ? "Discard"
+      : text.includes("search") || text.includes("from your library") ? "Search your library" : text.includes("graveyard") ? "Choose from a graveyard"
+        : text.includes("exile") ? "Choose a card to exile" : draftKind === "selection" ? "Choose cards" : "Choose a card";
+  const instruction = zones === "scry" ? "Click a card to move it between the bottom and the top of your library."
+    : zones === "surveil" ? "Click a card to move it between the top of your library and your graveyard."
+      : zones === "piles" ? "Click a card to move it between the piles."
+        : draftKind === "topOrder" || draftKind === "bottomOrder" ? "Click the cards in order: 1 goes first." : clean(CardChoicePlanRules.context(envelope));
+  const toggle = (id: string) => {
+    if (pending || (!selectableIDs.includes(id) && !targets.some((t) => t.id === id))) return;
+    if (draftKind) {
+      if (draftKind === "topOrder" || draftKind === "bottomOrder") { setDraft((d) => CardChoicePlanRules.toggled(d, id)); return; }
+      if (draft.includes(id)) { setDraft((d) => CardChoicePlanRules.toggled(d, id)); if (draftKind === "scry") setTopIDs((t) => [...t, id]); }
+      else { setDraft((d) => CardChoicePlanRules.toggled(d, id)); setTopIDs((t) => t.filter((x) => x !== id)); }
+      return;
     }
-    return undefined;
+    setSelectedID((current) => (current === id ? undefined : id));
   };
+  const query = search.trim().toLowerCase();
+  const shown = cards.filter((c) => !query || [c.card.name, c.card.typeLine, c.card.oracleText ?? ""].some((v) => v.toLowerCase().includes(query)));
+  const ordered = [...shown.filter((c) => c.selectable !== false), ...shown.filter((c) => c.selectable === false)];
+  const width = Math.max(74, Math.min(150, (height - 150 - (cards.length > 6 ? 46 : 0) - (targets.length ? 56 : 0) - (zones ? 30 : 0)) / 1.4));
+  const bounds = CardChoicePlanRules.selectionBounds(envelope.message);
+  const countValid = bounds !== undefined && draft.length >= bounds[0] && draft.length <= bounds[1];
+  const count = draftKind === "selection" && bounds ? (CardChoicePlanRules.isUnbounded(bounds) ? `${draft.length} chosen`
+    : bounds[0] === bounds[1] ? `${draft.length} of ${bounds[1]}` : `${draft.length} · choose ${bounds[0]}–${bounds[1]}`) : undefined;
+  const selected = selectedID && (cards.find((c) => c.instanceId === selectedID && c.selectable !== false)?.card.name ?? targets.find((t) => t.id === selectedID)?.label);
+  const completion = (snapshot.legalActions ?? []).filter((a) => a.promptId === envelope.id && a.type === "answer_yes_no" && a.confirmed === false);
+  const confirm = () => {
+    if (draftKind) { commitPlan!(new CardChoicePlan(snapshot, envelope, draft, draftKind === "scry" ? topIDs : [])); return; }
+    if (selectedID && selected) send({ type: (envelope.responseCommand?.type as "choose_target") ?? "choose_target", targetIds: [selectedID] }, `Choose ${selected}`);
+  };
+  const disabled = (!draftKind && !selected) || pending || (draftKind === "selection" && !countValid) ||
+    ((draftKind === "topOrder" || draftKind === "bottomOrder") && draft.length !== selectableIDs.length);
+  const card = (c: ZoneCard, w: number, number?: number) => {
+    const picked = draft.includes(c.instanceId) || selectedID === c.instanceId;
+    const marked = !zones && picked;
+    const order = !zones && draftKind ? (draft.includes(c.instanceId) ? draft.indexOf(c.instanceId) + 1 : undefined) : number;
+    return (
+      <button key={c.instanceId} type="button" className={`bcard pick ${marked ? "picked" : ""} ${c.selectable === false ? "off" : ""}`} style={{ width: w }}
+        disabled={pending} title={c.disabledReason} aria-pressed={picked} onClick={() => toggle(c.instanceId)}>
+        <Printed name={c.card.name} width={w} inspect={inspect} />
+        {order !== undefined ? <span className="bcoin">{order}</span> : marked && !draftKind ? <span className="bcheck" aria-hidden="true">✓</span> : null}
+        <span className="bname">{c.card.name}</span>
+      </button>
+    );
+  };
+  const well = (label: string, wellIDs: string[], top: boolean, w: number) => (
+    <div className="bwellzone" aria-label={label}>
+      <b>{label.toUpperCase()}</b>
+      <div className="bwellcards">
+        {wellIDs.map((id) => {
+          const c = cards.find((x) => x.instanceId === id);
+          if (!c) return null;
+          const index = wellIDs.indexOf(id);
+          return (
+            <div key={id} className="bwellcard">
+              {card(c, w, zones === "scry" && wellIDs.length > 1 ? index + 1 : undefined)}
+              {zones === "scry" && wellIDs.length > 1 && (
+                <div className="bmove">
+                  <button type="button" aria-label="Move earlier" disabled={index === 0 || pending} onClick={() => move(id, -1, top)}>‹</button>
+                  <button type="button" aria-label="Move later" disabled={index === wellIDs.length - 1 || pending} onClick={() => move(id, 1, top)}>›</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {wellIDs.length === 0 && <i className="bempty" style={{ width: w, height: w * 1.4 }}>{zones === "scry" ? "Click a card to put it here" : "Click a card to move it here"}</i>}
+      </div>
+    </div>
+  );
+  const move = (id: string, by: number, top: boolean) => {
+    const update = (list: string[]) => {
+      const i = list.indexOf(id);
+      if (i < 0 || i + by < 0 || i + by >= list.length) return list;
+      const next = [...list]; [next[i], next[i + by]] = [next[i + by], next[i]]; return next;
+    };
+    if (top) setTopIDs(update); else setDraft(update);
+  };
+  const wells = zones && (() => {
+    const rest = selectableIDs.filter((id) => !draft.includes(id));
+    const [left, right] = zones === "scry" ? [["Bottom", draft, false], ["Top", topIDs, true]] as const
+      : zones === "surveil" ? [["Graveyard", draft, false], ["Library", rest, true]] as const : [["Pile 1", draft, false], ["Pile 2", rest, true]] as const;
+    const slots = Math.max(1, left[1].length) + Math.max(1, right[1].length);
+    const w = Math.max(64, Math.min(width, (900 - 14 - 40) / slots - 10));
+    return <div className="bwells">{well(left[0], [...left[1]], left[2], w)}{well(right[0], [...right[1]], right[2], w)}</div>;
+  })();
   return (
-    <Frame title={title} detail={line} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440} inspect={inspect}
-      footer={plaques(promptAnswers(snapshot, "choose_target"), sendAction, pending)}>
-      {cards.map((card) => (
-        <button key={card.instanceId} type="button" className="bcard target" disabled={pending || card.selectable === false} title={card.disabledReason}
-          onClick={() => send({ type: "choose_target", targetIds: [card.instanceId] }, card.card.name)}>
-          <Printed name={card.card.name} width={width} inspect={inspect} />
-          <span className="bzone">{zoneOf(card) ?? ""}</span>
+    <Frame title={title} detail={instruction} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440} inspect={inspect}
+      footer={<>
+        {draftKind === "selection" && bounds && !zones && bounds[1] >= selectableIDs.length && draft.length < selectableIDs.length && selectableIDs.length > 1 && (
+          <button type="button" className="aplaque leather" onClick={() => setDraft(selectableIDs)}>Select all</button>
+        )}
+        {draftKind === "selection" && bounds && !zones && draft.length > 0 && <button type="button" className="aplaque leather" onClick={() => setDraft([])}>Clear</button>}
+        {!draftKind && completion.map((action) => (
+          // XMage's "Done" here finishes without a card.
+          <button key={action.id} type="button" className="aplaque leather" disabled={pending} onClick={() => sendAction(action)}>
+            {action.label.toLowerCase() === "done" ? "Choose none" : EngineDisplayText.label(action.label)}</button>
+        ))}
+        <button type="button" className="aplaque ember sub" disabled={disabled} onClick={confirm}>
+          {draftKind || selected ? "Done" : targets.length === 0 ? "Choose a card" : "Choose one"}{count && <small>{count.toUpperCase()}</small>}
         </button>
-      ))}
-      {others.length > 0 && (
-        <div className="bgrid">{others.map((target) => (
-          <button key={target.id} type="button" className="btile" disabled={pending} onClick={() => send({ type: "choose_target", targetIds: [target.id] }, target.label)}>
-            {EngineDisplayText.label(target.label)}</button>
+      </>}>
+      {cards.length > 6 && <input className="bsearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, type or rules text" aria-label="Search cards" />}
+      {wells ?? ordered.map((c) => card(c, width))}
+      {cards.length > 0 && shown.length === 0 && query && (
+        <p className="bnomatch">No cards match your search. <button type="button" onClick={() => setSearch("")}>Clear search</button></p>
+      )}
+      {targets.length > 0 && (
+        <div className="bgrid">{targets.map((target) => (
+          <button key={target.id} type="button" className={`btile ${selectedID === target.id ? "picked" : ""}`} disabled={pending} aria-pressed={selectedID === target.id}
+            onClick={() => toggle(target.id)}>{EngineDisplayText.label(target.label)}</button>
         ))}</div>
       )}
     </Frame>

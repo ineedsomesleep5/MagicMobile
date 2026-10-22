@@ -31,6 +31,7 @@ import { ORBIT, orbitOffsets, orbitOrder, orbitShown, statusBadges } from "../co
 import { GameLog } from "./arena/GameLog";
 import { CombatLogReasons } from "../core/gameLog";
 import { TriggerPlan, type TriggerPick } from "./arena/triggerPlan";
+import type { CardChoicePlan } from "../core/cardChoicePlan";
 import { allAttackTargets, AttackQueue, boardTargetableIds, combatArrows, declaredCount, finishTitle } from "./arena/combat";
 import { combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } from "../core/arenaBoard";
 import { GameStats } from "../core/gameStats";
@@ -325,6 +326,34 @@ export function GameScreen({ table }: { table: GameTable }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [helperKey, attacking, session, fail]);
+  // A drafted card choice delivered one answer per settled snapshot (iOS advanceCommittedCardChoice); the browser stays
+  // closed while it runs, and an unexpected prompt hands the choice back.
+  const cardPlan = useRef<CardChoicePlan | undefined>(undefined);
+  const [choosing, setChoosing] = useState(false);
+  const commitPlan = useCallback((plan: CardChoicePlan) => { cardPlan.current = plan; setChoosing(true); }, []);
+  useEffect(() => {
+    if (!choosing || !session) return;
+    let done: number | undefined;
+    const timer = window.setTimeout(() => {
+      const plan = cardPlan.current;
+      const current = session.state.snapshot;
+      if (!plan || !current) return;
+      const busy = session.state.working || session.state.pendingActionID !== undefined;
+      // No prompt after its last answer: the choice is over once that holds for 5 s.
+      if (!current.promptEnvelopeV2 && !busy && plan.lastPrompt !== undefined) {
+        const last = plan.lastPrompt;
+        done = window.setTimeout(() => { if (cardPlan.current?.lastPrompt === last && !session.state.snapshot?.promptEnvelopeV2) { cardPlan.current = undefined; setChoosing(false); } }, 5000);
+        return;
+      }
+      const command = plan.next(current, busy);
+      if (plan.stopped) { cardPlan.current = undefined; setChoosing(false); }
+      if (command) {
+        session.submit({ ...command, expectedBridgeRevision: current.bridgeRevision }, "Apply card choice", `card-plan-${command.promptId ?? ""}-${command.messageId ?? 0}`)
+          .catch((error) => { plan.cancel(); cardPlan.current = undefined; setChoosing(false); fail(error); });
+      }
+    }, 0);
+    return () => { window.clearTimeout(timer); window.clearTimeout(done); };
+  }, [helperKey, choosing, session, fail]);
   const orderTriggers = useCallback((resolveOrder: XmagePromptAbility[], remember: boolean) => {
     const prompt = session?.state.snapshot?.promptEnvelopeV2;
     if (!prompt) return;
@@ -366,7 +395,7 @@ export function GameScreen({ table }: { table: GameTable }) {
   const autoPayColour = autoPaying && envelope?.responseKind.toLowerCase() === "choice";
   // A chosen trigger order answers the ordering prompts it covers; the browser stays shut for them.
   const planAnswers = planning && snapshot !== undefined && triggerPlan.answers(snapshot);
-  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending && !autoPayColour && !planAnswers;
+  const showBrowser = browser !== undefined && browser !== "mulligan" && browser !== "amount" && !pending && !autoPayColour && !planAnswers && !choosing;
   // A decision that needs you opens with the response alert; panels open and close with their sounds.
   useEffect(() => { if (showBrowser) gameAudio.play("response-alert"); }, [showBrowser, envelope?.id]);
   const firstStack = useRef(true);
@@ -908,7 +937,7 @@ export function GameScreen({ table }: { table: GameTable }) {
     if (handIDs.includes(hovered)) return undefined;
     const item = cards.get(hovered);
     if (!item || item.view === "back") return undefined;
-    return { name: item.name ?? item.card?.card.name ?? "", left: item.place.x > 560 };
+    return { name: item.name ?? item.card?.card.name ?? "", left: item.place.x > 560, card: item.card?.card };
   })();
 
   const log = snapshot?.log ?? [];
@@ -1229,8 +1258,8 @@ export function GameScreen({ table }: { table: GameTable }) {
             top: Math.max(6, Y(ARENA.zoom.y) - (ARENA.zoom.h * Math.min(geo.grow, 1.2)) / 2), width: ARENA.zoom.w * Math.min(geo.grow, 1.2),
           }}>
             {/* A card Scryfall can't find by name (most tokens) shows nothing rather than a broken image. */}
-            <img src={cardImageURL(inspected.name, "normal")} alt="" crossOrigin="anonymous" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
-              onLoad={(e) => { e.currentTarget.style.visibility = "visible"; }} />
+            {/* A token shows its matched printing (CardArt); nothing while it is found or when there is none. */}
+            <CardArt card={("card" in inspected && inspected.card) || { name: inspected.name, typeLine: "" }} version="normal" />
           </div>
         )}
 
@@ -1385,7 +1414,8 @@ export function GameScreen({ table }: { table: GameTable }) {
         {showBrowser && snapshot && envelope && (
           <div onClick={stop}>
             <Browser key={`${envelope.id}:${envelope.messageId}`} kind={browser} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction}
-              pending={pending} height={geo.height} inspect={inspect} answerActions={session?.supportedAnswerActions} orderTriggers={orderTriggers} />
+              pending={pending} height={geo.height} inspect={inspect} answerActions={session?.supportedAnswerActions} orderTriggers={orderTriggers}
+              commitPlan={session ? commitPlan : undefined} />
           </div>
         )}
         {amountPill && snapshot && envelope && (() => {

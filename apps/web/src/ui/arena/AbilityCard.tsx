@@ -5,7 +5,7 @@
  */
 import type { ZoneCard } from "../../core/models";
 import { EngineDisplayText } from "../../core/displayText";
-import { cardImageURL } from "../cardArt";
+import { CardArt } from "../cardArt";
 import { RulesText } from "./Symbols";
 
 /** XMage marks spells; everything else on the stack is an activated or triggered ability (ArenaStackCard.isAbility). */
@@ -43,13 +43,13 @@ export function AbilityCard({ source, name, kind = "Ability", text, width }: {
 }) {
   const { cost, text: rules } = splitLoyalty(EngineDisplayText.text(text).replace(/\s*\[[0-9a-f]{3,}\]/gi, ""));
   const frame = frameColor(source);
-  const art = source ? (source.card.isToken && source.card.tokenArtwork ? source.card.tokenArtwork.name : source.card.name) : undefined;
+
   return (
     <div className="ability-card" style={{ ["--frame" as string]: frame, ...(width ? { width, height: width / 0.72, fontSize: width / 15 } : {}) }}
       aria-label={`Ability of ${source?.card.name ?? name ?? "a permanent"}: ${rules}`}>
       <div className="ab-inner">
         <div className="ab-name">{source?.card.name ?? name ?? "Ability"}</div>
-        <div className="ab-art">{art ? <img src={cardImageURL(art, "art_crop")} alt="" crossOrigin="anonymous" draggable={false} /> : <span>✦</span>}</div>
+        <div className="ab-art">{source ? <CardArt card={source.card} version="art_crop" /> : <span>✦</span>}</div>
         <div className="ab-type">{kind}</div>
         <div className="ab-text"><RulesText text={rules} /></div>
       </div>
