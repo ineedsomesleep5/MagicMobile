@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// "How to play" in the tavern (Caleb, 2026-10-03): a chooser between two tutorials, each a book
-/// of parchment pages with an animated scene built from the table's own pieces (frames, ribbons,
+/// "How to play" (Caleb, 2026-10-03; Arena's look since 2026-10-22): a chooser of tutorial tiles over card art,
+/// each tutorial a run of glass pages with an animated scene built from the table's own pieces (frames, ribbons,
 /// medallions, gems, the hourglass). `HowToPlayView()` opens the chooser; `HowToPlayView(tutorialID:)`
 /// opens straight into one tutorial, which is how the first-launch walkthrough opens.
 struct HowToPlayView: View {
@@ -9,6 +9,9 @@ struct HowToPlayView: View {
     /// Starts the guided first game (GuidedGame.swift); the chooser offers it when set.
     private let playGuided: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.arenaPanelClose) private var panelClose
+    /// Closes the Arena menu panel this page is shown in, or the sheet elsewhere.
+    private func closePanel() { if let panelClose { panelClose() } else { dismiss() } }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tutorial: HowToPlayTutorial?
 
@@ -20,7 +23,6 @@ struct HowToPlayView: View {
 
     var body: some View {
         ZStack {
-            TavernSheetBackground()
             if let tutorial {
                 HowToPlayBook(tutorial: tutorial, backToChooser: startID == nil ? { open(nil) } : nil, close: close)
                     .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
@@ -29,7 +31,6 @@ struct HowToPlayView: View {
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
             }
         }
-        .environment(\.tavernBoard, true)
         .preferredColorScheme(.dark)
     }
 
@@ -40,14 +41,14 @@ struct HowToPlayView: View {
 
     private func close() {
         GameAudio.shared.play(.uiClose)
-        dismiss()
+        closePanel()
     }
 }
 
 // MARK: - Chooser
 
-/// Two books on the leather: the short one on the table, the longer one on the format, and
-/// the guided first game when the menu offers it.
+/// Arena's Learn page: the tutorials as tiles over card art, side by side when the phone lies sideways (all one height,
+/// Begin on one line along their foot) and stacked when it stands; the guided first game first when the menu offers it.
 private struct HowToPlayChooser: View {
     let choose: (HowToPlayTutorial) -> Void
     let playGuided: (() -> Void)?
@@ -56,75 +57,86 @@ private struct HowToPlayChooser: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                TavernPanelTitle(text: HowToPlayText.title)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 8)
-                Button(action: close) { TavernSealLabel() }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(HowToPlayText.done)
-                    .accessibilityIdentifier("howToPlay.close")
-            }
-            .modifier(TavernTitleBar())
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            ScrollView {
-                let wide = verticalSizeClass == .compact
-                let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(spacing: 16))
-                layout {
-                    if let playGuided {
-                        book(id: "guided", title: GuidedGameText.title, subtitle: GuidedGameText.subtitle, icon: "graduationcap.fill",
-                             action: GuidedGameText.start, choose: playGuided)
-                    }
-                    ForEach(HowToPlayText.tutorials) { tutorial in
-                        book(id: tutorial.id, title: tutorial.title, subtitle: tutorial.subtitle,
-                             icon: tutorial.id == "commander" ? "crown.fill" : "table.furniture",
-                             action: HowToPlayText.begin) { choose(tutorial) }
+            ArenaPanelHeader(title: HowToPlayText.title, closeIdentifier: "howToPlay.close")
+            if verticalSizeClass == .compact {
+                // Sideways the tiles share the panel's height, so nothing is left empty under them; at the largest text
+                // sizes they scroll instead.
+                ViewThatFits(in: .vertical) {
+                    HStack(alignment: .top, spacing: 14) { books }
+                        .frame(minHeight: 260, maxHeight: .infinity)
+                        .padding(16)
+                    ScrollView {
+                        HStack(alignment: .top, spacing: 14) { books }
+                            .padding(16)
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: 760)
-                .frame(maxWidth: .infinity)
+            } else {
+                // Upright the three tiles fit the panel; shorter art keeps every Begin in view (the judge, 2026-10-22).
+                ScrollView {
+                    VStack(spacing: 12) { books }
+                        .padding(16)
+                        .frame(maxWidth: 560)
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .mask(ArenaScrollFade(depth: 20))
             }
-            .scrollBounceBehavior(.basedOnSize)
         }
     }
 
-    private func book(id: String, title: String, subtitle: String, icon: String, action: String,
-                      choose: @escaping () -> Void) -> some View {
-        Button(action: choose) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(BrandTheme.brassGradient)
-                        .frame(width: 52, height: 52)
-                        .background(TavernCoinBack())
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.system(size: 21, weight: .black, design: .serif))
-                            .foregroundStyle(TavernPalette.ink)
-                        Text(subtitle)
-                            .font(.system(size: 14, weight: .medium, design: .serif))
-                            .foregroundStyle(TavernPalette.ink.opacity(0.75))
-                            .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder private var books: some View {
+        if let playGuided {
+            book(id: "guided", title: GuidedGameText.title, subtitle: GuidedGameText.subtitle, icon: "graduationcap.fill",
+                 art: "Emmara, Soul of the Accord", colors: ["G", "W"], action: GuidedGameText.start, primary: true, choose: playGuided)
+        }
+        ForEach(HowToPlayText.tutorials) { tutorial in
+            book(id: tutorial.id, title: tutorial.title, subtitle: tutorial.subtitle,
+                 icon: tutorial.id == "commander" ? "crown.fill" : "table.furniture",
+                 art: tutorial.id == "commander" ? "The Ur-Dragon" : "Teferi, Temporal Archmage",
+                 colors: tutorial.id == "commander" ? ["W", "U", "B", "R", "G"] : ["U"],
+                 action: HowToPlayText.begin) { choose(tutorial) }
+        }
+    }
+
+    /// Arena's Learn tiles: a card's art over the title, its plaque at the tile's foot. What it teaches is VoiceOver's
+    /// (the judge, 2026-10-22: no descriptions); the guided game is the one ember plaque, the tutorials leather, as Arena
+    /// keeps ember for the single primary action.
+    private func book(id: String, title: String, subtitle: String, icon: String, art: String, colors: [String], action: String,
+                      primary: Bool = false, choose: @escaping () -> Void) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return Button(action: choose) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Cropped in from every edge, so a printing's frame never shows along the art's border.
+                ArenaArt(name: art, colors: colors)
+                    .frame(height: verticalSizeClass == .compact ? 104 : 78)
+                    .scaleEffect(1.14)
+                    .clipped()
+                    .overlay(alignment: .topLeading) {
+                        ArenaEmblem(symbol: icon, size: 16, lit: true)
+                            .frame(width: 34, height: 34)
+                            .background(Circle().fill(Color.black.opacity(0.7)))
+                            .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
+                            .padding(10)
                     }
-                    Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(ArenaMenuStyle.font(19, .bold))
+                        .foregroundStyle(ArenaMenuStyle.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 10)
+                    HStack {
+                        Spacer(minLength: 0)
+                        HowToPlayPlaque(text: action, icon: "chevron.right", primary: primary)
+                    }
                 }
-                HStack {
-                    Spacer(minLength: 0)
-                    HowToPlayPlaque(text: action, icon: "chevron.right")
-                }
+                .padding(14)
+                .frame(maxHeight: .infinity, alignment: .top)
             }
             .multilineTextAlignment(.leading)
-            .padding(16)
-            .frame(maxWidth: .infinity)
-            .background {
-                TavernFill(material: .parchment)
-                    .overlay(LinearGradient(colors: [.clear, .black.opacity(0.12)], startPoint: .top, endPoint: .bottom))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .overlay { TavernBrassFrame(scale: 1) }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(shape.fill(Color.black.opacity(0.45)))
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1))
             .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
             .contentShape(Rectangle())
         }
@@ -136,8 +148,8 @@ private struct HowToPlayChooser: View {
 
 // MARK: - Book
 
-/// One tutorial: engraved title, swipeable parchment pages, brass progress coins and the Back,
-/// Next and Done plaques. The identifiers match the previous walkthrough's, so its UI tests hold.
+/// One tutorial: its title, swipeable glass pages, gold progress diamonds and the Back, Next and Done plaques. The
+/// identifiers match the previous walkthrough's, so its UI tests hold.
 private struct HowToPlayBook: View {
     let tutorial: HowToPlayTutorial
     /// Returns to the chooser; nil when the book opened by itself.
@@ -160,75 +172,100 @@ private struct HowToPlayBook: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            // At least a page's picture and words; it fills the rest of the panel when the panel is taller.
+            .frame(minHeight: verticalSizeClass == .compact ? 214 : 460, maxHeight: .infinity)
             footer
         }
         .onChange(of: index) { _, _ in GameAudio.shared.play(.pageFlip) }
     }
 
+    /// The panel's head, as `ArenaPanelHeader` draws it: back to the tutorials, the title in large type, and Skip.
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             if let backToChooser {
                 Button(action: backToChooser) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(TavernPalette.parchment)
-                        .frame(width: 44, height: 44)
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(ArenaMenuStyle.text)
+                        .frame(width: 40, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(HowToPlayText.title)
                 .accessibilityIdentifier("howToPlay.chooser")
             }
-            TavernPanelTitle(text: tutorial.title)
+            Text(tutorial.title)
+                .font(ArenaMenuStyle.font(22, .bold))
+                .foregroundStyle(ArenaMenuStyle.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             Button(HowToPlayText.skip, action: close)
-                .font(.system(size: 15, weight: .bold, design: .serif))
-                .foregroundStyle(TavernPalette.parchment.opacity(0.85))
-                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(ArenaPillButtonStyle())
                 .opacity(isLast ? 0 : 1)
                 .disabled(isLast)
                 .accessibilityHidden(isLast)
                 .accessibilityIdentifier("howToPlay.skip")
         }
-        .modifier(TavernTitleBar())
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .padding(.leading, backToChooser == nil ? 18 : 6)
+        .padding(.trailing, 10)
+        .padding(.top, 6)
+        .overlay(alignment: .bottom) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.45) }
     }
 
+    /// The gold diamonds, then Back as the leather plaque and Next (or Done) as the ember one. Sideways the diamonds
+    /// sit between the two plaques, so the whole page fits under the top bar (the judge, 2026-10-22: the plaques' rims
+    /// were cut by the panel's foot); the row keeps the pages' side insets.
     private var footer: some View {
-        VStack(spacing: 12) {
-            progress
+        let wide = verticalSizeClass == .compact
+        return VStack(spacing: 10) {
+            if !wide { progress }
             HStack(spacing: 12) {
-                Button { go(-1) } label: { Text(HowToPlayText.back) }
-                    .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
-                    .disabled(index == 0)
-                    .accessibilityIdentifier("howToPlay.back")
-                if isLast {
-                    Button(action: close) { Text(HowToPlayText.done) }
-                        .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
-                        .accessibilityIdentifier("howToPlay.done")
-                } else {
-                    Button { go(1) } label: { Text(HowToPlayText.next) }
-                        .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
-                        .accessibilityIdentifier("howToPlay.next")
-                }
+                backButton
+                if wide { progress.fixedSize() }
+                forwardButton
             }
         }
-        .frame(maxWidth: 560)
+        .frame(maxWidth: wide ? .infinity : 560)
         .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.top, wide ? 2 : 6)
+        .padding(.bottom, 14)
     }
 
-    /// Brass coins, the current page's lit; VoiceOver hears "Page 3 of 12" and can swipe up or down.
+    private var backButton: some View {
+        Button { go(-1) } label: { Text(HowToPlayText.back) }
+            .buttonStyle(ArenaPlayButtonStyle(cancel: true, fontSize: 17))
+            .frame(height: 46)
+            .disabled(index == 0)
+            .opacity(index == 0 ? 0.5 : 1)
+            .accessibilityIdentifier("howToPlay.back")
+    }
+
+    @ViewBuilder private var forwardButton: some View {
+        if isLast {
+            Button(action: close) { Text(HowToPlayText.done) }
+                .buttonStyle(ArenaPlayButtonStyle(fontSize: 17))
+                .frame(height: 46)
+                .accessibilityIdentifier("howToPlay.done")
+        } else {
+            Button { go(1) } label: { Text(HowToPlayText.next) }
+                .buttonStyle(ArenaPlayButtonStyle(fontSize: 17))
+                .frame(height: 46)
+                .accessibilityIdentifier("howToPlay.next")
+        }
+    }
+
+    /// Gold diamonds, the current page's lit; VoiceOver hears "Page 3 of 12" and can swipe up or down.
     private var progress: some View {
         HStack(spacing: 5) {
             ForEach(pages.indices, id: \.self) { page in
-                Circle()
-                    .fill(page == index ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(Color.black.opacity(0.45)))
-                    .overlay(Circle().strokeBorder(TavernPalette.brass.opacity(page == index ? 1 : 0.45), lineWidth: 1))
-                    .frame(width: page == index ? 11 : 7, height: page == index ? 11 : 7)
+                // Gold diamonds, the current page's lit.
+                Rectangle()
+                    .fill(page == index ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.white.opacity(0.18)))
+                    .frame(width: page == index ? 8 : 5.5, height: page == index ? 8 : 5.5)
+                    .rotationEffect(.degrees(45))
+                    .shadow(color: page == index ? ArenaMenuStyle.gold.opacity(0.7) : .clear, radius: 3)
+                    .frame(width: 11, height: 11)
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: index)
@@ -252,46 +289,58 @@ private struct HowToPlayBook: View {
     }
 }
 
-/// One page: the scene in a leather inset, then the title and body on parchment. It scrolls, so
-/// large text never clips.
+/// One page: the scene in its dark inset, then the title and words on glass. When the words fit, the picture grows into
+/// the page's height, so a tall panel is never half empty; at large text sizes the page scrolls, so nothing clips.
 private struct HowToPlayPageView: View {
     let tutorialID: String
     let page: HowToPlayPage
     let wide: Bool
 
     var body: some View {
-        ScrollView {
-            let layout = wide ? AnyLayout(HStackLayout(alignment: .center, spacing: 22))
-                : AnyLayout(VStackLayout(alignment: .center, spacing: 18))
-            layout {
-                HowToPlayScene(key: "\(tutorialID)/\(page.id)")
+        ViewThatFits(in: .vertical) {
+            layout(scene: HowToPlayScene(key: "\(tutorialID)/\(page.id)")
+                .frame(maxWidth: wide ? 320 : 400)
+                .frame(minHeight: wide ? 180 : 210, maxHeight: wide ? .infinity : 340), fills: wide)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("howToPlay.page.\(page.id)")
+            ScrollView {
+                layout(scene: HowToPlayScene(key: "\(tutorialID)/\(page.id)")
                     .frame(maxWidth: wide ? 320 : 380)
-                    .frame(height: 210)
-                VStack(alignment: wide ? .leading : .center, spacing: 8) {
-                    Text(page.title)
-                        .font(.system(size: 24, weight: .black, design: .serif))
-                        .foregroundStyle(TavernPalette.ink)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(page.body)
-                        .font(.system(size: 16, weight: .medium, design: .serif))
-                        .lineSpacing(3)
-                        .foregroundStyle(TavernPalette.ink.opacity(0.85))
-                }
-                .multilineTextAlignment(wide ? .leading : .center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(16)
-                .frame(maxWidth: 480)
-                .background {
-                    TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .overlay { TavernBrassFrame(scale: 0.8) }
+                    .frame(height: 210))
+                    .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity)
+            .scrollBounceBehavior(.basedOnSize)
+            .accessibilityIdentifier("howToPlay.page.\(page.id)")
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .accessibilityIdentifier("howToPlay.page.\(page.id)")
+    }
+
+    /// `fills`: sideways the words' pane runs the picture's full height, so the two boxes share their top and bottom
+    /// edges (the judge, 2026-10-22).
+    private func layout<Picture: View>(scene: Picture, fills: Bool = false) -> some View {
+        let stack = wide ? AnyLayout(HStackLayout(alignment: .center, spacing: 22))
+            : AnyLayout(VStackLayout(alignment: .center, spacing: 16))
+        return stack {
+            scene
+            VStack(alignment: wide ? .leading : .center, spacing: 8) {
+                Text(page.title)
+                    .font(ArenaMenuStyle.font(23, .bold))
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .accessibilityAddTraits(.isHeader)
+                Text(page.body)
+                    .font(ArenaMenuStyle.font(16, .medium))
+                    .lineSpacing(3)
+                    .foregroundStyle(ArenaMenuStyle.text.opacity(0.82))
+            }
+            .multilineTextAlignment(wide ? .leading : .center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(16)
+            .frame(maxWidth: 480, maxHeight: fills ? .infinity : nil, alignment: wide ? .leading : .center)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.045)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.6))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, wide ? 10 : 14)
     }
 }
 
@@ -318,12 +367,12 @@ private struct HowToPlayScene: View {
 
     var body: some View {
         ZStack {
-            TavernFill(material: .leather)
+            LinearGradient(colors: [Color(red: 0.13, green: 0.12, blue: 0.14), Color(red: 0.05, green: 0.05, blue: 0.06)], startPoint: .top, endPoint: .bottom)
                 .overlay(RadialGradient(colors: [.clear, .black.opacity(0.45)], center: .center, startRadius: 40, endRadius: 260))
             drawing
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay { TavernBrassFrame(scale: 1) }
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
         .environment(\.dynamicTypeSize, .large)
         .accessibilityHidden(true)
     }

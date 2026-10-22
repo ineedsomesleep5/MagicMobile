@@ -39,26 +39,40 @@ final class OnDeviceSetupUITests: XCTestCase {
 
     func testAISkillCanChangeAndSurvivesRelaunch() {
         openSetup()
-        let skill = app.steppers["onDevice.aiSkill"]
+        // Arena's Options slider: one to ten, read as "AI skill: N".
+        let skill = app.sliders["onDevice.aiSkill"]
         reveal(skill)
-        waitFor(skill, predicate: "label == 'AI skill: 2'")
-        skill.buttons["onDevice.aiSkill-Increment"].tap()
-        waitFor(skill, predicate: "label == 'AI skill: 3'")
+        waitFor(skill, predicate: "value == 'AI skill: 2'")
+        // The drawn track is the control (ArenaSlider; its system slider is accessibility only, which `adjust` can't
+        // drive): touch the track where skill 3 sits.
+        touchSlider(skill, step: 2, of: 9)
+        waitFor(skill, predicate: "value == 'AI skill: 3'")
         capture("AI skill selection")
         app.terminate()
         app.launch()
         openSetup()
-        reveal(app.steppers["onDevice.aiSkill"])
-        waitFor(app.steppers["onDevice.aiSkill"], predicate: "label == 'AI skill: 3'")
-        app.steppers["onDevice.aiSkill"].buttons["onDevice.aiSkill-Decrement"].tap()
-        waitFor(app.steppers["onDevice.aiSkill"], predicate: "label == 'AI skill: 2'")
+        reveal(app.sliders["onDevice.aiSkill"])
+        waitFor(app.sliders["onDevice.aiSkill"], predicate: "value == 'AI skill: 3'")
+        touchSlider(app.sliders["onDevice.aiSkill"], step: 1, of: 9)
+        waitFor(app.sliders["onDevice.aiSkill"], predicate: "value == 'AI skill: 2'")
+    }
+
+    /// Touches an ArenaSlider's track at a step: its 16 pt knob travels the width less the knob.
+    private func touchSlider(_ slider: XCUIElement, step: Int, of steps: Int) {
+        let frame = slider.frame
+        let x = 8 + (frame.width - 16) * CGFloat(step) / CGFloat(steps)
+        slider.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: frame.height / 2)).tap()
     }
 
     func testUpdatesShowsInstalledBuildAndSeparatesUpstreamNews() {
         app.buttons["menu.updates"].tap()
-        XCTAssertTrue(app.navigationBars["Updates"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Installed build"].exists)
+        XCTAssertTrue(app.buttons["updates.close"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["What's new"].exists)
+        // The build, XMage news and the links are the inbox's last message, About & links: open it.
+        let about = app.buttons["updates.inbox.about"]
+        reveal(about)
+        about.tap()
+        XCTAssertTrue(app.staticTexts["Installed build"].waitForExistence(timeout: 5))
         // What's new grows with each release: scroll until the upstream note shows.
         let upstreamNote = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "not installed automatically")).firstMatch
         reveal(upstreamNote)
@@ -69,20 +83,22 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Scryfall")).firstMatch.exists,
                       "Card images must credit Scryfall")
         capture("Updates about and fan-content notice")
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["menu.play"].exists)
+        app.buttons["updates.close"].tap()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
     }
 
-    /// Every sheet the menu opens wears the tavern (Caleb, 2026-10-03): Updates, Friends, Downloads and
-    /// Settings each open over the leather backing and close from their Done button; each is captured.
-    func testMenuSheetsOpenAndCloseFromTheirDoneButton() {
-        for control in ["menu.updates", "menu.friends", "menu.downloads", "menu.settings"] {
+    /// Every page the menu opens is an Arena panel (Caleb, 2026-10-22): Updates, Friends, Downloads and Options each
+    /// open over the dimmed menu and close from their close button; each is captured.
+    func testMenuPanelsOpenAndCloseFromTheirCloseButton() {
+        for (control, close) in [("menu.updates", "updates.close"), ("menu.friends", "friends.done"),
+                                 ("menu.downloads", "downloads.close"), ("menu.settings", "settings.close")] {
             app.buttons[control].tap()
-            let done = app.buttons["Done"].firstMatch
-            XCTAssertTrue(done.waitForExistence(timeout: 8), "\(control) must open a sheet")
-            capture("tavern sheet \(control)")
+            let done = app.buttons[close]
+            XCTAssertTrue(done.waitForExistence(timeout: 8), "\(control) must open a panel")
+            capture("Arena panel \(control)")
             done.tap()
-            XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5), "\(control)'s sheet must close")
+            XCTAssertTrue(done.waitForNonExistence(timeout: 5), "\(control)'s panel must close")
+            XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 5))
         }
     }
 
@@ -128,13 +144,16 @@ final class OnDeviceSetupUITests: XCTestCase {
             play.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
             UITestHarness.chooseCustomTable(app)
             XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 5))
+            // Back from the custom table is the Play panel; its close returns home.
             app.buttons["Main menu"].tap()
+            XCTAssertTrue(app.buttons["play.start"].waitForExistence(timeout: 5))
+            app.buttons["lobby.back"].tap()
         }
     }
 
     func testGameCenterSettingsAllowTwoThroughFourHumansWithoutSigningIn() {
         openSetup()
-        let gameCenter = app.segmentedControls.buttons["Game Center"]
+        let gameCenter = app.buttons["setup.mode.gamecenter"]
         reveal(gameCenter)
         gameCenter.tap()
         let humans = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Human players")).firstMatch
@@ -153,7 +172,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Find players"].isEnabled)
         // Neither sign-in nor matchmaking is invoked by this test.
         // The player-mode picker reads AI / Game Center / Online since the relay tables.
-        let ai = app.segmentedControls.buttons["AI"]
+        let ai = app.buttons["setup.mode.ai"]
         reveal(ai, scrollingUp: false)
         ai.tap()
         XCTAssertTrue(app.buttons["Start game"].waitForExistence(timeout: 5))
@@ -165,7 +184,7 @@ final class OnDeviceSetupUITests: XCTestCase {
             reveal(decks)
             decks.coordinate(withNormalizedOffset: CGVector(dx: horizontal, dy: 0.5)).tap()
             XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 10))
-            tapDiagnosed(app.buttons["deckStudio.library.close"])
+            tapDiagnosed(app.buttons["menu.tab.home"])
             XCTAssertTrue(app.buttons["deckStudio.create"].waitForNonExistence(timeout: 5))
         }
     }
@@ -241,7 +260,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         searchLibrary("Token Triumph")
         let bundled = app.buttons["deckStudio.deck.precon:token-triumph"].firstMatch
         XCTAssertTrue(bundled.waitForExistence(timeout: 5))
-        reveal(bundled); tapDiagnosed(bundled)
+        reveal(bundled); UITestHarness.openDeck(app, bundled)
         XCTAssertTrue(deckRow("Emmara, Soul of the Accord", quantity: 1).waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["deckStudio.save"].exists, "An included deck is read-only")
         capture("Included Commander deck grouped cards")
@@ -255,9 +274,10 @@ final class OnDeviceSetupUITests: XCTestCase {
         app.terminate(); app.launch()
         openLibrary(); searchLibrary("Token Triumph")
         XCTAssertTrue(bundled.waitForExistence(timeout: 5))
-        reveal(bundled); tapDiagnosed(bundled)
+        reveal(bundled); UITestHarness.openDeck(app, bundled)
         XCTAssertTrue(deckCount(100).waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Included / read-only"].exists)
+        // "Included / read-only" was cut with the copy rule (AGENTS.md, 2026-10-22); Edit a copy and no Save carry it.
+        XCTAssertFalse(app.buttons["deckStudio.save"].exists, "The bundled deck stays read-only")
         XCTAssertTrue(app.staticTexts["Token Triumph"].exists)
         XCTAssertTrue(app.buttons["Edit a copy"].exists)
         XCTAssertFalse(app.buttons["deckStudio.save"].exists)
@@ -272,7 +292,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         openLibrary()
         searchLibrary("Token Triumph")
         let bundled = app.buttons["deckStudio.deck.precon:token-triumph"].firstMatch
-        reveal(bundled); tapDiagnosed(bundled)
+        reveal(bundled); UITestHarness.openDeck(app, bundled)
         selectWorkspaceTab("Ideas")
         let edhrec = app.buttons["EDHREC"].firstMatch
         tapDiagnosed(edhrec)
@@ -305,7 +325,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         assertSavedDeck(cards: 0)
         XCTAssertTrue(app.staticTexts["Add your commander and cards. Incomplete drafts are welcome."].exists)
         // The quick check is advisory: it flags the missing commander and names XMage as the authority.
-        XCTAssertTrue(app.staticTexts["Quick check · XMage confirms when you play"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "XMage confirms when you play")).firstMatch.exists)
         XCTAssertTrue(app.buttons["Missing commander"].exists)
         // The header's primary action is Play; checking alone moved to the options menu.
         let play = app.buttons["deckStudio.play"]
@@ -458,16 +478,16 @@ final class OnDeviceSetupUITests: XCTestCase {
         renameDeck(draftName)
         rotate(to: .landscapeLeft)
         defer { XCUIDevice.shared.orientation = .portrait }
-        // Sideways the binder's left page holds the rail, the right page the cards: the All cards shelf
-        // puts every card to add where the deck's own cards are.
+        // Sideways the deck builder is Arena's: the cards to add with their search on the left, the deck as a list on
+        // the right.
         // The simulator cancels the first touch after the rotation's system gesture change (see
-        // UITestHarness.settleFirstTouch): spend it on the binder's bare leather at the screen's left edge.
+        // UITestHarness.settleFirstTouch): spend it on the bare edge at the screen's left.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).tap()
         let allCards = app.buttons["All cards"]
-        XCTAssertTrue(allCards.waitForExistence(timeout: 10), "Landscape shows the rail beside the deck")
+        XCTAssertTrue(allCards.waitForExistence(timeout: 10), "Landscape shows the collection beside the deck")
         let deck = app.scrollViews["deckStudio.cards.list"]
         XCTAssertTrue(deck.waitForExistence(timeout: 5))
-        XCTAssertTrue(deck.isHittable, "The deck's page remains visible beside the rail.")
+        XCTAssertTrue(deck.isHittable, "The deck list remains visible beside the collection.")
         XCTAssertLessThan(allCards.frame.midX, deck.frame.minX)
         tapDiagnosed(allCards)
         let search = app.textFields["deckStudio.catalogue.search"]
@@ -475,13 +495,11 @@ final class OnDeviceSetupUITests: XCTestCase {
         replaceText(search, with: "Sol Ring\n")
         let add = app.buttons["Add Sol Ring to deck"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
-        XCTAssertGreaterThan(add.frame.minX, search.frame.maxX, "Cards to add are on the right page")
+        XCTAssertLessThan(add.frame.maxX, deck.frame.minX, "Cards to add are on the left, beside the deck list")
         capture("Landscape collection before adding card")
         tapDiagnosed(add)
         XCTAssertTrue(app.buttons["Remove one Sol Ring from deck"].waitForExistence(timeout: 5))
-        // The rail's search changes with the shelf; measure the left page before turning back to My deck.
         let leftPageMid = search.frame.midX
-        tapDiagnosed(app.buttons["My deck"])
         let row = deckRow("Sol Ring", quantity: 1)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.isHittable, "The first card is visible without scrolling.")
@@ -572,7 +590,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         reveal(decks); waitForStableFrame(decks)
         UITestHarness.settleFirstTouch(app) // Tests relaunch before opening the library.
         tapDiagnosed(decks)
-        waitFor(app.buttons["deckStudio.create"], predicate: "exists == true AND hittable == true")
+        UITestHarness.revealCreateDeck(app)
     }
 
     private func createDeck() {
@@ -581,6 +599,8 @@ final class OnDeviceSetupUITests: XCTestCase {
         let skip = app.buttons["deckStudio.commanderFirst.skip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 10))
         tapDiagnosed(skip)
+        // A tap that lands while the picker is still sliding in can be lost: try once more if it is still up.
+        if !skip.waitForNonExistence(timeout: 3), skip.isHittable { tapDiagnosed(skip) }
         waitFor(skip, predicate: "exists == false")
         waitFor(app.buttons["deckStudio.close"], predicate: "exists == true AND hittable == true")
     }
@@ -630,7 +650,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         searchLibrary(name)
         let deck = savedDeck(name)
         XCTAssertTrue(deck.waitForExistence(timeout: 5))
-        reveal(deck); tapDiagnosed(deck)
+        reveal(deck); UITestHarness.openDeck(app, deck)
         waitFor(app.buttons["deckStudio.close"], predicate: "exists == true AND hittable == true")
     }
 
@@ -749,7 +769,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         tapDiagnosed(play)
         UITestHarness.chooseCustomTable(app)
         waitFor(app.textFields["ondevice.playerName"], predicate: "exists == true AND hittable == true")
-        XCTAssertTrue(app.staticTexts["Your next game."].exists)
+        XCTAssertTrue(app.staticTexts["Custom Table"].exists)
     }
 
     private func uniqueDeckName(_ suffix: String) -> String {

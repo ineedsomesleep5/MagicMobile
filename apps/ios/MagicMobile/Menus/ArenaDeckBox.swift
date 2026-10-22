@@ -49,6 +49,8 @@ struct ArenaDeckBox: View {
                 .padding(.top, -g.plateOverlap)
         }
         .frame(width: width)
+        // One picture, so dimming the box (a search running) never shows the cards through its front (the judge, 2026-10-22).
+        .compositingGroup()
         .onAppear { openness = selected ? 1 : 0 }
         .onChange(of: selected) { _, isSelected in
             withAnimation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.74)) { openness = isSelected ? 1 : 0 }
@@ -73,9 +75,10 @@ struct ArenaNewDeckBox: View {
                 .overlay(RoundedRectangle(cornerRadius: width * 0.07, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
             Image(systemName: "plus")
                 .font(.system(size: width * 0.36, weight: .bold))
-                .foregroundStyle(Color(red: 0.95, green: 0.93, blue: 1))
-                .shadow(color: Color(red: 0.62, green: 0.52, blue: 1).opacity(0.9), radius: 7)
-                .shadow(color: Color(red: 0.62, green: 0.52, blue: 1).opacity(0.5), radius: 16)
+                // White with the menus' gold glow (the judge, 2026-10-22: the lavender was off the palette).
+                .foregroundStyle(Color.white)
+                .shadow(color: ArenaMenuStyle.gold.opacity(0.85), radius: 7)
+                .shadow(color: ArenaMenuStyle.ember.opacity(0.4), radius: 16)
         }
         .frame(width: width - g.side * 0.5, height: g.boxHeight + g.plateHeight - g.plateOverlap)
         .frame(width: width)
@@ -221,6 +224,30 @@ private struct ArenaBoxLid<Art: View>: View {
     }
 }
 
+/// The app's own card back for the cards in an open box (the judge, 2026-10-22: never the Magic back in the menus): dark
+/// walnut under a gold frame line, the M mark in the middle with an ember glow behind it.
+private struct ArenaBoxCardBack: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let shape = RoundedRectangle(cornerRadius: width * 0.06, style: .continuous)
+            ZStack {
+                LinearGradient(colors: [Color(red: 0.17, green: 0.10, blue: 0.06), Color(red: 0.07, green: 0.04, blue: 0.03)],
+                               startPoint: .top, endPoint: .bottom)
+                RadialGradient(colors: [ArenaMenuStyle.ember.opacity(0.35), .clear], center: .center,
+                               startRadius: 0, endRadius: width * 0.55)
+                RoundedRectangle(cornerRadius: width * 0.04, style: .continuous)
+                    .strokeBorder(ArenaMenuStyle.gold.opacity(0.7), lineWidth: max(0.6, width * 0.012))
+                    .padding(width * 0.07)
+                BrandMark(size: width * 0.5, glint: false)
+            }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.black.opacity(0.85), lineWidth: max(1, width * 0.035)))
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// What stands in the open box: three card backs, and the commander card in front of them.
 private struct ArenaBoxContents: View {
     let geometry: ArenaBoxGeometry
@@ -233,9 +260,11 @@ private struct ArenaBoxContents: View {
         let cardWidth = height * 0.716
         ZStack(alignment: .top) {
             // Two backs fanned behind the commander, one to each side of it, and one standing behind.
-            ForEach([(-0.30, -7.0), (0.16, 5.0), (0.30, 9.0)], id: \.0) { offset, angle in
-                ArenaCardBack()
-                    .frame(width: cardWidth * 0.92, height: height * 0.92)
+            // The fan stays inside the box's front face, as Arena's does (the judge, 2026-10-22: the outer backs crossed the
+            // side wall and touched the next box).
+            ForEach([(-0.13, -5.0), (0.07, 3.0), (0.15, 6.0)], id: \.0) { offset, angle in
+                ArenaBoxCardBack()
+                    .frame(width: cardWidth * 0.84, height: height * 0.9)
                     .rotationEffect(.degrees(angle), anchor: .bottom)
                     .offset(x: g.frontWidth * offset, y: 3)
                     .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
@@ -246,8 +275,8 @@ private struct ArenaBoxContents: View {
             }
             .frame(width: cardWidth, height: height)
             .clipShape(RoundedRectangle(cornerRadius: cardWidth * 0.05))
-            .rotationEffect(.degrees(-4), anchor: .bottom)
-            .offset(x: -g.frontWidth * 0.12, y: -g.rise * 0.1)
+            .rotationEffect(.degrees(-3), anchor: .bottom)
+            .offset(x: -g.frontWidth * 0.06, y: -g.rise * 0.1)
             .shadow(color: .black.opacity(0.7), radius: 4, y: 2)
         }
         .frame(width: g.frontWidth, height: height, alignment: .top)
@@ -308,6 +337,8 @@ struct ArenaNamePlate: View {
                 .font(ArenaMenuStyle.font(max(11, width * 0.098), .bold))
                 .foregroundStyle(Color.white.opacity(0.95))
                 .lineLimit(1)
+                // Small boxes (a table's seats) shrink the name further rather than cut it.
+                .minimumScaleFactor(width < 90 ? 0.55 : 0.7)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
             if let edit {

@@ -161,3 +161,91 @@ hand or starting roll, and not another browser's prompt. Add it to `browserOpen`
 - Gate as above; corner, caption and stack hidden while open.
 - A design fixture (`GameBoardPreviewFixtures`) and a line in an Arena UI test.
 - Portrait and landscape screenshots checked.
+
+## Menus (every page outside a game)
+
+Caleb's rule (2026-10-22): **every menu page follows Arena's design and UI, nothing carried over** from the Walnut
+Tavern pages, while the 3D tavern room stays behind the home page. The menus are Arena's whatever board the player
+chose: `OnDeviceRootView` sets `\.arenaBoard` true over everything, and a game resets it to its own board (the Hearth
+board keeps its leather in a game; the starting roll follows the board). Reference frames:
+`build_output/arena-menus-reference/` and `~/Movies/motion-assets/yt/MB2ZTtCtJJA/` (home, Play, deck select, events);
+Arena's deck boxes, shut and open: `~/Movies/motion-assets/yt/ZvNnTWRy3xU/f/` (`open-big.png`, `closed-big.png`).
+
+- **Shell:** `ArenaTopBar` on every page (the mark; Home, Profile, Decks, Ranked, Learn as engraved emblems with a
+  label; rank chip, messages with a diamond pip, news, downloads and the gear on the right; portrait keeps messages
+  and the gear, news and downloads move to the home page's corner). Pages sit under it over `ArenaRoomBackdrop`
+  (dimmed 0.55 behind a page, 0.72 behind Decks, undimmed on home). A page inside the shell leaves its own backdrop
+  out (`\.arenaMenuBackdrop`).
+- **Home** (`ArenaHomeView`): the featured panel (pages turn on their own; art crisp, a dark band only behind the
+  words) and three tiles in the middle, medallions on a gold rail with ticks (deck, rank, season), friends in the
+  lower left, the breathing ember Play plaque (`ArenaPlayButtonStyle`) in the lower right. Nothing scrolls.
+- **Play** (`ArenaPlayPanel`): the room 0.78 dark, the decks as boxes on the left (shelves, scrolled to the chosen
+  deck's shelf), the blade on the right with its burning seam (`ArenaSeam`): Find Match, Friends, Recently Played tabs;
+  Quick, Ranked, Custom gems; diamond option rows (`ArenaOptionRow`) fading out above the footer; Play in the footer.
+  In portrait the blade is a sheet along the bottom. **The options fit without scrolling or fading**: Quick's bracket
+  is a row of five gems with the chosen one named in the heading, the opponent's deck one picker row, then skill and
+  who goes first; Ranked is the standing, one line and two pills. **A search waits in the blade**: Play turns into
+  Cancel under "Searching… 0:12" with Play the AI now, and the options fold away; never a centred pop-up. Friends rows
+  are chosen like options and Play is named for the choice. Recently Played shows tall tiles of the last tables, or one
+  quiet line ("No tables yet") with the blade's plaque leading to Find Match. Tabs are words with a glowing gold bar
+  (`ArenaTabBar`), never blue.
+- **Deck boxes** (`ArenaDeckBox`): a black box seen nearly straight on (front 1.34 times as wide as tall), a lid band
+  stamped MAGICMOBILE, the commander's art on the front, a dark side with a clasp, the pips at the foot of the front
+  and fully clear of the black one-line name plate (with Arena's pencil where the deck can be edited). Choosing a deck
+  opens its box: the lid stands raised and tilted back with the art on top, the front folds to half height with a lit
+  lip, and the commander card rises in front of two card backs. Rows leave room for an open lid. "+" is a dark tile.
+- **Opened boxes hold the app's own card backs** (`ArenaBoxCardBack`: walnut, a gold frame line, the M mark), never
+  the Magic back.
+- **Custom Table:** Arena's event page on two glass plates: your open deck box, its bracket and check, your name
+  written on the plate (a gold line and pencil while it can be edited; no field capsule) and Change deck on the left;
+  player tiles, seat slots (deck boxes; × empties one, a "+" seat adds an AI), an AI skill slider and Who goes first
+  tiles on the right. Below the plates, never over them, a solid strip with the status and the ember Start (Find
+  players for Game Center).
+- **Decks** (Arena's decks-1): Deck Studio under the top bar, over the dimmed room (no NavigationStack: it paints an
+  opaque page): search and pill filters, every deck as a box across the page (the first tap opens its box and scrolls it
+  into view, a second opens it for editing; the pencil shows on the chosen box only), and the chosen deck on a one-row
+  strip along the foot (sideways about 50 pt): art, name, pips, bracket, then Edit Deck and Play at the right. Deck Studio's binder parts (`Grimoire*`, `Binder*`) draw glass, pills and plaques now; the page
+  curl and the book film are off (`GrimoireStage.curlEnabled`).
+- **Deck builder** (Arena's deckbuilder-1/2): sideways (`arenaBuilder`), two panes: the cards to add fill the left
+  under ONE filter line (shelf, a short "Search", the mana values 0–7+ first, then the tools, running on to the right);
+  a read-only deck shows its own cards there. The deck stands on the right as a 330 pt column: Save (or Edit a copy),
+  tags and ⋯ at its head, the chapters (Cards · Ideas · Analysis) as a tab strip, the commander's round art, name and
+  quick check, the cards by type (count, name, cost; − and + at a line's end while editable), the gold mana curve
+  closing the list, and **Done beside Play at its foot**. Upright: one scrolling page, the tab strip under the head,
+  one filter strip under the search, a read-only deck as name bars, and Done with Play in a bar along the foot. The
+  quick check is one honest line ("Quick check · No issues found", XMage named for VoiceOver). The editor is a
+  full-screen cover, outside the shell, so it draws its own dimmed room.
+- **Panels, not sheets:** Options, Updates, Downloads, How to Play, the welcome, the bracket, the error report and
+  questions (`ArenaPromptPanel`) open as glass panels over the dimmed menu (`arenaPanel`), below the top bar and, with
+  `fitsContent`, only as tall as their page. Friends slides in along the leading edge, full height, held either way. A
+  page closes itself with `\.arenaPanelClose` (fall back to `dismiss` only outside a panel). No system alerts or
+  action sheets in the menus.
+- **Updates** is Arena's inbox (inbox-1): a blade from the right (`placement: .trailing`, the burning seam on its inner
+  edge) with ◆ rows, the newest lit with an orange "New" and a narrow flare at the row's far edge; a row opens in place
+  (art banner, text). The build and links live in its last row. **Downloads** opens on a readout ("0 of 31,959 stored"
+  with Check on that line, a gold bar, the state once).
+- **Options** (`ArenaOptionsView`, Arena's options-1): a centred serif title, one centred column of compact pills
+  (Gameplay, Board, Audio, Display & Artwork, Performance), Support and About as underlined links along the foot. Each
+  page opens in the same panel with a back chevron and lays its settings flat on the glass in columns (Arena's
+  options-gameplay-1); Sound Lab and Phase Stops are pages too. Controls: `ArenaCheckbox` (off a dim diamond, on an
+  orange tick), `ArenaSlider` (a gold diamond on a drawn track), `ArenaStepper`, `ArenaSegmented` (a tab strip). They
+  draw nothing of the system control: a real Toggle/Slider/Stepper reaches VoiceOver and UI tests only through
+  `.accessibilityRepresentation` (a 2% opacity overlay still showed its track).
+- **Profile** (Arena's profile-1..3): the player's name as the headline, the season rank, a progression row, the
+  commander as full-height hero art, and an Overview / Customization tab strip; title and portrait are chosen from a
+  grid. **Ranked** (ranked-1): the title with "Season ends in N days" in ember, a stair of tier plaques (what each
+  allows, which you reached) and a Current Rank column; Play Ranked, Leaderboard and Profile beside the title. Pages use
+  glass cards (`arenaCard`), a back chevron only below a tab root, and fade at their foot.
+- **The top bar** lights the icon of the utility whose panel is open (gear, news, downloads, friends) instead of a tab.
+- **Dimming** (a search running): a scrim over the whole deck side, never opacity on the boxes (they turn see-through).
+  Behind any panel the home page steps away entirely; only the room shows under the scrim.
+- **Wins and losses:** gold and a muted rose (`ArenaMenuStyle.win/loss`), never web green and red.
+- **Copy** (AGENTS.md): no taglines, helper lines or secondary labels; a state line shows only when it says something
+  (an invalid name, offline profiles, a search running). Real Arena reference shots for these pages are in
+  `build_output/arena-menus-reference/more/` (see its INDEX.md).
+
+Fixtures for screenshots (DEBUG, `--ondevice-setup-ui-test` with `MAGICMOBILE_UI_TEST_SOCIAL=1`):
+`MAGICMOBILE_UI_TEST_OPEN=` `play`, `play-ranked`, `play-custom`, `play-friends`, `play-recent`, `queue`, `play-cycle`
+(boxes opening in turn, for a recording), `custom`, `decks`, `deck`, `profile`, `rankedHall`, `leaderboard`,
+`friends`, `settings[:page]`, `updates`, `downloads`, `learn`, `learn-table`. GameAudio is silent under the UI-test flag
+and with `MAGICMOBILE_MUTE_AUDIO=1` (a stalled simulator audio device otherwise holds the app on its launch screen).

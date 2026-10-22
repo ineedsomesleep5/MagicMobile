@@ -1007,46 +1007,66 @@ enum BoardFXHaptics {
 /// Hearth or Arena (BoardMode): the board's layout, chosen here and in the game menu; it changes at once, mid-game too.
 struct BoardModePicker: View {
     @AppStorage(BoardMode.key) private var mode = BoardMode.defaultValue
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Board")
+                // Under the page's own "Board" title the picker is the table you play on (the judge: no repeated label).
+                Text(arena ? "Table" : "Board")
                     .font(.system(size: 16, weight: .semibold, design: .serif))
-                Text(BoardMode.resolved(mode).summary)
-                    .font(.system(size: 12, design: .serif))
-                    .opacity(0.65)
-                    .lineLimit(2)
+                // The Arena look names the choice and nothing more (the judge, 2026-10-22: no helper lines).
+                if !arena {
+                    Text(BoardMode.resolved(mode).summary)
+                        .font(.system(size: 12, design: .serif))
+                        .opacity(0.65)
+                        .lineLimit(2)
+                }
             }
-            Picker("Board", selection: $mode) {
-                ForEach(BoardMode.allCases) { Text($0.title).tag($0.rawValue) }
+            if arena {
+                ArenaSegmented(options: BoardMode.allCases.map { ($0.title, $0.rawValue) }, selection: $mode,
+                               identifier: "settings.boardMode", stretch: true)
+            } else {
+                Picker("Board", selection: $mode) {
+                    ForEach(BoardMode.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.boardMode")
             }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("settings.boardMode")
         }
         .modifier(TavernSettingsPanel())
     }
 }
 
 struct BoardEffectsPicker: View {
+    /// Off where sound has a page of its own (the menu's Options).
+    var includesAudio = true
     @AppStorage(BoardFXLevel.key) private var level = BoardFXLevel.defaultValue
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Board Effects")
+                Text(arena ? "Effects" : "Board Effects")
                     .font(.system(size: 16, weight: .semibold, design: .serif))
-                Text("Spell, combat and life animations. Reduce Motion always limits them.")
-                    .font(.system(size: 12, design: .serif))
-                    .opacity(0.65)
-                    .lineLimit(2)
+                if !arena {
+                    Text("Spell, combat and life animations. Reduce Motion always limits them.")
+                        .font(.system(size: 12, design: .serif))
+                        .opacity(0.65)
+                        .lineLimit(2)
+                }
             }
-            Picker("Board Effects", selection: $level) {
-                ForEach(BoardFXLevel.allCases) { Text($0.title).tag($0.rawValue) }
+            if arena {
+                ArenaSegmented(options: BoardFXLevel.allCases.map { ($0.title, $0.rawValue) }, selection: $level,
+                               identifier: "settings.boardEffects", stretch: true)
+            } else {
+                Picker("Board Effects", selection: $level) {
+                    ForEach(BoardFXLevel.allCases) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.boardEffects")
             }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("settings.boardEffects")
-            GameAudioSettings()
+            if includesAudio { GameAudioSettings() }
         }
         .modifier(TavernSettingsPanel())
     }
@@ -1054,6 +1074,7 @@ struct BoardEffectsPicker: View {
 
 /// Sound effects and music, each with a level. Changes apply immediately.
 struct GameAudioSettings: View {
+    @Environment(\.arenaOpenSoundLab) private var openSoundLab
     @AppStorage(GameAudio.effectsKey, store: MagicMobilePreferences.current) private var effects = true
     @AppStorage(GameAudio.musicKey, store: MagicMobilePreferences.current) private var music = true
     @AppStorage(GameAudio.effectsVolumeKey, store: MagicMobilePreferences.current) private var effectsVolume = 0.9
@@ -1079,12 +1100,10 @@ struct GameAudioSettings: View {
                 TavernSlider(value: $musicVolume, label: "Music volume", identifier: "settings.musicVolume")
             }
             HStack(spacing: 8) {
-                Text("Sounds follow your iPhone's Silent switch.")
-                    .font(.system(size: 12, design: .serif))
-                    .opacity(0.6)
                 Spacer(minLength: 4)
                 Button {
-                    soundLabOpen = true
+                    // Inside Options it is a page of the panel; elsewhere a sheet.
+                    if let openSoundLab { openSoundLab() } else { soundLabOpen = true }
                 } label: {
                     Label("Sound Lab", systemImage: "waveform")
                 }

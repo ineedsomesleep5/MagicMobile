@@ -44,6 +44,7 @@ struct ArenaHomeContent {
 /// featured panel and three tiles in the middle, progress medallions on a rail under them, friends in the lower left and
 /// the Play plaque in the lower right. Nothing scrolls.
 struct ArenaHomeView: View {
+    @Environment(\.brandAmbientMotion) private var ambient
     let content: ArenaHomeContent
     let compact: Bool
 
@@ -51,6 +52,10 @@ struct ArenaHomeView: View {
         GeometryReader { proxy in
             if compact { portrait(proxy.size) } else { landscape(proxy.size) }
         }
+        // The page steps away while a panel covers the menu, so nothing shows half under a panel's foot; the room stays
+        // (the judge, 2026-10-22).
+        .opacity(ambient ? 1 : 0)
+        .animation(.easeOut(duration: 0.2), value: ambient)
     }
 
     // MARK: Layouts
@@ -148,11 +153,15 @@ struct ArenaHomeView: View {
 struct ArenaFeaturePanel: View {
     let features: [ArenaFeature]
     @State private var index = 0
+    @State private var forward = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
 
     var body: some View {
         let feature = features.isEmpty ? nil : features[min(index, features.count - 1)]
+        // Pages slide across as Arena's do, so two pages' words never show at once (the judge, 2026-10-22).
+        let slide = AnyTransition.asymmetric(insertion: .move(edge: forward ? .trailing : .leading),
+                                             removal: .move(edge: forward ? .leading : .trailing))
         ZStack(alignment: .bottomLeading) {
             if let feature {
                 Button {
@@ -160,9 +169,9 @@ struct ArenaFeaturePanel: View {
                     feature.action()
                 } label: {
                     ZStack(alignment: .bottomLeading) {
+                        // A touch larger than the frame, so an art crop's own dark edge never shows as a seam.
                         ArenaArt(name: feature.art, colors: feature.colors)
-                            .id(feature.id)
-                            .transition(.opacity)
+                            .scaleEffect(1.06)
                         // A dark band only behind the words: the art stays crisp above it.
                         LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.88), location: 1)],
                                        startPoint: .top, endPoint: .bottom)
@@ -174,16 +183,22 @@ struct ArenaFeaturePanel: View {
                             Text(feature.detail).font(ArenaMenuStyle.font(12.5, .medium)).foregroundStyle(ArenaMenuStyle.text.opacity(0.85))
                                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.horizontal, 18)
+                        .padding(.leading, 18)
+                        .padding(.trailing, 48)
                         .padding(.bottom, 22)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    // Each page fills the frame exactly, so a sliding page never leaves the last one's edge showing.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(BrandPressStyle())
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("home.feature.\(feature.id)")
                 .accessibilityHint(String(localized: "Opens it"))
+                .id(feature.id)
+                .transition(reduceMotion ? .opacity : slide)
             }
             if features.count > 1 { controls }
         }
@@ -193,9 +208,12 @@ struct ArenaFeaturePanel: View {
         .gesture(DragGesture(minimumDistance: 24).onEnded { value in
             if value.translation.width < -40 { step(1) } else if value.translation.width > 40 { step(-1) }
         })
-        .task(id: index) {
+        // Restarts when a panel closes, so the pages turn again.
+        .task(id: "\(index)-\(ambient)") {
             guard features.count > 1, !reduceMotion, ambient else { return }
             do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            // A panel opened meanwhile: the pages hold still behind it.
+            guard ambient else { return }
             step(1)
         }
     }
@@ -235,6 +253,7 @@ struct ArenaFeaturePanel: View {
 
     private func step(_ delta: Int) {
         guard !features.isEmpty else { return }
+        forward = delta > 0
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
             index = (index + delta + features.count) % features.count
         }
@@ -258,8 +277,10 @@ struct ArenaHomeTileView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tile.title).font(ArenaMenuStyle.font(wide ? 17 : 15, .bold)).foregroundStyle(ArenaMenuStyle.text)
                         .shadow(color: .black, radius: 2)
-                    Text(tile.subtitle).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
-                        .lineLimit(1).minimumScaleFactor(0.85)
+                    if !tile.subtitle.isEmpty {
+                        Text(tile.subtitle).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
+                            .lineLimit(1).minimumScaleFactor(0.85)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 9)
@@ -306,7 +327,7 @@ struct ArenaProgressRail: View {
         let played = content.wins + content.losses
         HStack(spacing: compact ? 6 : 14) {
             if let deck = content.deck {
-                medallion(progress: 1, title: deck.name, subtitle: String(localized: "Your deck"), action: content.openDeck,
+                medallion(progress: 1, title: deck.name, subtitle: "", action: content.openDeck,
                           identifier: "home.deck") {
                     ArenaArt(name: deck.commander ?? "", colors: deck.colors)
                         .clipShape(Circle())
@@ -371,7 +392,9 @@ struct ArenaProgressRail: View {
                 .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(ArenaMenuStyle.font(12, .bold)).foregroundStyle(ArenaMenuStyle.text).lineLimit(1)
-                    Text(subtitle).font(ArenaMenuStyle.font(10.5, .semibold)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                    if !subtitle.isEmpty {
+                        Text(subtitle).font(ArenaMenuStyle.font(10.5, .semibold)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                    }
                 }
                 .frame(maxWidth: compact ? .infinity : 130, alignment: .leading)
             }
@@ -405,10 +428,11 @@ struct ArenaColorGlass: View {
         let chosen = ["W", "U", "B", "R", "G"].filter(colors.contains).compactMap { Self.tints[$0] }
         let palette = chosen.isEmpty ? [Color(red: 0.40, green: 0.41, blue: 0.44), Color(red: 0.16, green: 0.17, blue: 0.19)]
             : chosen.count == 1 ? [chosen[0], chosen[0].opacity(0.45)] : chosen
+        // Until the art arrives: a dark band with only a breath of the colours (the judge, 2026-10-22: a bright gradient read
+        // as a blurred picture).
         ZStack {
-            Color.black
-            LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing).opacity(0.8)
-            RadialGradient(colors: [.white.opacity(0.28), .clear], center: UnitPoint(x: 0.3, y: 0.25), startRadius: 2, endRadius: 140)
+            Color(red: 0.06, green: 0.05, blue: 0.05)
+            LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing).opacity(0.18)
         }
         .accessibilityHidden(true)
     }

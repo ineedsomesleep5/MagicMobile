@@ -16,84 +16,184 @@ struct RankedHallView: View {
     @State private var shown = false
     /// The top three and your place, for the Leaderboard choice (nil offline).
     @State private var teaser: RankedLeaderboard?
+    /// Compact height: the phone held sideways.
+    @Environment(\.verticalSizeClass) private var verticalSize
 
     private var tier: RankTier { rank.position.tier }
 
+    /// Arena's Season Rewards (the judge, 2026-10-22, against Arena's own): the title with the season's end in orange and the
+    /// ways on as plaques beside it, a stair of tier plaques from Bronze to Mythic on the left (what each allows, and which
+    /// you have reached), and your current rank in its own column on the right. Past seasons follow in the scroll. The
+    /// Ranked tab's page, so no back chevron.
     var body: some View {
-        TavernLobbyPage(title: String(localized: "Ranked Hall"), backTitle: String(localized: "Play"), back: back) {
-            rankCard.modifier(HallEntrance(shown: shown, delay: 0))
-            playChoice.modifier(HallEntrance(shown: shown, delay: 0.08))
-            leaderboardChoice.modifier(HallEntrance(shown: shown, delay: 0.16))
-            seasonStrip.modifier(HallEntrance(shown: shown, delay: 0.24))
+        let wide = verticalSize == .compact
+        TavernLobbyPage(title: "", back: back, showsBack: false, contentWidth: wide ? 920 : nil, scrolls: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                header(wide: wide).modifier(HallEntrance(shown: shown, delay: 0))
+                if wide {
+                    HStack(alignment: .top, spacing: 18) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                tierLadder(wide: true)
+                                seasonStrip
+                            }
+                            .padding(.bottom, 28)
+                        }
+                        .scrollIndicators(.hidden)
+                        .scrollBounceBehavior(.basedOnSize)
+                        .mask(ArenaScrollFade())
+                        .accessibilityIdentifier("lobby.scroll")
+                        currentRank(badge: 104)
+                            .frame(width: 250)
+                            .modifier(HallEntrance(shown: shown, delay: 0.08))
+                    }
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            currentRank(badge: 120).modifier(HallEntrance(shown: shown, delay: 0.08))
+                            tierLadder(wide: false)
+                            seasonStrip
+                        }
+                        .padding(.bottom, 28)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .mask(ArenaScrollFade())
+                    .accessibilityIdentifier("lobby.scroll")
+                }
+            }
         }
         .onAppear { shown = true }
         .task { teaser = await account.rankedLeaderboard(.everyone, limit: 3) }
     }
 
-    private var rankCard: some View {
+    /// The page's head: "Ranked" in serif with the season's end in orange under it, and the ways on (Play Ranked as the
+    /// ember plaque, then the leaderboard and your profile) beside it sideways, under it upright.
+    @ViewBuilder private func header(wide: Bool) -> some View {
+        let title = VStack(alignment: .leading, spacing: 2) {
+            Text(String(localized: "Ranked")).font(.system(size: 30, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
+                .accessibilityAddTraits(.isHeader)
+            Text(seasonEnds).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(ArenaMenuStyle.ember)
+        }
+        let ways = HStack(spacing: 8) {
+            Button(String(localized: "Play Ranked")) { GameAudio.shared.play(.menuPlay); play() }
+                .buttonStyle(ArenaPlayButtonStyle(fontSize: 16))
+                .frame(width: 150, height: 40)
+                .accessibilityIdentifier("ranked.hall.play")
+            Button { GameAudio.shared.play(.uiOpen); leaderboard() } label: {
+                HStack(spacing: 6) {
+                    if let teaser, teaser.online > 0 { LeaderboardOnlineDot(size: 7) }
+                    Text(String(localized: "Leaderboard"))
+                }
+            }
+            .buttonStyle(ArenaPillButtonStyle())
+            .accessibilityIdentifier("ranked.hall.leaderboard")
+            profileButton
+        }
+        if wide {
+            HStack(alignment: .center, spacing: 16) { title; Spacer(minLength: 8); ways }
+                .padding(.top, 6)
+        } else {
+            VStack(alignment: .leading, spacing: 10) { title; ways }
+                .padding(.top, 6)
+        }
+    }
+
+    private var seasonEnds: String {
+        guard let end = RankLadder.seasonEnd(rank.season) else { return RankLadder.seasonName(rank.season) }
+        let days = max(0, Int(ceil(end.timeIntervalSinceNow / 86_400)))
+        if days <= 1 { return String(localized: "Season ends tomorrow") }
+        return String(localized: "Season ends in \(days) days")
+    }
+
+    /// Arena's stair of reward plaques: each tier a step wider than the one before, its emblem, its name and the decks it
+    /// allows; the tiers you've reached lit, yours edged in gold.
+    private func tierLadder(wide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(RankTier.allCases.enumerated()), id: \.offset) { index, step in
+                tierPlaque(step, width: (wide ? 300 : 250) + CGFloat(index) * (wide ? 26 : 22))
+                    .modifier(HallEntrance(shown: shown, delay: 0.1 + Double(index) * 0.04))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ranked.hall.tiers")
+    }
+
+    private func tierPlaque(_ step: RankTier, width: CGFloat) -> some View {
+        let reached = step <= tier
+        let current = step == tier
+        let shape = ArenaRewardPlaque()
+        return HStack(spacing: 12) {
+            RankEmblem(tier: step, size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.name).font(.system(size: 15, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
+                Text(String(localized: "Decks up to Bracket \(step.maxDeckBracket)"))
+                    .font(.system(size: 11.5, weight: .medium, design: .serif)).foregroundStyle(ArenaMenuStyle.dim)
+            }
+            Spacer(minLength: 6)
+            if current {
+                ArenaCaps(text: String(localized: "You"), size: 9)
+            } else if reached {
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)).foregroundStyle(ArenaMenuStyle.gold)
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, 26).padding(.vertical, 7)
+        .frame(width: width, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .leading) {
+            shape.fill(LinearGradient(colors: [ArenaGlass.top.opacity(0.95), ArenaGlass.bottom.opacity(0.95)], startPoint: .top, endPoint: .bottom))
+                .frame(width: width)
+        }
+        .overlay(alignment: .leading) {
+            shape.stroke(current ? AnyShapeStyle(ArenaMenuStyle.gold) : AnyShapeStyle(ArenaGlass.hairline), lineWidth: current ? 1.6 : 1)
+                .frame(width: width)
+                .shadow(color: current ? ArenaMenuStyle.gold.opacity(0.5) : .clear, radius: 6)
+        }
+        .opacity(reached ? 1 : 0.55)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(current ? [.isSelected] : [])
+    }
+
+    /// Arena's Current Rank column: the badge turning in its glow with its pips and title, then the season's record.
+    private func currentRank(badge size: CGFloat) -> some View {
         VStack(spacing: 10) {
-            ZStack {
-                RankGlow(tier: tier, size: 190)
-                RankBadge(position: rank.position, size: 132, showsPips: true, showsTitle: true,
-                          spin: .init(start: appeared, turns: 1, duration: 1.2))
-            }
-            .padding(.top, 4)
-            Text(String(localized: "Season: \(RankLadder.seasonName(rank.season))") + RankedHallView.daysLeft(rank.season))
-                .font(.system(size: 13, weight: .semibold, design: .serif)).opacity(0.8)
-            HStack(spacing: 18) {
-                stat(String(localized: "Wins"), "\(rank.wins)")
-                stat(String(localized: "Losses"), "\(rank.losses)")
-                stat(String(localized: "Peak"), rank.peak.title)
-                if let teaser, let me = teaser.me { stat(String(localized: "Place"), "#\(me.position)") }
-            }
-            Button(action: profile) { Label(String(localized: "Your profile"), systemImage: "person.crop.circle") }
-                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
-                .accessibilityIdentifier("ranked.hall.profile")
+            ArenaCaps(text: String(localized: "Current rank"))
+            badge(size: size, glow: size * 1.45)
+            HStack(spacing: 18) { stats }
         }
         .frame(maxWidth: .infinity)
-        .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ranked.hall.standing")
     }
 
-    private var playChoice: some View {
-        choice(title: String(localized: "Play Ranked"),
-               detail: String(localized: "Pick your deck, then face a player near your rank or an AI. \(tier.name) allows decks up to Bracket \(tier.maxDeckBracket)."),
-               identifier: "ranked.hall.play", sound: .menuPlay, action: play) {
-            Image(systemName: "shield.lefthalf.filled").font(.system(size: 26, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
-        } footer: { EmptyView() }
+    private func badge(size: CGFloat, glow: CGFloat) -> some View {
+        ZStack {
+            RankGlow(tier: tier, size: glow)
+            RankBadge(position: rank.position, size: size, showsPips: true, showsTitle: true,
+                      spin: .init(start: appeared, turns: 1, duration: 1.2))
+        }
+        .padding(.top, 4)
     }
 
-    private var leaderboardChoice: some View {
-        choice(title: String(localized: "Leaderboard"),
-               detail: String(localized: "This season's top players, live, with who's online now."),
-               identifier: "ranked.hall.leaderboard", sound: .uiOpen, action: leaderboard) {
-            Image(systemName: "trophy.fill").font(.system(size: 24, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
-        } footer: {
-            if let teaser, !teaser.entries.isEmpty {
-                HStack(spacing: 8) {
-                    HStack(spacing: -10) {
-                        ForEach(teaser.entries.prefix(3)) { RankEmblem(tier: $0.rank.tier, size: 30) }
-                    }
-                    if teaser.online > 0 {
-                        LeaderboardOnlineDot(size: 8)
-                        Text(teaser.online == 1 ? String(localized: "1 online now") : String(localized: "\(teaser.online) online now"))
-                            .font(.system(size: 12, weight: .bold, design: .serif))
-                    }
-                    Text(String(localized: "\(teaser.total) ranked")).font(.system(size: 12, design: .serif)).opacity(0.7).lineLimit(1).fixedSize()
-                }
-            }
-        }
+    @ViewBuilder private var stats: some View {
+        stat(String(localized: "Wins"), "\(rank.wins)")
+        stat(String(localized: "Losses"), "\(rank.losses)")
+        stat(String(localized: "Peak"), rank.peak.title)
+        if let teaser, let me = teaser.me { stat(String(localized: "Place"), "#\(me.position)") }
+    }
+
+    private var profileButton: some View {
+        Button(action: profile) { Text(String(localized: "Profile")).fixedSize() }
+            .buttonStyle(ArenaPillButtonStyle())
+            .accessibilityIdentifier("ranked.hall.profile")
     }
 
     private var seasonStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(String(localized: "PAST SEASONS")).font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.4)
-                .foregroundStyle(BrandTheme.brassGradient)
+            ArenaCaps(text: String(localized: "Past seasons"))
             if rank.history.isEmpty {
-                Text(String(localized: "This is your first season. Where you finish it starts your history here."))
+                Text(String(localized: "First season"))
                     .font(.system(size: 14, design: .serif)).opacity(0.8)
-                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
@@ -102,7 +202,6 @@ struct RankedHallView: View {
                 }
             }
         }
-        .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ranked.hall.seasons")
     }
@@ -117,37 +216,8 @@ struct RankedHallView: View {
         .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(minWidth: 92)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.25)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TavernPalette.brass.opacity(0.5), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.6))
         .accessibilityElement(children: .combine)
-    }
-
-    private func choice<Icon: View, Footer: View>(title: String, detail: String, identifier: String, sound: GameSound,
-                                                  action: @escaping () -> Void, @ViewBuilder icon: () -> Icon,
-                                                  @ViewBuilder footer: () -> Footer) -> some View {
-        Button {
-            GameAudio.shared.play(sound)
-            action()
-        } label: {
-            HStack(alignment: .center, spacing: 14) {
-                icon()
-                    .frame(width: 64, height: 64)
-                    .background(Circle().fill(TavernPalette.leather.opacity(0.9)).overlay(Circle().strokeBorder(TavernPalette.brass, lineWidth: 2)))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.system(size: 21, weight: .black, design: .serif))
-                    Text(detail).font(.system(size: 14, weight: .medium, design: .serif)).opacity(0.78)
-                        .fixedSize(horizontal: false, vertical: true)
-                    footer()
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .heavy)).foregroundStyle(DeckStudioPalette.accent)
-            }
-            .multilineTextAlignment(.leading)
-            .modifier(TavernParchmentCard())
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(BrandPressStyle())
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(identifier)
     }
 
     private func stat(_ title: String, _ value: String) -> some View {
@@ -162,6 +232,24 @@ struct RankedHallView: View {
         guard let end = RankLadder.seasonEnd(season) else { return "" }
         let days = max(0, Int(ceil(end.timeIntervalSinceNow / 86_400)))
         return days == 1 ? String(localized: " · 1 day left") : String(localized: " · \(days) days left")
+    }
+}
+
+/// Arena's reward plaque: a bar whose right end comes to a point, like an arrow along the stair.
+private struct ArenaRewardPlaque: Shape {
+    func path(in rect: CGRect) -> Path {
+        let point = min(16, rect.height * 0.45)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 6, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - point, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX - point, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + 6, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - 6), control: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + 6))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + 6, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -232,14 +320,26 @@ struct RankedLeaderboardView: View {
     @State private var podiumUp = false
     @State private var active = true
     @State private var profile: ProfileTarget?
-    @Namespace private var scopeSlider
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Compact height: the phone held sideways.
+    @Environment(\.verticalSizeClass) private var verticalSize
 
+    /// Sideways the podium stands on its own glass on the left and the standings run down the right (Caleb, 2026-10-22),
+    /// with your own row at the head of the list when it's off it; upright the podium leads and your row is pinned below.
     var body: some View {
+        let wide = verticalSize == .compact
         ZStack(alignment: .bottom) {
-            TavernLobbyPage(title: String(localized: "Leaderboard"), backTitle: String(localized: "Ranked Hall"), back: back) {
-                scopePicker
+            TavernLobbyPage(title: String(localized: "Leaderboard"), backTitle: String(localized: "Ranked Hall"), back: back,
+                            contentWidth: wide ? 900 : nil) {
+                if wide {
+                    HStack(spacing: 16) {
+                        scopePicker.frame(width: 240)
+                        if case .loaded(let board) = load { liveStrip(board) }
+                    }
+                } else {
+                    scopePicker
+                }
                 switch load {
                 case .loading:
                     SocialWaiting(text: String(localized: "Gathering the standings…")).modifier(TavernLeatherCard())
@@ -247,20 +347,30 @@ struct RankedLeaderboardView: View {
                     note(String(localized: "The leaderboard needs your profile and a connection. Sign in from your profile, then come back."),
                          icon: "wifi.exclamationmark", identifier: "leaderboard.offline")
                 case .loaded(let board):
-                    liveStrip(board)
+                    if !wide { liveStrip(board) }
                     if board.entries.isEmpty {
                         note(scope == .friends
                              ? String(localized: "None of your friends has played ranked this season yet. Challenge one from Friends.")
                              : String(localized: "Nobody has played ranked this season yet. Win a game to take the top spot."),
                              icon: "trophy", identifier: "leaderboard.empty")
+                    } else if wide {
+                        HStack(alignment: .top, spacing: 16) {
+                            podium(Array(board.entries.prefix(3)), compact: true)
+                                .frame(width: 330)
+                            VStack(spacing: 8) {
+                                if let me = board.pinnedMe { row(me, pinned: true) }
+                                rows(Array(board.entries.dropFirst(3)))
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
                     } else {
-                        podium(Array(board.entries.prefix(3)))
+                        podium(Array(board.entries.prefix(3)), compact: false)
                         rows(Array(board.entries.dropFirst(3)))
                     }
-                    if board.pinnedMe != nil { Color.clear.frame(height: 72) }
+                    if board.pinnedMe != nil && !wide { Color.clear.frame(height: 72) }
                 }
             }
-            if case .loaded(let board) = load, let me = board.pinnedMe {
+            if !wide, case .loaded(let board) = load, let me = board.pinnedMe {
                 row(me, pinned: true)
                     .frame(maxWidth: 608)
                     .padding(.horizontal, 16)
@@ -310,35 +420,10 @@ struct RankedLeaderboardView: View {
 
     // MARK: Scope
 
+    /// Everyone or friends, as Arena's tab strip.
     private var scopePicker: some View {
-        HStack(spacing: 4) {
-            ForEach(RankedLeaderboard.Scope.allCases, id: \.self) { option in
-                let selected = scope == option
-                Button {
-                    guard !selected else { return }
-                    GameAudio.shared.play(.uiTap)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { scope = option }
-                } label: {
-                    Text(option == .everyone ? String(localized: "Everyone") : String(localized: "Friends"))
-                        .font(.system(size: 15, weight: .heavy, design: .serif))
-                        .foregroundStyle(selected ? Color(red: 0.25, green: 0.12, blue: 0.04) : TavernPalette.parchment.opacity(0.8))
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .background {
-                            if selected {
-                                Capsule().fill(BrandTheme.brassGradient)
-                                    .matchedGeometryEffect(id: "scope", in: scopeSlider)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-                .accessibilityIdentifier("leaderboard.scope.\(option.rawValue)")
-            }
-        }
-        .padding(4)
-        .background(TavernFill(material: .leather).clipShape(Capsule()))
-        .overlay(TavernCapsuleRim(thin: true))
+        ArenaSegmented(options: RankedLeaderboard.Scope.allCases.map { ($0 == .everyone ? String(localized: "Everyone") : String(localized: "Friends"), $0) },
+                       selection: $scope, identifier: "leaderboard.scope")
     }
 
     // MARK: Live strip
@@ -348,6 +433,7 @@ struct RankedLeaderboardView: View {
             LeaderboardOnlineDot(size: 10)
             Text(board.online == 1 ? String(localized: "1 player online") : String(localized: "\(board.online) players online"))
                 .font(.system(size: 14, weight: .bold, design: .serif))
+                .lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             Text(String(localized: "\(board.total) ranked · \(RankLadder.seasonName(board.season))"))
                 .font(.system(size: 12, weight: .semibold, design: .serif)).opacity(0.75)
@@ -355,70 +441,77 @@ struct RankedLeaderboardView: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 44)
-        .background(TavernFill(material: .leather).clipShape(Capsule()))
-        .overlay(TavernCapsuleRim(thin: true))
-        .foregroundStyle(TavernPalette.parchment)
+        .background(Capsule().fill(LinearGradient(colors: [ArenaGlass.top.opacity(0.92), ArenaGlass.bottom.opacity(0.92)],
+                                                  startPoint: .top, endPoint: .bottom)))
+        .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
+        .foregroundStyle(ArenaMenuStyle.text)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("leaderboard.live")
     }
 
     // MARK: Podium
 
-    private func podium(_ top: [RankedLeaderboard.Entry]) -> some View {
+    /// The top three on their steps, on a glass panel of their own. `compact` (sideways) makes the steps and emblems
+    /// shorter so the names always show.
+    private func podium(_ top: [RankedLeaderboard.Entry], compact: Bool) -> some View {
         let order = top.count == 3 ? [top[1], top[0], top[2]] : (top.count == 2 ? [top[1], top[0]] : top)
-        return HStack(alignment: .bottom, spacing: 10) {
-            ForEach(order) { podiumStep($0) }
+        return HStack(alignment: .bottom, spacing: compact ? 8 : 10) {
+            ForEach(order) { podiumStep($0, compact: compact) }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 6)
+        .arenaCard(padding: 12)
         .onAppear { podiumUp = true }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("leaderboard.podium")
     }
 
-    private func podiumStep(_ entry: RankedLeaderboard.Entry) -> some View {
+    private func podiumStep(_ entry: RankedLeaderboard.Entry, compact: Bool) -> some View {
         let place = entry.position
-        let height: CGFloat = place == 1 ? 112 : (place == 2 ? 84 : 66)
-        let mythic = entry.rank.tier == .mythic
+        let height: CGFloat = compact ? (place == 1 ? 72 : (place == 2 ? 56 : 44)) : (place == 1 ? 112 : (place == 2 ? 84 : 66))
+        let emblem: CGFloat = compact ? (place == 1 ? 58 : 46) : (place == 1 ? 74 : 58)
+        let slab = UnevenRoundedRectangle(topLeadingRadius: 10, topTrailingRadius: 10)
         return Button { open(entry) } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: compact ? 4 : 6) {
                 if place == 1 {
                     Image(systemName: "crown.fill")
-                        .font(.system(size: 22, weight: .black))
+                        .font(.system(size: compact ? 18 : 22, weight: .black))
                         .foregroundStyle(BrandTheme.brassGradient)
                         .shadow(color: TavernPalette.ember.opacity(0.7), radius: 6)
                 }
                 ZStack {
-                    if place == 1 { RankGlow(tier: entry.rank.tier, size: 110) }
-                    RankEmblem(tier: entry.rank.tier, size: place == 1 ? 74 : 58)
+                    if place == 1 { RankGlow(tier: entry.rank.tier, size: compact ? 86 : 110) }
+                    RankEmblem(tier: entry.rank.tier, size: emblem)
                         .overlay(alignment: .bottomTrailing) {
                             if entry.online { LeaderboardOnlineDot(size: 12).padding(4) }
                         }
                 }
                 Text(entry.username)
-                    .font(.system(size: place == 1 ? 15 : 13, weight: .black, design: .serif))
-                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .font(.system(size: place == 1 ? (compact ? 14 : 15) : (compact ? 12 : 13), weight: .black, design: .serif))
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Text(entry.title ?? entry.rank.title)
-                    .font(.system(size: 11, design: .serif)).italic().opacity(0.8)
+                    .font(.system(size: compact ? 10 : 11, design: .serif)).italic().opacity(0.8)
                     .lineLimit(1).minimumScaleFactor(0.7)
+                // The step: dark glass lit with gold from its top edge, its place in gold.
                 ZStack(alignment: .top) {
-                    TavernFill(material: .leather)
-                        .overlay(LinearGradient(colors: [entry.rank.tier.tint.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom))
+                    LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)
+                        .overlay(LinearGradient(colors: [ArenaMenuStyle.gold.opacity(place == 1 ? 0.24 : 0.13), .clear],
+                                                startPoint: .top, endPoint: .bottom))
                     Text("\(place)")
-                        .font(.system(size: place == 1 ? 34 : 26, weight: .black, design: .serif))
+                        .font(.system(size: place == 1 ? (compact ? 28 : 34) : (compact ? 22 : 26), weight: .black, design: .serif))
                         .foregroundStyle(BrandTheme.brassGradient)
                         .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
-                        .padding(.top, 8)
+                        .padding(.top, compact ? 6 : 8)
                 }
                 .frame(height: podiumUp || reduceMotion ? height : 14)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 10, topTrailingRadius: 10))
-                .overlay(UnevenRoundedRectangle(topLeadingRadius: 10, topTrailingRadius: 10)
-                    .stroke(entry.you ? TavernPalette.brass : TavernPalette.brass.opacity(0.6), lineWidth: entry.you ? 2.5 : 1.5))
-                .modifier(MythicShimmer(active: mythic, cornerRadius: 10))
+                .clipShape(slab)
+                // The same even rim on every step (the judge, 2026-10-22: the Mythic sweep left a one-sided smear on #1).
+                .overlay(slab.stroke(entry.you ? AnyShapeStyle(ArenaMenuStyle.gold) : AnyShapeStyle(ArenaGlass.hairline),
+                                     lineWidth: entry.you ? 2.5 : 1.2))
                 .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.72).delay(place == 1 ? 0.3 : (place == 2 ? 0.15 : 0)),
                            value: podiumUp)
             }
-            .foregroundStyle(TavernPalette.parchment)
+            .foregroundStyle(ArenaMenuStyle.text)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
@@ -472,17 +565,17 @@ struct RankedLeaderboardView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background {
-                TavernFill(material: .leather)
-                    .overlay(LinearGradient(colors: [rank.tier.tint.opacity(entry.you ? 0.22 : 0.08), .clear], startPoint: .leading, endPoint: .trailing))
+                LinearGradient(colors: [ArenaGlass.top.opacity(0.94), ArenaGlass.bottom.opacity(0.94)], startPoint: .top, endPoint: .bottom)
+                    .overlay(LinearGradient(colors: [ArenaMenuStyle.gold.opacity(entry.you ? 0.16 : 0.04), .clear], startPoint: .leading, endPoint: .trailing))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(entry.you ? TavernPalette.brass : TavernPalette.brass.opacity(0.4), lineWidth: entry.you ? 2 : 1)
+                    .strokeBorder(entry.you ? ArenaMenuStyle.gold : Color.white.opacity(0.12), lineWidth: entry.you ? 2 : 1)
             }
             .modifier(MythicShimmer(active: mythic, cornerRadius: 10))
-            .shadow(color: mythic ? RankTier.mythic.tint.opacity(0.35) : .black.opacity(pinned ? 0.6 : 0.35), radius: pinned ? 10 : 5, y: 3)
-            .foregroundStyle(TavernPalette.parchment)
+            .shadow(color: mythic ? ArenaMenuStyle.gold.opacity(0.3) : .black.opacity(pinned ? 0.6 : 0.35), radius: pinned ? 10 : 5, y: 3)
+            .foregroundStyle(ArenaMenuStyle.text)
             .contentShape(Rectangle())
         }
         .buttonStyle(BrandPressStyle())
@@ -497,7 +590,7 @@ struct RankedLeaderboardView: View {
             Image(systemName: move > 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill").font(.system(size: 8, weight: .black))
             Text("\(abs(move))").font(.system(size: 11, weight: .heavy, design: .serif)).monospacedDigit()
         }
-        .foregroundStyle(move > 0 ? Color(red: 0.5, green: 0.9, blue: 0.45) : Color(red: 1, green: 0.55, blue: 0.45))
+        .foregroundStyle(move > 0 ? ArenaMenuStyle.win : ArenaMenuStyle.loss)
         .transition(.scale.combined(with: .opacity))
     }
 
@@ -546,7 +639,7 @@ struct LeaderboardOnlineDot: View {
     }
 }
 
-/// A band of ember light that sweeps across Mythic rows every few seconds.
+/// A band of gold light that sweeps across Mythic rows every few seconds.
 private struct MythicShimmer: ViewModifier {
     let active: Bool
     var cornerRadius: CGFloat = 10
@@ -558,7 +651,7 @@ private struct MythicShimmer: ViewModifier {
             content
                 .overlay {
                     GeometryReader { geo in
-                        LinearGradient(colors: [.clear, RankTier.mythic.tint.opacity(0.35), .white.opacity(0.28), .clear],
+                        LinearGradient(colors: [.clear, ArenaMenuStyle.gold.opacity(0.22), .white.opacity(0.22), .clear],
                                        startPoint: .leading, endPoint: .trailing)
                             .frame(width: geo.size.width * 0.4)
                             .offset(x: sweep ? geo.size.width * 1.1 : -geo.size.width * 0.5)

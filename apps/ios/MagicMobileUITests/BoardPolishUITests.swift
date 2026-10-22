@@ -164,7 +164,7 @@ final class BoardPolishUITests: XCTestCase {
         XCTAssertTrue(application.buttons["menu.play"].waitForExistence(timeout: 20))
         application.buttons["menu.play"].press(forDuration: 0.15)
         UITestHarness.chooseCustomTable(application)
-        let ai = application.segmentedControls.buttons["AI"]
+        let ai = application.buttons["setup.mode.ai"]
         for _ in 0..<5 {
             if ai.isHittable { break }
             application.swipeUp()
@@ -172,12 +172,12 @@ final class BoardPolishUITests: XCTestCase {
         visible(ai, in: application)
         ai.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Start game"].exists)
-        let gameCenter = application.segmentedControls.buttons["Game Center"]
+        let gameCenter = application.buttons["setup.mode.gamecenter"]
         gameCenter.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Sign in to Game Center"].waitForExistence(timeout: 10))
         XCTAssertTrue(application.buttons["Find players"].exists)
         // "Online" is the iPhone + Android relay table; there is no hosted sign-in or lobby.
-        application.segmentedControls.buttons["Online"].press(forDuration: 0.15)
+        application.buttons["setup.mode.online"].press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["ondevice.relay.host"].waitForExistence(timeout: 10))
         XCTAssertFalse(application.textFields["Email"].exists)
         XCTAssertFalse(application.secureTextFields["Password"].exists)
@@ -190,12 +190,11 @@ final class BoardPolishUITests: XCTestCase {
         ai.press(forDuration: 0.15)
         XCTAssertTrue(application.buttons["Start game"].waitForExistence(timeout: 5))
         XCTAssertTrue(application.buttons["Start game"].isEnabled)
-        let rollMode = application.segmentedControls.buttons["Roll D20"]
+        let rollMode = application.buttons["setup.first.roll"]
         for _ in 0..<5 where !rollMode.isHittable { application.swipeUp() }
         XCTAssertTrue(rollMode.isHittable)
         rollMode.tap()
         XCTAssertTrue(rollMode.isSelected)
-        XCTAssertTrue(application.staticTexts["Everyone rolls a D20. The highest roll starts; ties reroll."].exists)
     }
 
     func testPortraitCrowdedBattlefield() { runMatrix(portrait: true, selectedFixtures: ["crowded-battlefield"]) }
@@ -257,7 +256,10 @@ final class BoardPolishUITests: XCTestCase {
         // taps. Still assert the destination; no retry conceals a failed action.
         XCTAssertTrue(application.buttons["menu.settings"].isHittable)
         application.buttons["menu.settings"].press(forDuration: 0.15)
-        XCTAssertTrue(application.navigationBars["Settings"].waitForExistence(timeout: 10))
+        XCTAssertTrue(application.buttons["settings.close"].waitForExistence(timeout: 10))
+        application.buttons["settings.open.board"].tap()
+        XCTAssertTrue(application.buttons["settings.page.board"].waitForExistence(timeout: 5)
+                      || application.descendants(matching: .any)["settings.page.board"].waitForExistence(timeout: 5))
         for title in ["Stone Arena", "Midnight", "Classic Wood", "Moss Sanctuary", "Obsidian Ember", "Tidal Slate", "Walnut Tavern"] {
             XCTAssertFalse(application.buttons[title + " battlefield"].exists, "\(title) should not be offered")
         }
@@ -274,6 +276,31 @@ final class BoardPolishUITests: XCTestCase {
     func testLandscapePlayerTarget() { runMatrix(portrait: false, selectedFixtures: ["player-target-prompt"]) }
     func testPortraitZoneInspection() { runMatrix(portrait: true, selectedFixtures: ["zone-inspection"]) }
     func testLandscapeZoneInspection() { runMatrix(portrait: false, selectedFixtures: ["zone-inspection"]) }
+    /// Held sideways, the Hearth board's zone pop-over used to run off the screen with no way to scroll to the last rows.
+    func testLandscapeZonePopoverReachesEveryRow() {
+        app?.terminate()
+        let application = XCUIApplication()
+        app = application
+        currentCapture = "landscape-zone-popover"
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "NO"]
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .landscapeLeft
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        let orb = application.buttons["board.lifeOrb"]
+        XCTAssertTrue(orb.waitForExistence(timeout: 10))
+        orb.tap()
+        let last = application.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Battlefield'")).firstMatch
+        XCTAssertTrue(last.waitForExistence(timeout: 5))
+        capture(application, name: "landscape-zone-popover-open")
+        let rows = application.scrollViews.containing(NSPredicate(format: "label BEGINSWITH 'Battlefield'")).firstMatch
+        XCTAssertTrue(rows.exists, "The zone rows scroll inside the pop-over")
+        for _ in 0..<4 where !(last.isHittable && application.frame.contains(last.frame)) { rows.swipeUp() }
+        XCTAssertTrue(last.isHittable && application.frame.contains(last.frame), "The last zone row must be reachable in landscape")
+        capture(application, name: "landscape-zone-popover-end")
+    }
+
     func testPortraitHandInspection() { runMatrix(portrait: true, selectedFixtures: ["full-hand-inspection"]) }
     func testLandscapeHandInspection() { runMatrix(portrait: false, selectedFixtures: ["full-hand-inspection"]) }
     func testPortraitHandArtworkScroll() { runMatrix(portrait: true, selectedFixtures: ["normal-battlefield"]) }

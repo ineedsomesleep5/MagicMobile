@@ -83,26 +83,16 @@ struct DeckStudioRootView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        // No NavigationStack: it painted an opaque page over the room (the judge, 2026-10-22), and nothing here pushes.
+        Group {
             GeometryReader { proxy in
                 let wide = proxy.size.width > proxy.size.height && !dynamicType.isAccessibilitySize
-                Group {
-                    if wide {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                libraryBar(wide: true)
-                                shelf
-                            }
-                            detail(wide: true)
-                                .frame(width: 236)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            libraryBar(wide: false)
-                            shelf
-                            detail(wide: false)
-                        }
-                    }
+                // Arena's Decks page: the filters along the top, the boxes across the whole page, and the chosen deck on
+                // a bar along the foot with Edit Deck and Play.
+                VStack(alignment: .leading, spacing: 6) {
+                    libraryBar(wide: wide)
+                    shelf
+                    detail(wide: wide)
                 }
                 .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 6)
             }
@@ -128,6 +118,8 @@ struct DeckStudioRootView: View {
                     }
                 }
                 .environment(\.grimoireClose, { turn(to: nil) })
+                // A full-screen cover is outside the menu shell: it draws its own dimmed room (the judge, 2026-10-22).
+                .environment(\.arenaMenuBackdrop, false)
             }
             .binderConfirm("Delete this local deck?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                            message: pendingDelete.map { record in "local:\(record.id)" == selectedDeckID
@@ -152,6 +144,9 @@ struct DeckStudioRootView: View {
 
     /// The bar over the boxes: search, which decks, their order, Import and the artwork settings.
     private func libraryBar(wide: Bool) -> some View {
+        let artwork = Button { showPreferences = true } label: { Image(systemName: "photo.on.rectangle.angled") }
+            .buttonStyle(BinderPlaqueButtonStyle(square: true))
+            .accessibilityLabel("Deck artwork and privacy")
         let pills = HStack(spacing: 8) {
             BinderMenu { BinderMenuPick("Show decks", selection: $query.filter, options: DeckStudioLibraryQuery.Filter.allCases.map { ($0, $0.rawValue) }) }
                 label: { BinderPlaque { HStack(spacing: 5) { Text(query.filter == .all ? "All decks" : query.filter.rawValue); Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy)) } } }
@@ -161,23 +156,24 @@ struct DeckStudioRootView: View {
             Button { turn(to: .importer) } label: { Label("Import", systemImage: "square.and.arrow.down") }
                 .buttonStyle(BinderPlaqueButtonStyle()).accessibilityIdentifier("deckStudio.import")
                 .disabled(resolver == nil)
-            Button { showPreferences = true } label: { Image(systemName: "photo.on.rectangle.angled") }
-                .buttonStyle(BinderPlaqueButtonStyle(square: true))
-                .accessibilityLabel("Deck artwork and privacy")
         }
         return VStack(alignment: .leading, spacing: 4) {
             if wide {
                 HStack(spacing: 8) {
                     BinderSearchField(placeholder: "Search decks", text: $query.text,
                                       identifier: "deckStudio.library.search", focus: $searchFocused)
-                        .frame(minWidth: 140, maxWidth: 240)
+                        .frame(minWidth: 210, maxWidth: 300)
                     pills.fixedSize()
                     Spacer(minLength: 0)
+                    artwork
                 }
             } else {
-                BinderSearchField(placeholder: "Search decks, commanders or tags", text: $query.text,
-                                  identifier: "deckStudio.library.search", focus: $searchFocused)
-                ScrollView(.horizontal) { pills }.scrollIndicators(.hidden)
+                HStack(spacing: 8) {
+                    BinderSearchField(placeholder: "Search decks, commanders or tags", text: $query.text,
+                                      identifier: "deckStudio.library.search", focus: $searchFocused)
+                    artwork
+                }
+                pills.fixedSize()
             }
             notices
         }
@@ -190,7 +186,10 @@ struct DeckStudioRootView: View {
             let usable = proxy.size.width - 8
             let columns = max(2, Int((usable + gap) / (112 + gap)))
             let width = floor((usable - gap * CGFloat(columns - 1)) / CGFloat(columns))
-            let rise = ArenaBoxGeometry(width: width).rise
+            let rise = ArenaBoxGeometry(width: width).rise * 1.5
+            // Only a box open in the first row needs room above it.
+            let firstRowOpen = (visible.firstIndex { $0.id == (focused ?? selectedDeckID) } ?? .max) < columns - 1
+            ScrollViewReader { reader in
             ScrollView {
                 HStack(alignment: .firstTextBaseline) {
                     ArenaSectionHeader(title: "My Decks", count: visible.count)
@@ -208,11 +207,27 @@ struct DeckStudioRootView: View {
                         .accessibilityIdentifier("deckStudio.create")
                     ForEach(visible) { entry in deckBox(entry, width: width) }
                 }
-                .padding(.top, rise + 10)
+                .padding(.top, firstRowOpen ? rise + 10 : 8)
                 .padding(.horizontal, 4)
                 .padding(.bottom, 16)
             }
             .scrollIndicators(.hidden)
+            // The chosen box comes fully into view, lid and all, as Arena scrolls to it.
+            .onChange(of: focused) { _, id in
+                guard let id else { return }
+                withAnimation(.easeOut(duration: 0.3)) { reader.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.62)) }
+            }
+            .task {
+                // The playing deck's box stands open on arrival: past the first row (the "+" tile takes its first place),
+                // scroll so the whole box rests just above the strip; in the first row the page opens at its top.
+                let index = visible.firstIndex { $0.id == (focused ?? selectedDeckID) } ?? 0
+                guard index + 1 >= columns else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                reader.scrollTo(focused ?? selectedDeckID, anchor: UnitPoint(x: 0.5, y: 0.94))
+            }
+            .mask(ArenaScrollFade(depth: 28, top: 14))
+            .accessibilityIdentifier("deckStudio.library.grid")
+            }
         }
     }
 
@@ -231,9 +246,12 @@ struct DeckStudioRootView: View {
             // Arena's way: the first tap opens the box and shows the deck; a second opens it for editing.
             if chosen { turn(to: .deck(entry.record, entry.included)) } else { focused = id }
         } label: {
-            ArenaDeckBox(deck: model, selected: chosen, width: width, edit: { turn(to: .deck(entry.record, entry.included)) })
+            // The pencil only on the chosen box, so the others' names have the whole plate.
+            ArenaDeckBox(deck: model, selected: chosen, width: width, edit: chosen ? { turn(to: .deck(entry.record, entry.included)) } : nil)
         }
         .buttonStyle(BrandPressStyle())
+        .id(id)
+        .accessibilityAddTraits(chosen ? [.isSelected] : [])
         .accessibilityIdentifier("deckStudio.deck.\(id)")
         .binderContextMenu { deckActions(entry.record, included: entry.included) }
     }
@@ -246,18 +264,19 @@ struct DeckStudioRootView: View {
             let bracket = entry.included ? CommanderBracket.core : DeckBracketPreference.effective(
                 minimum: BracketRules.bundled.evaluate(record.deckList).minimum,
                 declared: DeckBracketPreference.declared(id, in: MagicMobilePreferences.current))
-            let facts = VStack(alignment: .leading, spacing: 4) {
-                Text(record.name).font(ArenaMenuStyle.font(17, .bold)).foregroundStyle(ArenaMenuStyle.text).lineLimit(2)
+            let facts = VStack(alignment: .leading, spacing: 3) {
+                Text(record.name).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                    .lineLimit(1).minimumScaleFactor(0.75)
                 Text(DeckStudioDraftPresentation.commanders(draft).joined(separator: " • "))
-                    .font(ArenaMenuStyle.font(12, .medium)).italic().foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                    .font(ArenaMenuStyle.font(11.5, .medium)).italic().foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
                 HStack(spacing: 8) {
-                    ArenaPips(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [], size: 16)
+                    ArenaPips(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [], size: 14)
                     BracketTag(bracket: bracket, short: true)
                         .accessibilityIdentifier("deckStudio.bracket.\(id)")
+                    Text("\(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))) · \(entry.included ? "Included" : "Your deck")")
+                        .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
+                    if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
                 }
-                Text("\(CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))) · \(entry.included ? "Included" : "Your deck")")
-                    .font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-                if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
             }
             let tools = HStack(spacing: 0) {
                 Button { toggleFavorite(id) } label: { Image(systemName: favorites.contains(id) ? "star.fill" : "star") }
@@ -266,43 +285,50 @@ struct DeckStudioRootView: View {
                 BinderMenu { deckActions(record, included: entry.included) } label: { BinderCoin { Image(systemName: "ellipsis") } }
                     .accessibilityLabel("Options for \(record.name)")
             }
-            let actions = Group {
-                Button { turn(to: .deck(record, entry.included)) } label: { Text("Edit Deck").frame(maxWidth: .infinity) }
-                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
-                    .accessibilityIdentifier("deckStudio.edit")
-                Button { playFromLibrary(entry) } label: { Text(id == selectedDeckID ? "Playing" : "Play").frame(maxWidth: .infinity) }
-                    .buttonStyle(ArenaPlayButtonStyle(fontSize: 18))
-                    .frame(height: 44)
-                    .disabled(resolver == nil || play.isChecking)
-                    .accessibilityIdentifier("deckStudio.library.play")
+            let edit = Button { turn(to: .deck(record, entry.included)) } label: {
+                Text("Edit Deck").lineLimit(1).fixedSize().frame(maxWidth: .infinity)
             }
+                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                .accessibilityIdentifier("deckStudio.edit")
+            let playButton = Button { playFromLibrary(entry) } label: { Text("Play").frame(maxWidth: .infinity) }
+                .buttonStyle(ArenaPlayButtonStyle(fontSize: 18))
+                .frame(height: 44)
+                .disabled(resolver == nil || play.isChecking)
+                .accessibilityIdentifier("deckStudio.library.play")
+            let art = ArenaArt(name: record.commander?.cardName ?? "", colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [])
+                .frame(width: wide ? 40 : 52, height: wide ? 40 : 64)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
             Group {
                 if wide {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ArenaArt(name: record.commander?.cardName ?? "", colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [])
-                            .frame(height: 112)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
-                        facts
+                    // Arena's strip along the foot of the Decks page: one row, Edit Deck and Play at the right (the judge,
+                    // 2026-10-22, decks-1.png), so the boxes keep the page.
+                    HStack(spacing: 10) {
+                        art
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(record.name).font(ArenaMenuStyle.font(15, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                                .lineLimit(1).minimumScaleFactor(0.75)
+                            HStack(spacing: 6) {
+                                ArenaPips(colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [], size: 13)
+                                BracketTag(bracket: bracket, short: true)
+                                    .accessibilityIdentifier("deckStudio.bracket.\(id)")
+                                if resolver != nil && status(id) == .needsFixes { DeckStudioPlayStatusChip(status: .needsFixes) }
+                            }
+                        }
+                        Spacer(minLength: 6)
                         tools
-                        Spacer(minLength: 0)
-                        actions
+                        edit.frame(width: 120)
+                        playButton.frame(width: 150)
                     }
                 } else {
-                    HStack(alignment: .top, spacing: 12) {
-                        ArenaArt(name: record.commander?.cardName ?? "", colors: DeckStudioDraftPresentation.colors(draft, metadata: metadata) ?? [])
-                            .frame(width: 92, height: 120)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
-                        VStack(alignment: .leading, spacing: 6) {
-                            facts
-                            HStack(spacing: 8) { tools; actions }
-                        }
+                    VStack(spacing: 8) {
+                        HStack(spacing: 10) { art; facts; Spacer(minLength: 0); tools }
+                        HStack(spacing: 10) { edit; playButton }
                     }
                 }
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, maxHeight: wide ? .infinity : nil, alignment: .topLeading)
+            .padding(.horizontal, 12).padding(.vertical, wide ? 4 : 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .modifier(ArenaGlassPanel(cornerRadius: 14, opacity: 0.92))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("deckStudio.detail")

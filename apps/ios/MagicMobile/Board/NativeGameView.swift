@@ -1381,7 +1381,7 @@ struct NativeGameView: View {
             .overlay {
                 if showsTurnBanner, let active = snapshot.activePlayerId, !isCardChoiceOpen, !isPromptDetailOpen {
                     BoardTurnBanner(title: snapshot.isViewer(active) ? "Your turn" : "\(snapshot.playerLabel(active))’s turn",
-                                    turn: snapshot.turn, isViewer: snapshot.isViewer(active))
+                                    turn: snapshot.displayTurn, isViewer: snapshot.isViewer(active))
                         .environment(\.tavernBoard, isTavernBoard)
                         .environment(\.arenaBoard, isArenaBoard)
                         // Leaves by shrinking up toward the top bar's turn label.

@@ -7,6 +7,8 @@
 - Treat the user's approved request as approval of settled requirements and routine implementation choices. State low-risk assumptions and continue. Ask only when an unresolved decision materially changes behavior, scope, cost, security, data handling or an incompatible public interface.
 - Read-only reviews, diagnosis-only requests and explicit pause instructions remain read-only or paused. Do not turn them into implementation, deployment or configuration changes.
 - Keep changes surgical. Simplify the code being changed; do not rewrite adjacent code for line count, start an architectural redesign or add a new workflow without a task need.
+- Cut taglines, helper text and secondary labels. If a screen needs them to make sense, fix the layout.
+- Make the best decision that will elevate all three: the user experience (UX), developer experience (DX), and agent experience (AX) always, without breaking anything.
 
 ## Skills and discovery
 

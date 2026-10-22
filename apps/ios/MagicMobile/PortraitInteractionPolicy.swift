@@ -227,9 +227,9 @@ enum SpectatorSeatPresentation {
         let count = snapshot.remainingOpponents.count
         let players = count == 1 ? "1 player still in" : "\(count) players still in"
         guard let seat = snapshot.seat, !snapshot.isViewer(seat.playerId) else {
-            return "You’re out · \(players) · Turn \(snapshot.turn)"
+            return "You’re out · \(players) · Turn \(snapshot.displayTurn)"
         }
         // The hand row already shows the stand-in's hand count; this line fits a phone.
-        return "\(seat.life) life · \(players) · Turn \(snapshot.turn)"
+        return "\(seat.life) life · \(players) · Turn \(snapshot.displayTurn)"
     }
 }

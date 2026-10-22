@@ -230,6 +230,8 @@ final class OnDeviceSession: ObservableObject {
     private var pollReader: OnDevicePollReader?
     private var pollExchange: OnDevicePollReader.Exchange?
     private var messageLog = OnDeviceMessageLog()
+    /// Presentation only: the round the board's turn labels show (the engine's turn counts every player's turn).
+    private var tableRounds = TableRounds()
     private var pollingTask: Task<Void, Never>?
     private var closeEndpoint: (@MainActor () async throws -> Void)?
     private var epoch = UUID()
@@ -298,6 +300,7 @@ final class OnDeviceSession: ObservableObject {
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
+        tableRounds = TableRounds()
         status = "Starting game"
         do { try await refresh() }
         catch {
@@ -364,7 +367,8 @@ final class OnDeviceSession: ObservableObject {
             nextLog = OnDeviceMessageLog()
             pending = nil; pendingActionID = nil; pendingCardID = nil
         } else if next.snapshot != nil {
-            let adapted = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+            var adapted = try OnDeviceSnapshotAdapter.snapshot(next, expectedSeatID: seatID, log: nextLog.entries)
+            adapted.round = tableRounds.observe(adapted)
             if let autoAbility, let prompt = next.prompt {
                 heldAbilitySnapshot = (prompt.id, adapted)
                 pendingActionID = "auto-ability-\(autoAbility.abilityID)"; pendingCardID = autoAbility.sourceID
@@ -1064,6 +1068,7 @@ final class OnDeviceSession: ObservableObject {
         pollReader = nil; pollExchange = nil
         table = nil; lastActionAt = nil; checkpoint = nil; isOverForSeat = false
         messageLog = OnDeviceMessageLog()
+        tableRounds = TableRounds()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
     }
 

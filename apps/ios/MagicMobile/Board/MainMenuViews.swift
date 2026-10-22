@@ -14,46 +14,22 @@ enum BoardAppearancePreference {
     static func normalized(_ value: String) -> String { options.contains(value) ? value : defaultValue }
 }
 
-struct AppearanceSettingsView: View {
-    @Binding var portraitModeEnabled: Bool
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.nativeTurnControl) private var nativeTurnControl
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if nativeTurnControl != nil { NativeArtworkPreferenceView() }
-                    BoardModePicker()
-                    CardFramesToggle()
-                    PortraitModeToggle(isOn: $portraitModeEnabled)
-                    FollowTurnsToggle()
-                    AutoPassAfterCastToggle()
-                    SmartAutoPassToggle()
-                    BoardEffectsPicker()
-                    GamePerformancePanel()
-                    SupportSettingsPanel()
-                }.padding(20).frame(maxWidth: 600).frame(maxWidth: .infinity)
-            }
-            .background { TavernSheetBackground() }
-            .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }.preferredColorScheme(.dark)
-    }
-}
-
 /// Recent games' memory and heat (GamePerformanceLog), always reachable here so the player can share it to compare app
 /// versions. Numbers only: no cards or player names. Android's GamePerformancePanel matches it.
 struct GamePerformancePanel: View {
+    @Environment(\.arenaBoard) private var arena
     @State private var entries: [GamePerformanceEntry] = []
     @State private var showReport = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TavernPanelTitle(text: "Game Performance")
-            Text("Memory and heat from your recent games, to compare app versions. Numbers only, no cards or names. Nothing is sent unless you share it.")
-                .font(.system(size: 12, design: .serif))
-                .foregroundStyle(TavernPalette.parchment.opacity(0.65))
-                .fixedSize(horizontal: false, vertical: true)
+            if !arena {
+                Text("Memory and heat from your recent games, to compare app versions. Numbers only, no cards or names. Nothing is sent unless you share it.")
+                    .font(.system(size: 12, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(entries.last.map { String(localized: "Last game: \($0.line)") } ?? String(localized: "Finish a game to record one."))
                 .font(.system(size: 12, weight: .semibold, design: .serif))
                 .foregroundStyle(TavernPalette.parchment.opacity(0.85))
@@ -140,8 +116,8 @@ struct CardFramesToggle: View {
     var body: some View {
         let isArena = BoardMode.resolved(mode) == .arena
         TavernToggle(title: "Card Frames", isOn: isArena ? $arena : $hearth, identifier: "settings.cardFrames",
-                     subtitle: isArena ? "Tavern frames on Arena's battlefield cards. Off, they look like the reference game's cards."
-                                       : "Tavern frames on Hearth's battlefield cards. Off, they look like the reference game's cards.")
+                     subtitle: isArena ? "Tavern frames on the Arena board's battlefield cards. Off, they show the card's art without the frame."
+                                       : "Tavern frames on Hearth's battlefield cards. Off, they show the card's art without the frame.")
             .modifier(TavernSettingsPanel())
     }
 }
@@ -173,6 +149,7 @@ struct AutoPassAfterCastToggle: View {
 
 /// Smart auto-pass (OnDeviceSmartPass, on by default) and the button to its phase stops.
 struct SmartAutoPassToggle: View {
+    @Environment(\.arenaOpenPhaseStops) private var openPhaseStops
     @AppStorage(OnDeviceSmartPass.enabledKey) private var isOn = true
     @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwn = false
     @AppStorage(OnDeviceSmartPass.stopForThreatsKey) private var stopForThreats = true
@@ -183,11 +160,11 @@ struct SmartAutoPassToggle: View {
             TavernToggle(title: "Smart Auto-Pass", isOn: $isOn, identifier: "settings.smartAutoPass",
                          subtitle: "Passes for you when you have nothing to play, and skips steps you don’t stop at.")
             TavernToggle(title: "Stop for My Own Spells", isOn: $stopForOwn, identifier: "settings.stopForOwnSpells",
-                         subtitle: "Off: your own spells and triggers resolve without a stop, as on Arena.")
+                         subtitle: "Off: your own spells and triggers resolve without a stop.")
                 .disabled(!isOn)
             TavernToggle(title: "Stop for Removal", isOn: $stopForThreats, identifier: "settings.stopForThreats",
                          subtitle: "An opponent's spell that destroys, exiles or takes your permanents waits for you, even when you can't answer it.")
-            Button { showStops = true } label: {
+            Button { if let openPhaseStops { openPhaseStops() } else { showStops = true } } label: {
                 Label("Phase Stops", systemImage: "hand.raised.fill").frame(maxWidth: .infinity)
             }
             .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
@@ -196,6 +173,61 @@ struct SmartAutoPassToggle: View {
         }
         .modifier(TavernSettingsPanel())
         .sheet(isPresented: $showStops) { PhaseStopsSheet().environment(\.boardPanelClose, nil) }
+    }
+}
+
+/// The menu's Gameplay page as Arena lays it out (the judge, 2026-10-22, options-gameplay-1.jpg): every switch flat on the
+/// glass in columns (three sideways, one upright), then Phase Stops as a pill that opens its page in the same panel.
+struct GameplayOptions: View {
+    var columns = 1
+    @Environment(\.arenaOpenPhaseStops) private var openPhaseStops
+    @AppStorage(OnDeviceSmartPass.enabledKey) private var smartPass = true
+    @AppStorage(OnDeviceSmartPass.stopForOwnSpellsKey) private var stopForOwn = false
+    @AppStorage(OnDeviceSmartPass.stopForThreatsKey) private var stopForThreats = true
+    @AppStorage(AutoPassAfterCast.key) private var passAfterCast = true
+    @AppStorage(BoardFocusTracker.followTurnsKey) private var followTurns = true
+    @State private var showStops = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18, alignment: .leading), count: max(1, columns)),
+                      alignment: .leading, spacing: 4) {
+                TavernToggle(title: "Smart Auto-Pass", isOn: $smartPass, identifier: "settings.smartAutoPass",
+                             subtitle: "Passes for you when you have nothing to play, and skips steps you don’t stop at.")
+                TavernToggle(title: "Stop for My Own Spells", isOn: $stopForOwn, identifier: "settings.stopForOwnSpells",
+                             subtitle: "Off: your own spells and triggers resolve without a stop.")
+                    .disabled(!smartPass)
+                TavernToggle(title: "Stop for Removal", isOn: $stopForThreats, identifier: "settings.stopForThreats",
+                             subtitle: "An opponent's spell that destroys, exiles or takes your permanents waits for you, even when you can't answer it.")
+                TavernToggle(title: "Pass After Casting", isOn: $passAfterCast, identifier: "settings.autoPassAfterCast",
+                             subtitle: "Your spell resolves without another tap. Opponents can still respond.")
+                TavernToggle(title: "Follow Turns", isOn: $followTurns, identifier: "settings.followTurns",
+                             subtitle: "Show whose turn it is at the top. A tap on an opponent holds until the next turn.")
+            }
+            Button(String(localized: "Phase Stops")) { if let openPhaseStops { openPhaseStops() } else { showStops = true } }
+                .buttonStyle(ArenaPillButtonStyle())
+                .disabled(!smartPass)
+                .accessibilityIdentifier("settings.phaseStops")
+                .frame(maxWidth: .infinity)
+        }
+        .foregroundStyle(ArenaMenuStyle.text)
+        .sheet(isPresented: $showStops) { PhaseStopsSheet().environment(\.boardPanelClose, nil) }
+    }
+}
+
+/// Opens Phase Stops as a page of Options (Gameplay's Phase Stops button) instead of a sheet.
+private struct ArenaOpenPhaseStopsKey: EnvironmentKey { static let defaultValue: (() -> Void)? = nil }
+/// On the menu's Options pages the settings lie flat on the panel's glass, as Arena's do, instead of in cards.
+private struct ArenaOptionsFlatKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var arenaOpenPhaseStops: (() -> Void)? {
+        get { self[ArenaOpenPhaseStopsKey.self] }
+        set { self[ArenaOpenPhaseStopsKey.self] = newValue }
+    }
+    var arenaOptionsFlat: Bool {
+        get { self[ArenaOptionsFlatKey.self] }
+        set { self[ArenaOptionsFlatKey.self] = newValue }
     }
 }
 
@@ -229,6 +261,7 @@ struct PhaseStopsSheet: View {
 /// Where smart auto-pass stops when you have something to play: one row per step, a stop for
 /// your turn and one for your opponents' turns.
 struct PhaseStopsGrid: View {
+    @Environment(\.arenaBoard) private var arena
     @AppStorage(OnDeviceSmartPass.enabledKey) private var enabled = true
     @AppStorage(OnDeviceSmartPass.stopsKey) private var raw = OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops)
 
@@ -240,11 +273,14 @@ struct PhaseStopsGrid: View {
     var body: some View {
         let stops: Set<String> = OnDeviceSmartPass.Settings.decode(raw)
         VStack(alignment: .leading, spacing: 0) {
-            Text(explanation)
-                .font(.system(size: 13, design: .serif))
-                .foregroundStyle(TavernPalette.parchment.opacity(0.75))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 12)
+            // In the Arena look the grid speaks for itself (AGENTS.md: no helper text); off, it says why nothing stops.
+            if !arena || !enabled {
+                Text(explanation)
+                    .font(.system(size: 13, design: .serif))
+                    .foregroundStyle(TavernPalette.parchment.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 12)
+            }
             header
             ForEach(OnDeviceSmartPass.Step.allCases) { step in
                 PhaseStopRow(step: step, stops: stops, toggle: toggle)
@@ -341,13 +377,33 @@ private struct PhaseStopButton: View {
     }
 }
 
-/// One group of settings: a leather panel in brass trim with parchment text.
+/// One group of settings: a leather panel in brass trim with parchment text; in the Arena menus a lighter pane in the
+/// gold hairline on the panel's glass.
 struct TavernSettingsPanel: ViewModifier {
+    @Environment(\.arenaBoard) private var arena
+    @Environment(\.arenaOptionsFlat) private var flat
+
     func body(content: Content) -> some View {
-        content
-            .foregroundStyle(TavernPalette.parchment)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 10))
+        if arena && flat {
+            content
+                .foregroundStyle(ArenaMenuStyle.text)
+                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if arena {
+            let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+            content
+                .foregroundStyle(ArenaMenuStyle.text)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(shape.fill(Color.white.opacity(0.045)))
+                .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.55))
+        } else {
+            content
+                .foregroundStyle(TavernPalette.parchment)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .modifier(TavernPanelChrome(tavern: true, cornerRadius: 10))
+        }
     }
 }

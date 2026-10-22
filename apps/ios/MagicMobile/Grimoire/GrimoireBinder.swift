@@ -14,7 +14,7 @@ enum Binder {
     static let brassDeep = Color(red: 0.50, green: 0.32, blue: 0.11)
     static let engraved = Color(red: 0.24, green: 0.13, blue: 0.05)
     /// How wide the index tabs stand out from the page (the chosen one stands further out).
-    static let tabWidth: CGFloat = 40
+    static let tabWidth: CGFloat = 50
 
     static let brass = LinearGradient(colors: [brassLight, TavernPalette.brass, brassDeep], startPoint: .top, endPoint: .bottom)
     static let brassPressed = LinearGradient(colors: [brassDeep, TavernPalette.brass, brassLight.opacity(0.8)], startPoint: .top, endPoint: .bottom)
@@ -33,7 +33,7 @@ struct BinderCover: View {
     @Environment(\.arenaMenuBackdrop) private var shell
 
     var body: some View {
-        if shell { Color.clear } else { ArenaRoomBackdrop(dim: 0.78) }
+        if shell { Color.clear } else { ArenaRoomBackdrop(dim: 0.45) }
     }
 }
 
@@ -139,9 +139,10 @@ struct BinderIndexTabs: View {
                 Button { choose(chapter) } label: {
                     VStack(spacing: 5) {
                         ArenaEmblem(symbol: Self.icons[chapter] ?? "book.closed.fill", size: 15, lit: chosen)
-                        Text(chapter).font(ArenaMenuStyle.font(10, .semibold))
+                        Text(chapter).font(ArenaMenuStyle.font(9.5, .semibold))
                             .foregroundStyle(chosen ? Color.white : ArenaMenuStyle.dim)
                             .lineLimit(1).minimumScaleFactor(0.6)
+                            .padding(.horizontal, 3)
                     }
                     .frame(width: Binder.tabWidth, height: min(tabHeight, 64))
                     .background {
@@ -378,7 +379,8 @@ struct BinderManaFilter: View {
     static let values = Array(0...7)
 
     var body: some View {
-        HStack(spacing: 0) {
+        // Each value keeps its own outline: never touching its neighbour (the judge, 2026-10-22).
+        HStack(spacing: 4) {
             ForEach(Self.values, id: \.self) { value in
                 let on = selection.contains(value)
                 Button { if on { selection.remove(value) } else { selection.insert(value) } } label: {

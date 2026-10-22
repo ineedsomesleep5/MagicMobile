@@ -127,6 +127,11 @@ final class HowToPlayUITests: XCTestCase {
     func testFirstLaunchShowsWalkthroughOnce() {
         app.launchArguments.append("--how-to-play-first-launch")
         app.launch()
+        // Since the guided first game (2026-10-11) the first launch opens its welcome instead of the walkthrough
+        // (GuidedGameLaunch.shouldShowWelcome); its Read How to Play opens the walkthrough.
+        let read = app.buttons["guided.welcome.howToPlay"]
+        XCTAssertTrue(read.waitForExistence(timeout: 15), "The first launch offers the welcome")
+        read.tap()
         XCTAssertTrue(progress.waitForExistence(timeout: 15))
         waitFor(progress, "label == 'Page 1 of 12'")
         // Spend the first touch on static text (UITestHarness.settleFirstTouch explains why).
@@ -140,7 +145,8 @@ final class HowToPlayUITests: XCTestCase {
         app.terminate()
         app.launch()
         XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 15))
-        XCTAssertFalse(progress.waitForExistence(timeout: 3), "The walkthrough opens by itself only once")
+        XCTAssertFalse(read.waitForExistence(timeout: 3), "The welcome opens by itself only once")
+        XCTAssertFalse(progress.exists, "The walkthrough opens by itself only once")
     }
 
     private func waitFor(_ element: XCUIElement, _ predicate: String, file: StaticString = #filePath, line: UInt = #line) {

@@ -491,3 +491,49 @@ contradicting one.
   on macOS, so a Mac probe doesn't reproduce it. Draw such rectangles from lines and arcs (`arenaRoundedRectPath`).
   Also, a child bigger than its `ZStack`'s fixed frame (a halo) makes the stack's shapes draw at the child's size on
   macOS: put halos in `.background`.
+- 2026-10-22 (Claude, Arena menus): `ScrollViewReader.scrollTo` does nothing for an id inside a `LazyVGrid` nested in a
+  `LazyVStack` until that row has been built, so the Play panel opened with the chosen deck off screen in landscape
+  (portrait worked only because the row was already built). Put the scroll id on something always built (each shelf's
+  heading in a plain `VStack`) and scroll to that.
+- 2026-10-22 (Claude, Arena menus): a custom `Shape` animates only its `animatableData`. The deck box's side first took
+  a value computed from `openness` outside the shape, so it jumped to the open shape while the rest animated. Pass
+  constants into the shape and compute from the animatable value inside `path(in:)`.
+- 2026-10-22 (Claude, Arena menus): menu pages shown as overlays (`arenaPanel`) are not presented, so `dismiss()` in them
+  closes nothing. Read `\.arenaPanelClose` and fall back to `dismiss` only outside a panel. The app-wide
+  `\.arenaBoard = true` reaches into a game too: the game sets its own board's value, and so does the starting roll.
+- 2026-10-22 (Claude, screenshots): in zsh `for o in ${ORIENT:-port land}` loops once over the whole string; split it
+  with `${=${ORIENT:-port land}}`.
+- 2026-10-22 (Claude, screenshots): when the Mac's audio output stalls, the simulator app stays on its launch screen:
+  the menu's `GameAudio.playMusic` calls `AVAudioPlayer.play()` on the main thread and waits on the audio device
+  (`sample <pid>` shows `AQMEIO_Base::StartIO_Sync`). The stuck process also survives `simctl launch
+  --terminate-running-process` and `simctl terminate`, so later launches just bring it back; `kill -9` it. Launch
+  arguments don't reach the UI-test preferences suite, which the test launch resets anyway. GameAudio now stays silent
+  under `--ondevice-setup-ui-test` and when `MAGICMOBILE_MUTE_AUDIO=1` is set (scripted screenshot runs). Also: a NavigationStack around a screen paints an opaque page,
+  so Deck Studio inside the menu shell hid the room until the stack (which pushed nothing) was removed.
+- 2026-10-22 (Claude, Hearth board): two player reports. (1) Held sideways, the tavern zone pop-over (`TavernMenu`, opened
+  from a medallion) ran past the screen and could not scroll: its plain `VStack` is as tall as its rows and UIKit just
+  clips a popover that is taller than the window. **Fix:** with a compact vertical size class the rows sit in a
+  `ScrollView` under `.frame(maxHeight: screenHeight - 64)`; portrait is unchanged. A UI test cannot swipe a row that is
+  scrolled out of view ("visible frame is empty"): swipe the scroll view that contains it
+  (`BoardPolishUITests.testLandscapeZonePopoverReachesEveryRow`). (2) The "TURN N" plate showed XMage's turn number,
+  which every player's turn raises (turn 9 of a two-player game is round 5). The snapshot carries no starting player
+  and the log keeps only 64 lines, so `TableRounds` (Models.swift) counts the first player's turns as polls arrive;
+  `OnDeviceSession` sets `GameSnapshot.round`, and `displayTurn` (round, else turns / players in) feeds the labels.
+  `snapshot.turn` stays the engine's count for logic, stats and saved games. The game log's "TURN 9 for AI 1" lines are
+  XMage's own text and still show the engine number. Where: `Board/BoardChrome.swift`, `Models.swift`,
+  `OnDeviceSession.swift`, `PortraitBoardViews.swift`, `NativeGameView.swift`, `PortraitInteractionPolicy.swift`.
+- 2026-10-22 (Claude, Arena menus): three SwiftUI traps from the Arena menus. (1) A custom control drawn over a real
+  Toggle/Slider/Stepper at `.opacity(0.02)` still shows the system track or thumb on dark glass; draw only your own
+  control and give VoiceOver and UI tests the real one with `.accessibilityRepresentation { Toggle(...) }` (XCUITest
+  still finds `app.switches[id]`; a slider's `adjust` needs a tap on the drawn track instead). (2) `.opacity` on a
+  container is applied to each layer, so a dimmed 3D deck box turned see-through; dim with a scrim over the area.
+  (3) A view taller than its `.frame(width:height:)` is centred by that frame, so a drawer that runs into the home bar
+  rose over the top bar: pass `alignment: .topLeading` to the frame, not only to the ZStack. Also: a judge working from
+  memory missed whole layouts; compare against real reference shots (build_output/arena-menus-reference/more/).
+- 2026-10-22 (Claude, Deck Studio upright page): `onGeometryChange` on a ScrollView that has a
+  `.safeAreaInset(edge: .bottom)` after it reports the height already inside the inset bar, yet `safeAreaInsets.bottom`
+  still names the bar's 60 pt, so subtracting it counts the bar twice. XCUITest shows the ScrollView's full frame. The
+  upright chapters' `minHeight` was a guess (`geometry - 70`) that ran 100+ pt past the visible page once the Done and
+  Play bar arrived, so a short Ideas page could scroll its own source picker under the tabs. It now uses the measured
+  height plus 24 pt so the landing scroll still clears the header. Also: `scripts/deck-studio/ios-ui-tests.py` takes
+  `build` then `test` as separate runs.

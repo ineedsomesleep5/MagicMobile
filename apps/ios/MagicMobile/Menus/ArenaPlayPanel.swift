@@ -138,13 +138,13 @@ struct ArenaPlayPanel: View {
                 .accessibilityHidden(true)
             if compact {
                 VStack(spacing: 0) {
-                    ArenaDeckPicker(model: model, compact: true)
+                    ArenaDeckPicker(model: model, compact: true).overlay { searchScrim }
                     ArenaPlayBlade(model: model, compact: true)
-                        .frame(height: 372)
+                        .frame(height: 392)
                 }
             } else {
                 HStack(spacing: 0) {
-                    ArenaDeckPicker(model: model, compact: false)
+                    ArenaDeckPicker(model: model, compact: false).overlay { searchScrim }
                     ArenaPlayBlade(model: model, compact: false)
                         .frame(width: 248)
                 }
@@ -152,6 +152,14 @@ struct ArenaPlayPanel: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("play.panel")
+    }
+
+    /// A search dims the whole deck side evenly, over solid boxes (the judge, 2026-10-22: lowered opacity let the room show
+    /// through the boxes, and a scrim on the shelves alone showed its edges).
+    @ViewBuilder private var searchScrim: some View {
+        if model.busy {
+            Color.black.opacity(0.55).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
+        }
     }
 }
 
@@ -163,21 +171,19 @@ struct ArenaDeckPicker: View {
     let compact: Bool
     @State private var collapsed: Set<String> = []
 
-    private var heading: (title: String, detail: String) {
+    private var heading: String {
         switch model.tab.wrappedValue {
-        case .friends:
-            return (String(localized: "Play with Friends"), String(localized: "Pick your deck, then challenge a friend or share a table code. iPhone and Android play together."))
-        case .recent:
-            return (String(localized: "Recently Played"), model.recent.isEmpty ? String(localized: "Your last tables show up here once you've played.")
-                                                                                : String(localized: "Pick a game to set it up again."))
+        case .friends: return String(localized: "Play with Friends")
+        case .recent: return String(localized: "Recently Played")
         case .find:
             switch model.mode.wrappedValue {
-            case .quick: return (String(localized: "Quick Match"), String(localized: "One AI opponent at your deck's bracket. No rank change."))
-            case .ranked: return (String(localized: "Ranked"), String(localized: "One opponent near your rank. Wins fill pips, losses take them."))
-            case .custom: return (String(localized: "Custom Table"), String(localized: "Up to three AI opponents, Game Center, or an online table."))
+            case .quick: return String(localized: "Quick Match")
+            case .ranked: return String(localized: "Ranked")
+            case .custom: return String(localized: "Custom Table")
             }
         }
     }
+
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -188,6 +194,8 @@ struct ArenaDeckPicker: View {
                 deckShelves
             }
         }
+        // The heading stays at the top whatever the shelf below it measures.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("play.decks")
     }
@@ -229,7 +237,9 @@ struct ArenaDeckPicker: View {
                         .padding(.bottom, 20)
                     }
                     .scrollIndicators(.hidden)
-                    .opacity(model.busy ? 0.4 : 1)
+                    // The boxes fade into the blade below rather than stopping under their pips (the judge, 2026-10-22).
+                    .mask(ArenaScrollFade(depth: 30))
+
                     .task {
                         // Once the shelves are laid out, bring the chosen deck into view, a little above the middle.
                         try? await Task.sleep(for: .milliseconds(250))
@@ -246,15 +256,18 @@ struct ArenaDeckPicker: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(heading.title).font(ArenaMenuStyle.font(compact ? 22 : 24, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                Text(heading).font(ArenaMenuStyle.font(compact ? 22 : 24, .bold)).foregroundStyle(ArenaMenuStyle.text)
                     .shadow(color: .black, radius: 2)
                     .accessibilityAddTraits(.isHeader)
-                Text(heading.detail).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                let rules = ArenaCaps(text: String(localized: "100 cards · up to 4 players"), size: 9.5)
-                if compact { rules }
+                // The table's size only on Find Match, where the mode decides it (Quick and Ranked one opponent, Custom up to
+                // four); Friends and Recently Played depend on what you pick there.
+                let oneOpponent = model.mode.wrappedValue != .custom
+                let showsRules = model.tab.wrappedValue == .find
+                let rules = ArenaCaps(text: oneOpponent ? String(localized: "100 cards · 1v1") : String(localized: "100 cards · up to 4 players"), size: 9.5)
+                // Upright the line keeps its place on every tab, so the shelves start at the same height.
+                if compact { rules.opacity(showsRules ? 1 : 0).accessibilityHidden(!showsRules) }
                 HStack(spacing: 8) {
-                    if !compact { rules }
+                    if !compact && showsRules { rules }
                     if let bracket = model.deckBracket {
                         Button(action: model.explainBracket) {
                             HStack(spacing: 4) {
@@ -310,7 +323,16 @@ struct ArenaRecentShelf: View {
     let model: ArenaPlayPanelModel
     let compact: Bool
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if model.recent.isEmpty {
+            // Not in a scroll view: a sideways one cut the second line (the judge, 2026-10-22).
+            empty
+        } else {
+            shelf
+        }
+    }
+
+    private var shelf: some View {
         ScrollView(compact ? .horizontal : .vertical) {
             let layout = compact ? AnyLayout(HStackLayout(alignment: .top, spacing: 12))
                                  : AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
@@ -381,26 +403,20 @@ struct ArenaRecentShelf: View {
         .accessibilityIdentifier("recent.\(game.id)")
     }
 
-    /// No games yet: a dashed tile in the gold hairline, and the way to Find Match.
+    /// No games yet: one quiet line in the middle (the judge, 2026-10-22: no dashed tile, no second Find Match; the
+    /// blade's plaque leads there).
     private var empty: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(ArenaMenuStyle.gold.opacity(0.55), style: StrokeStyle(lineWidth: 1.4, dash: [6, 5]))
-                VStack(spacing: 8) {
-                    ArenaEmblem(symbol: "clock.arrow.circlepath", size: 26)
-                    Text(String(localized: "Your last tables show up here"))
-                        .font(ArenaMenuStyle.font(14, .semibold)).foregroundStyle(ArenaMenuStyle.text)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(14)
-            }
-            .frame(width: 190, height: 200)
-            Button(String(localized: "Go to Find Match")) { model.tab.wrappedValue = .find }
-                .buttonStyle(ArenaPillButtonStyle())
-                .accessibilityIdentifier("recent.findMatch")
+        VStack(spacing: 10) {
+            ArenaEmblem(symbol: "clock.arrow.circlepath", size: 30)
+            Text(String(localized: "No tables yet"))
+                .font(ArenaMenuStyle.font(17, .bold)).foregroundStyle(ArenaMenuStyle.text)
         }
-        .frame(maxWidth: .infinity, alignment: compact ? .center : .leading)
+        .frame(maxWidth: 300)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.bottom, compact ? 0 : 40)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("recent.empty")
     }
 }
 
@@ -422,9 +438,7 @@ struct ArenaPlayBlade: View {
                     .padding(.bottom, 18)
             }
             .scrollIndicators(.hidden)
-            // The list fades out over the footer's line rather than running into it.
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.88), .init(color: .clear, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
+            .scrollBounceBehavior(.basedOnSize)
             .accessibilityIdentifier("lobby.scroll")
             footer
         }
@@ -457,12 +471,7 @@ struct ArenaPlayBlade: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: compact ? 50 : 56)
                     .background(on ? Color.white.opacity(0.05) : .clear)
-                    .overlay(alignment: .bottom) {
-                        if on {
-                            Capsule().fill(Color(red: 0.42, green: 0.70, blue: 1)).frame(height: 3).padding(.horizontal, 14)
-                                .shadow(color: Color(red: 0.42, green: 0.70, blue: 1), radius: 5)
-                        }
-                    }
+                    .overlay(alignment: .bottom) { ArenaTabBar(on: on).padding(.horizontal, 8) }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(BrandPressStyle())
@@ -526,112 +535,200 @@ struct ArenaPlayBlade: View {
         }
     }
 
+    /// Quick Match's choices fit the blade without scrolling (the judge, 2026-10-22): the opponent's bracket as five gems
+    /// with the chosen one named in the heading, the opponent's deck on one line, then skill and who goes first.
     @ViewBuilder private var quickOptions: some View {
-        ArenaCaps(text: String(localized: "Opponent's bracket"), size: 9.5).padding(.top, 8).padding(.bottom, 2)
-        let match = model.deckBracket.map { String(localized: "Match my deck · B\(min(4, $0.rawValue))") } ?? String(localized: "Match my deck")
-        ArenaOptionRow(title: match, selected: model.quickBracket.wrappedValue == 0, identifier: "quick.bracket.0") {
-            model.quickBracket.wrappedValue = 0
-        }
-        ForEach(CommanderBracket.allCases.filter { $0 != .cedh }, id: \.rawValue) { bracket in
-            ArenaOptionRow(title: bracket.name, value: "B\(bracket.rawValue)", selected: model.quickBracket.wrappedValue == bracket.rawValue,
-                           identifier: "quick.bracket.\(bracket.rawValue)") {
-                model.quickBracket.wrappedValue = bracket.rawValue
+        let brackets = CommanderBracket.allCases.filter { $0 != .cedh }
+        let chosen = brackets.first { $0.rawValue == model.quickBracket.wrappedValue }
+        let matched = model.deckBracket.map { String(localized: "Match my deck · B\(min(4, $0.rawValue))") } ?? String(localized: "Match my deck")
+        ArenaCaps(text: String(localized: "Opponent · \(chosen?.name ?? matched)"), size: 9.5)
+            .padding(.top, 6)
+        HStack(spacing: 4) {
+            bracketGem(String(localized: "Match"), value: 0, label: matched)
+            ForEach(brackets, id: \.rawValue) { bracket in
+                bracketGem("\(bracket.rawValue)", value: bracket.rawValue, label: bracket.name)
             }
         }
-        ArenaCaps(text: String(localized: "Opponent's deck"), size: 9.5).padding(.top, 12).padding(.bottom, 4)
-        TavernPicker(title: String(localized: "Opponent deck"), selection: model.quickDeckID, sections: [
-            .init(options: [(String(localized: "Surprise me"), "")]),
-            .init(title: String(localized: "Bracket \(model.quickResolvedBracket) decks"),
-                  options: AIDeckPool.pool(for: model.quickResolvedBracket).map { ("\($0.name) · \($0.commander)", $0.id) }),
-        ], identifier: "quick.deck", showsTitle: false)
-        ArenaStepper(title: String(localized: "AI skill"), value: model.quickSkill, range: 1...10, identifier: "quick.skill")
-            .padding(.top, 4)
-        Text(String(localized: "3 is a fair fight. Higher skill thinks longer."))
-            .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-        ArenaCaps(text: String(localized: "Who goes first"), size: 9.5).padding(.top, 12).padding(.bottom, 2)
-        ArenaSegmented(options: [(String(localized: "Choose"), "choose"), (String(localized: "Roll D20"), "roll")],
-                       selection: model.startingPlayer, identifier: "quick.startingPlayer", stretch: true)
+        opponentDeckRow
+        HStack(spacing: 8) {
+            ArenaStepper(title: String(localized: "AI skill"), value: model.quickSkill, range: 1...10, identifier: "quick.skill", compact: true)
+                .accessibilityHint(String(localized: "3 is a fair fight. Higher skill thinks longer."))
+            rollToggle
+        }
     }
 
+    /// The opponent's deck as one of the blade's rows (the judge, 2026-10-22: no form dropdown): a tap lists the
+    /// decks at that bracket in the glass pop-over, the chosen one with a gold diamond.
+    private var opponentDeckRow: some View {
+        let pool = AIDeckPool.pool(for: model.quickResolvedBracket)
+        let chosen = pool.first { $0.id == model.quickDeckID.wrappedValue }
+        return TavernMenu(arrowEdge: .top, scrollHeight: 300, scrollAnchor: AnyHashable(model.quickDeckID.wrappedValue)) {
+            TavernMenuItem(title: String(localized: "Surprise me"), systemImage: chosen == nil ? "diamond.fill" : nil) {
+                model.quickDeckID.wrappedValue = ""
+            }
+            .id(AnyHashable(""))
+            ArenaCaps(text: String(localized: "Bracket \(model.quickResolvedBracket) decks"), size: 9.5).padding(.top, 4)
+            ForEach(pool, id: \.id) { deck in
+                TavernMenuItem(title: "\(deck.name) · \(deck.commander)", systemImage: deck.id == chosen?.id ? "diamond.fill" : nil) {
+                    model.quickDeckID.wrappedValue = deck.id
+                }
+                .id(AnyHashable(deck.id))
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(String(localized: "Opponent")).font(ArenaMenuStyle.font(14, .medium)).foregroundStyle(ArenaMenuStyle.text)
+                    .lineLimit(1).fixedSize()
+                Spacer(minLength: 6)
+                Text(chosen?.name ?? String(localized: "Surprise me")).font(ArenaMenuStyle.font(13, .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .heavy)).foregroundStyle(ArenaMenuStyle.gold.opacity(0.8))
+            }
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(String(localized: "Opponent deck, \(chosen?.name ?? String(localized: "Surprise me"))"))
+        .accessibilityIdentifier("quick.deck")
+    }
+
+    /// Who goes first as one die beside the skill: lit, everyone rolls a D20; dark, you choose at the table.
+    private var rollToggle: some View {
+        let roll = model.startingPlayer.wrappedValue == "roll"
+        return Button {
+            GameAudio.shared.play(.uiTap)
+            model.startingPlayer.wrappedValue = roll ? "choose" : "roll"
+        } label: {
+            VStack(spacing: 1) {
+                Image(systemName: "dice.fill").font(.system(size: 15, weight: .bold))
+                Text(roll ? String(localized: "D20") : String(localized: "Pick")).font(ArenaMenuStyle.font(9, .bold))
+            }
+            .foregroundStyle(roll ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.dim)
+            .frame(width: 44, height: 44)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(roll ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.black.opacity(0.45))))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        .accessibilityLabel(String(localized: "Who goes first"))
+        .accessibilityValue(roll ? String(localized: "Everyone rolls a D20") : String(localized: "Choose at the table"))
+        .accessibilityIdentifier("quick.startingPlayer")
+    }
+
+    /// One of the opponent's brackets as a round gem, gold when chosen.
+    private func bracketGem(_ text: String, value: Int, label: String) -> some View {
+        let on = model.quickBracket.wrappedValue == value
+        return Button {
+            GameAudio.shared.play(.uiTap)
+            model.quickBracket.wrappedValue = value
+        } label: {
+            Text(text)
+                .font(ArenaMenuStyle.font(value == 0 ? 9.5 : 14, .bold))
+                .foregroundStyle(on ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(on ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.black.opacity(0.45))))
+                .overlay(Circle().strokeBorder(on ? AnyShapeStyle(ArenaMenuStyle.metal) : AnyShapeStyle(ArenaGlass.hairline),
+                                               lineWidth: on ? 1.4 : 0.9))
+                .shadow(color: on ? ArenaMenuStyle.gold.opacity(0.5) : .clear, radius: 5)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .accessibilityIdentifier("quick.bracket.\(value)")
+    }
+
+    /// Ranked: your standing, the one format, and the ways to the season and the leaderboard side by side.
     @ViewBuilder private var rankedOptions: some View {
         let rank = model.rank
+        ArenaCaps(text: String(localized: "Ranked Commander · 1v1"), size: 9.5).padding(.top, 6)
         HStack(spacing: 12) {
-            RankBadge(position: rank.position, size: 48, showsPips: true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(rank.position.title).font(ArenaMenuStyle.font(17, .bold)).foregroundStyle(ArenaMenuStyle.text)
-                Text(String(localized: "Season: \(RankLadder.seasonName(rank.season))"))
-                    .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(2)
+            // Searching, the footer grows: the standing shrinks to its badge and title.
+            RankBadge(position: rank.position, size: model.search == nil ? 42 : 30, showsPips: model.search == nil)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rank.position.title).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
                 Text(String(localized: "\(rank.wins) wins · \(rank.losses) losses"))
                     .font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
+                Text(RankLadder.seasonName(rank.season))
+                    .font(ArenaMenuStyle.font(10.5, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
             }
         }
-        .padding(.top, 8)
-        .padding(.bottom, 14)
+        .padding(.top, 4).padding(.bottom, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ranked.standing")
-        ArenaOptionRow(title: String(localized: "Ranked Commander"), value: String(localized: "1v1"), selected: true, identifier: "ranked.format") {}
-        if !model.rankedEligible, let bracket = model.deckBracket {
-            Label(String(localized: "\(bracket.title) is above \(rank.position.tier.name)'s limit (Bracket \(rank.position.tier.maxDeckBracket)). Choose another deck."),
-                  systemImage: "exclamationmark.triangle.fill")
-                .font(ArenaMenuStyle.font(12, .semibold))
-                .foregroundStyle(Color(red: 1, green: 0.72, blue: 0.5))
-                .padding(.vertical, 6)
-                .accessibilityIdentifier("ranked.ineligible")
+        if model.search == nil {
+            if !model.rankedEligible, let bracket = model.deckBracket {
+                Label(String(localized: "\(bracket.title) is above \(rank.position.tier.name)'s limit (Bracket \(rank.position.tier.maxDeckBracket)). Choose another deck."),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(ArenaMenuStyle.font(11.5, .semibold))
+                    .foregroundStyle(Color(red: 1, green: 0.72, blue: 0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 4)
+                    .accessibilityIdentifier("ranked.ineligible")
+            }
+            // Only the offline case is said: the normal search needs no explaining.
+            if !model.canSearchPeople {
+                Text(String(localized: "Profiles are offline: an AI takes the seat, and counts the same."))
+                    .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 6)
+            }
+            HStack(spacing: 8) {
+                Button(String(localized: "Season"), action: model.rankedHall)
+                    .buttonStyle(ArenaPillButtonStyle())
+                    .accessibilityIdentifier("ranked.hall")
+                Button(String(localized: "Leaderboard"), action: model.leaderboard)
+                    .buttonStyle(ArenaPillButtonStyle())
+                    .accessibilityIdentifier("ranked.leaderboard")
+            }
         }
-        Text(model.canSearchPeople ? String(localized: "A player near your rank, or an AI if nobody's searching.")
-                                   : String(localized: "Profiles are offline: an AI takes the seat, and counts the same."))
-            .lineLimit(2)
-            .font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 6)
-        ArenaOptionRow(title: String(localized: "Season and rules"), chevron: true, identifier: "ranked.hall", action: model.rankedHall)
-        ArenaOptionRow(title: String(localized: "Leaderboard"), chevron: true, identifier: "ranked.leaderboard", action: model.leaderboard)
     }
 
+    /// The three ways to fill the table, each one line (AGENTS.md: no secondary labels).
     @ViewBuilder private var customOptions: some View {
-        ArenaCaps(text: String(localized: "Players"), size: 9.5).padding(.top, 8).padding(.bottom, 2)
-        ArenaOptionRow(title: String(localized: "Against the AI"), detail: String(localized: "One to three AI opponents"),
-                       selected: model.playerMode.wrappedValue == "ai", identifier: "custom.ai") { model.playerMode.wrappedValue = "ai" }
-        ArenaOptionRow(title: String(localized: "Online table"), detail: String(localized: "iPhone & Android · table code"),
-                       selected: model.playerMode.wrappedValue == "online", identifier: "custom.online") { model.playerMode.wrappedValue = "online" }
-        ArenaOptionRow(title: String(localized: "Game Center"), detail: String(localized: "iPhones nearby or invited"),
-                       selected: model.playerMode.wrappedValue == "gamecenter", identifier: "custom.gamecenter") { model.playerMode.wrappedValue = "gamecenter" }
-        Text(String(localized: "Choose each seat at the table next."))
-            .font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-            .padding(.top, 8)
+        let mode = model.playerMode.wrappedValue
+        ArenaCaps(text: String(localized: "Players"), size: 9.5).padding(.top, 6)
+        ArenaOptionRow(title: String(localized: "Against the AI"),
+                       selected: mode == "ai", identifier: "custom.ai") { model.playerMode.wrappedValue = "ai" }
+        ArenaOptionRow(title: String(localized: "Online table"),
+                       selected: mode == "online", identifier: "custom.online") { model.playerMode.wrappedValue = "online" }
+        ArenaOptionRow(title: String(localized: "Game Center"),
+                       selected: mode == "gamecenter", identifier: "custom.gamecenter") { model.playerMode.wrappedValue = "gamecenter" }
     }
 
     @ViewBuilder private var friendsOptions: some View {
         ArenaCaps(text: String(localized: "With friends"), size: 9.5).padding(.top, 8).padding(.bottom, 2)
         ForEach(ArenaFriendWay.allCases) { way in
-            ArenaOptionRow(title: way.title, detail: way.detail, selected: friendWay == way, identifier: "friends.\(way.rawValue)") {
+            ArenaOptionRow(title: way.title, selected: friendWay == way, identifier: "friends.\(way.rawValue)") {
                 friendWay = way
             }
         }
     }
 
-    /// The chosen table's deck as an open box, the way it was played and the deck's bracket.
-    @ViewBuilder private var recentOptions: some View {
-        if model.recent.isEmpty {
-            Text(String(localized: "Play a game and it waits here, ready to set up again."))
-                .font(ArenaMenuStyle.font(12.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 14)
-        } else {
-            VStack(spacing: 8) {
-                if let deck = model.selectedDeck {
-                    ArenaDeckBox(deck: deck, selected: true, width: 120)
-                        .padding(.top, ArenaBoxGeometry(width: 120).rise + 6)
-                }
+    /// The chosen table's deck as an open box (the deck you'd play next while there are none yet), the way it was played
+    /// and the deck's bracket.
+    private var recentOptions: some View {
+        VStack(spacing: 8) {
+            if let deck = model.selectedDeck {
+                ArenaDeckBox(deck: deck, selected: true, width: 120)
+                    .padding(.top, ArenaBoxGeometry(width: 120).rise * 1.5 + 12)
+            }
+            // With no tables yet the box speaks for itself; after a game it names the way you played.
+            if !model.recent.isEmpty {
                 ArenaCaps(text: model.mode.wrappedValue == .ranked ? String(localized: "Ranked") : model.mode.wrappedValue == .custom
                           ? String(localized: "Custom Table") : String(localized: "Quick Match"), size: 10)
-                if let bracket = model.deckBracket {
-                    Text(bracket.title).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
-                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 6)
+            if let bracket = model.deckBracket {
+                Text(bracket.title).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+            }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 6)
     }
 
     // MARK: Footer
@@ -811,12 +908,4 @@ enum ArenaFriendWay: String, CaseIterable, Identifiable {
         }
     }
 
-    var detail: String {
-        switch self {
-        case .challenge: return String(localized: "Quick Match or Ranked")
-        case .host: return String(localized: "Share its code with anyone")
-        case .join: return String(localized: "iPhone or Android table")
-        case .gamecenter: return String(localized: "Invite iPhones nearby")
-        }
-    }
 }

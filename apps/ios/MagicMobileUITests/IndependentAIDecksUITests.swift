@@ -53,34 +53,36 @@ final class IndependentAIDecksUITests: XCTestCase {
         for (index, name) in choices.enumerated() { assertSelection(index + 1, name) }
         app.terminate(); app.launch()
         openSetup()
-        waitFor(countControl, "label == 'AI opponents: 3'")
+        XCTAssertTrue(app.buttons["ondevice.aiDeck.3"].waitForExistence(timeout: 5), "Three seats after relaunch")
         for (index, name) in choices.enumerated() { assertSelection(index + 1, name) }
         // Deliberately do not tap Start game; this verifies setup state, not engine execution.
     }
 
-    private var countControl: XCUIElement {
-        app.steppers["ondevice.aiCount"]
-    }
-
+    /// The AI seats are deck boxes (Arena's custom table): "+" adds a seat, × on the last one empties it.
     private func changeCount(from initial: Int, to target: Int) {
-        let stepper = countControl
-        reveal(stepper, upward: false)
-        waitFor(stepper, "label == 'AI opponents: \(initial)'")
-        let direction = target > initial ? 1 : -1
+        XCTAssertTrue(app.buttons["ondevice.aiDeck.\(initial)"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["ondevice.aiDeck.\(initial + 1)"].exists)
         var count = initial
         while count != target {
-            let button = stepper.buttons[direction > 0 ? "ondevice.aiCount-Increment" : "ondevice.aiCount-Decrement"]
-            XCTAssertTrue(button.exists && button.isHittable && button.isEnabled)
-            button.press(forDuration: 0.15)
-            count += direction
-            waitFor(stepper, "label == 'AI opponents: \(count)'")
+            if target > count {
+                let add = app.buttons["ondevice.aiSeat.add"]
+                reveal(add)
+                add.press(forDuration: 0.15)
+                count += 1
+            } else {
+                let remove = app.buttons["ondevice.aiSeat.remove.\(count)"]
+                reveal(remove)
+                remove.press(forDuration: 0.15)
+                count -= 1
+            }
+            XCTAssertTrue(app.buttons["ondevice.aiDeck.\(count)"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["ondevice.aiDeck.\(count + 1)"].waitForNonExistence(timeout: 5))
         }
     }
 
     private func assertSelection(_ seat: Int, _ name: String) {
         let picker = app.buttons["ondevice.aiDeck.\(seat)"]
         reveal(picker)
-        XCTAssertTrue(app.staticTexts["AI \(seat) deck"].exists)
         let predicate = NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", name, name)
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: picker)], timeout: 5), .completed)
     }
@@ -88,11 +90,13 @@ final class IndependentAIDecksUITests: XCTestCase {
     private func openSetup() {
         let play = app.buttons["menu.play"]
         XCTAssertTrue(play.waitForExistence(timeout: 15))
+        // The first touch after launch only moves focus on this simulator (UITestHarness.settleFirstTouch).
+        UITestHarness.settleFirstTouch(app)
         reveal(play)
         play.press(forDuration: 0.15)
         UITestHarness.chooseCustomTable(app)
         XCTAssertTrue(app.textFields["ondevice.playerName"].waitForExistence(timeout: 10))
-        reveal(countControl)
+        reveal(app.buttons["ondevice.aiDeck.1"])
     }
 
     private func reveal(_ element: XCUIElement, upward: Bool = true) {

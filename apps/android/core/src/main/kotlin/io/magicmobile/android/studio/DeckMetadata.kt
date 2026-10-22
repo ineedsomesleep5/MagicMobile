@@ -483,12 +483,14 @@ class OnDeviceDeckLinkImporter(val resolver: OnDeviceDeckResolver) {
             return DeckList(deck.name, DeckEntry(name, 1, "commanders", printing), entries)
         }
 
+        /** A share link's query and fragment are ignored: the request goes to a fixed endpoint built from the deck ID alone
+         *  (an Archidekt share link failed on its tracking query). A link pasted without its scheme is read as HTTPS. */
         fun source(text: String): Source {
-            val value = text.trim()
+            val value = text.trim().let { if ("://" in it) it else "https://$it" }
             val uri = runCatching { java.net.URI(value) }.getOrNull()
             if (value.utf8Size > 2048 || uri == null || uri.scheme != "https" || uri.rawUserInfo != null || uri.port != -1 ||
-                uri.rawQuery != null || uri.rawPath?.contains('%') != false) {
-                throw ImportError("Use an HTTPS public Moxfield or Archidekt deck URL without credentials or query parameters.")
+                uri.rawPath?.contains('%') != false) {
+                throw ImportError("Use an HTTPS public Moxfield or Archidekt deck URL without credentials.")
             }
             val path = uri.path.split('/')
             if (path.size < 3 || path[0].isNotEmpty() || path[1] != "decks") throw ImportError("This is not a supported deck link.")

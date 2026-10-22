@@ -248,17 +248,8 @@ private struct DeckStudioNowPlayingBanner: View {
                 .accessibilityLabel("Dismiss")
         }
         .padding(.leading, 14).padding(.trailing, 4).padding(.vertical, 8)
-        // A leather slip in a brass edge, laid over the page.
-        .background {
-            let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-            ZStack {
-                TavernFill(material: .leather)
-                Binder.dye(Binder.oxblood, 0.45)
-            }
-            .clipShape(shape)
-            .overlay(shape.inset(by: 4).stroke(Binder.thread, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-            .overlay(shape.strokeBorder(Binder.brass, lineWidth: 2))
-        }
+        // A slip of glass in the gold hairline, laid over the page.
+        .modifier(ArenaGlassPanel(cornerRadius: 12, opacity: 0.97))
         .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
         .padding(.horizontal, 16).padding(.bottom, 8)
         .accessibilityElement(children: .contain)

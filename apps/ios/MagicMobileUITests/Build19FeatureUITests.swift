@@ -30,20 +30,31 @@ final class Build19FeatureUITests: XCTestCase {
         let settings = app.buttons["menu.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
+        // Arena's Options: sound has its own page.
+        let audio = app.buttons["settings.open.audio"]
+        XCTAssertTrue(audio.waitForExistence(timeout: 10))
+        audio.tap()
         let soundLab = app.buttons["settings.soundLab"]
         XCTAssertTrue(soundLab.waitForExistence(timeout: 10))
         soundLab.tap()
         XCTAssertTrue(app.buttons["soundlab.done"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["soundlab.music.menu.shuffle"].exists)
         capture(app, "sound-lab-music")
-        let chip = app.buttons["soundlab.play.cast-red"]
-        for _ in 0..<6 where !chip.isHittable { app.swipeUp() }
+        // The spells group's first sound (cast-red was renamed when the cast sounds split by card type).
+        let chip = app.buttons["soundlab.play.cast-instant"]
+        // The Sound Lab is a page of the Options panel now (no sheet): scroll it in short drags, so no row passes the
+        // panel's window between looks.
+        let nudge = {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
+        }
+        for _ in 0..<30 where !chip.isHittable { nudge() }
         XCTAssertTrue(chip.isHittable, "every sound can be auditioned")
         chip.tap()
         let spells = app.switches["soundlab.category.spells"]
         XCTAssertTrue(spells.exists)
         capture(app, "sound-lab-effects")
-        for _ in 0..<8 where !app.otherElements["soundlab.credits"].exists { app.swipeUp() }
+        for _ in 0..<40 where !app.staticTexts["Licensed under Creative Commons: By Attribution 4.0 License"].isHittable { nudge() }
         XCTAssertTrue(app.staticTexts["Licensed under Creative Commons: By Attribution 4.0 License"].exists,
                       "the music license's attribution is shown")
         capture(app, "sound-lab-credits")
@@ -57,6 +68,9 @@ final class Build19FeatureUITests: XCTestCase {
         let settings = app.buttons["menu.settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 20))
         settings.tap()
+        let page = app.buttons["settings.open.performance"]
+        XCTAssertTrue(page.waitForExistence(timeout: 10))
+        page.tap()
         let open = app.buttons["settings.performance"]
         XCTAssertTrue(open.waitForExistence(timeout: 10))
         for _ in 0..<6 where !open.isHittable { app.swipeUp() }

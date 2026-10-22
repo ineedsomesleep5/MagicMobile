@@ -557,20 +557,20 @@ struct BrandPressStyle: ButtonStyle {
     }
 }
 
-/// "VS" medallion between two decks.
+/// "VS" medallion between two decks: gold capitals in a ring of gold metal, lit ember from behind.
 struct VersusMedallion: View {
     var size: CGFloat = 54
 
     var body: some View {
         Text("VS")
-            .font(.system(size: size * 0.36, weight: .black))
-            .tracking(-0.5)
-            .foregroundStyle(BrandTheme.ink)
+            .font(.system(size: size * 0.38, weight: .black, design: .serif))
+            .foregroundStyle(ArenaMenuStyle.metal)
+            .shadow(color: .black, radius: 1, y: 1)
             .frame(width: size, height: size)
-            .background(Circle().fill(RadialGradient(colors: [BrandTheme.surfaceRaised, BrandTheme.canvas],
+            .background(Circle().fill(RadialGradient(colors: [Color(red: 0.16, green: 0.12, blue: 0.10), Color(red: 0.03, green: 0.03, blue: 0.04)],
                                                      center: .center, startRadius: 0, endRadius: size * 0.5)))
-            .overlay(Circle().strokeBorder(BrandTheme.emberGradient, lineWidth: 2.5))
-            .shadow(color: BrandTheme.ember.opacity(0.6), radius: 12)
+            .overlay(Circle().strokeBorder(ArenaMenuStyle.metal, lineWidth: 3))
+            .shadow(color: ArenaMenuStyle.ember.opacity(0.75), radius: 14)
             .accessibilityHidden(true)
     }
 }
@@ -597,8 +597,7 @@ struct VersusIntroOverlay: View {
             let cardWidth = min(150, width * 0.34)
             let opponentWidth = opponents.count > 1 ? cardWidth * 0.62 : cardWidth
             ZStack {
-                BrandBackdrop(cards: false)
-                    .ignoresSafeArea()
+                ArenaRoomBackdrop(dim: 0.55)
                 HStack(alignment: .center, spacing: 0) {
                     seat(you, width: cardWidth, tilt: -5)
                         .offset(x: phase >= 1 ? 0 : -width)
@@ -610,7 +609,7 @@ struct VersusIntroOverlay: View {
                 }
                 .padding(.horizontal, 18)
                 Circle()
-                    .strokeBorder(BrandTheme.ember, lineWidth: 3)
+                    .strokeBorder(ArenaMenuStyle.gold, lineWidth: 3)
                     .frame(width: 90, height: 90)
                     .scaleEffect(phase >= 2 ? 4.5 : 0.6)
                     .opacity(phase == 1 ? 0.9 : 0)
@@ -636,19 +635,20 @@ struct VersusIntroOverlay: View {
         }
     }
 
+    /// A player as Arena shows them before a match: their commander in a tall arch of gold metal, their name on a
+    /// black plate beneath.
     private func seat(_ seat: Seat, width: CGFloat, tilt: Double) -> some View {
-        VStack(spacing: 8) {
-            CommanderDeckPortrait(name: seat.commander)
-                .frame(width: width, height: width / 0.716)
-                .rotationEffect(.degrees(tilt))
-                .shadow(color: BrandTheme.ember.opacity(0.35), radius: 18)
-            Text(seat.name)
-                .font(.system(size: max(12, width * 0.11), weight: .heavy))
-                .foregroundStyle(BrandTheme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .frame(maxWidth: width + 20)
+        let arch = UnevenRoundedRectangle(topLeadingRadius: width / 2, bottomLeadingRadius: 10, bottomTrailingRadius: 10,
+                                          topTrailingRadius: width / 2, style: .continuous)
+        return VStack(spacing: -10) {
+            ArenaArt(name: seat.commander ?? "", colors: [])
+                .frame(width: width, height: width / 0.72)
+                .clipShape(arch)
+                .overlay(arch.strokeBorder(ArenaMenuStyle.metal, lineWidth: 2.5))
+                .shadow(color: ArenaMenuStyle.ember.opacity(0.4), radius: 18)
+            ArenaNamePlate(title: seat.name, selected: true, width: width * 0.9)
         }
+        .rotationEffect(.degrees(tilt * 0.4))
     }
 }
 

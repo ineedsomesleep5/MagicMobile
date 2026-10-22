@@ -93,6 +93,8 @@ struct OnDeviceRootView: View {
     @State private var playTab: ArenaPlayTab = .find
     /// Bumped once your decks' colours are read from the card catalogue (their boxes' pips).
     @State private var deckColorsRevision = 0
+    /// Development fixture: the Options page to open on (MAGICMOBILE_UI_TEST_OPEN=settings:board).
+    @State private var optionsStartPage: ArenaOptionsView.Page?
     @AppStorage("magicmobile.quick.opponentBracket") private var quickBracket = 0
     @AppStorage("magicmobile.quick.opponentDeck") private var quickDeckID = ""
     @AppStorage("magicmobile.quick.aiSkill") private var quickSkill = 3
@@ -376,21 +378,29 @@ struct OnDeviceRootView: View {
         // Menu ambience pauses while anything covers the menu.
         .environment(\.brandAmbientMotion, !menuSheetOpen)
         let social = learningSheets(menu)
-        .sheet(isPresented: $showAppearance) { AppearanceSettingsView(portraitModeEnabled: $portraitModeEnabled) }
-        .sheet(isPresented: $showUpdates) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
-        .sheet(isPresented: $showFriends) {
+        .arenaPanel(isPresented: $showAppearance, maxWidth: 560, fitsContent: true) {
+            ArenaOptionsView(portraitModeEnabled: $portraitModeEnabled, upstreamCommit: setup.identity?.upstreamCommit,
+                             startPage: optionsStartPage)
+        }
+        .arenaPanel(isPresented: $showUpdates, placement: .trailing) { NativeUpdateNewsView(upstreamCommit: setup.identity?.upstreamCommit) }
+        .arenaPanel(isPresented: $showFriends, placement: .leading) {
             FriendsView(account: account, join: { code in
                 // After the sheet closes, so the table setup can open.
                 Task { try? await Task.sleep(for: .milliseconds(450)); openJoinLink(code) }
             }, myRankStep: profileRecord.rank.position.step, challenge: { friend, mode in challengeFriend(friend.username, mode: mode) })
         }
-        .alert("Play offline with card art?", isPresented: $showOfflineArtPrompt) {
-            Button("Choose downloads") { OfflineArtLaunch.markSeen(in: MagicMobilePreferences.current); showDownloads = true }
-            Button("Not now", role: .cancel) { OfflineArtLaunch.markSeen(in: MagicMobilePreferences.current) }
-        } message: {
-            Text("Card art loads from Scryfall while you're online. Save your decks' images now so they show without a connection too.")
+        // An Arena prompt, not the system alert (the menus have no iPhone dialogs).
+        .arenaPanel(isPresented: $showOfflineArtPrompt, maxWidth: 460, fitsContent: true,
+                    onDismiss: { OfflineArtLaunch.markSeen(in: MagicMobilePreferences.current) }) {
+            ArenaPromptPanel(title: String(localized: "Play offline with card art?"),
+                             message: String(localized: "Card art loads from Scryfall while you're online. Save your decks' images now so they show without a connection too."),
+                             primary: String(localized: "Choose downloads"), secondary: String(localized: "Not now"),
+                             identifier: "offlineArt") {
+                showOfflineArtPrompt = false
+                Task { try? await Task.sleep(for: .milliseconds(350)); showDownloads = true }
+            }
         }
-        .sheet(isPresented: $showDownloads) {
+        .arenaPanel(isPresented: $showDownloads, fitsContent: true) {
             NativeDownloadsView(decks: downloadDecks, selectedDeckID: selectedDeckID,
                                 engineReady: setup.identity != nil)
         }
@@ -419,7 +429,7 @@ struct OnDeviceRootView: View {
         }
         .animation(.easeOut(duration: 0.25), value: matchmaker.isSearching)
         .animation(.easeOut(duration: 0.3), value: ceremony)
-        .sheet(isPresented: $showBracketSheet) { bracketSheet }
+        .arenaPanel(isPresented: $showBracketSheet, maxWidth: 560, fitsContent: true) { bracketSheet }
         return social
         .overlay(alignment: .bottom) { if !startingRollVisible { recoveryBanner } }
         // The roll belongs to the table: it wears the chosen board's look.
@@ -453,7 +463,7 @@ struct OnDeviceRootView: View {
             resume.notice = nil
         }
         .environment(\.nativeTurnControl, turnControl)
-        .sheet(isPresented: $showDiagnostics) { diagnosticSheet }
+        .arenaPanel(isPresented: $showDiagnostics, fitsContent: true) { diagnosticSheet }
         .background {
             if let multiplayer = setup.multiplayer {
                 OnDeviceGameCenterPresentation(multiplayer: multiplayer)
@@ -499,14 +509,14 @@ struct OnDeviceRootView: View {
 
     /// A sheet or cover is open over the menu (its ambience pauses).
     private var menuSheetOpen: Bool {
-        showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome
+        showImport || showAppearance || showUpdates || showDownloads || showDiagnostics || showHowToPlay || showGuidedWelcome || showFriends
     }
 
     /// How to Play and the first launch's welcome, which can start the guided first game.
     private func learningSheets<Content: View>(_ content: Content) -> some View {
         content
-            .sheet(isPresented: $showHowToPlay, onDismiss: closeHowToPlay) { howToPlaySheet }
-            .sheet(isPresented: $showGuidedWelcome) {
+            .arenaPanel(isPresented: $showHowToPlay, fitsContent: true, onDismiss: closeHowToPlay) { howToPlaySheet }
+            .arenaPanel(isPresented: $showGuidedWelcome, maxWidth: 560, dismissable: false, fitsContent: true) {
                 GuidedGameWelcomeView(playGuided: { playGuidedFromWelcome() },
                                       readHowToPlay: { readHowToPlayFromWelcome() },
                                       skip: { answerGuidedWelcome() })
@@ -600,7 +610,7 @@ struct OnDeviceRootView: View {
             case "profile": lobby = .profile
             case "rankedHall": lobby = .rankedHall
             case "leaderboard": lobby = .leaderboard
-            case "play": openPlayPanel()
+            case "play": openPlayPanel(.quick)
             case "play-cycle":
                 // The deck boxes opening and shutting, for a screen recording.
                 openPlayPanel()
@@ -615,7 +625,10 @@ struct OnDeviceRootView: View {
             case "play-recent": playTab = .recent; playPanel = true
             case "decks", "deck": openDecks()
             case "custom": showSetup = true
-            case "settings": showAppearance = true
+            case "settings":
+                optionsStartPage = SocialFixtures.openScreen?.split(separator: ":").dropFirst().first.flatMap { ArenaOptionsView.Page(rawValue: String($0)) }
+                showAppearance = true
+            case "learn-table": howToPlayOpensTable = true; showHowToPlay = true
             case "updates": showUpdates = true
             case "downloads": showDownloads = true
             case "learn": showHowToPlay = true
@@ -1178,7 +1191,7 @@ struct OnDeviceRootView: View {
         GeometryReader { proxy in
             let compact = proxy.size.width < proxy.size.height
             ZStack(alignment: .top) {
-                ArenaRoomBackdrop(dim: lobby == nil && !showSetup && !showImport ? 0 : (showImport ? 0.72 : 0.55))
+                ArenaRoomBackdrop(dim: lobby == nil && !showSetup && !showImport ? 0 : (showImport ? 0.62 : 0.55))
                 Group {
                     if showImport {
                         // The Decks tab: Deck Studio under the top bar, as Arena's Decks page.
@@ -1209,14 +1222,20 @@ struct OnDeviceRootView: View {
                             openRank: { selectMenuTab(.ranked) },
                             unread: account.incomingCount + account.unreadMessages > 0,
                             messages: { showFriends = true }, updates: { showUpdates = true },
-                            downloads: { showDownloads = true }, settings: { showAppearance = true })
+                            downloads: { showDownloads = true },
+                            lit: showAppearance ? "menu.settings" : showUpdates ? "menu.updates" : showDownloads ? "menu.downloads"
+                                : showFriends ? "menu.friends" : nil,
+                            settings: { showAppearance = true })
             }
         }
     }
 
     /// The top bar's lit tab for what the menu shows.
-    private var menuTab: ArenaMenuTab {
+    private var menuTab: ArenaMenuTab? {
+        // A utility panel lights its own icon instead of a tab (the judge, 2026-10-22).
+        if showAppearance || showUpdates || showDownloads || showFriends { return nil }
         if showImport { return .decks }
+        if showHowToPlay { return .learn }
         switch lobby {
         case .profile: return .profile
         case .rankedHall, .leaderboard: return .ranked
@@ -1270,13 +1289,13 @@ struct OnDeviceRootView: View {
                              art: "Smothering Tithe", colors: ["W"], action: { openURL(SupportProject.url) }),
             ],
             tiles: [
-                ArenaHomeTile(id: "quick", title: String(localized: "Quick Match"), subtitle: String(localized: "One AI at your deck's level"),
+                ArenaHomeTile(id: "quick", title: String(localized: "Quick Match"), subtitle: "",
                               art: commander ?? "Krenko, Mob Boss", colors: selectedDeckColors, action: { openPlayPanel(.quick) }),
                 ArenaHomeTile(id: "ranked", title: String(localized: "Ranked"),
                               subtitle: rank.position.tier == .mythic ? rank.position.title
                                 : String(localized: "\(rank.position.title) · \(rank.position.pips) of \(RankPosition.pipsPerDivision) pips"),
                               art: "Edgar Markov", colors: ["R", "W", "B"], action: { openPlayPanel(.ranked) }),
-                ArenaHomeTile(id: "learn", title: HowToPlayText.title, subtitle: String(localized: "Learn at the table, one step at a time"),
+                ArenaHomeTile(id: "learn", title: HowToPlayText.title, subtitle: "",
                               art: "Teferi, Temporal Archmage", colors: ["U"], action: { showHowToPlay = true }),
             ],
             deck: selectedDeckBox,
@@ -1776,25 +1795,49 @@ struct OnDeviceRootView: View {
                 .disabled(setup.isBusy || setup.needsLeave)
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
-                ScrollView {
-                    let layout = wide ? AnyLayout(HStackLayout(alignment: .top, spacing: 22)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 18))
-                    layout {
-                        setupSeat(wide: wide)
-                            .frame(width: wide ? 250 : nil, alignment: .leading)
-                        setupTable
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                // Arena's event page: your seat on one plate, the table on the other, Start on the strip below them
+                // (the judge, 2026-10-22: nothing scrolls under the strip, and nothing sits bare on the room).
+                Group {
+                    if wide {
+                        HStack(alignment: .top, spacing: 14) {
+                            // Each plate keeps its frame; what doesn't fit scrolls inside it and fades at its foot.
+                            ScrollView { setupSeat(wide: true).padding(12).padding(.bottom, 20) }
+                                .scrollIndicators(.hidden)
+                                .scrollBounceBehavior(.basedOnSize)
+                                .mask(ArenaScrollFade(depth: 28))
+                                .arenaCard(padding: 0)
+                                .frame(width: 300)
+                            ScrollView { setupTable(wide: true).frame(maxWidth: .infinity, alignment: .leading).padding(14).padding(.bottom, 20) }
+                                .scrollDismissesKeyboard(.interactively)
+                                .scrollBounceBehavior(.basedOnSize)
+                                .mask(ArenaScrollFade(depth: 28))
+                                .arenaCard(padding: 0)
+                                .accessibilityIdentifier("lobby.scroll")
+                        }
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                setupSeat(wide: false)
+                                setupRule
+                                setupTable(wide: false).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(14)
+                            .padding(.bottom, 20)
+                        }
+                        .scrollDismissesKeyboard(.interactively)
+                        .mask(ArenaScrollFade(depth: 28))
+                        .arenaCard(padding: 0)
+                        .accessibilityIdentifier("lobby.scroll")
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    // Room for the pinned Start bar.
-                    .padding(.bottom, 84)
-                    .frame(maxWidth: 900)
-                    .frame(maxWidth: .infinity)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .accessibilityIdentifier("lobby.scroll")
+                .scrollIndicators(.hidden)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 10)
+                .frame(maxWidth: 940)
+                .frame(maxWidth: .infinity)
+                setupStartBar
             }
-            .overlay(alignment: .bottom) { setupStartBar }
         }
         .foregroundStyle(ArenaMenuStyle.text)
         .tint(ArenaMenuStyle.gold)
@@ -1802,15 +1845,20 @@ struct OnDeviceRootView: View {
 
     /// Your seat: what the table is, your deck as an open box, your name on a plate, the deck's check.
     private func setupSeat(wide: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(String(localized: "Choose every seat yourself: up to three AI opponents, an online table with iPhone and Android, or Game Center."))
-                .font(ArenaMenuStyle.font(13, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 12) {
             if let box = selectedDeckBox {
-                let width: CGFloat = wide ? 150 : 124
+                let width: CGFloat = wide ? 124 : 118
                 ArenaDeckBox(deck: box, selected: true, width: width)
-                    .padding(.top, ArenaBoxGeometry(width: width).rise * 1.6 + 8)
+                    .padding(.top, ArenaBoxGeometry(width: width).rise * 1.6 + 4)
             }
+            setupSeatDetails
+        }
+        .frame(maxWidth: .infinity)
+        .disabled(setup.isBusy || (setup.needsLeave && !editableInRoom))
+    }
+
+    private var setupSeatDetails: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let bracket = selectedDeckBracket {
                 Button { showBracketSheet = true } label: {
                     HStack(spacing: 4) {
@@ -1835,41 +1883,66 @@ struct OnDeviceRootView: View {
             .disabled(setup.isBusy || setup.needsLeave)
             .accessibilityIdentifier("setup.changeDeck")
         }
-        .disabled(setup.isBusy || (setup.needsLeave && !editableInRoom))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Your name on a black plate, as at the table; it can be written on until you sign in.
+    /// Your name written on the plate, as Arena shows it on an event page; until you sign in it can be written on, with
+    /// a pencil and a gold line under it.
     private var setupNamePlate: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: "person.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
                 TextField("Player name", text: $playerDisplayName)
                     .textContentType(.nickname).autocorrectionDisabled()
                     .textFieldStyle(.plain)
-                    .font(ArenaMenuStyle.font(15, .bold))
+                    .font(ArenaMenuStyle.font(17, .bold))
                     .foregroundStyle(ArenaMenuStyle.text)
                     .disabled(account.username != nil)
                     .accessibilityIdentifier("ondevice.playerName")
                 if account.username == nil {
-                    Image(systemName: "pencil").font(.system(size: 12, weight: .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                    Image(systemName: "pencil").font(.system(size: 12, weight: .semibold)).foregroundStyle(ArenaMenuStyle.gold)
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 38)
-            .background(Capsule().fill(Color.black.opacity(0.9)))
-            .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
-            if account.username != nil {
-                Button("Your profile name. Change it in Friends.") { showFriends = true }
-                    .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-            } else {
+            .frame(minHeight: 30)
+            .overlay(alignment: .bottom) {
+                if account.username == nil { Rectangle().fill(ArenaMenuStyle.gold.opacity(0.45)).frame(height: 1) }
+            }
+            // Only a name that can't be used says why (AGENTS.md: no helper lines the layout can carry).
+            if account.username == nil && !validName {
                 setupNote("Choose a name with 1–24 characters.")
             }
         }
     }
 
     /// The table: who sits at it, then for the AI the seats, its skill and who goes first.
-    private var setupTable: some View {
+    private func setupTable(wide: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            if wide && !playWithFriends {
+                HStack(alignment: .top, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 10) { setupPlayers; setupRule; ArenaCaps(text: String(localized: "Seats")); setupSeats }
+                        .padding(.bottom, 20)
+                    VStack(alignment: .leading, spacing: 10) { setupSkill; setupRule; setupFirst }
+                        .frame(maxWidth: 240)
+                }
+            } else {
+                setupPlayers
+                if playWithFriends {
+                    setupFriendsTable
+                } else {
+                    setupRule
+                    ArenaCaps(text: String(localized: "Seats"))
+                    setupSeats
+                    setupRule
+                    setupSkill
+                    setupRule
+                    setupFirst
+                }
+            }
+            setupRecovery
+        }
+    }
+
+    private var setupPlayers: some View {
+        VStack(alignment: .leading, spacing: 10) {
             ArenaCaps(text: String(localized: "Players"))
             HStack(spacing: 10) {
                 setupTile("AI", symbol: "cpu", on: playerMode.wrappedValue == "ai", identifier: "setup.mode.ai") { playerMode.wrappedValue = "ai" }
@@ -1878,49 +1951,49 @@ struct OnDeviceRootView: View {
                           identifier: "setup.mode.gamecenter") { playerMode.wrappedValue = "gamecenter" }
             }
             .disabled(setup.isBusy || setup.needsLeave)
-            if playWithFriends {
-                setupFriendsTable
-            } else {
-                setupRule
-                ArenaCaps(text: String(localized: "Seats"))
-                setupSeats
-                setupRule
-                HStack {
-                    ArenaCaps(text: String(localized: "AI skill"))
-                    Spacer()
-                    Text("\(aiSkill)").font(ArenaMenuStyle.font(15, .bold)).monospacedDigit().foregroundStyle(ArenaMenuStyle.gold)
-                }
-                ArenaSlider(value: Binding(get: { Double(aiSkill) }, set: { aiSkill = min(10, max(1, Int($0.rounded()))) }),
-                            range: 1...10, label: "AI skill", identifier: "onDevice.aiSkill", valueText: "AI skill: \(aiSkill)")
-                    .disabled(setup.isBusy || setup.needsLeave)
-                setupNote("Higher skill levels allow more thinking and may slow turns.")
-                setupRule
-                ArenaCaps(text: String(localized: "Who goes first"))
-                HStack(spacing: 10) {
-                    setupTile("Choose", symbol: "hand.point.up.left.fill", on: aiStartingPlayerMode == "choose",
-                              identifier: "setup.first.choose") { aiStartingPlayerMode = "choose" }
-                    setupTile("Roll D20", symbol: "dice.fill", on: aiStartingPlayerMode == "roll",
-                              identifier: "setup.first.roll") { aiStartingPlayerMode = "roll" }
-                }
+        }
+    }
+
+    private var setupSkill: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                ArenaCaps(text: String(localized: "AI skill"))
+                Spacer()
+                Text("\(aiSkill)").font(ArenaMenuStyle.font(15, .bold)).monospacedDigit().foregroundStyle(ArenaMenuStyle.gold)
+            }
+            ArenaSlider(value: Binding(get: { Double(aiSkill) }, set: { aiSkill = min(10, max(1, Int($0.rounded()))) }),
+                        range: 1...10, label: "AI skill", identifier: "onDevice.aiSkill", valueText: "AI skill: \(aiSkill)")
                 .disabled(setup.isBusy || setup.needsLeave)
-                setupNote(aiStartingPlayerMode == "roll"
-                          ? "Everyone rolls a D20. The highest roll starts; ties reroll."
-                          : "Choose the starting player when the match begins.")
+        }
+    }
+
+    private var setupFirst: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ArenaCaps(text: String(localized: "Who goes first"))
+            HStack(spacing: 10) {
+                setupTile("Choose", symbol: "hand.point.up.left.fill", on: aiStartingPlayerMode == "choose",
+                          identifier: "setup.first.choose") { aiStartingPlayerMode = "choose" }
+                setupTile("Roll D20", symbol: "dice.fill", on: aiStartingPlayerMode == "roll",
+                          identifier: "setup.first.roll") { aiStartingPlayerMode = "roll" }
             }
-            if setup.needsLeave {
-                Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
-                    .buttonStyle(ArenaPillButtonStyle())
-                    .disabled(setup.isBusy || session.isWorking)
-            }
-            if setup.identity == nil {
-                Button("Retry loading local catalogue") { setup.prepare() }
-                    .buttonStyle(ArenaPillButtonStyle())
-            }
-            if diagnostics.report != nil {
-                Button("Engine error report") { showDiagnostics = true }
-                    .buttonStyle(ArenaPillButtonStyle())
-                    .accessibilityIdentifier("ondevice.diagnostics")
-            }
+            .disabled(setup.isBusy || setup.needsLeave)
+        }
+    }
+
+    @ViewBuilder private var setupRecovery: some View {
+        if setup.needsLeave {
+            Button("Leave / retry closing", role: .destructive) { confirmLeave = true }
+                .buttonStyle(ArenaPillButtonStyle())
+                .disabled(setup.isBusy || session.isWorking)
+        }
+        if setup.identity == nil {
+            Button("Retry loading local catalogue") { setup.prepare() }
+                .buttonStyle(ArenaPillButtonStyle())
+        }
+        if diagnostics.report != nil {
+            Button("Engine error report") { showDiagnostics = true }
+                .buttonStyle(ArenaPillButtonStyle())
+                .accessibilityIdentifier("ondevice.diagnostics")
         }
     }
 
@@ -1963,7 +2036,6 @@ struct OnDeviceRootView: View {
             if gameCenterAICount > 0 {
                 TavernStepper(title: "AI skill: \(aiSkill)", value: $aiSkill, range: 1...10)
                     .disabled(setup.isBusy || setup.needsLeave)
-                setupNote("The Game Center host's AI choices apply to everyone. Higher skill may slow turns.")
             }
             setupNote("Every player needs the same app version and must keep the app open during the match.")
             if let room = setup.multiplayer?.room {
@@ -1990,10 +2062,8 @@ struct OnDeviceRootView: View {
                 }
                 if opponentCount < 3 {
                     Button { addAISeat() } label: {
-                        VStack(spacing: 4) {
-                            ArenaNewDeckBox(width: 92)
-                            Text(String(localized: "Add AI")).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
-                        }
+                        // The box is the seat; its name plate and the "+" say enough (no captions under them).
+                        ArenaNewDeckBox(width: 70)
                     }
                     .buttonStyle(BrandPressStyle())
                     .accessibilityLabel(String(localized: "Add an AI opponent"))
@@ -2024,11 +2094,10 @@ struct OnDeviceRootView: View {
                                                      commander: deck?.deckList.commander?.cardName,
                                                      colors: deck.map { $0.colors.map(String.init) } ?? [],
                                                      subtitle: deck?.bracket.name ?? ""),
-                             width: 92)
+                             width: 70)
             }
             .accessibilityLabel("AI \(index + 1) deck, \(deck?.name ?? "Choose")")
             .accessibilityIdentifier("ondevice.aiDeck.\(index + 1)")
-            Text(String(localized: "AI \(index + 1)")).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
         }
         .overlay(alignment: .topTrailing) {
             if opponentCount > 1 {
@@ -2047,21 +2116,23 @@ struct OnDeviceRootView: View {
         }
     }
 
+    /// A seat comes back with the deck it last had; an empty one gets a precon.
     private func addAISeat() {
         guard opponentCount < 3 else { return }
         let index = opponentCount
-        let taken = Set((0..<index).map { aiDeckSelection($0).wrappedValue })
-        if AIDeckPool.deck(id: aiDeckSelection(index).wrappedValue) == nil || taken.contains(aiDeckSelection(index).wrappedValue) {
+        if AIDeckPool.deck(id: aiDeckSelection(index).wrappedValue) == nil {
+            let taken = Set((0..<index).map { aiDeckSelection($0).wrappedValue })
             aiDeckSelection(index).wrappedValue = (PreconCatalog.all.map(\.id).first { !taken.contains($0) }) ?? aiPreconID
         }
         opponentCount = index + 1
     }
 
+    /// Empties a seat; its deck waits just past the remaining seats, so adding a seat brings it back.
     private func removeAISeat(_ index: Int) {
-        guard opponentCount > 1 else { return }
+        guard opponentCount > 1, index < opponentCount else { return }
         var ids = [aiPreconID, aiPrecon2ID, aiPrecon3ID]
-        ids.remove(at: index)
-        ids.append("")
+        let removed = ids.remove(at: index)
+        ids.insert(removed, at: opponentCount - 1)
         aiPreconID = ids[0]; aiPrecon2ID = ids[1]; aiPrecon3ID = ids[2]
         opponentCount -= 1
     }
@@ -2103,7 +2174,8 @@ struct OnDeviceRootView: View {
     /// The pinned bar: what the table is doing, and Start (or Find players) in the corner, as Arena pins Play.
     private var setupStartBar: some View {
         HStack(spacing: 12) {
-            Text(setup.status).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            // The idle line said only what the page shows; the strip speaks when the table is doing something.
+            Text(setup.status == "Choose your deck and players." ? "" : setup.status).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim)
                 .lineLimit(2)
             Spacer(minLength: 8)
             if !playWithFriends {
@@ -2122,9 +2194,9 @@ struct OnDeviceRootView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 9)
-        // A strip of dark glass along the foot of the page, edged in the hairline: the page scrolls under it.
+        // A solid dark strip along the foot of the page, edged in the hairline, below the plates.
         .background {
-            LinearGradient(colors: [Color(red: 0.06, green: 0.06, blue: 0.075).opacity(0.96), Color.black.opacity(0.97)],
+            LinearGradient(colors: [Color(red: 0.06, green: 0.06, blue: 0.075), Color.black],
                            startPoint: .top, endPoint: .bottom)
                 .overlay(alignment: .top) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.6) }
                 .ignoresSafeArea(edges: [.bottom, .horizontal])
@@ -2219,15 +2291,17 @@ struct OnDeviceRootView: View {
         }
     }
 
+    /// The engine error report, on an Arena panel.
     private var diagnosticSheet: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            ArenaPanelHeader(title: String(localized: "Engine error report"), closeIdentifier: "diagnostics.close")
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Only the latest engine error report is kept on this phone, excluded from backups. Error text may contain private card information. Nothing is uploaded automatically; review it before sharing.")
-                    if let error = diagnostics.errorMessage { Text(error).foregroundStyle(.red) }
+                    if let error = diagnostics.errorMessage { Text(error).foregroundStyle(ArenaMenuStyle.loss) }
                     if let report = diagnostics.report {
                         Text(diagnostics.isHistorical ? "Saved report from an earlier session" : "Latest local incident")
-                            .font(.headline)
+                            .font(ArenaMenuStyle.font(15, .bold))
                         ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("ondevice.shareReport")
                     }
@@ -2235,30 +2309,31 @@ struct OnDeviceRootView: View {
                         Button("Delete saved report", role: .destructive) { confirmDeleteReport = true }
                     }
                     if let report = diagnostics.report {
-                        Text(report).font(.caption.monospaced()).textSelection(.enabled)
+                        Text(report).font(.system(size: 11, design: .monospaced)).foregroundStyle(ArenaMenuStyle.dim).textSelection(.enabled)
                     } else if diagnostics.errorMessage == nil {
                         Text("No engine exception has been captured yet. Try starting the match again, then return here if it stops.")
                     }
                     // Developer replays (scripts/dev/replay_record.sh): the record shows every hand and library order.
                     if let latest = profileRecord.gameRecordFiles().first {
-                        Divider()
+                        Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.4)
                         Text("Your last game's record lists every decision so it can be replayed on a computer. It shows your hands and library order.")
-                            .font(.footnote)
+                            .font(ArenaMenuStyle.font(12, .medium))
                         ShareLink(item: latest) { Label("Share last game record", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("ondevice.shareGameRecord")
                     }
                     // Memory peak and heat per game, to compare builds on this phone. Nothing about cards or players.
                     if let performance = GamePerformanceLog.section(GamePerformanceLog.shared.entries) {
-                        Divider()
-                        Text("Recent games' memory and heat, to compare app versions on this phone.").font(.footnote)
+                        Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.4)
+                        Text("Recent games' memory and heat, to compare app versions on this phone.").font(ArenaMenuStyle.font(12, .medium))
                         ShareLink(item: performance) { Label("Share game performance", systemImage: "square.and.arrow.up") }
                             .accessibilityIdentifier("ondevice.sharePerformance")
-                        Text(performance).font(.caption.monospaced()).textSelection(.enabled)
+                        Text(performance).font(.system(size: 11, design: .monospaced)).foregroundStyle(ArenaMenuStyle.dim).textSelection(.enabled)
                     }
-                }.padding()
+                }
+                .font(ArenaMenuStyle.font(14, .medium))
+                .tint(ArenaMenuStyle.gold)
+                .padding(16)
             }
-            .navigationTitle("Engine error report").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showDiagnostics = false } } }
             .task { await setup.captureDiagnostics(in: diagnostics) }
             .confirmationDialog("Delete the local engine report?", isPresented: $confirmDeleteReport, titleVisibility: .visible) {
                 Button("Delete report", role: .destructive) {

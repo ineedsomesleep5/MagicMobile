@@ -22,7 +22,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         let deck = app.buttons["deckStudio.deck.precon:token-triumph"]
         XCTAssertTrue(deck.waitForExistence(timeout: 10))
         if !deck.isHittable { app.swipeUp() }
-        deck.press(forDuration: 0.15)
+        UITestHarness.openDeck(app, deck)
 
         let cards = app.scrollViews["deckStudio.cards.list"]
         XCTAssertTrue(cards.waitForExistence(timeout: 10))
@@ -64,7 +64,7 @@ final class DeckStudioPinnedTabsUITests: XCTestCase {
         let deck = app.buttons["deckStudio.deck.precon:token-triumph"]
         XCTAssertTrue(deck.waitForExistence(timeout: 10))
         if !deck.isHittable { app.swipeUp() }
-        deck.press(forDuration: 0.15)
+        UITestHarness.openDeck(app, deck)
 
         let header = app.otherElements["deckStudio.deckHeader"]
         XCTAssertTrue(header.waitForExistence(timeout: 10))

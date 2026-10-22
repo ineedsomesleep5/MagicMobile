@@ -39,8 +39,7 @@ final class DeckStudioReleaseUITests: XCTestCase {
         XCTAssertTrue(app.buttons["menu.decks"].waitForExistence(timeout: 20))
         UITestHarness.settleFirstTouch(app)
         app.buttons["menu.decks"].tap()
-        XCTAssertTrue(app.buttons["deckStudio.create"].waitForExistence(timeout: 15))
-        app.buttons["deckStudio.create"].tap()
+        UITestHarness.revealCreateDeck(app).tap()
         // A new deck opens on the commander picker; this flow builds from an empty draft.
         let skip = app.buttons["deckStudio.commanderFirst.skip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 10))

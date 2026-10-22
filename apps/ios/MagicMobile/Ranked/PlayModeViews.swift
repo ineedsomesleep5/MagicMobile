@@ -6,6 +6,9 @@ struct TavernScreenHeader<Trailing: View>: View {
     let title: String
     let backTitle: String
     let back: () -> Void
+    /// False on a page the top bar's tabs reach (Profile, Ranked Hall): Arena shows no back chevron there (Caleb,
+    /// 2026-10-22). The Tavern header always keeps it, since it has no top bar to leave by.
+    var showsBack = true
     @ViewBuilder var trailing: Trailing
     @Environment(\.arenaBoard) private var arena
 
@@ -13,22 +16,25 @@ struct TavernScreenHeader<Trailing: View>: View {
         if arena { arenaHeader } else { tavernHeader }
     }
 
-    /// Arena's page title: a back chevron and the title in large type on the page itself, no bar.
+    /// Arena's page title: a back chevron (where the page has somewhere to go back to) and the title in large type on the
+    /// page itself, no bar.
     private var arenaHeader: some View {
         HStack(spacing: 4) {
-            Button {
-                GameAudio.shared.play(.uiBack)
-                back()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .heavy))
-                    .foregroundStyle(ArenaMenuStyle.text)
-                    .frame(width: 40, height: 44)
-                    .contentShape(Rectangle())
+            if showsBack {
+                Button {
+                    GameAudio.shared.play(.uiBack)
+                    back()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .heavy))
+                        .foregroundStyle(ArenaMenuStyle.text)
+                        .frame(width: 40, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(backTitle)
+                .accessibilityIdentifier("lobby.back")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(backTitle)
-            .accessibilityIdentifier("lobby.back")
             Text(title)
                 .font(ArenaMenuStyle.font(24, .bold))
                 .foregroundStyle(ArenaMenuStyle.text)
@@ -66,8 +72,8 @@ struct TavernScreenHeader<Trailing: View>: View {
 }
 
 extension TavernScreenHeader where Trailing == EmptyView {
-    init(title: String, backTitle: String, back: @escaping () -> Void) {
-        self.init(title: title, backTitle: backTitle, back: back) { EmptyView() }
+    init(title: String, backTitle: String, back: @escaping () -> Void, showsBack: Bool = true) {
+        self.init(title: title, backTitle: backTitle, back: back, showsBack: showsBack) { EmptyView() }
     }
 }
 
@@ -122,23 +128,42 @@ struct TavernLobbyPage<Content: View>: View {
     let title: String
     var backTitle = String(localized: "Main menu")
     let back: () -> Void
+    /// False on a page a top-bar tab reaches; ignored outside the Arena menus, which have no top bar.
+    var showsBack = true
+    /// A wider cap for a page laid out in columns when held sideways.
+    var contentWidth: CGFloat? = nil
+    /// False: the content fills the page below the title and scrolls in its own columns.
+    var scrolls = true
     @ViewBuilder var content: Content
     @Environment(\.arenaBoard) private var arena
     @Environment(\.arenaMenuBackdrop) private var shellBackdrop
 
     var body: some View {
         VStack(spacing: 0) {
-            TavernScreenHeader(title: title, backTitle: backTitle, back: back)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-            ScrollView {
+            // An empty title: the page heads itself (the profile's name is its headline, as Arena's is).
+            if !title.isEmpty || (showsBack || !arena) {
+                TavernScreenHeader(title: title, backTitle: backTitle, back: back, showsBack: showsBack || !arena)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
+            if scrolls {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) { content }
+                        .padding(16)
+                        .padding(.bottom, arena ? 20 : 0)
+                        .frame(maxWidth: contentWidth ?? (arena ? 760 : 640))
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                // Rows running on past the screen's foot fade out rather than being cut (the judge, 2026-10-22).
+                .mask { if arena { ArenaScrollFade() } else { Color.black } }
+                .accessibilityIdentifier("lobby.scroll")
+            } else {
                 VStack(alignment: .leading, spacing: 16) { content }
-                    .padding(16)
-                    .frame(maxWidth: arena ? 760 : 640)
+                    .padding(.horizontal, 16).padding(.top, 8)
+                    .frame(maxWidth: contentWidth ?? (arena ? 760 : 640), maxHeight: .infinity, alignment: .top)
                     .frame(maxWidth: .infinity)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .accessibilityIdentifier("lobby.scroll")
         }
         .foregroundStyle(arena ? ArenaMenuStyle.text : TavernPalette.parchment)
         .background {
@@ -162,6 +187,9 @@ struct DeckBracketSheet: View {
     let declared: Binding<CommanderBracket?>?
     let fixedBracket: CommanderBracket?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.arenaPanelClose) private var panelClose
+    /// Closes the Arena menu panel this page is shown in, or the sheet elsewhere.
+    private func closePanel() { if let panelClose { panelClose() } else { dismiss() } }
 
     private var effective: CommanderBracket {
         fixedBracket ?? DeckBracketPreference.effective(minimum: report.minimum, declared: declared?.wrappedValue)
@@ -172,7 +200,7 @@ struct DeckBracketSheet: View {
             HStack(spacing: 10) {
                 TavernPanelTitle(text: String(localized: "Bracket"))
                 Spacer(minLength: 8)
-                Button { dismiss() } label: { TavernSealLabel() }
+                Button { closePanel() } label: { TavernSealLabel() }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "Done"))
                     .accessibilityIdentifier("bracket.close")

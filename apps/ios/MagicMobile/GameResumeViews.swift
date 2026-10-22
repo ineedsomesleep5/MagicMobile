@@ -54,7 +54,7 @@ struct GameResumeNoticeBanner: View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(BrandTheme.ember)
+                .foregroundStyle(ArenaMenuStyle.gold)
                 .accessibilityHidden(true)
             Text(message)
                 .font(.subheadline.weight(.semibold))
@@ -69,15 +69,7 @@ struct GameResumeNoticeBanner: View {
             .accessibilityLabel(GameResumeText.dismiss)
         }
         .padding(.leading, 14)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(BrandTheme.surface.opacity(0.97))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(BrandTheme.border, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.45), radius: 12, y: 6)
+        .modifier(ArenaGlassPanel(cornerRadius: 14, opacity: 0.97))
         .frame(maxWidth: 520)
         .padding(.horizontal, 16)
         .padding(.top, 8)
