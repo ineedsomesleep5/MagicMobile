@@ -81,3 +81,10 @@ for name in ('tavern-fx-counter-plus', 'tavern-fx-counter-minus', 'tavern-fx-cou
     pngs = sorted(folder.glob('*.png'))
     if pngs:
         shutil.copyfile(pngs[-1], fx_out / f'{name}.png')
+
+# The engine's ability icons (Assets.xcassets xmage-icon-*), drawn as template images in the tiles' badge row.
+icons_out = out / 'icons'
+icons_out.mkdir(parents=True, exist_ok=True)
+for folder in sorted((repo / 'apps/ios/MagicMobile/Assets.xcassets').glob('xmage-icon-*.imageset')):
+    for svg in folder.glob('*.svg'):
+        shutil.copyfile(svg, icons_out / f'{folder.stem}.svg')

@@ -263,15 +263,17 @@ function Veil({ back, onDismiss, children }: { back: string; onDismiss?: () => v
 interface Subjected { object?: XmageStackObject; card?: ZoneCard }
 
 /** The frame every browser shares (ArenaBrowserFrame): title and line, content, answers, the source card on the right. */
-export function Frame({ title, detail, subject, snapshot, k, inspect, footer, column, back = "Back to the choice", onDismiss, children }: {
+export function Frame({ title, detail, heading, subject, snapshot, k, inspect, footer, column, back = "Back to the choice", onDismiss, children }: {
   title: string; detail?: string; subject?: Subjected; snapshot: GameSnapshot; k: number; inspect?: Inspect; footer?: React.ReactNode;
+  /** A header of the browser's own in place of the title and detail lines. */
+  heading?: React.ReactNode;
   column?: boolean; back?: string; onDismiss?: () => void; children: React.ReactNode;
 }) {
   const shows = subject !== undefined && (subject.object !== undefined || subject.card !== undefined);
   return (
     <Veil back={back} onDismiss={onDismiss}>
       <div className="bbody" data-veil="" style={shows ? { paddingRight: 124 * k + 40 } : undefined}>
-        <header data-veil=""><h2><RulesText text={title} /></h2>{detail && <p><RulesText text={detail} /></p>}</header>
+        <header data-veil="">{heading ?? <><h2><RulesText text={title} /></h2>{detail && <p><RulesText text={detail} /></p>}</>}</header>
         <div className={`bcontent ${column ? "column" : ""}`} data-veil="">{children}</div>
         {footer && <div className="bfoot">{footer}</div>}
       </div>
@@ -695,27 +697,63 @@ export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, heigh
 }
 
 /** The whole stack (ArenaStackBrowser), from what resolves next: abilities as ability cards, who controls each, its targets. */
-export function StackBrowser({ snapshot, height, inspect, close }: { snapshot: GameSnapshot; height: number; inspect?: Inspect; close: () => void }) {
+/**
+ * The stack (ArenaStackBrowser): its count on a coin, whether you are responding, each object in resolve order with its
+ * number on a coin, a gold rim and "RESOLVES NEXT" on the first, whose it is and what it targets; Stop skipping and
+ * Resolve All when they apply, and Done.
+ */
+export function StackBrowser({ snapshot, height, inspect, close, resolveAll, stopSkipping }: {
+  snapshot: GameSnapshot; height: number; inspect?: Inspect; close: () => void; resolveAll?: () => void; stopSkipping?: () => void;
+}) {
   const stack = snapshot.xmage?.stack ?? [];
-  const battlefield = snapshot.players.flatMap((p) => p.zones.battlefield);
-  const nameOf = (id: string) => (id === snapshot.viewerPlayerId ? "you" : snapshot.players.find((p) => p.playerId === id)?.displayName ?? battlefield.find((c) => c.instanceId === id)?.card.name);
-  const width = Math.min(height * 0.46, 250) * 0.72;
+  const width = Math.min(height * 0.5, 230) * 0.72;
+  const responding = (snapshot.legalActions ?? []).some((a) => ["pass_priority", "pass_until_response", "advance_phase"].includes(a.type));
+  const owner = (controller?: string) => (controller === undefined ? undefined : controller === snapshot.viewerPlayerId ? "Yours"
+    : `${snapshot.players.find((p) => p.playerId === controller)?.displayName ?? "Their"}’s`);
   return (
-    <Frame title="The stack" detail={stack.length === 0 ? "The stack is empty." : "Left to right, from what resolves next."} snapshot={snapshot}
-      k={height / 440} inspect={inspect} onDismiss={close} back="Back to the stack" footer={<button type="button" className="aplaque ember" onClick={close}>Done</button>}>
+    <Frame title="The Stack" snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close} back="Back to the stack"
+      heading={<>
+        <h2 className="stackhead">The Stack <span className="bcount" aria-label={`${stack.length} on the stack`}>{stack.length}</span></h2>
+        <p className="stacksub">{stack.length > 1 ? "Resolves left to right" : "Resolves next"}
+          <b className={`btag ${responding ? "ember" : ""}`}>{responding ? "YOUR RESPONSE" : "WAITING"}</b></p>
+      </>}
+      footer={<>
+        {stopSkipping && <button type="button" className="aplaque leather" onClick={stopSkipping}>Stop skipping</button>}
+        {resolveAll && <button type="button" className="aplaque leather" onClick={() => { close(); resolveAll(); }}>Resolve All</button>}
+        <button type="button" className="aplaque ember" onClick={close}>Done</button>
+      </>}>
       {stack.map((item, index) => {
-        const targets = (item.targetIds ?? []).map(nameOf).filter(Boolean);
-        const controller = item.controllerId === snapshot.viewerPlayerId ? "Yours" : `${snapshot.players.find((p) => p.playerId === item.controllerId)?.displayName ?? "Their"}’s`;
+        const next = index === 0;
+        const targets = stackTargetLabels(item.targetIds ?? [], snapshot);
+        const whose = owner(item.controllerId) ?? item.sourceName ?? item.name;
         return (
-          <div key={item.id} className={`bitem ${index === 0 ? "next" : ""}`}>
-            <Subject object={item} snapshot={snapshot} width={width} inspect={inspect} />
-            <span className="who">{controller}</span>
-            {targets.length > 0 && <span className="tgt">Targets {targets.join(", ")}</span>}
+          <div key={item.id} className={`bitem ${next ? "next" : ""}`}>
+            <div className="bstackcard">
+              <Subject object={item} snapshot={snapshot} width={width} inspect={inspect} />
+              <span className="bcoin">{index + 1}</span>
+            </div>
+            <span className={`who ${next ? "next" : ""}`}>{next ? "RESOLVES NEXT" : whose.toUpperCase()}</span>
+            {next && <span className="owner">{whose}</span>}
+            {targets.length > 0 && <span className="tgt"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M10 1.5v5M10 13.5v5M1.5 10h5M13.5 10h5" stroke="currentColor" strokeWidth="1.8" /></svg>{targets.join(", ")}</span>}
           </div>
         );
       })}
     </Frame>
   );
+}
+
+/** StackTargetPresentation.labels: a player's name, a card's (a face-down one stays hidden), a stack object's, else unavailable. */
+export function stackTargetLabels(ids: string[], snapshot: GameSnapshot): string[] {
+  const cards = snapshot.players.flatMap((p) => [...p.zones.battlefield, ...p.zones.graveyard, ...p.zones.exile, ...p.zones.command, ...p.zones.hand]);
+  return ids.map((id) => {
+    const player = snapshot.players.find((p) => p.playerId === id);
+    if (player) return id === snapshot.viewerPlayerId ? "You" : player.displayName ?? "Opponent";
+    const card = cards.find((c) => c.instanceId === id);
+    if (card) return card.card.name === "Face-down card" || (card.cardIcons ?? []).some((i) => i.iconType.toUpperCase() === "OTHER_FACEDOWN") ? "Hidden card" : card.card.name;
+    const object = snapshot.xmage?.stack.find((o) => o.id === id || o.objectId === id);
+    if (object) return object.sourceCard?.card.name ?? object.sourceName ?? object.name ?? "Unavailable target";
+    return "Unavailable target";
+  });
 }
 
 /**

@@ -70,3 +70,15 @@ describe("arena-board-cases.json", () => {
     for (const [label, symbol] of cases.colors) expect(colorSymbol(label) ?? null, label).toBe(symbol);
   });
 });
+
+describe("tile ability badges", () => {
+  it("fits as many icons as the tile allows, at most four, with a +N coin for the rest", async () => {
+    const { abilityBadgePlan } = await import("../src/core/models");
+    const icons = ["ABILITY_FLYING", "ABILITY_TRAMPLE", "ABILITY_LIFELINK", "ABILITY_REACH", "ABILITY_VIGILANCE"].map((iconType) => ({ iconType }));
+    expect(abilityBadgePlan(icons, 66)).toMatchObject({ hiddenCount: 3 });
+    expect(abilityBadgePlan(icons, 66).visible).toHaveLength(2);
+    expect(abilityBadgePlan(icons.slice(0, 3), 66)).toMatchObject({ hiddenCount: 0 });
+    expect(abilityBadgePlan(icons, 93)).toMatchObject({ size: 15, hiddenCount: 2 });
+    expect(abilityBadgePlan([], 93)).toMatchObject({ hiddenCount: 0, visible: [] });
+  });
+});

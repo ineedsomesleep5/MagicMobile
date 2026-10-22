@@ -4,7 +4,7 @@
  * painted by tileArt.paintTile, whose glow is a drop-shadow tracing the frame (the frame-outline glow).
  */
 import { memo, useEffect, useRef, useState } from "react";
-import { displayPower, displayToughness, isCreatureCard, type ZoneCard } from "../../core/models";
+import { abilityBadgePlan, displayPower, displayToughness, isCreatureCard, visibleXmageIcons, XmageIcons, type ZoneCard } from "../../core/models";
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols, useCardArtURL } from "../cardArt";
 import { AbilityCard } from "./AbilityCard";
@@ -69,7 +69,7 @@ function colorEdge(card: ZoneCard): string {
  * below its art: a name bar tinted by its colour, the art, a silver power/toughness box hanging off the corner (a shield
  * for a planeswalker's loyalty or a battle's defense); a token sits in an arched frame. Its glow traces this outline.
  */
-export function PlainTile({ card }: { card: ZoneCard }) {
+export function PlainTile({ card, width = 66 }: { card: ZoneCard; width?: number }) {
   const token = card.card.isToken === true || /token/i.test(card.card.typeLine);
   const legendary = /legendary/i.test(card.card.typeLine);
   const creature = card.isCreaturePermanent ?? isCreatureCard(card);
@@ -81,6 +81,7 @@ export function PlainTile({ card }: { card: ZoneCard }) {
     ? Object.entries(card.counters ?? {}).find(([k]) => k.toLowerCase().includes(shieldName))?.[1] : undefined;
   const chips = Object.entries(card.counters ?? {}).filter(([k, n]) => n > 0 && !(shield !== undefined && k.toLowerCase().includes(shieldName)));
   const art = useCardArtURL(card.card, "art_crop");
+  const badges = abilityBadgePlan(visibleXmageIcons(card), width);
   const [failed, setFailed] = useState(false);
   return (
     <div className={`plain ${token ? "token" : ""}`} style={{ ["--edge" as string]: colorEdge(card) }}>
@@ -92,6 +93,19 @@ export function PlainTile({ card }: { card: ZoneCard }) {
         </div>
       </div>
       {card.tapped && !card.isAttacking && TAPMARK}
+      {/* The keyword and ability icons along the bottom left (BattlefieldAbilityBadges), "+N" for those that don't fit. */}
+      {badges.visible.length + badges.hiddenCount > 0 && (
+        <div className="pbadges" style={{ ["--badge" as string]: `${(badges.size + 4) / (width / 15)}em` }}>
+          {badges.visible.map((icon, index) => {
+            const asset = XmageIcons.assetName(icon.iconType);
+            return XmageIcons.textBadge(icon) === "Menace" ? <i key={index} className="menace">{MENACE}</i>
+              : asset ? <i key={index} style={{ ["--icon" as string]: `url(/generated/icons/${asset}.svg)` }} /> : null;
+          })}
+          {badges.hiddenCount > 0 && <b>+{badges.hiddenCount}</b>}
+        </div>
+      )}
+      {/* A token copy says so inside its frame, under the arch. */}
+      {card.card.isToken === true && card.card.copySourceArtworkName && <div className="pcopy">COPY</div>}
       {chips.length > 0 && (
         <div className="pchips">{chips.slice(0, 2).map(([k, n]) => (
           <span key={k} title={`${n} ${k}`}>{/\+1\/\+1/.test(k) ? `+${n}` : /-1\/-1/.test(k) ? `−${n}` : n}</span>
@@ -122,6 +136,7 @@ export function Face({ name, cost, showCost }: { name: string; cost?: string; sh
   );
 }
 
+const MENACE = <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="6" r="3" /><circle cx="13.5" cy="6.5" r="2.6" /><path d="M1.5 16c0-3.2 2.5-5.2 5.5-5.2s5.5 2 5.5 5.2zM12.6 10.9c2.8-.2 5.4 1.5 5.4 5.1h-4.3c0-2-.4-3.7-1.1-5.1z" /></svg>;
 const FLAME = <svg viewBox="0 0 20 20"><path d="M10 1c1 3.2 5.5 5.6 5.5 10.4A5.5 5.5 0 0 1 4.5 11.6c0-2.3 1.1-3.9 2.3-5.1.1 1.6.8 2.8 2 3.4C8.4 6.6 9.2 3.6 10 1z" /></svg>;
 const SPARKLES = <svg viewBox="0 0 20 20"><path d="M8 1l1.6 4.6L14 7.2 9.6 8.8 8 13.4 6.4 8.8 2 7.2l4.4-1.6zM15 10l.9 2.4 2.4.9-2.4.9L15 16.6l-.9-2.4-2.4-.9 2.4-.9z" /></svg>;
 
@@ -164,7 +179,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
     : undefined;
   const printed = name ?? card?.card.name ?? "";
   return (
-    <div className={`acard ${classes ?? ""}`} data-id={id} data-view={view} data-o={owner} style={style} role={onClick ? "button" : undefined}
+    <div className={`acard ${classes ?? ""}`} data-id={id} data-view={view} data-o={owner} data-hand={inHand ? "" : undefined} style={style} role={onClick ? "button" : undefined}
       aria-label={label ?? (view === "back" ? "Card" : extraZone ? `${printed}, playable from your ${extraZone.toLowerCase()}` : printed)} tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? (event) => onClick(id, event) : undefined}
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}
@@ -174,7 +189,7 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
       onMouseLeave={onHover && view !== "back" ? () => onHover(undefined) : undefined}>
       <div className="lean" style={lean}>
         <div className="spin" style={{ transform: `rotate(${place.r ?? 0}deg) scale(${place.s ?? 1})` }}>
-          {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} />)}
+          {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} width={place.w} />)}
           {view === "face" && (ability ? <AbilityCard source={ability.source} name={ability.name} text={ability.text} />
             : <Face name={printed} cost={card?.card.manaCost} showCost={inHand === true} />)}
           {view === "face" && extraZone && (

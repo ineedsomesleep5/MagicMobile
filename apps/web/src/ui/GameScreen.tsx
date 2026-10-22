@@ -1298,7 +1298,9 @@ export function GameScreen({ table }: { table: GameTable }) {
         )}
         {stackOpen && snapshot && (
           <div onClick={stop}>
-            <StackBrowser snapshot={snapshot} height={geo.height} inspect={inspect} close={() => setStackOpen(false)} />
+            <StackBrowser snapshot={snapshot} height={geo.height} inspect={inspect} close={() => setStackOpen(false)}
+              resolveAll={secondary?.label === "Resolve All" ? secondary.onClick : undefined}
+              stopSkipping={skipping && session ? () => session.stopAutoPass() : undefined} />
           </div>
         )}
 

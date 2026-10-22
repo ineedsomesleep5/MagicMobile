@@ -491,6 +491,14 @@ export const visibleXmageIcons = (c: ZoneCard): XmageCardIcon[] => {
   return [...engine, ...XmageIcons.keywordIcons(c.card.oracleText).filter((icon) => !present.has(icon.iconType))];
 };
 
+/** BattlefieldAbilityBadgePlan: as many icons as fit across the tile (at most four), a "+N" coin for the rest. */
+export function abilityBadgePlan(icons: XmageCardIcon[], cardWidth: number): { visible: XmageCardIcon[]; hiddenCount: number; size: number } {
+  const size = Math.min(15, Math.max(10, cardWidth * 0.17));
+  const slots = Math.min(4, Math.max(1, Math.floor((cardWidth - 4) / (size + 5))));
+  const count = Math.min(icons.length, icons.length > slots ? Math.max(0, slots - 1) : slots);
+  return { visible: icons.slice(0, count), hiddenCount: icons.length - count, size };
+}
+
 export const compactPromptTitle = (a: LegalAction): string => {
   switch (a.type) {
     case "pass_priority": return "Pass Priority";

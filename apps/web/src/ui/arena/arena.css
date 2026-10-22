@@ -409,7 +409,17 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .bitem { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .bitem .who { font: 700 11px/1.2 var(--serif); letter-spacing: .1em; text-transform: uppercase; color: #fad584; text-align: center; max-width: 180px; }
 .bitem .tgt { font: 500 12px/1.25 var(--serif); color: rgba(243,234,216,.8); text-align: center; max-width: 180px; }
-.bitem.next .who::before { content: "Resolves next · "; color: #ffe08f; }
+.bitem .who.next { color: #fab866; letter-spacing: .08em; }
+.bitem .owner { margin-top: -4px; font: italic 500 11px/1.2 var(--serif); color: rgba(243,234,216,.75); }
+.bitem .tgt { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: #f3ead8; }
+.bitem .tgt svg { width: 11px; height: 11px; flex: none; }
+.bstackcard { position: relative; }
+.bitem.next .bstackcard > :first-child { box-shadow: 0 0 0 3px #ffd166, 0 0 16px rgba(255,190,77,.8); border-radius: .75em; }
+.stackhead { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.bcount { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; background: url(/tavern/coin.webp) center/100%; font: 900 14px/1 var(--serif); color: #401f0a; }
+.stacksub { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.btag { padding: 3px 8px; border-radius: 9px; font: 800 9.5px/1 var(--serif); letter-spacing: .08em; color: #f3ead8; background: rgba(74,46,30,.92); box-shadow: inset 0 0 0 1px rgba(201,164,92,.8); }
+.btag.ember { color: #ffb066; box-shadow: inset 0 0 0 1px rgba(255,140,60,.9); }
 /* the number pill in the button corner (ArenaAmountPill): [−5] [−] [ember answer] [+] [+5], Cancel under it */
 .apill { position: absolute; z-index: 610; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .apill .plenses { display: flex; align-items: center; }
@@ -562,6 +572,8 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
   background: #523a8c; box-shadow: inset 0 0 0 .16em #c9a45c; }
 .acard .ashimmer i svg { width: 1.8em; height: 1.8em; fill: #fff; }
 
+/* A hand card pops with a quick spring (ArenaHandFan: response 0.22, damping 0.82). */
+.acard[data-hand], .acard[data-hand] > .lean, .acard[data-hand] .spin { transition-duration: .24s; transition-timing-function: cubic-bezier(.3,1.25,.55,1); }
 /* A drawn card: from the deck to the draw spot in 0.5 s, then into the fan in 0.22 s (ArenaHandFan's arrivals). */
 .acard.arrive-1, .acard.arrive-1 > .lean, .acard.arrive-1 .spin { transition-duration: .5s; transition-timing-function: ease-in-out; }
 .acard.arrive-2, .acard.arrive-2 > .lean, .acard.arrive-2 .spin { transition-duration: .22s; transition-timing-function: ease-in-out; }
@@ -583,3 +595,13 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .arecovery .seal { flex: none; width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(#8a2a1c, #5a160d); color: #f5dfa8; box-shadow: inset 0 0 0 1.5px #c9a45c; font: 800 12px/1 var(--serif); }
 .arecovery .actions { display: flex; gap: 8px; }
 .arecovery .actions .aplaque { position: relative; height: 32px; min-width: 0; margin: 0; padding: 0 16px; font-size: 13px; }
+
+/* BattlefieldAbilityBadges: iron coins along the tile's bottom left with the engine's icons; a gold "+N" for the rest. */
+.plain .pbadges { position: absolute; left: .2em; bottom: .2em; display: flex; gap: .07em; pointer-events: none; z-index: 2; }
+.plain .pbadges > * { width: var(--badge); height: var(--badge); border-radius: 50%; background: rgba(34,31,30,.88); display: grid; place-items: center; }
+.plain .pbadges i::before { content: ""; width: 70%; height: 70%; background: #f3e6c8; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.plain .pbadges i.menace::before { display: none; }
+.plain .pbadges i.menace svg { width: 66%; height: 66%; fill: #f3e6c8; }
+.plain .pbadges b { background: #c9a45c; color: #221f1e; font: 900 calc(var(--badge) * .45)/1 var(--serif); }
+.plain .pcopy { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); padding: .1em .45em; border-radius: 1em; pointer-events: none; z-index: 2;
+  font: 800 1.5em/1.1 var(--serif); letter-spacing: .08em; color: #c9a45c; background: rgba(0,0,0,.72); box-shadow: inset 0 0 0 .05em rgba(201,164,92,.55); }
