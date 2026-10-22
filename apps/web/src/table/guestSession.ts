@@ -14,6 +14,9 @@ import {
   yieldContext, type YieldContext, type YieldMode, YieldModes, YieldPolicy,
 } from "../core/smartPass";
 import { OnDeviceSnapshotAdapter } from "../core/snapshotAdapter";
+import {
+  type ComboCommand, ComboLoop, ComboLoopStop, type ComboReplay, ComboRepeat, type ComboStanding, ComboStep, ComboWinForecast, withoutPrompts,
+} from "../core/comboLoop";
 import { HostRetryPolicy } from "./remoteEngine";
 
 /** OnDeviceGuestPollSchedule: when a guest at a phone-hosted table polls its host next. */
@@ -70,7 +73,23 @@ export interface SessionState {
   /** Questions and trigger orders this seat asked XMage to remember this game, for the "forget" controls. */
   rememberedAnswers: number;
   rememberedTriggerOrders: number;
+  /** A round the player has made three times in a row this turn, offered for repeating (ComboLoop). */
+  comboOffer?: ComboStep[];
+  /** Whether repeating the offered round ends the game: "Until they lose" is offered only then. */
+  comboWinForecast?: ComboWinForecast;
+  /** Repeating a round: how far it has got, and its last few lines. */
+  comboRun?: ComboRun;
+  /** Rounds a winning loop still needs while it finishes behind its curtain. */
+  comboFinishing?: number;
+  /** The line shown when repeating stops: rounds, life changes and why. */
+  comboResult?: string;
+  /** What the board shows while a loop repeats: the game without the prompts the repeats answer. */
+  comboPresented?: GameSnapshot;
+  /** A long loop skips the board's effects and shows the board once a round. */
+  comboFast?: boolean;
 }
+
+export interface ComboRun { round: ComboStep[]; mode: ComboRepeat; done: number; lines: string[] }
 
 const nowSeconds = () => performance.now() / 1000;
 const pause = (millis: number) => new Promise<void>((resolve) => setTimeout(resolve, millis));
@@ -488,6 +507,10 @@ export class GuestSession {
     this.pending = { promptId: prompt.id, promptRevision: prompt.revision, answer, requestID: newUuid(), label };
     this.set({ pendingActionID: actionID, working: true });
     await this.performPending();
+    // The player's own answers (not smart pass, a skip, an automatic answer or a loop's repeat) are watched for loops.
+    if (!fromSkip && !actionID.startsWith(SMART_PASS_ACTION_PREFIX) && !actionID.startsWith("auto-") && !actionID.startsWith("combo-loop")) {
+      this.noteComboStep(command as ComboCommand, label, actionID, snapshot);
+    }
     // Delivered: the standing instructions went with it (one changed meanwhile is a new value and stays queued), and what
     // was remembered is counted for the forget controls.
     for (const [type, value] of [...this.standingActions]) if (standing.includes(value)) this.standingActions.delete(type);
@@ -519,6 +542,178 @@ export class GuestSession {
       this.set({ working: false, errorMessage: error instanceof Error ? error.message : String(error) });
       throw error;
     }
+  }
+
+  // ---------------- the combo loop shortcut (OnDeviceSession, ComboLoop) ----------------
+
+  /** Solo games only: the solo table turns it on for games against the AI. */
+  comboLoopsAllowed = false;
+  private comboHistory: { step: ComboStep; turn: number; standings: Record<string, ComboStanding> }[] = [];
+  private comboDeclined?: ComboStep[];
+  private comboStopRequested = false;
+
+  /** The board's snapshot: the live game, or the repeats' quiet copy while a loop runs. */
+  get presentedSnapshot(): GameSnapshot | undefined {
+    const snapshot = this.state.snapshot;
+    return this.state.comboRun === undefined ? snapshot : this.state.comboPresented ?? (snapshot && withoutPrompts(snapshot));
+  }
+
+  private noteComboStep(command: ComboCommand, label: string, actionID: string, decision: GameSnapshot | undefined) {
+    if (!this.comboLoopsAllowed || this.state.comboRun) return;
+    const note = ComboLoop.note(command, label, actionID, decision);
+    if (note.kind === "ignore") return;
+    if (note.kind === "breaks") { this.comboHistory = []; this.set({ comboOffer: undefined, comboWinForecast: undefined }); return; }
+    const turn = decision?.turn ?? 0;
+    // A loop is offered only for rounds made in one turn.
+    if (this.comboHistory.length > 0 && this.comboHistory[this.comboHistory.length - 1].turn !== turn) this.comboHistory = [];
+    this.comboHistory.push({ step: note.step, turn, standings: decision ? ComboWinForecast.standings(decision) : {} });
+    if (this.comboHistory.length > ComboLoop.historyLimit) this.comboHistory.splice(0, this.comboHistory.length - ComboLoop.historyLimit);
+    const round = ComboLoop.cycle(this.comboHistory.map((h) => h.step));
+    const declined = this.comboDeclined;
+    const offer = round && !(declined && declined.length === round.length && declined.every((s, i) => ComboStep.equals(s, round[i]))) ? round : undefined;
+    let forecast: ComboWinForecast | undefined;
+    if (offer) {
+      // The opponents' standings at the start of each of the last rounds.
+      const length = offer.length;
+      const starts: Record<string, ComboStanding>[] = [];
+      for (let i = this.comboHistory.length - length * ComboLoop.repeatsToOffer; i < this.comboHistory.length; i += length) {
+        if (i >= 0) starts.push(this.comboHistory[i].standings);
+      }
+      const current = this.state.snapshot ?? decision;
+      forecast = current ? ComboWinForecast.forecast(starts, ComboWinForecast.opponentsCanRespond(current)) : undefined;
+    }
+    this.set({ comboOffer: offer, comboWinForecast: forecast });
+  }
+
+  /** The player said no to this round: it isn't offered again until they make a different one. */
+  declineComboLoop() {
+    this.comboDeclined = this.state.comboOffer;
+    this.set({ comboOffer: undefined, comboWinForecast: undefined });
+  }
+
+  /** Repeats the offered round a number of times, until a step can't be taken, or until every opponent has lost. */
+  startComboLoop(mode: ComboRepeat) {
+    const round = this.state.comboOffer;
+    const start = this.state.snapshot;
+    if (!round || this.state.comboRun || !start) return;
+    // "Until they lose" only runs when the rounds so far show it wins; it then goes straight to the end.
+    if (mode.kind === "untilWin" && this.state.comboWinForecast?.canFinish !== true) return;
+    this.comboStopRequested = false;
+    this.set({
+      comboFinishing: mode.kind === "untilWin" ? this.state.comboWinForecast?.rounds : undefined, comboOffer: undefined, comboWinForecast: undefined,
+      comboResult: undefined, comboPresented: withoutPrompts(start), comboRun: { round, mode, done: 0, lines: [] },
+    });
+    void this.runComboLoop(round, mode, start);
+  }
+
+  stopComboLoop() { this.comboStopRequested = true; }
+
+  private noteComboLine(line: string) {
+    const run = this.state.comboRun;
+    if (run) this.set({ comboRun: { ...run, lines: [...run.lines, line].slice(-3) } });
+  }
+
+  private async runComboLoop(round: ComboStep[], mode: ComboRepeat, start: GameSnapshot) {
+    // A long run skips the board's effects and shows the board once a round; a short one plays them at a pace you can follow.
+    const watch = ComboRepeat.watchable(mode);
+    this.set({ comboFast: !watch });
+    const limit = Math.min(ComboRepeat.count(mode) ?? (this.state.comboFinishing !== undefined ? this.state.comboFinishing + 2 : ComboLoop.maxRepeats), ComboLoop.maxRepeats);
+    let rounds = 0, unchanged = 0;
+    let lastDigest = ComboLoop.digest(start);
+    const prefer = new Map<number, string[]>();
+    let stop: ComboLoopStop = ComboLoopStop.finished;
+    repeating: while (rounds < limit) {
+      let chosen: string[] = [];
+      for (const [index, step] of round.entries()) {
+        const wait = await this.waitForComboStep(step, prefer.get(index) ?? []);
+        if (wait.kind === "stop") { stop = wait.stop; break repeating; }
+        const replay = wait.replay;
+        try { await this.submit(replay.command, replay.label, replay.actionID.startsWith("combo-loop") ? replay.actionID : `combo-loop-${replay.actionID}`); }
+        catch (error) { stop = ComboLoopStop.failed(error instanceof Error ? error.message : String(error)); break repeating; }
+        if (replay.chosenNames.length > 0) {
+          prefer.set(index, replay.chosenNames);
+          if (chosen.length === 0 || step.targets.some((t) => t.controller === "opponent")) chosen = replay.chosenNames;
+        }
+        if (replay.retargeted) this.noteComboLine(`${replay.retargeted.from} is gone, now ${replay.retargeted.to}`);
+        if (watch && this.state.snapshot) this.set({ comboPresented: withoutPrompts(this.state.snapshot) });
+      }
+      rounds += 1;
+      const run = this.state.comboRun;
+      if (run) this.set({ comboRun: { ...run, done: rounds } });
+      this.noteComboLine(ComboLoop.roundLine(rounds, round, chosen));
+      const current = this.state.snapshot;
+      if (!current) break;
+      if (this.state.comboFinishing === undefined) this.set({ comboPresented: withoutPrompts(current) });
+      if (current.gameStatus === "completed") { stop = ComboLoopStop.gameOver; break; }
+      if (watch) { await this.waitForBoardPresentation(); await pause(450); }
+      // Open-ended repeats stop a loop that has stopped doing anything visible; a count simply runs out.
+      if (ComboRepeat.count(mode) === undefined) {
+        const digest = ComboLoop.digest(current);
+        unchanged = digest === lastDigest ? unchanged + 1 : 0;
+        lastDigest = digest;
+        if (unchanged >= ComboLoop.unchangedRoundsToStop) { stop = ComboLoopStop.nothingChanged; break; }
+      }
+    }
+    if (ComboRepeat.count(mode) === undefined && stop.kind === "finished") {
+      stop = this.state.comboFinishing !== undefined ? ComboLoopStop.didNotFinish(rounds) : ComboLoopStop.reachedLimit;
+    }
+    const summary = ComboLoop.summary(rounds, start, this.state.snapshot ?? start);
+    const result = stop.kind === "finished" || stop.kind === "gameOver" ? summary
+      : stop.kind === "stepMissing" && mode.kind === "untilCant" && rounds > 0 ? `${summary}, until it couldn't go on: ${stop.why}.`
+        : `${summary}. ${ComboLoopStop.message(stop)}`;
+    this.comboHistory = [];
+    this.comboDeclined = round;
+    this.set({ comboResult: result, comboRun: undefined, comboPresented: undefined, comboFinishing: undefined, comboFast: false });
+  }
+
+  /**
+   * Waits for this step's answer to be possible: the session idle, the player's own triggers resolved when the step was
+   * taken with an empty stack (passing priority for them), and the step among the choices. Stops when the game ends, an
+   * opponent responds, the player is asked something the round doesn't answer, or nothing comes.
+   */
+  private async waitForComboStep(step: ComboStep, prefer: string[]): Promise<{ kind: "ready"; replay: ComboReplay } | { kind: "stop"; stop: ComboLoopStop }> {
+    const started = Date.now();
+    let askedSince: number | undefined;
+    let passedFor: string | undefined;
+    while (Date.now() - started < 45_000) {
+      if (this.comboStopRequested || this.stopped) return { kind: "stop", stop: ComboLoopStop.stoppedByPlayer };
+      const current = this.state.snapshot;
+      if (current) {
+        if (current.gameStatus === "completed") return { kind: "stop", stop: ComboLoopStop.gameOver };
+        const idle = !this.state.working && !this.state.autoPassing && this.state.pendingActionID === undefined && !this.pending &&
+          !this.smartPassing && !this.heldAbility;
+        if (idle) {
+          if (ComboLoop.opponentResponded(current)) return { kind: "stop", stop: ComboLoopStop.opponentResponded };
+          const asked = (current.legalActions ?? []).length > 0 || (current.promptEnvelopeV2 !== undefined && current.promptEnvelopeV2.playerId === current.viewerPlayerId);
+          if (ComboLoop.waitsForStack(step, current)) {
+            // The round's own triggers are still resolving: pass for them, once per prompt.
+            const key = current.promptEnvelopeV2?.id ?? String(current.bridgeRevision ?? 0);
+            const pass = ComboLoop.pass(current);
+            if (pass && passedFor !== key) {
+              passedFor = key;
+              askedSince = undefined;
+              try { await this.submit(pass.command, pass.label, `combo-loop-pass-${key}`); }
+              catch (error) { return { kind: "stop", stop: ComboLoopStop.failed(error instanceof Error ? error.message : String(error)) }; }
+              continue;
+            }
+            if (asked && !pass) {
+              askedSince ??= Date.now();
+              if (Date.now() - askedSince > 3000) return { kind: "stop", stop: ComboLoopStop.stepMissing("a choice the loop doesn't make came up") };
+            }
+          } else {
+            const replay = ComboLoop.command(step, current, prefer);
+            if (replay) return { kind: "ready", replay };
+            if (asked) {
+              askedSince ??= Date.now();
+              if (Date.now() - askedSince > 3000) return { kind: "stop", stop: ComboLoopStop.stepMissing(ComboLoop.missing(step)) };
+            } else askedSince = undefined;
+          }
+        }
+      }
+      // A long or winning run checks back quickly; nothing is drawn between its rounds.
+      await pause(this.state.comboFast ? 40 : 120);
+    }
+    return { kind: "stop", stop: ComboLoopStop.stepMissing(ComboLoop.missing(step)) };
   }
 
   /** The browser player concedes; the host plays on or ends the game. */

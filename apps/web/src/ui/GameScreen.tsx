@@ -27,6 +27,7 @@ import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus
 import { Inspector } from "./arena/Inspector";
 import { StatusBadge } from "./arena/StatusBadge";
 import { ResultBackdrop } from "./arena/ResultBackdrop";
+import { ComboLoopOverlay } from "./arena/ComboLoop";
 import { ORBIT, orbitOffsets, orbitOrder, orbitShown, statusBadges } from "../core/playerStatus";
 import { GameLog } from "./arena/GameLog";
 import { CombatLogReasons } from "../core/gameLog";
@@ -157,7 +158,8 @@ function phaseIndex(step: string | undefined): number | undefined {
 export function GameScreen({ table }: { table: GameTable }) {
   useTable(table);
   const session = table.session;
-  const snapshot = session?.state.snapshot;
+  // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
+  const snapshot = session?.state.comboRun ? session.presentedSnapshot : session?.state.snapshot;
   const wrapRef = useRef<HTMLDivElement>(null);
   const geo = useGeometry(wrapRef);
   /** Plate points to board points: in proportion (the middle), from the top edge (theirs), from the bottom edge (yours). */
@@ -200,7 +202,8 @@ export function GameScreen({ table }: { table: GameTable }) {
   // Board effects (iOS magicmobile.boardEffectsLevel): Full by default; the system's Reduce Motion caps it at Reduced.
   const [fxSetting, setFxSetting] = useState(() => storage.get("mm.web.boardEffects") ?? "full");
   const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-  const fxLevel: BoardFXLevel = resolvedLevel(fxSetting, reduceMotion);
+  // A long loop runs without the board's effects (BoardFXLevel.suppressedForLoop).
+  const fxLevel: BoardFXLevel = session?.state.comboFast ? "off" : resolvedLevel(fxSetting, reduceMotion);
   const fx = useBoardFX(snapshot, session, fxLevel);
   const combatReasons = useRef(new CombatLogReasons());
   const stageRef = useRef<HTMLDivElement>(null);
@@ -1048,6 +1051,7 @@ export function GameScreen({ table }: { table: GameTable }) {
       }}
       onPointerLeave={() => setPopped(undefined)}>
       <div className="avignette" ref={vignetteRef} aria-hidden="true" />
+      {session && !finished && <ComboLoopOverlay session={session} />}
       <div className="arena-stage" aria-label="Game table" ref={stageRef}
         style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})` }}>
         <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined}

@@ -108,6 +108,8 @@ export class SoloTable implements GameTable {
       session.smartPass = loadSmartPass(storage.get);
       session.supportedAnswerActions = new Set(answerActions);
       session.setAutoPassAfterCast(storage.get("mm.web.autoPassAfterCast") !== "off");
+      // The combo loop shortcut, as in solo games on the phones.
+      session.comboLoopsAllowed = true;
       this.session = session;
       session.start();
       this.set({ stage: "playing", status: "Playing the XMage AI on this computer." });

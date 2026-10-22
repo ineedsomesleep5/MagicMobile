@@ -221,36 +221,7 @@ final class ParityGoldenTests: XCTestCase {
                                 commandNames: Set(json["commandNames"] as? [String] ?? []),
                                 blockedAttackers: Set(json["blocked"] as? [String] ?? []))
         }
-        func summary(_ event: BoardFXEvent) -> String {
-            switch event {
-            case let .spellCast(id, _, controller, _, weight):
-                let name: String
-                switch weight { case .ability: name = "ability"; case .spell: name = "spell"; case .big: name = "big"; case .commander: name = "commander" }
-                return "cast \(id) \(name) by \(controller ?? "nil")"
-            case let .attackDeclared(id, _): return "attack \(id)"
-            case let .blockDeclared(id, attacker): return "block \(id) \(attacker)"
-            case .firstStrikeBeat: return "first-strike"
-            case let .combatStrike(id, target, _, first):
-                let aim: String
-                switch target { case let .card(card): aim = "card:\(card)"; case let .player(player): aim = "player:\(player)" }
-                return "strike \(id) -> \(aim) \(first ? "first" : "regular")"
-            case let .damageMarked(id, amount): return "damage \(id) \(amount)"
-            case let .leftBattlefield(id, _, zone, _): return "left \(id) \(zone?.rawValue ?? "nil")"
-            case let .enteredBattlefield(id, _, from, _, entrance):
-                let how: String
-                switch entrance { case .plain: how = "plain"; case .showcase: how = "showcase"; case .commander: how = "commander" }
-                return "entered \(id) \(from?.rawValue ?? "nil") \(how)"
-            case let .countersChanged(id, kind, delta):
-                let name: String
-                switch kind { case .plusOne: name = "plusOne"; case .minusOne: name = "minusOne"; case .loyalty: name = "loyalty"; case .other: name = "other" }
-                return "counters \(id) \(name) \(delta)"
-            case let .statsChanged(id, power, toughness): return "stats \(id) \(power)/\(toughness)"
-            case let .phased(id, out): return "phased \(id) \(out ? "out" : "in")"
-            case let .transformed(id, name): return "transformed \(id) \(name)"
-            case let .controlChanged(id, from, to): return "control \(id) \(from) -> \(to)"
-            case let .lifeChanged(id, delta): return "life \(id) \(delta)"
-            }
-        }
+        let summary = Self.eventSummary
         func three(_ value: TimeInterval) -> String { String(format: "%.3f", value) }
         let transitions = try XCTUnwrap(root["transitions"] as? [[String: Any]])
         XCTAssertFalse(transitions.isEmpty)
@@ -275,6 +246,111 @@ final class ParityGoldenTests: XCTestCase {
                 XCTAssertEqual(ArenaSweepRecap.text(spell: item["spell"] as? String, events: events), item["recap"] as? String, "\(at) · recap")
             }
         }
+    }
+
+    /// One board event in a line, the same words as test/paceCases.ts eventSummary on the web.
+    static func eventSummary(_ event: BoardFXEvent) -> String {
+        switch event {
+        case let .spellCast(id, _, controller, _, weight):
+            let name: String
+            switch weight { case .ability: name = "ability"; case .spell: name = "spell"; case .big: name = "big"; case .commander: name = "commander" }
+            return "cast \(id) \(name) by \(controller ?? "nil")"
+        case let .attackDeclared(id, _): return "attack \(id)"
+        case let .blockDeclared(id, attacker): return "block \(id) \(attacker)"
+        case .firstStrikeBeat: return "first-strike"
+        case let .combatStrike(id, target, _, first):
+            let aim: String
+            switch target { case let .card(card): aim = "card:\(card)"; case let .player(player): aim = "player:\(player)" }
+            return "strike \(id) -> \(aim) \(first ? "first" : "regular")"
+        case let .damageMarked(id, amount): return "damage \(id) \(amount)"
+        case let .leftBattlefield(id, _, zone, _): return "left \(id) \(zone?.rawValue ?? "nil")"
+        case let .enteredBattlefield(id, _, from, _, entrance):
+            let how: String
+            switch entrance { case .plain: how = "plain"; case .showcase: how = "showcase"; case .commander: how = "commander" }
+            return "entered \(id) \(from?.rawValue ?? "nil") \(how)"
+        case let .countersChanged(id, kind, delta):
+            let name: String
+            switch kind { case .plusOne: name = "plusOne"; case .minusOne: name = "minusOne"; case .loyalty: name = "loyalty"; case .other: name = "other" }
+            return "counters \(id) \(name) \(delta)"
+        case let .statsChanged(id, power, toughness): return "stats \(id) \(power)/\(toughness)"
+        case let .phased(id, out): return "phased \(id) \(out ? "out" : "in")"
+        case let .transformed(id, name): return "transformed \(id) \(name)"
+        case let .controlChanged(id, from, to): return "control \(id) \(from) -> \(to)"
+        case let .lifeChanged(id, delta): return "life \(id) \(delta)"
+        }
+    }
+
+    /// parity/replay: real web games' engine polls, replayed through the iOS code. For every poll: the prompt, smart pass's
+    /// decision with the default settings, Auto Pay's next step and the board events since the previous poll. The web runs
+    /// the same polls (apps/web test/replay.test.ts) and must produce this golden exactly.
+    func testWebReplaysMatchGoldens() throws {
+        let directory = parityDirectory.appendingPathComponent("replay")
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".deflate") }.sorted()
+        XCTAssertFalse(names.isEmpty)
+        for name in names {
+            // Raw DEFLATE (Node's deflateRawSync), which Foundation's zlib algorithm reads.
+            let packed = try Data(contentsOf: directory.appendingPathComponent(name)) as NSData
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: packed.decompressed(using: .zlib) as Data) as? [String: Any])
+            let polls = try XCTUnwrap(root["polls"] as? [Any])
+            var trace: [[String: Any]] = []
+            var previous: BoardFXState?
+            var commanders = Set<String>()
+            for raw in polls {
+                let poll = try MatchPoll(MagicMobileOnDevice.JSONValue.decode(JSONSerialization.data(withJSONObject: raw)))
+                let snapshot = poll.snapshot == nil ? nil : try OnDeviceSnapshotAdapter.snapshot(poll, expectedSeatID: poll.seatID, log: [])
+                let situation = Self.smartPassSituation(poll, snapshot: snapshot)
+                let paying = snapshot.map { $0.manaPayment?.active == true || $0.promptEnvelopeV2?.responseKind.lowercased() == "mana" } ?? false
+                var autoPay: Any = NSNull()
+                if paying, let snapshot {
+                    switch ArenaAutoPay.next(in: snapshot) {
+                    case let .tap(actionID, color): autoPay = "tap \(actionID)\(color.map { " \($0)" } ?? "")"
+                    case let .spend(symbol): autoPay = "spend \(symbol)"
+                    case .done: autoPay = "done"
+                    case let .blocked(reason): autoPay = "blocked \(reason)"
+                    }
+                }
+                var events: [String] = []
+                if let snapshot {
+                    let state = BoardFXState(snapshot: snapshot)
+                    commanders.formUnion(state.commandNames)
+                    if let previous, previous.gameID == state.gameID {
+                        events = BoardEventDiffer.events(from: previous, to: state, commanders: commanders).map(Self.eventSummary)
+                    }
+                    previous = state
+                }
+                let pass: String? = situation.map { OnDeviceSmartPass.passPrompt($0, settings: .init()) != nil ? "pass" : "stop" }
+                trace.append(["revision": Int(poll.revision), "phase": poll.phase, "prompt": ParitySummary.o(poll.prompt?.kind),
+                              "smartPass": ParitySummary.o(pass), "autoPay": autoPay, "events": events])
+            }
+            try check(["trace": trace], name: "replay-" + name.replacingOccurrences(of: ".deflate", with: ".json"))
+        }
+    }
+
+    /// OnDeviceSession.yieldContext and smartPassSituation for a solo seat in the foreground, from one poll (a test copy of
+    /// the session's private assembly; the decision itself is OnDeviceSmartPass's).
+    private static func smartPassSituation(_ poll: MatchPoll, snapshot: GameSnapshot?) -> OnDeviceSmartPass.Situation? {
+        guard let root = poll.snapshot, let view = root["gameView"],
+              let viewer = root["enginePlayerId"]?.string, view["myPlayerId"]?.string == viewer,
+              let turn = view["turn"]?.integer, let active = view["activePlayerId"]?.string,
+              let stack = view["stack"]?.object, let controls = root["controlledPlayerViews"]?.object,
+              let players = view["players"]?.array,
+              let owner = players.first(where: { $0["playerId"]?.string == viewer }),
+              owner["isHuman"]?.bool == true,
+              let priority = owner["hasPriority"]?.bool, let timer = owner["timerActive"]?.bool else { return nil }
+        let prompt = poll.prompt.map {
+            OnDeviceYieldPolicy.Prompt(id: $0.id, revision: $0.revision, kind: $0.kind, selectMode: $0.payload["selectMode"]?.string,
+                                       allowsBoolean: $0.responseTypes.contains("boolean"), submitted: $0.submitted,
+                                       manaPlayerID: $0.payload["manaPlayerId"]?.string)
+        }
+        let selfAuthority = controls.isEmpty && (!priority || timer) && (prompt == nil || priority)
+        let context = OnDeviceYieldPolicy.Context(matchID: poll.matchID, seatID: poll.seatID, viewerID: viewer, activePlayerID: active,
+                                                  turn: turn, phase: poll.phase, localHumanEnabled: true, foreground: true,
+                                                  emptyStack: stack.isEmpty, selfAuthority: selfAuthority,
+                                                  resyncRequired: poll.resyncRequired, prompt: prompt, threatToMe: false)
+        let floating = (owner["manaPool"]?.object ?? [:]).values.contains { ($0.integer ?? 0) > 0 }
+        return .init(context: context, step: view["step"]?.string, hasPlay: OnDeviceSmartPass.hasPlay(view), manaFloating: floating,
+                     topStackIsMine: OnDeviceSmartPass.topStackIsMine(root, viewer: viewer), hasResponse: OnDeviceSmartPass.hasResponse(view),
+                     threatensMe: !stack.isEmpty && (snapshot.map(OnDeviceSmartPass.threatensViewer) ?? false))
     }
 
     /// smart-pass-cases.json: smart pass, Stop for Removal and the skip modes. The web port

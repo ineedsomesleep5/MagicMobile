@@ -134,6 +134,8 @@ function decide(state, memory) {
   if (!state.ready || state.over || state.working || !p || !p.mine) return undefined;
   const acts = state.actions;
   if (/mulligan/i.test(p.message)) return { submit: { type: "answer_yes_no", confirmed: false }, label: "Keep" };
+  // A number (X, an amount): the pill in the button corner, at the value it starts on (the most your mana pays for X).
+  if (p.kind === "amount" || /value for \{?x\}?/i.test(p.message)) return { clickIn: ".apill .pgo" };
   if (state.paying) {
     // The board's own Auto Pay, once per payment; the sources by hand if it can't pay.
     if (!memory.autoPaid.has(p.id) && !state.autoPaying) { memory.autoPaid.add(p.id); return { click: "Auto Pay" }; }
