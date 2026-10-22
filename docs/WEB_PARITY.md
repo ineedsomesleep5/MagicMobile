@@ -30,10 +30,13 @@ Pure logic is shared as JSON cases; only the UI is ported by hand.
 | Case file | Covers | iOS runner | Web runner | Android |
 |---|---|---|---|---|
 | `arena-pace-cases.json` | Board events from a transition, the Arena pace schedule (full and reduced), the smart-pass hold, holds for later batches, the wipe cascade and its recap | `ParityGoldenTests.testArenaPaceCasesOnBothPlatforms` | `test/arenaPace.test.ts` | follow-up: Android's `BoardEventTimeline.kt` has no Arena pace |
-| `combat-cases.json` (existing) | Combat keywords and first-strike beats at the Hearth pace | `testCombatClarityCasesOnBothPlatforms` | `test/arenaPace.test.ts` | runs (`ParityGoldenTest.kt`) |
+| `combat-cases.json` (existing) | Combat keywords, first-strike beats at the Hearth pace, one-line combat log reasons | `testCombatClarityCasesOnBothPlatforms` | `test/arenaPace.test.ts`, `test/gameLog.test.ts` | runs (`ParityGoldenTest.kt`) |
 | `smart-pass-cases.json` | Smart pass stops, Stop for Removal, threat detection, the three skip modes, stored stops, automatic-pass ids | `testSmartPassCasesOnBothPlatforms` | `test/smartPass.test.ts` | follow-up: `OnDeviceSmartPass.kt` has no threat stops |
 | `auto-pay-cases.json` | Cost reading, mana ability reading, source order, the plan, the next step, blocked reasons | `testAutoPayCasesOnBothPlatforms` | `test/autoPay.test.ts` | follow-up: Android has no Auto Pay |
-| `trigger-cases.json` (planned) | The trigger order plan, which answer each ordering prompt gets, remembered-answer actions | to add | to add | follow-up |
+| `answer-action-cases.json` | Which remembered-answer actions a decision may carry (rememberAnswer, rememberTriggerFirst, passUntilStackResolved, autoPassAfterCast, resets) | `testAnswerActionCasesOnBothPlatforms` | `test/answerActions.test.ts` | follow-up |
+| `arena-board-cases.json` | Drop thresholds, the keyword glossary, commander-taken notices, cards playable from other zones, hand posture, loyalty, amounts, affordable X, split, lethal, choices, colours | `testArenaBoardCasesOnBothPlatforms` | `test/arenaBoard.test.ts` | follow-up |
+| `text-cases.json` (existing, `log`) | The game log reader: spans, card references, redacted names, entities, hidden markup | `testTextCasesMatchGolden` (golden) | `test/gameLog.test.ts` | runs |
+| `game-summary-cases.json` (existing) | Combat credit and the top attacker | `testGameSummaryCasesOnBothPlatforms` | `test/gameStats.test.ts` | runs |
 | `prompt-cases.json` (existing) | Prompt to command mapping and answer validation | existing | `test/parity.test.ts` | runs |
 | `combo-loop-cases.json` (existing) | Combo loop recording and replay | existing | to add with the combo loop rows | runs |
 
@@ -59,23 +62,23 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
-| 1.01 | Snapshots diff into board events; another game is a cut | `BoardEventTimeline.swift` `BoardEventDiffer.events` | partial (logic) | `core/boardEvents.ts` | shared | arena-pace + combat cases pass on iOS and web (2026-10-22) |
-| 1.02 | Your spell 0.35 s (0.3), an opponent's 1.6 s reveal (1.2), commander 1.0 / 1.6, triggers 0.5 (0.4) | `BoardFXScheduler.arenaDuration` | partial (logic) | `core/boardEvents.ts` | shared | as 1.01 |
-| 1.03 | Other Arena timings: arrival 0.6, departure 0.8, damage 0.6, counters/stats 0.8, phasing 0.9, transform 0.8, steal 1.2, attack 0.25, block 0.3, strike 0.45, first strike 1.0, life 1.0 | `arenaDuration` | partial (logic) | `core/boardEvents.ts` | shared | as 1.01 |
-| 1.04 | Strikes land one after another, 0.38 s apart | `arenaStrikeSpacing`, `isSequential` | partial (logic) | `core/boardEvents.ts` | shared | as 1.01 |
-| 1.05 | Arrivals fly plainly from the stack card; the tile appears at 42 % of the flight | `ScheduledBoardFX.landing` | partial (logic) | `core/boardEvents.ts` | shared + game | |
-| 1.06 | Hand-off, release and later-batch holds (a spell read and a departure finish before anything else moves; at most 4 s) | `handoff`, `release`, `holdsLaterBatchesUntil`, `maximumHold`, `BoardFXDirector.ingest` | partial (logic) | `core/boardEvents.ts` | shared | as 1.01 |
-| 1.07 | Smart pass waits for spells, showcases, departures, strikes and the first-strike beat, never for triggers, life, damage or counters | `holdsSmartPass`, `smartPassHoldUntil` | partial (logic) | `core/boardEvents.ts` | shared + game | |
-| 1.08 | Smart pass first waits up to 1 s for the board to take in the new snapshot, then for the hold, at most 5 s | `BoardPresentationHold`, `OnDeviceSession.waitForBoardPresentation` | missing | `table/guestSession.ts` | unit + game | |
-| 1.09 | Reading a card (the inspector open) holds smart pass until it closes, at most 60 s | `BoardPresentationHold.reading`, `NativeGameView+Arena.swift` | missing | `ui/GameScreen.tsx` | unit + game | |
-| 1.10 | Smart pass re-checks the same prompt id and revision after waiting, before it sends | `OnDeviceSession.scheduleSmartPass` | missing | `table/guestSession.ts` | unit | |
-| 1.11 | A board wipe (3+ leaving) leaves one card after another, 0.16 s apart, within 1.2 s | `BoardFXScheduler.schedule` sweep | partial (logic) | `core/boardEvents.ts` | shared + game | |
-| 1.12 | The wipe recap names the spell and what went, for 3.5 s in the caption | `ArenaSweepRecap`, `NativeGameView.ingestBoardFX` | partial (logic) | `core/boardEvents.ts` | shared + game | |
-| 1.13 | The turn banner (0.9 s over the draw) waits while a spell, showcase, departure or hit plays; showcases wait for the banner | `centreBusyUntil`, `NativeGameView` turn banner | missing | | unit + game | |
-| 1.14 | An opponent's spell is revealed 1.2x toward the middle for 1.3 s, then settles in 0.3 s; arcs wait for it | `NativeGameView+Arena.arenaStack`, `arenaBeginReveal` | missing | | game | |
-| 1.15 | Effects level Full / Reduced / Off; Reduce Motion caps at Reduced; Off during a fast combo loop | `BoardFXLevel.resolved` | partial (logic) | `core/boardEvents.ts` | unit | |
-| 1.16 | Card motion: a tile hides while its flight stands in, attackers lunge, attack and block stances hold, flips | `BoardFXDirector.cardMotion` | partial (logic) | `core/boardEvents.ts` | unit + game | |
-| 1.17 | AI turns read at Arena pace: polls show each AI action, and smart pass's holds set the pace | session + board | missing | `table/guestSession.ts` | replay + game | |
+| 1.01 | Snapshots diff into board events; another game is a cut | `BoardEventTimeline.swift` `BoardEventDiffer.events` | done | `core/boardEvents.ts` | shared + game | arena-pace + combat cases pass on iOS and web; game A, game D |
+| 1.02 | Your spell 0.35 s (0.3), an opponent's 1.6 s reveal (1.2), commander 1.0 / 1.6, triggers 0.5 (0.4) | `BoardFXScheduler.arenaDuration` | done | `core/boardEvents.ts` | shared + game | as 1.01; game A: an AI spell revealed, own spells settle |
+| 1.03 | Other Arena timings: arrival 0.6, departure 0.8, damage 0.6, counters/stats 0.8, phasing 0.9, transform 0.8, steal 1.2, attack 0.25, block 0.3, strike 0.45, first strike 1.0, life 1.0 | `arenaDuration` | done | `core/boardEvents.ts` | shared + game | as 1.01; game D: 303 board batches, flights land on the tile |
+| 1.04 | Strikes land one after another, 0.38 s apart | `arenaStrikeSpacing`, `isSequential` | done | `core/boardEvents.ts` | shared | as 1.01 |
+| 1.05 | Arrivals fly plainly from the stack card; the tile appears at 42 % of the flight | `ScheduledBoardFX.landing` | done | `core/boardEvents.ts, ui/arena/BoardFX.tsx` | shared + game | game A: 23 flights from the stack card, tile hidden until landing |
+| 1.06 | Hand-off, release and later-batch holds (a spell read and a departure finish before anything else moves; at most 4 s) | `handoff`, `release`, `holdsLaterBatchesUntil`, `maximumHold`, `BoardFXDirector.ingest` | done | `core/boardEvents.ts` | shared + game | as 1.01; game A |
+| 1.07 | Smart pass waits for spells, showcases, departures, strikes and the first-strike beat, never for triggers, life, damage or counters | `holdsSmartPass`, `smartPassHoldUntil` | done | `core/boardEvents.ts` | shared + game | game A: an AI Liliana's Devotee held smart pass 2.33 s after it showed; the pass went 9 ms after the hold ended; own Emmara passed at hold 0 |
+| 1.08 | Smart pass first waits up to 1 s for the board to take in the new snapshot, then for the hold, at most 5 s | `BoardPresentationHold`, `OnDeviceSession.waitForBoardPresentation` | done | `table/guestSession.ts, ui/arena/useBoardFX.ts` | game | game A (as 1.07); game D: 95 smart passes, none before its board settled |
+| 1.09 | Reading a card (the inspector open) holds smart pass until it closes, at most 60 s | `BoardPresentationHold.reading`, `NativeGameView+Arena.swift` | partial (built) | `ui/GameScreen.tsx (reading hold)` | game | inspector sets the hold; not yet exercised by the driver |
+| 1.10 | Smart pass re-checks the same prompt id and revision after waiting, before it sends | `OnDeviceSession.scheduleSmartPass` | done | `table/guestSession.ts` | unit + game | scheduleSmartPass rechecks prompt id and revision; game A-game D: no stale passes |
+| 1.11 | A board wipe (3+ leaving) leaves one card after another, 0.16 s apart, within 1.2 s | `BoardFXScheduler.schedule` sweep | partial (logic) | `core/boardEvents.ts` | shared + game | shared cases pass; no wipe seen in a game yet |
+| 1.12 | The wipe recap names the spell and what went, for 3.5 s in the caption | `ArenaSweepRecap`, `NativeGameView.ingestBoardFX` | partial (logic) | `core/boardEvents.ts, ui/GameScreen.tsx` | shared + game | as 1.11 |
+| 1.13 | The turn banner (0.9 s over the draw) waits while a spell, showcase, departure or hit plays; showcases wait for the banner | `centreBusyUntil`, `NativeGameView` turn banner | done | `ui/arena/useBoardFX.ts` | game | game D: 56 banners, each after the centre cleared |
+| 1.14 | An opponent's spell is revealed 1.2x toward the middle for 1.3 s, then settles in 0.3 s; arcs wait for it | `NativeGameView+Arena.arenaStack`, `arenaBeginReveal` | done | `ui/GameScreen.tsx (revealID)` | game | game A: 5 reveals; game D: 31 |
+| 1.15 | Effects level Full / Reduced / Off; Reduce Motion caps at Reduced; Off during a fast combo loop | `BoardFXLevel.resolved` | done | `core/boardEvents.ts, ui/GameScreen.tsx` | shared + unit | resolvedLevel caps at Reduced under prefers-reduced-motion; Game Settings segmented control |
+| 1.16 | Card motion: a tile hides while its flight stands in, attackers lunge, attack and block stances hold, flips | `BoardFXDirector.cardMotion` | done | `ui/arena/useBoardFX.ts, ui/arena/BoardFX.tsx` | game | game A, game D: tiles hidden while their flight stands in |
+| 1.17 | AI turns read at Arena pace: polls show each AI action, and smart pass's holds set the pace | session + board | done | `table/guestSession.ts` | game | game A-game D: every AI action shown, smart pass waits on the board |
 
 ## 2. Smart pass, stops and skips (priority 2)
 
@@ -85,33 +88,33 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 2.02 | Passes with nothing to play; default stops your mains and their attacks and end step; unknown steps stop | `passPrompt`, `defaultStops` | done (logic) | `core/smartPass.ts` | shared | as 2.01 |
 | 2.03 | Your own spell or trigger resolves unless Stop for Own Spells is on (off) | `passPrompt`, `topStackIsMine` | done (logic) | `core/smartPass.ts` | shared | as 2.01 |
 | 2.04 | Their object stops only with a response (`respondsToStack`; missing means yes) | `passPrompt`, `hasResponse` | done (logic) | `core/smartPass.ts` | shared | as 2.01 |
-| 2.05 | Stop for Removal (on): their removal, sweeper, edict or steal stops you, answer or not | `passPrompt`, `threatensViewer` | partial (logic) | `core/smartPass.ts` | shared + game | |
-| 2.06 | Threat test: targets your permanent, or you (a spell), or an untargeted sweep phrase; never with nothing to lose | `threatensViewer` | partial (logic) | `core/smartPass.ts` | shared | as 2.01 |
+| 2.05 | Stop for Removal (on): their removal, sweeper, edict or steal stops you, answer or not | `passPrompt`, `threatensViewer` | done | `core/smartPass.ts` | shared | smart-pass cases (threats) pass on iOS and web |
+| 2.06 | Threat test: targets your permanent, or you (a spell), or an untargeted sweep phrase; never with nothing to lose | `threatensViewer` | done | `core/smartPass.ts` | shared | as 2.05 |
 | 2.07 | Each prompt passed at most once, never retried; log line "Auto-passed: …" | `OnDeviceSession`, `OnDeviceMessageLog.noteAutoPass` | done | `table/guestSession.ts`, `core/messageLog.ts` | unit | `test/smartPass.test.ts` |
-| 2.08 | Not scheduled during a skip, under Full control, or with a pending answer, error or held ability prompt | `scheduleSmartPass` | partial | `table/guestSession.ts` | unit | |
-| 2.09 | Settings saved: smart pass (on), Stop for Own Spells (off), Stop for Removal (on), phase stops (sorted list; nothing stored is the defaults) | `Settings.load/encode/decode` | partial | `core/smartPass.ts` | shared + unit | |
+| 2.08 | Not scheduled during a skip, under Full control, or with a pending answer, error or held ability prompt | `scheduleSmartPass` | done | `table/guestSession.ts` | unit | |
+| 2.09 | Settings saved: smart pass (on), Stop for Own Spells (off), Stop for Removal (on), phase stops (sorted list; nothing stored is the defaults) | `Settings.load/encode/decode` | done | `core/smartPass.ts, ui/GameScreen.tsx` | unit | loadSmartPass/saveSmartPass keys mm.web.* |
 | 2.10 | Smart pass on for solo games and relay tables | `OnDeviceRootView` | partial (solo only) | `table/guestTable.ts` | unit | |
-| 2.11 | A hidden tab cancels an unsent smart pass and stops a skip | `setForeground` | missing | `table/guestSession.ts` | unit | |
-| 2.12 | Phase Stops panel on the table (glass): steps by Your turn / Theirs, Reset Stops; opens from the phase strip or the gear | `PhaseStopsSheet`, `PhaseStopsGrid` | missing | | game | |
-| 2.13 | Skip menu from the pass-ahead pill: "To end of turn / Skips responses", "To my turn / Skips responses", "To end of turn / Stops if they respond", "Full control" | `ArenaPassAheadPill.items`, `ArenaMenuCard` | missing (pill toggles smart pass) | `ui/GameScreen.tsx` | game | |
-| 2.14 | Skip modes: limits 60 s / 64, 120 s / 256, 180 s / 256; start and stop rules; Skip to my turn crosses opponents' turns; skips stop for removal | `OnDeviceYieldPolicy` | partial (logic) | `core/smartPass.ts` | shared | as 2.01 |
-| 2.15 | Skip loop: a fresh poll before each pass, `auto-pass-` action ids, stops on any manual action, keeps a pending answer for Retry | `OnDeviceSession.startYield` | missing | `table/guestSession.ts` | unit + game | |
-| 2.16 | While skipping, the pill is lit ember and stops the skip; the stop reason shows | `ArenaPassAheadPill` | missing | | game | |
-| 2.17 | Full control: hold the primary 0.6 s or the menu row; smart pass stops at every priority this turn; a "Full control" tag | `toggleFullControl`, `FullControlHold` | missing | | unit + game | |
-| 2.18 | Passes the app sent (smart and skip) show no waiting pop-up | `isAutomaticPass` | partial (logic) | `core/smartPass.ts` | shared | as 2.01 |
+| 2.11 | A hidden tab cancels an unsent smart pass and stops a skip | `setForeground` | done | `ui/GameScreen.tsx (visibilitychange)` | unit | 80b1f186 |
+| 2.12 | Phase Stops panel on the table (glass): steps by Your turn / Theirs, Reset Stops; opens from the phase strip or the gear | `PhaseStopsSheet`, `PhaseStopsGrid` | done | `ui/arena/Menus.tsx (PhaseStops)` | game | opens from the phase strip and the gear menu |
+| 2.13 | Skip menu from the pass-ahead pill: "To end of turn / Skips responses", "To my turn / Skips responses", "To end of turn / Stops if they respond", "Full control" | `ArenaPassAheadPill.items`, `ArenaMenuCard` | done | `ui/GameScreen.tsx (passItems)` | game | |
+| 2.14 | Skip modes: limits 60 s / 64, 120 s / 256, 180 s / 256; start and stop rules; Skip to my turn crosses opponents' turns; skips stop for removal | `OnDeviceYieldPolicy` | done | `core/smartPass.ts` | shared | smart-pass cases (yield scenarios) pass on iOS and web |
+| 2.15 | Skip loop: a fresh poll before each pass, `auto-pass-` action ids, stops on any manual action, keeps a pending answer for Retry | `OnDeviceSession.startYield` | done | `table/guestSession.ts (startYield)` | unit | |
+| 2.16 | While skipping, the pill is lit ember and stops the skip; the stop reason shows | `ArenaPassAheadPill` | done | `ui/GameScreen.tsx (.aff.on)` | game | |
+| 2.17 | Full control: hold the primary 0.6 s or the menu row; smart pass stops at every priority this turn; a "Full control" tag | `toggleFullControl`, `FullControlHold` | done | `ui/GameScreen.tsx, table/guestSession.ts` | game | menu row; hold the plaque or Space 0.6 s (80b1f186) |
+| 2.18 | Passes the app sent (smart and skip) show no waiting pop-up | `isAutomaticPass` | done | `core/smartPass.ts` | unit | as 2.01 |
 
 ## 3. Auto Pay and mana (priority 3)
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
-| 3.01 | Reads the remaining cost ({2}{R}, {S}, X skipped, Phyrexian, {2/W}, hybrids, {C}) | `ArenaAutoPay.need` | partial (logic) | `core/autoPay.ts` | shared | auto-pay cases pass on iOS and web (2026-10-22) |
-| 3.02 | Reads mana abilities: only {T} and sacrificing the source; producedMana, any colour, first-sentence alternatives | `production` | partial (logic) | `core/autoPay.ts` | shared | as 3.01 |
-| 3.03 | Source order: colourless 9, mono 10, dual 14, tri 16, any 18, creature +10, sacrifice 60 | `sources` | partial (logic) | `core/autoPay.ts` | shared | as 3.01 |
-| 3.04 | Cheapest full plan; coloured pips first; never starts a cost it can't finish; blocked reasons | `plan`, `next` | partial (logic) | `core/autoPay.ts` | shared | as 3.01 |
-| 3.05 | Floating mana spent first | `next` | partial (logic) | `core/autoPay.ts` | shared | as 3.01 |
-| 3.06 | Payment corner: Auto Pay (dimmed when it can't pay), "Paying…" + Stop while running, Cancel secondary | `arenaPaymentButtons` | missing | `ui/GameScreen.tsx` | game | |
-| 3.07 | One tap per settled snapshot; answers its own colour question with the planned colour and keeps it out of the choice browser; gives up after 30 steps or a repeated state ("Auto Pay stopped: tap the rest yourself") | `arenaAutoPayStep`, `arenaColorChoice`, `ArenaAutoPayDriver` | missing | | unit + game | |
-| 3.08 | Undo pill while `undo_mana` is legal | `arenaControls` | missing | | game | |
+| 3.01 | Reads the remaining cost ({2}{R}, {S}, X skipped, Phyrexian, {2/W}, hybrids, {C}) | `ArenaAutoPay.need` | done | `core/autoPay.ts` | shared | auto-pay cases pass on iOS and web |
+| 3.02 | Reads mana abilities: only {T} and sacrificing the source; producedMana, any colour, first-sentence alternatives | `production` | done | `core/autoPay.ts` | shared | as 3.01 |
+| 3.03 | Source order: colourless 9, mono 10, dual 14, tri 16, any 18, creature +10, sacrifice 60 | `sources` | done | `core/autoPay.ts` | shared | as 3.01 |
+| 3.04 | Cheapest full plan; coloured pips first; never starts a cost it can't finish; blocked reasons | `plan`, `next` | done | `core/autoPay.ts` | shared | as 3.01 |
+| 3.05 | Floating mana spent first | `next` | done | `core/autoPay.ts` | shared | as 3.01 |
+| 3.06 | Payment corner: Auto Pay (dimmed when it can't pay), "Paying…" + Stop while running, Cancel secondary | `arenaPaymentButtons` | done | `ui/GameScreen.tsx, ui/arena/autoPayRun.ts` | game | game C: Auto Pay ×6; game D: ×8; dimmed for convoke costs it cannot pay (as iOS) |
+| 3.07 | One tap per settled snapshot; answers its own colour question with the planned colour and keeps it out of the choice browser; gives up after 30 steps or a repeated state ("Auto Pay stopped: tap the rest yourself") | `arenaAutoPayStep`, `arenaColorChoice`, `ArenaAutoPayDriver` | done | `ui/arena/autoPayRun.ts` | unit + game | test/autoPayRun.test.ts; game D: taps one per settled snapshot |
+| 3.08 | Undo pill while `undo_mana` is legal | `arenaControls` | done | `ui/GameScreen.tsx (.aundo), Ctrl/Cmd+Z` | game | |
 | 3.09 | Sources that can pay glow orange; lands softer; a click on a source sends make_mana | `arenaGlow`, `arenaLane` | done | `ui/GameScreen.tsx`, `ui/arena/arena.css` | game | 2026-10-21 full game (README) |
 | 3.10 | Floating mana symbols above your medallion; spendable ones take a click | `ArenaFloatingMana` | done | `ui/GameScreen.tsx` | game | 2026-10-21 |
 | 3.11 | Payment caption "Pay {cost}" ("Pay the cost") | `arenaCaptionText` | partial | `ui/GameScreen.tsx` | game | |
@@ -123,13 +126,13 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 |---|---|---|---|---|---|---|
 | 4.01 | Resting hand tucked at the bottom edge; raised fan geometry | `ArenaHandFanLayout.slot` | done | `ui/arena/layout.ts` | unit | `test/arenaLayout.test.ts` |
 | 4.02 | One card pops whole (rises 92 pt, 1.18x, upright); moving along the hand moves the pop card by card | `ArenaHandFan.tapped`, `scrubCard` | partial (hover raises the fan, lifts the hovered card) | `ui/GameScreen.tsx` | game | |
-| 4.03 | Drag a hand card: it follows the pointer at 1.5x with a tilt, 1.38x and an ember shadow over the table | `ArenaHandFan.panned`, `dragPreview` | missing | | game | |
-| 4.04 | Drop rule: inside the play area, outside the controls corner, after 24 pt up or 80 pt any way; otherwise it snaps back | `ArenaLayout.drops` | missing | | unit + game | |
-| 4.05 | While carrying over the table its edge lights warm (no box) | `NativeGameView+Arena.arenaTable` | missing | | game | |
+| 4.03 | Drag a hand card: it follows the pointer at 1.5x with a tilt, 1.38x and an ember shadow over the table | `ArenaHandFan.panned`, `dragPreview` | done | `ui/GameScreen.tsx (carry)` | game | game D: 15 drag casts |
+| 4.04 | Drop rule: inside the play area, outside the controls corner, after 24 pt up or 80 pt any way; otherwise it snaps back | `ArenaLayout.drops` | done | `ui/arena/layout.ts (drops)` | shared + game | arena-board drops cases pass on iOS and web; as 4.03 |
+| 4.05 | While carrying over the table its edge lights warm (no box) | `NativeGameView+Arena.arenaTable` | done | `ui/GameScreen.tsx (.adropglow)` | game | |
 | 4.06 | A drop with several actions opens the action choice at the table centre; a refusal shows feedback | `panEnded`, `DragActionChoicePopup` | partial (click menu) | `ui/GameScreen.tsx` | game | |
 | 4.07 | The hand rests during payments, targets, combat, choices, dragging, spectating | `ArenaHandPosture.resolve` | done | `ui/GameScreen.tsx` | game | 2026-10-21 |
 | 4.08 | A step change lowers the hand; a click on the empty table drops a popped card, then lowers the hand | `arenaTapTable`, `arenaBoard onChange` | partial | `ui/GameScreen.tsx` | game | |
-| 4.09 | Read a hand card (hold on iOS): right-click or a 0.35 s mouse hold opens the inspector | `ArenaHandFan.held` | missing | | game | |
+| 4.09 | Read a hand card (hold on iOS): right-click or a 0.35 s mouse hold opens the inspector | `ArenaHandFan.held` | done | `ui/GameScreen.tsx (pressCard), ui/arena/Inspector.tsx` | game | |
 | 4.10 | Cards playable from graveyard or exile join the fan's right end with a violet shimmer | `ArenaExtraHand`, `ArenaExtraCardShimmer` | missing | | unit + game | |
 | 4.11 | Draws fly from the library (0.5 s), show at the draw spot (0.4 s), join the hand (0.22 s), staggered 0.25 s, at most 3 | `ArenaHandFan.noteArrivals` | missing | | game | |
 | 4.12 | Hand up 0.22 s ease-out with overshoot, down 0.18 s | `postureAnimation` | partial | `ui/arena/arena.css` | game | |
@@ -139,25 +142,25 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
-| 5.01 | Trigger order browser chosen by method `GAME_PICK_ABILITY` | `isTriggerOrder`, `arenaAbilityPrompt` | partial (message regex) | `ui/arena/Browsers.tsx` | shared | |
-| 5.02 | "Order your triggers": click numbers a card (coin, gold rim), click again un-numbers; Done from N−1 picks ("k of N"); Auto Order | `ArenaAbilityBrowser` | partial (one pick per prompt) | `ui/arena/Browsers.tsx` | game | |
-| 5.03 | The chosen order answers each later ordering prompt by itself; the plan survives target questions and ends at your next priority | `arenaOrderTriggers`, `arenaTriggerPlanAnswers`, `arenaTriggerStep` | missing | | shared + game | |
-| 5.04 | "Always put my last-resolving pick first" sends `rememberTriggerFirst` | `ArenaAbilityBrowser`, `answerActions` | missing | | shared + game | |
-| 5.05 | "Don't ask again this game" on a yes/no question sends `rememberAnswer` (ability scope), only when XMage offers an auto-answer | `canRememberAnswer`, `compactPromptControls` | missing | | shared + game | |
+| 5.01 | Trigger order browser chosen by method `GAME_PICK_ABILITY` | `isTriggerOrder`, `arenaAbilityPrompt` | done | `ui/arena/triggerPlan.ts` | unit | test/triggerPlan.test.ts |
+| 5.02 | "Order your triggers": click numbers a card (coin, gold rim), click again un-numbers; Done from N−1 picks ("k of N"); Auto Order | `ArenaAbilityBrowser` | done | `ui/arena/Browsers.tsx (AbilityBrowser)` | unit + game | game D: 10 Done answers |
+| 5.03 | The chosen order answers each later ordering prompt by itself; the plan survives target questions and ends at your next priority | `arenaOrderTriggers`, `arenaTriggerPlanAnswers`, `arenaTriggerStep` | done | `ui/arena/triggerPlan.ts` | unit | test/triggerPlan.test.ts |
+| 5.04 | "Always put my last-resolving pick first" sends `rememberTriggerFirst` | `ArenaAbilityBrowser`, `answerActions` | done | `ui/arena/Browsers.tsx, core/promptAdapter.ts` | shared | answer-action cases pass on iOS and web |
+| 5.05 | "Don't ask again this game" on a yes/no question sends `rememberAnswer` (ability scope), only when XMage offers an auto-answer | `canRememberAnswer`, `compactPromptControls` | done | `ui/arena/Browsers.tsx` | shared | as 5.04 |
 | 5.06 | "Remember my choice" in the choice browser | `ArenaChoiceList.options` | done | `ui/arena/Browsers.tsx` | unit | `test/arenaBrowsers.test.ts` |
-| 5.07 | Answer actions only when the engine lists them and they fit the decision; standing actions ride on the next answer | `OnDeviceSession.submit`, `OnDevicePromptAdapter.answerActions` | missing | `table/guestSession.ts` | shared | |
-| 5.08 | Gear: "Ask Again (N answered)", "Ask Trigger Order Again" (reset actions) | `GameMenus.swift` | missing | | game | |
-| 5.09 | "Pass After Casting" (on) sent as `autoPassAfterCast` | `setAutoPassAfterCast` | missing | | unit | |
-| 5.10 | "Resolve All" secondary with 2+ stack objects: one pass carrying `passUntilStackResolved` | `GameplayAffordances.resolveStackCommand` | missing | | shared + game | |
+| 5.07 | Answer actions only when the engine lists them and they fit the decision; standing actions ride on the next answer | `OnDeviceSession.submit`, `OnDevicePromptAdapter.answerActions` | done | `core/promptAdapter.ts, table/guestSession.ts` | shared | as 5.04 |
+| 5.08 | Gear: "Ask Again (N answered)", "Ask Trigger Order Again" (reset actions) | `GameMenus.swift` | done | `ui/GameScreen.tsx (Game Settings)` | game | |
+| 5.09 | "Pass After Casting" (on) sent as `autoPassAfterCast` | `setAutoPassAfterCast` | done | `ui/GameScreen.tsx, table/soloTable.ts` | unit | test/soloFlow.test.ts sends autoPassAfterCast |
+| 5.10 | "Resolve All" secondary with 2+ stack objects: one pass carrying `passUntilStackResolved` | `GameplayAffordances.resolveStackCommand` | done | `ui/GameScreen.tsx` | shared | as 5.04 |
 | 5.11 | XMage's "which ability" follow-up answered with the exact ability; its snapshot stays hidden unless that fails | `chosenAbilityAnswer`, `heldAbilitySnapshot` | partial (question flashes) | `table/guestSession.ts` | unit | |
-| 5.12 | Commander taken notice (7 s) | `ArenaCommanderSteal` | missing | | shared + game | |
+| 5.12 | Commander taken notice (7 s) | `ArenaCommanderSteal` | done | `core/arenaBoard.ts, ui/GameScreen.tsx` | shared | arena-board commanderTaken cases |
 | 5.13 | Main button titles: Resolve; Next (TO MAIN / TO COMBAT / TO MAIN 2); End Turn; Pass; waiting labels | `arenaPassTitle`, `arenaWaitingTitle` | partial | `ui/GameScreen.tsx` | unit | |
 | 5.14 | Prompt corner: the prompt's main action, else "Choices"; secondary the next action | `arenaButtonPlan` | partial | `ui/GameScreen.tsx` | game | |
 | 5.15 | Question stage, mode, choice, player, split, pile browsers | `ArenaBoardViews.swift` | done | `ui/arena/Browsers.tsx` | unit + game | `test/arenaBrowsers.test.ts`, 2026-10-21 |
 | 5.16 | Card choice browsers: effect titles (Scry, Surveil…), wells (BOTTOM / TOP…), multi-select with order coins, "2 OF 3", search over 6 | `BoardCardChoiceView.arenaStage` | partial | `ui/arena/Browsers.tsx` | game | |
-| 5.17 | Response cue on your own priority outside your empty-stack main | `BoardResponseCue.make` | missing | | unit | |
+| 5.17 | Response cue on your own priority outside your empty-stack main | `BoardResponseCue.make` | n/a | |  | the response cue is the Hearth board's side rail; the Arena board has none |
 | 5.18 | Captions: "Choose attackers." and the rest | `arenaCaptionText` | partial | `ui/GameScreen.tsx` | unit | |
-| 5.19 | Keyword glossary in the inspector | `ArenaKeywordGlossary` | missing | | unit | |
+| 5.19 | Keyword glossary in the inspector | `ArenaKeywordGlossary` | done | `core/arenaBoard.ts, ui/arena/Inspector.tsx` | shared | arena-board glossary cases |
 | 5.20 | A player-target prompt with more than one pick opens its panel | `arenaSubmitPlayerTarget` | partial | `ui/GameScreen.tsx` | game | |
 | 5.21 | Prompts no browser takes fall back to a glass pop-up with "Open choices" | `CompactPromptPopup` | missing | | game | |
 
@@ -165,11 +168,11 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
-| 6.01 | Combat read from declare actions or your target prompt in a declare step | `ArenaCombatPhase.current` | partial | `ui/GameScreen.tsx` | unit | |
-| 6.02 | "No Attacks" / "1 Attacker" / "N Attackers"; "No Blocks" / "1 Blocker" / "N Blockers"; Take Back | `arenaCombatButtons` | partial | `ui/GameScreen.tsx` | game | |
-| 6.03 | Attack All (one opponent): every eligible attacker one per answer; "Attacking…" + Stop | `arenaStartAllAttack`, `arenaAttackStep` | missing | | unit + game | |
+| 6.01 | Combat read from declare actions or your target prompt in a declare step | `ArenaCombatPhase.current` | done | `ui/arena/combat.ts` | unit | test/combat.test.ts (real attacker prompt) |
+| 6.02 | "No Attacks" / "1 Attacker" / "N Attackers"; "No Blocks" / "1 Blocker" / "N Blockers"; Take Back | `arenaCombatButtons` | done | `ui/arena/combat.ts` | unit + game | game D: No Blocks ×4, 1 Attacker, 2 Attackers ×3 |
+| 6.03 | Attack All (one opponent): every eligible attacker one per answer; "Attacking…" + Stop | `arenaStartAllAttack`, `arenaAttackStep` | done | `ui/arena/combat.ts, ui/GameScreen.tsx` | unit + game | game D: All Attack ×6, 15 attack declarations one per answer |
 | 6.04 | Two-click declaration with a defender: the opponent's medallion glows red and takes the attack | `arenaOpponentMedallion` | missing | | game | |
-| 6.05 | Combat arrows: red attack, grey blocked, gold block, amber dashed preview | `ArenaCombatArrows` | missing | | game | |
+| 6.05 | Combat arrows: red attack, grey blocked, gold block, amber dashed preview | `ArenaCombatArrows` | done | `ui/arena/combat.ts, ui/GameScreen.tsx` | unit + game | game D end screen: red attack arcs |
 | 6.06 | Attackers glow #ff5a2e (keep colour while tapped), blockers #ffd38a | `arenaGlow` | done | `ui/arena/arena.css` | game | 2026-10-21 |
 | 6.07 | Declared attackers and blockers stay selectable to undo | `OnDevicePromptAdapter.presentation` | done | `core/promptAdapter.ts` | shared | `prompt-cases.json` |
 | 6.08 | Combat keyword badges on attackers and blockers | `ArenaBattlefieldCard` | missing | | game | |
@@ -178,49 +181,50 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
-| 7.01 | Stack landing: settle from 1.07, colour bloom, one shine, motes (0.55 s) | `ArenaStackCard` | partial (settle + gold bloom) | `ui/arena/arena.css` | game | |
-| 7.02 | Target arcs from the stack card (cyan yours, red theirs), drawn over 0.45 s; reticles on targets | `ArenaStackArc`, `ArenaTargetReticle` | missing | | game | |
-| 7.03 | Arrival flight from the stack card, glow and sparks; tokens gather from motes | `BoardFXOverlay` flights, `gather` | partial (glide) | `ui/arena/ArenaCard.tsx` | game | |
-| 7.04 | Departure: flies to its owner, embers; exile pillar and sigil | `BoardFXOverlay`, `exileMoment` | missing | | game | |
-| 7.05 | Damage flash with "−N" | `BoardFXOverlay` | missing | | game | |
-| 7.06 | Counter moments (+1/+1, −1/−1, loyalty, coin) with labels | `counterMoment`, `BoardFXCounterKind.label` | missing | | game | |
-| 7.07 | Stats moment "+X/+Y" | `statsMoment` | missing | | game | |
-| 7.08 | Phasing bands; a phased-out tile at 0.42 with "Phased out" | `phaseMoment`, `ArenaBattlefieldCard` | missing | | game | |
-| 7.09 | Transform ring of light while the tile flips | `transformMoment` | missing | | game | |
-| 7.10 | Steal: the taker's chain drags the card home | `chainMoment` | missing | | game | |
-| 7.11 | Attack and block marks | `BoardFXOverlay` | missing | | game | |
-| 7.12 | Strike trails and impact | `BoardFXOverlay` | missing | | game | |
-| 7.13 | Life change floats at the medallion; the number rolls | `BoardFXOverlay`, `ArenaHeroMedallion` | missing | | game | |
-| 7.14 | Board shake and red vignette when you take 5+ | `BoardImpactShake`, `BoardHitVignette` | missing | | game | |
-| 7.15 | Turn banner: "Your turn" / "<Name>’s turn", 0.9 s | `BoardTurnBanner.arenaBanner` | missing | | game | |
-| 7.16 | Sounds: board cues by event (casts by type, arrivals by land and creature type, attacks, blocks, strikes, deaths, exile, counters, steal, life), UI cues (tap, pickup, play, draw, open/close, error, response alert, turn, victory/defeat), cooldowns; `.caf` converted to `.m4a` | `GameAudio.swift`, `BoardFXSound.cues`, `GameSoundSignature` | missing | | game | |
+| 7.01 | Stack landing: settle from 1.07, colour bloom, one shine, motes (0.55 s) | `ArenaStackCard` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
+| 7.02 | Target arcs from the stack card (cyan yours, red theirs), drawn over 0.45 s; reticles on targets | `ArenaStackArc`, `ArenaTargetReticle` | done | `ui/GameScreen.tsx (arcs, reticles)` | game | |
+| 7.03 | Arrival flight from the stack card, glow and sparks; tokens gather from motes | `BoardFXOverlay` flights, `gather` | done | `ui/arena/BoardFX.tsx, ui/arena/fxPainter.ts` | game | game A |
+| 7.04 | Departure: flies to its owner, embers; exile pillar and sigil | `BoardFXOverlay`, `exileMoment` | done | `ui/arena/BoardFX.tsx (burn), fxPainter.ts (exileMoment)` | game | game A: 2 burns |
+| 7.05 | Damage flash with "−N" | `BoardFXOverlay` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
+| 7.06 | Counter moments (+1/+1, −1/−1, loyalty, coin) with labels | `counterMoment`, `BoardFXCounterKind.label` | partial (built) | `ui/arena/fxPainter.ts (counterMoment)` | game | port of the BoardFXPainter moment; game check pending |
+| 7.07 | Stats moment "+X/+Y" | `statsMoment` | partial (built) | `ui/arena/fxPainter.ts (statsMoment)` | game | port of the BoardFXPainter moment; game check pending |
+| 7.08 | Phasing bands; a phased-out tile at 0.42 with "Phased out" | `phaseMoment`, `ArenaBattlefieldCard` | partial | `ui/arena/fxPainter.ts (phaseMoment)` | game | bands drawn; the phased-out tile at 0.42 with its label is not |
+| 7.09 | Transform ring of light while the tile flips | `transformMoment` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
+| 7.10 | Steal: the taker's chain drags the card home | `chainMoment` | partial (built) | `ui/arena/fxPainter.ts (chainMoment), BoardFX.tsx (pulled)` | game | port of the BoardFXPainter moment; game check pending |
+| 7.11 | Attack and block marks | `BoardFXOverlay` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
+| 7.12 | Strike trails and impact | `BoardFXOverlay` | partial (built) | `ui/arena/fxPainter.ts` | game | port of the BoardFXPainter moment; game check pending |
+| 7.13 | Life change floats at the medallion; the number rolls | `BoardFXOverlay`, `ArenaHeroMedallion` | partial (built) | `ui/arena/fxPainter.ts (lifeChanged)` | game | port of the BoardFXPainter moment; game check pending |
+| 7.14 | Board shake and red vignette when you take 5+ | `BoardImpactShake`, `BoardHitVignette` | done | `ui/arena/useBoardFX.ts (boardShakes), ui/GameScreen.tsx` | unit | test/boardShake.test.ts (80b1f186) |
+| 7.15 | Turn banner: "Your turn" / "<Name>’s turn", 0.9 s | `BoardTurnBanner.arenaBanner` | done | `ui/arena/useBoardFX.ts` | game | game D |
+| 7.16 | Sounds: board cues by event (casts by type, arrivals by land and creature type, attacks, blocks, strikes, deaths, exile, counters, steal, life), UI cues (tap, pickup, play, draw, open/close, error, response alert, turn, victory/defeat), cooldowns; `.caf` converted to `.m4a` | `GameAudio.swift`, `BoardFXSound.cues`, `GameSoundSignature` | done | `ui/audio.ts, ui/arena/useBoardFX.ts` | unit | test/audio.test.ts; 99 recordings converted by prepare_data.py |
 
 ## 8. Board pieces (priority 7)
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
 | 8.01 | Corner plaques, ember / leather / quiet label, pressed state | `ArenaPlaqueButtonStyle` | done | `ui/GameScreen.tsx` | game | 2026-10-21 |
-| 8.02 | Phase strip: 8 icons always, lit track to the current step, spark along the track, ignite | `ArenaPhaseStrip` | partial | `ui/arena/layout.ts`, `ui/GameScreen.tsx` | game | |
+| 8.02 | Phase strip: 8 icons always, lit track to the current step, spark along the track, ignite | `ArenaPhaseStrip` | done | `ui/GameScreen.tsx (PhaseStrip)` | game | |
 | 8.03 | Day/night coin and storm count above the strip when they matter | `TavernTableHints` | missing | | game | |
 | 8.04 | Gear menu: Game Log, Stack (N), Phase Stops, Full control, Game Settings | `arenaGameMenuItems` | partial | `ui/GameScreen.tsx` | game | |
 | 8.05 | A new prompt closes the corner menu and the player card | `arenaBoard onChange` | missing | | game | |
-| 8.06 | Stack card: only the top object; tab with the count opens the stack browser; it closes when the stack empties | `ArenaStackCard`, `arenaTable` | partial (shows up to 4) | `ui/GameScreen.tsx` | game | |
+| 8.06 | Stack card: only the top object; tab with the count opens the stack browser; it closes when the stack empties | `ArenaStackCard`, `arenaTable` | done | `ui/GameScreen.tsx` | game | |
 | 8.07 | Stack browser: count coin, YOUR RESPONSE / WAITING, numbered coins, RESOLVES NEXT, Stop skipping / Resolve All / Done | `ArenaStackBrowser` | partial | `ui/arena/Browsers.tsx` | game | |
 | 8.08 | Zone browser: Cast plaques, Choose for targets, library wording | `ArenaZoneBrowser` | partial | `ui/arena/Browsers.tsx` | game | |
 | 8.09 | Revealed and Looked-at chips by the opponent's piles | `arenaRevealedChips` | missing | | game | |
 | 8.10 | Top of library revealed face up on the deck, playable | `TopOfLibraryCard` | missing | | game | |
 | 8.11 | Player card: portrait, life, status badges, zone grid with counts, lit where you can cast from, named exile zones | `ArenaPlayerCard` | partial | `ui/GameScreen.tsx` | game | |
 | 8.12 | Medallion glows ember on its owner's turn; status badges around it | `ArenaHeroMedallion`, `TavernEffectOrbitBadges` | partial | `ui/GameScreen.tsx` | game | |
-| 8.13 | Game log: gold title, turn dividers, an icon per event, smart pass lines dimmed, card links that open the inspector, oldest at the top, "Latest actions ↓" | `GameLogDrawer` Arena look | partial | `ui/GameScreen.tsx` | game | |
-| 8.14 | Inspector: dim 0.45, the card large, live-state notes, glossary, rules when the art can't show them, attachments, double-faced cards turn | `CardInspector.arenaBody` | partial (hover image) | `ui/GameScreen.tsx` | game | |
-| 8.15 | Opening hand: "OPENING HAND", message, a large fan dealt in, Mulligan / Keep; click a card to enlarge | `OpeningHandOverlay` | partial | `ui/GameScreen.tsx` | game | |
-| 8.16 | Result: gold rays and motes on a win, ash on a loss; reason line and game summary | `GameCompletionOverlay`, `GameResultBackdrop` | partial | `ui/GameScreen.tsx` | game | |
+| 8.13 | Game log: gold title, turn dividers, an icon per event, smart pass lines dimmed, card links that open the inspector, oldest at the top, "Latest actions ↓" | `GameLogDrawer` Arena look | done | `core/gameLog.ts, ui/arena/GameLog.tsx` | shared + game | text-cases log goldens and combat-cases log reasons pass; game D screenshots at turns 5, 9, 13 |
+| 8.14 | Inspector: dim 0.45, the card large, live-state notes, glossary, rules when the art can't show them, attachments, double-faced cards turn | `CardInspector.arenaBody` | done | `ui/arena/Inspector.tsx` | game | |
+| 8.15 | Opening hand: "OPENING HAND", message, a large fan dealt in, Mulligan / Keep; click a card to enlarge | `OpeningHandOverlay` | done | `ui/GameScreen.tsx (.amull)` | game | game A-game D: Keep |
+| 8.16 | Result: gold rays and motes on a win, ash on a loss; reason line and game summary | `GameCompletionOverlay`, `GameResultBackdrop` | partial | `ui/GameScreen.tsx (.aresult)` | game | game D: DEFEAT, winner, 10 rounds, combat damage, top attacker; rays/ash backdrop not ported |
 | 8.17 | Notices replace the caption for 2.4 s; rejected actions inline under the caption | `arenaShowNotice`, `ActionRejectionInlineView` | partial (toast) | `ui/GameScreen.tsx` | game | |
 | 8.18 | Tiles: counters (2 chips), COPY tag, keyword badges bottom left | `ArenaBattlefieldCard` | partial | `ui/arena/ArenaCard.tsx` | game | |
 | 8.19 | Rows shrink to 70 % before scrolling | `ArenaRowFit.fit` | partial (overlap) | `ui/arena/layout.ts` | unit | |
-| 8.20 | Turn labels count rounds | `TableRounds` | missing | | unit | |
+| 8.20 | Turn labels count rounds | `TableRounds` | done | `core/models.ts (TableRounds), ui/GameScreen.tsx` | unit + game | game D: 20 turns read as 10 |
 | 8.21 | Combo loop: offer, repeat modes, forecast, stop reasons | `ComboLoop.swift`, `OnDeviceSession` | missing | | shared + game | |
 | 8.22 | The local poll pace shows every AI action (engine-held poll; iOS polls 0.3 s / 0.12 s chain) | `OnDeviceLocalPollSchedule` | done (different mechanism, same result) | `table/guestSession.ts` | game | 2026-10-21 |
+| 8.23 | Tokens show the Scryfall printing that matches their name, type, rules, colours and printed P/T; a copy shows its source card | `NativeDeckArtwork.imageData` (token path), `NativeAssetStore.matchTokenArtwork`, `NativeArtworkCatalogue.searchToken` | done (game check pending) | `core/tokenArt.ts`, `ui/cardArt.ts` | unit + game | test/tokenArt.test.ts runs the iOS tests' cases (80b1f186); game D showed blank token tiles before the fix |
 
 ## 9. Out of game (priority 8, after every gameplay row)
 
@@ -232,6 +236,20 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 9.04 | Deck import (Archidekt, Moxfield) | `OnDeviceDeckLinkImporter` | missing | | unit | |
 | 9.05 | Sign-in and own decks through Supabase | `PlayerAccount`, social backend | missing (needs Caleb) | | game | |
 | 9.06 | Profile, Ranked hall | `Ranked/*` | missing | | game | |
+
+## Games on the real engine
+
+Headless desktop Chrome (`apps/web/scripts/play.mjs`, Playwright with the installed Chrome) against the static build
+served by `vite preview` with the isolation headers, the XMage AI on the other side. The driver plays through the
+board's own controls (drag to cast, Auto Pay, All Attack, the corner plaques, the browsers) and records every answer,
+the board's flights, banners and reveals, and console errors.
+
+| Run | Decks | Result | What it showed |
+|---|---|---|---|
+| game A (2026-10-22) | Token Triumph vs Grave Danger | stopped turn 9 at the commander-zone question (driver fixed) | smart pass held 2.33 s for an AI spell, passed 9 ms after the hold; 23 flights, 2 burns, 5 reveals, a banner each turn, Auto Pay ×2, All Attack ×1, a drag cast, 20 smart passes, no page errors |
+| game B | Token Triumph vs Chaos Incarnate | AI won, turn 11 | 43 smart passes, no page errors (the driver's drags pressed a neighbouring card; fixed) |
+| game C | First Flight vs Chaos Incarnate | page blanked turn 15 | 6 drags, Auto Pay ×6, All Attack ×1, 58 smart passes; a negative canvas radius threw inside an effect and React unmounted the table. Fixed: radii clamp, the painter skips a failing mark, effects sit in an error boundary (80b1f186) |
+| game D | Token Triumph vs Grave Danger | AI won, turn 20 | 15 drag casts, Auto Pay ×8, All Attack ×6, 15 attack declarations, 10 trigger/question answers, 95 smart passes, 56 banners, 31 reveals, no page errors; the log at turns 5, 9, 13; the result screen with its summary. Token tiles were blank (8.23, fixed after) |
 
 ## Android follow-ups
 
@@ -254,3 +272,7 @@ Rows whose shared cases Android can't run yet. Each needs a port into `apps/andr
 - 2026-10-22: checklist written from the iOS Arena sources and the web branch rebased onto `origin/main`
   (`claude/web-arena-parity`). Logic ported and shared: Arena pace (`boardEvents.ts`), smart pass with Stop for Removal
   and the skip modes (`smartPass.ts`), Auto Pay (`autoPay.ts`).
+- 2026-10-22 (later): the board ported on top: Arena pace and holds, smart pass with Stop for Removal, the skip menu and
+  Full control, Auto Pay, drag to play, the inspector, trigger order and remembered answers, combat, the effects painter
+  and sounds, the phase strip, opening hand, result, the game log, desktop keys, board shake, token art. Four games on
+  the real engine (above).
