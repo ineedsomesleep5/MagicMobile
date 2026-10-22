@@ -58,20 +58,17 @@ struct DeckStudioImportScreen: View {
                             VStack(spacing: 0) {
                                 importHead
                                 ScrollView { VStack(alignment: .leading, spacing: 20) { entry }.padding(16) }
+                                    .mask(ArenaScrollFade())
                             }
                         }
                         BinderPage(gutter: .leading) {
                             VStack(spacing: 0) {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: 20) {
-                                        if preview == nil {
-                                            Text("Your decklist appears here for review, card by card, before anything is saved.")
-                                                .font(.callout).italic().foregroundStyle(DeckStudioPalette.secondaryInk)
-                                                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-                                        }
                                         reviewed
                                     }.padding(16)
                                 }
+                                .mask(ArenaScrollFade())
                                 confirmButton
                             }
                         }
@@ -86,6 +83,7 @@ struct DeckStudioImportScreen: View {
                                     reviewed
                                 }.padding(16).frame(maxWidth: 720).frame(maxWidth: .infinity)
                             }
+                            .mask(ArenaScrollFade())
                             .safeAreaInset(edge: .bottom) { confirmButton }
                         }
                     }
@@ -122,7 +120,7 @@ struct DeckStudioImportScreen: View {
             .task { metadata = await Task.detached(priority: .userInitiated) { try? NativeDeckMetadataCatalogue.bundled() }.value }
             .task(id: commanderQuery) { await suggestCommanders() }
             .onDisappear { task?.cancel(); listTask?.cancel(); validation.cancelPending() }
-        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.ink).preferredColorScheme(.light)
+        }.foregroundStyle(DeckStudioPalette.ink).tint(DeckStudioPalette.accent).preferredColorScheme(.dark)
         .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { wide = $0 }
     }
     /// The binder's head: Cancel as the strap, the page's name stamped beside it.
@@ -137,8 +135,6 @@ struct DeckStudioImportScreen: View {
 
     /// Where the list goes in: the heading, the method, the input, and Review. In a spread, the left page.
     @ViewBuilder private var entry: some View {
-        Text("Bring your deck.").font(.largeTitle.weight(.bold)).tracking(-1)
-        Text("Paste or link a decklist. Review every card before saving.").foregroundStyle(DeckStudioPalette.secondaryInk)
         GrimoireChoice(title: "Import method", options: [("Paste", "Paste"), ("Link", "Link"), ("Account", "Archidekt")], selection: $method)
             .disabled(busy || saved != nil || !batch.isEmpty)
         if !isBatch && batch.isEmpty { commanderPanel }
@@ -197,8 +193,6 @@ struct DeckStudioImportScreen: View {
                             .frame(minWidth: 44, minHeight: 44).accessibilityIdentifier("deckStudio.import.commander.change")
                     }.accessibilityElement(children: .combine)
                 } else {
-                    Text("Optional. Pick it first and the import treats it as your commander, even when the list doesn't say so.")
-                        .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     TextField("Type a commander's name", text: $commanderQuery).textFieldStyle(GrimoireFieldStyle())
                         .autocorrectionDisabled().textInputAutocapitalization(.never).submitLabel(.done)
                         .onSubmit { if let first = commanderSuggestions.first { chooseCommander(first.name) } }
@@ -365,8 +359,6 @@ struct DeckStudioImportScreen: View {
                     TextField("Public Archidekt or Moxfield deck URL", text: $link)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(GrimoireFieldStyle())
                     Toggle("Exclude sideboard / maybeboard", isOn: $excludeSideboards)
-                    Text("Public links only, subject to provider access. This contacts the deck provider. No sign-in, bot-check bypass or scraping. When a provider is unavailable, paste its text export instead.")
-                        .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
                     Button("Switch to pasted export") { method = "Paste" }.frame(minHeight: 44)
                 } else {
                     archidektPicker

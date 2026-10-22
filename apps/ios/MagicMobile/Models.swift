@@ -89,6 +89,16 @@ struct GameSnapshot: Decodable {
     /// Presentation only: who the bottom seat shows while the viewer watches after leaving the
     /// game (BoardOpponentFocus). Nil is the viewer's own seat.
     var seatPlayerId: String? = nil
+    /// Presentation only: how many times the table has gone round (`TableRounds`). `turn` is the engine's count,
+    /// which every player's turn raises, and stays what logic, records and the engine use.
+    var round: Int? = nil
+
+    /// The number the board's "TURN" labels show: the round when the session tracked it, else an estimate from
+    /// the engine's turn count and the players still in (exact until someone is eliminated).
+    var displayTurn: Int {
+        if let round { return max(1, round) }
+        return TableRounds.estimate(turn: turn, playersIn: players.filter { !$0.isOut }.count)
+    }
 
     var viewerID: String { viewerPlayerId ?? "human" }
 
@@ -1607,5 +1617,56 @@ struct CardCounterBadge: Hashable {
 extension JSONDecoder {
     static var magicMobile: JSONDecoder {
         JSONDecoder()
+    }
+}
+
+/// The round the table is in, for the board's "TURN" labels. XMage's turn number counts every player's turn (turn 9
+/// of a two-player game is the fifth time round), so this counts the turns of the player who went first instead.
+/// Display only: the engine, game records and saved games keep the engine's turn number.
+///
+/// Fed every snapshot of one game, in order. A turn taken straight after the same player's turn is an extra turn
+/// and starts no round. If the first player is out, the next turn's player leads. Joining a game part-way (a resumed
+/// save), or an unseen gap of turns, falls back to turns / players still in, which is exact until someone is out.
+struct TableRounds {
+    private var gameID: String?
+    private var leader: String?
+    private var lastTurn = 0
+    private var lastActive: String?
+    private var round = 1
+
+    static func estimate(turn: Int, playersIn: Int) -> Int {
+        let n = max(1, playersIn)
+        return max(1, (max(1, turn) + n - 1) / n)
+    }
+
+    /// The round for this snapshot, or nil before the first turn has begun.
+    mutating func observe(_ snapshot: GameSnapshot) -> Int? {
+        let turn = snapshot.turn
+        guard turn > 0, let active = snapshot.activePlayerId else { return lastTurn > 0 ? round : nil }
+        let living = snapshot.players.filter { !$0.isOut }.map(\.playerId)
+        let n = max(1, living.count)
+        if snapshot.id != gameID || turn < lastTurn {
+            self = TableRounds()
+            gameID = snapshot.id
+        }
+        if lastTurn == 0 {
+            // First sight of the game: turn 1 (or a turn that starts a round by the count) names the leader.
+            round = Self.estimate(turn: turn, playersIn: n)
+            leader = (turn - 1) % n == 0 ? active : nil
+        } else if turn > lastTurn {
+            if turn - lastTurn > 1 { round += (turn - lastTurn - 1) / n }
+            if let leader, living.contains(leader) {
+                if active == leader, lastActive != leader { round += 1 }
+            } else {
+                // The leader is unknown or out: count by turns, and let a round's first turn name the leader again.
+                if leader != nil { leader = active } else {
+                    round = Self.estimate(turn: turn, playersIn: n)
+                    if (turn - 1) % n == 0 { leader = active }
+                }
+            }
+        }
+        lastTurn = turn
+        lastActive = active
+        return round
     }
 }

@@ -1997,6 +1997,8 @@ struct TavernMenu<Label: View, Items: View>: View {
     @State private var open = false
     @State private var pending: (() -> Void)?
     @Environment(\.arenaBoard) private var arena
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var compactHeight: Bool { verticalSizeClass == .compact }
     /// The button sits in the lower half of the screen: the pop-over opens upward, where there is room.
     @State private var opensUpward = false
 
@@ -2018,6 +2020,11 @@ struct TavernMenu<Label: View, Items: View>: View {
                                 .frame(height: scrollHeight)
                                 .onAppear { if let scrollAnchor { proxy.scrollTo(scrollAnchor, anchor: .center) } }
                         }
+                    } else if compactHeight {
+                        // Held sideways the screen is under 450 pt tall and a long list (the zones, with the status
+                        // panel above them) ran off its bottom with no way to reach the rest: cap it and scroll.
+                        ScrollView { VStack(alignment: .leading, spacing: 6) { items }.padding(10) }
+                            .frame(maxHeight: max(200, Self.screenHeight - 64))
                     } else {
                         VStack(alignment: .leading, spacing: 6) { items }.padding(10)
                     }
@@ -2042,8 +2049,12 @@ struct TavernMenu<Label: View, Items: View>: View {
             }
     }
 
+    private static var screenHeight: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 0
+    }
+
     private static func isLow(_ frame: CGRect) -> Bool {
-        let height = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 0
+        let height = screenHeight
         return height > 0 && frame.midY > height * 0.55
     }
 }

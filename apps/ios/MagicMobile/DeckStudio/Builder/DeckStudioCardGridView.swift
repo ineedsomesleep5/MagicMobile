@@ -39,7 +39,7 @@ struct DeckStudioCardPreview: View {
     var body: some View {
         DeckStudioCardImageTile(name: name, card: card, large: true, art: art)
             .frame(width: 300).padding(8).background(GrimoirePaper())
-            .preferredColorScheme(.light).grimoirePage(.loose)
+            .preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 

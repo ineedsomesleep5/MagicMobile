@@ -143,7 +143,11 @@ final class GrimoireStage {
     /// What a page turn looks like right now: the curl, a quick crossfade under Reduce Motion, or nothing
     /// (UI tests, unless they ask for motion with MAGICMOBILE_UI_TEST_GRIMOIRE_MOTION).
     enum PageEffect { case none, crossfade, curl }
+    /// The book's page curl, off since Deck Studio became Arena's deck builder.
+    static let curlEnabled = false
     static var pageEffect: PageEffect {
+        // Arena's deck builder changes page in place (Caleb, 2026-10-22: Deck Studio follows Arena): no curl.
+        if !curlEnabled { return .none }
         let environment = ProcessInfo.processInfo.environment
         let automated = HowToPlayLaunch.isAutomated(arguments: ProcessInfo.processInfo.arguments, environment: environment)
         if automated && environment["MAGICMOBILE_UI_TEST_GRIMOIRE_MOTION"] == nil { return .none }

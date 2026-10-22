@@ -41,8 +41,7 @@ struct RankProgressPanel: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background { TavernFill(material: .leather).overlay(Color.black.opacity(0.3)).clipShape(RoundedRectangle(cornerRadius: 10)) }
-        .overlay { TavernBrassFrame(scale: 0.5) }
+        .modifier(ArenaGlassPanel(cornerRadius: 12, opacity: 0.95))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Ranked: \(change.after.title). \(deltaText)"))
         .accessibilityIdentifier("rank.progress")

@@ -428,7 +428,10 @@ class DeckStudioTest {
     @Test fun linkImporterAcceptsOnlyPublicDeckLinks() {
         assertEquals(OnDeviceDeckLinkImporter.Provider.ARCHIDEKT, OnDeviceDeckLinkImporter.source("https://archidekt.com/decks/123456/my-deck").provider)
         assertEquals("https://api2.moxfield.com/v3/decks/all/abcdefghijklmnopqrstuv", OnDeviceDeckLinkImporter.source("https://www.moxfield.com/decks/abcdefghijklmnopqrstuv").endpoint)
-        for (bad in listOf("http://archidekt.com/decks/1", "https://archidekt.com/decks/1?x=1", "https://user@archidekt.com/decks/1", "https://example.com/decks/1",
+        // A share link's query never reaches the request: the endpoint stays the fixed one for the deck ID.
+        for (shared in listOf("https://archidekt.com/decks/14167342?utm_source=share&utm_medium=ios", "archidekt.com/decks/14167342"))
+            assertEquals("https://archidekt.com/api/decks/14167342/", OnDeviceDeckLinkImporter.source(shared).endpoint)
+        for (bad in listOf("http://archidekt.com/decks/1", "https://user@archidekt.com/decks/1", "https://example.com/decks/1",
             "https://moxfield.com/decks/short")) assertThrows<OnDeviceDeckLinkImporter.ImportError> { OnDeviceDeckLinkImporter.source(bad) }
     }
 

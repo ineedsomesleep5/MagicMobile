@@ -1,105 +1,267 @@
 import SwiftUI
 
 /// Bundled release notes remain readable offline. Upstream links never imply installed support.
+/// Arena's inbox (the judge, 2026-10-22, against inbox-1.png): a blade on the right over the dimmed menu, one column of
+/// messages, each a ◆, its title and its date, the newest tagged New in orange; a tap opens the message in place.
+/// The build, XMage news and the links sit in the last message, About & links.
 struct NativeUpdateNewsView: View {
     let upstreamCommit: String?
-    @Environment(\.dismiss) private var dismiss
+    @State private var expanded: String?
+
+    private static let aboutID = "about"
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Installed build") {
-                    LabeledContent("MagicMobile", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
-                    if let upstreamCommit {
-                        LabeledContent("XMage revision", value: String(upstreamCommit.prefix(12)))
-                            .font(.caption.monospaced())
+        VStack(spacing: 0) {
+            ArenaPanelHeader(title: String(localized: "Inbox"), closeIdentifier: "updates.close")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ArenaCaps(text: String(localized: "What's new"), size: 9.5)
+                        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 6)
+                    // Not lazy, so the panel can size itself to the messages.
+                    ForEach(Array(UpdateNews.messages.enumerated()), id: \.element.id) { index, message in
+                        row(id: message.id, title: message.title, date: message.date, new: index == 0) {
+                            ArenaInboxMessage(message: message)
+                        }
+                    }
+                    row(id: Self.aboutID, title: String(localized: "About & links"), date: nil, new: false) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            installedBuild
+                            linkSections
+                        }
                     }
                 }
-                Section("What's new") {
-                    Label("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage: "bubble.left.and.bubble.right.fill")
-                    Label("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it, as many times as you pick, until you can't, or until they lose. It waits for your triggers and keeps choosing the same kind of target.", systemImage: "arrow.triangle.2.circlepath")
-                    Label("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage: "trophy.fill")
-                    Label("Spread-out token piles stack back up with the Stack chip.", systemImage: "square.stack.fill")
-                    Label("Keep your profile: sign in with Apple or Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage: "person.crop.circle.badge.checkmark")
-                    Label("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage: "paintpalette.fill")
-                    Label("The offline download now includes every token and emblem.", systemImage: "arrow.down.to.line.circle.fill")
-                    Label("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage: "square.stack.3d.up.fill")
-                    Label("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage: "checkmark.square.fill")
-                    Label("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage: "forward.fill")
-                    Label("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage: "bolt.fill")
-                    Label("Pick any number of cards at once with Select all, and remember which of your triggers goes first.", systemImage: "rectangle.stack.fill")
-                    Label("The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes.", systemImage: "sparkles")
-                    Label("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage: "eye.fill")
-                    Label("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage: "sparkles")
-                    Label("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage: "moon.stars")
-                    Label("The starting roll has more table: the header sits at the top and the dice get the room below it.", systemImage: "dice")
-                    Label("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage: "hand.draw.fill")
-                    Label("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage: "dice")
-                    Label("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage: "chart.bar.fill")
-                    Label("Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private.", systemImage: "person.2.fill")
-                    Label("Deck Studio's menus and prompts are the binder's own, and held sideways both pages fill the binder with Add cards floating over the page.", systemImage: "list.bullet.rectangle.portrait")
-                    Label("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage: "book.fill")
-                    Label("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage: "books.vertical.fill")
-                    Label("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage: "battery.100")
-                    Label("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage: "figure.fencing")
-                    Label("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage: "flame.fill")
-                    Label("Your profile picture is your favorite commander's art.", systemImage: "person.crop.circle")
-                    Label("The menu fits on one screen, and Downloads matches the tavern.", systemImage: "rectangle.stack.fill")
-                    Label("Smoother rank badge turns and lighter menu animations.", systemImage: "sparkles")
-                    Label("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage: "shield.lefthalf.filled")
-                    Label("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage: "bolt.fill")
-                    Label("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage: "checkmark.seal")
-                    Label("Your profile: rank, season history, stats, achievements, titles and match history.", systemImage: "person.crop.circle")
-                    Label("21 new included decks from Bracket 1 to 4, for you and for the AI.", systemImage: "rectangle.stack.fill")
-                    Label("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage: "table.furniture")
-                    Label("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage: "sparkles")
-                    Label("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage: "person.crop.circle")
-                    Label("Big boards run smoother: identical tokens stack once there are eight.", systemImage: "square.stack.3d.up")
-                    Label("A Back button while declaring attackers and blockers.", systemImage: "arrow.uturn.backward")
-                    Label("Friends, table chat and invite links that open straight into your table.", systemImage: "person.2.fill")
-                }
-                Section {
-                    Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {
-                        Label("XMage release notes", systemImage: "arrow.up.right.square")
-                    }
-                    Link(destination: URL(string: "https://github.com/magefree/mage/commits/master/")!) {
-                        Label("Latest upstream changes", systemImage: "arrow.up.right.square")
-                    }
-                } header: {
-                    Text("XMage news")
-                } footer: {
-                    Text("Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.")
-                }
-                Section {
-                    LabeledContent("Card images", value: "Scryfall")
-                    Link(destination: URL(string: "https://magicmobile-downloads.vercel.app/privacy/")!) {
-                        Label("Privacy", systemImage: "hand.raised")
-                    }
-                    .accessibilityIdentifier("updates.privacy")
-                } header: {
-                    Text("About")
-                } footer: {
-                    // Same notice as the download site's footer.
-                    Text("Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.")
-                        .accessibilityIdentifier("updates.fanContentNotice")
-                }
-                Section {
-                    Link(destination: SupportProject.url) {
-                        Label(SupportProject.action, systemImage: "heart.fill")
-                    }
-                    .accessibilityIdentifier("updates.support")
-                } header: {
-                    Text("Support MagicMobile")
-                } footer: {
-                    Text(SupportProject.note)
-                }
+                .padding(.bottom, 24)
             }
-            .tavernList()
-            .navigationTitle("Updates")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .scrollIndicators(.hidden)
+            .mask(ArenaScrollFade())
         }
+        .labelStyle(ArenaNewsLabelStyle())
+        .tint(ArenaMenuStyle.gold)
         .preferredColorScheme(.dark)
     }
+
+    /// One message: a ◆ (lit gold while it is the newest), New in orange over its title, its date, and the message itself
+    /// opening under it when tapped.
+    private func row<Body: View>(id: String, title: String, date: String?, new: Bool, @ViewBuilder content: () -> Body) -> some View {
+        let open = expanded == id
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                GameAudio.shared.play(open ? .uiBack : .uiOpen)
+                withAnimation(.easeOut(duration: 0.22)) { expanded = open ? nil : id }
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    Rectangle()
+                        .fill(new ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.clear))
+                        .frame(width: 9, height: 9)
+                        .overlay(Rectangle().strokeBorder(new ? ArenaMenuStyle.gold : ArenaMenuStyle.text.opacity(0.55), lineWidth: 1.3))
+                        .rotationEffect(.degrees(45))
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 1) {
+                        if new {
+                            Text(String(localized: "New")).font(ArenaMenuStyle.font(11, .bold)).foregroundStyle(ArenaMenuStyle.ember)
+                        }
+                        Text(title).font(ArenaMenuStyle.font(14.5, new || open ? .bold : .semibold))
+                            .foregroundStyle(ArenaMenuStyle.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let date {
+                            Text(date).font(ArenaMenuStyle.font(11, .semibold))
+                                .foregroundStyle(new ? ArenaMenuStyle.ember : ArenaMenuStyle.dim)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .background(open ? Color.white.opacity(0.06) : Color.clear)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(BrandPressStyle())
+            .accessibilityAddTraits(open ? [.isSelected] : [])
+            .accessibilityHint(open ? String(localized: "Closes the message") : String(localized: "Opens the message"))
+            .accessibilityIdentifier("updates.inbox.\(id)")
+            if open {
+                content()
+                    .padding(.horizontal, 14).padding(.top, 4).padding(.bottom, 16)
+                    .transition(.opacity)
+            }
+            Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.35)
+        }
+    }
+
+    private var installedBuild: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            ArenaCaps(text: String(localized: "Installed build"))
+            Spacer(minLength: 8)
+            Text("MagicMobile \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"))")
+                .font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+        }
+    }
+
+    @ViewBuilder private var linkSections: some View {
+        ArenaNewsSection(title: String(localized: "XMage news"),
+                         footer: String(localized: "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.")) {
+            Link(destination: URL(string: "https://github.com/magefree/mage/releases")!) {
+                Label("XMage release notes", systemImage: "arrow.up.right")
+            }
+            Link(destination: URL(string: "https://github.com/magefree/mage/commits/master/")!) {
+                Label("Latest upstream changes", systemImage: "arrow.up.right")
+            }
+        }
+        ArenaNewsSection(title: String(localized: "About"),
+                         footer: String(localized: "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners."),
+                         footerIdentifier: "updates.fanContentNotice") {
+            Text(String(localized: "Card images from Scryfall"))
+            Link(destination: URL(string: "https://magicmobile-downloads.vercel.app/privacy/")!) {
+                Label("Privacy", systemImage: "arrow.up.right")
+            }
+            .accessibilityIdentifier("updates.privacy")
+        }
+        ArenaNewsSection(title: String(localized: "Support MagicMobile"), footer: SupportProject.note) {
+            Link(destination: SupportProject.url) {
+                Label(SupportProject.action, systemImage: "arrow.up.right")
+            }
+            .accessibilityIdentifier("updates.support")
+        }
+    }
+}
+
+/// A message's art crop, the large image so a banner across the blade stays sharp (the judge, 2026-10-22); until it
+/// arrives, a plain dark band.
+struct UpdateNewsArt: View {
+    let name: String
+    var colors: [String] = []
+
+    var body: some View {
+        GeometryReader { proxy in
+            NativeCardArtworkView(name: name, variant: .inspection, contentMode: .fill, artOnly: true) { _, _ in
+                ArenaColorGlass(colors: colors)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// An open message, under its row: its art as a banner the width of the row, then all it brought.
+struct ArenaInboxMessage: View {
+    let message: UpdateNewsMessage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            UpdateNewsArt(name: message.art, colors: message.colors)
+                .frame(height: 110)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
+            Text(message.lede).font(ArenaMenuStyle.font(13.5, .medium)).foregroundStyle(ArenaMenuStyle.text.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(message.notes.enumerated()), id: \.offset) { _, note in
+                Text(note).font(ArenaMenuStyle.font(13, .medium)).foregroundStyle(ArenaMenuStyle.text.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("updates.message.\(message.id)")
+    }
+}
+
+/// One release's message in the inbox: a card's art, the title and the day it came, and what it brought.
+struct UpdateNewsMessage: Identifiable {
+    let id: String
+    let title: String
+    /// The day in October 2026 the release notes were written.
+    let day: Int
+    let art: String
+    let colors: [String]
+    let lede: String
+    let notes: [String]
+
+    var date: String {
+        let components = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 10, day: day)
+        return components.date?.formatted(date: .long, time: .omitted) ?? ""
+    }
+}
+
+/// The releases' notes, newest first, dated by the day they were written (git history of this file).
+enum UpdateNews {
+    static let messages: [UpdateNewsMessage] = [
+        UpdateNewsMessage(id: "arena-menus", title: String(localized: "The menus follow the Arena board"), day: 22,
+                          art: "Rhystic Study", colors: ["U"],
+                          lede: String(localized: "Every menu now matches the Arena board: Play opens a panel beside your deck boxes, and the boxes open when you choose one."),
+                          notes: [
+                            String(localized: "Your decks stand in boxes with the commander on the front; the one you choose opens and its commander rises out."),
+                            String(localized: "Play is a panel on the right with Find Match, Friends and Recently Played, and a search waits in it with a timer."),
+                            String(localized: "Decks, Options, Updates, Downloads and How to Play open as panels over the room."),
+                            String(localized: "Held sideways, the deck builder shows the cards to add beside your deck as a list."),
+                          ]),
+        UpdateNewsMessage(id: "messages", title: String(localized: "Messages and the Ranked Hall"), day: 17,
+                          art: "Kynaios and Tiro of Meletis", colors: ["W", "U", "R", "G"],
+                          lede: String(localized: "Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message."),
+                          notes: [
+                            String(localized: "Repeat a combo: do the same thing three times in a turn and the game offers to repeat it, as many times as you pick, until you can't, or until they lose. It waits for your triggers and keeps choosing the same kind of target."),
+                            String(localized: "Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online."),
+                            String(localized: "Spread-out token piles stack back up with the Stack chip."),
+                          ]),
+        UpdateNewsMessage(id: "sign-in", title: String(localized: "Keep your profile"), day: 8,
+                          art: "Atraxa, Praetors' Voice", colors: ["W", "U", "B", "G"],
+                          lede: String(localized: "Sign in with Apple or Google on the Profile screen, and your name, friends and rank follow you to any phone."),
+                          notes: []),
+        UpdateNewsMessage(id: "turns", title: String(localized: "Smoother turns"), day: 7,
+                          art: "Thousand-Year Storm", colors: ["U", "R"],
+                          lede: String(localized: "Your spells resolve without an extra tap. Turn off Pass After Casting in Options to hold priority."),
+                          notes: [
+                            String(localized: "Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu."),
+                            String(localized: "Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds."),
+                            String(localized: "Pick any number of cards at once with Select all, and remember which of your triggers goes first."),
+                            String(localized: "The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes."),
+                          ]),
+        UpdateNewsMessage(id: "table", title: String(localized: "More on the table"), day: 7,
+                          art: "Courser of Kruphix", colors: ["G"],
+                          lede: String(localized: "When you can see the top of your library, it sits beside your portrait. Tap it to see it large and cast or play it."),
+                          notes: [
+                            String(localized: "The stack shows what resolves next, whose it is, its targets, and Resolve all."),
+                            String(localized: "Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which."),
+                            String(localized: "A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion."),
+                            String(localized: "The starting roll has more table: the header sits at the top and the dice get the room below it."),
+                          ]),
+        UpdateNewsMessage(id: "art", title: String(localized: "Choose your card art"), day: 7,
+                          art: "Krenko, Mob Boss", colors: ["R"],
+                          lede: String(localized: "Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it."),
+                          notes: [String(localized: "The offline download now includes every token and emblem.")]),
+        UpdateNewsMessage(id: "profile", title: String(localized: "Your games at a glance"), day: 6,
+                          art: "Edgar Markov", colors: ["W", "B", "R"],
+                          lede: String(localized: "Your profile shows win rate, favourite commanders, colours and rank history. Your game history lives there now."),
+                          notes: [
+                            String(localized: "Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private."),
+                            String(localized: "The starting roll happens on the table: every player's d20 tumbles across it and lands."),
+                          ]),
+        UpdateNewsMessage(id: "battery", title: String(localized: "Easier on your battery"), day: 5,
+                          art: "Lightning Greaves", colors: [],
+                          lede: String(localized: "The game rests while it waits for you, and the app is a smaller download."),
+                          notes: []),
+        UpdateNewsMessage(id: "ranked", title: String(localized: "Ranked seasons"), day: 4,
+                          art: "Elesh Norn, Grand Cenobite", colors: ["W"],
+                          lede: String(localized: "Climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier."),
+                          notes: [
+                            String(localized: "Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill."),
+                            String(localized: "Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count."),
+                            String(localized: "Every deck shows its Commander bracket, with the Game Changers and combos behind it."),
+                            String(localized: "Your profile: rank, season history, stats, achievements, titles and match history. Your profile picture is your favorite commander's art."),
+                            String(localized: "21 new included decks from Bracket 1 to 4, for you and for the AI."),
+                            String(localized: "A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles."),
+                          ]),
+        UpdateNewsMessage(id: "tavern", title: String(localized: "A new table"), day: 3,
+                          art: "Prossh, Skyraider of Kher", colors: ["B", "R", "G"],
+                          lede: String(localized: "A new table with painted card frames, in portrait and landscape, and every spell cast with its own moment at the centre of it."),
+                          notes: [
+                            String(localized: "Tap a player's medallion for their counters, poison and commander damage, and swap between opponents."),
+                            String(localized: "Big boards run smoother: identical tokens stack once there are eight."),
+                            String(localized: "A Back button while declaring attackers and blockers."),
+                            String(localized: "Friends, table chat and invite links that open straight into your table."),
+                          ]),
+    ]
 }
 
 /// The tip jar. Every support link opens the download site's support page in the browser (never an
@@ -154,23 +316,64 @@ struct SupportBanner: View {
     }
 }
 
-/// The always-on support panel at the foot of Settings.
+/// The always-on support panel on the Options' Support page.
 struct SupportSettingsPanel: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TavernPanelTitle(text: "Support MagicMobile")
+            ArenaCaps(text: "Support MagicMobile")
             Text(SupportProject.note)
-                .font(.system(size: 12, design: .serif))
-                .foregroundStyle(TavernPalette.parchment.opacity(0.65))
+                .font(ArenaMenuStyle.font(12, .medium))
+                .foregroundStyle(ArenaMenuStyle.dim)
                 .fixedSize(horizontal: false, vertical: true)
             Button { openURL(SupportProject.url) } label: {
-                Label(SupportProject.action, systemImage: "heart.fill").frame(maxWidth: .infinity)
+                Label(SupportProject.action, systemImage: "heart.fill")
             }
-            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+            .buttonStyle(ArenaPillButtonStyle(lit: true))
             .accessibilityIdentifier("settings.support")
         }
         .modifier(TavernSettingsPanel())
+    }
+}
+
+/// A section of the news panel: gold capitals over its rows on a lighter pane, and a line under it.
+struct ArenaNewsSection<Content: View>: View {
+    let title: String
+    var footer: String? = nil
+    var footerIdentifier: String? = nil
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ArenaCaps(text: title)
+            VStack(alignment: .leading, spacing: 0) {
+                Group { content }
+                    .font(ArenaMenuStyle.font(14, .medium))
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            }
+            .padding(.horizontal, 12)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.045)))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.8).opacity(0.55))
+            if let footer {
+                Text(footer).font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(footerIdentifier ?? "")
+            }
+        }
+    }
+}
+
+/// A link in the news panel: the words, and its arrow in gold at the end of the line.
+struct ArenaNewsLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            configuration.title.fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            configuration.icon.font(.system(size: 12, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
+        }
+        .frame(minHeight: 28)
     }
 }

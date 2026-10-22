@@ -253,7 +253,12 @@ final class OnDeviceDeckLinkImporterTests: XCTestCase {
         XCTAssertEqual(mox.endpoint.absoluteString, "https://api2.moxfield.com/v3/decks/all/abcdefghijklmnopqrstuv")
         let arch = try OnDeviceDeckLinkImporter.source(for: "https://archidekt.com/decks/123/my_deck#title")
         XCTAssertEqual(arch.endpoint.absoluteString, "https://archidekt.com/api/decks/123/")
-        for url in ["http://archidekt.com/decks/123", "https://archidekt.com.evil.test/decks/123", "https://user@archidekt.com/decks/123", "https://archidekt.com:443/decks/123", "https://archidekt.com/decks/%31", "https://archidekt.com/decks/123?next=https://evil.test", "https://archidekt.com/api/decks/123", "https://moxfield.com/decks/public", "https://archidekt.com/decks/0", "https://archidekt.com/decks/123/a/b"] {
+        // A share link's query never reaches the request: the endpoint stays the fixed one for the deck ID.
+        for shared in ["https://archidekt.com/decks/14167342?utm_source=share&utm_medium=ios", "archidekt.com/decks/14167342",
+                       "https://archidekt.com/decks/14167342?next=https://evil.test"] {
+            XCTAssertEqual(try OnDeviceDeckLinkImporter.source(for: shared).endpoint.absoluteString, "https://archidekt.com/api/decks/14167342/", shared)
+        }
+        for url in ["http://archidekt.com/decks/123", "https://archidekt.com.evil.test/decks/123", "https://user@archidekt.com/decks/123", "https://archidekt.com:443/decks/123", "https://archidekt.com/decks/%31", "https://archidekt.com/api/decks/123", "https://moxfield.com/decks/public", "https://archidekt.com/decks/0", "https://archidekt.com/decks/123/a/b"] {
             XCTAssertThrowsError(try OnDeviceDeckLinkImporter.source(for: url), url)
         }
     }

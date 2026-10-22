@@ -67,6 +67,12 @@ data class GameSnapshot(
     val seatPlayerId: String? = null,
 ) {
     val viewerID: String get() = viewerPlayerId ?: "human"
+    /**
+     * The number the board's "TURN" labels show: how many times the table has gone round. XMage's [turn] counts every
+     * player's turn and stays what logic, records and the engine use. Estimated from the players still in, as iOS does
+     * before its round tracker has seen the game (exact until someone is eliminated).
+     */
+    val displayTurn: Int get() = tableRoundEstimate(turn, players.count { !it.isOut })
     /** The player the bottom of the board shows: the viewer, or their stand-in while they watch. */
     val seatID: String get() = seatPlayerId ?: viewerID
     fun isViewer(playerID: String?): Boolean = playerID == viewerID
@@ -877,4 +883,10 @@ fun capitalizedWords(value: String): String {
         startOfWord = false
     }
     return out.toString()
+}
+
+/** The round for an engine turn count: turns / players still in, rounded up (iOS `TableRounds.estimate`). */
+fun tableRoundEstimate(turn: Int, playersIn: Int): Int {
+    val n = maxOf(1, playersIn)
+    return maxOf(1, (maxOf(1, turn) + n - 1) / n)
 }

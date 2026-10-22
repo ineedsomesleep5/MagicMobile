@@ -48,7 +48,7 @@ struct DeckStudioReplacementPicker: View {
                     guard !Task.isCancelled, captured == request else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -74,7 +74,7 @@ struct DeckStudioBasicLandsSheet: View {
                          trailing: BinderLeafAction(title: "Apply", identifier: "deckStudio.basics.apply") {
                              if apply(values, draft) { dismiss() } else { error = "The draft changed or these counts exceed its limits. Nothing was partially applied." }
                          })
-        }.tint(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -138,7 +138,7 @@ struct DeckStudioCommanderFirstPicker: View {
                     guard !Task.isCancelled, captured == query else { return }
                     results = found
                 }
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
     }
 }
 
@@ -214,7 +214,7 @@ struct DeckStudioTextEditorSheet: View {
                                 else { error = "The deck changed while you were editing, or this list exceeds its limits. Nothing was applied." }
                             }
                         } ?? (unsupported ? nil : BinderLeafAction(title: DeckStudioPlayText.reviewChanges, identifier: "deckStudio.textEditor.review") { prepareReview() }))
-        }.tint(DeckStudioPalette.ink).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        }.tint(DeckStudioPalette.accent).foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
     }
     private func prepareReview() {
         do {
@@ -236,8 +236,11 @@ struct DeckStudioPreflightBar: View {
                 Text("\(preflight.count)/\(DeckStudioPreflight.targetCount)").font(.system(size: 17, weight: .heavy, design: .serif).monospacedDigit())
                     .foregroundStyle(DeckStudioPalette.ink)
                     .accessibilityLabel("\(CardCountText.label(preflight.count)) of \(DeckStudioPreflight.targetCount)")
-                Text(preflight.summary).font(.system(size: 13, weight: .semibold, design: .serif))
-                    .foregroundStyle(preflight.issueCount == 0 ? DeckStudioPalette.success : DeckStudioPalette.warning)
+                // One line, still honest: it is a quick check, and XMage decides (the judge, 2026-10-22: no separate caption).
+                Text("Quick check · \(preflight.summary)").font(.system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(preflight.issueCount == 0 ? ArenaMenuStyle.gold : DeckStudioPalette.warning)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .accessibilityLabel("\(preflight.summary). \(DeckStudioPreflight.caption)")
                 Spacer(minLength: 0)
             }
             // The brass gauge, as on the title plate.
@@ -248,7 +251,6 @@ struct DeckStudioPreflightBar: View {
                     HStack(spacing: 8) { ForEach(preflight.activeIssues) { chip($0) } }.padding(.vertical, 2)
                 }
             }
-            Text(DeckStudioPreflight.caption).font(.system(size: 12, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
         }
         .padding(.top, 16).padding(.bottom, 6).frame(maxWidth: .infinity, alignment: .leading)
         // Ruled off from the plate above it rather than boxed.
@@ -318,7 +320,7 @@ struct DeckStudioQuickAddBar: View {
             if let toast {
                 HStack {
                     Text(toast.message).font(.system(size: 13, weight: .bold, design: .serif)).lineLimit(2)
-                        .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
+                        .foregroundStyle(ArenaMenuStyle.text)
                     Spacer(minLength: 8)
                     Button(DeckStudioPlayText.undo) { model.undo(); self.toast = nil }
                         .buttonStyle(BinderPlaqueButtonStyle())
@@ -326,9 +328,8 @@ struct DeckStudioQuickAddBar: View {
                         .accessibilityIdentifier("deckStudio.quickAdd.undo")
                 }.padding(.leading, 12).padding(.trailing, 4)
                     .background {
-                        ZStack { TavernFill(material: .leather); Binder.dye(Binder.oxblood, 0.4) }
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Binder.brass, lineWidth: 1.5))
+                        RoundedRectangle(cornerRadius: 12).fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom))
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                     }
                     .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
                     .accessibilityElement(children: .contain)
@@ -360,15 +361,15 @@ struct DeckStudioQuickAddBar: View {
                 .accessibilityIdentifier("deckStudio.quickAdd")
             if !text.isEmpty {
                 Button { text = "" } label: { Image(systemName: "xmark.circle.fill").frame(width: 32, height: 44) }
-                    .buttonStyle(.plain).foregroundStyle(binder ? TavernPalette.parchment.opacity(0.7) : DeckStudioPalette.secondaryInk)
+                    .buttonStyle(.plain).foregroundStyle(DeckStudioPalette.secondaryInk)
                     .accessibilityLabel("Clear quick add")
             }
         }.padding(.horizontal, 10).frame(minHeight: DeckStudioMetrics.controlHeight)
-            // Floating over the page's cards, the well is solid leather so nothing shows through it.
+            // Floating over the page's cards, the field is solid glass so nothing shows through it.
             .background {
                 if binder {
-                    ZStack { TavernFill(material: .leather); Binder.dye(Binder.leatherDark, 0.55) }
-                        .clipShape(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius))
+                    RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).fill(ArenaGlass.bottom)
+                        .overlay(RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
                         .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                 } else {
                     RoundedRectangle(cornerRadius: DeckStudioMetrics.controlRadius).fill(DeckStudioPalette.surfaceElevated)

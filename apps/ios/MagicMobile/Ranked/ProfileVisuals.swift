@@ -257,8 +257,6 @@ struct RankHistoryChart: View {
                 HStack {
                     Text(first.date.formatted(date: .abbreviated, time: .omitted))
                     Spacer()
-                    Text(String(localized: "\(points.count) ranked games"))
-                    Spacer()
                     Text(last.date.formatted(date: .abbreviated, time: .omitted))
                 }
                 .font(.system(size: 10, weight: .semibold, design: .serif)).opacity(0.65)
@@ -292,6 +290,9 @@ struct RankHistoryChart: View {
             if entry.low > low && entry.low < high {
                 var line = Path(); line.move(to: CGPoint(x: left, y: y(entry.low))); line.addLine(to: CGPoint(x: size.width - right, y: y(entry.low)))
                 context.stroke(line, with: .color(entry.tier.tint.opacity(0.35)), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                // The line is where the tier starts: it carries the tier's name at its end (the judge, 2026-10-22).
+                context.draw(Text(entry.tier.name).font(.system(size: 9, weight: .bold, design: .serif)).foregroundStyle(entry.tier.tint.opacity(0.85)),
+                             at: CGPoint(x: size.width - right, y: y(entry.low) - 7), anchor: .trailing)
             }
             if visibleHigh - visibleLow >= 4 {
                 let mid = y((visibleLow + visibleHigh) / 2)

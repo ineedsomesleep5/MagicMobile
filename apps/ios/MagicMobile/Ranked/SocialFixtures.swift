@@ -55,7 +55,8 @@ enum SocialFixtures {
                 state = result.state
                 change = result.change
             }
-            let date = now.addingTimeInterval(-Double(results.count - 1 - index) * 1.35 * 86_400 - 3_600 * Double(index % 5))
+            // Every fixture game falls in this month's season, so the rank chart and the season list agree.
+            let date = now.addingTimeInterval(-Double(results.count - 1 - index) * 0.6 * 86_400 - 3_600 * Double(index % 5))
             made.append(MatchRecord(date: date, mode: ranked ? .ranked : (index % 7 == 1 ? .casual : .quick),
                                     opponents: [.init(name: foe.name, commander: foe.commander, isAI: true)],
                                     opponentBracket: foe.name.count % 3 + 2, aiSkill: 3, deckID: deck.id, deckName: deck.name,
@@ -63,8 +64,9 @@ enum SocialFixtures {
                                     turns: 6 + (index * 3) % 8, rankChange: change, season: ranked ? season : nil))
         }
         state.history = [
-            SeasonRecord(season: "2026-09", final: RankPosition(tier: .bronze, division: 1, pips: 2),
-                         peak: RankPosition(tier: .silver, division: 4, pips: 0), wins: 11, losses: 9),
+            // September ended where October's chart begins.
+            SeasonRecord(season: "2026-09", final: RankPosition(tier: .silver, division: 4, pips: 0),
+                         peak: RankPosition(tier: .silver, division: 4, pips: 2), wins: 11, losses: 9),
             SeasonRecord(season: "2026-08", final: RankPosition(tier: .bronze, division: 3, pips: 0),
                          peak: RankPosition(tier: .bronze, division: 2, pips: 2), wins: 6, losses: 8),
         ]
@@ -231,7 +233,9 @@ extension SocialFixtures {
                 let points = RankPosition.published(step: player.step, pips: player.pips).points
                 return (player.name, points, player.title, player.commander, player.online, 8 + player.step, 4 + player.name.count % 7)
             }
-        rows.append((own, RankPosition.published(step: 10, pips: 2).points, "Contender", "Edgar Markov", true, 14, 9))
+        // Your own row is the standing the fixture games leave (the profile's and the top bar's), so the pages agree.
+        let mine = matches(now: Date(), season: RankLadder.season(for: Date())).rank
+        rows.append((own, mine.position.points, nil, "Edgar Markov", true, mine.wins, mine.losses))
         rows.sort { $0.points != $1.points ? $0.points > $1.points : $0.name.lowercased() < $1.name.lowercased() }
         let entries = rows.enumerated().map { index, row in
             RankedLeaderboard.Entry(position: index + 1, username: row.name, title: row.title, commander: row.commander, points: row.points,

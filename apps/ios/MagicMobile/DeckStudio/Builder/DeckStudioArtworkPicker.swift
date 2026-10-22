@@ -38,7 +38,7 @@ struct DeckStudioArtworkPicker: View {
             .background(GrimoirePaper())
             .binderLeaf("Choose artwork", trailing: BinderLeafAction(title: "Done", identifier: "deckStudio.artwork.done") { dismiss() })
         }
-        .foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.light).grimoirePage(.loose)
+        .foregroundStyle(DeckStudioPalette.ink).preferredColorScheme(.dark).grimoirePage(.loose)
         .task(id: remoteArtwork) { if remoteArtwork, !loaded { await load(next: 1) } }
         .accessibilityIdentifier("deckStudio.artwork.picker")
     }

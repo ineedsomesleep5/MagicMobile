@@ -412,9 +412,9 @@ object SpectatorSeatPresentation {
         val count = snapshot.remainingOpponents.size
         val players = if (count == 1) "1 player still in" else "$count players still in"
         val seat = snapshot.seat
-        if (seat == null || snapshot.isViewer(seat.playerId)) return "You’re out · $players · Turn ${snapshot.turn}"
+        if (seat == null || snapshot.isViewer(seat.playerId)) return "You’re out · $players · Turn ${snapshot.displayTurn}"
         // The hand row already shows the stand-in's hand count; this line fits a phone.
-        return "${seat.life} life · $players · Turn ${snapshot.turn}"
+        return "${seat.life} life · $players · Turn ${snapshot.displayTurn}"
     }
 }
 

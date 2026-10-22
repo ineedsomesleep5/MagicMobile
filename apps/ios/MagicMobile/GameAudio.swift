@@ -301,7 +301,12 @@ final class GameAudio {
     private var lastTrack: [GameMusic: String] = [:]
     private var duckedUntil: TimeInterval = 0
     private var sessionReady = false
+    /// Silent under unit and UI tests and for scripted screenshot runs (`MAGICMOBILE_MUTE_AUDIO`): AVAudioPlayer.play
+    /// waits on the audio device on the main thread, and a stalled simulator audio device holds the app on its launch
+    /// screen.
     private let isTesting = NSClassFromString("XCTestCase") != nil
+        || ProcessInfo.processInfo.arguments.contains("--ondevice-setup-ui-test")
+        || ProcessInfo.processInfo.environment["MAGICMOBILE_MUTE_AUDIO"] != nil
 
     private var defaults: UserDefaults { MagicMobilePreferences.current }
     var effectsEnabled: Bool { defaults.object(forKey: Self.effectsKey) as? Bool ?? true }

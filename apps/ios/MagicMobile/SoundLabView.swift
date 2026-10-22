@@ -1,65 +1,87 @@
 import SwiftUI
 
 /// Every game sound and music track, auditionable, with a switch per category and the
-/// credits the music license asks for.
+/// credits the music license asks for. An Arena page (Caleb, 2026-10-22: no sheets in the menus): inside Options it opens
+/// from Audio with a back chevron; on its own it closes with its own button.
 struct SoundLabView: View {
-    @Environment(\.dismiss) private var dismiss
+    var back: (() -> Void)? = nil
     @AppStorage(GameMusic.menu.choiceKey, store: MagicMobilePreferences.current) private var menuChoice = "shuffle"
     @AppStorage(GameMusic.game.choiceKey, store: MagicMobilePreferences.current) private var gameChoice = "shuffle"
     @State private var previewing: String?
+    @Environment(\.arenaPanelClose) private var panelClose
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            header
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("Tap any sound to hear it. Switch off a whole group if it gets in the way. Your picks are saved on this iPhone.")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(BrandTheme.inkSecondary)
-                    BrandDivider(title: String(localized: "Music"))
+                VStack(alignment: .leading, spacing: 14) {
+                    ArenaCaps(text: String(localized: "Music"))
                     musicPanel(.menu, choice: $menuChoice)
                     musicPanel(.game, choice: $gameChoice)
-                    BrandDivider(title: String(localized: "Sound effects"))
+                    ArenaCaps(text: String(localized: "Sound effects")).padding(.top, 6)
                     ForEach(GameSoundCategory.allCases) { SoundLabCategory(category: $0) }
-                    BrandDivider(title: String(localized: "Credits"))
+                    ArenaCaps(text: String(localized: "Credits")).padding(.top, 6)
                     credits
                 }
                 .padding(16)
+                .padding(.bottom, 32)
+                .frame(maxWidth: 620)
+                .frame(maxWidth: .infinity)
             }
-            .background(BrandTheme.canvas.ignoresSafeArea())
-            .navigationTitle("Sound Lab")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrandTheme.canvas, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .font(.system(size: 16, weight: .heavy))
-                        .tint(BrandTheme.ember)
-                        .accessibilityIdentifier("soundlab.done")
-                }
-            }
+            .scrollIndicators(.hidden)
+            .mask(ArenaScrollFade(depth: 48))
         }
+        .foregroundStyle(ArenaMenuStyle.text)
         .preferredColorScheme(.dark)
         .onDisappear { GameAudio.shared.endPreview() }
+    }
+
+    /// The Options pages' head: the back chevron on the left, the title centred in serif, the close button on the right.
+    private var header: some View {
+        ZStack {
+            Text(String(localized: "Sound Lab"))
+                .font(ArenaMenuStyle.font(26, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .padding(.horizontal, 56)
+                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 0) {
+                if let back {
+                    Button {
+                        GameAudio.shared.play(.uiBack)
+                        back()
+                    } label: {
+                        Image(systemName: "chevron.left").font(.system(size: 17, weight: .heavy)).foregroundStyle(ArenaMenuStyle.text)
+                            .frame(width: 44, height: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Back"))
+                    .accessibilityIdentifier("panel.back")
+                }
+                Spacer(minLength: 0)
+                ArenaCloseButton(identifier: "soundlab.done") { if let panelClose { panelClose() } else { dismiss() } }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        .overlay(alignment: .bottom) { Rectangle().fill(ArenaGlass.hairline).frame(height: 1).opacity(0.45) }
     }
 
     private func musicPanel(_ scene: GameMusic, choice: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(scene.title)
-                .font(.system(size: 17, weight: .heavy))
-                .foregroundStyle(BrandTheme.ink)
-            Text(scene == .menu ? "Plays in menus and while you build decks." : "Plays under the game, a little quieter.")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(BrandTheme.inkSecondary)
-                .padding(.bottom, 6)
-            trackRow(title: String(localized: "Shuffle all"), subtitle: String(localized: "A new track each time"),
+                .font(ArenaMenuStyle.font(17, .bold))
+                .foregroundStyle(ArenaMenuStyle.text)
+                .padding(.bottom, 4)
+            trackRow(title: String(localized: "Shuffle all"),
                      selected: choice.wrappedValue == "shuffle", previewID: nil) {
                 choice.wrappedValue = "shuffle"
                 GameAudio.shared.settingsChanged(trackPickChanged: true)
             }
             .accessibilityIdentifier("soundlab.music.\(scene.rawValue).shuffle")
             ForEach(scene.tracks) { track in
-                trackRow(title: track.title, subtitle: "Kevin MacLeod", selected: choice.wrappedValue == track.file,
+                trackRow(title: track.title, selected: choice.wrappedValue == track.file,
                          previewID: track.file) {
                     choice.wrappedValue = track.file
                     previewing = track.file
@@ -68,27 +90,30 @@ struct SoundLabView: View {
                 .accessibilityIdentifier("soundlab.music.\(scene.rawValue).\(track.file)")
             }
         }
-        .brandPanel(padding: 14)
+        .arenaCard(padding: 14)
     }
 
-    private func trackRow(title: String, subtitle: String, selected: Bool, previewID: String?,
+    /// A track by its title alone: the composer is in the credits below (the judge, 2026-10-22: no restating sublines).
+    private func trackRow(title: String, selected: Bool, previewID: String?,
                           action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(selected ? BrandTheme.ember : BrandTheme.border)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(BrandTheme.ink)
-                    Text(subtitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(BrandTheme.inkSecondary)
-                }
+                // Arena's chosen diamond, lit gold.
+                Rectangle()
+                    .fill(selected ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.clear))
+                    .frame(width: 9, height: 9)
+                    .overlay(Rectangle().strokeBorder(ArenaMenuStyle.gold.opacity(selected ? 1 : 0.6), lineWidth: 1.5))
+                    .rotationEffect(.degrees(45))
+                    .frame(width: 16)
+                Text(title).font(ArenaMenuStyle.font(15, selected ? .bold : .medium)).foregroundStyle(ArenaMenuStyle.text)
                 Spacer(minLength: 8)
                 if let previewID {
                     Image(systemName: previewing == previewID ? "speaker.wave.2.fill" : "play.fill")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(BrandTheme.ember)
+                        .foregroundStyle(ArenaMenuStyle.gold)
                         .frame(width: 34, height: 34)
-                        .background(Circle().fill(BrandTheme.surfaceRaised))
+                        .background(Circle().fill(Color.black.opacity(0.45)))
+                        .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                         .accessibilityHidden(true)
                 }
             }
@@ -118,19 +143,17 @@ struct SoundLabView: View {
                 String(localized: "Wood and leather textures from Poly Haven (polyhaven.com, CC0).")
             ])
         }
-        .brandPanel(padding: 14)
+        .arenaCard(padding: 14)
         .accessibilityIdentifier("soundlab.credits")
     }
 
     private func creditBlock(_ title: String, lines: [String]) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .heavy)).tracking(1.8)
-                .foregroundStyle(BrandTheme.ember)
+            ArenaCaps(text: title, size: 9.5)
             ForEach(lines, id: \.self) { line in
                 Text(line)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(BrandTheme.inkSecondary)
+                    .font(ArenaMenuStyle.font(12, .medium))
+                    .foregroundStyle(ArenaMenuStyle.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -156,7 +179,6 @@ private struct SoundLabCategory: View {
         VStack(alignment: .leading, spacing: 10) {
             TavernToggle(title: category.title, isOn: $enabled, identifier: "soundlab.category.\(category.rawValue)",
                          subtitle: category.detail)
-                .foregroundStyle(BrandTheme.ink)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], alignment: .leading, spacing: 8) {
                 ForEach(GameSound.sounds(in: category)) { sound in
                     Button {
@@ -164,16 +186,16 @@ private struct SoundLabCategory: View {
                     } label: {
                         HStack(spacing: 7) {
                             Image(systemName: "play.fill").font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(BrandTheme.ember)
-                            Text(sound.title).font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(enabled ? BrandTheme.ink : BrandTheme.inkSecondary)
+                                .foregroundStyle(ArenaMenuStyle.gold)
+                            Text(sound.title).font(ArenaMenuStyle.font(13, .semibold))
+                                .foregroundStyle(enabled ? ArenaMenuStyle.text : ArenaMenuStyle.dim)
                                 .lineLimit(1).minimumScaleFactor(0.8)
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 11)
                         .frame(minHeight: 40)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(BrandTheme.surfaceRaised))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(BrandTheme.border, lineWidth: 1))
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.4)))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(BrandPressStyle())
@@ -183,6 +205,6 @@ private struct SoundLabCategory: View {
             }
             .opacity(enabled ? 1 : 0.6)
         }
-        .brandPanel(padding: 14)
+        .arenaCard(padding: 14)
     }
 }

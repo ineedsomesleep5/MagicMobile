@@ -212,7 +212,7 @@ struct PortraitOpponentStatusBar: View {
 
     /// The step of the turn; a tap opens the phase stops. Day or night and the storm count hang under it when they matter.
     private func phasePlate(width: CGFloat) -> some View {
-        let plate = TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.turn, width: width)
+        let plate = TavernPhasePlate(step: snapshot.step ?? snapshot.phase, turn: snapshot.displayTurn, width: width)
         let hints = TavernTableHints(dayNight: snapshot.dayNight, stormCount: snapshot.stormCount)
         return Button { showPhaseStops = true } label: { plate }
             .buttonStyle(.plain)

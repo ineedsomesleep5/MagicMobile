@@ -724,7 +724,7 @@ fun NativeGameView(
             AnimatedVisibility(showsTurnBanner && activeId != null && !isCardChoiceOpen && !isPromptDetailOpen, Modifier.align(Alignment.Center),
                 enter = fadeIn(), exit = scaleOut(targetScale = 0.2f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)) +
                     slideOutVertically { -it * 2 } + fadeOut()) {
-                if (activeId != null) BoardTurnBanner(if (board.isViewer(activeId)) "Your turn" else "${board.playerLabel(activeId)}’s turn", board.turn,
+                if (activeId != null) BoardTurnBanner(if (board.isViewer(activeId)) "Your turn" else "${board.playerLabel(activeId)}’s turn", board.displayTurn,
                     board.isViewer(activeId), Modifier.semantics { contentDescription = "board.turn.banner" })
             }
             val cue = announcement

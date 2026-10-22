@@ -124,6 +124,62 @@ final class PortraitInteractionPolicyTests: XCTestCase {
         XCTAssertNil(try BoardPhaseAnnouncement.make(changed(step: "unknown-step", priority: "a")))
     }
 
+    /// The board's "TURN" plate counts rounds, not XMage's turns, which every player's turn raises.
+    func testTurnLabelCountsRoundsNotEveryPlayersTurn() throws {
+        var rounds = TableRounds()
+        // Two players, "b" goes first: engine turns 1...9 are rounds 1,1,2,2,3,3,4,4,5.
+        var shown: [Int] = []
+        for turn in 1...9 {
+            let snapshot = try roundSnapshot(turn: turn, active: turn % 2 == 1 ? "b" : "a", players: ["a", "b"])
+            // Many polls land on one turn; they never move the round.
+            let first = rounds.observe(snapshot), again = rounds.observe(snapshot)
+            XCTAssertEqual(first, again)
+            shown.append(try XCTUnwrap(first))
+        }
+        XCTAssertEqual(shown, [1, 1, 2, 2, 3, 3, 4, 4, 5])
+        // A new game (or an engine turn count that went back) starts over.
+        XCTAssertEqual(rounds.observe(try roundSnapshot(turn: 1, active: "a", players: ["a", "b"], id: "next")), 1)
+    }
+
+    func testTurnLabelSurvivesEliminationsAndExtraTurns() throws {
+        var rounds = TableRounds()
+        // Three players a, b, c; a goes first. c is out from engine turn 7 on, so a/b alternate.
+        let order = ["a", "b", "c", "a", "b", "c", "a", "b", "a", "b"]
+        var shown: [Int] = []
+        for (index, active) in order.enumerated() {
+            let out: Set<String> = index >= 6 ? ["c"] : []
+            shown.append(try XCTUnwrap(rounds.observe(try roundSnapshot(turn: index + 1, active: active, players: ["a", "b", "c"], out: out))))
+        }
+        XCTAssertEqual(shown, [1, 1, 1, 2, 2, 2, 3, 3, 4, 4])
+        // An extra turn for the first player is not a new round.
+        var extra = TableRounds()
+        let turns = ["a", "b", "b", "a", "a", "b"]
+        let rounds2 = try turns.enumerated().map { try XCTUnwrap(extra.observe(try roundSnapshot(turn: $0 + 1, active: $1, players: ["a", "b"]))) }
+        XCTAssertEqual(rounds2, [1, 1, 1, 2, 2, 2])
+    }
+
+    func testTurnLabelEstimatesWhenJoiningMidGame() throws {
+        // A resumed save shows turn 9 of two players at once: no history, so turns / players in.
+        let resumed = try roundSnapshot(turn: 9, active: "b", players: ["a", "b"])
+        XCTAssertEqual(resumed.displayTurn, 5)
+        var rounds = TableRounds()
+        XCTAssertEqual(rounds.observe(resumed), 5)
+        XCTAssertEqual(rounds.observe(try roundSnapshot(turn: 10, active: "a", players: ["a", "b"])), 5)
+        XCTAssertEqual(rounds.observe(try roundSnapshot(turn: 11, active: "b", players: ["a", "b"])), 6)
+        // The engine's own count is untouched.
+        XCTAssertEqual(resumed.turn, 9)
+    }
+
+    private func roundSnapshot(turn: Int, active: String, players ids: [String], out: Set<String> = [], id: String = "match") throws -> GameSnapshot {
+        let zones: [String: Any] = ["library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 7, "libraryCount": 92]
+        let players: [[String: Any]] = ids.map {
+            ["playerId": $0, "displayName": $0, "life": 40, "poison": 0, "commanderTax": 0, "zones": zones, "hasLeft": out.contains($0)]
+        }
+        let json: [String: Any] = ["id": id, "phase": "PRECOMBAT_MAIN", "turn": turn, "activePlayerId": active,
+                                   "viewerPlayerId": "a", "priorityPlayerId": "a", "players": players, "log": []]
+        return try JSONDecoder().decode(GameSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
     private func makeSnapshot(active: String, turn: Int, visibleZone: String? = nil, prompt: [String: Any]? = nil) throws -> GameSnapshot {
         var zones: [String: Any] = ["library": [], "hand": [], "battlefield": [], "graveyard": [], "exile": [], "command": [], "stack": [], "handCount": 7, "libraryCount": 92]
         if let visibleZone {

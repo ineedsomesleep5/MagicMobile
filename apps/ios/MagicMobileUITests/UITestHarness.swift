@@ -19,12 +19,46 @@ enum UITestHarness {
             + extraArguments
     }
 
-    /// Play opens the mode chooser (Quick Match, Ranked, Custom Table); the custom table is the
-    /// setup screen the older tests drive.
+    /// The Decks page opens scrolled to the playing deck's open box (Arena's way), so the "+" box at the top of the
+    /// shelf may sit above the view: scroll back to it. Returns the "+" box, hittable.
+    @discardableResult
+    static func revealCreateDeck(_ app: XCUIApplication, timeout: TimeInterval = 15) -> XCUIElement {
+        let create = app.buttons["deckStudio.create"]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if create.exists && create.isHittable { break }
+            // The Decks page opens scrolled to the playing deck; scroll its grid back to the top, where "+" stands first.
+            let grid = app.scrollViews["deckStudio.library.grid"]
+            if grid.exists {
+                grid.swipeDown()
+            } else {
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+        }
+        XCTAssertTrue(create.exists && create.isHittable, "The new-deck box can be reached")
+        return create
+    }
+
+    /// Play opens Arena's panel; Custom then Set Up Table opens the custom table, the setup screen the older tests
+    /// drive.
     static func chooseCustomTable(_ app: XCUIApplication) {
         let custom = app.buttons["play.custom"]
-        XCTAssertTrue(custom.waitForExistence(timeout: 10), "Play opens the mode chooser")
+        XCTAssertTrue(custom.waitForExistence(timeout: 10), "Play opens the panel")
         custom.tap()
+        let start = app.buttons["play.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5), "Custom offers Set Up Table")
+        start.tap()
+    }
+
+    /// Opens a deck from Deck Studio's boxes, Arena's way: the first tap opens its box and shows it beside the
+    /// others, Edit Deck opens it (a deck already chosen opens on the first tap).
+    static func openDeck(_ app: XCUIApplication, _ deck: XCUIElement) {
+        deck.tap()
+        let workspace = app.buttons["deckStudio.close"]
+        if workspace.waitForExistence(timeout: 2) { return }
+        let edit = app.buttons["deckStudio.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5), "A chosen deck offers Edit Deck")
+        edit.tap()
     }
 
     /// The first touch after launch moves keyboard focus to the app. On the iOS 26.5
@@ -35,8 +69,12 @@ enum UITestHarness {
     static func settleFirstTouch(_ app: XCUIApplication) {
         // The menu's brand text; on a board fixture, the bare table edge beside the mat (the
         // development label sits over the opponent's medallion, which would open its zones).
+        // The Arena menus' mark in the top bar (it has no action); older builds' brand text.
+        let mark = app.images["menu.brand"].exists ? app.images["menu.brand"] : app.otherElements["menu.brand"]
         let brand = app.staticTexts["MAGICMOBILE"]
-        if brand.waitForExistence(timeout: 2) {
+        if mark.waitForExistence(timeout: 2) {
+            mark.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        } else if brand.exists {
             brand.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         } else if app.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].exists {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()

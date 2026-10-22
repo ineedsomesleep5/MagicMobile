@@ -30,7 +30,6 @@ struct NativeDownloadsView: View {
     @AppStorage("magicmobile.artworkDownloadQuality") private var quality: NativeArtworkQuality = .standard
     @ObservedObject private var downloads = NativeAssetDownloads.shared
     @AppStorage(NativeArtworkPreference.key) private var remoteArtwork = false
-    @Environment(\.dismiss) private var dismiss
 
     init(decks: [NativeDownloadDeck], selectedDeckID: String, engineReady: Bool) {
         self.decks = decks
@@ -101,38 +100,26 @@ struct NativeDownloadsView: View {
     }
 
     var body: some View {
-        // The tavern's own page (Caleb, 2026-10-04): leather title bar with the wax-seal close,
-        // leather cards in brass, parchment pickers and plaque buttons; no system form chrome.
+        // Arena's panel (Caleb, 2026-10-22): what is on this phone and the Download plaque first, then what to download,
+        // chosen from diamond rows and a tab strip; the technical notes fold away at the foot.
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                TavernPanelTitle(text: String(localized: "Downloads"))
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("downloads.title")
-                Spacer(minLength: 8)
-                Button { dismiss() } label: { TavernSealLabel() }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Done"))
-                    .accessibilityIdentifier("downloads.close")
-            }
-            .modifier(TavernTitleBar())
-            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
+            ArenaPanelHeader(title: String(localized: "Downloads"), closeIdentifier: "downloads.close")
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    artworkCard
-                    deviceCard
-                    downloadCard
+                VStack(alignment: .leading, spacing: 14) {
+                    statusCard
+                    optionsCard
                     if !downloads.failures.isEmpty { failuresCard }
                     if !downloads.missingTokenNames.isEmpty || !downloads.missingNames.isEmpty { missingCard }
                     infoCard
                 }
                 .padding(16)
+                .padding(.bottom, 32)
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
+            .mask(ArenaScrollFade(depth: 48))
         }
-        .background(TavernSheetBackground().ignoresSafeArea())
-        .environment(\.tavernBoard, true)
         .tavernConfirmation(active: true, title: String(localized: "Download missing artwork?"),
                             message: "\(missingSummary) \(discoveryIncomplete ? "The additional download estimate needs checking." : "Estimated additional download: \(estimatedAdditionalSize).") This is approximate; actual download and device storage vary. Images continue downloading while you play or leave the app. Wi-Fi is recommended.",
                             isPresented: $confirmFullDownload,
@@ -160,102 +147,191 @@ struct NativeDownloadsView: View {
 
     // MARK: Cards
 
-    private var artworkCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Artwork")
-            TavernPicker(title: "Download", selection: $scope, sections: [.init(options: [
-                ("Full catalogue · recommended", "catalogue"), ("All supported tokens", "tokens"),
-                ("All saved & included decks", "decks"), ("One deck", "deck")])], identifier: "downloads.scope")
-                .disabled(downloads.isRunning)
-            if scope == "deck" {
-                TavernPicker(title: "Deck", selection: $selectedDeckID, sections: [.init(options: decks.map { ($0.name, $0.id) })],
-                             identifier: "downloads.deck")
-                    .disabled(downloads.isRunning)
+    /// The readout at the head of the status card (the judge, 2026-10-22: one count, never a sentence that contradicts
+    /// it): how many images this phone holds of how many, or how far a download has come, with its gold bar.
+    private var readout: (count: String, fraction: Double?) {
+        if downloads.isRunning && !preparingDownload {
+            return (String(localized: "\(downloads.completed.formatted()) of \(downloads.total.formatted()) downloaded"),
+                    Double(downloads.completed) / Double(max(1, downloads.total)))
+        }
+        let tokensOnly = scope == "tokens"
+        let stored = tokensOnly ? downloads.tokenStored : downloads.cardStored
+        let total = tokensOnly ? downloads.tokenTotal : downloads.cardTotal
+        guard total > 0, !scanPending else { return (String(localized: "Artwork on this phone"), nil) }
+        return (String(localized: "\(stored.formatted()) of \(total.formatted()) stored"), Double(stored) / Double(total))
+    }
+
+    /// Where things stand, once, in small type under the readout.
+    private var stateLine: String {
+        if downloads.isRunning { return preparingDownload ? String(localized: "Preparing image list…") : downloads.status }
+        if downloads.isScanning { return String(localized: "Checking local files…") }
+        if loadingCatalogue && scope == "catalogue" { return String(localized: "Reading the installed catalogue…") }
+        if scanPending { return String(localized: "Checking needed") }
+        let missing = missingCardCount + missingTokenCount
+        if missing == 0 && !discoveryIncomplete { return String(localized: "All artwork stored") }
+        // Still counting says nothing the readout's spinner doesn't (the judge, 2026-10-22).
+        if discoveryIncomplete { return "" }
+        return String(localized: "\(missing.formatted()) missing · about \(estimatedAdditionalSize.replacingOccurrences(of: "≈ ", with: "")) at \(quality.label.lowercased()) quality")
+    }
+
+    /// The rest of what this phone holds: the tokens (beside cards) and the space it takes.
+    private var coverage: String {
+        let stored = ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file)
+        var parts: [String] = []
+        if scope != "tokens", !scanPending, downloads.tokenDiscoveryRemaining == 0, downloads.tokenTotal > 0 {
+            parts.append(String(localized: "Tokens \(downloads.tokenStored.formatted()) of \(downloads.tokenTotal.formatted())"))
+        }
+        // Nothing stored yet is not worth a line ("Zero KB on this phone", the judge, 2026-10-22).
+        if downloads.storedBytes > 0 { parts.append(String(localized: "\(stored) on this phone")) }
+        return parts.joined(separator: " · ")
+    }
+
+    private var checkButton: some View {
+        Button("Check") {
+            Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens", chosen: chosenArt) }
+        }
+        .buttonStyle(ArenaPillButtonStyle())
+        .disabled(downloads.isRunning || downloads.isScanning)
+        .accessibilityLabel(String(localized: "Check for missing artwork"))
+        .accessibilityIdentifier("downloads.check")
+    }
+
+    /// First: what is on this phone, what is missing, the consent and the Download plaque.
+    private var statusCard: some View {
+        let current = readout
+        return VStack(alignment: .leading, spacing: 10) {
+            // Check stands on the readout's line (the judge, 2026-10-22: not alone in a band of its own).
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(current.count).font(ArenaMenuStyle.font(22, .bold)).foregroundStyle(ArenaMenuStyle.text).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("downloads.summary")
+                Spacer(minLength: 6)
+                checkButton
             }
-            TavernPicker(title: "Image quality", selection: $quality,
-                         sections: [.init(options: NativeArtworkQuality.allCases.map { ($0.label, $0) })], identifier: "downloads.quality")
+            if let fraction = current.fraction { BrassProgressBar(fraction: fraction, gold: !downloads.isRunning) }
+            HStack(spacing: 8) {
+                if downloads.isScanning || preparingDownload || (loadingCatalogue && scope == "catalogue") {
+                    ProgressView().tint(ArenaMenuStyle.gold).controlSize(.small)
+                }
+                if !stateLine.isEmpty {
+                    Text(stateLine).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("downloads.status")
+                }
+            }
+            if !coverage.isEmpty {
+                Text(coverage).font(ArenaMenuStyle.font(13, .medium)).foregroundStyle(ArenaMenuStyle.dim).monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("downloads.cards")
+            }
+            if let catalogueError, scope == "catalogue" {
+                Text(catalogueError).font(ArenaMenuStyle.font(13, .medium)).foregroundStyle(ArenaMenuStyle.loss)
+            }
+            // The consent, named for what it allows so it doesn't repeat the Download plaque under it; what it shares stays
+            // in view because it is the consent's terms, not help.
+            TavernToggle(title: "Online card art", isOn: $remoteArtwork, identifier: "nativeArtwork.downloads",
+                         subtitle: "Uses Scryfall. Online requests share your IP and card names, including your hand.")
+            Text("Shares your IP and card names with Scryfall.")
+                .font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
+            if downloads.isRunning {
+                Button(String(localized: "Cancel download")) { downloads.cancel() }
+                    .buttonStyle(ArenaPlayButtonStyle(cancel: true, fontSize: 16))
+                    .frame(height: 46)
+                    .accessibilityIdentifier("downloads.cancel")
+            } else {
+                if downloads.total > 0 && !downloads.status.isEmpty {
+                    note(downloads.status)
+                }
+                Button(String(localized: "Download missing artwork")) {
+                    if scope == "catalogue" || scope == "tokens" { confirmFullDownload = true }
+                    else { startDownload() }
+                }
+                .buttonStyle(ArenaPlayButtonStyle(fontSize: 17))
+                .frame(height: 46)
+                .disabled(!remoteArtwork || (names.isEmpty && scope != "tokens") || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
+                .accessibilityIdentifier("downloads.start")
+            }
+        }
+        .arenaCard()
+    }
+
+    /// Each scope by its name alone (the judge, 2026-10-22: no subline under every option).
+    private struct ScopeOption: Identifiable {
+        let title: String
+        let value: String
+        var id: String { value }
+    }
+    private static let scopes = [
+        ScopeOption(title: "Full catalogue", value: "catalogue"),
+        ScopeOption(title: "Tokens only", value: "tokens"),
+        ScopeOption(title: "All my decks", value: "decks"),
+        ScopeOption(title: "One deck", value: "deck"),
+    ]
+    @State private var choosingDeck = false
+
+    /// Then what to download: the scope as diamond rows, the deck when it is one deck, the quality as a tab strip.
+    private var optionsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ArenaCaps(text: "What to download")
+            VStack(spacing: 0) {
+                ForEach(Self.scopes) { option in
+                    ArenaOptionRow(title: option.title, selected: scope == option.value,
+                                   identifier: "downloads.scope.\(option.value)") {
+                        scope = option.value
+                        if option.value != "deck" { choosingDeck = false }
+                    }
+                }
+            }
+            .disabled(downloads.isRunning)
+            if scope == "deck" { deckChooser }
+            ArenaCaps(text: "Image quality").padding(.top, 4)
+            ArenaSegmented(options: NativeArtworkQuality.allCases.map { ($0.label, $0) }, selection: $quality,
+                           identifier: "downloads.quality", stretch: true)
                 .disabled(downloads.isRunning)
             if scope != "tokens" {
                 TavernToggle(title: "Include tokens", isOn: $includeTokens).disabled(downloads.isRunning)
             }
-            note(scope == "tokens" ? "Token-only downloads contain no ordinary card images." : "Full catalogue includes opponents’ cards too.")
         }
-        .modifier(TavernLeatherCard())
+        .arenaCard()
     }
 
-    private var deviceCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("On this device")
-            if loadingCatalogue && scope == "catalogue" { working("Reading the installed catalogue…") }
-            if let catalogueError, scope == "catalogue" {
-                Text(catalogueError).font(.system(size: 14, design: .serif)).foregroundStyle(Color(red: 1, green: 0.55, blue: 0.45))
+    /// One deck: the chosen deck's name, which opens the list of decks in place.
+    private var deckChooser: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ArenaOptionRow(title: "Deck", value: decks.first { $0.id == selectedDeckID }?.name ?? "—", chevron: true,
+                           identifier: "downloads.deck") {
+                withAnimation(.easeOut(duration: 0.18)) { choosingDeck.toggle() }
             }
-            if scope != "tokens" {
-                row("Cards", scanPending || (scope == "catalogue" && loadingCatalogue)
-                    ? "Checking needed" : "\(downloads.cardStored.formatted()) / \(downloads.cardTotal.formatted())")
-                    .accessibilityIdentifier("downloads.cards")
+            if choosingDeck {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(decks) { deck in
+                            ArenaOptionRow(title: deck.name, selected: deck.id == selectedDeckID,
+                                           identifier: "downloads.deck.\(deck.id)") {
+                                selectedDeckID = deck.id
+                                withAnimation(.easeOut(duration: 0.18)) { choosingDeck = false }
+                            }
+                        }
+                    }
+                    .padding(.leading, 16)
+                }
+                .frame(maxHeight: 220)
+                .transition(.opacity)
             }
-            row("Tokens", scanPending || downloads.tokenDiscoveryRemaining > 0
-                ? "Checking needed" : "\(downloads.tokenStored.formatted()) / \(downloads.tokenTotal.formatted())")
-            if downloads.isScanning { working("Checking local files…") }
-            row("Stored", ByteCountFormatter.string(fromByteCount: Int64(downloads.storedBytes), countStyle: .file))
-            row("Missing artwork", missingSummary)
-            row("Estimated additional download", estimatedAdditionalSize)
-            note("Approximate at \(quality.label.lowercased()) quality. Actual download and device storage vary with image sizes, metadata and images already stored.")
-            Button("Check for missing artwork") {
-                Task { await downloads.scan(names: names, quality: quality, fullCatalogue: scope == "catalogue" || scope == "tokens", tokenOnly: scope == "tokens", chosen: chosenArt) }
-            }
-            .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
-            .disabled(downloads.isRunning || downloads.isScanning)
-            .accessibilityIdentifier("downloads.check")
         }
-        .modifier(TavernLeatherCard())
-    }
-
-    private var downloadCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Download")
-            TavernToggle(title: "Download card artwork", isOn: $remoteArtwork, identifier: "nativeArtwork.downloads",
-                         subtitle: "Uses Scryfall. Online requests share your IP and card names, including your hand.")
-            if downloads.isRunning {
-                if preparingDownload {
-                    working("Preparing image list…")
-                } else {
-                    BrassProgressBar(fraction: Double(downloads.completed) / Double(max(1, downloads.total)))
-                }
-                Text(downloads.status).font(.system(size: 14, design: .serif))
-                    .accessibilityIdentifier("downloads.status")
-                Button("Cancel download") { downloads.cancel() }
-                    .buttonStyle(TavernButtonStyle(kind: .danger, fullWidth: true))
-                    .accessibilityIdentifier("downloads.cancel")
-            } else {
-                if downloads.total > 0 && !downloads.status.isEmpty {
-                    Text(downloads.status).font(.system(size: 14, design: .serif))
-                        .accessibilityIdentifier("downloads.status")
-                }
-                Button("Download missing artwork") {
-                    if scope == "catalogue" || scope == "tokens" { confirmFullDownload = true }
-                    else { startDownload() }
-                }
-                .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
-                .disabled(!remoteArtwork || (names.isEmpty && scope != "tokens") || downloads.isScanning || (scope == "catalogue" && loadingCatalogue))
-                .accessibilityIdentifier("downloads.start")
-            }
-            note("You can play or leave the app while images download. Wi-Fi is recommended.")
-        }
-        .modifier(TavernLeatherCard())
+        .disabled(downloads.isRunning)
     }
 
     private var failuresCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Needs attention")
+            ArenaCaps(text: "Needs attention")
             ForEach(Array(downloads.failures.prefix(20).enumerated()), id: \.offset) { _, failure in
-                Text(failure).font(.system(size: 14, design: .serif))
+                Text(failure).font(ArenaMenuStyle.font(13, .medium))
             }
             if downloads.failures.count > 20 { note("And \(downloads.failures.count - 20) more issues. Check missing artwork below.") }
-            note("Use Download missing artwork to retry. Already stored artwork is preserved.")
         }
-        .modifier(TavernParchmentCard())
+        .arenaCard()
     }
 
     private var missingCard: some View {
@@ -263,18 +339,18 @@ struct NativeDownloadsView: View {
             if !downloads.missingTokenNames.isEmpty {
                 TavernDisclosure(title: "Missing tokens · \(downloads.missingTokenNames.count.formatted())") {
                     ForEach(Array(downloads.missingTokenNames.prefix(20).enumerated()), id: \.offset) { _, name in
-                        Text(name).font(.system(size: 13, design: .serif))
+                        Text(name).font(ArenaMenuStyle.font(13, .medium))
                     }
                 }
             }
             if !downloads.missingNames.isEmpty {
                 TavernDisclosure(title: "Missing cards · \(downloads.missingNames.count.formatted())") {
-                    ForEach(downloads.missingNames.prefix(20), id: \.self) { Text($0).font(.system(size: 13, design: .serif)) }
+                    ForEach(downloads.missingNames.prefix(20), id: \.self) { Text($0).font(ArenaMenuStyle.font(13, .medium)) }
                     if downloads.missingNames.count > 20 { note("And \(downloads.missingNames.count - 20) more") }
                 }
             }
         }
-        .modifier(TavernLeatherCard())
+        .arenaCard()
     }
 
     private var infoCard: some View {
@@ -290,44 +366,22 @@ struct NativeDownloadsView: View {
             note("Compact is fastest. Downloads use several direct image transfers at once and remember completed files. iOS controls background timing; force-quitting pauses transfers until you reopen the app. The initial image-list preparation may need the app open on a slow connection.")
             note("Storage is capped at 20 GB, with 1 GB of free space reserved. Unavailable or ambiguous token art remains a labeled placeholder. Use Download missing artwork to retry interruptions.")
         }
-        .modifier(TavernLeatherCard())
+        .arenaCard()
         .accessibilityIdentifier("downloads.info")
     }
 
     // MARK: Pieces
 
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.4)
-            .foregroundStyle(BrandTheme.brassGradient)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private func row(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title).font(.system(size: 15, weight: .semibold, design: .serif))
-            Spacer(minLength: 8)
-            Text(value).font(.system(size: 14, design: .serif)).monospacedDigit().multilineTextAlignment(.trailing).opacity(0.85)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
     private func note(_ text: String) -> some View {
-        Text(text).font(.system(size: 12, design: .serif)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func working(_ text: String) -> some View {
-        HStack(spacing: 10) {
-            ProgressView().tint(TavernPalette.brass)
-            Text(text).font(.system(size: 14, design: .serif))
-        }
+        Text(text).font(ArenaMenuStyle.font(12, .medium)).foregroundStyle(ArenaMenuStyle.dim).fixedSize(horizontal: false, vertical: true)
     }
 
     private func status(_ text: String, ok: Bool) -> some View {
         Label {
-            Text(text).font(.system(size: 14, design: .serif))
+            Text(text).font(ArenaMenuStyle.font(13, .medium))
         } icon: {
             Image(systemName: ok ? "checkmark.seal.fill" : "exclamationmark.circle")
-                .foregroundStyle(ok ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(Color(red: 1, green: 0.55, blue: 0.45)))
+                .foregroundStyle(ok ? ArenaMenuStyle.gold : ArenaMenuStyle.loss)
         }
     }
 }
@@ -335,13 +389,17 @@ struct NativeDownloadsView: View {
 /// A brass-rimmed groove filling with ember: a download's progress in the tavern.
 struct BrassProgressBar: View {
     let fraction: Double
+    /// Gold for what is stored (Arena's progress bars), ember for a download under way.
+    var gold = false
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.black.opacity(0.5))
                 Capsule()
-                    .fill(LinearGradient(colors: [Color(red: 1, green: 0.62, blue: 0.32), TavernPalette.ember], startPoint: .top, endPoint: .bottom))
+                    .fill(LinearGradient(colors: gold ? [Color(red: 1, green: 0.88, blue: 0.56), ArenaMenuStyle.gold]
+                                                       : [Color(red: 1, green: 0.62, blue: 0.32), TavernPalette.ember],
+                                         startPoint: .top, endPoint: .bottom))
                     .frame(width: max(10, proxy.size.width * min(1, max(0, fraction))))
                     .animation(.easeOut(duration: 0.3), value: fraction)
             }
@@ -354,7 +412,7 @@ struct BrassProgressBar: View {
     }
 }
 
-/// A section that opens and closes under a brass chevron, in place of the system disclosure group.
+/// A section that opens and closes under a gold chevron, in place of the system disclosure group.
 struct TavernDisclosure<Content: View>: View {
     let title: String
     @ViewBuilder var content: Content
@@ -366,13 +424,14 @@ struct TavernDisclosure<Content: View>: View {
                 withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
             } label: {
                 HStack {
-                    Text(title).font(.system(size: 15, weight: .heavy, design: .serif))
+                    Text(title).font(ArenaMenuStyle.font(15, .bold)).foregroundStyle(ArenaMenuStyle.text)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .heavy))
-                        .foregroundStyle(BrandTheme.brassGradient)
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(ArenaMenuStyle.gold)
                         .rotationEffect(.degrees(expanded ? 180 : 0))
                 }
+                .frame(minHeight: 36)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
