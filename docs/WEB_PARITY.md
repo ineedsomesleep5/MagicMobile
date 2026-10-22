@@ -38,7 +38,8 @@ Pure logic is shared as JSON cases; only the UI is ported by hand.
 | `text-cases.json` (existing, `log`) | The game log reader: spans, card references, redacted names, entities, hidden markup | `testTextCasesMatchGolden` (golden) | `test/gameLog.test.ts` | runs |
 | `game-summary-cases.json` (existing) | Combat credit and the top attacker | `testGameSummaryCasesOnBothPlatforms` | `test/gameStats.test.ts` | runs |
 | `prompt-cases.json` (existing) | Prompt to command mapping and answer validation | existing | `test/parity.test.ts` | runs |
-| `combo-loop-cases.json` (existing) | Combo loop recording and replay | existing | to add with the combo loop rows | runs |
+| `combo-loop-cases.json` (existing) | Combo loop spotting | existing | `test/comboLoop.test.ts` | runs |
+| `replay/web-game-1.deflate` | 50 raw polls from a real web game: the prompt, smart pass's decision, Auto Pay's next step and the board events at each | `testWebReplaysMatchGoldens` writes `golden/replay-web-game-1.json` | `test/replay.test.ts` (equal, 2026-10-22) | follow-up |
 
 Expectations for a new case come from iOS: the web generator (`apps/web/scripts/gen_arena_pace_cases.ts`) only fills
 values that the iOS run then confirms; a difference means the web port is wrong.
@@ -222,7 +223,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 8.18 | Tiles: counters (2 chips), COPY tag, keyword badges bottom left | `ArenaBattlefieldCard` | done | `ui/arena/ArenaCard.tsx (PlainTile)` | unit + game | two counter chips, COPY tag on token copies, the icon row bottom left (46537300) |
 | 8.19 | Rows shrink to 70 % before scrolling | `ArenaRowFit.fit` | done | `ui/arena/layout.ts (fitRow)` | unit | cards shrink to 70 %; past that the web overlaps where iOS scrolls (see Intentionally different) |
 | 8.20 | Turn labels count rounds | `TableRounds` | done | `core/models.ts (TableRounds), ui/GameScreen.tsx` | unit + game | game D: 20 turns read as 10 |
-| 8.21 | Combo loop: offer, repeat modes, forecast, stop reasons | `ComboLoop.swift`, `OnDeviceSession` | missing | | shared + game | |
+| 8.21 | Combo loop: offer, repeat modes, forecast, stop reasons | `ComboLoop.swift`, `OnDeviceSession` | done | `core/comboLoop.ts, table/guestSession.ts, ui/arena/ComboLoop.tsx` | shared + unit | combo-loop-cases.json (16 cases) and the iOS ComboLoopTests assertions (test/comboLoop.test.ts); the session offers a round made three times, repeats it from the live choices and sums it up (test/comboSession.test.ts) (d4744476); no loop came up in the test games |
 | 8.22 | The local poll pace shows every AI action (engine-held poll; iOS polls 0.3 s / 0.12 s chain) | `OnDeviceLocalPollSchedule` | done (different mechanism, same result) | `table/guestSession.ts` | game | 2026-10-21 |
 | 8.23 | Tokens show the Scryfall printing that matches their name, type, rules, colours and printed P/T; a copy shows its source card | `NativeDeckArtwork.imageData` (token path), `NativeAssetStore.matchTokenArtwork`, `NativeArtworkCatalogue.searchToken` | done | `core/tokenArt.ts, ui/cardArt.ts` | unit + game | test/tokenArt.test.ts; game E, game F, game G: token tiles show their printing, no missing art (notFound empty) |
 
@@ -258,12 +259,16 @@ the board's flights, banners and reveals, and console errors.
 
 ## Android follow-ups
 
-Rows whose shared cases Android can't run yet. Each needs a port into `apps/android/core` and a runner in
-`ParityGoldenTest.kt` (called from `ContractChecks.kt`):
+The web and iOS now share these cases; Android's `:core` doesn't run them yet. Each needs a port into
+`apps/android/core` and a runner in `ParityGoldenTest.kt` (called from `ContractChecks.kt`). They are listed here
+rather than filed, because filing an issue is public and waits for Caleb's word:
 
-- Arena pace (`arena-pace-cases.json`): `BoardEventTimeline.kt` has the Hearth pace only.
-- Stop for Removal and the skip-mode threat stop (`smart-pass-cases.json`): `OnDeviceSmartPass.kt`.
-- Auto Pay (`auto-pay-cases.json`).
+- Arena pace and holds (`arena-pace-cases.json`): `BoardEventTimeline.kt` has the Hearth pace only.
+- Stop for Removal and the skip modes' threat stop (`smart-pass-cases.json`): `OnDeviceSmartPass.kt`.
+- Auto Pay (`auto-pay-cases.json`): Android has no Auto Pay.
+- The Arena board's rules (`arena-board-cases.json`) and answer actions (`answer-action-cases.json`).
+- The recorded-game replay (`replay/*.deflate` against `golden/replay-*.json`): Android needs the same trace, read with
+  `java.util.zip.Inflater(true)` (raw DEFLATE).
 
 ## Intentionally different on desktop
 
@@ -284,3 +289,7 @@ Rows whose shared cases Android can't run yet. Each needs a port into `apps/andr
   Full control, Auto Pay, drag to play, the inspector, trigger order and remembered answers, combat, the effects painter
   and sounds, the phase strip, opening hand, result, the game log, desktop keys, board shake, token art. Four games on
   the real engine (above).
+- 2026-10-22 (evening): the hand pops one card, draws fly in, extra-hand cards, table hints, the recovery banner, tile
+  badges and COPY, the stack and zone browsers, the player card with status badges, the result backdrop, More actions,
+  phased-out tiles, the card choice stage with its drafted plan, the combo loop, token art. A recorded game's 50 polls
+  replay identically through the web and iOS code (`test/replay.test.ts`, `testWebReplaysMatchGoldens`).
