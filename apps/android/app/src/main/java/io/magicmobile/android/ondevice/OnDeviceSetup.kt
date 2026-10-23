@@ -226,10 +226,14 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
     /** The compact printing index, once `prepare()` has loaded it. */
     val printingIndex: PrintingIndex? get() = printings
 
-    /** Deck Studio's library store: saved decks stay in this model's deck store. */
+    /** Deck Studio's library store: saved decks stay in this model's deck store. The player's deletes reach deck sync. */
     val library: io.magicmobile.android.studio.DeckLibraryStore by lazy {
         io.magicmobile.android.studio.DeckLibraryStore(store) { saved -> publishLocalDecks(saved) }
+            .also { it.onDeleted = { record -> deckSyncState.noteDeleted(record.id) } }
     }
+
+    /** Deck sync's record beside the library (docs/DECK_SYNC.md). */
+    val deckSyncState: io.magicmobile.android.studio.SyncState by lazy { io.magicmobile.android.studio.DeckLibrarySyncAdapter.state(context.filesDir) }
 
     /** The full catalogue, loading it on first use. */
     suspend fun awaitCatalogue(): Catalogue {

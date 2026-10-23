@@ -179,6 +179,23 @@ class OnDeviceViewModel(application: Application) : AndroidViewModel(application
     val account = PlayerAccount(application, viewModelScope)
     /** A table invite link waiting for the root view to open it. */
     var joinLinkCode by mutableStateOf<String?>(null)
+    /** Your decks on every phone and browser signed in to this profile (docs/DECK_SYNC.md). */
+    private val deckSync by lazy {
+        io.magicmobile.android.studio.DeckSync(io.magicmobile.android.studio.DeckLibrarySyncAdapter(setup.library), setup.deckSyncState,
+            account.deckSyncAPI) { io.magicmobile.android.social.SupabaseLite.code(it) }
+    }
+
+    /** One deck sync in the background; errors stay quiet and the next sync tries again. Concurrent calls share one run. */
+    fun syncDecks() {
+        if (account.phase != PlayerAccount.Phase.READY) return
+        viewModelScope.launch {
+            val profile = account.profileID() ?: return@launch
+            try { deckSync.sync(profile) } catch (error: kotlinx.coroutines.CancellationException) { throw error } catch (error: Exception) { /* offline or refused: the next sync tries again */ }
+        }
+    }
+
+    /** A deck changed here or a tombstone waits to go up. */
+    fun deckSyncPending(): Boolean = runCatching { deckSync.hasPending() }.getOrDefault(false)
 
     override fun onCleared() {
         // The engine must stop its workers even when the activity is finished for good.
@@ -838,6 +855,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // Deck sync (docs/DECK_SYNC.md): when the profile is ready or its name changes, on returning to the app and every
+    // 5 minutes while it is open; a change here goes up a few seconds after the last one, when something waits to go up.
+    val accountReady = vm.account.phase == PlayerAccount.Phase.READY
+    LaunchedEffect(accountReady, vm.account.username, appForeground) {
+        if (!accountReady || !appForeground) return@LaunchedEffect
+        while (true) { vm.syncDecks(); delay(5 * 60_000L) }
+    }
+    LaunchedEffect(setup.localDecks, accountReady) {
+        if (!accountReady || !vm.deckSyncPending()) return@LaunchedEffect
+        delay(3_000); vm.syncDecks()
     }
     LaunchedEffect(portraitModeEnabled, activeGame) { OrientationController.apply(activity, portraitModeEnabled, activeGame) }
     LaunchedEffect(session.snapshot?.isCompleted, session.snapshot?.isSpectating) { recordFinishedGameIfNeeded() }

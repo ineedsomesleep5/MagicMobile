@@ -21,6 +21,12 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-23 (Claude, deck sync Android): (1) Android's `DeckStore` reads every `*.json` in `filesDir/decks-v1` as a
+  deck, so a file put there (the sync record) makes the whole library unreadable; the record lives beside it in
+  `filesDir/decks-v1-sync.json`. (2) The saved `Deck` keeps names to 300 characters (validateDraft allows 512 bytes), so
+  `forkName` takes a character limit too. (3) `heavy.sh --stop-gradle` runs `gradlew --stop` without your `env
+  JAVA_HOME=...` prefix and fails ("Unable to locate a Java Runtime"); stop the daemons yourself with `JAVA_HOME` set.
+  Where: core `studio/DeckSync.kt`, app `studio/DeckLibrarySync.kt`.
 - 2026-10-23 (Claude, Android Arena board phase D): (1) Inside a `BoxWithConstraints`, `maxWidth` read from a nested
   Row/Column/lambda fails to compile ("cannot be called in this context with an implicit receiver", the scope DslMarker):
   copy it to a `val` at the top of the BoxWithConstraints block. (2) A layer that "steps aside" (View Battlefield) drops its
@@ -763,3 +769,8 @@ contradicting one.
   off it). Testing SQL functions as a player without leaving data: `begin; set local role authenticated; set local
   request.jwt.claims = '{"sub":"<uuid>","role":"authenticated"}'; …` with no commit (grant the temp table to
   `authenticated` first).
+- 2026-10-23 (Claude, deck sync iOS): `DeckLibrary.swift` used to be excluded from `apps/ios/Package.swift`, so
+  `DeckLibraryStore` logic only ran in the simulator test target. It is in the package now (pure Foundation/Combine), so
+  `swift test --package-path apps/ios --filter DeckSyncTests` runs the deck-sync parity cases on macOS without a
+  simulator. Also: `DeckLibraryRecord` decodes a missing `isCloudBacked` as true (read-only, `copyRequired`), so sync
+  writes go through `applySyncedDurably`/`removeSyncedDurably`, which bypass that check and save `isCloudBacked: false`.
