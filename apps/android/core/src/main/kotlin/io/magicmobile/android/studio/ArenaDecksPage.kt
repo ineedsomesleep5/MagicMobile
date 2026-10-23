@@ -21,6 +21,24 @@ object ArenaDecksPage {
         return Grid(columns, maxOf(0f, floor((usableWidth - GAP * (columns - 1)) / columns)))
     }
 
+    /**
+     * The grid for a page [viewportHeight] tall: as [grid], but a box (its lid's rise, front and name plate) never taller than
+     * the page leaves above the strip and the scroll fades, so a short landscape page still shows whole boxes, names included.
+     */
+    fun grid(usableWidth: Float, viewportHeight: Float): Grid {
+        var grid = grid(usableWidth)
+        val room = viewportHeight - 10f - 28f - 14f
+        fun height(width: Float) = io.magicmobile.android.game.ArenaBoxGeometry(width).let { it.rise * 1.5f + it.boxHeight + it.plateHeight - it.plateOverlap }
+        // One more column at a time until a box fits, never narrower than 60.
+        while (room > 0f && height(grid.boxWidth) > room) {
+            val columns = grid.columns + 1
+            val width = floor((usableWidth - GAP * (columns - 1)) / columns)
+            if (width < 60f) break
+            grid = Grid(columns, width)
+        }
+        return grid
+    }
+
     /** The cell a deck takes: the "+" tile is the first. */
     fun cell(deckIndex: Int): Int = deckIndex + 1
 

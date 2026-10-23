@@ -167,7 +167,7 @@ import kotlin.math.tan
  * Port of Board/ArenaBoardViews.swift: the Arena board's table pieces (BoardMode.ARENA). Positions come from ArenaLayout
  * through ArenaCanvas (core); behaviour stays with the views and helpers the Hearth board already uses (BattlefieldRow,
  * CardTile, the prompt pop-up). The full-table browsers (abilities, modes, choices, splits, piles, zones, the stack, the
- * question stage and the result) are phase D and keep the existing Android overlays meanwhile.
+ * question stage and the result) are in ArenaBrowsers.kt.
  */
 
 /** Tavern frames on battlefield cards (CardFramesPreference, per board mode); off draws the reference game's card. */
@@ -916,7 +916,7 @@ fun ArenaAbilityCard(source: ZoneCard?, modifier: Modifier = Modifier, name: Str
 }
 
 /** An ability card's outline (ArenaAbilityShape): rounded top corners (a twentieth of its width) and a rounded foot. */
-private val ArenaAbilityShape = GenericShape { size, _ ->
+internal val ArenaAbilityShape = GenericShape { size, _ ->
     val c = size.width * 0.05f
     val foot = size.height * 0.1f
     moveTo(c, 0f); lineTo(size.width - c, 0f)

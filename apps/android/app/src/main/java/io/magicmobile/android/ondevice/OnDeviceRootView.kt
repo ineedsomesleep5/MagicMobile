@@ -1291,6 +1291,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
                 // The starting roll, on an opaque cover: a relay table's shared roll (the host's recorded dice,
                 // played back on every phone) or its "Who goes first?" panel, or the AI table's local roll.
+                // The roll follows the board: on the Arena board it rolls on the board (dimmed, no tavern table).
+                val boardModeValue by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+                androidx.compose.runtime.CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides
+                    (io.magicmobile.android.game.BoardMode.resolved(boardModeValue) == io.magicmobile.android.game.BoardMode.ARENA)) {
                 if (multiplayerRollVisible) {
                     val sharedRoll = table.startingRoll
                     StartingRollCover {
@@ -1329,6 +1333,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             submitStartingChoiceIfNeeded()
                         }
                     }
+                }
                 }
 
                 // Recovery banner. On the starting roll's cover only a roll error shows, still readable and dismissible.

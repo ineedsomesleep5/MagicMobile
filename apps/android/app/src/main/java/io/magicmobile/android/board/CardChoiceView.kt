@@ -1,7 +1,21 @@
 package io.magicmobile.android.board
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.unit.em
+import io.magicmobile.android.game.ArenaCardChoice
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.LocalArenaSafeArea
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -277,6 +291,8 @@ fun BoardCardChoiceView(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendin
         else PressableBox(close, Modifier.size(44.dp).semantics { contentDescription = "Close card choices" }) { SfImage("xmark", rgb(0.04, 0.52, 1.0), 16.dp) }
     }
 
+    @Composable
+    fun classicChooser() {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)).clickable(enabled = false) {}, contentAlignment = Alignment.Center) {
         val sizeW = maxWidth.value; val sizeH = maxHeight.value
         val compact = cards.size in 1..2
@@ -415,4 +431,174 @@ fun BoardCardChoiceView(snapshot: GameSnapshot, prompt: PromptEnvelopeV2, pendin
             }
         }
     }
+    }
+
+    val confirmEnabled = !((!draftActive && selected == null) || pendingActionId != null ||
+        (draftKind == CardChoicePlan.Kind.SELECTION && !draftCountIsValid) ||
+        ((draftKind == CardChoicePlan.Kind.TOP_ORDER || draftKind == CardChoicePlan.Kind.BOTTOM_ORDER) && draftIDs.size != selectableIDs.size))
+    val completionActions = (snapshot.legalActions ?: emptyList()).filter { it.promptId == prompt.id && it.type == "answer_yes_no" && it.confirmed == false }
+
+    // MARK: The Arena browser
+    // Card choices on the Arena board, the reference game's way: the table dims, a title names the effect (Scry, Surveil, Search
+    // your library…) over a line only when XMage's words add to it, the cards lie in the middle (scry, surveil and piles in two
+    // wells, a tap moving a card across), the source stands on the right in landscape, and an orange Done answers. "View
+    // Battlefield" steps it aside. The answers are the panel's own one-at-a-time native answers (CardChoicePlan).
+    @Composable
+    fun arenaCard(card: ZoneCard, width: Float, zoned: Boolean, number: Int? = null) {
+        val selectable = card.isPromptSelectable
+        val picked = card.id in draftIDs || selectedID == card.id
+        // Wells already say where a card goes; elsewhere a picked card rises in a gold glow with its order on a count.
+        val marked = !zoned && picked
+        val order = if (!zoned && draftActive) draftIDs.indexOf(card.id).takeIf { it >= 0 }?.plus(1) else number
+        val lift by animateFloatAsState(if (marked) -10f else 0f, spring(0.8f, 500f), label = "choiceLift")
+        val gold = rgb(1.0, 0.82, 0.4)
+        val shape = RoundedCornerShape((width * 0.06f).dp)
+        Box(Modifier.graphicsLayer { translationY = lift * density }.alpha(if (selectable) 1f else 0.42f).glow(Color.Black.copy(alpha = 0.6f), 6.dp, (width * 0.06f).dp)
+            .onCardInteraction(tap = { toggleSelection(card.id) }, inspect = { inspected = card }, release = { if (inspected?.id == card.id) inspected = null })
+            .semantics {
+                contentDescription = "${card.card.name}, ${if (selectable) "legal choice" else "not a legal choice"}"
+                stateDescription = selectionState(card.id); this.selected = picked; testTag = "board.choice.card.${card.id}"
+            }) {
+            CardTile(card, false, zoneName = "Choice", width = width.dp, height = (width * 1.4f).dp)
+            Box(Modifier.matchParentSize().then(if (marked) Modifier.glow(rgb(1.0, 0.75, 0.3).copy(alpha = 0.6f), 8.dp, (width * 0.06f).dp) else Modifier)
+                .border(if (marked) 3.dp else 1.dp, if (marked) gold else Color.White.copy(alpha = if (selectable) 0.35f else 0f), shape))
+            if (order != null) ArenaCountBadge(order, Modifier.align(Alignment.TopCenter).offset(y = (-14).dp), size = 28.dp)
+            else if (marked && !draftActive) Box(Modifier.align(Alignment.TopCenter).offset(y = (-12).dp).background(Color.Black, CircleShape)) {
+                SfImage("checkmark.circle.fill", gold, 24.dp)
+            }
+        }
+    }
+
+    @Composable
+    fun arenaMoveArrows(id: String, ids: List<String>, top: Boolean) {
+        val index = ids.indexOf(id)
+        val gold = rgb(0.98, 0.84, 0.52)
+        Row(Modifier.height(30.dp)) {
+            PressableBox({ move(id, -1, top) }, Modifier.size(44.dp, 30.dp).semantics { contentDescription = "Move earlier" }, enabled = index > 0 && pendingActionId == null) {
+                SfImage("chevron.left", gold.copy(alpha = if (index > 0) 1f else 0.35f), 13.dp)
+            }
+            PressableBox({ move(id, 1, top) }, Modifier.size(44.dp, 30.dp).semantics { contentDescription = "Move later" }, enabled = index < ids.size - 1 && pendingActionId == null) {
+                SfImage("chevron.right", gold.copy(alpha = if (index < ids.size - 1) 1f else 0.35f), 13.dp)
+            }
+        }
+    }
+
+    @Composable
+    fun arenaWell(title: String, ids: List<String>, top: Boolean, zones: ArenaCardChoice.Zones, width: Float, fill: Boolean) {
+        val shape = RoundedCornerShape(14.dp)
+        val ordered = zones == ArenaCardChoice.Zones.SCRY && ids.size > 1
+        Column(Modifier.then(if (fill) Modifier.fillMaxWidth() else Modifier).semantics { contentDescription = title; testTag = "board.choice.zone.${title.lowercase()}" },
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title.uppercase(), color = rgb(0.98, 0.84, 0.52), style = ArenaMenuStyle.font(13f, SfWeight.heavy).copy(letterSpacing = 0.09.em))
+            Row(Modifier.then(if (fill) Modifier.fillMaxWidth() else Modifier).background(Color.Black.copy(alpha = 0.35f), shape)
+                .border(0.8.dp, ArenaGlass.hairline, shape).horizontalScroll(rememberScrollState()).padding(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.Top) {
+                for ((index, id) in ids.withIndex()) {
+                    val card = cards.firstOrNull { it.id == id } ?: continue
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        arenaCard(card, width, true, if (ordered) index + 1 else null)
+                        if (ordered) arenaMoveArrows(id, ids, top)
+                    }
+                }
+                // An empty well keeps its size; it says nothing (the card goes where you tap it).
+                if (ids.isEmpty()) Spacer(Modifier.size(width.dp, (width * 1.4f + if (zones == ArenaCardChoice.Zones.SCRY) 34f else 0f).dp))
+            }
+        }
+    }
+
+    @Composable
+    fun arenaStage(sizeW: Float, sizeH: Float) {
+        val landscape = sizeW > sizeH
+        val zones = ArenaCardChoice.zones(draftKind, prompt.message)
+        val width = ArenaCardChoice.cardWidth(sizeW, sizeH, cards.size, targets.isNotEmpty(), zones != null)
+        val source = snapshot.stackTopFirst.firstOrNull()
+        val safe = LocalArenaSafeArea.current
+        val side = if (landscape) safe.side else 0.dp
+        val besideSource = landscape && source != null
+        var peeking by remember { mutableStateOf(false) }
+        // Cards XMage lets you pick come first, as in the reference.
+        val arenaCards = filteredCards.filter { it.isPromptSelectable } + filteredCards.filter { !it.isPromptSelectable }
+        val title = ArenaCardChoice.title(draftKind, prompt.message)
+        Box(Modifier.fillMaxSize().semantics { contentDescription = "Card choice dialog"; testTag = "board.choice.dialog" }) {
+            ArenaDim(peeking, 0.8f)
+            if (!peeking) {
+                Column(Modifier.fillMaxSize().padding(top = safe.top(if (landscape) 50.dp else 96.dp), start = side, end = side + if (besideSource) 150.dp else 0.dp,
+                    bottom = maxOf(if (landscape) 8.dp else 26.dp, safe.bottom)),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (landscape) 6.dp else 10.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ArenaScreenTitle(title, if (landscape) 24f else 26f, Modifier.semantics { testTag = "board.choice.title" }, maxLines = 1)
+                        ArenaCardChoice.instruction(draftKind, prompt)?.let { ArenaScreenLine(it, Modifier.padding(horizontal = 24.dp).semantics { testTag = "board.choice.header" }) }
+                    }
+                    if (cards.size > 6) io.magicmobile.android.ui.TavernTextField(search, { search = it }, "Name, type or rules text",
+                        Modifier.widthIn(max = 360.dp).onFocusChanged { searchFocused = it.isFocused }.semantics { testTag = "board.choice.search" })
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        if (zones != null) {
+                            val wells = when (zones) {
+                                ArenaCardChoice.Zones.SCRY -> listOf(Triple("Bottom", draftIDs, false), Triple("Top", topIDs, true))
+                                ArenaCardChoice.Zones.SURVEIL -> listOf(Triple("Graveyard", draftIDs, false), Triple("Library", selectableIDs.filter { it !in draftIDs }, true))
+                                ArenaCardChoice.Zones.PILES -> listOf(Triple("Pile 1", draftIDs, false), Triple("Pile 2", selectableIDs.filter { it !in draftIDs }, true))
+                            }
+                            val available = sizeW - 40f - (if (besideSource) 150f else 0f) - side.value * 2
+                            val fitted = ArenaCardChoice.wellCardWidth(width, available, wells[0].second.size, wells[1].second.size, landscape)
+                            if (landscape) Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
+                                for (well in wells) arenaWell(well.first, well.second, well.third, zones, fitted, false)
+                            } else Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                for (well in wells) arenaWell(well.first, well.second, well.third, zones, fitted, true)
+                            }
+                        } else if (landscape) {
+                            ArenaCenteredRow((sizeW - side.value * 2 - if (besideSource) 150f else 0f).dp, Modifier.semantics { testTag = "board.choice.cards" },
+                                spacing = 14.dp, horizontal = 28.dp, vertical = 16.dp) { arenaCards.forEach { arenaCard(it, width, false) } }
+                        } else {
+                            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 16.dp).semantics { testTag = "board.choice.cards" },
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                                arenaCards.chunked(3).forEach { row ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        row.forEach { arenaCard(it, width, false) }
+                                        repeat(3 - row.size) { Spacer(Modifier.width(width.dp)) }
+                                    }
+                                }
+                                if (filteredCards.isEmpty() && search.isNotEmpty()) emptySearch()
+                            }
+                        }
+                    }
+                    if (targets.isNotEmpty()) Row(Modifier.heightIn(max = 56.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) { targets.forEach { Box(Modifier.width(220.dp)) { targetRow(it) } } }
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (draftKind == CardChoicePlan.Kind.SELECTION) CardChoicePlan.selectionBounds(prompt.message)?.let { bounds ->
+                            if (bounds.second >= selectableIDs.size && draftIDs.size < selectableIDs.size && selectableIDs.size > 1 && zones == null) {
+                                ArenaPlaqueButton("Select all", { draftIDs = selectableIDs }, Modifier.size(120.dp, 44.dp), kind = ArenaPlaqueKind.SECONDARY,
+                                    fontSize = 14f, identifier = "board.choice.selectAll")
+                            }
+                            if (draftIDs.isNotEmpty() && zones == null) ArenaPlaqueButton("Clear", { draftIDs = emptyList() }, Modifier.size(100.dp, 44.dp),
+                                kind = ArenaPlaqueKind.SECONDARY, fontSize = 14f, identifier = "board.choice.clearSelection")
+                        }
+                        if (!draftActive) for (action in completionActions) {
+                            // XMage's "Done" here finishes without a card.
+                            ArenaPlaqueButton(if (action.label.lowercase() == "done") "Choose none" else action.label, { runAction(action) }, Modifier.size(130.dp, 44.dp),
+                                kind = ArenaPlaqueKind.SECONDARY, fontSize = 15f, enabled = pendingActionId == null, identifier = "board.choice.done")
+                        }
+                        ArenaPlaqueButton(if (draftActive || selected != null) "Done" else if (targets.isEmpty()) "Choose a card" else "Choose one", ::confirmSelection,
+                            Modifier.size(170.dp, 46.dp), subtitle = ArenaCardChoice.count(draftKind, prompt.message, draftIDs.size), fontSize = 16f,
+                            enabled = confirmEnabled, identifier = "board.choice.confirm")
+                        if (pendingActionId != null) CircularProgressIndicator(Modifier.size(18.dp), color = ArenaGlass.text, strokeWidth = 2.dp)
+                    }
+                }
+                if (besideSource) Box(Modifier.align(Alignment.CenterEnd).padding(end = 14.dp + side)) { ArenaSourceView(source, null, { inspected = it }) }
+            }
+            ArenaViewBattlefield(peeking, { peeking = !peeking }, landscape, "board.choice.viewBattlefield")
+            inspected?.let { card ->
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).clickable { inspected = null }.padding(16.dp)) {
+                    CardInspector(card, Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Typing a search on a short landscape screen keeps the compact panel, which leaves room for the keyboard.
+            if (searchFocused && cards.size > 6 && maxHeight < 400.dp) classicChooser() else arenaStage(maxWidth.value, maxHeight.value)
+        }
+    } else classicChooser()
 }

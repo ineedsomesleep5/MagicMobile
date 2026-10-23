@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -127,10 +129,38 @@ fun CompactActionText(text: String, isPrimary: Boolean = false, color: Color = L
     FitText(text, sf(if (isPrimary) 15f else 13f, SfWeight.black, SfDesign.ROUNDED), color = color, minimumScale = 0.7f)
 }
 
+/** The Arena question stage's answers draw as Arena's pills (`\.arenaPlaques`), not glass rows. */
+val LocalArenaPlaques = androidx.compose.runtime.compositionLocalOf { false }
+
 /** PanelActionButtonStyle: full-width option rows in prompt panels. */
 @Composable
 fun PanelActionButton(onClick: () -> Unit, modifier: Modifier = Modifier, isPrimary: Boolean = false, isDanger: Boolean = false,
                       compact: Boolean = false, enabled: Boolean = true, content: @Composable () -> Unit) {
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    if (arena && LocalArenaPlaques.current) {
+        // The answers of an Arena question screen, as in the reference (optional-trigger-prompt-1.jpg): the orange pill goes
+        // ahead ("Do it"), Arena's blue pill declines.
+        PressableBox(onClick, modifier.defaultMinSize(minWidth = 140.dp).height(48.dp), enabled, GameSound.UI_TAP) { pressed ->
+            io.magicmobile.android.menus.ArenaButtonFace(when { isDanger -> io.magicmobile.android.menus.ArenaButtonKind.DANGER
+                isPrimary -> io.magicmobile.android.menus.ArenaButtonKind.PRIMARY; else -> io.magicmobile.android.menus.ArenaButtonKind.COOL },
+                io.magicmobile.android.menus.ArenaMenuStyle.title(17f, SfWeight.bold), pressed, Modifier.fillMaxSize(), enabled, inset = 1.dp, glow = 0.7f) {
+                CompositionLocalProvider(LocalContentColor provides LocalContentColor.current) { content() }
+            }
+        }
+        return
+    }
+    if (arena) {
+        // Arena rows: light text on a glass pane in the gold hairline, a dangerous one in oxblood.
+        PressableBox(onClick, modifier, enabled) { pressed ->
+            CompositionLocalProvider(LocalContentColor provides io.magicmobile.android.menus.ArenaGlass.text) {
+                Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).alpha(if (enabled) 1f else 0.45f)
+                    .graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
+                    .arenaGlassRow(isPrimary, isDanger)
+                    .padding(horizontal = if (compact) 9.dp else 11.dp, vertical = if (compact) 4.dp else 5.dp), contentAlignment = Alignment.CenterStart) { content() }
+            }
+        }
+        return
+    }
     if (io.magicmobile.android.ui.LocalTavernBoard.current) {
         io.magicmobile.android.ui.TavernRowButton(onClick, modifier, isPrimary, isDanger, compact, enabled, content)
         return
@@ -203,6 +233,17 @@ fun PromptMiniLabel(title: String) {
 @Composable
 fun PromptButtonLabel(title: String, subtitle: String? = null, systemImage: String? = null, isPending: Boolean = false,
                       cardName: String? = null, large: Boolean = false) {
+    if (LocalArenaPlaques.current) {
+        // On an Arena pill the label is centred serif, sized to its words.
+        val ink = LocalContentColor.current
+        val text = PromptDisplayText.clean(title)
+        if (isPending) CircularProgressIndicator(Modifier.size(14.dp), color = ink, strokeWidth = 1.5.dp)
+        else if (text.contains("{")) GameRulesText(text, cardName = cardName, symbolSize = 15.dp,
+            style = io.magicmobile.android.menus.ArenaMenuStyle.title(15f, SfWeight.bold), color = ink, maxLines = 2)
+        else FitText(text, io.magicmobile.android.menus.ArenaMenuStyle.title(15f, SfWeight.bold), color = ink, maxLines = 2, minimumScale = 0.7f,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        return
+    }
     Row(Modifier.fillMaxWidth().padding(vertical = if (large) 6.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(if (large) 10.dp else 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         val tavern = io.magicmobile.android.ui.LocalTavernBoard.current

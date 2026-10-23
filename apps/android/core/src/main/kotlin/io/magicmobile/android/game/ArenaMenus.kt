@@ -85,6 +85,16 @@ data class ArenaRecentGame(val id: String, val mode: PlayMode, val deckID: Strin
 
 /** The Play panel's rules (ArenaPlayPanelModel and ArenaPlayBlade). */
 object ArenaPlayRules {
+    /**
+     * The shelf the deck picker opens on (its heading at the top): the chosen deck's shelf, else, when your own shelf is empty, the
+     * first shelf with decks (Precons), so an empty My Decks never pushes them under the blade. Shelves are (id, deck ids).
+     */
+    fun landingShelf(shelves: List<Pair<String, List<String>>>, selectedDeckID: String): String? {
+        shelves.firstOrNull { (_, decks) -> selectedDeckID in decks }?.let { return it.first }
+        if (shelves.firstOrNull()?.second?.isEmpty() == true) return shelves.drop(1).firstOrNull { it.second.isNotEmpty() }?.first
+        return null
+    }
+
     /** The opponents' bracket Quick Match resolves to (0 is "match my deck", at most Optimized). */
     fun quickResolvedBracket(quickBracket: Int, deckBracket: CommanderBracket?): Int =
         if (quickBracket == 0) minOf(4, deckBracket?.level ?: 2) else quickBracket

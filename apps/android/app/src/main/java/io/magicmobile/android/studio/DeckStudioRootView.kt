@@ -402,7 +402,8 @@ private fun LibraryBar(wide: Boolean, query: DeckStudioLibraryQuery, change: (De
 private fun DeckShelf(modifier: Modifier, count: Int, focused: Int?, emptyTitle: String, create: () -> Unit,
                       box: @Composable (index: Int, width: Dp) -> Unit) {
     BoxWithConstraints(modifier) {
-        val grid = ArenaDecksPage.grid(maxWidth.value - 8f)
+        // Sideways the page is short: the boxes shrink until a whole box, name plate included, fits above the strip.
+        val grid = ArenaDecksPage.grid(maxWidth.value - 8f, maxHeight.value)
         val width = grid.boxWidth.dp
         val geometry = ArenaBoxGeometry(grid.boxWidth)
         val rise = (geometry.rise * 1.5f).dp
@@ -415,8 +416,8 @@ private fun DeckShelf(modifier: Modifier, count: Int, focused: Int?, emptyTitle:
         val firstRow = if (count == 0) 2 else 1
         fun scrollTo(index: Int, anchor: Float, animated: Boolean) {
             val row = ArenaDecksPage.row(ArenaDecksPage.cell(index), grid.columns)
-            // The row's foot rests at `anchor` of the page's height.
-            val offset = with(density) { -((viewport * anchor) - rowHeight - rise).roundToPx() }
+            // The row's foot rests at `anchor` of the page's height, never under the foot's scroll fade (28), so its name plates show.
+            val offset = with(density) { -(minOf(viewport * anchor, viewport - 32.dp) - rowHeight - rise).roundToPx() }
             scope.launch { runCatching { if (animated) list.animateScrollToItem(firstRow + row, offset) else list.scrollToItem(firstRow + row, offset) } }
         }
         var arrived by rememberSaveable { mutableStateOf(false) }

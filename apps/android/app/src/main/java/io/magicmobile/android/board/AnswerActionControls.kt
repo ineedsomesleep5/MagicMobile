@@ -75,6 +75,13 @@ fun RememberChoiceToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Un
     Row(modifier.defaultMinSize(minHeight = 44.dp).clickable { onChange(!isOn) }
         .semantics { contentDescription = "prompt.remember"; stateDescription = if (isOn) "On" else "Off"; role = Role.Checkbox },
         horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+            // On the Arena board: a gold diamond and light sans words, Arena's checkbox, no brass or parchment.
+            SfImage(if (isOn) "diamond.fill" else "diamond", if (isOn) io.magicmobile.android.menus.ArenaMenuStyle.gold
+                else io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.7f), 12.dp)
+            Text(title, color = io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.9f), style = io.magicmobile.android.menus.ArenaMenuStyle.font(13f, SfWeight.medium), maxLines = 2)
+            return@Row
+        }
         SfImage(if (isOn) "checkmark.square.fill" else "square", if (isOn) TavernPalette.brass else TavernPalette.parchment.copy(alpha = 0.7f), 15.dp)
         Text(title, color = TavernPalette.parchment.copy(alpha = 0.92f), style = sf(13f, SfWeight.semibold, SfDesign.SERIF), maxLines = 2)
     }

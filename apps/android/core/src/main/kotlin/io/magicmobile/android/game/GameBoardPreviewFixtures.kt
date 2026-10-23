@@ -24,6 +24,8 @@ enum class GameBoardDesignPreviewState(val rawValue: String) {
     EMPTY_LIBRARY_CHOICE("empty-library-choice"), MIXED_CARD_CHOICE("mixed-card-choice"), HAND_DRAG("hand-drag"),
     HAND_SCRUBBER("hand-scrubber"), ZONE_INSPECTION("zone-inspection"), ABILITY_CHOICE("ability-choice"), MODE_CHOICE("mode-choice"),
     PHASE_ANNOUNCEMENT("phase-announcement"), LIFE_CHANGE("life-change"), LARGE_TEXT("large-text"), STACK_TRAY("stack-tray"),
+    /** A card's "you may" trigger question over a pile of its triggers (Quest for the Goblin Lord): "Don't ask again". */
+    MAY_TRIGGER_PROMPT("may-trigger-prompt"),
     VICTORY("victory"), SPECTATING("spectating"), FOUR_PLAYER_SPECTATING("four-player-spectating"), OPENING_HAND("opening-hand"),
     TOKEN_COPY_INSPECTION("token-copy-inspection"), ABILITY_SHOWCASE("ability-showcase"), FIRST_STRIKE("first-strike"),
     TOKEN_PILE_CHOICE("token-pile-choice");
@@ -83,6 +85,21 @@ object GameBoardPreviewFixtures {
         if (step != null) { root["step"] = step; root["activePlayerId"] = "ai-1" }
         if (life != null) players(root).firstOrNull { it["playerId"] == "human" }?.set("life", life)
         (root["promptEnvelopeV2"] as? Map<*, *>)?.let { root["promptText"] = it["message"] }
+        return EngineJson.format.decodeFromJsonElement(GameSnapshot.serializer(), toJson(root))
+    }
+
+    /**
+     * The board with XMage's pending "Select a starting player" question (You or AI), the prompt the starting roll answers
+     * (iOS startingPlayerPrompt, MAGICMOBILE_STARTING_ROLL_FIXTURE; Android MAGICMOBILE_DESIGN_PREVIEW=roll).
+     */
+    fun startingPlayerPrompt(): GameSnapshot {
+        @Suppress("UNCHECKED_CAST")
+        val root = toKotlin(parser.parseToJsonElement(json(GameBoardDesignPreviewState.NORMAL_BATTLEFIELD))) as MutableMap<String, Any?>
+        enrich(root, GameBoardDesignPreviewState.NORMAL_BATTLEFIELD, emptyMap())
+        root["id"] = "design-preview-starting-roll"
+        root["legalActions"] = mutableListOf<Any?>()
+        root["promptText"] = "Select a starting player"
+        root["promptEnvelopeV2"] = toKotlin(parser.parseToJsonElement("""{"id":"preview-starting-player","method":"GAME_PICK_TARGET","messageId":3,"playerId":"human","responseKind":"target","message":"Select a starting player","required":true,"minChoices":1,"maxChoices":1,"targetIds":["human","ai-1"],"targets":[{"id":"human","label":"You"},{"id":"ai-1","label":"AI"}],"responseCommand":{"type":"choose_target","promptId":"preview-starting-player","messageId":3}}"""))
         return EngineJson.format.decodeFromJsonElement(GameSnapshot.serializer(), toJson(root))
     }
 
@@ -502,7 +519,7 @@ object GameBoardPreviewFixtures {
                 mutableMapOf("id" to "stack-spell-object", "objectId" to "stack-spell-object", "objectType" to "SPELL", "name" to "Swords to Plowshares",
                     "sourceName" to "Swords to Plowshares", "sourceCard" to spell, "controllerId" to "human", "targetIds" to mutableListOf("ai-creature-1"), "paid" to true))
         }
-        if (state == GameBoardDesignPreviewState.STACK_TRAY) {
+        if (state == GameBoardDesignPreviewState.STACK_TRAY || state == GameBoardDesignPreviewState.MAY_TRIGGER_PROMPT) {
             // Roaming Throne doubling Chatterfang: twelve identical triggers above a spell. Preview stacks list the bottom first.
             val chatterfang = card("ai-1-chatterfang", "Chatterfang, Squirrel General", "Legendary Creature — Squirrel Warrior", "{2}{G}", "Forestwalk", 3)
             val spell = card("stack-bolt-card", "Lightning Bolt", "Instant", "{R}", "Lightning Bolt deals 3 damage to any target.")
@@ -696,6 +713,8 @@ object GameBoardPreviewFixtures {
             """{"id":"preview-mana","method":"GAME_PLAY_MANA","messageId":1,"playerId":"human","responseKind":"mana","message":"Pay {1}{W}","required":true,"minChoices":1,"maxChoices":1,"manaChoices":[{"id":"W","label":"Pay {W}","manaType":"W"},{"id":"C","label":"Pay {C}","manaType":"C"}],"choices":[{"id":"W","label":"Pay {W}"},{"id":"C","label":"Pay {C}"}],"responseCommand":{"type":"play_mana","promptId":"preview-mana","messageId":1}}"""
         GameBoardDesignPreviewState.SEARCH_SELECT_PROMPT ->
             """{"id":"preview-search","method":"GAME_SELECT","messageId":2,"playerId":"human","responseKind":"choose_card","message":"Search your library for a basic land card.","required":true,"minChoices":1,"maxChoices":1,"cards":[{"instanceId":"search-plains","card":{"name":"Plains","typeLine":"Basic Land - Plains","oracleText":"{T}: Add {W}."}},{"instanceId":"search-forest","card":{"name":"Forest","typeLine":"Basic Land - Forest","oracleText":"{T}: Add {G}."}}],"choices":[{"id":"search-plains","label":"Plains","cardInstanceId":"search-plains"},{"id":"search-forest","label":"Forest","cardInstanceId":"search-forest"}],"responseCommand":{"type":"choose_card","promptId":"preview-search","messageId":2}}"""
+        GameBoardDesignPreviewState.MAY_TRIGGER_PROMPT ->
+            """{"id":"preview-may-trigger","method":"GAME_ASK","messageId":6,"playerId":"human","responseKind":"confirmation","message":"Whenever a Goblin you control enters, you may put a quest counter on Quest for the Goblin Lord.","required":true,"minChoices":1,"maxChoices":1,"options":{"originalId":"6f1c2b4e-0000-4000-8000-000000000001","autoAnswerMessage":"Whenever a Goblin you control enters, you may put a quest counter on {this}."},"confirmation":{"yesLabel":"Yes","noLabel":"No","defaultValue":null,"yesCommand":{"type":"answer_yes_no","promptId":"preview-may-trigger","messageId":6,"confirmed":true},"noCommand":{"type":"answer_yes_no","promptId":"preview-may-trigger","messageId":6,"confirmed":false}},"responseCommand":{"type":"answer_yes_no","promptId":"preview-may-trigger","messageId":6}}"""
         GameBoardDesignPreviewState.STACK_RESPONSE_PROMPT ->
             """{"id":"preview-stack","method":"GAME_SELECT","messageId":3,"playerId":"human","responseKind":"priority","message":"Respond to the spell on the stack.","required":false,"minChoices":0,"maxChoices":0,"responseCommand":{"type":"pass_priority","promptId":"preview-stack","messageId":3}}"""
         GameBoardDesignPreviewState.OPENING_HAND ->

@@ -258,11 +258,15 @@ private fun DeckShelves(model: ArenaPlayPanelModel, compact: Boolean) {
             }
         }
         fun rowOf(deckID: String): Int = rows.indexOfFirst { it is ShelfRow && it.items.any { box -> box?.id == deckID } }
-        // Once the shelves are laid out, bring the chosen deck's shelf into view; a deck chosen elsewhere scrolls into view too.
-        LaunchedEffect(Unit) {
+        // Once the shelves are laid out, bring the chosen deck's shelf to the top, as iOS does (with no decks of your own that is
+        // Precons, over the empty My Decks shelf). The precons can arrive after the panel opens, so it waits for the shelf to exist.
+        val landingRow = ArenaPlayRules.landingShelf(model.sections.map { section -> section.id to section.decks.map { it.id } }, model.selectedDeckID)?.let { id -> rows.indexOfFirst { it is ArenaDeckSection && it.id == id } } ?: -1
+        var landed by remember { mutableStateOf(false) }
+        LaunchedEffect(landingRow) {
+            if (landed || landingRow < 0) return@LaunchedEffect
             delay(250)
-            val row = rowOf(model.selectedDeckID)
-            if (row > 0) listState.scrollToItem(maxOf(0, rows.subList(0, row).indexOfLast { it is ArenaDeckSection }))
+            landed = true
+            if (landingRow > 0) listState.scrollToItem(landingRow)
         }
         LaunchedEffect(model.selectedDeckID) {
             val row = rowOf(model.selectedDeckID)

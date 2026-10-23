@@ -273,6 +273,11 @@ fun GameSummaryPanel(stats: GameStats, victory: Boolean, modifier: Modifier = Mo
 @Composable
 fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame: () -> Unit, stats: GameStats? = null) {
     val rematchTitle = LocalGameRematchTitle.current
+    // The Arena board shows Arena's own result (ArenaGameResultView); this card is the Hearth board's.
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+        ArenaGameResultView(snapshot, stats, LocalGameRankChange.current, rematchTitle, newGame, quitGame)
+        return
+    }
     val view = LocalView.current
     val winners = snapshot.winnerPlayerIds
     val isVictory = winners?.contains(snapshot.viewerID) == true
@@ -341,22 +346,43 @@ fun SpectatorBar(snapshot: GameSnapshot, leave: () -> Unit, modifier: Modifier =
 
 /** Arena-style opening hand: the cards fanned large over a dimmed table, with Mulligan and Keep. */
 @Composable
-fun OpeningHandOverlay(choice: OpeningHandChoice, cards: List<ZoneCard>, pending: Boolean, answer: (GameCommand, String, String) -> Unit) {
+fun OpeningHandOverlay(choice: OpeningHandChoice, cards: List<ZoneCard>, pending: Boolean, answer: (GameCommand, String, String) -> Unit,
+                       /** Who goes first, as Arena titles this screen ("You Go First"); null when the table doesn't say yet. */
+                       heading: String? = null) {
     val reduceMotion = BoardMotion.reduceMotion
+    // On the Arena board: Arena's mulligan screen (mulligan-*.jpg): who goes first as the title over a thin rule, XMage's question
+    // under it, the hand fanned across the board inside the screen, the blue Mulligan pill beside the orange Keep, words only.
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    val safe = io.magicmobile.android.menus.LocalArenaSafeArea.current
     var dealt by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf<ZoneCard?>(null) }
     LaunchedEffect(Unit) { dealt = true; GameAudio.play(GameSound.CARD_DRAW) }
     BoxWithConstraints(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) {}.semantics { contentDescription = "board.opening" }) {
-        val availableWidth = maxWidth.value
+        val landscape = maxWidth > maxHeight
+        // In landscape the hand keeps clear of the camera cutout's side.
+        val availableWidth = maxWidth.value - if (landscape && arena) safe.side.value * 2 else 0f
         val count = maxOf(cards.size, 1)
-        val width = min(116f, (availableWidth - 56) / (count * 0.5f + 0.62f))
+        val cap = if (arena) (if (landscape) min(150f, maxHeight.value * 0.42f / BattlefieldLayoutMetrics.magicCardHeightToWidth) else 128f) else 116f
+        val width = min(cap, (availableWidth - if (arena) 72 else 56) / (count * 0.5f + 0.62f))
         val height = width * BattlefieldLayoutMetrics.magicCardHeightToWidth
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.78f)))
-        Canvas(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (arena) 0.8f else 0.78f)))
+        if (!arena) Canvas(Modifier.fillMaxSize()) {
             drawRect(Brush.radialGradient(listOf(MagicPalette.antiqueGold.copy(alpha = 0.16f), Color.Transparent), center, max(1f, size.width * 0.7f)))
         }
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.fillMaxSize().padding(top = if (arena) safe.top(if (landscape) 44.dp else 0.dp) else 0.dp,
+            bottom = if (arena) safe.bottom else 0.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)) {
+            if (arena) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Who goes first in Arena's large serif over a thin rule, XMage's question under it in a quiet line.
+                Text(heading ?: "Opening Hand", Modifier.semantics { heading() }, color = io.magicmobile.android.menus.ArenaGlass.text,
+                    style = io.magicmobile.android.menus.ArenaMenuStyle.title(if (landscape) 30f else 34f, SfWeight.bold).let {
+                        it.copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.8f), androidx.compose.ui.geometry.Offset.Zero, 8f)) })
+                Box(Modifier.width(320.dp).height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent,
+                    io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.55f), Color.Transparent))))
+                Text(choice.message, Modifier.padding(horizontal = 24.dp).semantics { contentDescription = "board.opening.message" },
+                    color = io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.75f), style = io.magicmobile.android.menus.ArenaMenuStyle.font(14f, SfWeight.medium),
+                    textAlign = TextAlign.Center)
+            } else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("OPENING HAND", color = MagicPalette.antiqueGold, style = sf(13f, SfWeight.black, tracking = 3f))
                 Text(choice.message, Modifier.padding(horizontal = 24.dp).semantics { contentDescription = "board.opening.message" }, color = Color.White,
                     style = sf(20f, SfWeight.black, SfDesign.SERIF), textAlign = TextAlign.Center)
@@ -404,6 +430,16 @@ fun OpeningHandOverlay(choice: OpeningHandChoice, cards: List<ZoneCard>, pending
 /** Keep glows gold; Mulligan is a gold-edged outline, both easy to hit. */
 @Composable
 private fun OpeningHandButton(title: String, icon: String, primary: Boolean, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+        // Arena's pair: the blue Mulligan pill beside the orange Keep, words only.
+        PressableBox(action, modifier.height(50.dp), enabled, pressSound = if (primary) GameSound.UI_CONFIRM else null) { pressed ->
+            io.magicmobile.android.menus.ArenaButtonFace(if (primary) io.magicmobile.android.menus.ArenaButtonKind.PRIMARY else io.magicmobile.android.menus.ArenaButtonKind.COOL,
+                io.magicmobile.android.menus.ArenaMenuStyle.title(19f, SfWeight.bold), pressed, Modifier.fillMaxSize(), enabled, inset = 2.dp, glow = 0.8f) {
+                io.magicmobile.android.menus.ArenaButtonText(title)
+            }
+        }
+        return
+    }
     if (LocalTavernBoard.current) {
         // Keep is the ember plaque, Mulligan the leather one.
         io.magicmobile.android.ui.TavernButton(action, modifier, if (primary) io.magicmobile.android.ui.TavernButtonKind.PRIMARY

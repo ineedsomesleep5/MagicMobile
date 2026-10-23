@@ -146,13 +146,16 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
     val ready = account.phase == PlayerAccount.Phase.READY
     val showsDeleteLink = ready && account.username != null && !editingName
 
-    Box(Modifier.fillMaxSize()) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        // A landscape phone leaves the side panel little height under the top bar: a shallower fade and tighter rows, so the
+        // friend rows start inside the panel's view instead of under its foot.
+        val short = maxHeight < 420.dp
         Column(Modifier.fillMaxSize().imePadding()) {
             ArenaPanelHeader("Friends", closeIdentifier = "friends.done", close = done)
             // The delete link follows the list; rows fade into the panel's foot rather than being cut by it.
-            Column(Modifier.fillMaxWidth().weight(1f, fill = false).arenaScrollFade().verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp).padding(top = 10.dp, bottom = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false).arenaScrollFade(if (short) 18.dp else 36.dp).verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp).padding(top = if (short) 4.dp else 10.dp, bottom = if (short) 18.dp else 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (short) 6.dp else 12.dp)) {
                     when {
                         account.phase == PlayerAccount.Phase.UNAVAILABLE -> Column(Modifier.arenaCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(account.notice ?: PlayerAccountRules.message("offline"), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(14f, SfWeight.medium))

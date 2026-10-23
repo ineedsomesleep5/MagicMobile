@@ -4,6 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import io.magicmobile.android.ui.rgb
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -97,6 +100,18 @@ private fun SeatCoin(value: Int?, size: androidx.compose.ui.unit.Dp, lit: Boolea
         androidx.compose.foundation.Image(coin, null, Modifier.fillMaxSize())
         Text(value?.toString() ?: "–", color = Color(0.25f, 0.12f, 0.04f).copy(alpha = if (value == null) 0.45f else 1f), maxLines = 1,
             style = sf(size.value * (if ((value ?: 0) >= 10) 0.46f else 0.54f), SfWeight.black, SfDesign.SERIF).copy(fontFeatureSettings = "tnum"))
+    }
+}
+
+/** The number a seat rolled on the Arena board: white on a dark disc in a thin gold line, orange for the winner, "?" before a roll. */
+@Composable
+private fun ArenaRollValue(value: Int?, size: androidx.compose.ui.unit.Dp, lit: Boolean) {
+    Box(Modifier.size(size).then(if (lit) Modifier.background(io.magicmobile.android.menus.ArenaMenuStyle.orange, CircleShape)
+        else Modifier.background(Color(0.07f, 0.07f, 0.08f), CircleShape))
+        .border(1.2.dp, if (lit) io.magicmobile.android.menus.ArenaMenuStyle.orangeRim else io.magicmobile.android.menus.ArenaMenuStyle.gold.copy(alpha = 0.6f), CircleShape)
+        .clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+        Text(value?.toString() ?: "?", color = Color.White.copy(alpha = if (value == null) 0.6f else 1f), maxLines = 1,
+            style = sf(size.value * 0.46f, SfWeight.bold).copy(fontFeatureSettings = "tnum"))
     }
 }
 
@@ -221,22 +236,30 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
     }
 
     val tableState = D20TableState(playerIDs, tableRound, tableResting.toMap(), tableThrow, if (playbackFinished) roll.winnerSeatID else null)
+    // The Arena board: the dice roll on the board itself under one line of title, with glass plates and Arena's buttons (Caleb,
+    // 2026-10-22: the roll belongs on the board it will be played on). The Hearth board keeps its tavern table.
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    var safe by remember { mutableStateOf(io.magicmobile.android.menus.ArenaSafeArea()) }
     Box(Modifier.fillMaxSize()) {
+        if (arena) io.magicmobile.android.board.MeasureArenaSafeArea { if (it != safe) safe = it }
         // The tavern table fills the whole screen behind the controls; its camera frames the roll area.
         D20TableView(rollRegion.translate(-tableOrigin.x, -tableOrigin.y), tableState, reduceMotion,
             Modifier.fillMaxSize().onGloballyPositioned { tableOrigin = it.boundsInRoot().topLeft }.clearAndSetSemantics {},
             onEdgeHit = { turn -> if (turn == spinTurns && edgeHitTurn != turn) { edgeHitTurn = turn; GameHaptics.selection(view) } },
             onRebound = { turn -> if (turn == spinTurns) reboundTurn = turn },
             onRest = { turn -> if (turn == spinTurns) restTurn = turn },
-            onReady = { tableDrawn = true })
-        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            onReady = { tableDrawn = true }, onBoard = arena)
+        BoxWithConstraints(Modifier.fillMaxSize().then(if (arena) Modifier.padding(top = safe.top, bottom = safe.bottom, start = safe.leading, end = safe.trailing)
+            else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))) {
             val wide = maxWidth > maxHeight && maxWidth >= 560.dp
             val stageHeight = maxHeight
             val columnCount = if (wide) playerIDs.size else 2
             // Upright the roll area takes everything the header, the result and the seat plates leave, so the throw
-            // runs its full length across the table (Caleb, 2026-10-07: the dice had too little room).
+            // runs its full length across the table (Caleb, 2026-10-07: the dice had too little room). On the Arena board the
+            // plates sit above the hand and your medallion, so the throw takes less of the height.
             val plateRows = (playerIDs.size + columnCount - 1) / columnCount
-            val uprightRoll = max(260f, stageHeight.value - 128f - 64f - (plateRows * 70f + max(0, plateRows - 1) * 18f) - 18f * 3 - 16f)
+            val uprightRoll = if (arena) min(stageHeight.value * 0.34f, 300f)
+                else max(260f, stageHeight.value - 128f - 64f - (plateRows * 70f + max(0, plateRows - 1) * 18f) - 18f * 3 - 16f)
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top) {
                 // The header sits at the top of the screen, not floating in the middle.
@@ -259,6 +282,20 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                     val skipPlaque: @Composable () -> Unit = {
                         if (!playbackFinished && !reduceMotion) BinderPlaque(title = "Skip", label = "Skip animation", onClick = { skipAnimation = true })
                     }
+                    if (arena) {
+                        // Who rolls or who goes first, large over the board, as Arena announces it; Skip at its end, left of the
+                        // board's gear in landscape, and in landscape under the opponent's medallion.
+                        Box(Modifier.fillMaxWidth().padding(top = if (wide) 44.dp else 24.dp), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.Text(headline, Modifier.padding(horizontal = if (wide) 90.dp else 60.dp)
+                                .semantics { heading() }, color = io.magicmobile.android.menus.ArenaGlass.text, maxLines = 1,
+                                style = io.magicmobile.android.menus.ArenaMenuStyle.title(if (wide) 26f else 32f, SfWeight.bold).copy(
+                                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.9f), Offset.Zero, 12f), textAlign = TextAlign.Center))
+                            Box(Modifier.align(Alignment.CenterEnd).padding(end = if (wide) 96.dp else 0.dp)) {
+                                if (!playbackFinished && !reduceMotion) TavernButton({ skipAnimation = true }, kind = io.magicmobile.android.ui.TavernButtonKind.SECONDARY,
+                                    compact = true) { TavernButtonText("Skip") }
+                            }
+                        }
+                    } else
                     Column(Modifier.fillMaxWidth().shadow(8.dp, RoundedCornerShape(12.dp)).tavernBrassFrame(0.5f).padding(2.dp)
                         .tavernFill(TavernMaterial.LEATHER, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = if (wide) 4.dp else 12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -282,7 +319,7 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                         }
                     }
                     // The roll area stays, so the dice stay in view under the result; it only speaks while rolling.
-                    Spacer(Modifier.fillMaxWidth().height(if (wide) max(120f, stageHeight.value - 178f).dp else uprightRoll.dp)
+                    Spacer(Modifier.fillMaxWidth().height(if (wide) (if (arena) max(100f, stageHeight.value * 0.3f) else max(120f, stageHeight.value - 178f)).dp else uprightRoll.dp)
                         .onGloballyPositioned { rollRegion = it.boundsInRoot() }
                         .then(if (playbackFinished) Modifier.clearAndSetSemantics {} else Modifier.semantics {
                             contentDescription = if (reboundTurn == spinTurns) "Rebounded from screen edge" else if (edgeHitTurn == spinTurns) "Touched screen edge" else "D20 roll area"
@@ -294,7 +331,14 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                             val shown = landed && value != null
                             val resultAlpha by animateFloatAsState(if (shown) 1f else 0f, tween(220), label = "rollResult")
                             val resultScale by animateFloatAsState(if (shown) 1f else 0.72f, spring(0.6f, 300f), label = "rollResultScale")
-                            if (shown || resultAlpha > 0.01f) {
+                            if (arena && (shown || resultAlpha > 0.01f)) {
+                                // A dark glass chip on the Arena board.
+                                Text("Rolled ${value ?: ""}", Modifier.scale(resultScale).alpha(resultAlpha).defaultMinSize(minHeight = 46.dp)
+                                    .background(Color.Black.copy(alpha = 0.62f), CircleShape).border(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape)
+                                    .padding(horizontal = 26.dp, vertical = 8.dp),
+                                    color = io.magicmobile.android.menus.ArenaGlass.text,
+                                    style = io.magicmobile.android.menus.ArenaMenuStyle.title(24f, SfWeight.bold).copy(fontFeatureSettings = "tnum"))
+                            } else if (shown || resultAlpha > 0.01f) {
                                 Text("Rolled ${value ?: ""}", Modifier.scale(resultScale).alpha(resultAlpha).shadow(5.dp, CircleShape)
                                     .tavernCapsuleRim().defaultMinSize(minHeight = 46.dp).padding(3.dp).tavernFill(TavernMaterial.PARCHMENT, CircleShape)
                                     .padding(horizontal = 23.dp, vertical = 5.dp),
@@ -305,6 +349,12 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                                     TavernButton(onRollTap, enabled = !rollPending, fontSize = 17f, fullWidth = true) {
                                         TavernButtonText(if (rollPending) "Sharing your roll…" else "Tap to roll D20")
                                     }
+                                } else if (arena) {
+                                    Text("Waiting for ${seatNames[nextWaitingSeatID] ?: "the next player"} to roll…", Modifier.defaultMinSize(minHeight = 36.dp)
+                                        .background(Color.Black.copy(alpha = 0.62f), CircleShape).border(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape)
+                                        .padding(horizontal = 18.dp, vertical = 8.dp),
+                                        color = io.magicmobile.android.menus.ArenaGlass.text, style = io.magicmobile.android.menus.ArenaMenuStyle.font(14f, SfWeight.semibold),
+                                        textAlign = TextAlign.Center)
                                 } else {
                                     Text("Waiting for ${seatNames[nextWaitingSeatID] ?: "the next player"} to roll…", Modifier.tavernCapsuleRim(thin = true)
                                         .defaultMinSize(minHeight = 36.dp).padding(1.5.dp).tavernFill(TavernMaterial.LEATHER, CircleShape)
@@ -333,6 +383,29 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                                 }
                                 val ink = if (isWinner) D20Ink.cream else if (isOut) D20Ink.muted else D20Ink.brown
                                 val secondary = if (isWinner) D20Ink.cream.copy(alpha = 0.85f) else if (isOut) D20Ink.muted.copy(alpha = 0.8f) else D20Ink.brownSoft
+                                if (arena) {
+                                    // Glass plates in the gold hairline, orange-rimmed for the winner; "?" until the seat has rolled.
+                                    val text = io.magicmobile.android.menus.ArenaGlass.text
+                                    val shape = RoundedCornerShape(12.dp)
+                                    Row(Modifier.weight(1f).alpha(if (isOut) 0.78f else 1f)
+                                        .then(if (isWinner) Modifier.glow(rgb(1.0, 0.47, 0.12).copy(alpha = 0.6f), 10.dp, 12.dp) else Modifier.glow(Color.Black.copy(alpha = 0.45f), 5.dp, 12.dp))
+                                        .background(Color.Black.copy(alpha = 0.62f), shape)
+                                        .border(if (isWinner) 1.5.dp else 1.dp, if (isWinner) androidx.compose.ui.graphics.SolidColor(io.magicmobile.android.menus.ArenaMenuStyle.orangeRim)
+                                            else io.magicmobile.android.menus.ArenaGlass.hairline, shape)
+                                        .defaultMinSize(minHeight = if (wide) 50.dp else 66.dp)
+                                        .padding(horizontal = if (wide) 12.dp else 14.dp, vertical = if (wide) 5.dp else 10.dp)
+                                        .semantics { contentDescription = if (isRolling) "$name is rolling a twenty-sided die" else value?.let { "$name rolled $it on a twenty-sided die" } ?: "$name, waiting to roll" },
+                                        horizontalArrangement = Arrangement.spacedBy(if (wide) 8.dp else 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        ArenaRollValue(if (isRolling) null else value, if (wide) 38.dp else 46.dp, isWinner)
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(name, color = text.copy(alpha = if (isOut) 0.55f else 1f),
+                                                style = io.magicmobile.android.menus.ArenaMenuStyle.font(if (wide) 14f else 16f, SfWeight.bold), maxLines = 2)
+                                            Text(status, color = text.copy(alpha = if (isOut) 0.45f else 0.7f),
+                                                style = io.magicmobile.android.menus.ArenaMenuStyle.font(12f, SfWeight.medium), maxLines = 2)
+                                        }
+                                    }
+                                    return@forEach
+                                }
                                 Row(Modifier.weight(1f).alpha(if (isOut) 0.78f else 1f)
                                     .shadow(if (isWinner) 10.dp else 5.dp, RoundedCornerShape(10.dp), ambientColor = if (isWinner) TavernPalette.ember else Color.Black,
                                         spotColor = if (isWinner) TavernPalette.ember else Color.Black)
@@ -365,6 +438,9 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
  */
 @Composable
 fun StartingRollCover(content: @Composable BoxScope.() -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color(0.09f, 0.05f, 0.03f)).clickable(remember { MutableInteractionSource() }, null) {},
+    // On the Arena board the roll happens on the board: it shows through, dimmed.
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    Box(Modifier.fillMaxSize().background(if (arena) Color.Black.copy(alpha = 0.8f) else Color(0.09f, 0.05f, 0.03f))
+        .clickable(remember { MutableInteractionSource() }, null) {},
         contentAlignment = Alignment.Center, content = content)
 }

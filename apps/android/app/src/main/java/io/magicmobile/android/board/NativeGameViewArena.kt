@@ -69,6 +69,10 @@ import io.magicmobile.android.game.ArenaExtraHand
 import io.magicmobile.android.game.ArenaHandFanLayout
 import io.magicmobile.android.game.ArenaHandPosture
 import io.magicmobile.android.game.ArenaLaneChoice
+import io.magicmobile.android.game.ArenaScreenContext
+import io.magicmobile.android.game.ArenaScreens
+import io.magicmobile.android.game.PromptDisplayText
+import io.magicmobile.android.game.XmagePromptAbility
 import io.magicmobile.android.game.ArenaLanePlanner
 import io.magicmobile.android.game.ArenaTableRules
 import io.magicmobile.android.game.BoardFXDirector
@@ -197,6 +201,9 @@ fun ArenaBoard(host: ArenaBoardHost) {
     var landedStackIDs by remember { mutableStateOf(setOf<String>()) }
     var showPhaseStops by remember { mutableStateOf(false) }
     var safeArea by remember { mutableStateOf(ArenaSafeArea()) }
+    /** The trigger order chosen in the ability browser (ability ids, first to place first) and the prompt it last answered. */
+    var triggerPlan by remember { mutableStateOf(listOf<String>()) }
+    var triggerSent by remember { mutableStateOf<String?>(null) }
     val current by rememberUpdatedState(host)
 
     fun haptic() = GameHaptics.selection(view)
@@ -216,9 +223,57 @@ fun ArenaBoard(host: ArenaBoardHost) {
     val posture = handPosture()
     /** The raised hand covers the corner, as in the reference, except while the table asks you something. */
     val controlsOnTop = InlinePaymentPromptState.isActive(snapshot) || snapshot.stackTopFirst.isNotEmpty() || combatPhase != null || targetableIds.isNotEmpty()
+    // The full-table screens (docs/ARENA_STYLE.md, "Gating a new Arena screen"): each takes the question its Hearth panel would.
+    val screenContext = ArenaScreenContext(startingRollVisible, autoPay?.awaitingColor == true, autoPay?.answeredColor, triggerPlan, triggerSent)
+    val abilityPrompt = ArenaScreens.abilityPrompt(snapshot, screenContext)
+    val modePrompt = if (abilityPrompt == null) ArenaScreens.modePrompt(snapshot) else null
+    val choicePrompt = if (abilityPrompt == null && modePrompt == null) ArenaScreens.choicePrompt(snapshot, screenContext) else null
+    val playerPrompt = if (abilityPrompt == null && modePrompt == null && choicePrompt == null) ArenaScreens.playerPrompt(snapshot, screenContext) else null
+    val splitPrompt = if (abilityPrompt == null && modePrompt == null && choicePrompt == null && playerPrompt == null) ArenaScreens.splitPrompt(snapshot, screenContext) else null
+    val pilePrompt = if (abilityPrompt == null && modePrompt == null && choicePrompt == null && playerPrompt == null && splitPrompt == null)
+        ArenaScreens.pilePrompt(snapshot, screenContext) else null
+    val question = ArenaScreens.question(snapshot, targetableIds, host.pendingActionId, host.isPromptDetailOpen, screenContext)
     /** A full-table screen is up: it hides the corner, the caption, the stack card and the arrows over the table. */
-    val screenUp = host.isCardChoiceOpen || host.isStackOpen || host.inspectingZoneTitle != null
+    val screenUp = host.isCardChoiceOpen || host.isStackOpen || host.inspectingZoneTitle != null || abilityPrompt != null || modePrompt != null ||
+        choicePrompt != null || playerPrompt != null || splitPrompt != null || pilePrompt != null || question != null
     val amountPrompt = if (screenUp) null else ArenaTableRules.amountPrompt(snapshot, startingRollVisible)
+
+    /** XMage's own answers beside a screen's (Cancel, Done), leaving out the ones the screen makes itself. */
+    fun promptAnswers(excluding: Set<String>): List<ArenaAnswer> = CompactPromptPopup.compactLegalPromptActions(snapshot)
+        .filter { it.type !in excluding }.map { action -> ArenaAnswer(action.id, action.compactPromptTitle) { host.runAction(action) } }
+    /** The same command the Hearth panel sends for this answer. */
+    fun answer(prompt: PromptEnvelopeV2, type: String, label: String, key: String, ids: List<String> = emptyList(), amounts: List<Int>? = null, pile: Int? = null) {
+        if (host.pendingActionId != null) return
+        val command = UniversalPromptResponseCommandBuilder.command(snapshot.id, snapshot.bridgeRevision, prompt, type,
+            prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId, ids, amounts = amounts, pile = pile) ?: return
+        haptic()
+        host.runCommand(command, label, key)
+    }
+    fun chooseAbility(ability: XmagePromptAbility, prompt: PromptEnvelopeV2, remember: Boolean) {
+        val snap = current.snapshot
+        if (current.pendingActionId != null) return
+        var command = PromptCommandBuilder.command(snap.id, prompt, "choose_ability", prompt.responseCommand?.promptId ?: prompt.id, prompt.playerId,
+            listOf(ability.id)) ?: return
+        if (remember) command = command.copy(answerActions = listOf("rememberTriggerFirst"))
+        haptic()
+        current.runCommand(command, if (prompt.isTriggerOrder) "Put a trigger on the stack" else "Choose ability", "${prompt.id}-${ability.id}")
+    }
+    /** `resolveOrder` runs first to last; each ordering prompt then gets the first planned trigger it still offers (triggerStep). */
+    fun orderTriggers(resolveOrder: List<XmagePromptAbility>, remember: Boolean, prompt: PromptEnvelopeV2) {
+        val plan = ArenaScreens.triggerPlan(resolveOrder)
+        val ability = plan.firstOrNull()?.let { id -> resolveOrder.firstOrNull { it.id == id } } ?: return
+        triggerPlan = plan
+        triggerSent = "${prompt.id}:${prompt.messageId}"
+        chooseAbility(ability, prompt, remember)
+    }
+    fun triggerStep() {
+        val snap = current.snapshot
+        val step = ArenaScreens.triggerStep(snap, triggerPlan, triggerSent, current.pendingActionId != null)
+        triggerPlan = step.plan; triggerSent = step.sent
+        val prompt = snap.promptEnvelopeV2
+        val pick = step.pick
+        if (pick != null && prompt != null) chooseAbility(pick, prompt, false)
+    }
 
     fun playerTargetID(playerID: String): String? {
         if (targetableIds.isEmpty()) return null
@@ -322,11 +377,12 @@ fun ArenaBoard(host: ArenaBoardHost) {
     // Every new answer from XMage steps the helpers: its revision, a new prompt or the pending answer clearing.
     val stepKey = "${snapshot.bridgeRevision ?: -1}|${snapshot.promptEnvelopeV2?.id ?: ""}|${snapshot.promptEnvelopeV2?.messageId ?: -1}|${host.pendingActionId ?: ""}"
     LaunchedEffect(stepKey) {
-        if (autoPay == null && attackQueue == null) return@LaunchedEffect
+        if (autoPay == null && attackQueue == null && triggerPlan.isEmpty()) return@LaunchedEffect
         // Let the snapshot's own updates land before acting on it.
         yield()
         autoPayStep()
         attackStep()
+        triggerStep()
     }
 
     fun allAttackTargets(): List<String>? {
@@ -621,13 +677,70 @@ fun ArenaBoard(host: ArenaBoardHost) {
                         swap = { id -> host.selectOpponent(id); playerCardID = id },
                         open = { reference -> playerCardID = null; host.inspectBoardZone(reference) }, close = { playerCardID = null })
                 }
-                // Questions keep the corner pop-up for now (the question stage and the browsers are phase D); a number has its pill.
+                val pending = host.pendingActionId != null
+                val inspect: (ZoneCard) -> Unit = { host.selection.inspectedCard = it }
+                abilityPrompt?.let { ability -> key("${ability.prompt.id}:${ability.prompt.messageId}") {
+                    // A choice XMage lets you back out of keeps its Cancel inside the browser (the corner is hidden behind it).
+                    val back = CompactPromptPopup.compactLegalPromptActions(snapshot).firstOrNull { it.type != "choose_ability" }
+                    ArenaAbilityBrowser(ability.prompt, ability.prompt.abilities ?: emptyList(), ability.ordering, pending,
+                        canRemember = ability.ordering && "rememberTriggerFirst" in answerActions.supported,
+                        cancel = back?.let { action -> ArenaAnswer(action.id, action.compactPromptTitle) { host.runAction(action) } },
+                        choose = { chooseAbility(it, ability.prompt, false) },
+                        order = { resolveOrder, remember -> orderTriggers(resolveOrder, remember, ability.prompt) }, inspect = inspect)
+                } }
+                modePrompt?.let { modes -> key("${modes.id}:${modes.messageId}") {
+                    ArenaModeBrowser(ArenaScreens.modeTitle(modes), ArenaScreens.modeDetail(modes), ArenaScreens.modeSource(modes, snapshot), modes.modes ?: emptyList(),
+                        pending, promptAnswers(setOf("choose_mode")), choose = { mode ->
+                            answer(modes, PromptCommandBuilder.idCommandType(modes.responseCommand?.type, "choose_mode"), "Choose mode", "${modes.id}-${mode.id}", listOf(mode.id))
+                        }, inspect = inspect)
+                } }
+                choicePrompt?.let { choice -> key("${choice.id}:${choice.messageId}") {
+                    val lines = PromptDisplayText.clean(choice.message).split("\n")
+                    ArenaChoiceBrowser(lines.firstOrNull()?.ifEmpty { null } ?: "Make a choice", lines.getOrNull(1), ArenaScreens.choiceOptions(choice, snapshot),
+                        snapshot.stackTopFirst.firstOrNull(), pending, promptAnswers(setOf("resolve_choice")), choose = { option, remember ->
+                            val id = if (remember) option.rememberID ?: option.id else option.id
+                            answer(choice, PromptCommandBuilder.idCommandType(choice.responseCommand?.type, "resolve_choice"), PromptDisplayText.clean(option.label),
+                                "${choice.id}-$id", listOf(id))
+                        }, inspect = inspect)
+                } }
+                playerPrompt?.let { players -> key("${players.prompt.id}:${players.prompt.messageId}") {
+                    ArenaPlayerChoice(ArenaScreens.playerChoiceTitle(players.prompt.message), players.seats, pending,
+                        promptAnswers(setOf("choose_player", "choose_target")), choose = { seat ->
+                            answer(players.prompt, players.type, "Choose ${seat.name}", "${players.prompt.id}-${seat.id}", listOf(seat.id))
+                        })
+                } }
+                splitPrompt?.let { split -> key("${split.id}:${split.messageId}") {
+                    val setup = ArenaScreens.splitSetup(split, snapshot)
+                    ArenaSplitBrowser(setup.title, setup.rows, split.multiAmounts ?: emptyList(), split.totalMin, split.totalMax, setup.source, setup.sourceCard,
+                        pending, promptAnswers(setOf("choose_multi_amount")), submit = { values ->
+                            answer(split, "choose_multi_amount", "Assign amounts", "${split.id}-choose-multi-amount", amounts = values)
+                        }, inspect = inspect)
+                } }
+                pilePrompt?.let { piles -> key("${piles.id}:${piles.messageId}") {
+                    ArenaPileBrowser("Choose a pile", PromptDisplayText.clean(piles.message), piles.piles ?: emptyList(), snapshot.stackTopFirst.firstOrNull(), pending,
+                        choose = { pile -> answer(piles, "choose_pile", "Choose ${pile.label}", "${piles.id}-pile-${pile.id}", pile = pile.explicitPileNumber) },
+                        inspect = inspect)
+                } }
+                if (host.isStackOpen && snapshot.stackTopFirst.isNotEmpty()) {
+                    val resolve = GameplayAffordances.resolveStackCommand(snapshot, host.pendingActionId, answerActions.supported)
+                    ArenaStackBrowser(snapshot, resolve?.let { command -> {
+                        host.setStackOpen(false)
+                        host.runCommand(command, "Resolve the stack", "resolve-stack-${command.promptId ?: ""}")
+                    } }, turnControl?.let { control -> if (control.isAutoPassing) control.stop else null }, inspect) { host.setStackOpen(false) }
+                }
+                // Questions: the question stage for yours (a yes or no, a few choices), the pop-up for players the table doesn't show.
                 val playerTargets = targetableIds.any { id -> snapshot.players.any { CombatPlayerIdentity.ids(it.playerId, snapshot).contains(id) } } &&
                     targetableIds.any { id -> id !in CombatPlayerIdentity.ids(human.playerId, snapshot) && id !in CombatPlayerIdentity.ids(opponent.playerId, snapshot) &&
                         snapshot.players.any { CombatPlayerIdentity.ids(it.playerId, snapshot).contains(id) } }
-                if (!startingRollVisible && !openingHand && amountPrompt == null && CompactPromptPopup.shouldShow(snapshot, host.pendingActionId) &&
+                if (!startingRollVisible && !openingHand && amountPrompt == null && abilityPrompt == null && modePrompt == null &&
+                    !ArenaScreens.screenPrompt(snapshot, screenContext) && CompactPromptPopup.shouldShow(snapshot, host.pendingActionId) &&
                     !host.isPromptDetailOpen && (targetableIds.isEmpty() || playerTargets)) {
-                    CompactPromptPopupView(snapshot, host.pendingActionId, host.runAction, host.runCommand, host.openPromptDetailSheet,
+                    if (question != null) key(question.key) {
+                        ArenaQuestionStage(question.title, question.stackObject, question.card, inspect) {
+                            CompactPromptPopupView(snapshot, host.pendingActionId, host.runAction, host.runCommand, host.openPromptDetailSheet,
+                                Modifier.widthIn(max = min(520f, canvas.screen.width - 48).dp), stage = true)
+                        }
+                    } else CompactPromptPopupView(snapshot, host.pendingActionId, host.runAction, host.runCommand, host.openPromptDetailSheet,
                         Modifier.requiredWidth(promptWidth.dp).centerAt(promptCenter.x, promptCenter.y))
                 }
                 host.dragActionChoice?.let { choice ->
@@ -636,15 +749,8 @@ fun ArenaBoard(host: ArenaBoardHost) {
                         Modifier.requiredWidth(promptWidth.dp).centerAt(promptCenter.x, promptCenter.y))
                 }
                 host.inspectingZoneTitle?.let { title ->
-                    // The zone browser is phase D: the zone inspector stands in, over the dimmed table.
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.7f)).clickable(remember { MutableInteractionSource() }, null) { host.closeZone() })
-                    Box(Modifier.fillMaxSize().padding(top = safeArea.top(50.dp), start = safeArea.side + 12.dp, end = safeArea.side + 12.dp, bottom = 12.dp),
-                        contentAlignment = Alignment.Center) {
-                        CompactZoneInspectorOverlay(host.inspectingZoneReference?.title(snapshot) ?: title, host.inspectingZoneReference?.cards(snapshot) ?: host.inspectingZoneCards,
-                            snapshot.legalActions ?: emptyList(), host.pendingActionId, host.selection, host.runAction, host.closeZone,
-                            Modifier.widthIn(max = 560.dp), targetableIDs = targetableIds, runTargetAction = host.submitTarget,
-                            availableHeight = canvas.screen.height * 0.8f)
-                    }
+                    ArenaZoneBrowser(host.inspectingZoneReference?.title(snapshot) ?: title, host.inspectingZoneReference?.cards(snapshot) ?: host.inspectingZoneCards,
+                        snapshot.legalActions ?: emptyList(), host.pendingActionId, targetableIds, host.submitTarget, host.selection, host.runAction, host.closeZone)
                 }
                 host.selection.inspectedCard?.let { card ->
                     // The reference dims the table a little behind a card you're reading.
@@ -663,13 +769,10 @@ fun ArenaBoard(host: ArenaBoardHost) {
                         host.refreshGame, host.reconnectGame, Modifier.requiredWidth(min(canvas.screen.width - 28, 360f).dp).centerAt(canvas.screen.width / 2, canvas.screen.height / 2))
                 }
             }
-            // Panels on the table in glass, never a sheet: the phase stops and the whole stack (its browser is phase D).
+            // Panels on the table in glass, never a sheet: the phase stops.
             Box(Modifier.fillMaxSize().zIndex(95f)) {
                 ArenaPanel(showPhaseStops, { showPhaseStops = false }, maxWidth = 560.dp, fitsContent = true) {
                     Column(Modifier.padding(16.dp)) { PhaseStopsGrid() }
-                }
-                ArenaPanel(host.isStackOpen && snapshot.stackTopFirst.isNotEmpty(), { host.setStackOpen(false) }, maxWidth = 560.dp, fitsContent = true) {
-                    BoardStackInspector(snapshot, host.selection, host.runCommand) { host.setStackOpen(false) }
                 }
             }
         }

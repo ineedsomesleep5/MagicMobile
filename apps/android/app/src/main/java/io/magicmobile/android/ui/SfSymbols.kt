@@ -275,6 +275,7 @@ object SfSymbols {
         "hand.point.up.left.fill" -> Icons.Filled.TouchApp
         "laurel.leading" -> Laurel
         "diamond.fill" -> Diamond
+        "diamond" -> DiamondOutline
         else -> Icons.Filled.Circle
     }
 
@@ -327,6 +328,15 @@ object SfSymbols {
         ImageVector.Builder("diamond", 24.dp, 24.dp, 24f, 24f).path(fill = SolidColor(Color.White)) {
             moveTo(12f, 2.5f); lineTo(21.5f, 12f); lineTo(12f, 21.5f); lineTo(2.5f, 12f); close()
         }.build()
+    }
+
+    /** SF "diamond": the diamond's outline. */
+    val DiamondOutline: ImageVector by lazy {
+        ImageVector.Builder("diamond-outline", 24.dp, 24.dp, 24f, 24f)
+            .path(fill = SolidColor(Color.White), pathFillType = androidx.compose.ui.graphics.PathFillType.EvenOdd) {
+                moveTo(12f, 2.5f); lineTo(21.5f, 12f); lineTo(12f, 21.5f); lineTo(2.5f, 12f); close()
+                moveTo(12f, 5.3f); lineTo(5.3f, 12f); lineTo(12f, 18.7f); lineTo(18.7f, 12f); close()
+            }.build()
     }
 
     /** SF "sparkle": a four-pointed star. */

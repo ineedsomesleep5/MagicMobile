@@ -21,6 +21,17 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-23 (Claude, Android Arena board phase D): (1) Inside a `BoxWithConstraints`, `maxWidth` read from a nested
+  Row/Column/lambda fails to compile ("cannot be called in this context with an implicit receiver", the scope DslMarker):
+  copy it to a `val` at the top of the BoxWithConstraints block. (2) A layer that "steps aside" (View Battlefield) drops its
+  content from composition instead of SwiftUI's `opacity(0) + allowsHitTesting(false)`: Compose has no hit-test switch, and a
+  pointer-consuming invisible layer would still block the board. Keep a browser's picks in state above the frame's content so
+  they survive. (3) The Filament D20 scene draws over the board with `View.BlendMode.TRANSLUCENT`, a zero-alpha clear colour,
+  `UiHelper.isOpaque = false` before `attachTo` and a non-opaque TextureView (`D20TableScene(onBoard = true)`); runtime
+  still unchecked on an emulator. (4) The worktree guard refuses `cat >> file <<EOF` appends and multi-step python edits
+  mixed with greps; use the Edit tool. Where: `apps/android/app/src/main/java/io/magicmobile/android/board/ArenaBrowsers.kt`,
+  `ondevice/StartingRollTable.kt`.
+
 - 2026-10-23 (Claude, Android Arena board phase C): four things that differ from SwiftUI. (1) Compose hit-tests overlapping
   siblings exclusively, so a full-screen hand surface would swallow every tap on the lanes: the hand's touch boxes are the
   fan's band and the popped card's frame (`Modifier.place(rect)`), the iOS `touchSurface`/`carrySurface` pair. A full-screen

@@ -113,6 +113,7 @@ import io.magicmobile.android.game.TargetingHelperVisibility
 import io.magicmobile.android.game.UniversalPromptResponseCommandBuilder
 import io.magicmobile.android.game.ZoneCard
 import io.magicmobile.android.game.combatSelectionResetKey
+import io.magicmobile.android.game.startingPlayerHeading
 import io.magicmobile.android.game.visibleBattlefield
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.GameAudio
@@ -230,6 +231,8 @@ fun NativeGameView(
     /** A short notice in the Arena caption (Auto Pay stopping, a taken commander, a board wipe's recap). */
     var arenaNotice by remember { mutableStateOf<String?>(null) }
     var arenaLastStackTop by remember { mutableStateOf<io.magicmobile.android.game.XmageStackObject?>(null) }
+    /** The safe area the Arena layers outside the board keep to (card choices, the opening hand, the result). */
+    var arenaSafeArea by remember { mutableStateOf(io.magicmobile.android.menus.ArenaSafeArea()) }
     /** The Walnut Tavern table: controls sit on the plate's sockets and pop-ups wear the tavern kit. The Arena board is a tavern table too. */
     val isTavernBoard = BattlefieldBackdrop.resolved(boardAppearance) == BattlefieldBackdrop.TAVERN || isArenaBoard
     val cardBounds = remember { CardBoundsRegistry() }
@@ -249,7 +252,14 @@ fun NativeGameView(
 
     /** The prompt-detail panel's key, less the questions the Arena board answers in its own corner (a number's pill). */
     fun boardDetailChoiceKey(snap: GameSnapshot): String? {
-        if (isArenaBoard && io.magicmobile.android.game.ArenaTableRules.amountPrompt(snap, startingRollVisible) != null) return null
+        if (isArenaBoard) {
+            // The Arena board answers ability choices, trigger order and modes in its own browsers, and the choices, players,
+            // numbers, splits and piles its other screens take.
+            val prompt = snap.promptEnvelopeV2
+            if (prompt != null && !prompt.abilities.isNullOrEmpty() && (prompt.responseCommand?.type ?: "").lowercase() == "choose_ability") return null
+            if (!prompt?.modes.isNullOrEmpty() ||
+                io.magicmobile.android.game.ArenaScreens.screenPrompt(snap, io.magicmobile.android.game.ArenaScreenContext(startingRollVisible))) return null
+        }
         return PortraitInteractionPolicy.detailChoiceKey(snap)
     }
 
@@ -530,6 +540,8 @@ fun NativeGameView(
         isPromptDetailOpen = boardDetailChoiceKey(board) != null
         interactionMode = GameBoardInteractionState.mode(board, pendingActionId, selection.selectedCard)
         if (board.id == "design-preview-zone-inspection") inspectBoardZone(BoardZoneReference.Player(board.viewerID, BoardZoneReference.PlayerZone.GRAVEYARD))
+        // The Arena stack browser, opened for its fixture (the stack card's tab opens it in play).
+        if (isArenaBoard && board.id == "design-preview-stack-tray") isStackSheetOpen = true
     }
     OnChange(board.id) { _, _ ->
         cardChoiceCompletionJob?.cancel(); cardChoiceCompletionJob = null
@@ -678,8 +690,10 @@ fun NativeGameView(
         io.magicmobile.android.ui.LocalTavernBoard provides isTavernBoard,
         // The Arena board's sheets, menus, dialogs and pop-ups wear its glass, not the Hearth board's leather.
         io.magicmobile.android.menus.LocalArenaBoard provides isArenaBoard,
+        io.magicmobile.android.menus.LocalArenaSafeArea provides arenaSafeArea,
         LocalCardFrames provides if (isArenaBoard) arenaCardFrames else hearthCardFrames) {
         Box(Modifier.fillMaxSize().background(rgb(0.055, 0.085, 0.10))) {
+            if (isArenaBoard) MeasureArenaSafeArea { if (it != arenaSafeArea) arenaSafeArea = it }
             // The board surface, shaken as one piece by big hits.
             Box(Modifier.fillMaxSize().graphicsLayer { translationX = shakeX * density; translationY = shakeY * density }) {
                 if (isArenaBoard) {
@@ -746,7 +760,8 @@ fun NativeGameView(
             val choicePrompt = board.promptEnvelopeV2
             if (isCardChoiceOpen && cardChoiceKey != null && choicePrompt != null) {
                 key(cardChoiceKey) {
-                    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    // The Arena browser dims the whole table and keeps its own content in the safe area.
+                    Box(Modifier.fillMaxSize().then(if (isArenaBoard) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))) {
                         BoardCardChoiceView(board, choicePrompt, pendingActionId, runCommand, runAction, ::commitCardChoicePlan) { isCardChoiceOpen = false }
                     }
                 }
@@ -803,12 +818,14 @@ fun NativeGameView(
             // --- Opening hand, spectator bar and the result (above the HUD, dock and choice layers) ---
             val openingChoice = OpeningHandChoice.of(board)
             val hand = board.human?.zones?.hand ?: emptyList()
-            if (openingChoice != null && hand.isNotEmpty()) OpeningHandOverlay(openingChoice, hand, pendingActionId != null, runCommand)
+            if (openingChoice != null && hand.isNotEmpty()) OpeningHandOverlay(openingChoice, hand, pendingActionId != null, runCommand,
+                heading = board.startingPlayerHeading)
             AnimatedVisibility(board.isSpectating, Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
                 enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
                 SpectatorBar(board, quitGame, Modifier.widthIn(max = 460.dp).padding(horizontal = 12.dp).padding(bottom = 8.dp))
             }
-            AnimatedVisibility(board.isCompleted, enter = if (BoardMotion.reduceMotion) fadeIn() else scaleIn() + fadeIn(), exit = fadeOut()) {
+            // Arena's result lands its own word; the layer only fades in.
+            AnimatedVisibility(board.isCompleted, enter = if (BoardMotion.reduceMotion || isArenaBoard) fadeIn() else scaleIn() + fadeIn(), exit = fadeOut()) {
                 GameCompletionOverlay(board, newGame, quitGame, gameStats)
             }
             // The Arena board's panels: on the table in glass, never a sheet (boardSheet / ArenaPanelOverlay).
