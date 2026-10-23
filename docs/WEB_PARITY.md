@@ -283,6 +283,8 @@ pass on iOS and the web, and the engine produced real wipes in game I and final 
 | final 19 | Chaos Incarnate vs Grave Danger | conceded through the menu, turn 20 | **counts**: drag casts 8, Auto Pay 8, triggers 16, All Attack 3, reading hold held; Blasphemous Act's wipe (4 to the graveyard, 2 tokens) with its cascade and recap; no errors |
 | final 20 | First Flight vs Token Triumph | conceded through the menu, turn 13 | **counts**: drag casts 3, Auto Pay 3, triggers 11, All Attack 3, reading hold held; no errors or console errors |
 
+| live 1 (the deployed site) | Token Triumph vs Grave Danger | conceded through the menu, turn 20 | https://magicmobile-web.vercel.app after the 2026-10-22 deploy: drag casts 25, Auto Pay 5, triggers 8, All Attack 1, reading hold held; no page or console errors, nothing missing; the result screen's summary matched the game |
+
 The five that count, all on the current build: finals 11 and 12 (won), 16, 19 and 20 (conceded through the board's
 menu). Every final game held smart pass for the 3 s card read and recorded no page errors. Every other stop above was
 the driver's; game 18's is most likely the driver's too.
@@ -333,3 +335,5 @@ rather than filed, because filing an issue is public and waits for Caleb's word:
 - 2026-10-22 (night): twenty final games on the real engine; five count (11, 12, 16, 19, 20). The driver's own bugs
   (a choice command the session ignores, most likely a library search picked on and off) were fixed in the driver.
   Wipes count as covered by the shared cases plus the real wipes in game I and finals 16 and 19 (Caleb's call).
+- 2026-10-22 (night, later): deployed to https://magicmobile-web.vercel.app (`dpl_GMmTv2uJrMy8cyDyjdBYUwnUtzk4`, still
+  unlisted) and played a full game on the live site without errors.

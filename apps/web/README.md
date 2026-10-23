@@ -180,7 +180,8 @@ more than a few percent:
 
 ## Hosted on Vercel (unlisted)
 
-https://magicmobile-web.vercel.app is the Vercel project `magicmobile-web` on Caleb's account (2026-10-21). It is
+https://magicmobile-web.vercel.app is the Vercel project `magicmobile-web` on Caleb's account (2026-10-21; the Arena
+board went live 2026-10-22, deployment `dpl_GMmTv2uJrMy8cyDyjdBYUwnUtzk4` from `claude/web-arena-parity`). It is
 unlisted: nothing links to it and every response carries `X-Robots-Tag: noindex`, until Caleb decides between public
 and private. It is a static deploy of a local build, since the engine isn't in git. To redeploy:
 
@@ -192,7 +193,9 @@ cd apps/web/.vercel-deploy && npx vercel@65.0.0 deploy --prod
 
 `stage_vercel.mjs` copies `dist` and the engine into `apps/web/.vercel-deploy` (git-ignored). It gzips the module and
 writes a `vercel.json` with the isolation headers. The folder keeps its `.vercel` link to the project between runs
-(on a new machine: `npx vercel link --project magicmobile-web` inside it first).
+(in a fresh checkout or worktree: write `.vercel/project.json` in it from `npx vercel project inspect magicmobile-web`,
+as `{"projectId":"<its ID>","orgId":"team_rmblkjhTpvuvB3crwL3q2HJW"}`; `vercel link --yes` can pull env files into the
+folder that gets uploaded).
 
 Limits on the free Hobby plan:
 - No static file over 100 MB. The module (137 MB) ships gzipped (44 MB) and the worker unpacks it.
