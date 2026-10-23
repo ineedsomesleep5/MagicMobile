@@ -295,8 +295,7 @@ fun MultiplayerD20View(roll: OnDeviceStartingRoll, seatNames: Map<String, String
                                     compact = true) { TavernButtonText("Skip") }
                             }
                         }
-                    } else
-                    Column(Modifier.fillMaxWidth().shadow(8.dp, RoundedCornerShape(12.dp)).tavernBrassFrame(0.5f).padding(2.dp)
+                    } else Column(Modifier.fillMaxWidth().shadow(8.dp, RoundedCornerShape(12.dp)).tavernBrassFrame(0.5f).padding(2.dp)
                         .tavernFill(TavernMaterial.LEATHER, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = if (wide) 4.dp else 12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (wide) {
