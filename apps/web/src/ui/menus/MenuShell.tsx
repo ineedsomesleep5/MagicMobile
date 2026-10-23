@@ -24,6 +24,7 @@ import { LearnPanel } from "./Learn";
 import { Options } from "./Options";
 import { startPerformanceSample } from "./performanceLog";
 import { type ArenaPlayMode, type DeckSection, PlayPanel, type PlayModel, type PlayTab, type RecentGame } from "./PlayPanel";
+import { ProfilePage } from "./ProfilePage";
 import { RankedPage } from "./RankedPage";
 import { RoomBackdrop } from "./RoomBackdrop";
 import { type MenuTab, TopBar } from "./TopBar";
@@ -284,7 +285,9 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
         )}
         {page === "home" && <Home content={homeContent} still={covered} />}
         {page === "decks" && <DecksPage sections={sections} selectedDeckID={selectedDeckID} select={setSelectedDeckID} play={() => openPlay()} />}
-        {(page === "ranked" || page === "profile") && <RankedPage rank={rank} record={record} play={() => openPlay("ranked")} />}
+        {page === "ranked" && <RankedPage rank={rank} record={record} play={() => openPlay("ranked")} />}
+        {page === "profile" && <ProfilePage record={record} playerName={name.trim() || "Player"} deckCommanders={pool.all.map((d) => d.commander)}
+          onChange={() => setRecordVersion((v) => v + 1)} />}
       </div>
       {playPanel && <PlayPanel model={playModel} />}
       <TopBar selected={covered && lit ? undefined : panel === "learn" ? "learn" : custom ? undefined : menuTab} select={selectTab} lit={lit}
