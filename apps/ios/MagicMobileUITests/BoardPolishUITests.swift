@@ -25,7 +25,7 @@ final class BoardPolishUITests: XCTestCase {
         app = application
         application.launchEnvironment["MAGICMOBILE_MULTIPLAYER_D20_FIXTURE"] = "1"
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)",
             "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
@@ -99,7 +99,7 @@ final class BoardPolishUITests: XCTestCase {
         currentCapture = "starting-roll-covers-choice"
         application.launchEnvironment["MAGICMOBILE_STARTING_ROLL_FIXTURE"] = "1"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         let tapToRoll = application.buttons["multiplayerD20.tapToRoll"]
@@ -157,7 +157,7 @@ final class BoardPolishUITests: XCTestCase {
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
-        application.launchArguments = ["-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.playerDisplayName", "Test Player"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
@@ -206,7 +206,7 @@ final class BoardPolishUITests: XCTestCase {
             app?.terminate()
             let application = XCUIApplication()
             app = application
-            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                 "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", theme]
             application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "crowded-battlefield"
             application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -248,7 +248,7 @@ final class BoardPolishUITests: XCTestCase {
         let application = XCUIApplication()
         app = application
         application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        application.launchArguments = ["--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "--ondevice-setup-ui-test", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         XCUIDevice.shared.orientation = .portrait
         application.launch()
         XCTAssertTrue(application.buttons["menu.settings"].waitForExistence(timeout: 20))
@@ -282,7 +282,7 @@ final class BoardPolishUITests: XCTestCase {
         let application = XCUIApplication()
         app = application
         currentCapture = "landscape-zone-popover"
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "NO"]
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "NO"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -345,7 +345,7 @@ final class BoardPolishUITests: XCTestCase {
         app?.terminate()
         let application = XCUIApplication()
         app = application
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -375,7 +375,7 @@ final class BoardPolishUITests: XCTestCase {
         app?.terminate()
         let application = XCUIApplication()
         app = application
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -411,7 +411,7 @@ final class BoardPolishUITests: XCTestCase {
             app?.terminate()
             let application = XCUIApplication()
             app = application
-            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                 "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
             application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
             application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -450,7 +450,7 @@ final class BoardPolishUITests: XCTestCase {
         app?.terminate()
         let application = XCUIApplication()
         app = application
-        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
         application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "four-player-focus"
         application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
@@ -486,6 +486,20 @@ final class BoardPolishUITests: XCTestCase {
             .waitForExistence(timeout: 5), "Your own pop-over shows the commander damage you took")
         XCTAssertFalse(application.buttons["board.zones.swap.ai-2"].exists, "Only an opponent's pop-over swaps")
         captureImage(name: "tavern-own-popover")
+    }
+
+    /// Arena is the default board (2026-10-23): with no board mode chosen, a game opens on the Arena board.
+    func testTheArenaBoardIsTheDefault() {
+        let application = XCUIApplication()
+        app = application
+        application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-magicmobile.portraitModeEnabled", "YES"]
+        application.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
+        application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = "normal-battlefield"
+        application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
+        XCUIDevice.shared.orientation = .portrait
+        application.launch()
+        XCTAssertTrue(application.staticTexts["DEVELOPMENT FIXTURE · NO ENGINE"].waitForExistence(timeout: 15))
+        XCTAssertTrue(application.buttons["board.arena.menu"].waitForExistence(timeout: 10), "The Arena board's gear")
     }
 
     /// Walnut Tavern held sideways: the landscape plate with the medallions up the left column,
@@ -821,7 +835,7 @@ final class BoardPolishUITests: XCTestCase {
             app?.terminate()
             let application = XCUIApplication()
             app = application
-            application.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            application.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                 "-magicmobile.portraitModeEnabled", "YES", "-magicmobile.boardAppearance", "tavern"]
             application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
             XCUIDevice.shared.orientation = .landscapeLeft
@@ -856,7 +870,7 @@ final class BoardPolishUITests: XCTestCase {
                 let application = XCUIApplication()
                 app = application
                 currentCapture = "\(portrait ? "portrait" : "landscape")-\(fixture)"
-                application.launchArguments = ["-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                application.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                                "-magicmobile.portraitModeEnabled", portrait || rotateDuringTest ? "YES" : "NO"]
                 application.launchEnvironment["MAGICMOBILE_DESIGN_PREVIEW"] = fixture
                 application.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"

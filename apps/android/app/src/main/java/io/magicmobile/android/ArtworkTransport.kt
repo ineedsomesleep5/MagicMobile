@@ -8,7 +8,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.coroutines.coroutineContext
 
-/** No redirects, credentials, cookies, or non-Scryfall hosts. Cancellation closes the socket. */
+/** No redirects, credentials, cookies, or non-Scryfall hosts (backs.scryfall.io serves the Magic card back). Cancellation closes the socket. */
 internal object ArtworkTransport {
     suspend fun bytes(context:Context,url:URL,maximum:Int,types:Set<String>,body:ByteArray?=null):ByteArray {
         repeat(3){attempt->
@@ -23,7 +23,7 @@ internal object ArtworkTransport {
         error("Artwork transfer did not complete.")
     }
     suspend fun transfer(context:Context,url:URL,maximum:Long,types:Set<String>,output:OutputStream,body:ByteArray?=null)=coroutineScope {
-        require(url.protocol=="https" && url.host in setOf("api.scryfall.com","cards.scryfall.io","data.scryfall.io") && url.userInfo==null && (url.port==-1||url.port==443)&&url.ref==null){"Unsupported artwork address."}
+        require(url.protocol=="https" && url.host in setOf("api.scryfall.com","cards.scryfall.io","data.scryfall.io","backs.scryfall.io") && url.userInfo==null && (url.port==-1||url.port==443)&&url.ref==null){"Unsupported artwork address."}
         coroutineContext.ensureActive();check(Artwork.enabled(context)){"Online artwork is disabled."}
         if(url.host=="api.scryfall.com")ScryfallRequestBudget.awaitTurn()
         coroutineContext.ensureActive();check(Artwork.enabled(context)){"Online artwork is disabled."}

@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -445,11 +446,55 @@ internal fun DrawScope.blurredCircle(color: Color, radius: Float, blur: Float, o
     }
 }
 
-/** A face-down Magic card: the tavern's dark leather back (the real card back would need a new image host on Android). */
+/**
+ * The real Magic card back (iOS ArenaCardBackArt), fetched once from Scryfall with the player's artwork consent and kept
+ * in the cache directory; until then the tavern's leather back stands in.
+ */
+object ArenaCardBackArt {
+    /** The Magic card back as Scryfall serves it (iOS CardImageURL's hidden-card image). */
+    private const val URL_STRING = "https://backs.scryfall.io/large/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg"
+    var image by mutableStateOf<ImageBitmap?>(null)
+        private set
+    private var started = false
+
+    fun load(context: android.content.Context, scope: kotlinx.coroutines.CoroutineScope) {
+        if (started) return
+        started = true
+        val file = java.io.File(context.cacheDir, "magic-card-back.jpg")
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val cached = runCatching { if (file.exists()) android.graphics.BitmapFactory.decodeFile(file.path) else null }.getOrNull()
+            if (cached != null) { image = cached.asImageBitmap(); return@launch }
+            if (!io.magicmobile.android.Artwork.enabled(context)) { started = false; return@launch }
+            val bytes = runCatching {
+                io.magicmobile.android.ArtworkTransport.bytes(context, java.net.URL(URL_STRING), 2 * 1024 * 1024, setOf("image/jpeg"))
+            }.getOrNull()
+            val bitmap = bytes?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+            if (bitmap == null) { started = false; return@launch }
+            runCatching { val part = java.io.File(file.path + ".part"); part.writeBytes(bytes); part.renameTo(file) }
+            image = bitmap.asImageBitmap()
+        }
+    }
+}
+
+/** A face-down Magic card. */
 @Composable
 fun ArenaCardBack(modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { ArenaCardBackArt.load(context, scope) }
+    val art = ArenaCardBackArt.image
     Box(modifier.clearAndSetSemantics { }.drawBehind {
         val corner = CornerRadius(size.width * 0.06f)
+        if (art != null) {
+            val clip = androidx.compose.ui.graphics.Path().apply {
+                addRoundRect(androidx.compose.ui.geometry.RoundRect(androidx.compose.ui.geometry.Rect(Offset.Zero, size), corner))
+            }
+            clipPath(clip) {
+                drawImage(art, dstSize = androidx.compose.ui.unit.IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium)
+            }
+            return@drawBehind
+        }
         drawRoundRect(Brush.verticalGradient(listOf(rgb(0.16, 0.15, 0.16), rgb(0.07, 0.065, 0.07))), cornerRadius = corner)
         drawRoundRect(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.08f), 0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.28f)), cornerRadius = corner)
         val line = max(1.dp.toPx(), size.width * 0.06f)

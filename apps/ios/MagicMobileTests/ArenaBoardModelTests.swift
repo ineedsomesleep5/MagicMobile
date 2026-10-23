@@ -12,12 +12,13 @@ final class ArenaBoardModelTests: XCTestCase {
         return try JSONDecoder().decode(LegalAction.self, from: JSONSerialization.data(withJSONObject: json))
     }
 
-    func testBoardModeFallsBackToHearth() {
+    func testBoardModeDefaultsToArena() {
         XCTAssertEqual(BoardMode.resolved("arena"), .arena)
         XCTAssertEqual(BoardMode.resolved("hearth"), .hearth)
-        XCTAssertEqual(BoardMode.resolved("tavern"), .hearth)
-        XCTAssertEqual(BoardMode.resolved(""), .hearth)
-        XCTAssertEqual(BoardMode.defaultValue, "hearth")
+        XCTAssertEqual(BoardMode.resolved("tavern"), .arena)
+        XCTAssertEqual(BoardMode.resolved(""), .arena)
+        XCTAssertEqual(BoardMode.defaultValue, "arena")
+        XCTAssertEqual(BoardMode.allCases.first, .arena)
     }
 
     func testNeedReadsXMagePaymentText() {

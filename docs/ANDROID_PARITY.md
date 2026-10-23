@@ -179,7 +179,7 @@ in the same-named Kotlin file:
 
 ## Arena board mode (iOS 2026-10-20, Android phase C 2026-10-23)
 
-The Arena board (`BoardMode.ARENA`, key `magicmobile.boardMode`, default hearth; Options → Board → Table, and the game menu)
+The Arena board (`BoardMode.ARENA`, key `magicmobile.boardMode`, default arena since 2026-10-23, Hearth the classic mode; Options → Board → Table, and the game menu)
 plays on Android in both orientations: `NativeGameView` hands the whole screen to `ArenaBoard` (`NativeGameViewArena.kt`)
 when the key says arena; the Hearth board is unchanged. The plates come over by name (`tavern-arena-*` →
 `R.drawable.tavern_arena_*`, `prepareBrandAssets`). Card Frames are kept per mode (`CardFramesPreference`, `LocalCardFrames`).

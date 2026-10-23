@@ -12,6 +12,9 @@ enum UITestHarness {
         }
         app.launchArguments = (preview == nil ? ["--ondevice-setup-ui-test"] : [])
             + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            // The Hearth board unless a test asks for Arena (Arena is the app's default since 2026-10-23; these
+            // fixtures were written against Hearth's board).
+            + (extraArguments.contains("-magicmobile.boardMode") ? [] : ["-magicmobile.boardMode", "hearth"])
             // Classic board unless a test asks for another (Walnut Tavern is the default).
             + (extraArguments.contains("-magicmobile.boardAppearance") ? [] : ["-magicmobile.boardAppearance", "arena"])
             // The deck's cards as a list unless a test asks for the grid (the full-art grid is the default).

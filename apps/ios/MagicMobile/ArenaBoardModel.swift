@@ -4,9 +4,10 @@ import Foundation
 /// The board's two modes (Caleb, 2026-10-20). Hearth is the Walnut Tavern board with the hourglass, the mana rail and the
 /// table's sockets. Arena is the reference game's board on a leaning tavern table: controls in one corner, a hand that
 /// rises and rests, the stack's top card on the right, and your picture inside your life medallion. Each mode gets its
-/// own themes later; Walnut Tavern is the first for both.
+/// own themes later; Walnut Tavern is the first for both. Arena is the default board everywhere (Caleb, 2026-10-23);
+/// Hearth stays as a classic mode a player picks in Options.
 enum BoardMode: String, CaseIterable, Identifiable {
-    case hearth, arena
+    case arena, hearth
 
     var id: String { rawValue }
     var title: String { self == .hearth ? "Hearth" : "Arena" }
@@ -16,8 +17,8 @@ enum BoardMode: String, CaseIterable, Identifiable {
     }
 
     static let key = "magicmobile.boardMode"
-    static let defaultValue = BoardMode.hearth.rawValue
-    static func resolved(_ value: String) -> BoardMode { BoardMode(rawValue: value) ?? .hearth }
+    static let defaultValue = BoardMode.arena.rawValue
+    static func resolved(_ value: String) -> BoardMode { BoardMode(rawValue: value) ?? .arena }
 }
 
 /// Tavern frames on battlefield cards, kept per board mode (Caleb, 2026-10-20): on for Hearth, off for Arena, whose
@@ -169,7 +170,8 @@ struct ArenaLayout: Equatable {
         // The skip pill in the corner right of the main button, as in the reference.
         passAhead: CGRect(x: 890, y: 392, width: 40, height: 28),
         undo: CGRect(x: 650, y: 343, width: 52, height: 26),
-        menu: CGPoint(x: 876, y: 23),
+        // Low enough that the gear's 44 pt target stays on screen on a 402 pt tall phone held sideways.
+        menu: CGPoint(x: 876, y: 26),
         floatingMana: CGPoint(x: 80, y: 405),
         captionY: 197, bannerY: 210,
         // The whole table above the tucked hand, your land row included, as in the reference (Caleb, 2026-10-21: the

@@ -4,6 +4,9 @@ The Arena board mode (`BoardMode.arena`) plays like the reference game, MTG Aren
 rule (2026-10-20): **every screen in Arena mode looks like Arena. Nothing in it may be iOS system UI or Hearth-board
 leather.** Read this before you build or change anything the Arena board shows. The Hearth board follows
 `docs/TAVERN_STYLE.md`; Arena keeps the tavern's table, plaques and coins, and dresses everything else the Arena way.
+Arena is the default board on iOS and Android (Caleb, 2026-10-23): `BoardMode.defaultValue` and unknown values resolve
+to Arena, and it is listed first. Hearth is the classic mode a player picks in Options. UI tests written against Hearth
+pin `-magicmobile.boardMode hearth` (`UITestHarness` does this unless a test passes a mode).
 
 Reference footage and frames: `~/Movies/motion-assets/yt/arena-browsers` (gameplay videos, frame sheets and crops)
 and `build_output/arena-amounts-reference.jpg`. When Arena has a screen for something, copy its layout. When we found

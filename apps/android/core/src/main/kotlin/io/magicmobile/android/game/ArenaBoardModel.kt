@@ -17,16 +17,17 @@ import kotlin.math.sin
 /**
  * The board's two modes (Caleb, 2026-10-20). Hearth is the Walnut Tavern board with the hourglass, the mana rail and the
  * table's sockets. Arena is the reference game's board on a leaning tavern table: controls in one corner, a hand that rises
- * and rests, the stack's top card on the right, and your picture inside your life medallion.
+ * and rests, the stack's top card on the right, and your picture inside your life medallion. Arena is the default board
+ * everywhere (Caleb, 2026-10-23); Hearth stays as a classic mode a player picks in Options.
  */
 enum class BoardMode(val rawValue: String, val title: String, val summary: String) {
-    HEARTH("hearth", "Hearth", "The tavern table with the hourglass and mana rail."),
-    ARENA("arena", "Arena", "Corner controls, a rising hand and the stack on the right.");
+    ARENA("arena", "Arena", "Corner controls, a rising hand and the stack on the right."),
+    HEARTH("hearth", "Hearth", "The tavern table with the hourglass and mana rail.");
 
     companion object {
         const val key = "magicmobile.boardMode"
-        val defaultValue = HEARTH.rawValue
-        fun resolved(value: String?): BoardMode = entries.firstOrNull { it.rawValue == value } ?: HEARTH
+        val defaultValue = ARENA.rawValue
+        fun resolved(value: String?): BoardMode = entries.firstOrNull { it.rawValue == value } ?: ARENA
     }
 }
 
@@ -145,7 +146,7 @@ data class ArenaLayout(
             stack = BoardRect(716f, 60f, 158f, 222f), draw = BoardRect(686f, 187f, 106f, 148f),
             primary = BoardRect(708f, 388f, 176f, 36f), secondary = BoardRect(708f, 335f, 176f, 37f),
             phaseStripX = 708f..884f, phaseStripY = 368f, phaseStripRaisedY = 314f,
-            passAhead = BoardRect(890f, 392f, 40f, 28f), undo = BoardRect(650f, 343f, 52f, 26f), menu = BoardPoint(876f, 23f),
+            passAhead = BoardRect(890f, 392f, 40f, 28f), undo = BoardRect(650f, 343f, 52f, 26f), menu = BoardPoint(876f, 26f),
             floatingMana = BoardPoint(80f, 405f), captionY = 197f, bannerY = 210f,
             dropArea = BoardRect(0f, 0f, 956f, 352f), railTop = null, dropCorner = BoardRect(640f, 300f, 316f, 140f))
 

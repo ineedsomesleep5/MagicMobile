@@ -19,12 +19,14 @@ class ArenaBoardModelTest {
 
     private fun tap(actionID: String, color: String? = null) = ArenaAutoPay.Step.Tap(actionID, color)
 
-    @Test fun boardModeFallsBackToHearth() {
+    @Test fun boardModeDefaultsToArena() {
         assertEquals(BoardMode.ARENA, BoardMode.resolved("arena"))
         assertEquals(BoardMode.HEARTH, BoardMode.resolved("hearth"))
-        assertEquals(BoardMode.HEARTH, BoardMode.resolved("tavern"))
-        assertEquals(BoardMode.HEARTH, BoardMode.resolved(""))
-        assertEquals("hearth", BoardMode.defaultValue)
+        assertEquals(BoardMode.ARENA, BoardMode.resolved("tavern"))
+        assertEquals(BoardMode.ARENA, BoardMode.resolved(""))
+        assertEquals(BoardMode.ARENA, BoardMode.resolved(null))
+        assertEquals("arena", BoardMode.defaultValue)
+        assertEquals(BoardMode.ARENA, BoardMode.entries.first())
         assertEquals("magicmobile.boardMode", BoardMode.key)
         assertTrue(CardFramesPreference.hearthDefault)
         assertFalse(CardFramesPreference.arenaDefault)
@@ -467,7 +469,7 @@ class ArenaBoardModelTest {
         assertEquals(BoardSize(956f, 440f), landscape.canvas)
         assertEquals(BoardRect(716f, 60f, 158f, 222f), landscape.stack)
         assertEquals(BoardRect(708f, 388f, 176f, 36f), landscape.primary)
-        assertEquals(BoardPoint(876f, 23f), landscape.menu)
+        assertEquals(BoardPoint(876f, 26f), landscape.menu)
         assertNull(landscape.railTop)
         val portrait = ArenaLayout.portraitLayout
         assertEquals(BoardSize(440f, 956f), portrait.canvas)
