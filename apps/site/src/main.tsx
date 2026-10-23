@@ -384,11 +384,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 34 brings the Arena look: new menus with
-                commander art, the D20 roll on the board, Arena's pop-ups and
-                Victory screen, and the Hearth table as a separate classic mode.
-                It keeps the lighter engine from build 31. Android is an early
-                alpha; physical-phone acceptance is still pending.
+                Android build 35 makes the Arena look the default: games
+                open on the Arena board, with the real Magic card back on the
+                piles. Hearth stays in Options as the classic table. It keeps the
+                lighter engine from build 31. Android is an early alpha;
+                physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -397,10 +397,10 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 57 brings the Arena look: new menus with commander art,
-                the D20 roll on the board, Arena's pop-ups and Victory screen,
-                and a crash fix from build 56. It runs on iPhone and iPad. Apple
-                has approved this build for Internal and External TestFlight.
+                Build 58 makes the Arena look the default: games open on the
+                Arena board, and Hearth stays in Options as the classic table.
+                It runs on iPhone and iPad. Apple has approved this build for
+                Internal and External TestFlight.
               </p>
             </details>
             <details>
