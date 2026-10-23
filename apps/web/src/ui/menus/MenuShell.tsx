@@ -9,7 +9,7 @@ import { AIDeckPool, type AIDeck, playerDeckID } from "../../core/aiDeckPool";
 import { CommanderBracket } from "../../core/brackets";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
-import { RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
+import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
 import { SoloTable, type SoloSetup } from "../../table/soloTable";
 import { gameAudio } from "../audio";
@@ -108,6 +108,8 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   useEffect(() => { if (initialJoinCode) setPlayerMode("online"); }, [initialJoinCode, setPlayerMode]);
   const [panel, setPanel] = useState<"settings" | "updates" | "learn" | "bracket">();
   const [game, setGame] = useState<ActiveGame>();
+  /** What the last Ranked game did to your rank, for the result's rank strip. */
+  const [rankChange, setRankChange] = useState<{ key: number; change: RankChange }>();
   const [error, setError] = useState<string>();
 
   useEffect(() => { if (!game) gameAudio.setScene("menu"); }, [game]);
@@ -192,11 +194,12 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       const viewer = snapshot.viewerPlayerId;
       const winners = snapshot.winnerPlayerIds ?? [];
       const outcome = winners.length === 0 ? "draw" : viewer && winners.includes(viewer) ? "win" : "loss";
-      record.record({
+      const change = record.record({
         mode: game.mode, outcome, opponents: game.opponents.map((o, i) => ({ name: `AI ${i + 1}`, commander: o.commander, isAI: true })),
         opponentBracket: game.opponents[0]?.bracket, aiSkill: game.skill, deckID: game.deck.id, deckName: game.deck.name, commander: game.deck.commander,
         colors: [...game.deck.colors], deckBracket: game.deckBracket, turns: snapshot.turn, aiDeckID: game.opponents[0]?.id,
       });
+      if (change) setRankChange({ key: game.key, change });
       sample.current?.finish(snapshot.turn);
       setRecordVersion((v) => v + 1);
     };
@@ -264,7 +267,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       .map((d) => ({ id: d.id, name: d.name, commander: d.commander, colors: [...d.colors], bracket: d.bracket })) })).filter((g) => g.decks.length > 0),
   ];
 
-  if (game) return <GameScreen key={game.key} table={game.table} />;
+  if (game) return <GameScreen key={game.key} table={game.table} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
 
   const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : undefined;
   const covered = panel !== undefined;

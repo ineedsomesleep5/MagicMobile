@@ -257,11 +257,13 @@ async function play(page, game) {
   await page.goto(url);
   if (args.polls) await page.evaluate(() => { window.__recordPolls = true; });
   await page.addScriptTag({ content: `(${recorder.toString()})()` });
-  // Through the menus: Play, Custom, Set Up Table, then Start once the engine is ready.
+  // Through the menus: Play, then Custom (Set Up Table, Start), Quick (Play) or Ranked (Find Match) with --mode,
+  // once the engine is ready.
+  const mode = args.mode ?? "custom";
   await page.locator("[data-id='menu.play']").click({ timeout: 180_000 });
-  await page.locator("[data-id='play.custom']").click();
-  await page.locator("[data-id='play.start']").click();
-  const start = page.locator("[data-id='setup.start']");
+  await page.locator(`[data-id='play.${mode}']`).click();
+  if (mode === "custom") await page.locator("[data-id='play.start']").click();
+  const start = page.locator(`[data-id='${{ custom: "setup.start", quick: "quick.start", ranked: "ranked.find" }[mode]}']`);
   await start.waitFor({ timeout: 30_000 });
   for (let i = 0; i < 360 && !(await start.isEnabled()); i++) await page.waitForTimeout(500);
   await start.click();

@@ -23,6 +23,7 @@ const SHOTS = {
   friends: ["menu.play", "play.tab.friends"],
   decks: ["menu.tab.decks"],
   hall: ["menu.tab.ranked"],
+  profile: ["menu.tab.profile"],
   options: ["menu.settings"],
   gameplay: ["menu.settings", "settings.open.gameplay"],
   board: ["menu.settings", "settings.open.board"],

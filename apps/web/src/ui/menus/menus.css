@@ -19,7 +19,7 @@
 .mserif { font-family: var(--serif); }
 
 /* Glass */
-.glass { background: linear-gradient(var(--glass-top), var(--glass-bottom)); border: 1px solid var(--hair); box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+.mroot .glass { background: linear-gradient(var(--glass-top), var(--glass-bottom)); border: 1px solid var(--hair); box-shadow: 0 6px 18px rgba(0,0,0,.6); }
 .mcard { background: linear-gradient(rgba(26,28,36,.9), rgba(10,11,15,.9)); border: 1px solid var(--hair); border-radius: 14px; box-shadow: 0 6px 14px rgba(0,0,0,.55);
   position: relative; }
 .mcard::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(rgba(255,255,255,.06), transparent 50%); pointer-events: none; }

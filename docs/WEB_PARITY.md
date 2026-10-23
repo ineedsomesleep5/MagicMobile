@@ -240,16 +240,37 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 8.32 | The starting roll on the board: one large serif line ("Your roll", "AI 1's roll", "You go first"), the orange Roll pill or the waiting chip, glass seat plates above the hand ("?" before a roll, the winner orange, Tied, Out of the reroll) | `MultiplayerD20View` (Arena), `ArenaRollValue` | done | `ui/GameScreen.tsx (.aroll), core/startingRoll.ts (rollPlates)` | unit + game | test/arenaBrowsers.test.ts (plates); look 1–3 (2026-10-23): "Your roll", Roll D20, You / AI 1 Ready |
 | 8.33 | The board's glass is ArenaGlassPanel's smoked glass in a gold hairline (it had gone see-through under the menus' `.glass`) | `ArenaGlassPanel` | done | `ui/arena/arena.css (.arena .glass)` | game | look 3: game log and player card opaque again (LESSONS 2026-10-23) |
 
-## 9. Out of game (priority 8, after every gameplay row)
+## 9. Out of game (Arena menus, `src/ui/menus/`)
+
+Checked by `scripts/menu-shots.mjs` (each page in headless Chrome at 1280×800) and by games started from the menus
+(`scripts/play.mjs` now starts every game through them; `--mode quick|ranked|custom`).
 
 | ID | Behaviour | iOS source | Web | Web file | Verified by | Evidence |
 |---|---|---|---|---|---|---|
-| 9.01 | Arena top bar, home, Play panel with deck boxes, custom table | `Menus/Arena*.swift` | missing (setup form) | `ui/SoloSetup.tsx` | game | |
-| 9.02 | Deck boxes that open | `ArenaDeckBox` | missing | | game | |
-| 9.03 | Options pages (Gameplay, Board, Audio, Display & Artwork, Performance) with Arena controls | `ArenaOptionsView` | missing | | game | |
-| 9.04 | Deck import (Archidekt, Moxfield) | `OnDeviceDeckLinkImporter` | missing | | unit | |
-| 9.05 | Sign-in and own decks through Supabase | `PlayerAccount`, social backend | missing (needs Caleb) | | game | |
-| 9.06 | Profile, Ranked hall | `Ranked/*` | missing | | game | |
+| 9.01 | Top bar: mark, Home/Profile/Decks/Ranked/Learn emblems, rank chip, Updates, gear; the open utility lights | `ArenaTopBar` | done | `menus/TopBar.tsx` | shots | every page shot |
+| 9.02 | The 3D tavern room behind the menus: three depth layers (pointer for tilt), flame glows, rising sparks, dims per page | `TavernRoomBackdrop`, `BrandBackdrop` | done | `menus/RoomBackdrop.tsx` | shots | home, play, decks |
+| 9.03 | Home: featured panel turning every 8 s and following a drag, three tiles, deck/rank/season rail, Play | `ArenaHomeView` | done | `menus/Home.tsx` | shots | home.png |
+| 9.04 | Play panel: deck shelves, Find Match / Friends / Recently Played, Quick/Ranked/Custom gems, options, Play in the footer, burning seam | `ArenaPlayPanel` | done | `menus/PlayPanel.tsx` | shots + game | play, ranked, recent, friends shots; games from the menus |
+| 9.05 | Deck boxes that open (lid lifts, front folds, commander rises before the app's card backs); "+" tile | `ArenaDeckBox` | done | `menus/DeckBox.tsx` | shots | play.png |
+| 9.06 | Quick Match: opponent bracket gems, opponent deck list, AI skill, D20/Pick; the AI picked as iOS picks it | `ArenaPlayBlade`, `AIDeckPool` | done | `PlayPanel.tsx`, `core/aiDeckPool.ts` | unit + game | aiDeckPool.test.ts |
+| 9.07 | Ranked against the AI at your tier; the record moves your rank; the rank strip on the result | `findRankedMatch`, `RankLadder`, `RankProgressPanel` | done (vs AI; people need accounts) | `MenuShell.tsx`, `core/rankLadder.ts`, `core/playerRecord.ts` | unit + game | ranked game: "Bronze IV · No pips to lose" on the Defeat screen; record kept |
+| 9.08 | Custom Table: your deck box, name plate, Change deck; AI / Online; AI seats as boxes (×, "+", up to 3); skill; who goes first; Start strip | `setupContent` | done | `menus/CustomTable.tsx`, `table/soloTable.ts` | shots + game | custom.png; Custom games; soloFlow test seats AI 1–3 |
+| 9.09 | Online: join a phone's table with its code; waiting room and match room in Arena glass | `RelayTablePanel`, `MatchRoomView` | done (join only) | `CustomTable.tsx`, `menus/GuestRoom.tsx` | unit | guest flow tests; no real phone host yet |
+| 9.10 | Decks page: search, filter pills, every deck as a box, the chosen deck on a strip with Play | Arena decks page | done (no Deck Studio yet) | `menus/DecksPage.tsx` | shots | decks.png |
+| 9.11 | Ranked hall: season end, tier stair, current rank with glow, past seasons | `RankedHallView` | done (no leaderboard yet) | `menus/RankedPage.tsx` | shots | hall.png |
+| 9.12 | Profile: rank, progression, rank history, record ring, weekly bars, commanders, colours, trophies, recent games; portrait and title choosers | `PlayerProfileView` | done (local record) | `menus/ProfilePage.tsx`, `core/profileSummary.ts` | unit + shots | profileSummary.test.ts (profile-cases.json); profile.png |
+| 9.13 | Options: the pill column, Gameplay, Phase Stops, Board, Audio, Sound Lab, Display, Performance, Support, About | `ArenaOptionsView` | done | `menus/Options.tsx`, `menus/performanceLog.ts` | shots | options, gameplay, board shots |
+| 9.14 | Music: lobby and in-game playlists, crossfades, ducked under the result; sound groups switchable | `GameAudio` music | done | `ui/audio.ts` | game | menus then a game |
+| 9.15 | Updates inbox: messages with art opening in place, About & links | `NativeUpdateNewsView` | done | `menus/Updates.tsx` | shots | updates.png |
+| 9.16 | How to Play: both tutorials, page by page | `HowToPlay` | done (text; no animated scenes) | `menus/Learn.tsx` | shots | learn.png |
+| 9.17 | Sign-in, friends, messages, challenges, leaderboard, Ranked against people | `PlayerAccount`, `Ranked/*` | missing (phase 2) | | | |
+| 9.18 | Deck Studio: your decks, builder, import; decks synced with your phone | `DeckStudio/*` | missing (phase 3, sync phase 5) | | | |
+
+Intentionally different on the desktop: the menus scale with the window (1× to 1.5×) like a tablet; the pointer
+stands in for the phone's tilt; Display & Artwork offers Full Screen (the browser always loads Scryfall art, so the
+phone's "Scryfall live images" switch has nothing to choose); no Downloads (no offline art packs); no Game Center;
+Follow Turns is left out until 3–4 player tables are checked on the web; How to Play's words name the desktop's
+controls and leave out resuming a game.
 
 ## Games on the real engine
 
@@ -360,3 +381,6 @@ rather than filed, because filing an issue is public and waits for Caleb's word:
   checkbox, mode, zone and card-choice copy, the opening hand, the roll on the board, the result with its rank strip
   (8.15, 8.16, 8.24–8.33, 5.22, 5.23). Six games on the real engine (look 1–6) with screenshots; the board's glass,
   blanked by the menus' `.glass`, fixed; a drop sent from a state updater (React's setState-in-render warning) fixed.
+- 2026-10-23: phase 1 of the full web app: Arena's menus (section 9) in place of the tavern setup, ported with the AI
+  deck pool, brackets, rank ladder, player record and profile summary (their shared cases); music; the board brought
+  up to iOS's later look pass (sections 5 and 8). Games start from the menus and are recorded in the browser.

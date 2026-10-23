@@ -33,7 +33,7 @@ zsh scripts/dev/heavy.sh "web autoplay" -- node apps/web/scripts/play.mjs --url 
 ```
 
 It starts each game through the menus (your deck chosen, Play, Custom, Set Up Table, the AI's deck in the seat,
-Start), plays through the board's own controls (drag to cast, Auto Pay, All Attack, the browsers) and writes what the
+Start; `--mode quick` or `--mode ranked` plays Quick Match or Ranked instead, where the menus pick the AI), plays through the board's own controls (drag to cast, Auto Pay, All Attack, the browsers) and writes what the
 board did per game: every answer and who sent it, the effects it painted (with a picture of each kind), banners,
 reveals, the reading-hold check, missing resources and console errors. `--shots 6,10` adds pictures of the log and a
 player card at those turns; `--polls` saves the raw engine polls for the replay fixtures. `--turns 30` concedes
