@@ -444,7 +444,8 @@ private fun ColumnScope.QuickOptions(model: ArenaPlayPanelModel) {
     val brackets = CommanderBracket.entries.filter { it != CommanderBracket.CEDH }
     val chosen = brackets.firstOrNull { it.level == model.quickBracket }
     val matched = ArenaPlayRules.matchedLabel(model.deckBracket)
-    ArenaCaps("Opponent · ${chosen?.label ?: matched}", 9.5f, Modifier.padding(top = 6.dp))
+    // The opponent's bracket, named plainly: the chosen gem's bracket, or "Match my deck" (the judge, 2026-10-22).
+    ArenaCaps(chosen?.let { "Opponent · ${it.label}" } ?: "Opponent · Match my deck", 9.5f, Modifier.padding(top = 6.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         BracketGem(model, "Match", 0, matched, Modifier.weight(1f))
         brackets.forEach { BracketGem(model, "${it.level}", it.level, it.label, Modifier.weight(1f)) }
@@ -529,7 +530,6 @@ private fun ColumnScope.RankedOptions(model: ArenaPlayPanelModel) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(rank.position.title, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(16f, SfWeight.bold))
             Text("${rank.wins} wins · ${rank.losses} losses", color = ArenaMenuStyle.gold, style = ArenaMenuStyle.font(11f, SfWeight.semibold))
-            Text(RankLadder.seasonName(rank.season), color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(10.5f, SfWeight.medium), maxLines = 1)
         }
     }
     if (model.search != null) return
@@ -665,7 +665,7 @@ fun ArenaSearchStatus(phase: RankedMatchmaker.Phase, playAINow: () -> Unit) {
             Text("Searching…", color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(14f, SfWeight.bold))
             Text("%d:%02d".format(elapsed / 60, elapsed % 60), color = ArenaMenuStyle.gold, style = ArenaMenuStyle.font(14f, SfWeight.bold).copy(fontFeatureSettings = "tnum"))
         }
-        Text("An AI takes the seat in $left s.", color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11f, SfWeight.medium))
-        ArenaPillButton("Play the AI now", playAINow, identifier = "ranked.search.ai")
+        // The countdown rides on the button, not a line of its own (the judge, 2026-10-22).
+        ArenaPillButton("Play the AI now · $left s", playAINow, identifier = "ranked.search.ai")
     }
 }

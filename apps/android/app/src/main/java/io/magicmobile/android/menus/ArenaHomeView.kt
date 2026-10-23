@@ -254,7 +254,6 @@ fun ArenaFeaturePanel(features: List<ArenaFeature>, modifier: Modifier = Modifie
                     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.88f))))
                     Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 18.dp, end = 48.dp, bottom = 22.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        ArenaCaps(page.kicker)
                         FitText(page.title, ArenaMenuStyle.title(24f, SfWeight.bold).arenaShadow(3f), color = ArenaMenuStyle.text, maxLines = 2, minimumScale = 0.8f)
                     }
                 }

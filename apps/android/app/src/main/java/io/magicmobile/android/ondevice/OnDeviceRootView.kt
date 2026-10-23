@@ -1055,10 +1055,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val rank = record.file.rank
         val season = io.magicmobile.android.game.RankLadder.seasonName(rank.season)
         val art = { id: Int, x: Float, y: Float -> io.magicmobile.android.menus.ArenaHomeArt(id, x, y) }
-        val per = io.magicmobile.android.game.RankPosition.PIPS_PER_DIVISION
         return io.magicmobile.android.menus.ArenaHomeContent(
             features = listOf(
-                io.magicmobile.android.menus.ArenaFeature("ranked", "Ranked season", season, art(io.magicmobile.android.R.drawable.home_art_ur_dragon, 0.62f, 0.3f)) {
+                io.magicmobile.android.menus.ArenaFeature("ranked", "Ranked season", "Ranked · $season", art(io.magicmobile.android.R.drawable.home_art_ur_dragon, 0.62f, 0.3f)) {
                     selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED)
                 },
                 io.magicmobile.android.menus.ArenaFeature("board", "New", "The Arena board", art(io.magicmobile.android.R.drawable.home_art_edgar_markov, 0.55f, 0.22f)) {
@@ -1075,8 +1074,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 io.magicmobile.android.menus.ArenaHomeTile("quick", "Quick Match", "", art(io.magicmobile.android.R.drawable.home_art_krenko, 0.5f, 0.38f)) {
                     openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.QUICK)
                 },
-                io.magicmobile.android.menus.ArenaHomeTile("ranked", "Ranked",
-                    if (rank.position.tier == io.magicmobile.android.game.RankTier.MYTHIC) rank.position.title else "${rank.position.title} · ${rank.position.pips} of $per pips",
+                // The rank shows on the rail and the top bar; the tile names the mode only (the judge, 2026-10-22).
+                io.magicmobile.android.menus.ArenaHomeTile("ranked", "Ranked", "",
                     art(io.magicmobile.android.R.drawable.home_art_miirym, 0.55f, 0.4f)) { openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.RANKED) },
                 io.magicmobile.android.menus.ArenaHomeTile("learn", HowToPlayText.TITLE, "", art(io.magicmobile.android.R.drawable.home_art_giada, 0.6f, 0.3f)) {
                     showHowToPlay = true

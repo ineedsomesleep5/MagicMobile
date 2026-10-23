@@ -169,6 +169,23 @@ object ArenaMenuStyle {
     fun title(size: Float, weight: FontWeight = SfWeight.bold): TextStyle = sf(size, weight, SfDesign.SERIF)
 }
 
+/**
+ * The phone's safe area for Arena's full-table layers (iOS `ArenaSafeArea`). Their dim reaches every edge, so their content
+ * must clear the camera cutout and the gesture bar itself: a centred title starts at [top], and in landscape a row of cards
+ * keeps [side] clear of the cutout. The Arena board measures it once and passes it down ([LocalArenaSafeArea]); a layer
+ * never reads the window's insets for padding on its own (LESSONS 2026-10-22).
+ */
+data class ArenaSafeArea(val top: Dp = 0.dp, val bottom: Dp = 0.dp, val leading: Dp = 0.dp, val trailing: Dp = 0.dp) {
+    /** Top padding for a layer's title: below the cutout, and never less than [minimum]. */
+    fun top(minimum: Dp): Dp = maxOf(minimum, top + 8.dp)
+
+    /** Room kept on both sides in landscape, where the cutout sits at one of them. */
+    val side: Dp get() = maxOf(leading, trailing)
+}
+
+/** The Arena board's measured safe area (iOS `\.arenaSafeArea`). */
+val LocalArenaSafeArea = compositionLocalOf { ArenaSafeArea() }
+
 /** A black text shadow (`.shadow(color: .black, radius:)`). */
 fun TextStyle.arenaShadow(radius: Float = 2f, alpha: Float = 1f, y: Float = 0f): TextStyle =
     copy(shadow = Shadow(Color.Black.copy(alpha = alpha), Offset(0f, y), radius * 2f))
