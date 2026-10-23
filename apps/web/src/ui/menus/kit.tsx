@@ -87,6 +87,73 @@ export function Pill({ children, onClick, lit, disabled, id }: { children: React
     onClick={() => { gameAudio.play("ui-tap"); onClick(); }}>{children}</button>;
 }
 
+/** One line of a PopMenu: an action, a choice (ticked when `checked`), a heading, or a divider. */
+export type PopItem =
+  | { label: string; onClick: () => void; checked?: boolean; disabled?: boolean; danger?: boolean; id?: string }
+  | { heading: string }
+  | { divider: true };
+
+/**
+ * Arena's drop-down on glass (iOS BinderMenu): the trigger opens a list of actions and choices under it; a click outside
+ * or Esc closes it. `align` puts its edge under the trigger's left or right.
+ */
+export function PopMenu({ trigger, items, label, align = "left", up, id }: {
+  trigger: (open: boolean) => ReactNode; items: PopItem[]; label: string; align?: "left" | "right"; up?: boolean; id?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } };
+    window.addEventListener("pointerdown", outside);
+    window.addEventListener("keydown", key, true);
+    return () => { window.removeEventListener("pointerdown", outside); window.removeEventListener("keydown", key, true); };
+  }, [open]);
+  return (
+    <div ref={root} className="mpopmenu">
+      <button type="button" className="mpoptrigger" aria-haspopup="menu" aria-expanded={open} aria-label={label} data-id={id}
+        onClick={() => { gameAudio.play(open ? "ui-back" : "ui-open"); setOpen(!open); }}>{trigger(open)}</button>
+      {open && (
+        <div className={`mpoplist glass ${align} ${up ? "up" : ""}`} role="menu" aria-label={label}>
+          {items.map((item, index) => "divider" in item ? <hr key={index} />
+            : "heading" in item ? <Caps key={index} text={item.heading} size={9.5} className="mhead" />
+            : (
+              <button key={index} type="button" role={item.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={item.checked}
+                className={`${item.checked ? "on" : ""} ${item.danger ? "danger" : ""}`} disabled={item.disabled} data-id={item.id}
+                onClick={() => { gameAudio.play("ui-tap"); setOpen(false); item.onClick(); }}>
+                {item.checked !== undefined && <i />}{item.label}
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A small question on glass in place of a browser dialog (binderConfirm): what will happen, Cancel and the action. */
+export function Question({ title, detail, action, danger, onConfirm, onCancel }: {
+  title: string; detail?: string; action: string; danger?: boolean; onConfirm: () => void; onCancel: () => void;
+}) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [onCancel]);
+  return (
+    <div className="mquestionlayer" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="mquestion glass" role="alertdialog" aria-label={title}>
+        <b>{title}</b>
+        {detail && <p>{detail}</p>}
+        <div>
+          <Btn kind="secondary" compact onClick={onCancel}>Cancel</Btn>
+          <Btn kind={danger ? "danger" : "primary"} compact onClick={onConfirm}>{action}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CloseButton({ onClose, label = "Close", id }: { onClose: () => void; label?: string; id?: string }) {
   return (
     <button type="button" className="mclose" aria-label={label} data-id={id} onClick={() => { gameAudio.play("ui-back"); onClose(); }}>

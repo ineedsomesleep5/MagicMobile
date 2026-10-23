@@ -97,7 +97,10 @@ concede and the way back to setup; first and cached engine loads.
 
 `scripts/prepare_data.py` (run by `dev` and `build`) writes `public/generated/` from the committed iOS
 resources: the printing index (`printings.tsv`, whose header carries the catalogue hash and upstream
-commit the guest presents) and the five precons. `scripts/prepare_images.sh` converts the tavern art
+commit the guest presents), the five precons, the included AI decks, Deck Studio's card catalogue (`catalogue.json`,
+about 8 MB, 1.75 MB gzipped, loaded only when Deck Studio opens) and the bracket lists (`commander-brackets.json`).
+Deck links go through this origin: `/provider/archidekt/…` and `/provider/moxfield/…` are proxied by Vite and
+rewritten by Vercel, since neither site allows a browser on another origin to read its API. `scripts/prepare_images.sh` converts the tavern art
 from the iOS asset catalogue into the committed `public/tavern/*.webp`.
 
 ## How a guest plays (M2)
@@ -218,9 +221,9 @@ would have to be split into parts.
 
 ## Not done yet
 
-- Sign-in, profiles, friends, messages, challenges and Ranked against people; your decks synced with your phone
-  (later phases, docs/WEB_PARITY.md section 9). Ranked against the AI keeps its rank in this browser for now.
-- Deck Studio (your own decks, the builder, import); the five precons and the 21 included decks are offered.
+- Friend challenges, hosting a table from the browser and Ranked against people; your decks synced with your phone
+  (phases 4 and 5, docs/WEB_PARITY.md section 9). Your decks live in this browser (`mm.web.decks`, the phone's
+  `decks.json` shape) until then.
 - **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
   against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator
   builds have no engine) and play it to the end from desktop Chrome; pods are untested.

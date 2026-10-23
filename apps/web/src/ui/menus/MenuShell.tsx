@@ -6,7 +6,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AIDeckPool, type AIDeck, playerDeckID } from "../../core/aiDeckPool";
-import { CommanderBracket } from "../../core/brackets";
+import { BracketRules, type BracketRulesFile, CommanderBracket, DeckBracketPreference } from "../../core/brackets";
+import { DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
@@ -23,7 +24,8 @@ import { FriendsPanel } from "./FriendsPanel";
 import { Leaderboard } from "./Leaderboard";
 import { PublicProfile } from "./PublicProfile";
 import type { DeckBoxModel } from "./DeckBox";
-import { DecksPage } from "./DecksPage";
+import { DecksPage, type ShelfDeck } from "./DecksPage";
+import { DeckStudioScreen, type StudioRoute } from "./DeckStudio";
 import { Home, type HomeContent } from "./Home";
 import { MenuPanel, MetalDefs, PanelHeader, useMenuZoom } from "./kit";
 import { LearnPanel } from "./Learn";
@@ -90,21 +92,44 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   }, []);
 
   const { pool } = data;
-  // Every deck by its selection id: the precons, then the included decks (the phones' "precon:…" and "included:…").
-  const deckFor = useCallback((id: string): AIDeck | undefined =>
-    id.startsWith("precon:") ? pool.deck(id.slice(7)) : pool.playerDeck(id), [pool]);
-  const box = (id: string, deck: AIDeck): DeckBoxModel => ({ id, name: deck.name, commander: deck.commander, colors: [...deck.colors], subtitle: CommanderBracket.name(deck.bracket) });
+  // Your own decks (DeckLibraryStore) and the bracket lists that rate them; both are read again when either changes.
+  const library = useMemo(() => new DeckLibrary(storage), []);
+  const [libraryVersion, setLibraryVersion] = useState(0);
+  const libraryChanged = useCallback(() => setLibraryVersion((v) => v + 1), []);
+  const [bracketRules, setBracketRules] = useState(BracketRules.empty);
+  useEffect(() => {
+    fetch("/generated/commander-brackets.json").then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((file: BracketRulesFile) => setBracketRules(new BracketRules(file))).catch(() => undefined);
+  }, []);
+  /** A saved deck as the table plays it: rated by its list, raised by the player's own label (DeckBracketPreference). */
+  const localDeck = useCallback((record: DeckLibraryRecord): AIDeck => {
+    // Sideboard and maybeboard stay out of the game (DeckStudioPlayProjection); any other section reaches the resolver,
+    // which names it.
+    const full = DeckLibraryRecord.deckList(record);
+    const deckList = { ...full, entries: full.entries.filter((entry) => !["sideboard", "maybeboard", "considering"].includes(entry.section.trim().toLowerCase())) };
+    const bracket = DeckBracketPreference.effective(bracketRules.evaluateDeck(deckList).minimum, DeckBracketPreference.declared(DeckLibraryRecord.selectionID(record), storage));
+    return { id: record.id, name: record.name, subtitle: CommanderBracket.name(bracket), colors: library.colors(record.id).join(""),
+      commander: record.commander?.cardName ?? "", bracket, deckList };
+  }, [bracketRules, library, libraryVersion]);
+  // Every deck by its selection id: your decks, the precons, then the included decks (the phones' "local:…", "precon:…", "included:…").
+  const deckFor = useCallback((id: string): AIDeck | undefined => {
+    if (id.startsWith("local:")) { const record = library.bySelection(id); return record ? localDeck(record) : undefined; }
+    return id.startsWith("precon:") ? pool.deck(id.slice(7)) : pool.playerDeck(id);
+  }, [pool, library, localDeck]);
+  const box = (id: string, deck: AIDeck): DeckBoxModel => ({ id, name: deck.name, commander: deck.commander || undefined, colors: [...deck.colors], subtitle: CommanderBracket.name(deck.bracket) });
   const sections: DeckSection[] = useMemo(() => [
+    ...(library.decks.length > 0 ? [{ id: "mine", title: "My Decks", decks: library.decks.map((r) => box(DeckLibraryRecord.selectionID(r), localDeck(r))) }] : []),
     { id: "precons", title: "Precons", decks: pool.all.filter((d) => !d.id.startsWith("ai-")).map((d) => box(`precon:${d.id}`, d)) },
     ...CommanderBracket.all.map((bracket) => ({
       id: `included-${bracket}`, title: `Included · ${CommanderBracket.name(bracket)}`,
       decks: pool.bracketDecks.filter((d) => d.bracket === bracket).map((d) => box(playerDeckID(d), d)),
     })).filter((s) => s.decks.length > 0),
-  ], [pool]);
+  ], [pool, library, localDeck]);
 
+  const firstPreconID = `precon:${pool.all.filter((d) => !d.id.startsWith("ai-"))[0]?.id ?? pool.all[0].id}`;
   const [selectedDeckID, setSelectedDeckID] = useStored("mm.web.deck.selected", () => {
     const saved = storage.get("mm.web.deck.selected");
-    return saved && deckFor(saved) ? saved : sections[0].decks[0].id;
+    return saved && deckFor(saved) ? saved : firstPreconID;
   });
   const deck = deckFor(selectedDeckID);
   const deckBracket = deck?.bracket;
@@ -126,6 +151,8 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   const [joinCode, setJoinCode] = useState(initialJoinCode);
 
   const [menuTab, setMenuTab] = useState<MenuTab>("home");
+  /** Deck Studio over the menus: a deck in the builder, a new deck, or the importer. */
+  const [studio, setStudio] = useState<StudioRoute>();
   const [playPanel, setPlayPanel] = useState(false);
   // An invite link opens the Custom Table on Online with its code.
   const [custom, setCustom] = useState(initialJoinCode !== "");
@@ -310,6 +337,47 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     chooseRecent: (g) => { setSelectedDeckID(g.deckID); setMode(g.mode === "quick" ? "quick" : g.mode === "ranked" ? "ranked" : "custom"); },
   };
 
+  // The Decks page: your decks and the precons (DeckStudioRootView.records), with their ⋯ actions.
+  const shelfDecks: ShelfDeck[] = [
+    ...library.decks.map((record) => {
+      const deck = localDeck(record);
+      return { box: box(DeckLibraryRecord.selectionID(record), deck), local: true, updatedAt: record.updatedAt, cardCount: DeckLibraryRecord.cardCount(record), bracket: deck.subtitle };
+    }),
+    ...pool.all.filter((d) => !d.id.startsWith("ai-")).map((deck) => ({
+      box: box(`precon:${deck.id}`, deck), local: false, cardCount: deck.deckList.entries.reduce((n, e) => n + e.quantity, 0), bracket: CommanderBracket.name(deck.bracket),
+    })),
+  ];
+  void libraryVersion;
+  const [favoritesVersion, setFavoritesVersion] = useState(0);
+  void favoritesVersion;
+  const [libraryError, setLibraryError] = useState<string>();
+  const guarded = (run: () => void) => { try { run(); setLibraryError(undefined); } catch (failure) { setLibraryError(failure instanceof Error ? failure.message : String(failure)); } libraryChanged(); };
+  const decksModel = {
+    decks: shelfDecks, selectedDeckID, fallbackName: pool.deck(firstPreconID.slice(7))?.name ?? "The first precon",
+    favorites: new Set(shelfDecks.map((d) => d.box.id).filter((id) => library.isFavorite(id))), notice: libraryError ?? library.notice,
+    select: setSelectedDeckID,
+    play: (id: string) => { setSelectedDeckID(id); openPlay(); },
+    edit: (id: string) => setStudio({ kind: "deck", id }),
+    create: () => setStudio({ kind: "new" }),
+    importDecks: () => setStudio({ kind: "import" }),
+    duplicate: (id: string) => guarded(() => {
+      const record = library.bySelection(id);
+      const included = record ? undefined : deckFor(id);
+      const source = record ?? (included && DeckLibraryRecord.fromDeckList(included.deckList, id));
+      if (!source) return;
+      const copy = library.duplicate(source, `${source.name} — Copy`);
+      if (!record) library.rememberColors(copy.id, [...(deckFor(id)?.colors ?? "")]);
+      setStudio({ kind: "deck", id: DeckLibraryRecord.selectionID(copy) });
+    }),
+    remove: (id: string) => guarded(() => {
+      const record = library.bySelection(id);
+      if (!record) return;
+      library.delete(record.id, record.revision);
+      if (id === selectedDeckID) setSelectedDeckID(firstPreconID);
+    }),
+    toggleFavorite: (id: string) => { library.setFavorite(id, !library.isFavorite(id)); setFavoritesVersion((v) => v + 1); },
+  };
+
   const aiGroups: AIDeckGroup[] = [
     { title: "Precons", decks: pool.all.filter((d) => !d.id.startsWith("ai-")).map((d) => ({ id: d.id, name: d.name, commander: d.commander, colors: [...d.colors], bracket: d.bracket })) },
     ...CommanderBracket.all.map((bracket) => ({ title: CommanderBracket.name(bracket), decks: pool.bracketDecks.filter((d) => d.bracket === bracket)
@@ -324,8 +392,8 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   return (
     <div className="mroot" style={{ zoom }}>
       <MetalDefs />
-      <RoomBackdrop dim={playPanel ? 0 : page === "home" ? (covered ? 0.55 : 0) : page === "decks" ? 0.72 : 0.55} still={covered || playPanel} />
-      <div className="mpage" style={{ opacity: playPanel ? 0 : 1 }}>
+      <RoomBackdrop dim={studio ? 0.72 : playPanel ? 0 : page === "home" ? (covered ? 0.55 : 0) : page === "decks" ? 0.72 : 0.55} still={covered || playPanel} />
+      <div className="mpage" style={{ opacity: playPanel || studio ? 0 : 1 }}>
         {page === "custom" && (
           <CustomTable model={{
             deck: deck ? box(selectedDeckID, deck) : undefined, bracket: deckBracket, name: player.state.username ?? name, setName,
@@ -337,7 +405,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
           }} />
         )}
         {page === "home" && <Home content={homeContent} still={covered} />}
-        {page === "decks" && <DecksPage sections={sections} selectedDeckID={selectedDeckID} select={setSelectedDeckID} play={() => openPlay()} />}
+        {page === "decks" && <DecksPage model={decksModel} />}
         {page === "ranked" && !leaderboard && <RankedPage rank={rank} record={record} play={() => openPlay("ranked")}
           leaderboard={() => setLeaderboard(true)} profile={() => selectTab("profile")} />}
         {page === "ranked" && leaderboard && <Leaderboard account={player} onBack={() => setLeaderboard(false)}
@@ -347,6 +415,12 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
           account={<><AccountSignInCard /><PrivacyCard /></>} />}
       </div>
       {playPanel && <PlayPanel model={playModel} />}
+      {studio && (
+        <DeckStudioScreen route={studio} library={library} deckFor={deckFor} resolver={data.resolver} bracketRules={bracketRules}
+          close={() => { setStudio(undefined); libraryChanged(); }} changed={libraryChanged}
+          open={(next) => setStudio(next)}
+          play={(id) => { setStudio(undefined); libraryChanged(); setSelectedDeckID(id); openPlay(); }} />
+      )}
       <TopBar selected={covered && lit ? undefined : panel === "learn" ? "learn" : custom ? undefined : menuTab} select={selectTab} lit={lit}
         rank={{ tier: rank.position.tier, title: RankPosition.title(rank.position) }} openRank={() => selectTab("ranked")}
         updates={() => setPanel("updates")} settings={() => setPanel("settings")}

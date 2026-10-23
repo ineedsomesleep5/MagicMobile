@@ -737,3 +737,11 @@ contradicting one.
   from Google) starts one before `setForeground`'s first beat. That beat then ran the heartbeat and rank sync with no
   profile name yet, so they skipped, and the rank only arrived 45 s later. `start()` now hands back the running load,
   and a sign-in waits for it before loading the signed-in profile. Test: "a foreground beat during a load waits…".
+- 2026-10-23 (Claude, web Deck Studio): (1) Neither deck site lets a browser on our origin read its API: Archidekt
+  answers with `access-control-allow-origin: http://localhost:3000`, Moxfield with Cloudflare's 403 and no CORS headers.
+  The web fetches `/provider/archidekt/…` and `/provider/moxfield/…` on its own origin instead; Vite's dev and preview
+  servers proxy them (`vite.config.ts` `providers`) and Vercel rewrites them (`scripts/stage_vercel.mjs`). Moxfield
+  through Vercel is unverified and may still meet the bot check; pasting the text export always works. (2) Card images
+  in new screens need `crossOrigin="anonymous"`: the page is cross-origin isolated (COEP require-corp), so a plain
+  `<img>` from Scryfall shows broken. (3) Writing ` ` as a regex escape in a TS source file turned into the literal
+  line-separator character in one edit and broke the build; keep such characters as escapes and check the diff.
