@@ -255,7 +255,7 @@ async function play(page, game) {
   for (let i = 0; i < 360 && !(await start.isEnabled()); i++) await page.waitForTimeout(500);
   await start.click();
   const memory = { casts: 0, failed: new Set(), attacked: new Set(), promptSeen: new Map(), turn: 0, autoPaid: new Set(), allAttack: new Set(), finished: new Set(),
-    drags: 0 };
+    drags: 0, wipeHeld: [] };
   const started = Date.now();
   let lastTurn = 0;
   for (;;) {
@@ -265,6 +265,9 @@ async function play(page, game) {
     if (state.ready && state.over) break;
     if (state.ready && state.turn !== lastTurn) {
       lastTurn = state.turn; memory.casts = 0;
+      // Each turn a wipe sits in hand: what it would take now (why a game showed no wipe).
+      const held = state.handNames.filter((name) => SWEEPERS.includes(name));
+      if (held.length) memory.wipeHeld.push(`turn ${state.turn}: ${held.map((name) => `${name} takes ${wipeTakes(name, state)}`).join(", ")}`);
       console.log(`game ${game} turn ${state.turn} life you ${state.life.join(" / them ")} ${state.mine ? "yours" : "theirs"}`);
       // --shots 6,12: the open game log at the start of those turns, for a look at the log against a real game.
       if (shots.has(state.turn)) {
@@ -396,7 +399,7 @@ async function play(page, game) {
       wipe: [...new Set(rec.fx.filter((f) => f.notice && /: \d+ (to the graveyard|exiled|returned)/.test(f.notice)).map((f) => f.notice))],
       ended: won ? "won" : memory.conceded ? "conceded by the menu" : final.over ? "lost" : "stopped",
     },
-    notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
+    wipeHeld: memory.wipeHeld, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.
