@@ -167,13 +167,9 @@ struct CardTile: View {
             .modifier(PlayableGlowPulse(active: zoneName == "Hand" && (legal || castOffered) && !selected && !pending && !targetable))
             }
         }
-        .shadow(color: arenaHand ? .black.opacity(0.5) : shadowColor, radius: arenaHand ? 4 : shadowRadius, y: arenaHand ? 2 : 0)
+        .shadow(color: tileShadow.color, radius: tileShadow.radius, y: tileShadow.y)
         // After the shadow, so the light casts none.
-        .background {
-            if let arenaHandGlow {
-                ArenaOutlineGlow(outline: .card, tone: arenaHandGlow.tone, breathes: arenaHandGlow.breathes)
-            }
-        }
+        .background { handGlow }
         .rotationEffect(.degrees(card.tapped == true && !ignoreTappedRotation ? 90 : 0))
         .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: card.tapped)
         .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -183,6 +179,18 @@ struct CardTile: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(zoneName == "Hand" ? CardPlayAffordance(land: legal, spell: castOffered).accessibilityValue : "")
         .accessibilityHint(playHint)
+    }
+
+    /// The Arena hand's outline glow, out of the body so it stays inside CI's 200 ms type-check budget.
+    @ViewBuilder private var handGlow: some View {
+        if let arenaHandGlow {
+            ArenaOutlineGlow(outline: .card, tone: arenaHandGlow.tone, breathes: arenaHandGlow.breathes)
+        }
+    }
+
+    /// The tile's shadow, typed here so the body stays inside CI's 200 ms type-check budget.
+    private var tileShadow: (color: Color, radius: CGFloat, y: CGFloat) {
+        arenaHand ? (Color.black.opacity(0.5), 4, 2) : (shadowColor, shadowRadius, 0)
     }
 
     private var playHint: String {
