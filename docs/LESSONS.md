@@ -598,3 +598,7 @@ contradicting one.
   for padding) made the Arena scry browser lose its cards, even though the padding value was the same as before.
   Bisected to that one line. Pass measured insets down the environment instead: the Arena board sets `\.arenaSafeArea`
   from its root GeometryProxy, and full-table layers read `safeArea.top(_:)` / `safeArea.side`.
+- 2026-10-23 (Claude, Android build 34): `build_release.sh` stopped at `:app:lintRelease` on one `SuspiciousIndentation`
+  error: `} else` ended a line, and the Hearth `Column(` on the next line sat at the `if`'s indent. `compileDebugKotlin`
+  and the unit tests pass with it, so it only shows up in lint, about 7 minutes into a release build. Write
+  `} else Column(...)` or `} else {` with a brace, and run `:app:lintDebug` before starting a release build.
