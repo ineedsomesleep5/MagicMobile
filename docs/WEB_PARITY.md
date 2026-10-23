@@ -246,6 +246,11 @@ served by `vite preview` with the isolation headers, the XMage AI on the other s
 board's own controls (drag to cast, Auto Pay, All Attack, the corner plaques, the browsers) and records every answer,
 the board's flights, banners and reveals, and console errors.
 
+A final game counts when it has a drag cast, Auto Pay, a trigger, All Attack, and a concede or a win, with no errors.
+Board wipes depend on the draw (two to four per deck), so Caleb ruled on 2026-10-22 that they need not show in every
+game: the shared wipe cases in `arena-pace-cases.json` (the cascade, the cap of ten, the recap, the reduced level)
+pass on iOS and the web, and the engine produced real wipes in game I and final 16.
+
 | Run | Decks | Result | What it showed |
 |---|---|---|---|
 | game A (2026-10-22) | Token Triumph vs Grave Danger | stopped turn 9 at the commander-zone question (driver fixed) | smart pass held 2.33 s for an AI spell, passed 9 ms after the hold; 23 flights, 2 burns, 5 reveals, a banner each turn, Auto Pay ×2, All Attack ×1, a drag cast, 20 smart passes, no page errors |
@@ -267,11 +272,13 @@ the board's flights, banners and reveals, and console errors.
 | final 8 | Draconic Destruction vs Grave Danger | AI won, turn 17 | drag casts 10, Auto Pay 8, triggers 8, All Attack 1, reading hold held; no wipe; no errors |
 | final 9 | First Flight vs Grave Danger | stopped turn 5 at "Pick a mana color" | the board asked correctly (a choice with no colour name, so Auto Pay can't pick, the same on iOS); the driver answered with `choose_choice`, which the session ignores, instead of the board's `resolve_choice` (fixed in c19fd0bb); no errors |
 | final 10 | Draconic Destruction vs Token Triumph | AI won, turn 18 | drag casts 6, triggers 34; no Auto Pay or All Attack came up; no wipe; no errors |
-| final 11 | Token Triumph vs Draconic Destruction | **won**, turn 13 | drag casts 7, Auto Pay 8, triggers 10, All Attack 4; no wipe drawn; no errors |
-| final 12 | Draconic Destruction vs Token Triumph | **won**, turn 21 | drag casts 10, Auto Pay 12, triggers 38, All Attack 4; Sweltering Suns on turn 5 killed one creature, not a wipe (the driver now holds a wipe until it would take three); no errors |
+| final 11 | Token Triumph vs Draconic Destruction | **won**, turn 13 | **counts**: drag casts 7, Auto Pay 8, triggers 10, All Attack 4; no wipe drawn; no errors |
+| final 12 | Draconic Destruction vs Token Triumph | **won**, turn 21 | **counts**: drag casts 10, Auto Pay 12, triggers 38, All Attack 4; Sweltering Suns on turn 5 killed one creature, not a wipe (the driver now holds a wipe until it would take three); no errors |
 | final 13 | Chaos Incarnate vs Token Triumph | AI won, turn 23 | drag casts 8, Auto Pay 9, triggers 17, All Attack 6; one attack of 21 creatures took 35 life; no wipe drawn; no errors |
 | final 14 | Draconic Destruction vs First Flight | AI won, turn 18 | drag casts 12, Auto Pay 8, triggers 17, All Attack 4; fliers took 14 life in one attack (the driver now concedes to an attack that would kill it unblocked); no wipe; no errors |
 | final 15 | First Flight vs Draconic Destruction | conceded through the menu, turn 13 | drag casts 5, Auto Pay 5, triggers 8; no All Attack or wipe; no errors |
+| final 16 | Draconic Destruction vs Token Triumph | conceded through the menu, turn 20 | **counts**: drag casts, Auto Pay, triggers, All Attack; two wipes, Magmaquake (6 left) and the AI's Hour of Reckoning (5 to the graveyard), each with its cascade and recap; no errors |
+| final 17 | Chaos Incarnate vs Token Triumph | conceded through the menu, turn 16 | drag casts 6, Auto Pay 3, triggers; no All Attack came up; no errors |
 
 ## Android follow-ups
 
