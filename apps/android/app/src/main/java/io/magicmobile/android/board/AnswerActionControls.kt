@@ -114,6 +114,7 @@ fun AutoPassAfterCastToggle() {
 fun SmartAutoPassToggle() {
     var isOn by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
     var stopForOwn by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
+    var stopForThreats by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_THREATS_KEY, true)
     var showStops by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.tavernSettingsPanel().semantics { contentDescription = "settings.smartAutoPass" }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TavernToggle("Smart Auto-Pass", isOn, { isOn = it },
@@ -121,6 +122,9 @@ fun SmartAutoPassToggle() {
         TavernToggle("Stop for My Own Spells", stopForOwn, { stopForOwn = it },
             Modifier.semantics { contentDescription = "settings.stopForOwnSpells" },
             subtitle = "Off: your own spells and triggers resolve without a stop, as on Arena.", enabled = isOn, color = TavernPalette.parchment)
+        TavernToggle("Stop for Removal", stopForThreats, { stopForThreats = it }, Modifier.semantics { contentDescription = "settings.stopForThreats" },
+            subtitle = "An opponent's spell that destroys, exiles or takes your permanents waits for you, even when you can't answer it.",
+            color = TavernPalette.parchment)
         TavernButton({ showStops = true }, Modifier.fillMaxWidth().semantics { contentDescription = "settings.phaseStops" },
             kind = TavernButtonKind.SECONDARY, compact = true, enabled = isOn) {
             SfImage("hand.raised.fill", TavernPalette.parchment, 13.dp); TavernButtonText("Phase Stops")

@@ -77,7 +77,13 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | FriendsView.swift, Ranked/FriendConversationView.swift, SocialComponents.swift, FriendChallengeViews.swift, AccountSignInCard.swift | app `social/FriendsSheet.kt`, `social/FriendConversation.kt`, `ranked/` | Ported (phase B) |
 | NativeUpdateNewsView.swift | app `ondevice/NativeUpdateNewsView.kt`; core `game/UpdateNews.kt` | Ported (Arena inbox, phase B) |
 | NativeDownloadsView.swift (Arena readout) | app `ondevice/NativeDownloadsView.kt`; core `game/DownloadReadout.kt` | Ported (phase B) |
-| HowToPlayView.swift (Arena pieces), SoundLabView.swift, Menus/ArenaPanels.swift ArenaOptionsView pages | app `ui/HowToPlayView.kt`, `board/SettingsViews.kt`, `menus/ArenaPanels.kt` | Ported (phase B); lesson text unchanged; Board's Table picker, Card Frames and Stop for Removal wait for the Arena board |
+| HowToPlayView.swift (Arena pieces), SoundLabView.swift, Menus/ArenaPanels.swift ArenaOptionsView pages | app `ui/HowToPlayView.kt`, `board/SettingsViews.kt`, `menus/ArenaPanels.kt` | Ported (phase B; Board's Table picker, Card Frames and Stop for Removal in phase C); lesson text unchanged |
+| ArenaBoardModel.swift (BoardMode, CardFramesPreference, ArenaLayout/ArenaCanvas, ArenaRowFit, hand posture and fan, Auto Pay, combat phase, extra hand, choices, loyalty, amounts, splits, glossary, commander steal, sweep recap) | core `game/ArenaBoardModel.kt` | Ported (phase C); `ArenaBoardModelTest` mirrors ArenaBoardModelTests.swift, real polls included |
+| ArenaBoardPresentation.swift's Arena rules (the tile's glow, colour line, shield; BattlefieldRow.arenaTileUnits) and the pure parts of NativeGameView+Arena*.swift (lane plans, phase strip, corner words, caption, amount pill, Auto Pay's colour answer) | core `game/ArenaBoardPresentation.kt` (the shared battlefield rules stay in `game/BoardLayout.kt`) | Ported (phase C); `ArenaBoardPresentationTest` |
+| Board/ArenaBoardViews.swift (table backdrop, medallions and the life plaque, piles, stack card and tab, arcs and reticles, ArenaOutlineGlow, ArenaCountBadge, phase strip, plaques and pills, ArenaPassAheadPill, ArenaMenuCard, ArenaPlayerCard, ArenaAmountPill, floating mana, front rail); ArenaBoardPresentation.swift's ArenaBattlefieldCard Arena look (Card Frames off, the glow border, the tapped tilt and grey) | app `board/ArenaBoardViews.kt`, `board/CardViews.kt`, `board/BattlefieldViews.kt` | Ported (phase C); the browsers, the question stage and the result are phase D |
+| Board/ArenaHandFan.swift | app `board/ArenaHandFan.kt` | Ported (phase C) |
+| Board/NativeGameView+Arena.swift, NativeGameView+ArenaActions.swift | app `board/NativeGameViewArena.kt` (Kotlin file names hold no `+`) | Ported (phase C); no ability/trigger-order plan yet (it rides with the ability browser) |
+| OnDeviceYieldPolicy.swift Stop for Removal (`threatensViewer`, `stopForThreats`, StopReason.threat), BoardPresentationHold.reading | core `game/OnDeviceSmartPass.kt`, `game/OnDeviceYieldPolicy.kt`, `game/BoardEventTimeline.kt`; app `session/OnDeviceSession.kt` | Ported (phase C) |
 
 ## Walnut Tavern (iOS builds 23–26)
 
@@ -166,9 +172,21 @@ in the same-named Kotlin file:
    to the screen), `CGSize.isTavernPad` (short side ≥ 700). Android tablets: the same map once a tablet is
    in hand.
 
-## Arena board mode (iOS 2026-10-20, Android pending)
+## Arena board mode (iOS 2026-10-20, Android phase C 2026-10-23)
 
-The Arena board (`BoardMode.arena`, key `magicmobile.boardMode`, Settings → Board) is iOS only so far. Android still shows Hearth whatever the key says. Port as one piece: `ArenaBoardModel.swift` (layout, hand posture, Auto Pay, combat phase, extra hand; its tests are portable) into core, the views (`Board/ArenaBoardViews.swift`, `ArenaHandFan.swift`, `NativeGameView+Arena*.swift`) into same-named Kotlin files, and the plates come over by name (`tavern-arena-*`).
+The Arena board (`BoardMode.ARENA`, key `magicmobile.boardMode`, default hearth; Options → Board → Table, and the game menu)
+plays on Android in both orientations: `NativeGameView` hands the whole screen to `ArenaBoard` (`NativeGameViewArena.kt`)
+when the key says arena; the Hearth board is unchanged. The plates come over by name (`tavern-arena-*` →
+`R.drawable.tavern_arena_*`, `prepareBrandAssets`). Card Frames are kept per mode (`CardFramesPreference`, `LocalCardFrames`).
+Android differences: the table lean is applied per lane and per pile (one `graphicsLayer` with the plate's camera) instead of
+per tile; the hand's touch surfaces are Compose `pointerInput` boxes the size of the fan and of the popped card (Compose hit
+tests siblings exclusively, like SwiftUI's frames); the face-down card is the drawn leather back (Android's image transport
+only allows Scryfall's api and cards hosts, not `backs.scryfall.io`); no `BoardFXPace.arena` timings yet (the turn banner
+is the Arena's 0.9 s). Phase D (not ported): the ability, mode, choice, player, split, pile, zone and stack browsers, the
+question stage, the Arena mulligan, the D20 on the board and the result; until then those prompts use the existing Android
+pop-up, detail panel (now an `ArenaPanel` on the Arena board), zone inspector and stack inspector. Previews:
+`MAGICMOBILE_DESIGN_PREVIEW=<state>` with `MAGICMOBILE_BOARD_MODE=arena`, optionally `MAGICMOBILE_CARD_FRAMES=1`,
+`MAGICMOBILE_ARENA_HAND=open|pop|spread` and (crowded-battlefield) `MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST=sections`.
 
 ## Arena menus (iOS 2026-10-22, Android phase A 2026-10-22)
 
@@ -181,7 +199,7 @@ The seven home images come from `home-art-*.imageset` through `prepareBrandAsset
 
 Phase B (2026-10-22) ported every other page outside a game: the custom table as Arena's event page, Deck Studio as the Decks
 tab with Arena's builder, Profile, Ranked and the leaderboard, Friends and Messages, the Updates inbox, Downloads' readout, How
-to Play, the Sound Lab and the Options pages. Still to port: the Arena board itself (the home feature "The Arena board" points
+to Play, the Sound Lab and the Options pages. Still to port (phase C did the board itself, see above): the Arena board's full-table screens (the home feature "The Arena board" points
 at it), and the engine error report, which still opens as a bottom sheet.
 
 ## Log
@@ -290,3 +308,12 @@ at it), and the engine error report, which still opens as a bottom sheet.
   lids and scroll offsets, the editor covering the top bar, the 330 dp deck column on a short landscape phone, the profile's
   title/portrait panel (it may sit about 46 dp low), Friends' panel height, the conversation composer with the keyboard,
   the inbox and How to Play heights, and the dark-glass drop-downs.
+- 2026-10-23 (Claude): Arena board, phase C, on phase B and `main` 6afe35e4. New core `ArenaBoardModel.kt` and
+  `ArenaBoardPresentation.kt` (`ArenaBoardModelTest` 35, `ArenaBoardPresentationTest` 15), app `ArenaBoardViews.kt`,
+  `ArenaHandFan.kt` and `NativeGameViewArena.kt`; the Arena looks of `ArenaBattlefieldCard`, `CardTile` (hand) and
+  `BattlefieldRow` (alignment, preferred rows, attachments as tucked cards, land piles); Options → Board gets the Table picker
+  and Card Frames (the game menu too), Gameplay gets Stop for Removal, which smart pass and the skips now honour, and reading
+  a card holds smart pass. `:core:test` (366), `:app:compileDebugKotlin` and `:app:testDebugUnitTest` (95) pass. Not checked
+  on an emulator: everything drawn (the lean's direction and strength, the glow border's look, the phase strip, the stack
+  card's landing, medallions and piles on a 360 dp phone both ways), the hand's tap, hold, slide and carry, the spread tab,
+  Auto Pay and All Attack against the real engine, panels over the table, and safe-area handling around a cutout.

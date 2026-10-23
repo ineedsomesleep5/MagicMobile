@@ -163,6 +163,42 @@ fun BoardEffectsPicker(includesAudio: Boolean = true) {
     }
 }
 
+/** Hearth or Arena (BoardMode): the board's layout, chosen here and in the game menu; it changes at once, mid-game too. */
+@Composable
+fun BoardModePicker() {
+    var mode by AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+    val arena = LocalArenaBoard.current
+    val ink = if (arena) ArenaMenuStyle.text else TavernPalette.parchment
+    val current = io.magicmobile.android.game.BoardMode.resolved(mode)
+    Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // Under the page's own "Board" title the picker is the table you play on (no repeated label, no helper line).
+            Text(if (arena) "Table" else "Board", color = ink, style = sf(16f, SfWeight.semibold, SfDesign.SERIF))
+            if (!arena) Text(current.summary, Modifier.alpha(0.65f), color = ink, style = sf(12f, design = SfDesign.SERIF), maxLines = 2)
+        }
+        if (arena) ArenaSegmented(io.magicmobile.android.game.BoardMode.entries.map { it.title to it }, current, { mode = it.rawValue },
+            Modifier.fillMaxWidth(), identifier = "settings.boardMode", stretch = true)
+        else IosSegmented(io.magicmobile.android.game.BoardMode.entries.toList(), current, { mode = it.rawValue }, { it.title },
+            Modifier.semantics { contentDescription = "settings.boardMode" })
+    }
+}
+
+/** Card Frames, kept per board mode (CardFramesPreference): tavern frames on battlefield cards, or the card's art without them. */
+@Composable
+fun CardFramesToggle() {
+    val mode by AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+    var hearth by AppPreferences.boolean(io.magicmobile.android.game.CardFramesPreference.hearthKey, io.magicmobile.android.game.CardFramesPreference.hearthDefault)
+    var arenaFrames by AppPreferences.boolean(io.magicmobile.android.game.CardFramesPreference.arenaKey, io.magicmobile.android.game.CardFramesPreference.arenaDefault)
+    val isArena = io.magicmobile.android.game.BoardMode.resolved(mode) == io.magicmobile.android.game.BoardMode.ARENA
+    Box(Modifier.tavernSettingsPanel()) {
+        TavernToggle("Card Frames", if (isArena) arenaFrames else hearth, { on -> if (isArena) arenaFrames = on else hearth = on },
+            Modifier.semantics { contentDescription = "settings.cardFrames" },
+            subtitle = if (isArena) "Tavern frames on the Arena board's battlefield cards. Off, they show the card's art without the frame."
+                else "Tavern frames on Hearth's battlefield cards. Off, they show the card's art without the frame.",
+            color = TavernPalette.parchment)
+    }
+}
+
 /** Sound effects and music, each with a level. Changes apply immediately. */
 @Composable
 fun GameAudioSettings() {

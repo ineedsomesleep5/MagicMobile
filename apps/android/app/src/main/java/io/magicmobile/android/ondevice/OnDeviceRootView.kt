@@ -1191,9 +1191,10 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         val phaseStops by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.OnDeviceSmartPass.STOPS_KEY,
                             io.magicmobile.android.game.OnDeviceSmartPass.Settings.encode(io.magicmobile.android.game.OnDeviceSmartPass.defaultStops))
                         val stopForOwnSpells by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
-                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops, stopForOwnSpells) {
+                        val stopForThreats by io.magicmobile.android.ui.AppPreferences.boolean(io.magicmobile.android.game.OnDeviceSmartPass.STOP_FOR_THREATS_KEY, true)
+                        androidx.compose.runtime.LaunchedEffect(smartAutoPass, phaseStops, stopForOwnSpells, stopForThreats) {
                             session.setSmartPass(io.magicmobile.android.game.OnDeviceSmartPass.Settings(smartAutoPass,
-                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops), stopForOwnSpells))
+                                io.magicmobile.android.game.OnDeviceSmartPass.Settings.decode(phaseStops), stopForOwnSpells, stopForThreats))
                         }
                         // Hidden from TalkBack while the starting roll covers it.
                         Box(Modifier.fillMaxSize().alpha(if (setup.isBusy) 0.999f else 1f)

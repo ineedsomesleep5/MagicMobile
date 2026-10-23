@@ -307,8 +307,17 @@ private fun ColumnScope.OptionsPage(page: ArenaOptionsPage, wide: Boolean, portr
         // Two columns sideways, so every label stays on one line.
         ArenaOptionsPage.GAMEPLAY -> GameplayOptions(if (wide) 2 else 1)
         ArenaOptionsPage.PHASE_STOPS -> Box(Modifier.widthIn(max = 520.dp).fillMaxWidth().align(Alignment.CenterHorizontally)) { PhaseStopsGrid() }
-        // The board's effects; the table picker and Card Frames wait for Android's Arena board.
-        ArenaOptionsPage.BOARD -> BoardEffectsPicker(includesAudio = false)
+        // Flat on the glass in columns, as Arena's pages are: the table (Hearth or Arena), the effects, then Card Frames.
+        ArenaOptionsPage.BOARD -> {
+            if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.Top) {
+                Box(Modifier.weight(1f)) { io.magicmobile.android.board.BoardModePicker() }
+                Box(Modifier.weight(1f)) { BoardEffectsPicker(includesAudio = false) }
+            } else {
+                io.magicmobile.android.board.BoardModePicker()
+                BoardEffectsPicker(includesAudio = false)
+            }
+            io.magicmobile.android.board.CardFramesToggle()
+        }
         ArenaOptionsPage.AUDIO -> Box(Modifier.tavernSettingsPanel()) { GameAudioSettings() }
         ArenaOptionsPage.SOUND_LAB -> {}
         ArenaOptionsPage.DISPLAY -> {
@@ -338,6 +347,7 @@ private fun AboutRow(title: String, value: String) {
 private fun GameplayOptions(columns: Int) {
     var smartPass by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
     var stopForOwn by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
+    var stopForThreats by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_THREATS_KEY, true)
     var passAfterCast by AppPreferences.boolean(AutoPassAfterCast.KEY, true)
     var followTurns by AppPreferences.boolean(BoardFocusTracker.followTurnsKey, true)
     val openStops = LocalArenaOpenPhaseStops.current
@@ -346,6 +356,8 @@ private fun GameplayOptions(columns: Int) {
             "settings.smartAutoPass") },
         { m -> ArenaCheckbox("Stop for My Own Spells", stopForOwn, { stopForOwn = it }, m, "Off: your own spells and triggers resolve without a stop.",
             "settings.stopForOwnSpells", enabled = smartPass) },
+        { m -> ArenaCheckbox("Stop for Removal", stopForThreats, { stopForThreats = it }, m,
+            "An opponent's spell that destroys, exiles or takes your permanents waits for you, even when you can't answer it.", "settings.stopForThreats") },
         { m -> ArenaCheckbox("Pass After Casting", passAfterCast, { passAfterCast = it }, m, "Your spell resolves without another tap. Opponents can still respond.",
             "settings.autoPassAfterCast") },
         { m -> ArenaCheckbox("Follow Turns", followTurns, { followTurns = it }, m, "Show whose turn it is at the top. A tap on an opponent holds until the next turn.",

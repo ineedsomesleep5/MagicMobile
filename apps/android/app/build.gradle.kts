@@ -74,6 +74,8 @@ val prepareBrandAssets by tasks.registering(Sync::class) {
     from(catalogue) {
         include("battlefield-tavern-portrait.imageset/*.jpg", "battlefield-tavern-landscape.imageset/*.jpg",
             "menu-backdrop-tavern.imageset/*.jpg", "tavern-room-*.imageset/*.jpg", "tavern-*.imageset/*.png",
+            // The Arena board's leaning tables (tavern-arena-landscape.jpg becomes R.drawable.tavern_arena_landscape).
+            "tavern-arena-*.imageset/*.jpg",
             // The Arena home page's art (1252 px crops): home-art-ur-dragon.jpg becomes R.drawable.home_art_ur_dragon.
             "home-art-*.imageset/*.jpg")
         // Android resource names are lowercase with underscores: tavern-mana-B -> tavern_mana_b.
