@@ -65,15 +65,12 @@ await writeFile(join(out, "vercel.json"), JSON.stringify({
     { source: "/assets/(.*)", headers: immutable },
   ],
   // Deck links: Archidekt and Moxfield don't let another site's page read their APIs (CORS), so the page asks its own
-  // origin and Vercel fetches the fixed endpoint (studioAdapter.fetchLinkedDeck). Opening a table on the table relay is
-  // proxied the same way (it sends no CORS headers; RelayTransport.createTable); the table's WebSocket goes to the relay
-  // directly. The relay allows 5 table creations a minute per caller IP, and through this rewrite every web host shares
-  // Vercel's egress IPs: a relay CORS change for this origin is the proper follow-up. Then the app's own paths (/join,
-  // /join/CODE) are the single page; files win over that rewrite.
+  // origin and Vercel fetches the fixed endpoint (studioAdapter.fetchLinkedDeck). The table relay allows this origin
+  // itself (CORS), so tables open there directly. Then the app's own paths (/join, /join/CODE) are the single page;
+  // files win over that rewrite.
   rewrites: [
     { source: "/provider/archidekt/decks/:id", destination: "https://archidekt.com/api/decks/:id/" },
     { source: "/provider/moxfield/:path*", destination: "https://api2.moxfield.com/:path*" },
-    { source: "/relay/v1/:path*", destination: "https://magicmobile-relay.calebjfeliciano.workers.dev/v1/:path*" },
     { source: "/(.*)", destination: "/index.html" },
   ],
 }, null, 2) + "\n");

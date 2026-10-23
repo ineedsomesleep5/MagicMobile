@@ -21,6 +21,11 @@ Cloudflare counts approximately (cached per location, eventually consistent), so
 against floods rather than an exact quota: in a burst from one address against the deployed relay
 on September 26, 2026, the first 429 came after 22 tables.
 
+The web app opens tables from a browser, so `/v1/tables` answers CORS for its origins only (`WEB_ORIGINS` in
+`src/index.js`: the hosted site and the local dev and preview ports): `OPTIONS` is the preflight (204), and the `POST`
+answer carries `Access-Control-Allow-Origin` for those origins. Phones send no `Origin` and get no CORS headers. A new web
+origin must be added there and the relay redeployed.
+
 `GET /v1/tables/{code}/socket?name=…` upgrades to a WebSocket (text frames, JSON). A phone says
 who it is with WebSocket subprotocols, so no secret appears in a URL or a request log:
 

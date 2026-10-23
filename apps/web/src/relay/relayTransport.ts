@@ -26,25 +26,15 @@ export const RelayWire = {
   MAX_PARTS: 64,
 };
 
-/** The deployed relay; `?relay=http://127.0.0.1:8787` points a dev build at `wrangler dev`. */
+/**
+ * The deployed relay; `?relay=http://127.0.0.1:8787` points a dev build at `wrangler dev`. The relay answers the web
+ * app's own origins with CORS headers (services/table-relay WEB_ORIGINS), so a browser opens tables there directly and
+ * counts against its own creation limit; the table's WebSocket isn't CORS-checked.
+ */
 export const defaultRelayURL = (): string => {
   const override = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("relay");
   const env = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_RELAY_URL;
   return (override ?? env ?? "https://magicmobile-relay.calebjfeliciano.workers.dev").replace(/\/+$/, "");
-};
-
-/**
- * Where this page opens a table (`POST …/v1/tables`). The relay sends no CORS headers, so the deployed site and the dev
- * server proxy the same-origin path `/relay` to it (scripts/stage_vercel.mjs, vite.config.ts); the table's WebSocket still
- * goes to the relay directly, since browsers do not CORS-check WebSockets. A `?relay=` override is used as is.
- *
- * The relay limits table creation to 5 a minute per caller IP. Through Vercel's rewrite every web host shares Vercel's
- * egress addresses, so busy evenings could hit that limit across players: a relay CORS change for this site's origin
- * (then POSTing to the relay directly) is the proper follow-up.
- */
-export const defaultRelayCreateBase = (): string => {
-  const override = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("relay");
-  return (override ?? "/relay").replace(/\/+$/, "");
 };
 
 /** Splits a packet into relay parts without ever splitting a UTF-16 surrogate pair (iOS rejects half of one). */
@@ -126,7 +116,7 @@ export class RelayTransport {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   constructor(private readonly baseURL: string = defaultRelayURL(), private readonly makeSocket = (url: string, protocols: string[]) => new WebSocket(url, protocols),
-    private readonly createBase: string = defaultRelayCreateBase(), private readonly fetcher: typeof fetch = (...args) => fetch(...args)) {}
+    private readonly createBase: string = defaultRelayURL(), private readonly fetcher: typeof fetch = (...args) => fetch(...args)) {}
 
   /** Opens a table on the relay; returns its code and the host key only this browser holds. */
   async createTable(seats: number): Promise<{ code: string; hostKey: string }> {

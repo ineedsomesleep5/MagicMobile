@@ -92,8 +92,8 @@ let callers = 0;
  */
 const nextCaller = () => `${localNetwork}.${++callers % 256}`;
 
-function postTable(seats, caller = nextCaller()) {
-  const headers = process.env.RELAY_URL ? {} : { "CF-Connecting-IP": caller };
+function postTable(seats, extra = {}, caller = nextCaller()) {
+  const headers = { ...(process.env.RELAY_URL ? {} : { "CF-Connecting-IP": caller }), ...extra };
   return fetch(`${base}/v1/tables`, { method: "POST", headers, body: JSON.stringify({ seats }) });
 }
 
@@ -411,12 +411,31 @@ test("a full backlog sends the sender peer_backlog and keeps what it accepted", 
  */
 async function openUntilRefused(caller) {
   for (let n = 0; n <= 10; n++) {
-    const response = await postTable(2, caller);
+    const response = await postTable(2, {}, caller);
     if (response.status !== 200) return response;
     await response.body?.cancel();
   }
   assert.fail(`${caller} opened 11 tables in a row`);
 }
+
+test("the web app may open a table from a browser (CORS); other sites and phones get no CORS headers", async () => {
+  const preflight = await fetch(`${base}/v1/tables`, { method: "OPTIONS", headers: { Origin: "https://magicmobile-web.vercel.app",
+    "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type" } });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "https://magicmobile-web.vercel.app");
+  assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /POST/);
+  assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /content-type/);
+  const stranger = await fetch(`${base}/v1/tables`, { method: "OPTIONS", headers: { Origin: "https://example.com", "Access-Control-Request-Method": "POST" } });
+  assert.equal(stranger.headers.get("access-control-allow-origin"), null);
+
+  const created = await postTable(2, { Origin: "http://localhost:5173" });
+  if (created.status === 429) return; // a deployed relay's limit; the preflight above is the part that matters there
+  assert.equal(created.status, 200);
+  assert.equal(created.headers.get("access-control-allow-origin"), "http://localhost:5173");
+  assert.match((await created.json()).code, /^[A-Z2-9]{6}$/);
+  const phone = await postTable(2);
+  if (phone.status === 200) assert.equal(phone.headers.get("access-control-allow-origin"), null);
+});
 
 test("each caller may open only a few tables a minute; the refusal is JSON the apps can show",
   { skip: process.env.RELAY_URL ? "a deployed relay sets the caller address itself" : false }, async () => {
@@ -434,7 +453,7 @@ test("each caller may open only a few tables a minute; the refusal is JSON the a
     for (let attempt = 0; attempt < 2 && sibling?.status !== 429; attempt++) {
       const network = `2001:db8:${random(0x10000).toString(16)}:${random(0x10000).toString(16)}`;
       assert.equal((await openUntilRefused(`${network}::1`)).status, 429);
-      sibling = await postTable(2, `${network}:1234:5678:9abc:def0`.toUpperCase());
+      sibling = await postTable(2, {}, `${network}:1234:5678:9abc:def0`.toUpperCase());
     }
     assert.equal(sibling.status, 429);
   });
