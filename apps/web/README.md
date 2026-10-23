@@ -34,8 +34,8 @@ It plays through the board's own controls (drag to cast, Auto Pay, All Attack, t
 board did per game: every answer and who sent it, the effects it painted (with a picture of each kind), banners,
 reveals, the reading-hold check, missing resources and console errors. `--shots 6,10` adds pictures of the log and a
 player card at those turns; `--polls` saves the raw engine polls for the replay fixtures. `--turns 30` concedes
-through the menu after that turn, and `--concede-at 10` (the default) concedes once your life is that low and behind,
-`0` plays it out. `--want-sweeper` mulligans for a hand with a board wipe and casts it once three creatures are out.
+through the menu after that turn, and `--concede-at 10` (the default) concedes once your life is that low and behind, or
+an attack that would kill you unblocked comes; `0` plays it out. `--want-sweeper` mulligans for a hand with a board wipe and casts it once three creatures are out.
 
 That run (`claude/web-engine-heap`, GraalVM Community Edition) gives a 137 MB module (43 MB gzip). The M1 bundle
 (run 39599683802, Oracle GraalVM, `engine.js`/`engine.js.wasm`) also works. `ENGINE_DIR=/path/to/bundle` points the
