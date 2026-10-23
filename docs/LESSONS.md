@@ -723,3 +723,12 @@ contradicting one.
   error: `} else` ended a line, and the Hearth `Column(` on the next line sat at the `if`'s indent. `compileDebugKotlin`
   and the unit tests pass with it, so it only shows up in lint, about 7 minutes into a release build. Write
   `} else Column(...)` or `} else {` with a brace, and run `:app:lintDebug` before starting a release build.
+- 2026-10-23 (Claude, web accounts): (1) The web page is cross-origin isolated (COOP same-origin, for the engine's
+  SharedArrayBuffer), so a Google sign-in pop-up can never report back to it. The web signs in by a full-page redirect
+  to Google's OIDC implicit flow (`response_type=id_token`, nonce kept in localStorage) with MagicMobile's Web client
+  `917754280625-metef3…`, then sends the ID token to Supabase as the phones do. No Supabase change was needed, but the
+  page's origin must be both an Authorized JavaScript origin and (with the trailing `/`) an Authorized redirect URI on
+  that client. Live site and `http://localhost:5173` were added 2026-10-23; a preview URL or a new port needs adding
+  too, or Google answers `redirect_uri_mismatch`. (2) The server's `mm_heartbeat` accepts only `ios` or `android` as
+  the platform, so the web sends none. (3) A 64-bit game seed can't go through `JSON.stringify` as a number: use
+  `EngineJson.integer(bigint)`, which `encode` writes as a raw integer.
