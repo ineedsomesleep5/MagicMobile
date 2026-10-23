@@ -31,6 +31,10 @@ import io.magicmobile.android.ui.TavernDialogAction
 import io.magicmobile.android.ui.TavernPalette
 import io.magicmobile.android.ui.TavernPlaqueButton
 import io.magicmobile.android.ui.sf
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaButtonText
+import io.magicmobile.android.menus.ArenaMenuStyle
 import kotlinx.coroutines.launch
 
 /**
@@ -47,27 +51,33 @@ fun AccountSignInCard(account: PlayerAccount) {
         ProfileSectionTitle(if (account.linkedIdentities.isEmpty()) "Keep your profile" else "Your account")
         if (account.linkedIdentities.isEmpty()) {
             Text("Sign in to keep your name, friends and rank on every phone. Your profile on this phone comes with you.",
-                Modifier.alpha(0.85f), color = TavernPalette.parchment, style = sf(13f, SfWeight.regular, SfDesign.SERIF))
-            TavernPlaqueButton("Continue with Google", {
+                Modifier.alpha(0.85f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(13f, SfWeight.regular))
+            ArenaButton({
                 scope.launch {
                     try {
                         val (token, nonce) = GoogleSignIn.signIn(context)
                         account.signIn("google", token, nonce)
                     } catch (error: Exception) { account.notice = PlayerAccountRules.message(SupabaseLite.code(error)) }
                 }
-            }, Modifier.testTag("profile.account.google"), compact = false, enabled = !busy, systemImage = "person.crop.circle.fill", fullWidth = true)
+            }, kind = ArenaButtonKind.PRIMARY, fullWidth = true, enabled = !busy, label = "Continue with Google", identifier = "profile.account.google") {
+                SfImage("person.crop.circle.fill", androidx.compose.material3.LocalContentColor.current, 14.dp)
+                ArenaButtonText("Continue with Google")
+            }
         } else {
             for (identity in account.linkedIdentities) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SfImage("person.crop.circle.badge.checkmark", TavernPalette.parchment, 16.dp)
-                Text(identity.email?.let { "${identity.title} · $it" } ?: identity.title, color = TavernPalette.parchment,
-                    style = sf(14f, SfWeight.semibold, SfDesign.SERIF))
+                SfImage("person.crop.circle.badge.checkmark", ArenaMenuStyle.text, 16.dp)
+                Text(identity.email?.let { "${identity.title} · $it" } ?: identity.title, color = ArenaMenuStyle.text,
+                    style = ArenaMenuStyle.font(14f, SfWeight.semibold))
             }
-            TavernPlaqueButton("Sign Out", { confirmSignOut = true }, Modifier.testTag("profile.account.signOut"),
-                kind = TavernButtonKind.SECONDARY, enabled = !busy, systemImage = "rectangle.portrait.and.arrow.right")
+            ArenaButton({ confirmSignOut = true }, kind = ArenaButtonKind.SECONDARY, compact = true, enabled = !busy, label = "Sign Out",
+                identifier = "profile.account.signOut") {
+                SfImage("rectangle.portrait.and.arrow.right", androidx.compose.material3.LocalContentColor.current, 12.dp)
+                ArenaButtonText("Sign Out")
+            }
         }
-        if (account.isSigningIn) CircularProgressIndicator(Modifier.size(20.dp), color = TavernPalette.parchment, strokeWidth = 2.dp)
+        if (account.isSigningIn) CircularProgressIndicator(Modifier.size(20.dp), color = ArenaMenuStyle.gold, strokeWidth = 2.dp)
     }
-    if (confirmSignOut) TavernConfirmationDialog("Sign out on this phone?",
+    if (confirmSignOut) ArenaConfirmation("Sign out on this phone?",
         "Your profile stays on your account. This phone starts a new one until you sign in again.",
-        listOf(TavernDialogAction("Sign Out", destructive = true) { scope.launch { account.signOut() } })) { confirmSignOut = false }
+        "Sign Out", destructive = true, { scope.launch { account.signOut() } }) { confirmSignOut = false }
 }

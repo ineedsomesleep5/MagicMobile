@@ -74,6 +74,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -99,6 +100,22 @@ import io.magicmobile.android.game.RankState
 import io.magicmobile.android.game.RankTier
 import io.magicmobile.android.game.RankedMatchmaker
 import io.magicmobile.android.social.PlayerProfileCard
+import io.magicmobile.android.game.ArenaProfileRules
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaButtonText
+import io.magicmobile.android.menus.ArenaCaps
+import io.magicmobile.android.menus.ArenaEmblem
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.ArenaPillButton
+import io.magicmobile.android.menus.ArenaSegmented
+import io.magicmobile.android.menus.ArenaTabBar
+import io.magicmobile.android.menus.arenaCard
+import io.magicmobile.android.menus.arenaGlassPanel
+import io.magicmobile.android.menus.arenaScrollFade
+import io.magicmobile.android.menus.arenaShadow
+import androidx.compose.ui.composed
 import io.magicmobile.android.ui.BrandBackdrop
 import io.magicmobile.android.ui.BrandTheme
 import io.magicmobile.android.ui.CommanderDeckPortrait
@@ -151,7 +168,6 @@ val CommanderBracket.tint: Color get() = when (this) {
     CommanderBracket.UPGRADED -> rgb(0.95, 0.75, 0.30); CommanderBracket.OPTIMIZED -> rgb(0.95, 0.42, 0.25); CommanderBracket.CEDH -> rgb(0.75, 0.35, 0.95)
 }
 
-private val parchmentInk = TavernPalette.ink
 private val brassLabel = rgb(0.74, 0.46, 0.16)
 private val good = rgb(0.6, 0.95, 0.55)
 private val bad = rgb(1.0, 0.55, 0.45)
@@ -299,32 +315,84 @@ fun BracketTag(bracket: CommanderBracket, short: Boolean = false, leather: Boole
 
 // MARK: - Page chrome
 
+/**
+ * A lobby page's head (PlayModeViews.swift TavernScreenHeader). In the Arena menus: a back chevron where the page has
+ * somewhere to go back to (`showsBack` false on a page a top-bar tab reaches) and the title in large type on the page, no bar.
+ * Elsewhere the tavern's leather title bar, which always keeps its chevron.
+ */
 @Composable
-fun TavernScreenHeader(title: String, back: () -> Unit, backTitle: String = "Main menu") {
+fun TavernScreenHeader(title: String, back: () -> Unit, backTitle: String = "Main menu", showsBack: Boolean = true,
+                       trailing: @Composable () -> Unit = {}) {
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (showsBack) Box(Modifier.size(40.dp, 44.dp).clickable { GameAudio.play(GameSound.UI_BACK); back() }
+                .semantics { contentDescription = backTitle; role = androidx.compose.ui.semantics.Role.Button }.testTag("lobby.back"),
+                contentAlignment = Alignment.Center) { SfImage("chevron.left", ArenaMenuStyle.text, 17.dp) }
+            FitText(title, ArenaMenuStyle.font(24f, SfWeight.bold).arenaShadow(2f), Modifier.weight(1f).semantics { heading() },
+                color = ArenaMenuStyle.text, minimumScale = 0.7f)
+            trailing()
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth().tavernTitleBar(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.size(44.dp).clickable { GameAudio.play(GameSound.UI_BACK); back() }.semantics { contentDescription = backTitle }.testTag("lobby.back"),
             contentAlignment = Alignment.Center) { SfImage("chevron.left", TavernPalette.brass, 15.dp) }
-        TavernPanelTitle(title, Modifier.semantics { heading() })
+        TavernPanelTitle(title, Modifier.weight(1f).semantics { heading() })
+        trailing()
     }
 }
 
-fun Modifier.parchmentCard(): Modifier = this.fillMaxWidth()
-    .glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp)
-    .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(12.dp), overlayBrush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.12f))))
-    .tavernBrassFrame(1f)
-    .padding(16.dp)
+/** A parchment card in brass trim: the lobby's sections. Glass in the Arena menus (TavernParchmentCard). Words take [parchmentCardInk]. */
+fun Modifier.parchmentCard(): Modifier = composed {
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) arenaCard(16.dp)
+    else fillMaxWidth()
+        .glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp)
+        .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(12.dp), overlayBrush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.12f))))
+        .tavernBrassFrame(1f)
+        .padding(16.dp)
+}
 
-fun Modifier.leatherCard(): Modifier = this.fillMaxWidth().glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).tavernPanel(12.dp).padding(16.dp)
+/** The ink of words on a [parchmentCard]: dark on parchment, light on Arena's glass. */
+val parchmentCardInk: Color @Composable get() = if (io.magicmobile.android.menus.LocalArenaBoard.current) ArenaMenuStyle.text else TavernPalette.ink
 
+/** A leather card in brass trim, for controls in parchment-coloured text. Glass in the Arena menus (TavernLeatherCard). */
+fun Modifier.leatherCard(): Modifier = composed {
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) arenaCard(16.dp)
+    else fillMaxWidth().glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).tavernPanel(12.dp).padding(16.dp)
+}
+
+/**
+ * The page every lobby screen uses (PlayModeViews.swift TavernLobbyPage): the header on top, the content centred and capped.
+ * An empty `title` with `showsBack` false in the Arena menus leaves the header out (the profile's name is its headline).
+ * `contentWidth` widens the cap for a page laid out in columns sideways; `scrolls` false gives the content the page below
+ * the title to lay out and scroll in its own columns. In the Arena menus the scroll fades at its foot.
+ */
 @Composable
-fun TavernLobbyPage(title: String, back: () -> Unit, backTitle: String = "Main menu", content: @Composable ColumnScope.() -> Unit) {
+fun TavernLobbyPage(title: String, back: () -> Unit, backTitle: String = "Main menu", showsBack: Boolean = true, contentWidth: Dp? = null,
+                    scrolls: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+    val arena = io.magicmobile.android.menus.LocalArenaBoard.current
+    val cap = contentWidth ?: if (arena) 760.dp else 640.dp
     Box(Modifier.fillMaxSize()) {
         // Inside the Arena menu shell the room is already drawn behind the page.
-        if (!io.magicmobile.android.menus.LocalArenaMenuBackdrop.current) BrandBackdrop(Modifier.fillMaxSize(), cards = false)
+        if (!io.magicmobile.android.menus.LocalArenaMenuBackdrop.current) {
+            if (arena) io.magicmobile.android.menus.ArenaRoomBackdrop(0.6f) else BrandBackdrop(Modifier.fillMaxSize(), cards = false)
+        }
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Box(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { TavernScreenHeader(title, back, backTitle) }
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+            if (title.isNotEmpty() || showsBack || !arena) {
+                Box(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { TavernScreenHeader(title, back, backTitle, showsBack || !arena) }
+            }
+            if (scrolls) {
+                Column(Modifier.fillMaxWidth().weight(1f).then(if (arena) Modifier.arenaScrollFade() else Modifier)
+                    .verticalScroll(rememberScrollState()).testTag("lobby.scroll"), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.widthIn(max = cap).fillMaxWidth().padding(16.dp).padding(bottom = if (arena) 20.dp else 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+                }
+            } else {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopCenter) {
+                    Column(Modifier.widthIn(max = cap).fillMaxSize().padding(horizontal = 16.dp).padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+                }
             }
         }
     }
@@ -348,9 +416,9 @@ fun DeckBracketSheet(deckName: String, report: BracketReport, declared: Commande
                 TavernSealButton(close, Modifier.testTag("bracket.close"), contentDescription = "Done")
             }
             Column(Modifier.parchmentCard(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(deckName, color = parchmentInk, style = sf(20f, SfWeight.black, SfDesign.SERIF))
+                Text(deckName, color = parchmentCardInk, style = sf(20f, SfWeight.black, SfDesign.SERIF))
                 BracketTag(effective, leather = false)
-                Text(effective.blurb, color = parchmentInk.copy(alpha = 0.8f), style = sf(14f, SfWeight.regular, SfDesign.SERIF))
+                Text(effective.blurb, color = parchmentCardInk.copy(alpha = 0.8f), style = sf(14f, SfWeight.regular, SfDesign.SERIF))
             }
             Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionLabel("What the list shows")
@@ -402,16 +470,16 @@ fun RankProgressPanel(change: RankChange) {
         change.outcome == RankOutcome.LOSS -> "No pips to lose"
         else -> "No change"
     }
-    Row(Modifier.fillMaxWidth().tavernFill(TavernMaterial.LEATHER, RoundedCornerShape(10.dp), overlay = Color.Black.copy(alpha = 0.3f)).tavernBrassFrame(0.5f)
+    Row(Modifier.fillMaxWidth().arenaGlassPanel(12.dp, 0.95f)
         .padding(12.dp).testTag("rank.progress").semantics(mergeDescendants = true) { contentDescription = "Ranked: ${change.after.title}. $deltaText" },
         horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
         RankBadge(position, 64.dp, showsPips = false)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(position.title, style = sf(18f, SfWeight.black, SfDesign.SERIF).copy(brush = Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.62), position.tier.tint))))
-            if (position.tier == RankTier.MYTHIC) Text("🔥 ${position.pips}", color = position.tier.tint, style = sf(14f, SfWeight.heavy, SfDesign.SERIF))
+            if (position.tier == RankTier.MYTHIC) Text("🔥 ${position.pips}", color = position.tier.tint, style = ArenaMenuStyle.font(14f, SfWeight.heavy))
             else RankPips(position.pips, position.tier, 13.dp, highlight = if (shown == change.before.points) null else if (delta >= 0) position.pips - 1 else position.pips)
             Text(deltaText, color = if (delta > 0) good else if (delta < 0) bad else TavernPalette.parchment.copy(alpha = 0.7f),
-                style = sf(12f, SfWeight.heavy, SfDesign.SERIF))
+                style = ArenaMenuStyle.font(12f, SfWeight.heavy))
             if (change.bonuses.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (bonus in change.bonuses) TavernTag(if (bonus == RankBonus.STREAK) "Win streak +1" else "Underdog +1", leather = true, accent = TavernPalette.ember)
             }
@@ -469,13 +537,13 @@ fun RankCeremonyOverlay(change: RankChange, done: () -> Unit) {
             }
             Column(Modifier.alpha(if (stage >= 3) 1f else 0f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (promoted) (if (tierChange) "NEW RANK" else "RANKED UP") else "RANKED DOWN",
-                    color = if (promoted) TavernPalette.brass else rgb(0.85, 0.4, 0.35), style = sf(15f, SfWeight.black, SfDesign.SERIF, tracking = 4f))
+                    color = if (promoted) TavernPalette.brass else rgb(0.85, 0.4, 0.35), style = sf(15f, SfWeight.black, tracking = 4f))
                 Text(change.after.title, style = sf(40f, SfWeight.black, SfDesign.SERIF).copy(brush = Brush.verticalGradient(listOf(Color.White, change.after.tier.tint))))
                 Text(if (promoted) "Your opponents grow stronger." else "Win your next games to climb back.", color = TavernPalette.parchment.copy(alpha = 0.8f),
-                    style = sf(14f, SfWeight.medium, SfDesign.SERIF), textAlign = TextAlign.Center)
+                    style = ArenaMenuStyle.font(14f, SfWeight.medium), textAlign = TextAlign.Center)
             }
-            if (finished) TavernButton({ GameAudio.play(GameSound.UI_CONFIRM); done() }, Modifier.width(180.dp).testTag("rank.ceremony.continue"),
-                fontSize = 18f) { TavernButtonText("Continue") }
+            if (finished) ArenaButton({ done() }, Modifier.width(180.dp), ArenaButtonKind.PRIMARY, identifier = "rank.ceremony.continue",
+                fontSize = 18f, fullWidth = true) { ArenaButtonText("Continue") }
             else Spacer(Modifier.height(44.dp))
         }
     }
@@ -532,190 +600,6 @@ private fun Cracks(modifier: Modifier) {
             val path = Path().apply { line.forEachIndexed { i, (x, y) -> if (i == 0) moveTo(x * size.width, y * size.height) else lineTo(x * size.width, y * size.height) } }
             drawPath(path, Color.Black.copy(alpha = 0.85f), style = Stroke(3.dp.toPx()))
             drawPath(path, Color.White.copy(alpha = 0.35f), style = Stroke(1.dp.toPx()))
-        }
-    }
-}
-
-// MARK: - Profile
-
-/** The profile picture choices: most played (the default), commanders played, then the player's decks. */
-private fun commanderSections(stats: PlayerStats, deckCommanders: List<String>, current: String?): List<TavernPickerSection<String?>> {
-    val played = stats.commanders.take(12).map { it.label }
-    val seen = played.toMutableSet()
-    val decks = deckCommanders.filter { it.isNotBlank() && seen.add(it) }
-    return buildList {
-        add(TavernPickerSection(null, listOf<Pair<String, String?>>("Most played" to null) + played.map { it to it }))
-        if (decks.isNotEmpty()) add(TavernPickerSection("Your decks", decks.map { it to it }))
-        // A choice from a deck since deleted stays selectable.
-        if (current != null && current !in seen) add(TavernPickerSection(null, listOf<Pair<String, String?>>(current to current)))
-    }
-}
-
-/** A profile picture: the commander's illustration alone (no card frame) in the table's brass ring. */
-@Composable
-fun CommanderArtMedallion(name: String?, diameter: Dp, modifier: Modifier = Modifier) {
-    val placeholder: @Composable () -> Unit = {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { PersonGlyph(TavernPalette.parchment.copy(alpha = 0.55f), diameter * 0.42f) }
-    }
-    io.magicmobile.android.board.TavernMedallion(diameter, null, modifier.semantics { contentDescription = name?.let { "Profile picture: $it" } ?: "Profile picture" }) {
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(io.magicmobile.android.ui.MagicPalette.iron, io.magicmobile.android.ui.MagicPalette.leather)))) {
-            if (!name.isNullOrBlank()) io.magicmobile.android.CardArtwork(name, Modifier.fillMaxSize(), artOnly = true, placeholder = placeholder) else placeholder()
-        }
-    }
-}
-
-private enum class ResultFilter(val title: String) {
-    ALL("All"), WINS("Wins"), LOSSES("Losses"), DRAWS("Draws");
-    fun includes(outcome: RankOutcome) = when (this) {
-        ALL -> true; WINS -> outcome == RankOutcome.WIN; LOSSES -> outcome == RankOutcome.LOSS; DRAWS -> outcome == RankOutcome.DRAW
-    }
-}
-
-/**
- * The player's own profile, made to be looked at (PlayerProfileView in ProfileView.swift): rank and its history, the record as a
- * ring, games over time, the commanders played most (as art), color identity, streaks, a shelf of trophies and the latest games as
- * cards. A game with a saved detailed record opens the match dashboard.
- */
-@Composable
-fun PlayerProfileScreen(store: PlayerRecordStore, account: io.magicmobile.android.social.PlayerAccount, playerName: String, deckCommanders: List<String> = emptyList(),
-                        loadMetadata: suspend () -> io.magicmobile.android.studio.NativeDeckMetadataCatalogue? = { null }, back: () -> Unit) {
-    val file = store.file
-    val stats = remember(file.matches) { PlayerStats(file.matches) }
-    val unlocked = remember(file.matches, file.rank) { Achievement.unlocked(file.matches, file.rank) }
-    var deckFilter by remember { mutableStateOf<String?>(null) }
-    var resultFilter by remember { mutableStateOf(ResultFilter.ALL) }
-    var showAll by remember { mutableStateOf(false) }
-    val details = rememberProfileGameDetails()
-    var review by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioRecordedGame?>(null) }
-    var metadata by remember { mutableStateOf<io.magicmobile.android.studio.NativeDeckMetadataCatalogue?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var previewAsOthers by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { store.refreshSeason() }
-    val scoped = remember(file.matches, deckFilter) { deckFilter?.let { id -> file.matches.filter { it.deckID == id } } ?: file.matches }
-    val summary = remember(scoped, file.matches, deckFilter) {
-        // The rank history is the ranked standings, whatever deck the totals are narrowed to.
-        ProfileSummary.of(scoped).let { if (deckFilter != null) it.copy(rankPoints = ProfileSummary.of(file.matches).rankPoints) else it }
-    }
-    Box(Modifier.fillMaxSize()) {
-        TavernLobbyPage("Profile", back) {
-            Row(Modifier.leatherCard(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                CommanderArtMedallion(store.shownCommander, 78.dp, Modifier.testTag("profile.picture"))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FitText(playerName.ifBlank { "Player" }, sf(24f, SfWeight.black, SfDesign.SERIF), Modifier.testTag("profile.name"), color = TavernPalette.parchment, minimumScale = 0.7f)
-                    TavernPicker("Title", file.title, listOf(TavernPickerSection(null, listOf<Pair<String, Achievement?>>("No title" to null) +
-                        Achievement.entries.filter { it in unlocked }.map { it.title to it })), { store.setTitle(it) }, Modifier.testTag("profile.title"))
-                    TavernPicker("Profile picture", file.favoriteCommander, commanderSections(stats, deckCommanders, file.favoriteCommander),
-                        { store.setFavoriteCommander(it) }, Modifier.testTag("profile.commander"))
-                }
-            }
-            Column(Modifier.leatherCard().testTag("profile.season"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ProfileRankSummary(file.rank.position, RankLadder.seasonName(file.rank.season), file.rank.wins, file.rank.losses, file.rank.peak)
-                Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.4f)))
-                ProfileSectionTitle("Rank history")
-                if (summary.rankPoints.isEmpty()) ProfileEmptyNote("Play ranked games to chart your climb.", "chart.bar.fill")
-                else RankHistoryChart(summary.rankPoints)
-                if (file.rank.history.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.4f)))
-                    for (past in file.rank.history.take(4)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RankEmblem(past.peak.tier, 22.dp)
-                        Text("${RankLadder.seasonName(past.season)}: ${past.peak.title}", Modifier.weight(1f), color = TavernPalette.parchment, style = sf(13f, SfWeight.regular, SfDesign.SERIF))
-                        Text("${past.wins}–${past.losses}", Modifier.alpha(0.7f), color = TavernPalette.parchment, style = sf(12f, SfWeight.regular, SfDesign.SERIF))
-                    }
-                }
-            }
-            if (stats.decks.size > 1) ChipRow(Modifier.testTag("profile.filter.decks")) {
-                ProfileChip("All decks", deckFilter == null, "profile.filter.deck.all", { deckFilter = null; showAll = false }, detail = "${file.matches.size}")
-                for (deck in stats.decks.take(8)) ProfileChip(deck.label, deckFilter == deck.id, "profile.filter.deck.${deck.id}", { deckFilter = deck.id; showAll = false }, detail = "${deck.games}")
-            }
-            Column(Modifier.leatherCard().testTag("profile.stats"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ProfileSectionTitle(deckFilter?.let { id -> stats.decks.firstOrNull { it.id == id }?.label } ?: "Record", "${summary.games} games")
-                if (summary.games == 0) ProfileEmptyNote("Your games show here after you play.")
-                else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        WinRateRing(summary.wins, summary.losses, summary.draws, 118.dp)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ProfileStatTile("Wins", "${summary.wins}", Modifier.weight(1f)); ProfileStatTile("Losses", "${summary.losses}", Modifier.weight(1f))
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ProfileStatTile("Draws", "${summary.draws}", Modifier.weight(1f))
-                                ProfileStatTile("Avg. turns", summary.averageTurns?.let { "%.1f".format(it) } ?: "–", Modifier.weight(1f))
-                            }
-                        }
-                    }
-                    StreakRow(summary.currentStreak, summary.bestStreak)
-                }
-            }
-            Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileSectionTitle("Games over time", "last 8 weeks")
-                if (summary.weeks.all { it.games == 0 }) ProfileEmptyNote("Nothing played in the last eight weeks.", "hourglass")
-                else {
-                    WeeklyBars(summary.weeks)
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        for ((color, text) in listOf(ProfilePalette.win to "Won", ProfilePalette.loss to "Not won")) Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(9.dp).background(color, CircleShape))
-                            Text(text, Modifier.alpha(0.75f), color = TavernPalette.parchment, style = sf(11f, SfWeight.semibold, SfDesign.SERIF))
-                        }
-                    }
-                }
-            }
-            if (summary.commanders.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileSectionTitle("Most played commanders")
-                CommanderTiles(summary.commanders)
-            }
-            if (summary.colors.isNotEmpty()) Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileSectionTitle("Color identity")
-                ColorPie(summary.colors)
-            }
-            Column(Modifier.leatherCard().testTag("profile.achievements"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileSectionTitle("Trophies", "${unlocked.size}/${Achievement.entries.size}")
-                TrophyShelf(unlocked)
-            }
-            val visible = scoped.filter { resultFilter.includes(it.outcome) }
-            Column(Modifier.leatherCard().testTag("profile.history"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileSectionTitle("Recent games", "${visible.size} shown")
-                ChipRow { for (filter in ResultFilter.entries) ProfileChip(filter.title, resultFilter == filter, "profile.filter.result.${filter.name.lowercase()}", { resultFilter = filter; showAll = false }) }
-                if (file.matches.isEmpty()) ProfileEmptyNote("Your games show here after you play.")
-                else if (visible.isEmpty()) ProfileEmptyNote("No games match these filters.", "line.3.horizontal.decrease")
-                for (match in visible.take(if (showAll) 40 else 6)) {
-                    val recorded = match.engineMatchID?.let { details.byMatch[it] }
-                    ProfileGameCard(ProfileGame.of(match), recorded?.let { "deckHistory.match.${it.id}.expand" } ?: "profile.game.${match.id}",
-                        onOpenDetail = recorded?.let { game -> {
-                            review = game
-                            if (metadata == null) scope.launch { metadata = loadMetadata() }
-                        } })
-                }
-                if (visible.size > 6) TavernPlaqueButton(if (showAll) "Show fewer" else "Show more", { showAll = !showAll }, Modifier.testTag("profile.games.more"), kind = TavernButtonKind.SECONDARY)
-            }
-            AccountSignInCard(account)
-            // Who may open this profile: Public (the default), Friends only or Private. The server enforces it.
-            val signedIn = account.phase == io.magicmobile.android.social.PlayerAccount.Phase.READY && account.username != null
-            Column(Modifier.leatherCard().testTag("profile.privacyCard"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProfileSectionTitle("Who can see your profile")
-                Box(Modifier.alpha(if (signedIn && account.visibilityKnown) 1f else 0.55f)) {
-                    ProfileSegmented(io.magicmobile.android.game.ProfileVisibility.entries.map { visibility ->
-                        SegmentOption(visibility, visibility.title, when (visibility) {
-                            io.magicmobile.android.game.ProfileVisibility.PUBLIC -> "globe"; io.magicmobile.android.game.ProfileVisibility.FRIENDS -> "person.2.fill"
-                            io.magicmobile.android.game.ProfileVisibility.PRIVATE -> "hand.raised"
-                        }, "profile.privacy.${visibility.raw}")
-                    }, account.visibility, "profile.privacy") { choice -> if (signedIn && account.visibilityKnown) scope.launch { account.setVisibility(choice) } }
-                }
-                Text(when {
-                    !signedIn -> "Choose your player name in Friends to share a profile with other players."
-                    !account.visibilityKnown -> "Privacy settings arrive with the next server update. Until then your profile stays as it is."
-                    else -> account.visibility.detail
-                }, Modifier.alpha(0.8f).testTag("profile.privacy.note"), color = TavernPalette.parchment, style = sf(12f, SfWeight.regular, SfDesign.SERIF))
-                if (signedIn && account.profilesAvailable) TavernPlaqueButton("See it as others do", { previewAsOthers = true }, Modifier.testTag("profile.privacy.preview"), kind = TavernButtonKind.SECONDARY)
-            }
-            Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) { ProfileHistorySettings(details) }
-        }
-        if (previewAsOthers) account.username?.let { name ->
-            androidx.compose.ui.window.Dialog({ previewAsOthers = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
-                PublicProfileScreen(account, name, null, null) { previewAsOthers = false }
-            }
-        }
-        io.magicmobile.android.studio.StudioCover(review != null) {
-            review?.let { game -> io.magicmobile.android.studio.MatchHistoryDashboard(game, false, metadata) { review = null } }
         }
     }
 }
