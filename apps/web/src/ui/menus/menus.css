@@ -597,3 +597,20 @@
 .mguestseats em.ready { color: #1c0f08; background: linear-gradient(#ffe08f, #cc8f38); border-color: transparent; }
 .mguestactions { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 6px; }
 .mguestready { width: 180px; height: 44px; }
+
+/* Account cards (AccountSignInCard, privacy) */
+.mprofilenote { margin: 0; font: 400 13px/1.45 var(--sans); opacity: .85; }
+.mprofilenote.warn { color: var(--loss); opacity: 1; }
+.midentity { margin: 0; font: 600 14px/1.3 var(--sans); }
+.mgoogle { width: 18px; height: 18px; margin-right: 8px; }
+.mprivacy { display: flex; position: relative; }
+.mprivacy::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px; background: var(--hair); opacity: .35; }
+.mprivacy > button { position: relative; flex: 1; height: 44px; font: 600 14px/1 var(--sans) !important; color: var(--dim) !important; }
+.mprivacy > button.on { color: var(--text) !important; font-weight: 700 !important; }
+.mprivacy > button.on .mtabbar { opacity: 1; }
+.mprivacy.off { opacity: .55; }
+.mquestion { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: rgba(0,0,0,.45); border: 1px solid var(--hair); }
+.mquestion b { font: 700 16px/1.2 var(--serif); }
+.mquestion p { margin: 0; font: 500 13px/1.4 var(--sans); color: var(--dim); }
+.mquestion > div { display: flex; gap: 10px; justify-content: flex-end; }
+.mnameplate.locked { border-bottom-color: transparent; }

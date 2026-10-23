@@ -5,7 +5,7 @@
  * mode the table rolls D20s (the player taps their own die, the AI's rolls itself) and answers it with the winner.
  */
 import { EngineClient } from "../core/engineClient";
-import { arr, EngineError, get, type J, type JObject, str } from "../core/json";
+import { arr, EngineError, EngineJson, get, type J, type JObject, str } from "../core/json";
 import type { GameSnapshot } from "../core/models";
 import { loadSmartPass } from "../core/smartPass";
 import { storage } from "../ui/storage";
@@ -28,6 +28,8 @@ export interface SoloSetup {
   /** 1–10, the phones' AI skill control (PROTOCOL.md). */
   aiSkill: number;
   startingPlayerMode: StartingPlayerMode;
+  /** A ranked game's server seed (its ticket), sent when the engine keeps game records (PROTOCOL.md "Game record"). */
+  seed?: bigint;
 }
 
 export const SOLO_SEAT = "player1";
@@ -36,7 +38,7 @@ export const AI_SEAT = "player2";
 export const AI_NAME = "AI 1";
 
 /** OnDeviceAppConfiguration.aiGameSeats: the human in player1, AI 1–3 after; the apps send only aiSkill, no seeds. */
-export function soloConfiguration(setup: SoloSetup): JObject {
+export function soloConfiguration(setup: SoloSetup, keepsRecords = false): JObject {
   if (setup.aiDecks.length < 1 || setup.aiDecks.length > 3) throw EngineError.invalid("Choose 1–3 AI opponents.");
   if (!Number.isInteger(setup.aiSkill) || setup.aiSkill < 1 || setup.aiSkill > 10) throw EngineError.invalid("Choose AI skill from 1–10.");
   return {
@@ -44,6 +46,7 @@ export function soloConfiguration(setup: SoloSetup): JObject {
       { seatId: SOLO_SEAT, name: setup.name, controller: "human", deck: setup.deck },
       ...setup.aiDecks.map((deck, index) => ({ seatId: `player${index + 2}`, name: `AI ${index + 1}`, controller: "ai", deck, aiSkill: setup.aiSkill })),
     ],
+    ...(setup.seed !== undefined && keepsRecords ? { seed: EngineJson.integer(setup.seed) } : {}),
   };
 }
 
@@ -68,6 +71,20 @@ export class SoloTable implements GameTable {
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private unsubscribeEngine?: () => void;
   private left = false;
+  private client?: EngineClient;
+  private keepsRecords = false;
+
+  /**
+   * The finished game's record (the engine's `record` op), fetched before the match is destroyed; undefined on engines
+   * without game records or when recording stopped (`broken`). Local only: a ranked result uploads it.
+   */
+  async gameRecord(): Promise<J | undefined> {
+    if (!this.keepsRecords || !this.client || !this.matchID) return undefined;
+    try {
+      const record = await this.client.call("record", { matchId: this.matchID });
+      return get(record, "format") === "magicmobile-game-record" && get(record, "broken") === undefined ? record : undefined;
+    } catch { return undefined; }
+  }
 
   /** `onLeave` returns to the setup screen; `onRematch` starts a new game with the same setup. */
   constructor(private readonly engine: LocalEngine, readonly setup: SoloSetup, private readonly onLeave: () => void,
@@ -100,7 +117,9 @@ export class SoloTable implements GameTable {
       // The engine's optional answer actions (remembered answers, trigger order, pass after casting).
       const capabilities = await client.call("capabilities").catch(() => undefined);
       const answerActions = (arr(get(capabilities, "answerActions")) ?? []).map((a) => str(a)).filter((a): a is string => a !== undefined);
-      const created = await client.call("create", { configuration: soloConfiguration(this.setup) });
+      this.keepsRecords = get(capabilities, "gameRecord") !== undefined;
+      this.client = client;
+      const created = await client.call("create", { configuration: soloConfiguration(this.setup, this.keepsRecords) });
       const matchID = str(get(created, "matchId"));
       if (!matchID) throw EngineError.invalid("The engine did not name the new match.");
       this.matchID = matchID;

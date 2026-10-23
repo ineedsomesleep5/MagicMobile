@@ -15,6 +15,8 @@ import { SoloTable, type SoloSetup } from "../../table/soloTable";
 import { gameAudio } from "../audio";
 import { GameScreen } from "../GameScreen";
 import { storage } from "../storage";
+import { AccountSignInCard, PrivacyCard } from "./AccountCards";
+import { account, completeGoogleSignIn, connectRecord, useAccount } from "./accountSession";
 import { CustomTable, type AIDeckGroup } from "./CustomTable";
 import type { DeckBoxModel } from "./DeckBox";
 import { DecksPage } from "./DecksPage";
@@ -52,7 +54,11 @@ const useEngine = (engine: LocalEngine) => {
 /** A name the table accepts (OnDeviceSetupModel.playerName): 1–24 characters once trimmed. */
 const validPlayerName = (name: string) => name.trim().length >= 1 && name.trim().length <= 24;
 
-interface ActiveGame { table: SoloTable; key: number; mode: PlayMode; deck: AIDeck; deckBracket: number; opponents: AIDeck[]; skill: number }
+interface ActiveGame {
+  table: SoloTable; key: number; mode: PlayMode; deck: AIDeck; deckBracket: number; opponents: AIDeck[]; skill: number;
+  /** A ranked game's server ticket: its result settles there with the game record. */
+  ticket?: { id: string; seeded: boolean };
+}
 
 export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   data: MenuData; onJoin: (code: string, name: string, deck: DeckList) => void; initialJoinCode?: string;
@@ -64,6 +70,20 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   const record = useMemo(() => new PlayerRecordStore(storage), []);
   const [recordVersion, setRecordVersion] = useState(0);
   useEffect(() => { record.refreshSeason(); setRecordVersion((v) => v + 1); }, [record]);
+  // The player's account: a page coming back from Google finishes signing in and opens the profile; then the profile,
+  // friends and rank load, and each refresh settles ranked results and sends finished games.
+  const player = useAccount();
+  const server = useMemo(() => connectRecord(record, () => setRecordVersion((v) => v + 1)), [record]);
+  useEffect(() => {
+    void completeGoogleSignIn().then((signedIn) => {
+      if (signedIn) { setMenuTab("profile"); setPlayPanel(false); setCustom(false); }
+      else if (account.state.phase === "idle") void account.start();
+    });
+    const visible = () => account.setForeground(document.visibilityState === "visible");
+    visible();
+    document.addEventListener("visibilitychange", visible);
+    return () => document.removeEventListener("visibilitychange", visible);
+  }, []);
 
   const { pool } = data;
   // Every deck by its selection id: the precons, then the included decks (the phones' "precon:…" and "included:…").
@@ -134,18 +154,23 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
 
   // MARK: Starting and recording games
 
-  const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number) => {
+  const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number, ticket?: { id: string; seed: bigint }) => {
     if (!deck || deckBracket === undefined) return;
     setError(undefined);
     try {
       const setup: SoloSetup = {
-        name: (name.trim() || "Player").slice(0, 24), deck: data.resolver.resolve(deck.deckList),
+        name: (player.state.username ?? (name.trim() || "Player")).slice(0, 24), deck: data.resolver.resolve(deck.deckList),
         aiDecks: opponents.map((o) => data.resolver.resolve(o.deckList)), aiSkill: skill,
         startingPlayerMode: startingPlayerMode(gameMode, starting) as "roll" | "choose",
+        ...(ticket ? { seed: ticket.seed } : {}),
       };
+      // A rematch is a new game: a ranked one draws a new ticket through Find Match, so only the first carries this one.
+      let first = true;
       const open = (key: number) => {
         const table: SoloTable = new SoloTable(engine, setup, () => setGame(undefined), () => open(key + 1));
-        setGame({ table, key, mode: gameMode, deck, deckBracket, opponents, skill });
+        const carried = first && ticket ? { id: ticket.id, seeded: true } : undefined;
+        first = false;
+        setGame({ table, key, mode: gameMode, deck, deckBracket, opponents, skill, ticket: carried });
         void table.start();
       };
       setPlayPanel(false); setCustom(false);
@@ -172,7 +197,11 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     const tier = rank.position.tier;
     const opponent = pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
       preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
-    if (opponent) begin("ranked", [opponent], RankTier.aiSkill(tier));
+    if (!opponent) return;
+    // Signed in, the server issues the game's ticket and seed so the result counts there too (startRankedAIGame).
+    if (player.state.phase === "ready" && player.state.username) {
+      void account.startRankedAIGame(deckBracket).then((ticket) => begin("ranked", [opponent], RankTier.aiSkill(tier), ticket ?? undefined));
+    } else begin("ranked", [opponent], RankTier.aiSkill(tier));
   };
 
   const startCustom = () => {
@@ -201,6 +230,12 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       });
       if (change) setRankChange({ key: game.key, change });
       sample.current?.finish(snapshot.turn);
+      // A ranked ticket's result waits with the game's record until the server settles it; then everything goes up.
+      void (async () => {
+        if (game.ticket) record.addPendingRanked({ ticket: game.ticket.id, outcome, date: Date.now(), seeded: game.ticket.seeded }, await game.table.gameRecord());
+        await server.afterGame();
+        setRecordVersion((v) => v + 1);
+      })();
       setRecordVersion((v) => v + 1);
     };
     const unsubscribe = game.table.subscribe(check);
@@ -279,7 +314,8 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       <div className="mpage" style={{ opacity: playPanel ? 0 : 1 }}>
         {page === "custom" && (
           <CustomTable model={{
-            deck: deck ? box(selectedDeckID, deck) : undefined, bracket: deckBracket, name, setName, validName: validPlayerName(name || "Player"),
+            deck: deck ? box(selectedDeckID, deck) : undefined, bracket: deckBracket, name: player.state.username ?? name, setName,
+            validName: validPlayerName(player.state.username ?? (name || "Player")), nameLocked: player.state.username !== undefined,
             playerMode, setPlayerMode, seats, setSeats, aiGroups, aiSkill, setAISkill, starting, setStarting, joinCode, setJoinCode,
             status: error ?? engineStatus, mayStart, start: startCustom,
             join: () => { if (deck) onJoin(joinCode, (name.trim() || "Player").slice(0, 24), deck.deckList); },
@@ -289,8 +325,9 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
         {page === "home" && <Home content={homeContent} still={covered} />}
         {page === "decks" && <DecksPage sections={sections} selectedDeckID={selectedDeckID} select={setSelectedDeckID} play={() => openPlay()} />}
         {page === "ranked" && <RankedPage rank={rank} record={record} play={() => openPlay("ranked")} />}
-        {page === "profile" && <ProfilePage record={record} playerName={name.trim() || "Player"} deckCommanders={pool.all.map((d) => d.commander)}
-          onChange={() => setRecordVersion((v) => v + 1)} />}
+        {page === "profile" && <ProfilePage record={record} playerName={player.state.username ?? (name.trim() || "Player")}
+          deckCommanders={pool.all.map((d) => d.commander)} onChange={() => { setRecordVersion((v) => v + 1); server.publish(); }}
+          account={<><AccountSignInCard /><PrivacyCard /></>} />}
       </div>
       {playPanel && <PlayPanel model={playModel} />}
       <TopBar selected={covered && lit ? undefined : panel === "learn" ? "learn" : custom ? undefined : menuTab} select={selectTab} lit={lit}

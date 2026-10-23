@@ -101,9 +101,14 @@ export const EngineJson = {
     }
     return value;
   },
+  /**
+   * A 64-bit integer the protocol needs exactly (a ranked game's seed), which a JS number can't hold past 2^53: a marked
+   * string in the value, written as a bare JSON integer by `encode`.
+   */
+  integer: (value: bigint): string => `\u0000int:${value.toString()}`,
   encode(value: J): string {
     validated(value);
-    const text = JSON.stringify(EngineJson.sorted(value));
+    const text = JSON.stringify(EngineJson.sorted(value)).replace(/"\\u0000int:(-?\d+)"/g, "$1");
     if (utf8Length(text) > WireLimits.maxJSONBytes) throw EngineError.messageTooLarge();
     return text;
   },

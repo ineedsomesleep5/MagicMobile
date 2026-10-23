@@ -7,9 +7,8 @@
  * Portrait pills at its foot, and Arena's Overview / Customization strip along the bottom. Title and portrait are
  * chosen in a glass panel. Charts are inline SVG.
  *
- * Left out for now: the account sign-in card, the privacy card and the saved-history settings (accounts come to the
- * web later), and the match dashboard (the web keeps no detailed game records), so a game card opens its details in
- * place.
+ * The account sign-in and privacy cards come from the shell (`account`). Left out: the saved-history settings and the
+ * match dashboard (the web keeps no detailed game records), so a game card opens its details in place.
  */
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Achievement, colorName, type MatchRecord, type PlayerRecordStore } from "../../core/playerRecord";
@@ -106,8 +105,10 @@ function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
 
 // MARK: The page
 
-export function ProfilePage({ record, playerName, deckCommanders, onChange }: {
+export function ProfilePage({ record, playerName, deckCommanders, onChange, account }: {
   record: PlayerRecordStore; playerName: string; deckCommanders: string[]; onChange: () => void;
+  /** The account and privacy cards, which follow the games (AccountSignInCard, privacyCard). */
+  account?: ReactNode;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [deckFilter, setDeckFilter] = useState<string>();
@@ -284,6 +285,7 @@ export function ProfilePage({ record, playerName, deckCommanders, onChange }: {
           </div>
         )}
       </Card>
+      {account}
     </>
   );
 

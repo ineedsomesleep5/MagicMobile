@@ -19,6 +19,8 @@ export interface CustomTableModel {
   name: string;
   setName: (name: string) => void;
   validName: boolean;
+  /** Your profile's player name: written on the plate, not edited here (setupNamePlate). */
+  nameLocked?: boolean;
   playerMode: "ai" | "online";
   setPlayerMode: (mode: "ai" | "online") => void;
   seats: string[];
@@ -58,12 +60,12 @@ export function CustomTable({ model }: { model: CustomTableModel }) {
                 {CommanderBracket.title(model.bracket)} <i>i</i>
               </button>
             )}
-            <label className="mnameplate">
-              <input value={model.name} maxLength={24} placeholder="Player name" spellCheck={false} autoComplete="nickname"
+            <label className={`mnameplate ${model.nameLocked ? "locked" : ""}`}>
+              <input value={model.name} maxLength={24} placeholder="Player name" spellCheck={false} autoComplete="nickname" readOnly={model.nameLocked}
                 onChange={(e) => model.setName(e.target.value)} data-id="ondevice.playerName" aria-label="Player name" />
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19zM14.5 6.5l3 3" /></svg>
+              {!model.nameLocked && <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19zM14.5 6.5l3 3" /></svg>}
             </label>
-            {!model.validName && <p className="mnote">Choose a name with 1–24 characters.</p>}
+            {!model.validName && !model.nameLocked && <p className="mnote">Choose a name with 1–24 characters.</p>}
             <Pill id="setup.changeDeck" onClick={model.changeDeck}>Change deck</Pill>
           </div>
         </section>

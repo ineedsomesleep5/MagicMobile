@@ -151,12 +151,19 @@ export const Achievement = {
   },
 } as const;
 
+/**
+ * A ranked game against the AI whose result the server hasn't confirmed yet (iOS PlayerRecordStore.pendingRankedResults):
+ * its ticket, the outcome, and with a seeded ticket the engine's game record, kept under `recordFile` until it is sent.
+ */
+export interface PendingRanked { ticket: string; outcome: RankOutcome; date: number; seeded?: boolean; recordFile?: string }
+
 interface RecordFile {
   rank: RankState;
   matches: MatchRecord[];
   title?: Achievement;
   favoriteCommander?: string;
   recentAIDecks?: string[];
+  pendingRankedResults?: PendingRanked[];
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -174,8 +181,9 @@ export interface FinishedGame {
 }
 
 /**
- * The player's profile in this browser (PlayerRecordStore, without the server parts: tickets, pending ranked
- * results, adopting the server's standing and kept game records). A malformed saved record starts fresh, like iOS.
+ * The player's profile in this browser (PlayerRecordStore): with an account, ranked results wait here with their game
+ * records until the server confirms them, and the server's standing replaces the browser's (adoptRank). A malformed
+ * saved record starts fresh, like iOS.
  */
 export class PlayerRecordStore {
   static readonly maxMatches = 300;
@@ -187,6 +195,7 @@ export class PlayerRecordStore {
   private _favoriteCommander?: string;
   /** The last AI decks faced, so the next pick is a different one. */
   private _recentAIDecks: string[];
+  private _pending: PendingRanked[];
 
   constructor(private readonly store: KeyValueStore, private readonly now: () => number = Date.now, private readonly key = PlayerRecordStore.key) {
     const season = RankLadder.season(now());
@@ -201,6 +210,8 @@ export class PlayerRecordStore {
     this._title = Achievement.all.includes(loaded.title as Achievement) ? loaded.title : undefined;
     this._favoriteCommander = typeof loaded.favoriteCommander === "string" ? loaded.favoriteCommander : undefined;
     this._recentAIDecks = Array.isArray(loaded.recentAIDecks) ? loaded.recentAIDecks.filter((id) => typeof id === "string") : [];
+    this._pending = Array.isArray(loaded.pendingRankedResults)
+      ? loaded.pendingRankedResults.filter((p) => isObject(p) && typeof p.ticket === "string" && ["win", "loss", "draw"].includes(p.outcome as string)) : [];
     if (this._rank !== loaded.rank) this.save();
   }
 
@@ -216,6 +227,36 @@ export class PlayerRecordStore {
   get achievements(): Set<Achievement> { return Achievement.unlocked(this._matches, this._rank); }
   /** The favorite commander chosen, or the one played most. */
   get shownCommander(): string | undefined { return this._favoriteCommander ?? this.stats.commanders[0]?.label; }
+
+  get pendingRankedResults(): readonly PendingRanked[] { return this._pending; }
+
+  /** The server's standing replaces this browser's (PlayerAccount.syncRank through adoptStanding). */
+  adoptRank(rank: RankState): void { this._rank = rank; this.save(); }
+
+  /** A finished ranked AI game to send, with its game record kept under its ticket. */
+  addPendingRanked(result: Omit<PendingRanked, "recordFile">, gameRecord?: unknown): void {
+    let recordFile: string | undefined;
+    if (gameRecord !== undefined) {
+      recordFile = `${this.key}.game.${result.ticket}`;
+      try { this.store.set(recordFile, JSON.stringify(gameRecord)); } catch { recordFile = undefined; }
+    }
+    this._pending = [...this._pending.filter((p) => p.ticket !== result.ticket), { ...result, ...(recordFile ? { recordFile } : {}) }];
+    this.save();
+  }
+
+  /** The kept game record for a pending result. */
+  gameRecord(name: string): unknown {
+    try { const raw = this.store.get(name); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; }
+  }
+
+  /** The server answered for this ticket (or never will): its record is dropped. */
+  resolvePendingRanked(ticket: string): void {
+    const done = this._pending.find((p) => p.ticket === ticket);
+    if (!done) return;
+    if (done.recordFile) { try { this.store.set(done.recordFile, ""); } catch { /* storage blocked */ } }
+    this._pending = this._pending.filter((p) => p.ticket !== ticket);
+    this.save();
+  }
 
   /** A new month started while the page was open. */
   refreshSeason(): void {
@@ -258,6 +299,7 @@ export class PlayerRecordStore {
       ...(this._title !== undefined ? { title: this._title } : {}),
       ...(this._favoriteCommander !== undefined ? { favoriteCommander: this._favoriteCommander } : {}),
       recentAIDecks: this._recentAIDecks,
+      ...(this._pending.length > 0 ? { pendingRankedResults: this._pending } : {}),
     };
     // The profile is a convenience; a failed save never interrupts play.
     try { this.store.set(this.key, JSON.stringify(file)); } catch { /* storage full or blocked */ }
