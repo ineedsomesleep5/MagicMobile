@@ -63,6 +63,7 @@ extension NativeGameView {
         .environment(\.tavernBoard, true)
         .environment(\.arenaBoard, true)
         .environment(\.arenaTableLean, ArenaTableLean(canvas: canvas))
+        .environment(\.arenaSafeArea, ArenaSafeArea(insets: rootProxy.safeAreaInsets))
         // Every new answer from XMage steps the helpers: its revision, a new prompt or the pending answer clearing.
         .modifier(ArenaAutoPayDriver(key: "\(snapshot.bridgeRevision ?? -1)|\(snapshot.promptEnvelopeV2?.id ?? "")|"
                                          + "\(snapshot.promptEnvelopeV2?.messageId ?? -1)|\(pendingActionId ?? "")",
@@ -907,7 +908,8 @@ extension NativeGameView {
             let bounds = CardChoicePlan.selectionBounds(modes.message)
             let firstLine = PromptDisplayText.clean(modes.message.components(separatedBy: "\n").first ?? "")
             ArenaModeBrowser(title: (modes.maxChoices ?? 1) > 1 ? "Choose modes" : "Choose a mode",
-                             detail: bounds.map { b in b.1 == Int.max ? "Tap a mode to add it" : "Tap a mode to add it · up to \(b.1), at least \(b.0)" }
+                             detail: bounds.map { b in b.1 == Int.max ? "Any number" : b.0 == b.1 ? "Choose \(b.1)"
+                                                          : b.0 > 0 ? "Up to \(b.1), at least \(b.0)" : "Up to \(b.1)" }
                                 ?? firstLine,
                              source: arenaModeSource(modes, snapshot: snapshot), modes: modes.modes ?? [], pending: pendingActionId != nil,
                              screen: canvas.screen,

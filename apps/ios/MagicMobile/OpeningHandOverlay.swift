@@ -53,11 +53,14 @@ struct OpeningHandOverlay: View {
         GeometryReader { proxy in
             let count = max(cards.count, 1)
             let landscape = proxy.size.width > proxy.size.height
+            // In landscape the hand keeps clear of the camera cutout's side (ArenaSafeArea).
+            let side = max(proxy.safeAreaInsets.leading, proxy.safeAreaInsets.trailing)
+            let available = proxy.size.width - (landscape && arena ? side * 2 : 0)
             let cap: CGFloat = arena ? (landscape ? min(150, proxy.size.height * 0.42 / BattlefieldLayoutMetrics.magicCardHeightToWidth) : 128) : 116
-            let width = min(cap, (proxy.size.width - 72) / (CGFloat(count) * 0.5 + 0.62))
+            let width = min(cap, (available - 72) / (CGFloat(count) * 0.5 + 0.62))
             let height = width * BattlefieldLayoutMetrics.magicCardHeightToWidth
             ZStack {
-                Color.black.opacity(arena ? 0.62 : 0.78).ignoresSafeArea()
+                Color.black.opacity(0.78).ignoresSafeArea()
                 if !arena {
                     RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.16), .clear], center: .center,
                                    startRadius: 10, endRadius: proxy.size.width * 0.7)
@@ -67,7 +70,9 @@ struct OpeningHandOverlay: View {
                 VStack(spacing: 14) {
                     Spacer(minLength: 0)
                     if arena {
+                        // Under the opponent's medallion in landscape, clear of the camera cutout upright.
                         arenaTitle(landscape: landscape)
+                            .padding(.top, landscape ? 44 : 0)
                     } else {
                         VStack(spacing: 4) {
                             Text("OPENING HAND")
@@ -81,7 +86,7 @@ struct OpeningHandOverlay: View {
                                 .accessibilityIdentifier("board.opening.message")
                         }
                     }
-                    fan(width: width, height: height, available: proxy.size.width)
+                    fan(width: width, height: height, available: available)
                         .frame(height: height * 1.2)
                         .padding(.bottom, 10)
                     HStack(spacing: 12) {

@@ -234,10 +234,9 @@ struct PlayerProfileView: View {
     /// One of the progression's emblem tiles: a gold emblem over its number and name.
     private func progressTile(_ value: String, _ label: String, symbol: String) -> some View {
         VStack(spacing: 6) {
-            ArenaEmblem(symbol: symbol, size: 18, lit: true)
-                .frame(width: 40, height: 40)
-                .background(Circle().fill(Color.black.opacity(0.45)))
-                .overlay(Circle().strokeBorder(ArenaMenuStyle.metal, lineWidth: 1.4))
+            // A plain gold emblem, as Arena's progression icons: no coin ring.
+            ArenaEmblem(symbol: symbol, size: 22, lit: true)
+                .frame(width: 40, height: 34)
             Text(value).font(.system(size: 19, weight: .bold, design: .serif)).monospacedDigit()
                 .foregroundStyle(ArenaMenuStyle.text).lineLimit(1).minimumScaleFactor(0.7)
             ArenaCaps(text: label, size: 8.5)

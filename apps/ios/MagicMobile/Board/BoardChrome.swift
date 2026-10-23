@@ -2786,16 +2786,19 @@ extension EnvironmentValues {
 struct RememberChoiceToggle: View {
     let title: String
     @Binding var isOn: Bool
+    /// On the Arena board: a gold diamond and light sans words, Arena's checkbox, no brass or parchment.
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
         Button { isOn.toggle() } label: {
             HStack(spacing: 7) {
-                Image(systemName: isOn ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(isOn ? TavernPalette.brass : TavernPalette.parchment.opacity(0.7))
+                Image(systemName: arena ? (isOn ? "diamond.fill" : "diamond") : (isOn ? "checkmark.square.fill" : "square"))
+                    .font(.system(size: arena ? 12 : 15, weight: .semibold))
+                    .foregroundStyle(arena ? (isOn ? ArenaMenuStyle.gold : ArenaGlass.text.opacity(0.7))
+                                     : (isOn ? TavernPalette.brass : TavernPalette.parchment.opacity(0.7)))
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold, design: .serif))
-                    .foregroundStyle(TavernPalette.parchment.opacity(0.92))
+                    .font(arena ? ArenaMenuStyle.font(13, .medium) : .system(size: 13, weight: .semibold, design: .serif))
+                    .foregroundStyle(arena ? ArenaGlass.text.opacity(0.9) : TavernPalette.parchment.opacity(0.92))
                     .lineLimit(2).minimumScaleFactor(0.85)
             }
             .frame(minHeight: 44, alignment: .leading)

@@ -562,3 +562,7 @@ contradicting one.
   Rules: don't let one function build a whole screen as a nested view, split it into erased layers or separate `View`
   structs; read the crash with `asc testflight crashes list --app 6784735182 --sort -createdDate` and
   `asc testflight crashes log --submission-id <id>` (sandbox off).
+- 2026-10-22 (Claude, Arena safe area): reading UIKit state in a SwiftUI body (`UIApplication...windows.first?.safeAreaInsets`,
+  for padding) made the Arena scry browser lose its cards, even though the padding value was the same as before.
+  Bisected to that one line. Pass measured insets down the environment instead: the Arena board sets `\.arenaSafeArea`
+  from its root GeometryProxy, and full-table layers read `safeArea.top(_:)` / `safeArea.side`.

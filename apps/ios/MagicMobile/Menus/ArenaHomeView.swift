@@ -179,7 +179,6 @@ struct ArenaFeaturePanel: View {
                         LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.88), location: 1)],
                                        startPoint: .top, endPoint: .bottom)
                         VStack(alignment: .leading, spacing: 4) {
-                            ArenaCaps(text: feature.kicker)
                             Text(feature.title).font(ArenaMenuStyle.title(24, .bold)).foregroundStyle(ArenaMenuStyle.text)
                                 .shadow(color: .black, radius: 3)
                                 .lineLimit(2).minimumScaleFactor(0.8)

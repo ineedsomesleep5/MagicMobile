@@ -456,7 +456,7 @@ struct CompactPromptPopup: View {
                 } label: {
                     PromptButtonLabel(
                         title: title,
-                        systemImage: action.systemImage,
+                        systemImage: stage ? nil : action.systemImage,
                         isPending: pendingActionId == action.id
                     )
                 }
@@ -484,7 +484,8 @@ struct CompactPromptPopup: View {
                 runCommand(command, label, pendingId)
             }
         } label: {
-            PromptButtonLabel(title: label, systemImage: systemImage, isPending: pendingActionId == pendingId)
+            // Arena's question pills carry words only.
+            PromptButtonLabel(title: label, systemImage: stage ? nil : systemImage, isPending: pendingActionId == pendingId)
         }
         // On the Arena question screen "No" and "Cancel" are leather, the rest ember.
         .buttonStyle(PanelActionButtonStyle(isPrimary: !stage || yesNoIcon(label) != "xmark.circle", compact: true))

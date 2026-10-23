@@ -118,7 +118,14 @@ the text below, and a loyalty badge for planeswalker abilities.
 
 ## Browser anatomy (all full-table screens)
 
-1. Dim the table; hide the corner buttons, caption and stack card (`browserOpen` in `NativeGameView+Arena.swift`).
+0. **Safe area (Caleb, 2026-10-22):** a full-table layer's dim ignores the safe area, but its content never does.
+   - Titles start at `ArenaSafeArea.top(minimum)`: below the camera cutout upright, and below the opponent's medallion
+     and plaque in landscape (minimum 50).
+   - In landscape the content keeps `ArenaSafeArea.side` on both sides, so cards never slide under the cutout.
+   - View Battlefield and Skip sit left of the gear in landscape (trailing 120), padded before they are placed.
+   - Use the helper, not fixed numbers.
+1. Dim the table to about 0.8 (0.86 under the result); hide the corner buttons, caption and stack card (`browserOpen` in
+   `NativeGameView+Arena.swift`).
 2. Title at the top (portrait: below "View Battlefield"); a line under it only for what the table can't show ("No
    cards", "Choose a card").
 3. The cards in the middle: one row in landscape (scrolls sideways), a grid of two or three columns in portrait.
