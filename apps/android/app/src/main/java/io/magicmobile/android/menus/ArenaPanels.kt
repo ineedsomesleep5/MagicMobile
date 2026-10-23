@@ -72,17 +72,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.BuildConfig
 import io.magicmobile.android.board.AutoPassAfterCast
+import io.magicmobile.android.board.BoardEffectsPicker
+import io.magicmobile.android.board.LocalArenaOptionsFlat
 import io.magicmobile.android.board.PhaseStopsGrid
 import io.magicmobile.android.board.PortraitModeToggle
 import io.magicmobile.android.board.SoundLabView
 import io.magicmobile.android.board.GameAudioSettings
-import io.magicmobile.android.game.BoardFXLevel
+import io.magicmobile.android.board.tavernSettingsPanel
 import io.magicmobile.android.game.BoardFocusTracker
 import io.magicmobile.android.game.OnDeviceSmartPass
 import io.magicmobile.android.ondevice.GamePerformancePanel
 import io.magicmobile.android.ondevice.SupportProject
 import io.magicmobile.android.ondevice.SupportSettingsPanel
-import io.magicmobile.android.studio.NativeArtworkPreferenceRows
+import io.magicmobile.android.studio.rememberArtworkConsent
 import io.magicmobile.android.ui.AppPreferences
 import io.magicmobile.android.ui.BoardMotionFlags
 import io.magicmobile.android.ui.BrandPressable
@@ -245,7 +247,7 @@ fun ArenaOptionsView(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Bool
     val configuration = LocalConfiguration.current
     val wide = configuration.screenWidthDp > configuration.screenHeightDp
     val panelClose = LocalArenaPanelClose.current
-    if (page == ArenaOptionsPage.SOUND_LAB) { SoundLabView { pageRaw = ArenaOptionsPage.AUDIO.raw }; return }
+    if (page == ArenaOptionsPage.SOUND_LAB) { SoundLabView(back = { pageRaw = ArenaOptionsPage.AUDIO.raw }); return }
     Column(Modifier.fillMaxWidth()) {
         // Arena's head: a back chevron on the left (pages only), the title centred in serif, the close button on the right.
         Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(top = 6.dp, bottom = 2.dp)
@@ -261,7 +263,8 @@ fun ArenaOptionsView(portraitModeEnabled: Boolean, setPortraitModeEnabled: (Bool
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Column(Modifier.widthIn(max = if (wide) 820.dp else 560.dp).fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CompositionLocalProvider(LocalArenaOpenSoundLab provides { pageRaw = ArenaOptionsPage.SOUND_LAB.raw },
+                    // The pages lay their settings flat on the glass, as Arena's do.
+                    CompositionLocalProvider(LocalArenaOptionsFlat provides true, LocalArenaOpenSoundLab provides { pageRaw = ArenaOptionsPage.SOUND_LAB.raw },
                         LocalArenaOpenPhaseStops provides { pageRaw = ArenaOptionsPage.PHASE_STOPS.raw }) {
                         OptionsPage(shown, wide, portraitModeEnabled, setPortraitModeEnabled, upstreamCommit)
                     }
@@ -304,16 +307,17 @@ private fun ColumnScope.OptionsPage(page: ArenaOptionsPage, wide: Boolean, portr
         // Two columns sideways, so every label stays on one line.
         ArenaOptionsPage.GAMEPLAY -> GameplayOptions(if (wide) 2 else 1)
         ArenaOptionsPage.PHASE_STOPS -> Box(Modifier.widthIn(max = 520.dp).fillMaxWidth().align(Alignment.CenterHorizontally)) { PhaseStopsGrid() }
-        ArenaOptionsPage.BOARD -> BoardOptions()
-        ArenaOptionsPage.AUDIO -> GameAudioSettings()
+        // The board's effects; the table picker and Card Frames wait for Android's Arena board.
+        ArenaOptionsPage.BOARD -> BoardEffectsPicker(includesAudio = false)
+        ArenaOptionsPage.AUDIO -> Box(Modifier.tavernSettingsPanel()) { GameAudioSettings() }
         ArenaOptionsPage.SOUND_LAB -> {}
         ArenaOptionsPage.DISPLAY -> {
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
-            NativeArtworkPreferenceRows()
+            ArtworkPreferenceOptions()
         }
         ArenaOptionsPage.PERFORMANCE -> GamePerformancePanel()
         ArenaOptionsPage.SUPPORT -> SupportSettingsPanel()
-        ArenaOptionsPage.ABOUT -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ArenaOptionsPage.ABOUT -> Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             AboutRow("MagicMobile", "${BuildConfig.VERSION_NAME} (${BuildConfig.RELEASE_BUILD})")
             upstreamCommit?.let { AboutRow("XMage revision", it.take(12)) }
             Text(SupportProject.NOTE, color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(12f, SfWeight.medium))
@@ -360,14 +364,16 @@ private fun GameplayOptions(columns: Int) {
     }
 }
 
-/** The board's settings flat on the glass: how much the effects play. */
+/** Display & Artwork's consent for live Scryfall images (NativeArtworkPreferenceView), flat on the glass. */
 @Composable
-private fun BoardOptions() {
-    var level by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        ArenaCaps("Board Effects")
-        ArenaSegmented(BoardFXLevel.entries.map { it.title to it }, BoardFXLevel.of(level) ?: BoardFXLevel.FULL, { level = it.rawValue },
-            Modifier.fillMaxWidth(), identifier = "settings.boardEffects")
+private fun ArtworkPreferenceOptions() {
+    val (remote, setRemote) = rememberArtworkConsent()
+    Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ArenaCheckbox("Scryfall live images", remote, setRemote, identifier = "nativeArtwork.downloads")
+        Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.", color = ArenaMenuStyle.dim,
+            style = ArenaMenuStyle.font(12f, SfWeight.medium))
+        Text("Scryfall receives card names—including your hand—and your IP address.", color = ArenaMenuStyle.dim,
+            style = ArenaMenuStyle.font(12f, SfWeight.medium))
     }
 }
 

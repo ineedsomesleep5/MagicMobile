@@ -63,6 +63,16 @@ private fun openSupport(): () -> Unit {
 @Composable
 fun SupportSettingsPanel() {
     val open = openSupport()
+    // Options' Support page (NativeUpdateNewsView.swift SupportSettingsPanel): gold capitals, the note, a lit pill.
+    if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+        Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            io.magicmobile.android.menus.ArenaCaps("Support MagicMobile")
+            Text(SupportProject.NOTE, color = io.magicmobile.android.menus.ArenaMenuStyle.dim,
+                style = io.magicmobile.android.menus.ArenaMenuStyle.font(12f, SfWeight.medium))
+            io.magicmobile.android.menus.ArenaPillButton(SupportProject.ACTION, open, lit = true, identifier = "settings.support", symbol = "heart.fill")
+        }
+        return
+    }
     Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TavernPanelTitle("Support MagicMobile")
         Text(SupportProject.NOTE, color = TavernPalette.parchment.copy(alpha = 0.65f), style = sf(12f, design = SfDesign.SERIF))
