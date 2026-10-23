@@ -635,7 +635,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
         : arrival === 1 ? { ...home, x: ARENA.draw.x, y: Y(ARENA.draw.y), r: 0, s: (ARENA.draw.w * geo.grow) / home.w, z: 950 } : home;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
         extraZone: extra ? actionsFor(snapshot, card.instanceId).find((a) => a.sourceZone)?.sourceZone ?? (me.zones.graveyard.includes(card) ? "graveyard" : "exile") : undefined,
-        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""}`,
+        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""}`,
         onClick: mulligan ? () => inspectCard(card.instanceId) : clickHand, onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand,
         onInspect: inspectCard });
     });

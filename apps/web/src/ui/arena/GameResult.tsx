@@ -54,7 +54,7 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
           </div>
           {settled && (
             <div className="details">
-              {me && (
+              {me && !rankChange && (
                 <span className={`resultmed ${outcome === "victory" ? "won" : ""} ${outcome === "defeat" ? "lost" : ""}`} aria-hidden="true">
                   <Medallion player={me} viewer diameter={84} life={false} />
                 </span>
@@ -95,7 +95,8 @@ const TINT: Record<RankTier, [string, string]> = {
 };
 
 /**
- * The result's rank strip (RankProgressPanel, Ranked/RankCeremonyView.swift): the badge, then each pip filling or emptying
+ * The result's rank (RankProgressPanel, Ranked/RankCeremonyView.swift), standing on its own in the middle in the medallion's
+ * place, no box (Caleb, 2026-10-23): the badge in its tier's glow, then each pip filling or emptying
  * in turn so a crossing into the next division is seen, the change in words and the bonuses that earned extra pips.
  */
 export function RankProgress({ change }: { change: RankChange }) {
@@ -124,7 +125,7 @@ export function RankProgress({ change }: { change: RankChange }) {
   return (
     <div className="rankstrip" style={{ ["--tint" as string]: tint, ["--shade" as string]: shade }} data-id="rank.progress"
       aria-label={`Ranked: ${RankPosition.title(change.after)}. ${text}`}>
-      <span key={`${shown.tier}${shown.division}`} className="rbadge"><RankBadge position={shown} size={64} showsPips={false} /></span>
+      <span key={`${shown.tier}${shown.division}`} className="rbadge"><i className="rglow" /><RankBadge position={shown} size={96} showsPips={false} /></span>
       <div>
         <b className="rtitle">{RankPosition.title(shown)}</b>
         {shown.tier === "mythic" ? <span className="rflame"><svg viewBox="0 0 20 20" aria-hidden="true">{FLAME}</svg>{shown.pips}</span> : (
