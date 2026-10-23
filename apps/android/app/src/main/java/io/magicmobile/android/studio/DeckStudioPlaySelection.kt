@@ -59,7 +59,7 @@ import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfText
 import io.magicmobile.android.ui.SfWeight
-import io.magicmobile.android.ui.tavernFill
+import io.magicmobile.android.menus.arenaGlassPanel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -135,27 +135,25 @@ fun DeckStudioEditorModel.playSource() = DeckStudioPlayFlow.Source {
     runCatching { DeckStudioPlayFlow.Prepared(id, draft.deck()) }
 }
 
-/** The brand's ember accent, as a capsule button (DeckStudioButtonStyle, primary). */
+/**
+ * Deck Studio's Play and its other calls to action: Arena's orange pill (DeckStudioPlayButtonStyle). `settled` is the calm
+ * "✓ Playing" state on dark glass: nothing left to do. (`jewel` kept for callers; the pill carries no jewel.)
+ */
 @Composable
 fun DeckStudioEmberButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: String? = null,
-                          jewel: Boolean = false, compact: Boolean = false) {
-    // The binder's Play (concept B, 2026-10-06): the tavern's ember glass set in brass, with Play's ember
-    // jewel (the Meshy-made tavern_binder_jewel) beside the title.
+                          @Suppress("UNUSED_PARAMETER") jewel: Boolean = false, compact: Boolean = false, settled: Boolean = false) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val shape = RoundedCornerShape(10.dp)
-    Row(modifier.alpha(if (!enabled) 0.55f else if (pressed) 0.85f else 1f).defaultMinSize(minHeight = if (compact) 44.dp else DeckStudioMetrics.controlHeight)
-        .shadow(if (pressed) 1.dp else 3.dp, shape)
-        .tavernFill(io.magicmobile.android.ui.TavernMaterial.EMBER, shape)
-        .border(2.5.dp, Binder.brass, shape)
-        .clickable(interaction, null, enabled = enabled, role = Role.Button) { GameAudio.play(GameSound.UI_TICK); onClick() }
-        .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (compact) 8.dp else 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-        val ink = Binder.emberText
-        if (jewel) androidx.compose.foundation.Image(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_binder_jewel), null,
-            Modifier.size(30.dp)) else icon?.let { SfImage(it, ink, 15.dp) }
-        Text(title, color = ink, style = sf(if (compact) 15f else 17f, SfWeight.heavy).copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.65f),
-            androidx.compose.ui.geometry.Offset(0f, 1.5f), 1f)), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Box(modifier.defaultMinSize(minHeight = if (compact) 44.dp else DeckStudioMetrics.controlHeight)
+        .clickable(interaction, null, enabled = enabled, role = Role.Button) { GameAudio.play(GameSound.UI_CONFIRM); onClick() },
+        contentAlignment = Alignment.Center) {
+        io.magicmobile.android.menus.ArenaButtonFace(
+            if (settled) io.magicmobile.android.menus.ArenaButtonKind.SECONDARY else io.magicmobile.android.menus.ArenaButtonKind.PRIMARY,
+            io.magicmobile.android.menus.ArenaMenuStyle.title(if (compact) 15f else 17f, SfWeight.bold), pressed, Modifier.fillMaxWidth(),
+            enabled = enabled || settled, fills = false, inset = if (compact) 7.dp else 10.dp, glow = 0.8f) {
+            icon?.let { SfImage(it, androidx.compose.material3.LocalContentColor.current, 14.dp) }
+            io.magicmobile.android.menus.ArenaButtonText(title)
+        }
     }
 }
 
@@ -189,7 +187,7 @@ fun DeckStudioPlayDeckButton(selection: DeckStudioPlaySelection, model: DeckStud
     val action = rememberDeckStudioPlayAction(selection, model, resolver)
     DeckStudioEmberButton(action.title, { selection.play(model.playSource(), resolver, model.draft.name) },
         modifier.fillMaxWidth().semantics { contentDescription = if (action.playing) DeckStudioPlayText.playingAccessibility else action.title },
-        enabled = action.enabled, icon = if (action.playing) "checkmark" else "play.fill", jewel = !action.playing, compact = compact)
+        enabled = action.enabled, icon = if (action.playing) "checkmark" else null, compact = compact, settled = action.playing)
 }
 
 /** The "Playing" mark on the playing deck's tile: an ember-glass tag in a thin brass rim with Play's jewel. */
@@ -218,25 +216,21 @@ fun DeckStudioPlayStatusChip(status: DeckStudioPlayStatus, modifier: Modifier = 
     BinderTag(status.title, modifier.clearAndSetSemantics { contentDescription = "Deck check: ${status.title}" }, accent = status.jewel())
 }
 
-/** The pinned "Now playing: <name> · <status>" band at the top of the library: the binder's leather with Play's jewel and a brass coin. */
+/** Which deck the next game uses and whether it is ready, on a strip of dark glass with a gold chevron. */
 @Composable
 fun DeckStudioNowPlayingStrip(name: String, status: DeckStudioPlayStatus?, open: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(10.dp)
-    Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).shadow(3.dp, shape).binderLeather(Binder.oxblood, 0.45f, shape)
-        .border(1.5.dp, Binder.brass, shape)
+    Row(modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).background(Color.Black.copy(alpha = 0.55f))
         .drawWithContent {
             drawContent()
-            val inset = 4.dp.toPx()
-            drawRoundRect(Binder.thread, Offset(inset, inset), Size(size.width - 2 * inset, size.height - 2 * inset), CornerRadius(7.dp.toPx()),
-                style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx()))))
+            drawRect(binderHairline(0.6f), Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
         }
-        .clickable(role = Role.Button) { open() }.padding(horizontal = 14.dp, vertical = 8.dp),
+        .clickable(role = Role.Button) { open() }.semantics { contentDescription = DeckStudioPlayText.nowPlayingStrip(name, status) }
+        .padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        androidx.compose.foundation.Image(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_binder_jewel), null, Modifier.size(28.dp))
-        Text(DeckStudioPlayText.nowPlayingStrip(name, status), Modifier.weight(1f), color = io.magicmobile.android.ui.rgb(0.98, 0.86, 0.62),
-            style = sf(15f, SfWeight.bold, SfDesign.SERIF).copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f)),
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
-        BinderStamp("chevron.right", size = 26.dp)
+        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { SfImage("flame.fill", io.magicmobile.android.menus.ArenaMenuStyle.ember, 15.dp) }
+        Text(DeckStudioPlayText.nowPlayingStrip(name, status), Modifier.weight(1f), color = io.magicmobile.android.menus.ArenaMenuStyle.text,
+            style = io.magicmobile.android.menus.ArenaMenuStyle.font(14f, SfWeight.bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        SfImage("chevron.right", io.magicmobile.android.menus.ArenaMenuStyle.gold, 12.dp)
     }
 }
 
@@ -250,26 +244,18 @@ fun DeckStudioPlayBanner(selection: DeckStudioPlaySelection, setUpGame: () -> Un
         DeckStudioPlayFlow.Outcome.GameLive -> DeckStudioPlayText.gameLive to null
         else -> return
     }
-    // A leather slip in a brass edge, laid over the page.
-    val shape = RoundedCornerShape(12.dp)
+    // A slip of glass in the gold hairline, laid over the page.
     val gold = io.magicmobile.android.ui.rgb(0.98, 0.86, 0.62)
-    val onLeather = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f)
     Row(modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp).widthIn(max = 640.dp).fillMaxWidth()
-        .shadow(8.dp, shape).binderLeather(Binder.oxblood, 0.45f, shape).border(2.dp, Binder.brass, shape)
-        .drawWithContent {
-            drawContent()
-            val inset = 4.dp.toPx()
-            drawRoundRect(Binder.thread, Offset(inset, inset), Size(size.width - 2 * inset, size.height - 2 * inset), CornerRadius(9.dp.toPx()),
-                style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))))
-        }
+        .arenaGlassPanel(12.dp, 0.97f)
         .padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
         .semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (outcome is DeckStudioPlayFlow.Outcome.Playing) {
-            androidx.compose.foundation.Image(io.magicmobile.android.ui.tavernImage(io.magicmobile.android.R.drawable.tavern_binder_jewel), null, Modifier.size(32.dp))
+            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { SfImage("flame.fill", io.magicmobile.android.menus.ArenaMenuStyle.ember, 18.dp) }
         } else BinderStamp("exclamationmark.triangle.fill", size = 30.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, color = gold, style = sf(15f, SfWeight.bold, SfDesign.SERIF).copy(shadow = onLeather), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            detail?.let { Text(it, color = io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF).copy(shadow = onLeather)) }
+            Text(title, color = gold, style = io.magicmobile.android.menus.ArenaMenuStyle.font(15f, SfWeight.bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            detail?.let { Text(it, color = io.magicmobile.android.menus.ArenaMenuStyle.text.copy(alpha = 0.8f), style = io.magicmobile.android.menus.ArenaMenuStyle.font(13f, SfWeight.regular)) }
         }
         if (outcome is DeckStudioPlayFlow.Outcome.Playing) {
             DeckStudioEmberButton(DeckStudioPlayText.setUpGame, { selection.dismiss(); setUpGame() }, compact = true)

@@ -246,6 +246,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // The profile name is the name at every table; friends see the table this phone hosts while it has open seats.
     LaunchedEffect(vm.account.username) { vm.account.username?.let { playerDisplayName = it } }
     var showDecks by remember { mutableStateOf(false) }
+    // Deck Studio's editor or importer is open over the whole screen (the Decks tab's fullScreenCover).
+    var decksCovered by remember { mutableStateOf(false) }
     // The Play panel over the menu (Arena's blade), its way to play and its tab (OnDeviceRootView.swift's Arena menus).
     var playPanel by rememberSaveable { mutableStateOf(false) }
     var playModeRaw by AppPreferences.string(io.magicmobile.android.game.ArenaPlayMode.STORAGE_KEY, io.magicmobile.android.game.ArenaPlayMode.QUICK.raw)
@@ -1213,7 +1215,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             }
                         }
                     }
-                } else if (showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true)) {
+                } else if (!showDecks && (showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true))) {
                     CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides true) {
                         SetupScreen(setup, selectedDeck, aiPrecons, deckPickerSections, aiDeckPickerSections, playerDisplayName, { playerDisplayName = it.take(24) }, portraitModeEnabled,
                             { portraitModeEnabled = it }, selectedDeckID, { selectedDeckID = it }, aiIDs, { index, id ->
@@ -1241,11 +1243,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         io.magicmobile.android.menus.LocalArenaMenuBackdrop provides true) {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             val compact = maxWidth < maxHeight
-                            io.magicmobile.android.menus.ArenaRoomBackdrop(if (lobby == null) 0f else 0.55f)
+                            io.magicmobile.android.menus.ArenaRoomBackdrop(if (showDecks) 0.62f else if (lobby == null) 0f else 0.55f)
                             // Only the room shows behind the Play panel, darkened.
-                            if (!playPanel) Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)
-                                .padding(top = io.magicmobile.android.menus.ArenaMenuStyle.barHeight)) {
-                                when (lobby) {
+                            // Deck Studio's editor covers the whole screen, top bar too (a fullScreenCover on iOS).
+                            val studioCovered = showDecks && decksCovered
+                            if (!playPanel) Box(Modifier.fillMaxSize().then(if (studioCovered) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                                .padding(top = io.magicmobile.android.menus.ArenaMenuStyle.barHeight))) {
+                                // The Decks tab: Deck Studio under the top bar, as Arena's Decks page (DeckStudioRootView).
+                                if (showDecks) io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
+                                    preparePlay = { showDecks = false; studioOpen = null; openPlayPanel() }, dismiss = { showDecks = false; studioOpen = null }, open = studioOpen,
+                                    covered = { decksCovered = it })
+                                else when (lobby) {
                                     "rankedHall" -> io.magicmobile.android.ranked.RankedHallScreen(vm.account, record.file.rank,
                                         play = { openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.RANKED) },
                                         leaderboard = { lobby = "leaderboard" }, profile = { lobby = "profile" }, back = { lobby = null })
@@ -1263,7 +1271,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                     io.magicmobile.android.menus.ArenaPlayPanel(playModel(), compact)
                                 }
                             }
-                            io.magicmobile.android.menus.ArenaTopBar(menuTab, compact, ::selectMenuTab, settings = { showAppearance = true },
+                            if (!studioCovered) io.magicmobile.android.menus.ArenaTopBar(menuTab, compact, ::selectMenuTab, settings = { showAppearance = true },
                                 rank = record.file.rank.position, openRank = { selectMenuTab(io.magicmobile.android.game.ArenaMenuTab.RANKED) },
                                 unread = vm.account.incomingCount + vm.account.unreadMessages > 0, messages = { showFriends = true },
                                 updates = { showUpdates = true }, downloads = { showDownloads = true },
@@ -1397,13 +1405,6 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         answerGuidedWelcome()
                         scope.launch { delay(450); howToPlayOpensTable = true; showHowToPlay = true }
                     }, skip = ::answerGuidedWelcome, modifier = Modifier.fillMaxWidth())
-            }
-            // DeckStudioRootView, full screen over the menu (fullScreenCover on iOS).
-            io.magicmobile.android.studio.StudioCover(showDecks, animated = false) {
-                CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides true) {
-                    io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
-                        preparePlay = { showDecks = false; studioOpen = null; openPlayPanel() }, dismiss = { showDecks = false; studioOpen = null }, open = studioOpen)
-                }
             }
             if (showDownloads) LaunchedEffect(Unit) { setup.loadCatalogue() }
             io.magicmobile.android.menus.ArenaPanel(showDownloads, { showDownloads = false }, fitsContent = true) {
