@@ -279,6 +279,13 @@ pass on iOS and the web, and the engine produced real wipes in game I and final 
 | final 15 | First Flight vs Draconic Destruction | conceded through the menu, turn 13 | drag casts 5, Auto Pay 5, triggers 8; no All Attack or wipe; no errors |
 | final 16 | Draconic Destruction vs Token Triumph | conceded through the menu, turn 20 | **counts**: drag casts, Auto Pay, triggers, All Attack; two wipes, Magmaquake (6 left) and the AI's Hour of Reckoning (5 to the graveyard), each with its cascade and recap; no errors |
 | final 17 | Chaos Incarnate vs Token Triumph | conceded through the menu, turn 16 | drag casts 6, Auto Pay 3, triggers; no All Attack came up; no errors |
+| final 18 | Draconic Destruction vs Grave Danger | no record: the driver hit its 45-minute limit | the board showed Cultivate's land search ("Choose cards", 0 of 0–2) for the whole time; most likely the driver picked the same Forest on and off, since that prompt may not report what's chosen (its record was lost, so this isn't confirmed). The driver now remembers its own picks, stops after thirty identical answers, and keeps the record when it fails |
+| final 19 | Chaos Incarnate vs Grave Danger | conceded through the menu, turn 20 | **counts**: drag casts 8, Auto Pay 8, triggers 16, All Attack 3, reading hold held; Blasphemous Act's wipe (4 to the graveyard, 2 tokens) with its cascade and recap; no errors |
+| final 20 | First Flight vs Token Triumph | conceded through the menu, turn 13 | **counts**: drag casts 3, Auto Pay 3, triggers 11, All Attack 3, reading hold held; no errors or console errors |
+
+The five that count, all on the current build: finals 11 and 12 (won), 16, 19 and 20 (conceded through the board's
+menu). Every final game held smart pass for the 3 s card read and recorded no page errors. Every other stop above was
+the driver's; game 18's is most likely the driver's too.
 
 ## Android follow-ups
 
@@ -293,6 +300,12 @@ rather than filed, because filing an issue is public and waits for Caleb's word:
 - The trigger order plan (`trigger-plan-cases.json`): a port of `ArenaTriggerPlan`.
 - The recorded-game replay (`replay/*.deflate` against `golden/replay-*.json`): Android needs the same trace, read with
   `java.util.zip.Inflater(true)` (raw DEFLATE).
+
+## For iOS and the web together
+
+- A wipe's recap counts tokens that die as "returned or moved" (finals 16 and 19), since a token leaves for no zone.
+  `ArenaSweepRecap` and `sweepRecap` agree, so the web matches iOS; better wording would change both and the shared
+  `arena-pace` case.
 
 ## Intentionally different on desktop
 
@@ -317,3 +330,6 @@ rather than filed, because filing an issue is public and waits for Caleb's word:
   badges and COPY, the stack and zone browsers, the player card with status badges, the result backdrop, More actions,
   phased-out tiles, the card choice stage with its drafted plan, the combo loop, token art. A recorded game's 50 polls
   replay identically through the web and iOS code (`test/replay.test.ts`, `testWebReplaysMatchGoldens`).
+- 2026-10-22 (night): twenty final games on the real engine; five count (11, 12, 16, 19, 20). The driver's own bugs
+  (a choice command the session ignores, most likely a library search picked on and off) were fixed in the driver.
+  Wipes count as covered by the shared cases plus the real wipes in game I and finals 16 and 19 (Caleb's call).

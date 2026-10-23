@@ -212,3 +212,4 @@ would have to be split into parts.
 - The out-of-game screens (iOS's Arena home, Play panel, deck boxes, options) are not ported; setup is still the
   tavern form (docs/WEB_PARITY.md section 9).
 - The vertical (portrait) Arena layout isn't ported; the web board is horizontal only.
+- Android's `:core` doesn't run the new shared cases yet (docs/WEB_PARITY.md, "Android follow-ups").
