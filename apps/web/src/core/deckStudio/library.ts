@@ -125,6 +125,37 @@ function recordFromWire(value: unknown): DeckLibraryRecord {
   };
 }
 
+/** What deck sync carries (docs/DECK_SYNC.md): the record's wire shape without its id, name and bookkeeping. */
+export interface DeckDocument { format: string; commander?: LibraryEntry; entries: LibraryEntry[]; source: { kind: string; url?: string } }
+
+export const DeckDocument = {
+  of(record: DeckLibraryRecord): DeckDocument {
+    const wire = recordToWire(record);
+    return { format: record.format, ...(record.commander ? { commander: record.commander } : {}), entries: record.entries, source: wire.source as DeckDocument["source"] };
+  },
+  /** A server document as a library deck; undefined when it isn't one. */
+  read(name: string, value: unknown): (LibraryDeck & { format: string; sourceURL?: string }) | undefined {
+    try {
+      const record = recordFromWire({ ...(typeof value === "object" && value !== null ? value : {}), name, id: "x" });
+      return { name: record.name, format: record.format, ...(record.commander ? { commander: record.commander } : {}), entries: record.entries,
+        ...(record.sourceURL !== undefined ? { sourceURL: record.sourceURL } : {}) };
+    } catch { return undefined; }
+  },
+  /** The same name and document: the sync's "already equal" test. */
+  same(record: DeckLibraryRecord, name: string, document: unknown): boolean {
+    return record.name === name && canonical(DeckDocument.of(record)) === canonical(document);
+  },
+};
+
+/** JSON with sorted keys, so equal documents compare equal whatever their key order. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.keys(value).filter((k) => (value as Wire)[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canonical((value as Wire)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function recordToWire(record: DeckLibraryRecord): Wire {
   const kind = record.sourceURL === undefined ? "manual" : /archidekt/i.test(record.sourceURL) ? "archidekt" : "moxfield";
   return {
@@ -150,6 +181,8 @@ export class DeckLibrary {
   private colorMemo: Record<string, string[]> = {};
   /** Set when the saved library couldn't be read; it is left as it was. */
   notice: string | undefined;
+  /** Runs after the player deletes a deck (deck sync keeps a tombstone for it). */
+  onDeleted?: (record: DeckLibraryRecord) => void;
 
   constructor(private readonly store: KeyValueStore, private readonly now: () => number = Date.now) {
     this.reload();
@@ -157,6 +190,11 @@ export class DeckLibrary {
 
   get decks(): readonly DeckLibraryRecord[] { return this.records; }
   record(id: string): DeckLibraryRecord | undefined { return this.records.find((record) => record.id === id); }
+  /** A deck by id ignoring case: the server answers ids in lower case, the phones make them upper case. */
+  recordMatching(id: string): DeckLibraryRecord | undefined {
+    const key = id.toLowerCase();
+    return this.records.find((record) => record.id.toLowerCase() === key);
+  }
   /** A saved deck by its menu selection id (`local:<id>`). */
   bySelection(selection: string): DeckLibraryRecord | undefined {
     return selection.startsWith("local:") ? this.record(selection.slice(6)) : undefined;
@@ -227,6 +265,7 @@ export class DeckLibrary {
     if (!record) throw new LibraryError("missingRecord");
     const index = this.index(id, expectedRevision ?? record.revision);
     this.persist(this.records.filter((_, i) => i !== index));
+    this.onDeleted?.(record);
     if (this.favoriteIDs.delete(DeckLibraryRecord.selectionID(record))) this.saveFavorites();
     if (id in this.colorMemo) {
       const { [id]: _gone, ...rest } = this.colorMemo;
@@ -247,6 +286,31 @@ export class DeckLibrary {
     this.persist([copy, ...this.records]);
     this.rememberColors(copy.id, this.colors(record.id));
     return copy;
+  }
+
+  /**
+   * Deck sync: a server deck under its own id, replacing this device's copy (its revision moves on) or added first.
+   * Answers the record as saved.
+   */
+  applySynced(id: string, deck: LibraryDeck & { format?: string; sourceURL?: string }): DeckLibraryRecord {
+    validateDeck(deck);
+    const index = this.records.findIndex((record) => record.id.toLowerCase() === id.toLowerCase());
+    const old = index >= 0 ? this.records[index] : undefined;
+    const record: DeckLibraryRecord = {
+      id: old?.id ?? id, name: deck.name, format: deck.format ?? old?.format ?? "commander", ...(deck.commander ? { commander: deck.commander } : {}),
+      entries: deck.entries, ...(deck.sourceURL !== undefined ? { sourceURL: deck.sourceURL } : {}),
+      revision: (old?.revision ?? 0) + 1, updatedAt: this.now(), isCloudBacked: false,
+    };
+    this.persist(old ? this.records.map((r, i) => (i === index ? record : r)) : [record, ...this.records]);
+    return record;
+  }
+
+  /** Deck sync: a deck deleted on another device leaves this one (no tombstone, unlike the player's delete). */
+  removeSynced(id: string): void {
+    const record = this.recordMatching(id);
+    if (!record) return;
+    this.persist(this.records.filter((r) => r !== record));
+    if (this.favoriteIDs.delete(DeckLibraryRecord.selectionID(record))) this.saveFavorites();
   }
 
   isFavorite(selection: string): boolean { return this.favoriteIDs.has(selection); }

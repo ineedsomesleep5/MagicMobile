@@ -139,6 +139,16 @@ export class SupabaseLite {
     return LinkedIdentity.parse(await this.user());
   }
 
+  /** The signed-in user's id, from the access token's `sub` (deck sync keeps its record per profile). */
+  async userID(): Promise<string | undefined> {
+    const token = await this.accessToken();
+    try {
+      const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const sub = (JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, "="))) as { sub?: unknown }).sub;
+      return typeof sub === "string" ? sub : undefined;
+    } catch { return undefined; }
+  }
+
   forgetSession(): void {
     this.session = undefined;
     try { this.store.remove(this.key); } catch { /* storage blocked */ }

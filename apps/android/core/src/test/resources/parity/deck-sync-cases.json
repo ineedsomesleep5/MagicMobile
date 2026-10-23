@@ -1,0 +1,626 @@
+{
+  "comment": "Deck sync scenarios (docs/DECK_SYNC.md), shared by the web, iOS and Android tests. Each case: the signed-in profile (`account`), the server's decks (`seq` is the change sequence; a fake server keeps the next one after the highest), this device's library (`revision` is the library's) and sync record (`sync`, null for none), then one sync. A deck's document is `{format: \"commander\", entries: [{cardName, quantity: 1, section: \"deck\"} for each of `cards`], source: {kind: \"manual\"}}`. Expected decks are compared by id (or `fork`: a new id this sync made) without order; afterwards no local deck is dirty and there are no tombstones.",
+  "cases": [
+    {
+      "name": "a first sync sends this device's decks",
+      "account": "A",
+      "server": [],
+      "local": [
+        {
+          "id": "L1",
+          "name": "Atraxa",
+          "revision": 1,
+          "cards": [
+            "Sol Ring"
+          ]
+        }
+      ],
+      "sync": null,
+      "expect": {
+        "local": [
+          {
+            "id": "L1",
+            "name": "Atraxa",
+            "cards": [
+              "Sol Ring"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "L1",
+            "name": "Atraxa",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "a deck made on another device arrives",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Krenko",
+          "revision": 1,
+          "seq": 1,
+          "deleted": false,
+          "cards": [
+            "Goblin Guide"
+          ]
+        }
+      ],
+      "local": [],
+      "sync": {
+        "account": "A",
+        "cursor": 0,
+        "entries": {},
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "S1",
+            "name": "Krenko",
+            "cards": [
+              "Goblin Guide"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Krenko",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "another device's edit replaces an unchanged deck",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Krenko v2",
+          "revision": 2,
+          "seq": 2,
+          "deleted": false,
+          "cards": [
+            "Goblin Guide",
+            "Mountain"
+          ]
+        }
+      ],
+      "local": [
+        {
+          "id": "S1",
+          "name": "Krenko",
+          "revision": 1,
+          "cards": [
+            "Goblin Guide"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {
+          "S1": {
+            "serverRevision": 1,
+            "syncedLocalRevision": 1
+          }
+        },
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "S1",
+            "name": "Krenko v2",
+            "cards": [
+              "Goblin Guide",
+              "Mountain"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Krenko v2",
+            "revision": 2,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "an edit here goes up on the revision it was based on",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Krenko",
+          "revision": 1,
+          "seq": 1,
+          "deleted": false,
+          "cards": [
+            "Goblin Guide"
+          ]
+        }
+      ],
+      "local": [
+        {
+          "id": "S1",
+          "name": "Krenko mine",
+          "revision": 2,
+          "cards": [
+            "Goblin Guide",
+            "Mountain"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {
+          "S1": {
+            "serverRevision": 1,
+            "syncedLocalRevision": 1
+          }
+        },
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "S1",
+            "name": "Krenko mine",
+            "cards": [
+              "Goblin Guide",
+              "Mountain"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Krenko mine",
+            "revision": 2,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "both devices edited: the server's copy keeps the id, this device's edit becomes a copy",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Theirs",
+          "revision": 2,
+          "seq": 2,
+          "deleted": false,
+          "cards": [
+            "Forest"
+          ]
+        }
+      ],
+      "local": [
+        {
+          "id": "S1",
+          "name": "Mine",
+          "revision": 2,
+          "cards": [
+            "Island"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {
+          "S1": {
+            "serverRevision": 1,
+            "syncedLocalRevision": 1
+          }
+        },
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "S1",
+            "name": "Theirs",
+            "cards": [
+              "Forest"
+            ]
+          },
+          {
+            "fork": true,
+            "name": "Mine (this device)",
+            "cards": [
+              "Island"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Theirs",
+            "revision": 2,
+            "deleted": false
+          },
+          {
+            "fork": true,
+            "name": "Mine (this device)",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "deleted elsewhere: an unchanged deck leaves this device",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Gone",
+          "revision": 2,
+          "seq": 2,
+          "deleted": true,
+          "cards": []
+        }
+      ],
+      "local": [
+        {
+          "id": "S1",
+          "name": "Gone",
+          "revision": 1,
+          "cards": [
+            "Forest"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {
+          "S1": {
+            "serverRevision": 1,
+            "syncedLocalRevision": 1
+          }
+        },
+        "tombstones": []
+      },
+      "expect": {
+        "local": [],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Gone",
+            "revision": 2,
+            "deleted": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "deleted elsewhere but edited here: the edit survives as a copy",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Gone",
+          "revision": 2,
+          "seq": 2,
+          "deleted": true,
+          "cards": []
+        }
+      ],
+      "local": [
+        {
+          "id": "S1",
+          "name": "Mine",
+          "revision": 2,
+          "cards": [
+            "Island"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {
+          "S1": {
+            "serverRevision": 1,
+            "syncedLocalRevision": 1
+          }
+        },
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "fork": true,
+            "name": "Mine (this device)",
+            "cards": [
+              "Island"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Gone",
+            "revision": 2,
+            "deleted": true
+          },
+          {
+            "fork": true,
+            "name": "Mine (this device)",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "a deck deleted here is deleted everywhere",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Old",
+          "revision": 1,
+          "seq": 1,
+          "deleted": false,
+          "cards": [
+            "Forest"
+          ]
+        }
+      ],
+      "local": [],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {},
+        "tombstones": [
+          {
+            "id": "S1",
+            "serverRevision": 1
+          }
+        ]
+      },
+      "expect": {
+        "local": [],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Old",
+            "revision": 2,
+            "deleted": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "deleted here but changed elsewhere: it comes back",
+      "account": "A",
+      "server": [
+        {
+          "id": "S1",
+          "name": "Changed",
+          "revision": 2,
+          "seq": 2,
+          "deleted": false,
+          "cards": [
+            "Forest",
+            "Island"
+          ]
+        }
+      ],
+      "local": [],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {},
+        "tombstones": [
+          {
+            "id": "S1",
+            "serverRevision": 1
+          }
+        ]
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "S1",
+            "name": "Changed",
+            "cards": [
+              "Forest",
+              "Island"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "S1",
+            "name": "Changed",
+            "revision": 2,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "signed in to another profile: this device's decks join it",
+      "account": "B",
+      "server": [],
+      "local": [
+        {
+          "id": "L1",
+          "name": "Atraxa",
+          "revision": 3,
+          "cards": [
+            "Sol Ring"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 7,
+        "entries": {
+          "L1": {
+            "serverRevision": 2,
+            "syncedLocalRevision": 3
+          }
+        },
+        "tombstones": [
+          {
+            "id": "X9",
+            "serverRevision": 1
+          }
+        ]
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "L1",
+            "name": "Atraxa",
+            "cards": [
+              "Sol Ring"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "L1",
+            "name": "Atraxa",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "a save whose answer was lost: the same deck on the server counts as synced",
+      "account": "A",
+      "server": [
+        {
+          "id": "L1",
+          "name": "Same",
+          "revision": 1,
+          "seq": 1,
+          "deleted": false,
+          "cards": [
+            "Forest"
+          ]
+        }
+      ],
+      "local": [
+        {
+          "id": "L1",
+          "name": "Same",
+          "revision": 1,
+          "cards": [
+            "Forest"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 0,
+        "entries": {},
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "L1",
+            "name": "Same",
+            "cards": [
+              "Forest"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "L1",
+            "name": "Same",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "an id the server already has with other content: this device's deck becomes a copy",
+      "account": "A",
+      "server": [
+        {
+          "id": "L1",
+          "name": "Theirs",
+          "revision": 1,
+          "seq": 1,
+          "deleted": false,
+          "cards": [
+            "Forest"
+          ]
+        }
+      ],
+      "local": [
+        {
+          "id": "L1",
+          "name": "Mine",
+          "revision": 1,
+          "cards": [
+            "Island"
+          ]
+        }
+      ],
+      "sync": {
+        "account": "A",
+        "cursor": 1,
+        "entries": {},
+        "tombstones": []
+      },
+      "expect": {
+        "local": [
+          {
+            "id": "L1",
+            "name": "Theirs",
+            "cards": [
+              "Forest"
+            ]
+          },
+          {
+            "fork": true,
+            "name": "Mine (this device)",
+            "cards": [
+              "Island"
+            ]
+          }
+        ],
+        "server": [
+          {
+            "id": "L1",
+            "name": "Theirs",
+            "revision": 1,
+            "deleted": false
+          },
+          {
+            "fork": true,
+            "name": "Mine (this device)",
+            "revision": 1,
+            "deleted": false
+          }
+        ]
+      }
+    }
+  ]
+}

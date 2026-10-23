@@ -7,7 +7,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AIDeckPool, type AIDeck, playerDeckID } from "../../core/aiDeckPool";
 import { BracketRules, type BracketRulesFile, CommanderBracket, DeckBracketPreference } from "../../core/brackets";
+import { loadCatalogue } from "../../core/deckStudio/catalogue";
+import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
 import { DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
+import { DeckSync, supabaseDeckSync, SyncState } from "../../core/deckStudio/sync";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
@@ -117,6 +120,39 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const library = useMemo(() => new DeckLibrary(storage), []);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const libraryChanged = useCallback(() => setLibraryVersion((v) => v + 1), []);
+  // Your decks on every phone and browser signed in to this profile (docs/DECK_SYNC.md).
+  const deckSync = useMemo(() => new DeckSync(library, new SyncState(storage), supabaseDeckSync((fn, params) => account.api.rpc(fn, params))), [library]);
+  const syncDecks = useCallback(async () => {
+    if (account.state.phase !== "ready") return;
+    const profile = await account.api.userID().catch(() => undefined);
+    if (!profile) return;
+    try { await deckSync.sync(profile); } catch { /* offline or refused: the next sync tries again */ }
+    libraryChanged();
+    // Decks from another device arrive without the colours this browser remembers; the catalogue knows them.
+    if (library.decks.some((record) => record.commander && library.colors(record.id).length === 0)) {
+      const catalogue = await loadCatalogue().catch(() => undefined);
+      for (const record of library.decks) {
+        const colors = catalogue && library.colors(record.id).length === 0 ? DraftPresentation.colors(draftFromDeck(record), catalogue) : undefined;
+        if (colors) library.rememberColors(record.id, colors);
+      }
+      libraryChanged();
+    }
+  }, [deckSync, library, libraryChanged]);
+  const accountReady = player.state.phase === "ready";
+  useEffect(() => {
+    if (!accountReady) return;
+    void syncDecks();
+    const every = window.setInterval(() => { if (document.visibilityState === "visible") void syncDecks(); }, 5 * 60_000);
+    const back = () => { if (document.visibilityState === "visible") void syncDecks(); };
+    document.addEventListener("visibilitychange", back);
+    return () => { window.clearInterval(every); document.removeEventListener("visibilitychange", back); };
+  }, [accountReady, player.state.username, syncDecks]);
+  // A change here goes up a few seconds after the last one (only when something is waiting to go up).
+  useEffect(() => {
+    if (!accountReady || !(library.decks.some((record) => deckSync.isDirty(record)) || deckSync.record.tombstones.length > 0)) return;
+    const timer = window.setTimeout(() => { void syncDecks(); }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [libraryVersion, accountReady, syncDecks, deckSync, library]);
   const [bracketRules, setBracketRules] = useState(BracketRules.empty);
   useEffect(() => {
     fetch("/generated/commander-brackets.json").then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
