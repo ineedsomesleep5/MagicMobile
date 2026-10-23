@@ -22,7 +22,8 @@ const url = args.url ?? "http://127.0.0.1:5181/?debug";
 const games = Number(args.games ?? 1);
 const out = args.out ?? "/tmp/magicmobile-autoplay";
 const maxTurns = Number(args.turns ?? 40);
-// --concede-at 10: concede through the menu once your life is at or below this and behind every opponent (0: play it out).
+// --concede-at 10: concede through the menu once your life is at or below this and behind every opponent, or an attack
+// at least 10 over your life is coming (0: play it out).
 const concedeAt = Number(args["concede-at"] ?? 10);
 const shots = new Set(String(args.shots ?? "").split(",").filter(Boolean).map(Number));
 const deckNames = {
@@ -126,6 +127,8 @@ const look = () => {
     allCreatures: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine)).length,
     toughness: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine)).map((c) => (c.toughness ?? 0) - (c.damage ?? 0)),
     tokens: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine) && c.card.isToken).length,
+    // The power attacking you (an attack on your life, for conceding a lost game).
+    incoming: snap.players.filter((p) => p !== me).flatMap((p) => p.zones.battlefield).filter((c) => c.isAttacking).reduce((n, c) => n + (c.power ?? 0), 0),
     theirArtifacts: snap.players.filter((p) => p !== me).flatMap((p) => p.zones.battlefield).filter((c) => /artifact/i.test(c.card.typeLine)).length,
   };
 };
@@ -151,9 +154,9 @@ function decide(state, memory) {
   if (!state.ready || state.over || state.working || !p || !p.mine) return undefined;
   const acts = state.actions;
   if (/mulligan/i.test(p.message)) {
-    // --want-sweeper: mulligan (at most twice) for a hand holding a board wipe, so the game is likely to show one.
+    // --want-sweeper: mulligan (at most four times) for a hand holding a board wipe, so the game is likely to show one.
     const sweeper = state.handNames.some((name) => SWEEPERS.includes(name));
-    if (args["want-sweeper"] && !sweeper && (memory.mulligans ?? 0) < 2) {
+    if (args["want-sweeper"] && !sweeper && (memory.mulligans ?? 0) < 4) {
       memory.mulligans = (memory.mulligans ?? 0) + 1;
       return { submit: { type: "answer_yes_no", confirmed: true }, label: "Mulligan" };
     }
@@ -214,7 +217,9 @@ function decide(state, memory) {
   // XMage's count is met, then its Done.
   const counted = /\(selected (\d+) of (\d+)/i.exec(p.message);
   if (p.cards.length && (!counted || Number(counted[1]) < Number(counted[2]))) {
-    const next = p.cards.find((id) => !state.chosen.includes(id));
+    // A wipe stays in hand when a mulligan puts cards on the bottom.
+    const wipes = new Set(state.handIds.filter((_, i) => SWEEPERS.includes(state.handNames[i])));
+    const next = p.cards.find((id) => !state.chosen.includes(id) && !wipes.has(id)) ?? p.cards.find((id) => !state.chosen.includes(id));
     if (next) return { submit: { type: "choose_target", targetIds: [next] }, label: "Choose" };
   }
   if (p.abilities.length) return { submit: { type: "choose_ability", abilityId: p.abilities[0] }, label: "Ability" };
@@ -289,7 +294,8 @@ async function play(page, game) {
       break;
     }
     const [life, ...theirs] = state.life ?? [];
-    const losing = concedeAt > 0 && !state.over && life !== undefined && life <= concedeAt && theirs.every((l) => l > life);
+    const losing = concedeAt > 0 && !state.over && life !== undefined &&
+      ((life <= concedeAt && theirs.every((l) => l > life)) || (state.incoming ?? 0) >= life + 10);
     if (state.ready && (state.turn > maxTurns || losing)) {
       // Concede the way a player does: the gear, Game Settings, Concede, then confirm.
       memory.conceded = await concedeByMenu(page);
