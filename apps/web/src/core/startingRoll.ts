@@ -62,6 +62,15 @@ export class OnDeviceStartingRoll {
     throw EngineError.invalid("The starting roll tied too many times. Try the match again.");
   }
 
+  /** The host's `roll` field of the `start` packet (OnDeviceStartingRoll.encoded). */
+  encoded(seatIDs: string[]): J {
+    this.validate(seatIDs);
+    return {
+      rounds: this.rounds.map((round) => seatIDs.filter((seat) => round.has(seat)).map((seatId) => ({ seatId, value: round.get(seatId)! }))),
+      winnerSeatId: this.winnerSeatID,
+    };
+  }
+
   static decode(value: J, seatIDs: string[]): OnDeviceStartingRoll {
     const fields = obj(value);
     const rows = arr(get(value, "rounds"));
@@ -97,6 +106,14 @@ export class OnDeviceStartingRollProgress {
 
   get nextSeatID(): string | undefined { return this.roll.steps[this.revealedCount]?.seatID; }
   get isComplete(): boolean { return this.revealedCount === this.roll.steps.length; }
+
+  /** Host: a human advances only their own turn; the host advances AI turns. Returns the step shown. */
+  advance(seatID: string, automated: boolean): number {
+    if (this.nextSeatID !== seatID || this.humanSeatIDs.has(seatID) === automated) throw EngineError.invalid("It is not this player's turn to roll.");
+    const index = this.revealedCount;
+    this.revealedCount += 1;
+    return index;
+  }
 
   acceptHostAdvance(index: number) {
     if (index !== this.revealedCount || this.nextSeatID === undefined) throw EngineError.replayed();

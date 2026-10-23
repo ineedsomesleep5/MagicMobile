@@ -10,8 +10,17 @@ export interface RelayPeer { id: string; name: string; connected: boolean }
 export const RelayWire = {
   /** Offered on every table socket; the relay answers with it. */
   SOCKET_PROTOCOL: "magicmobile.1",
-  /** The resume token travels as a subprotocol, so it never appears in the socket URL. */
-  socketProtocols: (resume?: string): string[] => [RelayWire.SOCKET_PROTOCOL, ...(resume ? [`magicmobile.resume.${resume}`] : [])],
+  /** The host key or resume token travels as a subprotocol, so it never appears in the socket URL. */
+  socketProtocols: (resume?: string, hostKey?: string): string[] => [
+    RelayWire.SOCKET_PROTOCOL, ...(hostKey ? [`magicmobile.key.${hostKey}`] : []), ...(resume ? [`magicmobile.resume.${resume}`] : []),
+  ],
+  /** What to show when the relay does not open a table: its own message, else a plain one. */
+  createFailureMessage: (status: number | undefined, message: string | undefined): string => {
+    const clean = message?.trim();
+    if (clean) return clean;
+    return status === 429 ? "You opened several tables in the last minute. Wait a minute, then try again."
+      : "The table service could not open a table. Try again.";
+  },
   /** Frames stay well under the relay's 1,000,000-character limit after JSON escaping. */
   PART_CHARACTERS: 400_000,
   MAX_PARTS: 64,
@@ -22,6 +31,20 @@ export const defaultRelayURL = (): string => {
   const override = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("relay");
   const env = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_RELAY_URL;
   return (override ?? env ?? "https://magicmobile-relay.calebjfeliciano.workers.dev").replace(/\/+$/, "");
+};
+
+/**
+ * Where this page opens a table (`POST …/v1/tables`). The relay sends no CORS headers, so the deployed site and the dev
+ * server proxy the same-origin path `/relay` to it (scripts/stage_vercel.mjs, vite.config.ts); the table's WebSocket still
+ * goes to the relay directly, since browsers do not CORS-check WebSockets. A `?relay=` override is used as is.
+ *
+ * The relay limits table creation to 5 a minute per caller IP. Through Vercel's rewrite every web host shares Vercel's
+ * egress addresses, so busy evenings could hit that limit across players: a relay CORS change for this site's origin
+ * (then POSTing to the relay directly) is the proper follow-up.
+ */
+export const defaultRelayCreateBase = (): string => {
+  const override = typeof location === "undefined" ? null : new URLSearchParams(location.search).get("relay");
+  return (override ?? "/relay").replace(/\/+$/, "");
 };
 
 /** Splits a packet into relay parts without ever splitting a UTF-16 surrogate pair (iOS rejects half of one). */
@@ -102,22 +125,47 @@ export class RelayTransport {
   private pingTimer?: ReturnType<typeof setInterval>;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
 
-  constructor(private readonly baseURL: string = defaultRelayURL(), private readonly makeSocket = (url: string, protocols: string[]) => new WebSocket(url, protocols)) {}
+  constructor(private readonly baseURL: string = defaultRelayURL(), private readonly makeSocket = (url: string, protocols: string[]) => new WebSocket(url, protocols),
+    private readonly createBase: string = defaultRelayCreateBase(), private readonly fetcher: typeof fetch = (...args) => fetch(...args)) {}
 
-  /** Joins a table as a guest: the relay gives this browser the next free seat. */
-  connect(code: string, name: string) {
-    this.code = code.toUpperCase(); this.name = name;
-    this.open();
+  /** Opens a table on the relay; returns its code and the host key only this browser holds. */
+  async createTable(seats: number): Promise<{ code: string; hostKey: string }> {
+    let reply: Response;
+    try {
+      reply = await this.fetcher(`${this.createBase}/v1/tables`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seats }), signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      throw EngineError.invalid("Could not reach the table service. Check your connection and try again.");
+    }
+    let value: J | undefined;
+    try { value = await reply.json() as J; } catch { value = undefined; }
+    const code = str(get(value, "code")); const hostKey = str(get(value, "hostKey"));
+    if (!reply.ok || code === undefined || hostKey === undefined) throw EngineError.invalid(RelayWire.createFailureMessage(reply.status, str(get(value, "message"))));
+    return { code, hostKey };
   }
 
-  private open(resume?: string) {
+  /** Opens a table's socket: the creator passes its host key (seat 1), a guest only the code (the next free seat). */
+  connect(code: string, name: string, hostKey?: string) {
+    this.code = code.toUpperCase(); this.name = name;
+    this.open(undefined, hostKey);
+  }
+
+  /** Host only: turns a joiner away while the table is still filling (the relay ignores it after). */
+  remove(peerID: string) {
+    if (this.closed) return;
+    try { this.write(JSON.stringify({ t: "remove", id: peerID })); } catch { /* the relay resumes the seat or the table fails */ }
+  }
+
+  /** A reconnect offers only the resume token: the host key opens a table once (RelayTransport.swift). */
+  private open(resume?: string, hostKey?: string) {
     const code = this.code;
     if (!code) return;
     const current = ++this.generation;
     const url = `${this.baseURL.replace(/^http/, "ws")}/v1/tables/${code}/socket?name=${encodeURIComponent(this.name)}`;
     let socket: WebSocket;
     try {
-      socket = this.makeSocket(url, RelayWire.socketProtocols(resume));
+      socket = this.makeSocket(url, RelayWire.socketProtocols(resume, hostKey));
     } catch {
       this.dropped(undefined);
       return;

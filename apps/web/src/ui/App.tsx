@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { AIDeckPool } from "../core/aiDeckPool";
-import { DeckResolver, type DeckList } from "../core/deckResolver";
+import { DeckResolver } from "../core/deckResolver";
 import { TableJoinLink } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
-import { GuestTable } from "../table/guestTable";
-import { RELAY_ADAPTER_VERSION } from "../table/lobby";
-import { PreviewRelay } from "../table/previewHost";
 import { setArtResolver } from "./cardArt";
-import { GameScreen } from "./GameScreen";
 import { BrandMark } from "./menus/BrandMark";
-import { GuestRoom } from "./menus/GuestRoom";
 import { type MenuData, MenuShell } from "./menus/MenuShell";
 import "./menus/menus.css";
 
@@ -52,34 +47,8 @@ function Loading({ error }: { error?: string }) {
   );
 }
 
-interface Joining { code: string; name: string; deck: DeckList }
-
-/** The menus, or a friend's relay table joined from them (or from a /join/CODE link). */
+/** The menus; a /join/CODE link opens the Custom Table on Online with its code, and the menus join or host tables. */
 function Root({ data }: { data: MenuData }) {
-  const [joining, setJoining] = useState<Joining>();
   const code = useMemo(initialCode, []);
-  if (joining) return <Guest data={data} joining={joining} leave={() => setJoining(undefined)} />;
-  return <MenuShell data={data} initialJoinCode={code} onJoin={(join, name, deck) => setJoining({ code: join, name, deck })} />;
-}
-
-function Guest({ data, joining, leave }: { data: MenuData; joining: Joining; leave: () => void }) {
-  const table = useMemo(() => {
-    const identity = { upstreamCommit: data.resolver.upstreamCommit, catalogueHash: data.resolver.catalogueHash, adapterVersion: RELAY_ADAPTER_VERSION };
-    const preview = import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
-    return preview ? new GuestTable(identity, () => new PreviewRelay(identity) as never) : new GuestTable(identity);
-  }, [data]);
-  useTable(table);
-  useEffect(() => {
-    try { table.join(joining.code, joining.name, data.resolver.resolve(joining.deck)); } catch { /* the room shows the failure */ }
-    const visibility = () => table.setForeground(document.visibilityState === "visible");
-    const leaving = () => table.leave();
-    document.addEventListener("visibilitychange", visibility);
-    window.addEventListener("pagehide", leaving);
-    return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pagehide", leaving); };
-  }, [table, joining, data]);
-  const stage = table.state.stage;
-  // A closed table (left, or the game over and left) returns to the menus.
-  useEffect(() => { if (stage === "idle" && table.state.status === "Match closed.") leave(); }, [stage, table, leave]);
-  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} />;
-  return <GuestRoom table={table} name={joining.name} deck={joining.deck} resolver={data.resolver} leave={() => { table.leave(); leave(); }} />;
+  return <MenuShell data={data} initialJoinCode={code} />;
 }

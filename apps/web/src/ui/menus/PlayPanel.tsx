@@ -8,6 +8,7 @@ import type { AIDeck } from "../../core/aiDeckPool";
 import { CommanderBracket } from "../../core/brackets";
 import type { PlayMode } from "../../core/playerRecord";
 import { RankPosition, RankTier, type RankState } from "../../core/rankLadder";
+import { type RankedPhase, RankedMatchmaker } from "../../core/matchmaking";
 import { gameAudio } from "../audio";
 import { boxGeometry, DeckArt, DeckBox, type DeckBoxModel } from "./DeckBox";
 import { Caps, CloseButton, Emblem, OptionRow, Pill, Pips, PlayButton, SectionHeader, Seam, Stepper, TabBar } from "./kit";
@@ -58,6 +59,10 @@ export interface PlayModel {
   leaderboard: () => void;
   friendWay: (way: FriendWay) => void;
   chooseRecent: (game: RecentGame) => void;
+  /** The ranked queue while it looks for a person (RankedMatchmaker.phase), with Cancel and "Play the AI now". */
+  search?: RankedPhase;
+  cancelSearch?: () => void;
+  playAINow?: () => void;
 }
 
 const modeTitle = { quick: "Quick", ranked: "Ranked", custom: "Custom" } as const;
@@ -241,6 +246,9 @@ function Primary({ model, friendWay }: { model: PlayModel; friendWay: FriendWay 
   if (model.tab === "friends") return <PlayButton size={20} id="play.friends" onClick={() => model.friendWay(friendWay)}>{friendPlay[friendWay]}</PlayButton>;
   if (model.tab === "recent" && model.recent.length === 0) return <PlayButton size={20} id="play.recent" onClick={() => model.setTab("find")}>Find Match</PlayButton>;
   if (model.mode === "quick") return <PlayButton size={20} id="quick.start" disabled={!model.mayStart} onClick={model.startQuick}>Play</PlayButton>;
+  if (model.mode === "ranked" && model.search && model.search.kind !== "idle") {
+    return <PlayButton size={20} cancel id="ranked.cancel" onClick={() => model.cancelSearch?.()}>Cancel</PlayButton>;
+  }
   if (model.mode === "ranked") {
     const eligible = (model.deckBracket ?? 99) <= RankTier.maxDeckBracket(model.rank.position.tier);
     return <PlayButton size={20} id="ranked.find" disabled={!model.mayStart || !eligible} onClick={model.findRanked}>Find Match</PlayButton>;
@@ -318,14 +326,16 @@ function RankedOptions({ model }: { model: PlayModel }) {
   const { rank } = model;
   const position = rank.position;
   const eligible = (model.deckBracket ?? 99) <= RankTier.maxDeckBracket(position.tier);
+  const searching = model.search !== undefined && model.search.kind !== "idle";
   return (
     <>
       <Caps text="Ranked Commander · 1v1" size={9.5} className="mhead" />
       <div className="mstanding" data-id="ranked.standing">
-        <RankBadge position={position} size={42} />
+        <RankBadge position={position} size={searching ? 30 : 42} />
         <span><b>{RankPosition.title(position)}</b><small>{rank.wins} wins · {rank.losses} losses</small></span>
       </div>
-      {!eligible && model.deckBracket !== undefined && (
+      {searching && model.search && <RankedSearch phase={model.search} playAINow={() => model.playAINow?.()} />}
+      {!searching && !eligible && model.deckBracket !== undefined && (
         <p className="mwarn" data-id="ranked.ineligible">
           {CommanderBracket.title(model.deckBracket)} is above {RankTier.name(position.tier)}'s limit (Bracket {RankTier.maxDeckBracket(position.tier)}). Choose another deck.
         </p>
@@ -335,6 +345,28 @@ function RankedOptions({ model }: { model: PlayModel }) {
         <Pill id="ranked.leaderboard" onClick={model.leaderboard}>Leaderboard</Pill>
       </div>
     </>
+  );
+}
+
+/** The ranked queue at work (RankedSearchFooter): the time spent and "Play the AI now" with the seconds left, then who was found. */
+function RankedSearch({ phase, playAINow }: { phase: RankedPhase; playAINow: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
+  if (phase.kind === "matched") {
+    return (
+      <div className="mrankedsearch" data-id="ranked.search" aria-live="polite">
+        <b>Challenger found</b><span className="gold">{phase.ticket.opponent ?? "Another player"}</span><small>Setting the table…</small>
+      </div>
+    );
+  }
+  const since = phase.kind === "searching" ? phase.since : now;
+  const elapsed = Math.max(0, Math.floor((now - since) / 1000));
+  const left = Math.max(0, RankedMatchmaker.searchSeconds - elapsed);
+  return (
+    <div className="mrankedsearch" data-id="ranked.search" aria-live="polite">
+      <b>Searching… <span className="gold">{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}</span></b>
+      <Pill id="ranked.search.ai" onClick={playAINow}>Play the AI now · {left} s</Pill>
+    </div>
   );
 }
 

@@ -121,6 +121,8 @@ export class GuestSession {
   private retries = new HostRetryPolicy();
   private lastChanged = false;
   private unchangedPolls = 0;
+  /** Told every new poll this seat applies (a hosting table announces its revision and reads the seat's clock from it). */
+  onPoll?: (poll: MatchPoll) => void;
   /** Asked after every applied snapshot: an automatic answer the table wants sent (the D20 winner). */
   autoCommand?: (snapshot: GameSnapshot) => GameCommand | undefined;
   /** Arena-style smart pass (OnDeviceSmartPass); undefined leaves every priority to the player. */
@@ -227,6 +229,7 @@ export class GuestSession {
       this.unchangedPolls = unchanged ? this.unchangedPolls + 1 : 0;
       this.poll = next;
       if (!unchanged) {
+        this.onPoll?.(next);
         this.log.ingest(next);
         let snapshot = this.state.snapshot;
         if (next.phase === "closed") snapshot = undefined;

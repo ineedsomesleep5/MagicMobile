@@ -51,10 +51,15 @@ const engine = (): Plugin => ({
   configurePreviewServer(server) { server.middlewares.use("/engine", serveEngine); },
 });
 
-/** Deck-link APIs through this origin, as the hosted site's rewrites do (scripts/stage_vercel.mjs). */
+/**
+ * Deck-link APIs and opening a relay table through this origin, as the hosted site's rewrites do (scripts/stage_vercel.mjs).
+ * The relay sends no CORS headers; its WebSockets connect to it directly. It limits table creation to 5 a minute per
+ * caller IP, which a proxy shares among everyone behind it: a relay CORS change is the proper follow-up.
+ */
 const providers = {
   "/provider/archidekt": { target: "https://archidekt.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/archidekt/, "/api") },
   "/provider/moxfield": { target: "https://api2.moxfield.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/moxfield/, "") },
+  "/relay": { target: "https://magicmobile-relay.calebjfeliciano.workers.dev", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/relay/, "") },
 };
 
 export default defineConfig({

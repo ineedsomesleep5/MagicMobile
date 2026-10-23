@@ -71,6 +71,7 @@ export class EngineError extends Error {
   static incompatibleBuild = () => new EngineError("Players must use the same engine, catalogue, and protocol build.", "incompatible_build");
   static unboundPeer = () => new EngineError("This authenticated peer has not been assigned a seat.", "unbound_peer");
   static replayed = () => new EngineError("Duplicate or out-of-order transport message.", "replayed");
+  static hostSuspended = () => new EngineError("The host paused input. Return the host app to the foreground.", "host_suspended");
 }
 
 const utf8 = new TextEncoder();

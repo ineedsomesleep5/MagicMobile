@@ -11,6 +11,7 @@
 import { useSyncExternalStore } from "react";
 import { GameUploader, PlayerAccount, type PendingRankedResult, type RankedRecord, adoptStanding } from "../../core/account";
 import { beginGoogleSignIn, finishGoogleSignIn, isGoogleRedirect } from "../../core/googleSignIn";
+import { FriendChallengeCoordinator, RankedMatchmaker, SupabaseFriendChallenges, SupabaseRankedQueue } from "../../core/matchmaking";
 import type { PlayerRecordStore } from "../../core/playerRecord";
 import { type SessionStore, SupabaseLite } from "../../core/supabaseLite";
 import { storage } from "../storage";
@@ -23,6 +24,14 @@ const sessionStore: SessionStore = {
 
 export const account = new PlayerAccount({ api: new SupabaseLite({ store: sessionStore }) });
 const uploader = new GameUploader(storage);
+/** Challenges to and from friends, and the ranked queue, on the same profile (FriendChallengeCoordinator, RankedMatchmaker). */
+export const challenges = new FriendChallengeCoordinator(new SupabaseFriendChallenges(account.api));
+export const rankedQueue = new RankedMatchmaker(new SupabaseRankedQueue(account.api));
+/** Redraws on a coordinator's or matchmaker's every change. */
+export function useWatched(value: { subscribe(listener: () => void): () => void; version: number }) {
+  useSyncExternalStore((listener) => value.subscribe(listener), () => value.version);
+  return value;
+}
 
 export function useAccount(): PlayerAccount {
   useSyncExternalStore((listener) => account.subscribe(listener), () => account.version);

@@ -12,12 +12,21 @@ import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
+import type { FriendChallenge } from "../../core/account";
+import { FriendChallengeRules } from "../../core/matchmaking";
+import { SupabaseLite } from "../../core/supabaseLite";
+import { GuestTable } from "../../table/guestTable";
+import { HostTable, type HostKind } from "../../table/hostTable";
+import { RELAY_ADAPTER_VERSION } from "../../table/lobby";
+import { PreviewRelay } from "../../table/previewHost";
 import { SoloTable, type SoloSetup } from "../../table/soloTable";
 import { gameAudio } from "../audio";
 import { GameScreen } from "../GameScreen";
 import { storage } from "../storage";
 import { AccountSignInCard, PrivacyCard } from "./AccountCards";
-import { account, completeGoogleSignIn, connectRecord, useAccount } from "./accountSession";
+import { account, challenges, completeGoogleSignIn, connectRecord, rankedQueue, useAccount, useWatched } from "./accountSession";
+import { ChallengeBanner } from "./ChallengeBanner";
+import { GuestRoom } from "./GuestRoom";
 import { Conversation } from "./Conversation";
 import { CustomTable, type AIDeckGroup } from "./CustomTable";
 import { FriendsPanel } from "./FriendsPanel";
@@ -66,9 +75,21 @@ interface ActiveGame {
   ticket?: { id: string; seeded: boolean };
 }
 
-export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
-  data: MenuData; onJoin: (code: string, name: string, deck: DeckList) => void; initialJoinCode?: string;
-}) {
+/** A relay table this browser joined or hosts, until it closes (the phones' activeMatch with their multiplayer setup). */
+interface OnlineGame {
+  table: GuestTable | HostTable;
+  key: number;
+  hosting: boolean;
+  mode: PlayMode;
+  deck: AIDeck;
+  deckBracket: number;
+  /** The ranked match both sides report to (ranked queue or a ranked challenge). */
+  rankedMatchID?: string;
+  /** A challenge sent from this table, waiting for the friend's answer. */
+  waitingFor?: string;
+}
+
+export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; initialJoinCode?: string }) {
   const engine = localEngine();
   const engineState = useEngine(engine);
   const zoom = useMenuZoom();
@@ -140,6 +161,9 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   const [quickSkill, setQuickSkill] = useStored("mm.web.quick.skill", () => readNumber("mm.web.quick.skill", 3, 1, 10));
   const [starting, setStarting] = useStored<"roll" | "choose">("mm.web.solo.starting", () => (read("mm.web.solo.starting", "roll") === "choose" ? "choose" : "roll"));
   const [playerMode, setPlayerMode] = useStored<"ai" | "online">("mm.web.custom.players", () => (read("mm.web.custom.players", "ai") === "online" ? "online" : "ai"));
+  /** How many people the table this browser hosts seats (RelayTablePanel's player count). */
+  const [hostSeats, setHostSeatsRaw] = useStored("mm.web.custom.hostSeats", () => readNumber("mm.web.custom.hostSeats", 2, 2, 4));
+  const setHostSeats = (seats: 2 | 3 | 4) => setHostSeatsRaw(seats);
   const [aiSkill, setAISkill] = useStored("mm.web.solo.aiSkill", () => readNumber("mm.web.solo.aiSkill", 2, 1, 10));
   const [seats, setSeatsRaw] = useState<string[]>(() => {
     const saved = read("mm.web.custom.seats", "").split(",").filter((id) => pool.deck(id));
@@ -229,10 +253,23 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     if (opponent) begin("quick", [opponent], Math.min(10, Math.max(1, quickSkill)));
   };
 
-  /** Ranked against the AI at your tier (the person queue arrives with accounts). */
+  /**
+   * Ranked: a person from the queue when one is searching near your rank (signed in), else an AI at your tier
+   * (findRankedMatch).
+   */
   const findRanked = () => {
     if (!deck || deckBracket === undefined || deckBracket > RankTier.maxDeckBracket(rank.position.tier)) return;
     record.refreshSeason();
+    if (player.state.phase === "ready" && player.state.username) {
+      void rankedQueue.search(relayProtocol, RankPosition.step(rank.position), deckBracket).then((outcome) => {
+        if (outcome.kind === "ai") startRankedAI();
+        else if (outcome.kind === "human") void startRankedHuman(outcome.ticket.matchId!, outcome.ticket.role === "host", outcome.ticket.tableCode, outcome.ticket.opponent);
+      });
+    } else startRankedAI();
+  };
+
+  const startRankedAI = () => {
+    if (!deck || deckBracket === undefined) return;
     const tier = rank.position.tier;
     const opponent = pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
       preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
@@ -242,6 +279,165 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       void account.startRankedAIGame(deckBracket).then((ticket) => begin("ranked", [opponent], RankTier.aiSkill(tier), ticket ?? undefined));
     } else begin("ranked", [opponent], RankTier.aiSkill(tier));
   };
+
+  // MARK: Tables with people (OnDeviceRootView's hostRelay / joinRelay, challenges and the ranked queue)
+
+  const identity = useMemo(() => ({ upstreamCommit: data.resolver.upstreamCommit, catalogueHash: data.resolver.catalogueHash, adapterVersion: RELAY_ADAPTER_VERSION }), [data]);
+  /** Phones share a table only with the same engine build (the ranked queue and challenges check it). */
+  const relayProtocol = `${identity.upstreamCommit}/${identity.catalogueHash}/${identity.adapterVersion}`.slice(0, 200);
+  const [online, setOnline] = useState<OnlineGame>();
+  const onlineKey = useRef(0);
+  const onlineNow = useRef<OnlineGame | undefined>(undefined);
+  onlineNow.current = online;
+  const [notice, setNotice] = useState<string>();
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(undefined), 6000); return () => window.clearTimeout(timer); }, [notice]);
+  const playerName = () => (player.state.username ?? (name.trim() || "Player")).slice(0, 24);
+  useWatched(challenges);
+  useWatched(rankedQueue);
+
+  /** Joins a table by its code, or opens one this browser hosts (`seats` people), with the chosen deck. */
+  const openOnline = async (options: { host?: { seats: 2 | 3 | 4; kind: HostKind }; code?: string; mode: PlayMode; rankedMatchID?: string; waitingFor?: string }) => {
+    if (!deck || deckBracket === undefined) return undefined;
+    let resolved;
+    try { resolved = data.resolver.resolve(deck.deckList); } catch (failure) { setNotice(failure instanceof Error ? failure.message : String(failure)); return undefined; }
+    const preview = import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
+    const table = options.host ? new HostTable(identity, engine) : preview ? new GuestTable(identity, () => new PreviewRelay(identity) as never) : new GuestTable(identity);
+    const game: OnlineGame = { table, key: ++onlineKey.current, hosting: options.host !== undefined, mode: options.mode, deck, deckBracket,
+      rankedMatchID: options.rankedMatchID, waitingFor: options.waitingFor };
+    setPlayPanel(false); setCustom(false); setPanel(undefined); setSocial(undefined);
+    setOnline(game);
+    if (table instanceof HostTable) {
+      // Only a custom table is offered to friends; challenge and ranked tables are for one invited player.
+      table.onOpenSeats = (code, openSeats) => account.setHosting(code ? { code, openSeats } : undefined);
+      try { await table.host(playerName(), resolved, options.host!.seats, { kind: options.host!.kind }); } catch { /* the room shows the relay's answer */ }
+    } else table.join(options.code ?? "", playerName(), resolved);
+    return game;
+  };
+
+  const leaveOnline = (game: OnlineGame, message?: string) => {
+    game.table.leave();
+    account.setHosting(undefined);
+    setOnline((current) => (current?.key === game.key ? undefined : current));
+    if (message) setNotice(message);
+  };
+
+  /** A challenge or ranked table that never starts closes after 75 s; ranked then plays the AI (watchPersonTable). */
+  const watchPersonTable = (game: OnlineGame, message: string, fallback?: () => void) => {
+    window.setTimeout(() => {
+      if (onlineNow.current?.key !== game.key || game.table.session || ["playing", "starting"].includes(game.table.state.stage)) return;
+      leaveOnline(game, message);
+      fallback?.();
+    }, 75_000);
+  };
+
+  /** The host opens a two-seat table and shares its code; the guest joins it (startRankedHuman). */
+  const startRankedHuman = async (matchID: string, host: boolean, code: string | undefined, opponent: string | undefined) => {
+    const game = host ? await openOnline({ host: { seats: 2, kind: "ranked" }, mode: "ranked", rankedMatchID: matchID })
+      : code ? await openOnline({ code, mode: "ranked", rankedMatchID: matchID }) : undefined;
+    if (!game) { rankedQueue.finish(); startRankedAI(); return; }
+    const tableCode = game.table.state.tableCode;
+    if (host && tableCode) await rankedQueue.shareTable(matchID, tableCode);
+    watchPersonTable(game, `${opponent ?? "Your opponent"} didn't connect. An AI took the seat.`, () => { rankedQueue.finish(); startRankedAI(); });
+  };
+
+  /** Challenges a friend: a two-seat table, its code sent, then the answer (challengeFriend). */
+  const challengeFriend = async (friend: string, mode: "quick" | "ranked") => {
+    if (!deck || deckBracket === undefined) return;
+    record.refreshSeason();
+    if (mode === "ranked" && deckBracket > RankTier.maxDeckBracket(rank.position.tier)) {
+      setNotice(`${CommanderBracket.title(deckBracket)} is above ${RankTier.name(rank.position.tier)}'s limit. Choose another deck.`);
+      return;
+    }
+    const game = await openOnline({ host: { seats: 2, kind: "challenge" }, mode, waitingFor: friend });
+    if (!game) return;
+    const code = game.table.state.tableCode;
+    if (!code) return;
+    const answer = await challenges.challenge(friend, mode, relayProtocol, RankPosition.step(rank.position), code);
+    switch (answer.kind) {
+      case "accepted":
+        setOnline((current) => (current?.key === game.key ? { ...current, waitingFor: undefined, rankedMatchID: answer.challenge.matchId } : current));
+        game.rankedMatchID = answer.challenge.matchId;
+        watchPersonTable(game, `${friend} didn't connect. Try the challenge again.`);
+        break;
+      case "declined": leaveOnline(game, `${friend} declined your challenge.`); break;
+      case "expired": leaveOnline(game, `${friend} didn't answer your challenge.`); break;
+      case "cancelled": leaveOnline(game); break;
+      case "failed": leaveOnline(game, FriendChallengeRules.message(answer.code)); break;
+    }
+  };
+
+  /** Accepts a friend's challenge and joins their table (acceptChallenge). */
+  const acceptChallenge = async (challenge: FriendChallenge) => {
+    record.refreshSeason();
+    const step = RankPosition.step(rank.position);
+    const ranked = FriendChallengeRules.isRanked(challenge);
+    if (ranked && !FriendChallengeRules.mayRank(step, challenge.challengerStep)) {
+      setNotice(FriendChallengeRules.message("rank_mismatch"));
+      void challenges.decline(challenge);
+      return;
+    }
+    try {
+      const accepted = await challenges.accept(challenge, relayProtocol, step);
+      if (!accepted.tableCode) throw new Error("challenge_closed");
+      const game = await openOnline({ code: accepted.tableCode, mode: ranked ? "ranked" : "quick", rankedMatchID: accepted.matchId });
+      if (game) watchPersonTable(game, `${challenge.challenger ?? "Your friend"} didn't connect. Try the challenge again.`);
+    } catch (failure) {
+      setNotice(FriendChallengeRules.message(failure instanceof Error && failure.message === "challenge_closed" ? "challenge_closed" : SupabaseLite.code(failure)));
+    }
+  };
+
+  // Challenges are watched while the menus show, for a player with a name and friends (watchesChallenges).
+  const watching = player.state.phase === "ready" && player.state.username !== undefined && !game && !online
+    && player.state.friends.some((friend) => friend.relation === "friend");
+  useEffect(() => {
+    if (!watching) return;
+    return challenges.watch(() => (player.state.onlineFriendCount ?? 0) > 0);
+  }, [watching]);
+
+  // A table with people: the finished game goes in the record once, a ranked result goes to the server, and a table
+  // that has closed (left, or the game over and left) returns to the menus.
+  const recordedOnline = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!online) return;
+    const { table } = online;
+    let opened = table.state.stage !== "idle";
+    const check = () => {
+      const stage = table.state.stage;
+      if (stage !== "idle") opened = true;
+      if (opened && (stage === "idle" || stage === "closed")) {
+        account.setHosting(undefined);
+        if (online.rankedMatchID) rankedQueue.finish();
+        setOnline((current) => (current?.key === online.key ? undefined : current));
+        return;
+      }
+      const snapshot = table.session?.state.snapshot;
+      if (!snapshot || snapshot.gameStatus !== "completed" || recordedOnline.current === online.key) return;
+      recordedOnline.current = online.key;
+      const viewer = snapshot.viewerPlayerId;
+      const winners = snapshot.winnerPlayerIds ?? [];
+      const outcome = winners.length === 0 ? "draw" : viewer && winners.includes(viewer) ? "win" : "loss";
+      record.record({
+        mode: online.mode, outcome, opponents: table.state.tableSeats.filter((seat) => !seat.isLocal).map((seat) => ({ name: seat.name, commander: seat.commanders[0], isAI: false })),
+        deckID: online.deck.id, deckName: online.deck.name, commander: online.deck.commander, colors: [...online.deck.colors], deckBracket: online.deckBracket, turns: snapshot.turn,
+      });
+      void (async () => {
+        if (online.rankedMatchID) await rankedQueue.report(online.rankedMatchID, outcome);
+        await server.afterGame();
+        setRecordVersion((v) => v + 1);
+      })();
+      setRecordVersion((v) => v + 1);
+    };
+    check();
+    return table.subscribe(check);
+  }, [online, record]);
+  useEffect(() => {
+    if (!online) return;
+    const visibility = () => online.table.setForeground(document.visibilityState === "visible");
+    const leaving = () => online.table.leave();
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("pagehide", leaving);
+    return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pagehide", leaving); };
+  }, [online]);
 
   const startCustom = () => {
     const opponents = seats.map((id) => pool.deck(id)).filter((d): d is AIDeck => d !== undefined);
@@ -291,7 +487,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     if (next === "learn") { setPanel("learn"); return; }
     setMenuTab(next); setPlayPanel(false); setCustom(false); setLeaderboard(false);
   };
-  const joinTable = (code: string) => { if (deck) onJoin(code, (player.state.username ?? (name.trim() || "Player")).slice(0, 24), deck.deckList); };
+  const joinTable = (code: string) => { void openOnline({ code, mode: "casual" }); };
 
   const homeContent: HomeContent = {
     features: [
@@ -329,11 +525,12 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     sections, selectedDeckID, selectDeck: setSelectedDeckID, deckBracket, mode, setMode, tab, setTab,
     quickBracket, setQuickBracket, quickDeckID, setQuickDeckID, quickPool: pool.pool(quickResolvedBracket), quickResolvedBracket,
     quickSkill, setQuickSkill, startingPlayer: starting, setStartingPlayer: setStarting, rank, playerMode, setPlayerMode,
-    friendWays: ["join"], mayStart, status: error ?? engineStatus, recent,
+    friendWays: player.state.username ? ["challenge", "host", "join"] : ["host", "join"], mayStart, status: error ?? engineStatus, recent,
     close: () => setPlayPanel(false), explainBracket: () => setPanel("bracket"),
     startQuick, findRanked, openCustom: () => { setPlayPanel(false); setCustom(true); },
     rankedHall: () => { setPlayPanel(false); setMenuTab("ranked"); setLeaderboard(false); }, leaderboard: () => { setPlayPanel(false); setMenuTab("ranked"); setLeaderboard(true); },
-    friendWay: () => { setPlayerMode("online"); setPlayPanel(false); setCustom(true); },
+    friendWay: (way) => { if (way === "challenge") { setPlayPanel(false); setPanel("friends"); } else { setPlayerMode("online"); setPlayPanel(false); setCustom(true); } },
+    search: rankedQueue.phase, cancelSearch: () => rankedQueue.cancel(), playAINow: () => rankedQueue.skipToAI(),
     chooseRecent: (g) => { setSelectedDeckID(g.deckID); setMode(g.mode === "quick" ? "quick" : g.mode === "ranked" ? "ranked" : "custom"); },
   };
 
@@ -385,6 +582,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   ];
 
   if (game) return <GameScreen key={game.key} table={game.table} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
+  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
 
   const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : panel === "friends" ? "messages" : undefined;
   const covered = panel !== undefined;
@@ -400,7 +598,8 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
             validName: validPlayerName(player.state.username ?? (name || "Player")), nameLocked: player.state.username !== undefined,
             playerMode, setPlayerMode, seats, setSeats, aiGroups, aiSkill, setAISkill, starting, setStarting, joinCode, setJoinCode,
             status: error ?? engineStatus, mayStart, start: startCustom,
-            join: () => { if (deck) onJoin(joinCode, (name.trim() || "Player").slice(0, 24), deck.deckList); },
+            join: () => joinTable(joinCode),
+            hostSeats: hostSeats as 2 | 3 | 4, setHostSeats, host: () => { void openOnline({ host: { seats: hostSeats as 2 | 3 | 4, kind: "custom" }, mode: "casual" }); },
             changeDeck: () => openPlay("custom"), back: () => openPlay("custom"), explainBracket: () => setPanel("bracket"),
           }} />
         )}
@@ -425,8 +624,13 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
         rank={{ tier: rank.position.tier, title: RankPosition.title(rank.position) }} openRank={() => selectTab("ranked")}
         updates={() => setPanel("updates")} settings={() => setPanel("settings")}
         messages={() => setPanel("friends")} unread={player.state.incomingCount + player.state.unreadMessages > 0} />
+      {challenges.incoming[0] && !challenges.isWaiting && (
+        <ChallengeBanner challenge={challenges.incoming[0]} accept={() => { void acceptChallenge(challenges.incoming[0]); }} decline={() => { void challenges.decline(challenges.incoming[0]); }} />
+      )}
+      {notice && <button type="button" className="mtoast glass" role="status" onClick={() => setNotice(undefined)}>{notice}</button>}
       <MenuPanel open={panel === "friends"} onClose={() => setPanel(undefined)} placement="leading" label="Friends">
         <FriendsPanel account={player} onClose={() => setPanel(undefined)} join={joinTable}
+          challenge={(friend, mode) => { window.setTimeout(() => { void challengeFriend(friend, mode); }, 300); }} myRankStep={RankPosition.step(rank.position)}
           openProfile={(username) => setSocial({ kind: "profile", username })} openConversation={(username) => setSocial({ kind: "conversation", username })} />
       </MenuPanel>
       <MenuPanel open={social?.kind === "profile"} onClose={() => setSocial(undefined)} label="Player profile" maxWidth={760}>
@@ -457,4 +661,16 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       </MenuPanel>
     </div>
   );
+}
+
+/** A table with people: its room until the game starts, then the board (App's guest view, now for hosts too). */
+function OnlineScreen({ game, name, resolver, leave, cancelWait }: {
+  game: OnlineGame; name: string; resolver: DeckResolver; leave: () => void; cancelWait: () => void;
+}) {
+  const table = game.table;
+  useSyncExternalStore((listener) => table.subscribe(listener), () => table.version);
+  const stage = table.state.stage;
+  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} />;
+  return <GuestRoom table={table} name={name} deck={game.deck.deckList} resolver={resolver} leave={leave} hosting={game.hosting}
+    waitingFor={game.waitingFor} cancelWait={cancelWait} />;
 }

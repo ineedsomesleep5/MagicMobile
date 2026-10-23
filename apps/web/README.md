@@ -221,8 +221,9 @@ would have to be split into parts.
 
 ## Not done yet
 
-- Friend challenges, hosting a table from the browser and Ranked against people; your decks synced with your phone
-  (phases 4 and 5, docs/WEB_PARITY.md section 9). Your decks live in this browser (`mm.web.decks`, the phone's
+- Your decks synced with your phone (phase 5, docs/WEB_PARITY.md section 9). Hosting, challenges and Ranked against
+  people work web to web over the relay; a phone joining a browser's table and the two-account challenge and queue
+  flows still need a real run. Your decks live in this browser (`mm.web.decks`, the phone's
   `decks.json` shape) until then.
 - **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
   against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator

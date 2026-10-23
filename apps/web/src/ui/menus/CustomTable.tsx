@@ -2,13 +2,13 @@
  * The Custom Table as Arena's event page (iOS OnDeviceRootView.setupContent): your seat on one glass plate (your open
  * deck box, its bracket, your name written on the plate, Change deck) and the table on the other (who plays, the AI seats
  * as deck boxes with × and a "+" seat, the AI's skill and who goes first), with the status and Start on a strip below.
- * An online table joins a friend's with their code (the phones host; a browser can't host yet).
+ * An online table is hosted here for 2–4 people, or joined with a friend's code (RelayTablePanel).
  */
 import { useEffect, useRef, useState } from "react";
 import { CommanderBracket } from "../../core/brackets";
 import { gameAudio } from "../audio";
 import { boxGeometry, DeckBox, type DeckBoxModel, NewDeckBox } from "./DeckBox";
-import { BackChevron, Caps, Emblem, Pill, PlayButton, Slider } from "./kit";
+import { BackChevron, Caps, Emblem, Pill, PlayButton, Segmented, Slider } from "./kit";
 
 export interface AIDeckChoice { id: string; name: string; commander?: string; colors: string[]; bracket: number }
 export interface AIDeckGroup { title: string; decks: AIDeckChoice[] }
@@ -32,6 +32,10 @@ export interface CustomTableModel {
   setStarting: (mode: "roll" | "choose") => void;
   joinCode: string;
   setJoinCode: (code: string) => void;
+  /** People at a table this browser hosts. */
+  hostSeats: 2 | 3 | 4;
+  setHostSeats: (seats: 2 | 3 | 4) => void;
+  host: () => void;
   status?: string;
   mayStart: boolean;
   start: () => void;
@@ -178,11 +182,17 @@ function DeckMenu({ groups, chosen, pick, close }: { groups: AIDeckGroup[]; chos
   );
 }
 
-/** An online table: the six-letter code from the host's phone, and Join. */
+/** An online table: host one here for 2–4 people, or join a friend's with its six-letter code. */
 function JoinTable({ model }: { model: CustomTableModel }) {
   const valid = /^[A-Z0-9]{6}$/.test(model.joinCode);
   return (
     <div className="mjoin">
+      <hr />
+      <Caps text="Host a table" />
+      <div className="mhostrow">
+        <Segmented options={[2, 3, 4].map((n) => ({ value: n as 2 | 3 | 4, label: `${n} players` }))} value={model.hostSeats} onChange={model.setHostSeats} label="Players at your table" />
+        <div className="mjoinplay"><PlayButton size={18} id="setup.host" disabled={!model.validName} onClick={model.host}>Host Table</PlayButton></div>
+      </div>
       <hr />
       <Caps text="Table code" />
       <input className="mcode" value={model.joinCode} maxLength={6} placeholder="ABC234" spellCheck={false} aria-label="Table code"

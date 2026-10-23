@@ -745,3 +745,11 @@ contradicting one.
   in new screens need `crossOrigin="anonymous"`: the page is cross-origin isolated (COEP require-corp), so a plain
   `<img>` from Scryfall shows broken. (3) Writing ` ` as a regex escape in a TS source file turned into the literal
   line-separator character in one edit and broke the build; keep such characters as escapes and check the diff.
+- 2026-10-23 (Claude, web hosting): (1) The relay's `POST /v1/tables` sends no CORS headers, so the browser asks its own
+  origin (`/relay/v1/tables`: Vite proxy, Vercel rewrite) and only the WebSocket goes to the relay directly (WebSockets
+  aren't CORS-checked). Through Vercel every web host shares Vercel's egress IPs, and the relay allows 5 table creations
+  a minute per IP: add CORS to the relay before the web gets busy. (2) A hosted table pauses ("Every player must return
+  to the foreground") when the host's tab is hidden, as the phones do when backgrounded; with the Mac's display asleep
+  Chrome also refuses screenshots and pointer clicks from Claude in Chrome, while page JavaScript still runs. Check
+  `document.visibilityState` before reading a pause as a bug. (3) `apps/web/scripts/guest-join.mjs --code X` joins any
+  table as a headless web guest on autopilot, with the profile server blocked so no player is made.

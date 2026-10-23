@@ -8,8 +8,7 @@
  * Rendered inside the shell's MenuPanel placement="leading": this is the panel's content only. The profile and
  * conversation open through the shell (openProfile, openConversation).
  *
- * Left out for now: the Challenge menu on a friend's row (friend challenges need hosting from the browser; a later
- * phase).
+ * An online friend's row has the Challenge menu: Quick Match, and Ranked only in the same tier (FriendsView.challengeMenu).
  *
  * The small pieces the other social screens share (Conversation, PublicProfile, Leaderboard) live here too, as iOS's
  * SocialComponents.swift: the floating notice, the waiting line, a player's heading, the glass question and pop-over.
@@ -19,14 +18,15 @@ import {
   type AccountState, FriendMessageRules, type MessageConversation, type PlayerAccount, PlayerAccountRules, PlayerFriend, PlayerSearchResult,
   PlayerSearchRules, ProfileVisibility, SearchCancelled,
 } from "../../core/account";
-import type { RankPosition } from "../../core/rankLadder";
+import { RankPosition as RankPositionOf, type RankPosition } from "../../core/rankLadder";
+import { FriendChallengeRules } from "../../core/matchmaking";
 import {
   conversationLabel, friendLabel, friendStatus, messagePreview, searchHint, searchResultLabel, searchResultLine, usernameDraft, withRelation,
 } from "../../core/socialText";
 import { SupabaseLite } from "../../core/supabaseLite";
 import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
-import { Btn, Caps, OptionRow, PanelHeader, Pill, SearchField } from "./kit";
+import { Btn, Caps, OptionRow, PanelHeader, Pill, PopMenu, SearchField } from "./kit";
 import { RankEmblem } from "./TopBar";
 import "./social.css";
 
@@ -54,6 +54,7 @@ const GLYPH: Record<string, ReactNode> = {
   sparkles: <path d="M10 3c.6 4 2.5 6 6.5 6.5C12.5 10 10.6 12 10 16c-.6-4-2.5-6-6.5-6.5C7.5 9 9.4 7 10 3zm8 10c.3 2 1.2 2.9 3.2 3.2-2 .3-2.9 1.2-3.2 3.2-.3-2-1.2-2.9-3.2-3.2 2-.3 2.9-1.2 3.2-3.2z" />,
   hand: <path d="M10 2.5a1.5 1.5 0 0 1 1.5 1.5v7h.7V3.2a1.5 1.5 0 0 1 3 0V11h.7V5a1.5 1.5 0 0 1 3 0v9.5c0 4.2-3 7.5-7 7.5-2.6 0-4.5-1.2-5.8-3.3L3.3 13.5a1.5 1.5 0 0 1 2.5-1.6l2.7 3.3V4a1.5 1.5 0 0 1 1.5-1.5z" />,
   wifi: <path d="M12 18.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM2 8.6A15 15 0 0 1 17.7 5l-.9 2A13 13 0 0 0 3.4 10zm3 3.3a10.5 10.5 0 0 1 10.6-2.4l-.8 2a8.4 8.4 0 0 0-8.3 1.9zm3.1 3.2a6 6 0 0 1 5.1-1.6l-.6 2.1a3.9 3.9 0 0 0-3 1zM19 8h2v8h-2zm0 10h2v2h-2z" />,
+  flags: <path d="M4 2h2v20H4zm3 1h8l-1.5 3L15 9H7zm6 6h7l-1.5 3 1.5 3h-7z" />,
   question: <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1 15h2v2h-2zm1-11.5c2.2 0 3.8 1.4 3.8 3.3 0 1.6-1 2.4-1.9 3-.6.4-.9.7-.9 1.4v.3h-2v-.5c0-1.4.8-2.1 1.6-2.6.7-.5 1.2-.8 1.2-1.6 0-.9-.8-1.5-1.8-1.5-1.1 0-1.9.7-2 1.7H8.1c.1-2.1 1.7-3.5 3.9-3.5z" fillRule="evenodd" />,
 };
 
@@ -195,11 +196,15 @@ export function SocialQuestion({ title, message, confirm, onConfirm, onCancel, i
 type Search = { kind: "idle" } | { kind: "searching" } | { kind: "done" } | { kind: "failed"; message: string };
 type Tab = "friends" | "messages";
 
-export function FriendsPanel({ account, onClose, join, openProfile, openConversation }: {
+export function FriendsPanel({ account, onClose, join, openProfile, openConversation, challenge, myRankStep }: {
   account: PlayerAccount;
   onClose: () => void;
   /** Joins a friend's open table by its code (the same path as an invite link). */
   join: (code: string) => void;
+  /** Challenges an online friend to a Quick Match or a Ranked game (undefined hides the menu). */
+  challenge?: (username: string, mode: "quick" | "ranked") => void;
+  /** Your ranked step this season: Ranked challenges need a friend in the same tier. */
+  myRankStep?: number;
   openProfile: (username: string) => void;
   openConversation: (username: string) => void;
 }) {
@@ -401,6 +406,16 @@ export function FriendsPanel({ account, onClose, join, openProfile, openConversa
                 <i><SocialGlyph name="arrow" size={16} /></i>
               </button>
             )}
+            {code === undefined && challenge && friend.online && (() => {
+              const rank = state.friendRanks[friend.username];
+              const mayRank = myRankStep !== undefined && FriendChallengeRules.mayRank(myRankStep, rank ? RankPositionOf.step(rank) : undefined);
+              return (
+                <PopMenu label={`Challenge ${friend.username}`} id={`friends.challenge.${friend.username}`} align="right" items={[
+                  { label: "Quick Match", onClick: () => { challenge(friend.username, "quick"); onClose(); } },
+                  { label: mayRank ? "Ranked" : "Ranked · same tier only", disabled: !mayRank, onClick: () => { challenge(friend.username, "ranked"); onClose(); } },
+                ]} trigger={() => <span className="msocialjoin"><i><SocialGlyph name="flags" size={15} /></i></span>} />
+              );
+            })()}
             {state.messagesAvailable && (
               <button type="button" className="msocialicon" aria-label={`Message ${friend.username}`} data-id={`friends.message.${friend.username}`}
                 onClick={() => message(friend.username)}>
