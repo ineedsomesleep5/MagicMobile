@@ -76,7 +76,8 @@ export const ARENA = {
   primary: { x: 708, y: 388, w: 176, h: 36 }, secondary: { x: 708, y: 335, w: 176, h: 37 },
   phaseStrip: { x: 708, w: 176, y: 368, raisedY: 314 },
   passAhead: { x: 890, y: 392, w: 40, h: 28 },
-  menu: { x: 876, y: 23 }, log: { x: 842, y: 23 },
+  // The gear 3 points lower, as iOS moved it so its 44 pt target stays on a 402 pt tall phone (31db7746); the log beside it.
+  menu: { x: 876, y: 26 }, log: { x: 842, y: 26 },
   floatingMana: { x: 60, y: 362, dx: 18 },
   captionY: 197,
 } as const;

@@ -2,7 +2,7 @@
  * The Arena board's flat pieces (Caleb, 2026-10-21: the real Magic card back, and no 3D tavern pips in Arena mode):
  * Scryfall's mana symbols (iOS ManaSymbolView) and the Magic card back (ArenaCardBack). Both are <img> with
  * crossorigin, which the page's cross-origin isolation allows; a CSS background from another origin would be blocked.
- * Until an image loads, or if it can't, a plain stand-in shows (a coloured disc, the tavern's leather back).
+ * Until an image loads, or if it can't, a plain stand-in shows (a coloured disc, a dark back). Also Arena's count oval.
  */
 import { useState } from "react";
 import { CARD_BACK_URL, manaSymbolURL } from "../cardArt";
@@ -33,4 +33,9 @@ export function RulesText({ text }: { text: string }) {
 export function CardBack() {
   const [failed, setFailed] = useState(false);
   return failed ? <div className="back" /> : <img className="mback" src={CARD_BACK_URL} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />;
+}
+
+/** ArenaCountBadge: a white number on a dark oval in a thin gold line (a pile, the stack's size, a card's order); `size` is its height. */
+export function CountBadge({ count, size = 17, label, className = "" }: { count: number; size?: number; label?: string; className?: string }) {
+  return <span className={`acount ${className}`} style={{ ["--s" as string]: `${size}px` }} aria-label={label}>{count}</span>;
 }

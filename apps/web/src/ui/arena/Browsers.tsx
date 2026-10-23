@@ -9,13 +9,13 @@ import { useEffect, useRef, useState } from "react";
 import { CardChoicePlan, CardChoicePlanRules } from "../../core/cardChoicePlan";
 import { EngineDisplayText } from "../../core/displayText";
 import {
-  displayToughness, type GameCommand, type GameSnapshot, isCreatureCard, isUuid, type LegalAction, pileNumber, type PlayerGameState, promptKind,
+  displayToughness, type GameCommand, type GameSnapshot, isCreatureCard, isOut, isUuid, type LegalAction, pileNumber, type PlayerGameState, promptKind,
   type PromptEnvelopeV2, type XmagePromptAbility, type XmagePromptPile, type XmageStackObject, type ZoneCard,
 } from "../../core/models";
 import { cardImageURL } from "../cardArt";
 import { AbilityCard, isStackAbility } from "./AbilityCard";
 import { AVATAR } from "./avatars";
-import { ManaSymbol, RulesText } from "./Symbols";
+import { CountBadge, ManaSymbol, RulesText } from "./Symbols";
 
 export type Send = (command: Omit<GameCommand, "gameId" | "playerId" | "promptId" | "messageId">, label: string) => void;
 export type SendAction = (action: LegalAction) => void;
@@ -128,8 +128,10 @@ function heading(envelope: PromptEnvelopeV2, fallback: string): { title: string;
 }
 
 /**
- * The question in a few words, the reference's way ("Use Esper Sentinel's ability?"), with the whole of XMage's message
- * under it when it says more (ArenaQuestionStage.headline; Caleb, 2026-10-21: long questions filled the screen).
+ * The question in a few words, the reference's way ("Use Esper Sentinel's ability?"), with the rest of XMage's message
+ * under it when it says more (ArenaQuestionStage.headline; Caleb, 2026-10-21: long questions filled the screen). Otherwise
+ * its first sentence over the rest, or the whole question when it is one long sentence: never cut off, never said twice
+ * (the judge, 2026-10-22).
  */
 export function headline(message: string, subject: string | undefined, ability: boolean): { title: string; detail?: string } {
   const text = lines(message).join(" ");
@@ -142,8 +144,11 @@ export function headline(message: string, subject: string | undefined, ability: 
   // "Use X's ability?" only when the message is about X; otherwise its first sentence.
   if (subject && ability && text.toLowerCase().includes(subject.toLowerCase())) return { title: `Use ${subject}'s ability?`, detail: text };
   const stop = text.indexOf(". ");
-  if (stop >= 0 && stop < 70) return { title: `${text.slice(0, stop)}.`, detail: text };
-  return { title: `${text.slice(0, 60).trim()}…`, detail: text };
+  if (stop >= 0 && stop < 70) {
+    const rest = text.slice(stop + 2).trim();
+    return { title: `${text.slice(0, stop)}.`, detail: rest || undefined };
+  }
+  return { title: text };
 }
 
 /**
@@ -309,9 +314,27 @@ export const canRememberAnswer = (envelope: PromptEnvelopeV2) => {
 /** XMage's own answers to the prompt (Cancel, Done), less the ones a browser makes itself. */
 const promptAnswers = (snapshot: GameSnapshot, ...except: string[]) =>
   (snapshot.legalActions ?? []).filter((a) => a.cardInstanceId === undefined && a.sourceInstanceId === undefined && !except.includes(a.type));
-const plaques = (actions: LegalAction[], sendAction: SendAction, pending: boolean, style: "ember" | "leather" = "leather") => actions.map((action) => (
-  <button key={action.id} type="button" className={`aplaque ${style}`} disabled={pending} onClick={() => sendAction(action)}>{EngineDisplayText.label(action.label)}</button>
-));
+const plaques = (actions: LegalAction[], sendAction: SendAction, pending: boolean, kind: AnswerKind | ((label: string) => AnswerKind) = "secondary") =>
+  actions.map((action) => {
+    const label = EngineDisplayText.label(action.label);
+    return <button key={action.id} type="button" className={`aplaque ${typeof kind === "function" ? kind(label) : kind}`} disabled={pending} onClick={() => sendAction(action)}>{label}</button>;
+  });
+type AnswerKind = "primary" | "secondary" | "cool" | "danger";
+/**
+ * The question stage's pills (CompactPromptPopup's stage, PanelActionButtonStyle): Arena's blue declines ("No", "Cancel",
+ * "Decline"), the orange pill takes every other answer; words only.
+ */
+export const questionAnswerKind = (label: string): AnswerKind =>
+  ["no", "cancel", "decline", "mulligan"].includes(label.trim().toLowerCase()) ? "cool" : "primary";
+
+/** "Don't ask again" on the Arena board (RememberChoiceToggle): a gold diamond and light words, no system check box. */
+function RememberToggle({ on, set, title }: { on: boolean; set: (on: boolean) => void; title: string }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={on} className="bremember" onClick={() => set(!on)}>
+      <i aria-hidden="true" />{title}
+    </button>
+  );
+}
 
 export function Browser(props: Props & { kind: Exclude<BrowserKind, "mulligan" | "amount"> }) {
   switch (props.kind) {
@@ -344,18 +367,18 @@ function QuestionStage({ snapshot, envelope, send, sendAction, pending, height, 
         <div className="answers">
           {confirmation ? (
             <>
-              <button type="button" className="aplaque ember" disabled={pending} onClick={() => send({ type: "answer_yes_no", confirmed: true, ...remembering }, confirmation.yesLabel ?? "Yes")}>
-                {confirmation.yesLabel ?? "Yes"}</button>
-              <button type="button" className="aplaque leather" disabled={pending} onClick={() => send({ type: "answer_yes_no", confirmed: false, ...remembering }, confirmation.noLabel ?? "No")}>
-                {confirmation.noLabel ?? "No"}</button>
+              <button type="button" className={`aplaque ${questionAnswerKind(confirmation.yesLabel ?? "Yes")}`} disabled={pending}
+                onClick={() => send({ type: "answer_yes_no", confirmed: true, ...remembering }, confirmation.yesLabel ?? "Yes")}>{confirmation.yesLabel ?? "Yes"}</button>
+              <button type="button" className={`aplaque ${questionAnswerKind(confirmation.noLabel ?? "No")}`} disabled={pending}
+                onClick={() => send({ type: "answer_yes_no", confirmed: false, ...remembering }, confirmation.noLabel ?? "No")}>{confirmation.noLabel ?? "No"}</button>
             </>
           ) : (envelope.choices ?? []).map((choice) => (
-            <button key={choice.id} type="button" className="aplaque leather" disabled={pending}
+            <button key={choice.id} type="button" className={`aplaque ${questionAnswerKind(EngineDisplayText.label(choice.label))}`} disabled={pending}
               onClick={() => send({ type: "resolve_choice", choiceIds: [choice.id] }, choice.label)}><RulesText text={EngineDisplayText.label(choice.label)} /></button>
           ))}
-          {plaques(promptAnswers(snapshot, "answer_yes_no", "resolve_choice"), sendAction, pending)}
+          {plaques(promptAnswers(snapshot, "answer_yes_no", "resolve_choice"), sendAction, pending, questionAnswerKind)}
         </div>
-        {rememberable && <label className="bremember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Don’t ask again this game</label>}
+        {rememberable && <RememberToggle on={remember} set={setRemember} title="Don’t ask again this game" />}
       </div>
     </Veil>
   );
@@ -368,17 +391,21 @@ function ModeBrowser({ snapshot, envelope, send, sendAction, pending, height, in
   const named = message.length > 1 ? visibleCards(snapshot).find((c) => c.card.name === stripID(clean(message[1]))) : undefined;
   const source = named ?? snapshot.xmage?.stack[0]?.sourceCard;
   const max = envelope.maxChoices ?? 1;
+  const title = max > 1 ? "Choose modes" : "Choose a mode";
   const firstLine = lines(envelope.message)[0];
-  const detail = max > 1 ? `Click a mode to add it · up to ${max}${envelope.minChoices ? `, at least ${envelope.minChoices}` : ""}`
+  const bounds = CardChoicePlanRules.selectionBounds(envelope.message);
+  const said = bounds ? (CardChoicePlanRules.isUnbounded(bounds) ? "Any number" : bounds[0] === bounds[1] ? `Choose ${bounds[1]}`
+    : bounds[0] > 0 ? `Up to ${bounds[1]}, at least ${bounds[0]}` : `Up to ${bounds[1]}`)
     : firstLine && !/^choose (a )?modes?\.?$/i.test(firstLine) ? firstLine : undefined;
+  const detail = said && said.toLowerCase() !== title.toLowerCase() ? said : undefined;
   const width = Math.min(height * 0.52, 290) * 0.72;
   return (
-    <Frame title={max > 1 ? "Choose modes" : "Choose a mode"} detail={detail} snapshot={snapshot} k={height / 440} inspect={inspect}
-      footer={plaques(promptAnswers(snapshot, "choose_mode"), sendAction, pending, "ember")}>
+    <Frame title={title} detail={detail} snapshot={snapshot} k={height / 440} inspect={inspect}
+      footer={plaques(promptAnswers(snapshot, "choose_mode"), sendAction, pending, "primary")}>
       {envelope.modes!.map((mode, index) => (
         <button key={mode.id} type="button" className="bpick" disabled={pending} aria-label={clean(mode.label)} {...hover(inspect, source?.card.name)}
           onClick={() => send({ type: "choose_mode", modeIds: [mode.id] }, mode.label)}>
-          <AbilityCard source={source} name={source ? undefined : `Mode ${index + 1}`} kind={`Mode ${index + 1}`}
+          <AbilityCard source={source} name={source ? undefined : `Mode ${index + 1}`} kind={source ? `Mode ${index + 1}` : "Mode"}
             text={clean(mode.label).replace(/^\d+\.\s*/, "")} width={width} />
         </button>
       ))}
@@ -403,11 +430,9 @@ function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height,
   const ready = picked.length >= abilities.length - 1;
   const footer = ordering ? (
     <>
-      {answerActions?.has("rememberTriggerFirst") && (
-        <label className="bremember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Always put my last-resolving pick first</label>
-      )}
-      <button type="button" className="aplaque leather" disabled={pending} onClick={() => orderTriggers!(abilities, false)}>Auto Order</button>
-      <button type="button" className="aplaque ember" disabled={pending || !ready} onClick={() => {
+      {answerActions?.has("rememberTriggerFirst") && <RememberToggle on={remember} set={setRemember} title="Always put my last-resolving pick first" />}
+      <button type="button" className="aplaque secondary" disabled={pending} onClick={() => orderTriggers!(abilities, false)}>Auto Order</button>
+      <button type="button" className="aplaque primary" disabled={pending || !ready} onClick={() => {
         const chosen = picked.map((id) => abilities.find((a) => a.id === id)!).filter(Boolean);
         orderTriggers!([...chosen, ...abilities.filter((a) => !picked.includes(a.id))], remember);
       }}>{ready ? "Done" : `${picked.length} of ${abilities.length}`}</button>
@@ -422,7 +447,7 @@ function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height,
             {...hover(inspect, ability.sourceCard?.card.name ?? ability.sourceName)}
             onClick={() => (ordering ? toggle(ability.id) : send({ type: "choose_ability", abilityId: ability.id }, ability.label))}>
             <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={width} />
-            {number > 0 && <span className="bcoin" aria-label={`Resolves ${number}`}>{number}</span>}
+            {number > 0 && <CountBadge count={number} size={34} label={`Resolves ${number}`} />}
           </button>
         );
       })}
@@ -451,9 +476,7 @@ function ChoiceBrowser({ snapshot, envelope, send, sendAction, pending, height, 
     <Frame title={title ?? "Make a choice"} detail={detail} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440}
       inspect={inspect} column={!asCards && !asSymbols}
       footer={<>
-        {options.some((o) => o.rememberID) && (
-          <label className="bremember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember my choice for this game</label>
-        )}
+        {options.some((o) => o.rememberID) && <RememberToggle on={remember} set={setRemember} title="Remember my choice for this game" />}
         {plaques(promptAnswers(snapshot, "resolve_choice"), sendAction, pending)}
       </>}>
       {options.length > 12 && !asCards && (
@@ -478,12 +501,12 @@ function ChoiceBrowser({ snapshot, envelope, send, sendAction, pending, height, 
   );
 }
 
-/** A player's medallion, large, for the player and split browsers. */
-function Medallion({ player, viewer, diameter, life = true }: { player?: PlayerGameState; viewer: boolean; diameter: number; life?: boolean }) {
+/** A player's medallion, large (ArenaHeroMedallion): the player and split browsers' and the result's. */
+export function Medallion({ player, viewer, diameter, life = true }: { player?: PlayerGameState; viewer: boolean; diameter: number; life?: boolean }) {
   return (
-    <span className="bmed" style={{ width: diameter, height: diameter }}>
+    <span className="bmed" style={{ ["--d" as string]: `${diameter}px` }}>
       <span className="av">{viewer ? AVATAR.me : AVATAR.opp}</span>
-      {player && life && <span className="hp" style={{ fontSize: diameter * 0.32 }}>{Math.max(0, player.life)}</span>}
+      {player && life && <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>}
     </span>
   );
 }
@@ -503,7 +526,7 @@ function PlayerChoice({ snapshot, envelope, send, sendAction, pending, height, i
     <Frame title={first ? "Choose who goes first" : message} snapshot={snapshot} k={height / 440} inspect={inspect}
       footer={plaques(promptAnswers(snapshot, "choose_player", "choose_target"), sendAction, pending)}>
       {seats.map((seat) => (
-        <button key={seat.id} type="button" className="bseat" disabled={pending} style={{ margin: `0 ${diameter * 0.17}px` }}
+        <button key={seat.id} type="button" className="bseat" disabled={pending} style={{ margin: `0 ${diameter * 0.17}px`, ["--d" as string]: `${diameter}px` }}
           onClick={() => send(listed ? { type: "choose_player", playerIds: [seat.id] } : { type: "choose_target", targetIds: [seat.id] }, `Choose ${seat.name}`)}>
           <Medallion player={seat.player} viewer={seat.viewer} diameter={diameter} />
           <span>{seat.name}</span>
@@ -570,9 +593,9 @@ function SplitBrowser({ snapshot, envelope, send, sendAction, pending, height, i
     <Frame title={combat ? "Assign combat damage" : first || "Divide"} detail={detail} subject={combat ? { card: attacker } : { object: top }}
       snapshot={snapshot} k={height / 440} inspect={inspect}
       footer={<>
-        <button type="button" className="aplaque leather" disabled={values === undefined || pending} onClick={() => setValues(undefined)}>Reset</button>
+        <button type="button" className="aplaque secondary" disabled={values === undefined || pending} onClick={() => setValues(undefined)}>Reset</button>
         {plaques(promptAnswers(snapshot, "choose_multi_amount"), sendAction, pending)}
-        <button type="button" className="aplaque ember" disabled={!valid || pending} onClick={() => send({ type: "choose_multi_amount", amounts: current }, "Assign")}>Done</button>
+        <button type="button" className="aplaque primary" disabled={!valid || pending} onClick={() => send({ type: "choose_multi_amount", amounts: current }, "Assign")}>Done</button>
       </>}>
       {rows.map((row, index) => {
         const value = current[index];
@@ -615,7 +638,7 @@ function PileBrowser({ snapshot, envelope, send, pending, height, inspect }: Pro
   ));
   return (
     <Frame title="Choose a pile" detail={clean(envelope.message)} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440} inspect={inspect}
-      footer={<button type="button" className="aplaque ember" disabled={!pile || pending || pileNumber(pile) === undefined}
+      footer={<button type="button" className="aplaque primary" disabled={!pile || pending || pileNumber(pile) === undefined}
         onClick={() => pile && send({ type: "choose_pile", pile: pileNumber(pile) }, pile.label)}>{pile ? `Choose ${pile.label}` : "Pick a pile"}</button>}>
       {piles.map((p) => (
         <button key={p.id} type="button" className={`bwell ${picked === p.id ? "on" : ""}`} disabled={pending} aria-pressed={picked === p.id}
@@ -652,10 +675,14 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
     : text.includes("surveil") ? "Surveil" : text.includes("first pile") ? "Separate into two piles" : text.includes("discard") ? "Discard"
       : text.includes("search") || text.includes("from your library") ? "Search your library" : text.includes("graveyard") ? "Choose from a graveyard"
         : text.includes("exile") ? "Choose a card to exile" : draftKind === "selection" ? "Choose cards" : "Choose a card";
-  const instruction = zones === "scry" ? "Click a card to move it between the bottom and the top of your library."
-    : zones === "surveil" ? "Click a card to move it between the top of your library and your graveyard."
-      : zones === "piles" ? "Click a card to move it between the piles."
-        : draftKind === "topOrder" || draftKind === "bottomOrder" ? "Click the cards in order: 1 goes first." : clean(CardChoicePlanRules.context(envelope));
+  // XMage's own words under the title only when they add to it (what to search for, how many); scry, surveil, piles and
+  // ordering say nothing more, the wells and the order badges show it (arenaInstruction; Caleb's copy rule, 2026-10-22).
+  const instruction = (() => {
+    if (zones || draftKind === "topOrder" || draftKind === "bottomOrder") return undefined;
+    const message = clean(CardChoicePlanRules.context(envelope));
+    const words = message.replace(/^[. ]+|[. ]+$/g, "").toLowerCase();
+    return words === "" || words === title.toLowerCase() ? undefined : message;
+  })();
   const toggle = (id: string) => {
     if (pending || (!selectableIDs.includes(id) && !targets.some((t) => t.id === id))) return;
     if (draftKind) {
@@ -669,7 +696,8 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
   const query = search.trim().toLowerCase();
   const shown = cards.filter((c) => !query || [c.card.name, c.card.typeLine, c.card.oracleText ?? ""].some((v) => v.toLowerCase().includes(query)));
   const ordered = [...shown.filter((c) => c.selectable !== false), ...shown.filter((c) => c.selectable === false)];
-  const width = Math.max(74, Math.min(150, (height - 150 - (cards.length > 6 ? 46 : 0) - (targets.length ? 56 : 0) - (zones ? 30 : 0)) / 1.4));
+  // The title starts under the opponent's medallion (50 points down), so that much more is reserved (arenaCardWidth).
+  const width = Math.max(74, Math.min(150, (height - 192 - (cards.length > 6 ? 46 : 0) - (targets.length ? 56 : 0) - (zones ? 30 : 0)) / 1.4));
   const bounds = CardChoicePlanRules.selectionBounds(envelope.message);
   const countValid = bounds !== undefined && draft.length >= bounds[0] && draft.length <= bounds[1];
   const count = draftKind === "selection" && bounds ? (CardChoicePlanRules.isUnbounded(bounds) ? `${draft.length} chosen`
@@ -690,8 +718,7 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
       <button key={c.instanceId} type="button" className={`bcard pick ${marked ? "picked" : ""} ${c.selectable === false ? "off" : ""}`} style={{ width: w }}
         disabled={pending} title={c.disabledReason} aria-pressed={picked} onClick={() => toggle(c.instanceId)}>
         <Printed name={c.card.name} width={w} inspect={inspect} />
-        {order !== undefined ? <span className="bcoin">{order}</span> : marked && !draftKind ? <span className="bcheck" aria-hidden="true">✓</span> : null}
-        <span className="bname">{c.card.name}</span>
+        {order !== undefined ? <CountBadge count={order} size={28} /> : marked && !draftKind ? <span className="bcheck" aria-hidden="true">✓</span> : null}
       </button>
     );
   };
@@ -715,7 +742,8 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
             </div>
           );
         })}
-        {wellIDs.length === 0 && <i className="bempty" style={{ width: w, height: w * 1.4 }}>{zones === "scry" ? "Click a card to put it here" : "Click a card to move it here"}</i>}
+        {/* An empty well keeps its size; it says nothing (the card goes where you click it). */}
+        {wellIDs.length === 0 && <i className="bempty" style={{ width: w, height: w * 1.4 + (zones === "scry" ? 30 : 0) }} />}
       </div>
     </div>
   );
@@ -739,15 +767,15 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
     <Frame title={title} detail={instruction} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440} inspect={inspect}
       footer={<>
         {draftKind === "selection" && bounds && !zones && bounds[1] >= selectableIDs.length && draft.length < selectableIDs.length && selectableIDs.length > 1 && (
-          <button type="button" className="aplaque leather" onClick={() => setDraft(selectableIDs)}>Select all</button>
+          <button type="button" className="aplaque secondary" onClick={() => setDraft(selectableIDs)}>Select all</button>
         )}
-        {draftKind === "selection" && bounds && !zones && draft.length > 0 && <button type="button" className="aplaque leather" onClick={() => setDraft([])}>Clear</button>}
+        {draftKind === "selection" && bounds && !zones && draft.length > 0 && <button type="button" className="aplaque secondary" onClick={() => setDraft([])}>Clear</button>}
         {!draftKind && completion.map((action) => (
           // XMage's "Done" here finishes without a card.
-          <button key={action.id} type="button" className="aplaque leather" disabled={pending} onClick={() => sendAction(action)}>
+          <button key={action.id} type="button" className="aplaque secondary" disabled={pending} onClick={() => sendAction(action)}>
             {action.label.toLowerCase() === "done" ? "Choose none" : EngineDisplayText.label(action.label)}</button>
         ))}
-        <button type="button" className="aplaque ember sub" disabled={disabled} onClick={confirm}>
+        <button type="button" className="aplaque primary sub" disabled={disabled} onClick={confirm}>
           {draftKind || selected ? "Done" : targets.length === 0 ? "Choose a card" : "Choose one"}{count && <small>{count.toUpperCase()}</small>}
         </button>
       </>}>
@@ -768,7 +796,7 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
 
 /**
  * A zone opened from the table (ArenaZoneBrowser): graveyard, exile, the command zone side by side on the dimmed table,
- * an ember plaque under each card you can use (Cast, or the action's own name), Done to close.
+ * an orange plaque under each card you can use (Cast, or the action's own name), Done to close.
  */
 export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, height, inspect, close, targetIDs, chooseTarget }: {
   title: string; cards: ZoneCard[]; snapshot: GameSnapshot; pending: boolean; sendAction: SendAction; height: number; inspect?: Inspect; close: () => void;
@@ -777,23 +805,22 @@ export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, heigh
 }) {
   const actions = (card: ZoneCard) => (snapshot.legalActions ?? []).filter((a) => (a.cardInstanceId === card.instanceId || a.sourceInstanceId === card.instanceId) && a.type !== "make_mana");
   const targetable = (card: ZoneCard) => chooseTarget !== undefined && (targetIDs?.has(card.instanceId) ?? false);
-  const detail = cards.length === 0 ? (title.includes("Library") || title.includes("library") ? "The library is face down. Only a revealed top card shows here." : "No cards here.")
-    : cards.some(targetable) ? "Choose a card."
-      : cards.some((c) => actions(c).length > 0) ? "Play a card from here, or point at one to read it."
-        : cards.length === 1 ? "1 card. Point at it to read it." : `${cards.length} cards. Point at one to read it.`;
+  // Only what the table can't show: an empty zone, or that a card is wanted. No how-to lines (Caleb, 2026-10-22).
+  const detail = cards.length === 0 ? (title.includes("Library") || title.includes("library") ? "Face down" : "No cards")
+    : cards.some(targetable) ? "Choose a card" : undefined;
   const width = Math.min(220, height * 0.5) / 1.4;
   return (
     <Frame title={title} detail={detail} snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close} back="Back to the zone"
-      footer={<button type="button" className="aplaque ember" onClick={close}>Done</button>}>
+      footer={<button type="button" className="aplaque primary" onClick={close}>Done</button>}>
       {cards.map((card) => {
         const list = actions(card);
         const target = targetable(card);
         return (
           <div key={card.instanceId} className={`bcard ${target ? "target" : list.length > 0 ? "usable" : ""}`} style={{ width }}>
             <Printed name={card.card.name} width={width} inspect={inspect} />
-            {target && <button type="button" className="aplaque ember" disabled={pending} aria-label={`Choose ${card.card.name}`} onClick={() => chooseTarget!(card)}>Choose</button>}
+            {target && <button type="button" className="aplaque primary" disabled={pending} aria-label={`Choose ${card.card.name}`} onClick={() => chooseTarget!(card)}>Choose</button>}
             {list.slice(0, 3).map((action) => (
-              <button key={action.id} type="button" className="aplaque ember" disabled={pending}
+              <button key={action.id} type="button" className="aplaque primary" disabled={pending}
                 onClick={() => {
                   // Casting a spell leaves the zone (GameplayAffordances.dismissesZone); other actions keep it open.
                   if (action.type === "cast_spell") { inspect?.(undefined); close(); }
@@ -808,10 +835,9 @@ export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, heigh
   );
 }
 
-/** The whole stack (ArenaStackBrowser), from what resolves next: abilities as ability cards, who controls each, its targets. */
 /**
- * The stack (ArenaStackBrowser): its count on a coin, whether you are responding, each object in resolve order with its
- * number on a coin, a gold rim and "RESOLVES NEXT" on the first, whose it is and what it targets; Stop skipping and
+ * The stack (ArenaStackBrowser): its count, whether you are responding, each object in resolve order with its number
+ * (Arena's count ovals), a gold rim and "RESOLVES NEXT" on the first, whose it is and what it targets; Stop skipping and
  * Resolve All when they apply, and Done.
  */
 export function StackBrowser({ snapshot, height, inspect, close, resolveAll, stopSkipping }: {
@@ -825,14 +851,14 @@ export function StackBrowser({ snapshot, height, inspect, close, resolveAll, sto
   return (
     <Frame title="The Stack" snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close} back="Back to the stack"
       heading={<>
-        <h2 className="stackhead">The Stack <span className="bcount" aria-label={`${stack.length} on the stack`}>{stack.length}</span></h2>
+        <h2 className="stackhead">The Stack <CountBadge count={stack.length} size={28} label={`${stack.length} on the stack`} /></h2>
         <p className="stacksub">{stack.length > 1 ? "Resolves left to right" : "Resolves next"}
           <b className={`btag ${responding ? "ember" : ""}`}>{responding ? "YOUR RESPONSE" : "WAITING"}</b></p>
       </>}
       footer={<>
-        {stopSkipping && <button type="button" className="aplaque leather" onClick={stopSkipping}>Stop skipping</button>}
-        {resolveAll && <button type="button" className="aplaque leather" onClick={() => { close(); resolveAll(); }}>Resolve All</button>}
-        <button type="button" className="aplaque ember" onClick={close}>Done</button>
+        {stopSkipping && <button type="button" className="aplaque secondary" onClick={stopSkipping}>Stop skipping</button>}
+        {resolveAll && <button type="button" className="aplaque secondary" onClick={() => { close(); resolveAll(); }}>Resolve All</button>}
+        <button type="button" className="aplaque primary" onClick={close}>Done</button>
       </>}>
       {stack.map((item, index) => {
         const next = index === 0;
@@ -842,7 +868,7 @@ export function StackBrowser({ snapshot, height, inspect, close, resolveAll, sto
           <div key={item.id} className={`bitem ${next ? "next" : ""}`}>
             <div className="bstackcard">
               <Subject object={item} snapshot={snapshot} width={width} inspect={inspect} />
-              <span className="bcoin">{index + 1}</span>
+              <CountBadge count={index + 1} size={30} />
             </div>
             <span className={`who ${next ? "next" : ""}`}>{next ? "RESOLVES NEXT" : whose.toUpperCase()}</span>
             {next && <span className="owner">{whose}</span>}
@@ -927,7 +953,7 @@ export function AmountPill({ snapshot, envelope, send, sendAction, pending, x, y
         <RepeatButton className="plens" label="Raise by 1" disabled={pending || current >= max} step={() => move(1)}>+</RepeatButton>
         {values.length > 6 && <RepeatButton className="plens five" repeats={false} label="Raise by 5" disabled={pending || current >= max} step={() => move(5)}>+5</RepeatButton>}
       </div>
-      {cancel && <button type="button" className="aplaque leather" disabled={pending} onClick={() => sendAction(cancel)}>{EngineDisplayText.label(cancel.label)}</button>}
+      {cancel && <button type="button" className="aplaque secondary" disabled={pending} onClick={() => sendAction(cancel)}>{EngineDisplayText.label(cancel.label)}</button>}
     </div>
   );
 }

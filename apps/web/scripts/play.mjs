@@ -206,8 +206,8 @@ function decide(state, memory) {
     const done = acts.find((a) => a.type === "answer_yes_no");
     return done ? { action: done.id } : undefined;
   }
-  // A question on the table (yes/no, the commander's zone): its main answer, the ember plaque, as a player clicks it.
-  if (p.confirmation && state.browser) return { clickIn: ".bstage .answers .aplaque.ember" };
+  // A question on the table (yes/no, the commander's zone): its main answer, the first pill (orange unless it declines), as a player clicks it.
+  if (p.confirmation && state.browser) return { clickIn: ".bstage .answers .aplaque" };
   if (p.targets.length) return { submit: { type: "choose_target", targetIds: [p.targets[0]] }, label: "Choose" };
   // Cards to pick one at a time (the cards a mulligan puts on the bottom, a discard): the next one not yet chosen until
   // XMage's count is met, then its Done.
@@ -240,8 +240,8 @@ async function concedeByMenu(page) {
   try {
     await page.getByRole("button", { name: "Game menu" }).click({ timeout: 3000 });
     await page.getByRole("menuitem", { name: "Game Settings" }).click({ timeout: 3000 });
-    await page.locator(".asettings .aplaque.oxblood", { hasText: "Concede" }).click({ timeout: 3000 });
-    await page.locator(".aquestion .aplaque.oxblood", { hasText: "Concede" }).click({ timeout: 3000 });
+    await page.locator(".asettings .aplaque.danger", { hasText: "Concede" }).click({ timeout: 3000 });
+    await page.locator(".aquestion .aplaque.danger", { hasText: "Concede" }).click({ timeout: 3000 });
     return true;
   } catch { return false; }
 }
@@ -270,10 +270,25 @@ async function play(page, game) {
   const started = Date.now();
   let lastTurn = 0;
   for (;;) {
-    const roll = page.getByRole("button", { name: "Roll the D20" });
+    // --shots: the pregame and the first question and browser once each, for a look at the board's Arena dress.
+    for (const [name, selector] of shots.size ? [["roll", ".aroll"], ["mulligan", ".amull"], ["question", ".bstage"], ["browser", ".abrowse .bbody"]] : []) {
+      if (memory.looked?.has(name) || !(await page.locator(selector).first().isVisible().catch(() => false))) continue;
+      (memory.looked ??= new Set()).add(name);
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: join(out, `game-${game}-look-${name}.png`) });
+    }
+    const roll = page.getByRole("button", { name: "Roll D20" });
     if (await roll.isVisible().catch(() => false) && await roll.isEnabled().catch(() => false)) await roll.click().catch(() => {});
     const state = await page.evaluate(look);
     if (state.ready && state.over) break;
+    // The opening hand shows once the roll steps aside: wait for it before answering, for its picture.
+    if (shots.size && !memory.looked?.has("mulligan") && /mulligan/i.test(state.prompt?.message ?? "")) {
+      (memory.looked ??= new Set()).add("mulligan");
+      if (await page.locator(".amull").waitFor({ timeout: 8000 }).then(() => true, () => false)) {
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: join(out, `game-${game}-look-mulligan.png`) });
+      }
+    }
     if (state.ready && state.turn !== lastTurn) {
       lastTurn = state.turn; memory.casts = 0;
       // Each turn a wipe sits in hand: what it would take now (why a game showed no wipe).
@@ -407,8 +422,10 @@ async function play(page, game) {
   const final = await page.evaluate(look);
   const rec = await page.evaluate(() => window.__rec);
   const won = final.winners.includes(final.viewer);
+  // The result's word on its flare, before it settles over the medallion (the end shot below).
+  if (shots.size) await page.screenshot({ path: join(out, `game-${game}-result.png`) });
   // What the menus kept: the finished game in this browser's player record (Recently Played, the rank).
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(shots.size ? 2500 : 1500);
   const stored = await page.evaluate(() => { try { const r = JSON.parse(localStorage.getItem("mm.web.playerRecord") ?? "{}"); return { matches: r.matches?.length ?? 0, last: r.matches?.[0], rank: r.rank?.position }; } catch { return undefined; } });
   await page.screenshot({ path: join(out, `game-${game}-end.png`) });
   const { polls, ...kept } = rec;

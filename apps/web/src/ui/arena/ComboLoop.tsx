@@ -42,7 +42,7 @@ export function ComboLoopOverlay({ session }: { session: GuestSession }) {
           <b>Finishing the loop</b>
           <span>Round {Math.min(run.done + 1, rounds)} of {rounds}</span>
           <progress value={Math.min(run.done, rounds)} max={rounds} />
-          <button type="button" className="aplaque leather inline" onClick={stop}>Stop</button>
+          <button type="button" className="aplaque secondary inline" onClick={stop}>Stop</button>
         </div>
       </div>
     );
@@ -58,7 +58,7 @@ export function ComboLoopOverlay({ session }: { session: GuestSession }) {
             {run.lines.length > 0 && <small>{run.lines[run.lines.length - 1]}</small>}
             {run.mode.kind === "times" && <progress value={run.done} max={Math.max(run.mode.count, 1)} />}
           </div>
-          <button type="button" className="aplaque leather" onClick={stop}>Stop</button>
+          <button type="button" className="aplaque secondary" onClick={stop}>Stop</button>
         </div>
       </div>
     );
@@ -82,13 +82,13 @@ export function ComboLoopOverlay({ session }: { session: GuestSession }) {
             <b aria-label={`${count} rounds`}>{count}</b>
             <button type="button" className="step" aria-label="One more" disabled={count >= ComboLoop.maxRepeats} onClick={() => bump(1)}>+</button>
             <span />
-            <button type="button" className="aplaque leather" onClick={() => bump(5)}>+5</button>
-            <button type="button" className="aplaque leather" onClick={() => bump(10)}>+10</button>
+            <button type="button" className="aplaque secondary" onClick={() => bump(5)}>+5</button>
+            <button type="button" className="aplaque secondary" onClick={() => bump(10)}>+10</button>
           </div>
           <div className="go">
-            <button type="button" className="aplaque ember" onClick={() => start(ComboRepeat.times(count))}>Repeat {count}×</button>
-            <button type="button" className="aplaque leather" onClick={() => start(ComboRepeat.untilCant)}>Until I can't</button>
-            <button type="button" className={`aplaque ${canFinish ? "ember want" : "leather"}`} disabled={!canFinish} onClick={() => start(ComboRepeat.untilWin)}>
+            <button type="button" className="aplaque primary" onClick={() => start(ComboRepeat.times(count))}>Repeat {count}×</button>
+            <button type="button" className="aplaque secondary" onClick={() => start(ComboRepeat.untilCant)}>Until I can't</button>
+            <button type="button" className={`aplaque ${canFinish ? "primary" : "secondary"}`} disabled={!canFinish} onClick={() => start(ComboRepeat.untilWin)}>
               {canFinish ? `Until they lose · ${forecast!.rounds}` : "Until they lose"}</button>
           </div>
           {!canFinish && <p className="reason">{forecast === undefined

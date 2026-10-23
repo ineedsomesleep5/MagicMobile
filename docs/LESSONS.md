@@ -175,6 +175,20 @@ contradicting one.
 
 ## Website
 
+- 2026-10-23 (Claude, web Arena look pass): the menus' stylesheet (`ui/menus/menus.css`) defines a global `.glass` whose
+  colours are custom properties set only on `.mroot`. The game is drawn outside `.mroot` (MenuShell returns `GameScreen`
+  before its root), so on the board those `var()`s were undefined, the whole `background` and `border` declarations
+  became invalid at computed-value time, and every glass panel on the table (game log, player card, menus) went
+  see-through. **Rule:** scope a shared class name to its surface (`.arena .glass`, `.mroot ...`), and when a panel
+  looks transparent, check for a later rule with an unresolved `var()` before touching opacity. Where:
+  `apps/web/src/ui/arena/arena.css`.
+- 2026-10-23 (Claude, web): React's dev warning "Cannot update a component (`GameScreen`) while rendering a different
+  component (`GameScreen`)" came from the hand drag: the pointer-up handler called `setCarry((c) => { dropCard(c.id);
+  ... })`, and React runs updater functions during the next render, so the drop's `session.send` changed the table
+  (a `useSyncExternalStore` store) mid-render. It showed in about half the games. **Rule:** updater functions stay pure;
+  read the latest value from a ref in the handler and act there. To find such a warning, wrap `console.error` in an
+  init script with `Error.stackTraceLimit = 60` and print `new Error().stack` (the default 10 frames stop inside React).
+  Where: `apps/web/src/ui/GameScreen.tsx` (`carryNow`).
 - 2026-10-22 (Claude, web Arena parity, night): the final autoplay games stalled on the driver, not the board. (1) A
   choice (a colour question) is answered with `resolve_choice`; the driver sent `choose_choice`, which the session
   ignores, 400+ times without a stall, since nothing failed. Copy the command the board's own control sends. (2) A

@@ -139,3 +139,29 @@ export const OnDeviceStartingPlayerChoice = {
     };
   },
 };
+
+/** A seat's plate on the roll (MultiplayerD20View.seatPlate): the number it last rolled, and whether it won, sits out a reroll or tied. */
+export interface RollPlate { seatID: string; value?: number; winner: boolean; out: boolean; tied: boolean }
+
+/** The plates after `revealed` steps of `roll`, in the roll's seat order. A tie shows once its whole round is revealed. */
+export function rollPlates(roll: OnDeviceStartingRoll, revealed: number): RollPlate[] {
+  const steps = roll.steps;
+  const shown = steps.slice(0, revealed);
+  const round = shown.at(-1)?.roundIndex;
+  const complete = revealed >= steps.length;
+  const roundShown = round !== undefined && revealed - 1 >= steps.map((step) => step.roundIndex).lastIndexOf(round);
+  const leaders = (() => {
+    if (round === undefined || !roundShown || round >= roll.rounds.length - 1) return new Set<string>();
+    const high = Math.max(...roll.rounds[round].values());
+    const tied = [...roll.rounds[round]].filter(([, value]) => value === high).map(([seat]) => seat);
+    return new Set(tied.length > 1 ? tied : []);
+  })();
+  return roll.seatOrder.map((seatID) => {
+    const value = shown.filter((step) => step.seatID === seatID).at(-1)?.value;
+    return {
+      seatID, value, winner: complete && seatID === roll.winnerSeatID,
+      out: round !== undefined && round > 0 && !roll.rounds[round].has(seatID) && value !== undefined,
+      tied: leaders.has(seatID),
+    };
+  });
+}
