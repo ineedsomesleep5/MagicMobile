@@ -71,7 +71,7 @@ await writeFile(join(out, "vercel.json"), JSON.stringify({
   // Vercel's egress IPs: a relay CORS change for this origin is the proper follow-up. Then the app's own paths (/join,
   // /join/CODE) are the single page; files win over that rewrite.
   rewrites: [
-    { source: "/provider/archidekt/:path*", destination: "https://archidekt.com/api/:path*" },
+    { source: "/provider/archidekt/decks/:id", destination: "https://archidekt.com/api/decks/:id/" },
     { source: "/provider/moxfield/:path*", destination: "https://api2.moxfield.com/:path*" },
     { source: "/relay/v1/:path*", destination: "https://magicmobile-relay.calebjfeliciano.workers.dev/v1/:path*" },
     { source: "/(.*)", destination: "/index.html" },

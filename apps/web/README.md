@@ -195,7 +195,8 @@ more than a few percent:
 
 https://magicmobile-web.vercel.app is the Vercel project `magicmobile-web` on Caleb's account (2026-10-21; the Arena
 board went live 2026-10-22, deployment `dpl_GMmTv2uJrMy8cyDyjdBYUwnUtzk4` from `claude/web-arena-parity`). It is
-unlisted: nothing links to it and every response carries `X-Robots-Tag: noindex`, until Caleb decides between public
+unlisted (phases 1–4 of the full-app port went live 2026-10-23, deployment `dpl_DSySPFxFdrBsrcGp91TMBeU9Lubg` from
+`claude/web-arena-v2`): nothing links to it and every response carries `X-Robots-Tag: noindex`, until Caleb decides between public
 and private. It is a static deploy of a local build, since the engine isn't in git. To redeploy:
 
 ```

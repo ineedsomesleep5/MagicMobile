@@ -79,7 +79,8 @@ export function deckText(draft: DeckDraft): string | undefined {
 export async function fetchLinkedDeck(link: string, excludeSideboards: boolean, canonicalName: (name: string) => string | undefined):
   Promise<{ deck: StudioDeck; annotations: TextAnnotation[] }> {
   const source = deckLinkSource(link);
-  const path = source.provider === "archidekt" ? source.endpoint.replace("https://archidekt.com/api/", "/provider/archidekt/")
+  // Archidekt's deck address ends in a slash, which Vercel's :path* rewrite would drop: the rewrite adds it back.
+  const path = source.provider === "archidekt" ? `/provider/archidekt/decks/${source.id}`
     : source.endpoint.replace("https://api2.moxfield.com/", "/provider/moxfield/");
   let response: Response;
   try { response = await fetch(path, { headers: { Accept: "application/json" } }); }

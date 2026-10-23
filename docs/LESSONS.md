@@ -741,7 +741,9 @@ contradicting one.
   answers with `access-control-allow-origin: http://localhost:3000`, Moxfield with Cloudflare's 403 and no CORS headers.
   The web fetches `/provider/archidekt/…` and `/provider/moxfield/…` on its own origin instead; Vite's dev and preview
   servers proxy them (`vite.config.ts` `providers`) and Vercel rewrites them (`scripts/stage_vercel.mjs`). Moxfield
-  through Vercel is unverified and may still meet the bot check; pasting the text export always works. (2) Card images
+  through Vercel answers 403 from its bot check (checked live 2026-10-23), so on the web a Moxfield deck is pasted as
+  text. Archidekt's deck address must keep its trailing slash, which Vercel's `:path*` drops: the rewrite is
+  `/provider/archidekt/decks/:id` → `…/api/decks/:id/`. (2) Card images
   in new screens need `crossOrigin="anonymous"`: the page is cross-origin isolated (COEP require-corp), so a plain
   `<img>` from Scryfall shows broken. (3) Writing ` ` as a regex escape in a TS source file turned into the literal
   line-separator character in one edit and broke the build; keep such characters as escapes and check the diff.

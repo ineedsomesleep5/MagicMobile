@@ -57,7 +57,7 @@ const engine = (): Plugin => ({
  * caller IP, which a proxy shares among everyone behind it: a relay CORS change is the proper follow-up.
  */
 const providers = {
-  "/provider/archidekt": { target: "https://archidekt.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/archidekt/, "/api") },
+  "/provider/archidekt": { target: "https://archidekt.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/archidekt\/decks\/(\d+)\/?$/, "/api/decks/$1/") },
   "/provider/moxfield": { target: "https://api2.moxfield.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/moxfield/, "") },
   "/relay": { target: "https://magicmobile-relay.calebjfeliciano.workers.dev", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/relay/, "") },
 };
