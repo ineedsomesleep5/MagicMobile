@@ -198,10 +198,6 @@ object OrientationController {
     }
 }
 
-private val setupInk = BrandTheme.ink
-private val setupSecondary = BrandTheme.inkSecondary
-private val setupAccent = BrandTheme.ember
-
 /** Port of OnDeviceRootView.swift: setup and lifecycle around the on-device board. */
 @Composable
 fun OnDeviceRoot(vm: OnDeviceViewModel) {
@@ -368,12 +364,6 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val selectedDeckColors: List<String> = setup.bracketDecks.firstOrNull { it.playerDeckID == selectedDeckID }?.colors?.map { it.toString() }
         ?: selectedDeck?.let { deck -> io.magicmobile.android.game.ArenaDeckColors.colors(deck.entries.filter { it.section == "commanders" }.map { it.name }) { setup.catalogue?.find(it)?.identity } }
         ?: emptyList()
-    val deckPickerSections = listOfNotNull(TavernPickerSection("Included precons", precons.map { it.name to "precon:${it.id}" })) +
-        io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
-            setup.bracketDecks.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks ->
-                TavernPickerSection("Included · ${bracket.title}", decks.map { "${it.name} · ${it.commander}" to it.playerDeckID })
-            }
-        } + listOfNotNull(setup.localDecks.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection("Saved on this device", decks.map { it.deck.name to "local:${it.id}" }) })
     val aiDeckPickerSections = io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
         aiPool.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection(bracket.title, decks.map { it.name to it.id }) }
     }
@@ -935,7 +925,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Deck Studio handles Back itself while it is open.
     BackHandler(enabled = !activeGame && showSetup && !showDecks) {
         GameAudio.play(GameSound.UI_BACK)
-        if (!setup.isBusy && !setup.needsLeave) showSetup = false
+        // Back from the custom table returns to the Play panel's Custom page, as its header's chevron does.
+        if (!setup.isBusy && !setup.needsLeave) { showSetup = false; openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM) }
     }
     BackHandler(enabled = activeGame) { requestLeave() }
 
@@ -1114,6 +1105,43 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             playModeRaw = io.magicmobile.android.game.ArenaPlayMode.of(game.mode).raw
         })
 
+    /** The custom table shows, or a table being left keeps its page (OnDeviceRootView.swift arenaMenu). */
+    val setupShown = showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true)
+
+    fun setAISeats(ids: List<String>, count: Int) {
+        aiPreconID = ids[0]; aiPrecon2ID = ids[1]; aiPrecon3ID = ids[2]; opponentCount = count
+    }
+
+    fun customTableModel() = CustomTableModel(
+        setup = setup, deck = selectedDeck, deckID = selectedDeckID, deckBox = selectedDeckBox, bracket = selectedDeckBracket,
+        playerName = playerDisplayName, setPlayerName = { playerDisplayName = it.take(24) }, validName = validName,
+        online = playWithFriends, setOnline = { playWithFriends = it },
+        aiPool = aiPool, aiIDs = aiIDs, aiSections = aiDeckPickerSections,
+        selectAIDeck = { index, id -> when (index) { 0 -> aiPreconID = id; 1 -> aiPrecon2ID = id; else -> aiPrecon3ID = id } },
+        opponentCount = opponentCount,
+        // A seat comes back with the deck it last had; an empty one gets a precon.
+        addSeat = {
+            io.magicmobile.android.game.ArenaCustomTable.addSeat(aiIDs, opponentCount, aiPool.map { it.id }.toSet(),
+                aiPool.filter { it.isPrecon }.map { it.id }, aiPreconID)?.let { (ids, count) -> setAISeats(ids, count) }
+        },
+        removeSeat = { index -> io.magicmobile.android.game.ArenaCustomTable.removeSeat(aiIDs, opponentCount, index)?.let { (ids, count) -> setAISeats(ids, count) } },
+        aiSkill = aiSkill, setAISkill = { aiSkill = it }, startingMode = aiStartingPlayerMode, setStartingMode = { aiStartingPlayerMode = it },
+        mayStart = mayStart, onlinePlayers = playerCount, setOnlinePlayers = { playerCount = it },
+        back = { GameAudio.play(GameSound.UI_BACK); showSetup = false; openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM) },
+        changeDeck = { showSetup = false; openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.CUSTOM) },
+        explainBracket = { showBracketSheet = true },
+        openStudio = { studioOpen = it; openDecks() },
+        start = ::startAI, leave = { confirmLeave = true },
+        hostOnline = {
+            val deck = selectedDeck
+            if (deck != null) scope.launch {
+                val aiCount = onlineAICount(playerCount)
+                setup.hostOnline(playerDisplayName, deck, playerCount, aiIDs.take(aiCount).mapNotNull { id -> aiPool.firstOrNull { it.id == id }?.deck }, aiSkill)
+            }
+        },
+        joinOnline = { code -> selectedDeck?.let { setup.joinOnline(code, playerDisplayName, it) } },
+        readyOnline = { selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) } })
+
     // A search or a challenge waits in the Play panel (Arena's blade: Play turns into Cancel under a timer).
     LaunchedEffect(matchPhase != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle) {
         if (matchPhase != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle && !activeGame) playPanel = true
@@ -1215,35 +1243,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             }
                         }
                     }
-                } else if (!showDecks && (showSetup || (setup.needsLeave && activeMatch?.isPersonTable != true))) {
-                    CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides true) {
-                        SetupScreen(setup, selectedDeck, aiPrecons, deckPickerSections, aiDeckPickerSections, playerDisplayName, { playerDisplayName = it.take(24) }, portraitModeEnabled,
-                            { portraitModeEnabled = it }, selectedDeckID, { selectedDeckID = it }, aiIDs, { index, id ->
-                                when (index) { 0 -> aiPreconID = id; 1 -> aiPrecon2ID = id; else -> aiPrecon3ID = id }
-                            }, opponentCount, { opponentCount = it }, aiSkill, { aiSkill = it }, aiStartingPlayerMode, { aiStartingPlayerMode = it },
-                            playWithFriends, { playWithFriends = it }, mayStart,
-                            onlinePlayers = playerCount, setOnlinePlayers = { playerCount = it },
-                            hostOnline = {
-                                val deck = selectedDeck
-                                if (deck != null) scope.launch {
-                                    val aiCount = onlineAICount(playerCount)
-                                    setup.hostOnline(playerDisplayName, deck, playerCount, aiIDs.take(aiCount).mapNotNull { id -> aiPool.firstOrNull { it.id == id }?.deck }, aiSkill)
-                                }
-                            },
-                            joinOnline = { code -> selectedDeck?.let { setup.joinOnline(code, playerDisplayName, it) } },
-                            readyOnline = { selectedDeck?.let { setup.readyForMatch(playerDisplayName, it) } },
-                            back = { GameAudio.play(GameSound.UI_BACK); showSetup = false },
-                            openSettings = { GameAudio.play(GameSound.UI_OPEN); showAppearance = true },
-                            openDecks = ::openDecks, start = ::startAI, leave = { confirmLeave = true },
-                            openStudio = { studioOpen = it; openDecks() })
-                    }
                 } else {
                     // Every menu page under Arena's top bar, over the 3D tavern room (OnDeviceRootView.swift arenaMenu).
                     CompositionLocalProvider(io.magicmobile.android.menus.LocalArenaBoard provides true,
                         io.magicmobile.android.menus.LocalArenaMenuBackdrop provides true) {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
                             val compact = maxWidth < maxHeight
-                            io.magicmobile.android.menus.ArenaRoomBackdrop(if (showDecks) 0.62f else if (lobby == null) 0f else 0.55f)
+                            io.magicmobile.android.menus.ArenaRoomBackdrop(if (showDecks) 0.62f else if (lobby == null && !setupShown) 0f else 0.55f)
                             // Only the room shows behind the Play panel, darkened.
                             // Deck Studio's editor covers the whole screen, top bar too (a fullScreenCover on iOS).
                             val studioCovered = showDecks && decksCovered
@@ -1253,6 +1259,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                                 if (showDecks) io.magicmobile.android.studio.DeckStudioRootView(setup, selectedDeckID, { selectedDeckID = it },
                                     preparePlay = { showDecks = false; studioOpen = null; openPlayPanel() }, dismiss = { showDecks = false; studioOpen = null }, open = studioOpen,
                                     covered = { decksCovered = it })
+                                // The custom table: Arena's event page under the top bar (OnDeviceRootView.swift setupContent).
+                                else if (setupShown) CustomTablePage(customTableModel())
                                 else when (lobby) {
                                     "rankedHall" -> io.magicmobile.android.ranked.RankedHallScreen(vm.account, record.file.rank,
                                         play = { openPlayPanel(io.magicmobile.android.game.ArenaPlayMode.RANKED) },
@@ -1472,266 +1480,7 @@ private fun BannerButton(title: String, kind: io.magicmobile.android.ui.TavernBu
     io.magicmobile.android.ui.TavernButton(action, kind = kind, compact = true, enabled = enabled) { io.magicmobile.android.ui.TavernButtonText(title) }
 }
 
-@Composable
-private fun SetupScreen(setup: OnDeviceSetupModel, selectedDeck: Deck?, aiPrecons: List<io.magicmobile.android.game.AIDeck>,
-                        deckSections: List<TavernPickerSection<String>>, aiSections: List<TavernPickerSection<String>>,
-                        playerName: String, setPlayerName: (String) -> Unit,
-                        portraitModeEnabled: Boolean, setPortraitModeEnabled: (Boolean) -> Unit, selectedDeckID: String, selectDeck: (String) -> Unit,
-                        aiIDs: List<String>, selectAIDeck: (Int, String) -> Unit, opponentCount: Int, setOpponentCount: (Int) -> Unit,
-                        aiSkill: Int, setAISkill: (Int) -> Unit, startingMode: String, setStartingMode: (String) -> Unit,
-                        playWithFriends: Boolean, setPlayWithFriends: (Boolean) -> Unit, mayStart: Boolean,
-                        onlinePlayers: Int, setOnlinePlayers: (Int) -> Unit, hostOnline: () -> Unit, joinOnline: (String) -> Unit,
-                        readyOnline: () -> Unit,
-                        back: () -> Unit, openSettings: () -> Unit, openDecks: () -> Unit, start: () -> Unit, leave: () -> Unit,
-                        openStudio: (io.magicmobile.android.studio.DeckStudioOpen) -> Unit) {
-    // In a match room, the deck and name stay editable until the player taps Ready.
-    val editableInRoom = (setup.multiplayer as? RelayTable)?.room?.let { !it.localReady } ?: false
-    val seatLocked = setup.isBusy || (setup.needsLeave && !editableInRoom)
-    val locked = setup.isBusy || setup.needsLeave
-    Box(Modifier.fillMaxSize()) {
-        BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.safeDrawing),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.heightIn(min = 44.dp).clickable(enabled = !locked, onClick = back).alpha(if (locked) 0.45f else 1f),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SfImage("chevron.left", setupAccent, 17.dp)
-                        Text("Main menu", color = setupAccent, style = SfText.body(SfWeight.semibold))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Box(Modifier.size(44.dp).clickable(onClick = openSettings).semantics { contentDescription = "Settings" }, contentAlignment = Alignment.Center) {
-                        SfImage("gearshape.fill", setupAccent, 17.dp)
-                    }
-                }
-                BrandTitle("Your next game.", 34f)
-                Text("Choose your deck. Take your seat.", color = setupSecondary, style = SfText.subheadline())
-                // The two sides of the table.
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            CommanderDeckPortrait(selectedDeck?.commanderName, Modifier.size(112.dp, 156.dp))
-                            Text("Your deck", color = setupSecondary, style = SfText.caption())
-                            Text(selectedDeck?.name ?: "Choose a deck", color = setupInk, style = SfText.headline(), textAlign = TextAlign.Center)
-                            io.magicmobile.android.studio.DeckStudioSetupDeckStatus(setup, selectedDeckID, selectedDeck, openStudio)
-                        }
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (playWithFriends) {
-                                Box(Modifier.size(112.dp, 156.dp).background(BrandTheme.surface, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                                    SfImage("person.2.fill", setupSecondary, 34.dp)
-                                }
-                                Text("iPhone + Android", color = setupSecondary, style = SfText.caption())
-                                Text("${(setup.multiplayer as? RelayTable)?.seatsWanted?.takeIf { it > 0 } ?: 2} seats", color = setupInk, style = SfText.headline())
-                            } else {
-                                CommanderDeckPortrait(aiPrecons.firstOrNull()?.commander, Modifier.size(112.dp, 156.dp))
-                                Text("$opponentCount AI ${if (opponentCount == 1) "opponent" else "opponents"}", color = setupSecondary, style = SfText.caption())
-                                Text(if (opponentCount == 1) aiPrecons.firstOrNull()?.name ?: "Choose opponents" else "Choose each deck below",
-                                    color = setupInk, style = SfText.headline(), textAlign = TextAlign.Center)
-                            }
-                        }
-                    }
-                    VersusMedallion(50.dp, Modifier.align(Alignment.TopCenter).padding(top = (156 / 2 - 25).dp))
-                }
-                // Your seat
-                Column(Modifier.fillMaxWidth().brandPanel(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BrandDivider(Modifier.fillMaxWidth(), title = "Your seat")
-                    val profileName = LocalPlayerAccount.current?.username
-                    TavernTextField(playerName, setPlayerName, "Player name", Modifier.semantics { contentDescription = "Player name" },
-                        enabled = !seatLocked && profileName == null)
-                    Text(if (profileName != null) "Your profile name. Change it in Friends." else "Choose a name with 1–24 characters.",
-                        color = setupSecondary, style = SfText.caption())
-                    TavernToggle("Auto-Rotate", portraitModeEnabled, setPortraitModeEnabled)
-                    TavernPicker("Your deck", selectedDeckID, deckSections, selectDeck, enabled = !seatLocked)
-                    BrandButton(openDecks, kind = BrandButtonKind.SECONDARY, enabled = !seatLocked) {
-                        SfImage("rectangle.stack.badge.plus", BrandTheme.ink, 17.dp)
-                        BrandButtonText("Browse, import or edit decks", BrandButtonKind.SECONDARY)
-                    }
-                    ArtworkPreferenceToggle()
-                }
-                // Players
-                Column(Modifier.fillMaxWidth().brandPanel(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    IosSegmented(listOf("ai", "online"), if (playWithFriends) "online" else "ai", { mode -> if (!locked) setPlayWithFriends(mode == "online") },
-                        { if (it == "ai") "AI" else "Online" })
-                    if (playWithFriends) {
-                        OnlineTablePanel(setup, selectedDeck, onlinePlayers, setOnlinePlayers, aiIDs, selectAIDeck, aiSkill, setAISkill,
-                            mayHost = selectedDeck != null && runCatching { OnDeviceSetupModel.playerName(playerName) }.isSuccess &&
-                                setup.identity != null && !setup.isBusy && !setup.needsLeave,
-                            hostOnline, joinOnline, readyOnline)
-                    } else {
-                        TavernStepper("AI opponents: $opponentCount", opponentCount, 1..3, setOpponentCount, enabled = !locked)
-                        for (index in 0 until opponentCount.coerceIn(1, 3)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("AI ${index + 1} deck", color = setupSecondary, style = SfText.caption())
-                                TavernPicker("AI ${index + 1} deck", aiIDs[index], aiSections,
-                                    { selectAIDeck(index, it) }, enabled = !locked, showsTitle = false)
-                            }
-                        }
-                        TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked)
-                        Text("Higher skill levels allow more thinking and may slow turns.", color = setupSecondary, style = SfText.caption())
-                        IosSegmented(listOf("choose", "roll"), startingMode, { if (!locked) setStartingMode(it) }, { if (it == "roll") "Roll D20" else "Choose" })
-                        Text(if (startingMode == "roll") "Everyone rolls a D20. The highest roll starts; ties reroll." else "Choose the starting player when the match begins.",
-                            color = setupSecondary, style = SfText.caption())
-                        BrandButton(start, Modifier.semantics { contentDescription = "Start game" }, enabled = mayStart) { BrandButtonText("Start game") }
-                    }
-                }
-                Text(setup.status, color = setupSecondary, style = SfText.caption())
-                if (setup.needsLeave) BrandButton(leave, kind = BrandButtonKind.SECONDARY, enabled = !setup.isBusy && !setup.session.isWorking) {
-                    Text("Leave / retry closing", color = Color(1f, 0.27f, 0.23f), style = sf(17f, SfWeight.bold))
-                }
-                if (setup.identity == null) BrandButton({ setup.prepare() }, kind = BrandButtonKind.SECONDARY) { BrandButtonText("Retry loading local catalogue", BrandButtonKind.SECONDARY) }
-                OnDeviceDiagnosticsEntry(setup)
-                if (!BuildConfig.NATIVE_ENGINE) Text("This build has no native engine. Install the full APK to play.", color = Color(1f, 0.6f, 0.3f), style = SfText.caption(SfWeight.semibold))
-            }
-        }
-    }
-}
-
-/** NativeArtworkPreferenceView: consent for live Scryfall images. */
-@Composable
-private fun ArtworkPreferenceToggle() {
-    val context = LocalContext.current
-    var enabled by remember { mutableStateOf(Artwork.enabled(context)) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TavernToggle("Scryfall live images", enabled, { value -> enabled = value; Artwork.setEnabled(context, value) })
-        Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.", color = setupSecondary, style = SfText.caption())
-        Text("Scryfall receives card names—including your hand—and your IP address.", color = setupSecondary, style = SfText.caption())
-    }
-}
-
 private fun onlineAICount(humans: Int): Int = AppPreferences.int("magicmobile.relay.aiOpponentCount", 0).value.coerceIn(0, maxOf(0, 4 - humans))
-
-/** Host or join a cross-play table, then the match room (OnDeviceRootView's Game Center section, over the relay). */
-@Composable
-private fun OnlineTablePanel(setup: OnDeviceSetupModel, selectedDeck: Deck?, players: Int, setPlayers: (Int) -> Unit, aiIDs: List<String>,
-                             selectAIDeck: (Int, String) -> Unit, aiSkill: Int, setAISkill: (Int) -> Unit, mayHost: Boolean,
-                             host: () -> Unit, join: (String) -> Unit, ready: () -> Unit) {
-    val context = LocalContext.current
-    val table = setup.multiplayer as? RelayTable
-    var storedAICount by AppPreferences.int("magicmobile.relay.aiOpponentCount", 0)
-    val aiCount = storedAICount.coerceIn(0, maxOf(0, 4 - players))
-    val code = setup.relayJoinCode
-    val locked = setup.isBusy || setup.needsLeave
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (table == null) {
-            TavernPicker("Human players", players, listOf(TavernPickerSection(null, (2..4).map { "$it players" to it })), setPlayers, enabled = !locked)
-            TavernStepper("AI opponents: $aiCount", aiCount, 0..maxOf(0, 4 - players), { storedAICount = it }, enabled = !locked)
-            for (index in 0 until aiCount) {
-                TavernPicker("AI ${index + 1} deck", aiIDs[index], io.magicmobile.android.game.CommanderBracket.entries.mapNotNull { bracket ->
-                    setup.aiPool.filter { it.bracket == bracket }.takeIf { it.isNotEmpty() }?.let { decks -> TavernPickerSection(bracket.title, decks.map { it.name to it.id }) } },
-                    { selectAIDeck(index, it) }, enabled = !locked)
-            }
-            if (aiCount > 0) {
-                TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, enabled = !locked)
-                Text("The host’s AI choices apply to everyone. Higher skill may slow turns.", color = setupSecondary, style = SfText.caption())
-            }
-            Text("Share the invite link, or friends type the table code. Every player needs this app version and keeps it open during the match.",
-                color = setupSecondary, style = SfText.caption())
-            BrandButton(host, Modifier.semantics { contentDescription = "Host a table" }, enabled = mayHost) { BrandButtonText("Host a table") }
-            BrandDivider(Modifier.fillMaxWidth(), title = "or join")
-            TavernTextField(code, { value -> setup.relayJoinCode = value.uppercase().filter { it in TableJoinLink.ALPHABET }.take(6) }, "Table code",
-                Modifier.semantics { contentDescription = "Table code" }, enabled = !locked)
-            BrandButton({ join(code) }, kind = BrandButtonKind.SECONDARY, enabled = mayHost && code.length == 6) {
-                BrandButtonText("Join table", BrandButtonKind.SECONDARY)
-            }
-        } else {
-            table.tableCode?.let { tableCode ->
-                Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("TABLE CODE", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
-                    Text(tableCode.chunked(3).joinToString(" "), Modifier.semantics { contentDescription = "Table code $tableCode" },
-                        color = setupInk, style = sf(34f, SfWeight.black, io.magicmobile.android.ui.SfDesign.MONOSPACED, tracking = 2f))
-                    if (table.room == null && table.endpoint == null && !table.isFailed) {
-                        Text("Players ${table.seatsTaken}/${table.seatsWanted.coerceAtLeast(2)}", color = setupSecondary, style = SfText.caption())
-                        IosTextButton("Share invite link", {
-                            val link = TableJoinLink.url(tableCode) ?: return@IosTextButton
-                            val send = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "Join my MagicMobile table")
-                                putExtra(Intent.EXTRA_TEXT, "Tap to join my MagicMobile table (code $tableCode): $link")
-                            }
-                            runCatching { context.startActivity(Intent.createChooser(send, "Share invite link")) }
-                        }, color = setupAccent, bold = true)
-                    }
-                }
-            }
-            Text(table.status, color = setupInk, style = SfText.callout())
-            if (table.room == null && table.endpoint == null && !table.isFailed && table.waitingSeats.isNotEmpty()) {
-                RelayWaitingRoomView(table.waitingSeats) { table.removeFromTable(it) }
-            }
-            table.room?.let { room -> MatchRoomView(room, selectedDeck?.name, selectedDeck?.commanderName, ready) }
-        }
-    }
-}
-
-/** A relay table that is still filling: who has joined and, for the host, a Remove control per joiner (RelayWaitingRoomView). */
-@Composable
-private fun RelayWaitingRoomView(seats: List<RelayWaitingSeat>, remove: (String) -> Unit) {
-    var removal by remember { mutableStateOf<RelayWaitingSeat?>(null) }
-    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("AT THE TABLE", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
-        for (seat in seats) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                SfImage(if (seat.connected) "person.crop.circle" else "wifi.exclamationmark", setupSecondary, 20.dp)
-                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(seat.name, color = setupInk, style = SfText.headline())
-                        if (seat.isHost) Text("HOST", Modifier.background(setupAccent.copy(alpha = 0.25f), RoundedCornerShape(50))
-                            .padding(horizontal = 5.dp, vertical = 1.dp), color = setupInk, style = sf(11f, SfWeight.black))
-                    }
-                    Text(if (seat.isLocal) "You" else if (seat.connected) "Joined" else "Reconnecting…", color = setupSecondary, style = SfText.caption())
-                }
-                if (seat.removable) {
-                    IosTextButton("Remove", { removal = seat }, Modifier.semantics { contentDescription = "Remove ${seat.name}" },
-                        color = io.magicmobile.android.ui.rgb(1.0, 0.27, 0.23), bold = true)
-                }
-            }
-        }
-        if (seats.any { it.removable }) {
-            Text("Remove anyone you did not invite. The match room opens when every seat is taken.", color = setupSecondary, style = SfText.caption())
-        }
-    }
-    removal?.let { seat ->
-        ConfirmationDialog("Remove ${seat.name} from the table?", "Their seat opens for someone else. Anyone with the code can still join.",
-            listOf(ConfirmationAction("Remove", destructive = true) { remove(seat.id) })) { removal = null }
-    }
-}
-
-/** Relay pregame room: who is here, who is ready, and their commanders (MatchRoomView). */
-@Composable
-private fun MatchRoomView(room: RelayTable.MatchRoom, deckName: String?, localCommander: String?, ready: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("MATCH ROOM", color = setupSecondary, style = sf(12f, SfWeight.bold, tracking = 1.4f))
-        for (player in room.players) {
-            val commanders = if (player.isLocal && !room.localReady) listOfNotNull(localCommander) else player.commanders
-            Row(Modifier.semantics { contentDescription = "${player.name}, ${if (player.isReady) "ready" else "not ready"}" },
-                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                CommanderDeckPortrait(commanders.firstOrNull(), Modifier.size(40.dp, 56.dp).alpha(if (player.isReady) 1f else 0.4f))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(player.name, color = setupInk, style = SfText.headline())
-                        if (player.isHost) Text("HOST", Modifier.background(setupAccent.copy(alpha = 0.25f), RoundedCornerShape(50))
-                            .padding(horizontal = 5.dp, vertical = 1.dp), color = setupInk, style = sf(11f, SfWeight.black))
-                    }
-                    Text(if (commanders.isEmpty()) (if (player.isReady) "Ready" else "Choosing a deck…") else commanders.joinToString(" & "),
-                        color = setupSecondary, style = SfText.caption(), maxLines = 2)
-                }
-                SfImage(if (player.isReady) "checkmark.circle.fill" else "hourglass", if (player.isReady) Color(0.2f, 0.78f, 0.35f) else setupSecondary, 20.dp)
-            }
-        }
-        room.aiSummary?.let { Text(it, color = setupSecondary, style = SfText.caption()) }
-        if (room.localReady) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                SfImage("checkmark.seal.fill", Color(0.2f, 0.78f, 0.35f), 16.dp)
-                Text("You're ready. The game starts when everyone is.", color = Color(0.2f, 0.78f, 0.35f), style = SfText.callout(SfWeight.semibold))
-            }
-        } else {
-            Text("Pick your deck above, then ready up${deckName?.let { " with $it" } ?: ""}.", color = setupSecondary, style = SfText.caption())
-            BrandButton(ready, Modifier.semantics { contentDescription = "Ready" }, enabled = deckName != null) { BrandButtonText("Ready") }
-        }
-    }
-}
 
 /** The game being played from Quick Match or Ranked (or a custom table, for the profile), for its result. */
 /** Development fixture (MAGICMOBILE_UI_TEST_OPEN=queue): when the Play panel's search began. */

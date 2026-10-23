@@ -100,6 +100,7 @@ import io.magicmobile.android.R
 import io.magicmobile.android.menus.ArenaButton
 import io.magicmobile.android.menus.ArenaButtonKind
 import io.magicmobile.android.menus.ArenaCheckbox
+import io.magicmobile.android.menus.ArenaGlass
 import io.magicmobile.android.menus.ArenaMenuStyle
 import io.magicmobile.android.menus.ArenaSlider
 import io.magicmobile.android.menus.ArenaStepper
@@ -794,7 +795,18 @@ fun <T> TavernPicker(title: String, selection: T, sections: List<TavernPickerSec
     val count = sections.sumOf { it.options.size + if (it.title == null) 0 else 1 }
     TavernMenu(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f), edge = TavernMenuEdge.BELOW, enabled = enabled, scrollHeight = if (count > 7) 420.dp else null,
         contentDescription = "$title, $current", label = { pressed ->
-            Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
+            // The Arena menus' dropdown: the choice in light type on dark glass in the gold hairline.
+            if (LocalArenaBoard.current) Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = if (showsTitle) 50.dp else 44.dp)
+                .graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
+                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                .border(1.dp, ArenaGlass.hairline, RoundedCornerShape(8.dp)).padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (showsTitle) io.magicmobile.android.menus.ArenaCaps(title, 9.5f)
+                    FitText(current, ArenaMenuStyle.font(15f, SfWeight.semibold), color = ArenaMenuStyle.text, minimumScale = 0.75f)
+                }
+                SfImage("chevron.down", ArenaMenuStyle.gold, 11.dp)
+            } else Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp).graphicsLayer { val s = if (pressed) 0.98f else 1f; scaleX = s; scaleY = s }
                 .tavernFill(TavernMaterial.PARCHMENT, RoundedCornerShape(10.dp),
                     overlayBrush = Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.16f), 0.5f to Color.Transparent))
                 .border(1.2.dp, TavernPalette.brassLine, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp),
@@ -819,6 +831,21 @@ fun <T> TavernPicker(title: String, selection: T, sections: List<TavernPickerSec
 @Composable
 fun TavernTextField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, enabled: Boolean = true,
                     singleLine: Boolean = true) {
+    if (LocalArenaBoard.current) {
+        // On the Arena menus: a darker pane in the glass's gold hairline, light text (TavernFieldChrome's Arena look).
+        val style = sf(15f, SfWeight.medium, SfDesign.SERIF).copy(color = ArenaGlass.text)
+        androidx.compose.foundation.text.BasicTextField(value, onChange, modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.6f)
+            .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(9.dp)).border(1.dp, ArenaGlass.hairline, RoundedCornerShape(9.dp))
+            .padding(horizontal = 12.dp), enabled = enabled, singleLine = singleLine, textStyle = style,
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(ArenaMenuStyle.gold),
+            decorationBox = { inner ->
+                Box(Modifier.defaultMinSize(minHeight = 40.dp), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(placeholder, color = ArenaGlass.text.copy(alpha = 0.5f), style = style)
+                    inner()
+                }
+            })
+        return
+    }
     androidx.compose.foundation.text.BasicTextField(value, onChange, modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.6f).tavernField(),
         enabled = enabled, singleLine = singleLine, textStyle = tavernFieldTextStyle,
         cursorBrush = androidx.compose.ui.graphics.SolidColor(TavernPalette.ink),

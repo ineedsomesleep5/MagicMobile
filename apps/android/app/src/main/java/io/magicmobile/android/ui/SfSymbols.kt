@@ -272,6 +272,7 @@ object SfSymbols {
         "arrow.down.circle.fill" -> Icons.Filled.ArrowCircleDown
         "clock.arrow.circlepath" -> Icons.Filled.History
         "dice.fill" -> Icons.Filled.Casino
+        "hand.point.up.left.fill" -> Icons.Filled.TouchApp
         "laurel.leading" -> Laurel
         "diamond.fill" -> Diamond
         else -> Icons.Filled.Circle

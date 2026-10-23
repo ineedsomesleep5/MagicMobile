@@ -71,6 +71,13 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | Menus/ArenaPanels.swift (arenaPanel, ArenaPanelHeader, ArenaOptionsView, ArenaPromptPanel) | app `menus/ArenaPanels.kt` | Ported (phase A); Options pages reuse the Android settings pieces |
 | Menus/ArenaHomeView.swift, OnDeviceRootView.swift `arenaMenu`/`homeContent` | app `menus/ArenaHomeView.kt`, `ondevice/OnDeviceRootView.kt` | Ported (phase A) |
 | Menus/ArenaPlayPanel.swift, Menus/ArenaDeckBox.swift | app `menus/ArenaPlayPanel.kt`, `menus/ArenaDeckBox.kt` | Ported (phase A); no Game Center rows |
+| OnDeviceRootView.swift `setupContent`/`setupSeat`/`setupTable`/`setupSeats`/`setupStartBar`, RelayTablePanel, RelayWaitingRoomView, MatchRoomView (the custom table as Arena's event page) | app `ondevice/CustomTableViews.kt`; rules in core `game/ArenaCustomTable.kt` | Ported (phase B); AI and Online tiles only (no Game Center) |
+| DeckStudio/Library/DeckStudioRootView.swift, DeckStudioPlayViews.swift, Builder/DeckStudioWorkspaceScreen.swift (`arenaBuilder`), DeckStudioEditorTools.swift, Import/DeckStudioImportScreen.swift, Grimoire/* | app `studio/` same names, `board/BoardMenu.kt`; rules in core `studio/ArenaDecksPage.kt` | Ported (phase B): the Decks tab inside the shell, glass binder parts, curl off |
+| Ranked/ProfileView.swift, ProfileVisuals.swift, ProfileHistory.swift, PublicProfileView.swift, RankCeremonyView.swift, RankedHallViews.swift | app `ranked/` (ProfileView.kt new, RankedHallScreen.kt, ProfileVisuals.kt, PublicProfileScreen.kt); rules in core `game/ArenaProfile.kt` | Ported (phase B) |
+| FriendsView.swift, Ranked/FriendConversationView.swift, SocialComponents.swift, FriendChallengeViews.swift, AccountSignInCard.swift | app `social/FriendsSheet.kt`, `social/FriendConversation.kt`, `ranked/` | Ported (phase B) |
+| NativeUpdateNewsView.swift | app `ondevice/NativeUpdateNewsView.kt`; core `game/UpdateNews.kt` | Ported (Arena inbox, phase B) |
+| NativeDownloadsView.swift (Arena readout) | app `ondevice/NativeDownloadsView.kt`; core `game/DownloadReadout.kt` | Ported (phase B) |
+| HowToPlayView.swift (Arena pieces), SoundLabView.swift, Menus/ArenaPanels.swift ArenaOptionsView pages | app `ui/HowToPlayView.kt`, `board/SettingsViews.kt`, `menus/ArenaPanels.kt` | Ported (phase B); lesson text unchanged; Board's Table picker, Card Frames and Stop for Removal wait for the Arena board |
 
 ## Walnut Tavern (iOS builds 23–26)
 
@@ -172,10 +179,10 @@ every panel, so the tavern kit's `TavernButton`, `TavernToggle`, `TavernSlider`,
 `TavernSheetBackground` and `TavernMenu` draw Arena's face there; the game never sets it, so the Hearth board is unchanged.
 The seven home images come from `home-art-*.imageset` through `prepareBrandAssets` (`R.drawable.home_art_*`).
 
-Still to port (later phases): the custom table as Arena's event page (Android shows its setup screen with Arena controls),
-Deck Studio as the Decks tab inside the shell (it opens full screen, without the book film), Profile and Ranked as Arena pages
-(they show inside the shell over the dimmed room, still in their tavern cards), Updates as Arena's inbox, Downloads'
-readout, Friends' Arena look, and the Arena board itself (the home feature "The Arena board" points at it).
+Phase B (2026-10-22) ported every other page outside a game: the custom table as Arena's event page, Deck Studio as the Decks
+tab with Arena's builder, Profile, Ranked and the leaderboard, Friends and Messages, the Updates inbox, Downloads' readout, How
+to Play, the Sound Lab and the Options pages. Still to port: the Arena board itself (the home feature "The Arena board" points
+at it), and the engine error report, which still opens as a bottom sheet.
 
 ## Log
 
@@ -270,3 +277,16 @@ readout, Friends' Arena look, and the Arena board itself (the home feature "The 
   `PlayModeChooser`, `PlayDeckSection`, `QuickMatchScreen`, `RankedLobbyScreen`, `RankedSearchOverlay`,
   `ChallengeWaitingOverlay`, `SupportBanner` and the old Settings sheet. Not yet checked on an emulator: the top bar on a
   360 dp phone, the deck boxes opening (3D lid), the feature panel's swipe, the blade's seam, and every panel's height.
+- 2026-10-22 (Claude): Arena menus, phase B, on iOS `claude/arena-mode` 769769a5. Phase A's screens follow that commit (no home
+  kicker, "Ranked · <season>", a plain Ranked tile, the countdown on "Play the AI now", "Opponent · <bracket>" or "Opponent ·
+  Match my deck", no Friends delete paragraph, progression emblems without a coin ring) and `LocalArenaSafeArea` mirrors
+  `\.arenaSafeArea`. New pages: the custom table as an event page inside the shell (`CustomTableViews.kt`, two plates and the
+  Start strip, seats as deck boxes with × and "+", `ArenaCustomTableTest`); Deck Studio as the Decks tab with deck boxes and
+  the strip, Arena's builder and glass binder parts (`ArenaDecksPageTest`); Profile, Ranked Hall, leaderboard, Friends and
+  Messages in glass (`ArenaProfileTest`); the Updates inbox, Downloads' readout, How to Play, the Sound Lab and the Options
+  pages (`ArenaInboxTest`). `TavernPicker` and `TavernTextField` draw Arena's glass slot under `LocalArenaBoard`.
+  `:core:test`, `:app:compileDebugKotlin` and `:app:testDebugUnitTest` pass (411 tests). Nothing checked on an emulator yet:
+  the custom table on a 360 dp phone both ways (plates, × on the seats, the strip over the gesture bar), Deck Studio's box
+  lids and scroll offsets, the editor covering the top bar, the 330 dp deck column on a short landscape phone, the profile's
+  title/portrait panel (it may sit about 46 dp low), Friends' panel height, the conversation composer with the keyboard,
+  the inbox and How to Play heights, and the dark-glass drop-downs.

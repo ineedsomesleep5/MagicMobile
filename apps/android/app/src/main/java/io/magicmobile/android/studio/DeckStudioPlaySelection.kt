@@ -372,21 +372,22 @@ fun DeckStudioSetupDeckStatus(setup: OnDeviceSetupModel, deckID: String, deck: D
             listOf("W", "U", "B", "R", "G").filter { it in colors }.takeIf { commanders.isNotEmpty() }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(NativeDeckDraft.of(list))), color = BrandTheme.inkSecondary, style = SfText.caption())
-            // A colorless commander shows the colorless symbol, as on iOS.
-            identity?.let { colors -> (colors.ifEmpty { listOf("C") }).forEach { ManaSymbolView(it, 14.dp) } }
+            // The custom table's plate: light count and the deck's pips (OnDeviceSetupDeckDetails, Arena look).
+            Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(NativeDeckDraft.of(list))), color = DeckStudioPalette.secondaryInk,
+                style = io.magicmobile.android.menus.ArenaMenuStyle.font(12f, SfWeight.semibold).copy(fontFeatureSettings = "tnum"))
+            identity?.let { colors -> io.magicmobile.android.menus.ArenaPips(colors, 16.dp) }
         }
         // Ready and not-checked decks show no line (Caleb, 2026-10-03): Start checks the deck anyway.
         status?.takeIf { it == DeckStudioPlayStatus.NEEDS_FIXES }?.let { value ->
             val (icon, _) = value.icon()
-            val tint = when (value) { DeckStudioPlayStatus.READY -> BrandTheme.inkSecondary; DeckStudioPlayStatus.NEEDS_FIXES -> BrandTheme.ember; else -> BrandTheme.inkSecondary }
+            val tint = if (value == DeckStudioPlayStatus.NEEDS_FIXES) DeckStudioPalette.warning else DeckStudioPalette.secondaryInk
             Row(Modifier.defaultMinSize(minHeight = if (value == DeckStudioPlayStatus.NEEDS_FIXES) 44.dp else 0.dp)
                 .then(if (value == DeckStudioPlayStatus.NEEDS_FIXES) Modifier.clip(CircleShape).clickable(enabled = !setup.isBusy, role = Role.Button) {
                     openStudio(DeckStudioOpen(deckID, fixCards(deckID, list, resolver)))
                 } else Modifier)
                 .semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                 SfImage(icon, tint, 12.dp)
-                Text(DeckStudioPlayText.setupStatus(value), color = tint, style = SfText.caption(SfWeight.semibold), textAlign = TextAlign.Center)
+                Text(DeckStudioPlayText.setupStatus(value), color = tint, style = io.magicmobile.android.menus.ArenaMenuStyle.font(12f, SfWeight.semibold), textAlign = TextAlign.Center)
             }
         }
     }
