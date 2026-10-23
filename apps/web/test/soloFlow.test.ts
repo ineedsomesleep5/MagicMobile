@@ -30,7 +30,7 @@ const startingPrompt: J = {
 const decks = () => {
   const resolver = new DeckResolver(readFileSync(join(__dirname, "..", "public/generated/printings.tsv"), "utf8"));
   const precons = JSON.parse(readFileSync(join(__dirname, "..", "public/generated/precons.json"), "utf8"));
-  return { deck: resolver.resolve(precons.decks[0]), aiDeck: resolver.resolve(precons.decks[4]) };
+  return { deck: resolver.resolve(precons.decks[0]), aiDecks: [resolver.resolve(precons.decks[4])] };
 };
 
 /** The engine's side of the protocol: answers each request from a script, recording what the page sent. */
@@ -78,16 +78,19 @@ const until = async (check: () => boolean, millis = 5_000) => {
 };
 
 describe("solo table", () => {
-  it("builds the phones' AI configuration: one human seat, one AI seat with its skill, no seeds", () => {
-    const { deck, aiDeck } = decks();
-    const setup: SoloSetup = { name: "Caleb", deck, aiDeck, aiSkill: 4, startingPlayerMode: "roll" };
+  it("builds the phones' AI configuration: one human seat, AI 1–3 with their skill, no seeds", () => {
+    const { deck, aiDecks } = decks();
+    const setup: SoloSetup = { name: "Caleb", deck, aiDecks, aiSkill: 4, startingPlayerMode: "roll" };
     expect(soloConfiguration(setup)).toEqual({
       seats: [
         { seatId: SOLO_SEAT, name: "Caleb", controller: "human", deck },
-        { seatId: AI_SEAT, name: AI_NAME, controller: "ai", deck: aiDeck, aiSkill: 4 },
+        { seatId: AI_SEAT, name: AI_NAME, controller: "ai", deck: aiDecks[0], aiSkill: 4 },
       ],
     });
+    const three = soloConfiguration({ ...setup, aiDecks: [aiDecks[0], deck, aiDecks[0]] }) as { seats: { seatId: string; name: string }[] };
+    expect(three.seats.map((seat) => `${seat.seatId}:${seat.name}`)).toEqual(["player1:Caleb", "player2:AI 1", "player3:AI 2", "player4:AI 3"]);
     expect(() => soloConfiguration({ ...setup, aiSkill: 11 })).toThrow(/1–10/);
+    expect(() => soloConfiguration({ ...setup, aiDecks: [] })).toThrow(/1–3/);
   });
 
   it("rolls for the starting player, answers XMage with the winner, concedes and destroys the match", async () => {

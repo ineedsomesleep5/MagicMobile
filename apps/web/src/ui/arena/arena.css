@@ -1,11 +1,16 @@
 /* The horizontal Arena board (docs/ARENA_STYLE.md), ported from the Duel Board Prototype's landscape layout:
    the Walnut Tavern plate, Arena positions and timing, glass for everything that isn't a table object. */
 /* clip, not hidden: a hidden box can still be scrolled by scrollIntoView (a focused or clicked control), which shifted the board */
-.arena { position: relative; width: 100%; height: 100%; overflow: hidden; overflow: clip; background: var(--canvas); user-select: none; -webkit-user-select: none; }
+.arena { position: relative; width: 100%; height: 100%; overflow: hidden; overflow: clip; background: var(--canvas); user-select: none; -webkit-user-select: none;
+  /* Arena's type (ArenaMenuStyle.font): the serif for titles, names on plates, buttons and big numbers; a clean sans below 17 pt */
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --agold: #fad685; --atext: #f2ebdb; --ahair: rgba(245,204,117,.75);
+  --aorange: linear-gradient(transparent 50%, rgba(110,20,0,.35)), linear-gradient(#ffb24a 0%, #f47a1c 48%, #c9420d 100%);
+  --aglass: linear-gradient(rgba(41,43,51,.92), rgba(20,22,26,.94)); }
 /* overflow stays visible: on a tall window the hand shows whole below the plate instead of running off its edge */
 .arena-stage { position: absolute; left: 0; top: 0; width: 956px; height: 440px; transform-origin: 0 0; border-radius: 14px;
   background: #2a1a10 url(/arena/table.jpg) center/100% 100% no-repeat; }
-.arena-stage button { font-family: var(--serif); border: 0; cursor: pointer; color: inherit; }
+.arena-stage button { font-family: var(--sans); border: 0; cursor: pointer; color: inherit; }
 
 /* ambient lamplight over the active player's half */
 .arena .pool-light { position: absolute; left: 172px; width: 610px; height: 220px; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .4s ease, top .4s ease;
@@ -24,10 +29,9 @@
 .acard .face img { display: block; width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
 .acard .face .fallback { position: absolute; inset: .4em; display: grid; place-items: center; text-align: center; padding: .6em; border-radius: .45em;
   font: 700 1.1em/1.15 var(--serif); color: var(--parchment-ink); background: url(/tavern/parchment.webp) center/12em; }
-.acard .back { border-radius: .7em; background: #3a2416 url(/tavern/leather.webp) center/9em;
-  box-shadow: inset 0 0 0 .3em #8a6a3c, inset 0 0 0 .55em #29140b, inset 0 0 0 .7em rgba(219,163,76,.5), 0 .4em .9em rgba(0,0,0,.6); }
-.acard .back::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6em; height: 6em; transform: translate(-50%,-50%);
-  background: url(/tavern/seal.webp) center/100% no-repeat; filter: drop-shadow(0 .15em .2em rgba(0,0,0,.6)); }
+/* until the Magic back loads: a dark gradient in a black edge (ArenaCardBack.leatherBack since the Arena look pass) */
+.acard .back { border-radius: .9em; background: linear-gradient(rgba(255,255,255,.08), transparent 50%, rgba(0,0,0,.28)), linear-gradient(#292629, #121012);
+  box-shadow: inset 0 0 0 .9em rgba(0,0,0,.85), 0 .4em .9em rgba(0,0,0,.6); }
 /* the hand's mana cost: a black capsule of flat symbols above the card's top-right corner (HandManaCost) */
 .acard .mcost { position: absolute; right: .35em; top: -2.75em; display: flex; gap: .12em; align-items: center; padding: .28em .38em; border-radius: 2em;
   background: rgba(0,0,0,.88); pointer-events: none; z-index: 2; }
@@ -37,7 +41,7 @@
 .msym { display: block; flex: none; width: 20px; height: 20px; -webkit-user-drag: none; }
 .msym.inline { display: inline-block; width: 1.05em; height: 1.05em; margin: 0 .04em; vertical-align: -.16em; }
 .msym.disc { display: inline-grid; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.45); font: 900 .62em/1 system-ui, sans-serif; }
-/* the real Magic card back (ArenaCardBack); the tavern's leather back below is its stand-in until it loads */
+/* the real Magic card back (ArenaCardBack); the dark back above is its stand-in until it loads */
 .acard .spin > .mback { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: .9em; pointer-events: none; -webkit-user-drag: none;
   box-shadow: 0 .4em .9em rgba(0,0,0,.6); }
 
@@ -106,17 +110,26 @@
 /* ---------- table furniture ---------- */
 .amed { position: absolute; --d: 54px; width: var(--d); height: var(--d); margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2); z-index: 465; border-radius: 50%; padding: 0; background: none;
   filter: drop-shadow(0 3px 5px rgba(0,0,0,.65)); }
-.amed .av { position: absolute; inset: 13%; border-radius: 50%; overflow: hidden; background: #2a1408; }
-.amed .av svg { display: block; width: 100%; height: 100%; }
-.amed::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: url(/tavern/pass-ring.webp) center/100% no-repeat; pointer-events: none; }
-.amed .hp { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding-top: 2%;
-  font: 900 calc(var(--d) * .38)/1 var(--serif); color: #fff6e0; font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.02em;
-  -webkit-text-stroke: calc(var(--d) * .03) #000; paint-order: stroke fill; text-shadow: 0 0 1px #000, 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 2px 5px rgba(0,0,0,.7); }
+/* ArenaHeroMedallion (Arena judge round 1): the portrait 0.9 of the diameter in a thin gold ring, the life on a dark
+   six-sided plaque edged in gold over the ring's foot; no brass ring. `.bmed` is the browsers' and the result's. */
+.amed .av, .bmed .av { position: absolute; inset: 5%; border-radius: 50%; overflow: hidden; background: #2a1408; }
+.amed .av svg, .bmed .av svg { display: block; width: 100%; height: 100%; }
+.amed .av::after, .bmed .av::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, transparent 55%, rgba(0,0,0,.3)); }
+.amed::after, .bmed::after { content: ""; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none; padding: max(1.5px, calc(var(--d) * .045));
+  background: linear-gradient(#ffe69e, #fad685, #9e702e); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; }
+.amed .hp, .bmed .hp { position: absolute; left: 22%; width: 56%; height: 34%; bottom: -7%; z-index: 2; display: grid; place-items: center;
+  clip-path: polygon(14% 0, 86% 0, 100% 50%, 86% 100%, 14% 100%, 0 50%); background: rgba(250,214,133,.85);
+  font: 700 calc(var(--d) * .26)/1 var(--serif); color: #fff; font-variant-numeric: tabular-nums lining-nums; }
+.amed .hp::before, .bmed .hp::before { content: ""; position: absolute; inset: max(1px, calc(var(--d) * .02)); z-index: -1;
+  clip-path: polygon(14% 0, 86% 0, 100% 50%, 86% 100%, 14% 100%, 0 50%); background: linear-gradient(#29292f, #0d0d12); }
+.amed .hp, .bmed .hp { isolation: isolate; }
+.amed .hp.out, .bmed .hp.out { font: 700 calc(var(--d) * .17)/1 var(--sans); color: #8e8e93; }
 .amed.targetable { cursor: pointer; box-shadow: 0 0 0 2px var(--arcane), 0 0 16px 6px rgba(120,230,255,.75); }
 .amed.out { filter: grayscale(1) brightness(.55); }
 .amed .rope { position: absolute; inset: -22%; width: 144%; height: 144%; z-index: 3; pointer-events: none; overflow: visible; }
 .aname { position: absolute; z-index: 466; transform: translateY(-50%); white-space: nowrap; pointer-events: none;
-  font: 700 11px/1.15 var(--serif); color: var(--parchment); text-shadow: 0 1px 3px #000, 0 0 6px rgba(0,0,0,.9); }
+  font: 700 11px/1.15 var(--sans); color: var(--parchment); text-shadow: 0 1px 3px #000, 0 0 6px rgba(0,0,0,.9); }
 .aname.under { transform: translateX(-50%); text-align: center; }
 .aname.under .badges { justify-content: center; }
 .aname small { display: block; font: 600 9px/1.2 var(--serif); color: #e8d6b0; opacity: .85; }
@@ -131,16 +144,16 @@
 .apile .sliver { position: absolute; inset: 0; border-radius: .6em; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.35); }
 .apile .ptop { position: absolute; inset: 0; border-radius: .6em; overflow: hidden; box-shadow: 0 0 0 .5px rgba(0,0,0,.6); }
 .apile .ptop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.apile .ptop .back { position: absolute; inset: 0; background: #3a2416 url(/tavern/leather.webp) center/9em;
-  box-shadow: inset 0 0 0 .3em #8a6a3c, inset 0 0 0 .55em #29140b, inset 0 0 0 .7em rgba(219,163,76,.5); }
-.apile .ptop .back::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6em; height: 6em; transform: translate(-50%,-50%);
-  background: url(/tavern/seal.webp) center/100% no-repeat; }
+.apile .ptop .back { position: absolute; inset: 0; background: linear-gradient(rgba(255,255,255,.08), transparent 50%, rgba(0,0,0,.28)), linear-gradient(#292629, #121012);
+  box-shadow: inset 0 0 0 2.5px rgba(0,0,0,.85); }
 .apile .ptop .veil { position: absolute; inset: 0; display: flex; align-items: flex-start; padding: .5em; font: 900 3.4em/1 var(--serif); color: rgba(255,255,255,.9);
   text-shadow: 0 0 .1em #000; background: linear-gradient(rgba(140,178,255,.42), rgba(77,64,153,.5)); }
 .apile.empty .plean { border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(219,163,76,.35); background-image: none; outline: 1px dashed rgba(219,163,76,.35); outline-offset: -1px; }
-.apile .pcount { position: absolute; right: -8px; bottom: 2px; z-index: 2; min-width: 20px; height: 17px; padding: 0 5px; box-sizing: border-box; border-radius: 9px;
-  background: var(--leather); box-shadow: inset 0 0 0 1.2px var(--brass); font: 800 11px/17px var(--serif); text-align: center; color: var(--label);
-  font-variant-numeric: tabular-nums; }
+.apile .pcount { position: absolute; right: -8px; bottom: 2px; z-index: 2; }
+/* ArenaCountBadge: a white number on a dark oval in a thin gold line (piles, the stack's size, the order of cards); --s is its height */
+.acount { --s: 17px; display: inline-grid; place-items: center; box-sizing: border-box; min-width: calc(var(--s) + 3px); height: var(--s);
+  padding: 0 max(5px, calc(var(--s) * .18)); border-radius: 999px; font: 700 max(11px, calc(var(--s) * .5))/1 var(--sans); color: #fff;
+  font-variant-numeric: tabular-nums; background: rgba(18,18,20,.94); box-shadow: inset 0 0 0 1px rgba(250,214,133,.7), 0 1px 2px rgba(0,0,0,.6); }
 .amed.ready { box-shadow: 0 0 0 2px #7ff0ff, 0 0 14px 5px rgba(80,220,255,.7); }
 /* floating mana the reference's way (ArenaFloatingMana): plain symbols in a dark capsule by your portrait, a count on
    each colour past one; a colour you can spend while paying wears an ember ring and takes a click */
@@ -149,7 +162,7 @@
 .afloat .fm { position: relative; display: grid; place-items: center; height: 24px; padding: 0 2px; border-radius: 12px; background: none; }
 .afloat .fm .msym { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.75)); }
 .afloat .fm b { position: absolute; right: -3px; bottom: -3px; padding: 0 3px; border-radius: 6px; background: rgba(0,0,0,.85); color: #fff;
-  font: 900 10px/12px var(--serif); font-variant-numeric: tabular-nums; }
+  font: 900 10px/12px var(--sans); font-variant-numeric: tabular-nums; }
 .afloat button.fm { padding: 0 4px; cursor: pointer; box-shadow: inset 0 0 0 1.2px rgba(255,138,61,.8), 0 0 10px rgba(255,140,50,.6); }
 .afloat button.fm:disabled { cursor: default; box-shadow: none; }
 
@@ -174,37 +187,46 @@
   background: radial-gradient(circle, #fff, var(--rim) 45%, transparent 70%); animation: aspark ease-in-out forwards; }
 @keyframes aspark { to { transform: translateX(var(--to)); } }
 @keyframes aignite { 0% { transform: translate(-50%, -50%) scale(1.45); } 100% { transform: translate(-50%, -50%) scale(1); } }
-.aplaque { position: absolute; border-radius: 999px; display: grid; place-items: center; align-content: center; font: 700 15px/1 var(--serif); letter-spacing: .02em;
-  color: #ffe8a8; text-shadow: 0 1px 0 rgba(0,0,0,.75); transition: transform .12s ease-out, filter .2s; padding: 0 10px; }
-.aplaque::after { content: ""; position: absolute; inset: -3px; border-style: solid; border-width: 20px; border-image: url(/tavern/capsule.webp) 66 fill / 20px / 0 stretch; pointer-events: none; }
-.aplaque:active { transform: scale(.96); filter: brightness(1.08); }
-.aplaque.ember { background: #a74429 url(/tavern/ember.webp) center/cover; box-shadow: 0 0 18px rgba(255,120,60,.5); }
-.aplaque.ember.want { animation: awant 2.2s ease-in-out infinite; }
-@keyframes awant { 50% { box-shadow: 0 0 26px 4px rgba(255,140,60,.75); } }
-.aplaque.leather { background: #3a2416 url(/tavern/leather.webp) center/120px; }
-.aplaque.oxblood { background: linear-gradient(rgba(138,43,38,.7), rgba(138,43,38,.7)), url(/tavern/leather.webp) center/120px; color: #ffccb8; }
-.aplaque.label { background: transparent; color: rgba(242,224,189,.86); font-weight: 600; font-size: 14px; cursor: default; text-shadow: 0 1px 3px #000; }
-.aplaque.label::after { display: none; }
-.aplaque:disabled { filter: saturate(.15) brightness(.62); animation: none; cursor: default; }
-.aplaque small { display: block; margin-top: 2px; font: 700 8px/1 var(--serif); letter-spacing: .12em; text-transform: uppercase; color: #ffd9b0; opacity: .85; }
+/* Arena's one button face (ArenaButtonFace, Caleb's option A, 2026-10-22; ArenaMenuKit.swift): the call to action an
+   orange pill with a thin warm rim, a lit top edge and a soft glow; the other choice a dark glass pill edged in a pale line;
+   danger a deep red pill; `cool` Arena's blue (Mulligan beside Keep); `quiet` a word on the table. No brass, leather,
+   rivets or stitching on the Arena board. */
+.aplaque { position: absolute; border-radius: 999px; display: grid; place-items: center; align-content: center; font: 700 15px/1 var(--serif);
+  color: #fff; text-shadow: 0 1px 1.5px rgba(0,0,0,.6); transition: transform .12s ease-out, filter .12s; padding: 0 16px; isolation: isolate; white-space: nowrap; }
+.aplaque::before { content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1; }
+.aplaque::after { content: ""; position: absolute; inset: 1.5px; border-radius: inherit; pointer-events: none; }
+.aplaque:not(:disabled):hover { filter: brightness(1.06); }
+.aplaque:not(:disabled):active { transform: scale(.97); filter: brightness(1.08); }
+.aplaque.primary { text-shadow: 0 1px 1.5px rgba(89,26,0,.75); }
+.aplaque.primary::before { background: var(--aorange); box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.45); }
+.aplaque.primary::after, .aplaque.danger::after, .aplaque.cool::after { box-shadow: inset 0 1px 0 rgba(255,255,255,.55); }
+.aplaque.secondary { color: #f2e8d9; font-weight: 600; }
+.aplaque.secondary::before { background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5); }
+.aplaque.secondary::after { box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+.aplaque.danger::before { background: linear-gradient(#c7382e, #7d1712); box-shadow: inset 0 0 0 1.5px rgba(255,168,148,.7); }
+.aplaque.cool::before { background: linear-gradient(#8c99ff 0%, #4f45db 50%, #301f94 100%); box-shadow: inset 0 0 0 1.5px rgba(194,204,255,.85); }
+.aplaque.quiet { color: #f2e8d9; font-weight: 600; font-size: 14px; cursor: default; text-shadow: 0 1px 3px #000; }
+.aplaque:disabled { filter: saturate(.15) brightness(.85); cursor: default; }
+.aplaque.quiet:disabled { filter: none; }
+.aplaque small { display: block; margin-top: 2px; font: 800 8px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
 .abtn { left: 708px; top: 388px; width: 176px; height: 36px; font-size: 18px; }
 .abtn2 { left: 708px; top: 335px; width: 176px; height: 37px; font-size: 16px; }
+/* the pass-ahead pill (ArenaPillStyle): dark glass, orange while lit */
 .aff { position: absolute; left: 656px; top: 392px; width: 42px; height: 26px; border-radius: 13px; display: grid; place-items: center;
-  background: #3a2416 url(/tavern/leather.webp) center/80px; box-shadow: inset 0 0 0 1.5px #dba34c, 0 2px 4px rgba(0,0,0,.5); }
-.aff svg { width: 20px; height: 13px; fill: #f5cc7a; }
-.aff.on { background: #a74429 url(/tavern/ember.webp) center/cover; box-shadow: inset 0 0 0 1.5px #ffe08f, 0 0 12px 3px rgba(255,140,60,.7); }
-.aff.on svg { fill: #fff3d6; }
+  background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5), inset 0 2px 0 -1px rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.5); }
+.aff svg { width: 20px; height: 13px; fill: #f2e8d9; }
+.aff.on { background: var(--aorange); box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.5); }
+.aff.on svg { fill: #fff; }
 .ahourglass { position: absolute; left: 708px; top: 388px; width: 176px; height: 36px; display: grid; place-items: center; pointer-events: none; }
 .ahourglass svg { width: 16px; height: 16px; fill: rgba(242,224,189,.45); animation: aturn 2.4s ease-in-out infinite; }
 @keyframes aturn { 50% { transform: rotate(180deg); } }
-.acoin { position: absolute; width: 28px; height: 28px; border-radius: 50%; z-index: 431; padding: 0; background: url(/tavern/coin.webp) center/100%; display: grid; place-items: center;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,.6)); }
-.acoin svg { width: 15px; height: 15px; fill: #401f0a; }
-.acoin.on { box-shadow: 0 0 0 2px #ffe08f, 0 0 10px 3px rgba(255,170,80,.7); }
-.astack-count { position: absolute; z-index: 346; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: #29140b; box-shadow: inset 0 0 0 1.5px #dba34c;
-  font: 800 12px/20px var(--serif); text-align: center; color: var(--label); pointer-events: none; }
+/* the gear and the log: a light symbol on a dark glass disc in a hairline, no brass coin (arenaGameMenu) */
+.acoin { position: absolute; width: 30px; height: 30px; border-radius: 50%; z-index: 431; padding: 0; display: grid; place-items: center;
+  background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px var(--ahair), 0 1px 2px rgba(0,0,0,.5); }
+.acoin svg { width: 14px; height: 14px; fill: var(--atext); }
+.acoin.on { box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 0 10px 1px rgba(255,120,31,.5); }
 .aprompt { position: absolute; left: 478px; transform: translate(-50%,-50%); z-index: 520; pointer-events: none; white-space: nowrap; max-width: 560px; overflow: hidden; text-overflow: ellipsis;
-  font: 600 12.5px/1.1 var(--serif); color: #fff; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.9); display: flex; gap: 5px; align-items: center; }
+  font: 600 13px/1.1 var(--sans); color: #fff; text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,.9); display: flex; gap: 5px; align-items: center; }
 .aprompt .sym { width: 15px; height: 15px; display: inline-grid; place-items: center; background: center/100% no-repeat; border-radius: 50%; font: 900 9px/1 var(--serif); color: #111; }
 .atoast { position: absolute; left: 478px; top: 70px; transform: translate(-50%,-50%); z-index: 860; pointer-events: none; padding: 6px 14px; border-radius: 12px; max-width: 520px;
   background: rgba(20,14,10,.92); box-shadow: inset 0 0 0 1px rgba(219,163,76,.8); font: 600 12px/1.25 var(--serif); color: var(--parchment); text-align: center; }
@@ -212,12 +234,14 @@
   background: rgba(20,14,10,.92); box-shadow: inset 0 0 0 1px rgba(219,163,76,.8); color: var(--parchment); font: 700 12px/1 var(--serif); animation: bubble 3.2s ease forwards; }
 
 /* ---------- glass: browsers, panels, menus (ArenaGlass) ---------- */
-.glass { background: linear-gradient(rgba(34,26,20,.94), rgba(12,9,7,.95)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.75), inset 0 0 0 2px rgba(0,0,0,.6), 0 14px 30px rgba(0,0,0,.6);
-  border-radius: 12px; color: #f3ead8; }
+/* ArenaGlassPanel: dark smoked glass (ArenaGlass.top/bottom) with a sheen, in a gold hairline. Scoped to the board so the
+   menus' own .glass (menus.css, whose colours live on .mroot) never blanks it: the game is drawn outside .mroot. */
+.arena .glass { background: linear-gradient(rgba(255,255,255,.06), transparent 50%), linear-gradient(rgba(26,28,36,.94), rgba(10,11,15,.95)); border: 0;
+  box-shadow: inset 0 0 0 1px rgba(232,190,110,.75), 0 6px 14px rgba(0,0,0,.55); border-radius: 12px; color: #f3ead8; }
 .aoverlay { position: absolute; inset: 0; z-index: 800; }
 .aoverlay.dim { background: rgba(0,0,0,.7); }
 .aoverlay.question { background: rgba(0,0,0,.72); }
-.aquestion .aplaque, .amull .aplaque, .aresult .aplaque, .aroll .aplaque { position: relative; min-width: 150px; height: 36px; font-size: 15px; padding: 0 22px; }
+.aquestion .aplaque { position: relative; min-width: 150px; height: 36px; font-size: 15px; padding: 0 22px; }
 .arow { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px; text-align: left; color: #f3ead8; font: 600 14px/1.25 var(--serif);
   background: linear-gradient(rgba(44,34,26,.9), rgba(20,15,11,.92)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.5); }
 .arow:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px #ffe08f, 0 0 12px rgba(255,200,110,.35); }
@@ -256,35 +280,25 @@
 .alog .reason { font: italic 500 11.5px/1.25 var(--serif); color: rgba(255,255,255,.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alatest { position: absolute; right: 8px; bottom: 8px; padding: 6px 12px; border-radius: 14px; background: linear-gradient(#ffe2a0, #d9a84f); color: #221713; font: 800 12px/1 var(--serif); box-shadow: 0 2px 8px rgba(0,0,0,.6); }
 .alog.chat { gap: 4px; font-size: 12.5px; color: #efe4cf; }
+/* the chat line on glass with the orange Send (no parchment field or leather plaque on the Arena board) */
+.apanel .chat-input .bsearch { flex: 1; width: auto; }
+.apanel .chat-input .aplaque { position: relative; height: 34px; min-width: 0; font-size: 14px; }
 .alog li.local { color: var(--label); }
 .alog .who { font-weight: 800; }
 
 /* ---------- full-table overlays ---------- */
-.amull { position: absolute; inset: 0; z-index: 810; background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(219,163,76,.16), transparent 70%), rgba(0,0,0,.78); }
-.amull .head { position: absolute; left: 0; right: 0; display: grid; gap: 4px; justify-items: center; text-align: center; pointer-events: none; }
-.amull .head b { font: 900 13px/1 var(--serif); letter-spacing: 3px; color: #c9a45c; }
-.amull .head h2 { margin: 0; padding: 0 24px; font: 900 20px/1.2 var(--serif); color: #fff; text-shadow: 0 2px 4px #000; }
+/* the opening hand, Arena's mulligan screen (OpeningHandOverlay, Arena look): who goes first in a large serif over a thin
+   rule, XMage's question under it, the hand fanned, the blue Mulligan pill beside the orange Keep */
+.amull { position: absolute; inset: 0; z-index: 810; background: rgba(0,0,0,.78); }
+.amull .head { position: absolute; left: 0; right: 0; display: grid; gap: 6px; justify-items: center; text-align: center; pointer-events: none; }
+.amull .head h2 { margin: 0; padding: 0 24px; font: 700 30px/1.1 var(--serif); color: var(--atext); text-shadow: 0 0 4px rgba(0,0,0,.8); }
+.amull .head i { width: 320px; height: 1px; background: linear-gradient(90deg, transparent, rgba(242,235,219,.55), transparent); }
+.amull .head p { margin: 0; padding: 0 24px; font: 500 14px/1.3 var(--sans); color: rgba(242,235,219,.75); }
 .amull .choices { position: absolute; left: 50%; width: 420px; margin-left: -210px; display: flex; gap: 12px; }
-.amull .choices .aplaque { position: relative; flex: 1; height: 40px; min-width: 0; }
-.aroll { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 420px; padding: 18px 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
-.aresult { position: absolute; inset: 0; z-index: 900; background: rgba(14,8,4,.72); display: grid; place-items: center; overflow: hidden; }
-.aresult .box { position: relative; z-index: 2; width: 360px; padding: 24px 0 22px; display: flex; flex-direction: column; align-items: center; gap: 11px; }
-.aresult .medal { position: relative; width: 120px; height: 120px; border-radius: 50%; margin-bottom: 2px; animation: amedalUp .8s cubic-bezier(.2,1.4,.4,1) both; filter: drop-shadow(0 10px 18px rgba(0,0,0,.7)); }
-.aresult .medal .av { position: absolute; inset: 13%; border-radius: 50%; overflow: hidden; background: #2a1408; }
-.aresult .medal .av svg { display: block; width: 100%; height: 100%; }
-.aresult .medal::after { content: ""; position: absolute; inset: 0; background: url(/tavern/pass-ring.webp) center/100% no-repeat; }
-.aresult[data-win=false] .medal .av { filter: grayscale(1) brightness(.55); }
-.aresult[data-win=false] .medal::after { filter: grayscale(.85) brightness(.7); }
-@keyframes amedalUp { from { transform: translateY(60px) scale(.4); opacity: 0; } }
-.aresult .title { font-size: 50px; }
-.aresult[data-win=false] .title { background: linear-gradient(#e6e1d6, #8c8577); -webkit-background-clip: text; background-clip: text; }
-.aresult .rule { width: 300px; height: 2px; background: linear-gradient(90deg, transparent, #dba34c 20%, #ffe08f 50%, #dba34c 80%, transparent); box-shadow: 0 0 10px rgba(255,190,110,.8); }
-.aresult[data-win=false] .rule { background: linear-gradient(90deg, transparent, #8c8577 30%, #d6d1c6 50%, #8c8577 70%, transparent); box-shadow: none; }
-.aresult p { margin: 0; font: 500 14px/1.3 var(--serif); color: #e8d6b0; text-align: center; padding: 0 18px; }
-.aresult .answers { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.amull .choices .aplaque { position: relative; flex: 1; height: 46px; min-width: 0; font-size: 19px; }
 .ainspect { position: absolute; z-index: 850; pointer-events: none; filter: drop-shadow(0 14px 26px rgba(0,0,0,.7)); }
 .ainspect img { display: block; width: 100%; border-radius: 12px; }
-@media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .aplaque.ember.want, .ahourglass svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .acard, .acard > .lean, .acard .spin { transition-duration: .12s; } .acard[data-view=face].playable .spin, .ahourglass svg { animation: none; } }
 
 /* An ability as the reference shows it (ArenaAbilityCard): 15em wide, 0.72 of its height; the source's colour frames it. */
 .ability-card { position: relative; width: 15em; height: 20.83em; border-radius: .75em; box-shadow: inset 0 0 0 1px rgba(0,0,0,.85), 0 .6em 1.2em rgba(0,0,0,.6);
@@ -307,7 +321,7 @@
 /* the stack card's tab: opens the whole stack, with how many objects it holds */
 .astack-tab { position: absolute; z-index: 346; width: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0;
   border-radius: 9px 0 0 9px; background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px rgba(232,190,110,.75), -1px 2px 3px rgba(0,0,0,.5);
-  color: #f2ebdb; font: 800 15px/1 var(--serif); }
+  color: #f2ebdb; font: 800 15px/1 var(--sans); }
 .astack-tab b { color: #fad584; font-variant-numeric: tabular-nums; }
 .astack-tab i { font-style: normal; font-size: 11px; }
 /* a spell landing on the stack settles with a little overshoot in a bloom of its colour (ArenaStackCard) */
@@ -322,25 +336,30 @@
 
 /* ---------- browsers, the iOS Arena board's (ArenaBrowserFrame): no panel; the table dims under a title, the cards stand
    in the middle, answers under them, the source card on the right, "View Battlefield" top right ---------- */
-.abrowse { background: rgba(0,0,0,.72); transition: background .2s ease; }
+/* browsers, the question stage and the ability, mode and stack browsers dim the table to 0.8 (Arena judge, 2026-10-22) */
+.abrowse { background: rgba(0,0,0,.8); transition: background .2s ease; }
 .abrowse > .bbody, .abrowse > .bsource, .abrowse > .bstage { transition: opacity .2s ease; }
 .abrowse.peek { background: transparent; pointer-events: none; }
 .abrowse.peek > .bbody, .abrowse.peek > .bsource, .abrowse.peek > .bstage { opacity: 0; }
-.abrowse .bview { position: absolute; right: 16px; top: 6px; z-index: 3; pointer-events: auto; height: 32px; padding: 0 14px; border-radius: 16px;
-  font: 700 12px/1 var(--serif); color: #f2ebdb; background: rgba(0,0,0,.55); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8); }
+/* View Battlefield left of the gear (ArenaBrowserFrame: trailing 120 in landscape) */
+.abrowse .bview { position: absolute; right: 120px; top: 6px; z-index: 3; pointer-events: auto; height: 32px; padding: 0 14px; border-radius: 16px;
+  font: 700 12px/1 var(--sans); color: #f2ebdb; background: rgba(0,0,0,.55); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8); }
 .abrowse .bview:hover { background: rgba(0,0,0,.75); }
 .abrowse h2 { margin: 0; font: 700 22px/1.15 var(--serif); color: #f2ebdb; text-align: center; text-shadow: 0 0 2px #000, 0 1px 4px #000; }
 .abrowse header { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 600px; padding: 0 12px; }
-.abrowse header p { margin: 0; text-align: center; font: 500 13px/1.3 var(--serif); color: rgba(242,235,219,.8); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.abrowse .bbody { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 24px 12px; }
+.abrowse header p { margin: 0; text-align: center; font: 500 13px/1.3 var(--sans); color: rgba(242,235,219,.8); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* the title starts below the opponent's medallion and its life plaque (ArenaSafeArea.top(50) in landscape) */
+.abrowse .bbody { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: var(--atop, 50px) 24px 12px; }
 .abrowse .bcontent { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: safe center; gap: 16px; overflow-x: auto; overflow-y: hidden; padding: 14px 24px; }
 .abrowse .bcontent.column { flex-direction: column; overflow: hidden auto; gap: 10px; }
 .abrowse .bfoot { flex: none; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
-.abrowse .bfoot .aplaque, .bstage .answers .aplaque { position: relative; min-width: 140px; height: 40px; padding: 0 22px; font-size: 15px; }
-.abrowse .bfoot .aplaque.ember { min-width: 170px; height: 42px; font-size: 16px; }
+.abrowse .bfoot .aplaque { position: relative; min-width: 140px; height: 40px; padding: 0 22px; font-size: 15px; }
+.abrowse .bfoot .aplaque.primary { min-width: 170px; height: 42px; font-size: 16px; }
+/* the question stage's answers (PanelActionButtonStyle, Arena plaques): the orange pill goes ahead, Arena's blue declines; words only */
+.bstage .answers .aplaque { position: relative; min-width: 140px; height: 46px; padding: 0 22px; font-size: 17px; }
 .abrowse .bsource { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); }
 /* the question stage (ArenaQuestionStage): headline, its card, answers, all in the middle */
-.bstage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 0 24px; }
+.bstage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: var(--atop, 50px) 24px 0; }
 .bstage .answers { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; max-width: 560px; }
 .bsubject { display: block; flex: none; }
 .bsubject:not(img) { filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
@@ -357,25 +376,23 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 @keyframes bbreathe { 50% { box-shadow: 0 0 0 2.5px #b8f8ff, 0 0 22px 6px rgba(90,230,255,.9), 0 6px 14px rgba(0,0,0,.6); } }
 .bcard:disabled img.bprinted { filter: saturate(.3) brightness(.6); box-shadow: 0 6px 14px rgba(0,0,0,.6); }
 .bcard .aplaque { position: relative; width: 100%; min-width: 0; height: 34px; font-size: 14px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
-.bzone { font: 800 9px/1 var(--serif); letter-spacing: .14em; text-transform: uppercase; color: #fad584; }
-.bsymbol { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; font: 600 13px/1.2 var(--serif); color: #f2ebdb; }
+.bzone { font: 800 9px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #fad584; }
+.bsymbol { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; font: 600 13px/1.2 var(--sans); color: #f2ebdb; }
 .bsymbol .msym { filter: drop-shadow(0 3px 6px rgba(0,0,0,.6)); }
 .bgrid { width: min(640px, 100%); display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
-.btile { min-height: 48px; padding: 8px 10px; border-radius: 10px; border: 0; text-align: center; font: 600 14px/1.25 var(--serif); color: #f2ebdb;
+.btile { min-height: 48px; padding: 8px 10px; border-radius: 10px; border: 0; text-align: center; font: 600 14px/1.25 var(--sans); color: #f2ebdb;
   background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 .8px rgba(245,204,117,.75); }
 .btile:hover:not(:disabled) { background: rgba(255,255,255,.11); box-shadow: inset 0 0 0 1.2px #ffe08f, 0 0 12px rgba(255,200,110,.35); }
-.bsearch { width: min(360px, 100%); flex: none; height: 34px; padding: 0 14px; border-radius: 17px; border: 0; outline: 0; font: 500 14px/1 var(--serif); color: #f2ebdb;
+.bsearch { width: min(360px, 100%); flex: none; height: 34px; padding: 0 14px; border-radius: 17px; border: 0; outline: 0; font: 500 14px/1 var(--sans); color: #f2ebdb;
   background: rgba(0,0,0,.5); box-shadow: inset 0 0 0 1px rgba(245,204,117,.7); }
-.bremember { display: flex; align-items: center; gap: 8px; font: 600 13px/1 var(--serif); color: #f2ebdb; cursor: pointer; }
-.bremember input { accent-color: #e88a3a; width: 16px; height: 16px; }
+/* "Don't ask again" (RememberChoiceToggle, Arena look): a gold diamond and light sans words, no brass or parchment */
+.bremember { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 4px; background: none; font: 500 13px/1.2 var(--sans); color: rgba(242,235,219,.9); }
+.bremember i { width: 9px; height: 9px; flex: none; margin: 0 2px; transform: rotate(45deg); box-sizing: border-box; border: 1.5px solid rgba(242,235,219,.7); }
+.bremember[aria-checked=true] i { background: var(--agold); border-color: var(--agold); }
 /* players as their medallions (ArenaPlayerChoice) */
 .bseat { display: flex; flex-direction: column; align-items: center; gap: 10px; font: 700 18px/1.1 var(--serif); color: #f2ebdb; text-shadow: 0 0 2px #000; }
-.bmed { position: relative; display: block; border-radius: 50%; }
-.bmed .av { position: absolute; inset: 13%; border-radius: 50%; overflow: hidden; background: #2a1408; }
-.bmed .av svg { display: block; width: 100%; height: 100%; }
-.bmed::after { content: ""; position: absolute; inset: 0; background: url(/tavern/pass-ring.webp) center/100% no-repeat; pointer-events: none; }
-.bmed .hp { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding-top: 2%; font-weight: 900; font-family: var(--serif); color: #fff6e0;
-  text-shadow: 0 2px 4px #000, 0 0 10px rgba(0,0,0,.9); }
+.bseat > span:last-child { margin-top: calc(var(--d) * .1); max-width: calc(var(--d) * 1.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bmed { position: relative; display: block; border-radius: 50%; width: var(--d); height: var(--d); }
 /* a split: each row its card with a big number on it, − and + under it (ArenaSplitBrowser) */
 .bsplit { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .bface { position: relative; display: grid; place-items: center; filter: drop-shadow(0 5px 8px rgba(0,0,0,.6)); }
@@ -385,7 +402,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .bbadge.zero { opacity: .75; }
 .bbadge.lethal { background: rgba(140,15,13,.92); box-shadow: inset 0 0 0 2px #ff734d; }
 .bskull { position: absolute; right: -6px; top: -6px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; color: #fff; background: #8c0f0d; }
-.bname { max-width: 100%; font: 600 12px/1.1 var(--serif); color: #f2ebdb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bname { max-width: 100%; font: 600 12px/1.1 var(--sans); color: #f2ebdb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bsteps { display: flex; gap: 10px; }
 .blens, .plens { height: 40px; width: 50px; border-radius: 20px; display: grid; place-items: center; font: 800 22px/1 var(--serif); color: #f2ebdb; touch-action: none;
   background: linear-gradient(#1a1c24, #0a0b0f); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8); }
@@ -396,22 +413,32 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
   background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(245,204,117,.6); transition: box-shadow .16s, background .16s; }
 .bwell:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px rgba(255,214,140,.9); }
 .bwell.on { background: rgba(0,0,0,.5); box-shadow: inset 0 0 0 3px #ffd166, 0 0 14px rgba(255,191,77,.7); }
-.blabel { font: 800 13px/1 var(--serif); letter-spacing: .09em; color: #fad584; }
+.blabel { font: 800 13px/1 var(--sans); letter-spacing: .09em; color: #fad584; }
 .bfanrow { display: flex; align-items: flex-end; padding: 14px; }
 .bfan { display: block; transform-origin: 50% 100%; }
-.bempty { display: grid; place-items: center; font: italic 14px/1 var(--serif); color: rgba(242,235,219,.6); }
+.bempty { display: grid; place-items: center; font: italic 14px/1 var(--sans); color: rgba(242,235,219,.6); }
+/* card choice wells (BoardCardChoiceView.arenaWell): a gold hairline, a gold capital label; an empty well keeps its size and says nothing */
+.bwells { display: flex; gap: 14px; align-items: stretch; }
+.bwellzone { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bwellzone > b { font: 800 13px/1 var(--sans); letter-spacing: .09em; color: #fad584; }
+.bwellcards { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(245,204,117,.6); }
+.bwellcard { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.bmove { display: flex; gap: 6px; }
+.bmove button { width: 30px; height: 24px; border-radius: 12px; background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5); color: var(--atext); font: 700 14px/1 var(--sans); }
+.bmove button:disabled { opacity: .35; cursor: default; }
+.bcard .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); }
 /* the stack browser's items */
 .bitem { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.bitem .who { font: 700 11px/1.2 var(--serif); letter-spacing: .1em; text-transform: uppercase; color: #fad584; text-align: center; max-width: 180px; }
-.bitem .tgt { font: 500 12px/1.25 var(--serif); color: rgba(243,234,216,.8); text-align: center; max-width: 180px; }
+.bitem .who { font: 800 10px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #fad584; text-align: center; max-width: 180px; }
+.bitem .tgt { font: 500 11px/1.25 var(--sans); color: rgba(243,234,216,.8); text-align: center; max-width: 180px; }
 .bitem .who.next { color: #fab866; letter-spacing: .08em; }
-.bitem .owner { margin-top: -4px; font: italic 500 11px/1.2 var(--serif); color: rgba(243,234,216,.75); }
+.bitem .owner { margin-top: -4px; font: italic 400 11px/1.2 var(--sans); color: rgba(243,234,216,.75); }
 .bitem .tgt { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: #f3ead8; }
 .bitem .tgt svg { width: 11px; height: 11px; flex: none; }
 .bstackcard { position: relative; }
 .bitem.next .bstackcard > :first-child { box-shadow: 0 0 0 3px #ffd166, 0 0 16px rgba(255,190,77,.8); border-radius: .75em; }
+.bstackcard > .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); }
 .stackhead { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.bcount { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; background: url(/tavern/coin.webp) center/100%; font: 900 14px/1 var(--serif); color: #401f0a; }
 .stacksub { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .btag { padding: 3px 8px; border-radius: 9px; font: 800 9.5px/1 var(--serif); letter-spacing: .08em; color: #f3ead8; background: rgba(74,46,30,.92); box-shadow: inset 0 0 0 1px rgba(201,164,92,.8); }
 .btag.ember { color: #ffb066; box-shadow: inset 0 0 0 1px rgba(255,140,60,.9); }
@@ -421,10 +448,11 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .apill .plenses > * + * { margin-left: -6px; }
 .apill .plens { width: 48px; height: 42px; }
 .apill .plens.five { width: 42px; font-size: 15px; }
+/* the go button in Arena's orange (ArenaMenuStyle.orange) */
 .apill .pgo { position: relative; z-index: 1; width: 112px; height: 50px; border-radius: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  color: #ffeec0; text-shadow: 0 1px 1px rgba(0,0,0,.7); background: #a74429 url(/tavern/ember.webp) center/cover;
+  color: #ffeec0; text-shadow: 0 1px 1px rgba(0,0,0,.7); background: var(--aorange);
   box-shadow: inset 0 0 0 1.2px rgba(255,217,128,.9), 0 0 16px rgba(255,120,60,.7); }
-.apill .pgo small { font: 700 12px/1 var(--serif); }
+.apill .pgo small { font: 700 12px/1 var(--sans); }
 .apill .pgo b { font: 800 18px/1.1 var(--serif); font-variant-numeric: tabular-nums; }
 .apill .pgo:disabled { filter: saturate(.15) brightness(.62); cursor: default; }
 .apill .aplaque { position: relative; width: 150px; height: 38px; font-size: 15px; }
@@ -464,8 +492,8 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 @keyframes abannerSweep { from { background-position: -46px 0; } to { background-position: calc(100% + 46px) 0; } }
 @media (prefers-reduced-motion: reduce) { .abanner, .abanner .line, .abanner b::after { animation: none; } }
 /* undo the last mana while paying: a small glass pill beside the corner (ArenaBoardViews' undo pill) */
-.aundo { position: absolute; width: 52px; height: 26px; border-radius: 13px; display: grid; place-items: center; font: 700 11px/1 var(--serif); color: #f5cc7a;
-  background: linear-gradient(rgba(30,22,16,.86), rgba(12,9,7,.9)); box-shadow: inset 0 0 0 1px rgba(245,204,122,.45), 0 2px 6px rgba(0,0,0,.5); z-index: 600; }
+.aundo { position: absolute; width: 52px; height: 26px; border-radius: 13px; display: grid; place-items: center; font: 800 12px/1 var(--sans); color: #f2e8d9;
+  background: var(--aglass); box-shadow: inset 0 0 0 1px rgba(255,230,191,.5), 0 2px 6px rgba(0,0,0,.5); z-index: 600; }
 .aundo:disabled { opacity: .45; }
 
 /* ---------- menus and panels on the table (ArenaMenuCard, ArenaPanelOverlay) ---------- */
@@ -476,8 +504,8 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .amenucard .arow:hover:not(:disabled) { background: linear-gradient(rgba(255,220,150,.14), rgba(0,0,0,.1)); }
 .amenucard .arow.lit { box-shadow: inset 0 0 0 1.5px #ffb36a, 0 0 10px rgba(255,140,60,.35); }
 .amenucard .arow:disabled { opacity: .45; cursor: default; }
-.amenucard .arow b { display: block; font: 600 16px/1.15 var(--serif); }
-.amenucard .arow small { display: block; font: 500 11px/1.2 var(--serif); opacity: .65; }
+.amenucard .arow b { display: block; font: 600 16px/1.15 var(--sans); }
+.amenucard .arow small { display: block; font: 500 11px/1.2 var(--sans); opacity: .65; }
 .amenucard .glyph { width: 22px; height: 18px; flex: none; display: grid; place-items: center; color: #fad685; }
 .amenucard .glyph svg { width: 17px; height: 17px; fill: currentColor; }
 .amenucard .arow.lit .glyph { color: #ff9e4d; }
@@ -529,11 +557,10 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .ainspector .note { padding: 12px 14px; display: grid; gap: 4px; font: 500 13px/1.35 var(--serif); }
 .ainspector .note .label { font: 900 10px/1 var(--serif); letter-spacing: .12em; color: #e2b867; margin-bottom: 2px; }
 .ainspector .note p { margin: 0; } .ainspector .note p b { color: #fad685; }
-/* trigger order: a gold rim and a numbered coin on each picked trigger (TavernCoin) */
+/* trigger order: a gold rim and its number on each picked trigger (ArenaCountBadge, 34) */
 .bpick.numbered { transform: scale(1.04); filter: drop-shadow(0 0 8px rgba(255,190,77,.9)); }
 .bpick.numbered > :first-child { box-shadow: 0 0 0 3px #ffd166; border-radius: .75em; }
-.bcoin { position: absolute; left: 50%; top: -17px; width: 34px; height: 34px; margin-left: -17px; border-radius: 50%; display: grid; place-items: center;
-  background: url(/tavern/coin.webp) center/100%; font: 900 16px/1 var(--serif); color: #401f0a; animation: amenuIn .16s ease-out both; }
+.bpick > .acount { position: absolute; left: 50%; top: calc(var(--s) / -2); transform: translateX(-50%); animation: amenuIn .16s ease-out both; }
 /* combat arrows over the table, under the hand */
 .aarrows { position: absolute; left: 0; top: 0; width: 956px; z-index: 150; pointer-events: none; overflow: visible; }
 /* the stack card's arcs to its targets (drawn in over 0.45 s) and the reticles on them (after 0.35 s, from 1.6x) */
@@ -544,17 +571,6 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 @keyframes areticle { to { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .aarcs .draw { animation: none; stroke-dashoffset: 0; } .aarcs .reticle { animation: none; opacity: 1; transform: none; } }
 .afxpaint { position: absolute; left: 0; top: 0; pointer-events: none; }
-/* the result's game summary (GameSummaryPanel) */
-.aresult .title { font: 900 44px/1 var(--serif) !important; letter-spacing: 4px; }
-.aresult .summary { width: 320px; display: grid; gap: 10px; }
-.aresult .summary .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.aresult .summary .tiles span { display: grid; gap: 3px; padding: 8px 4px; border-radius: 10px; background: rgba(0,0,0,.35); text-align: center; font: 700 10px/1.15 var(--serif); color: #e8d6b0; }
-.aresult .summary .tiles b { font: 900 20px/1 ui-rounded, system-ui, sans-serif; color: #fff; }
-.aresult .summary .top { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; background: rgba(0,0,0,.35); }
-.aresult .summary .top img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; box-shadow: 0 0 0 1px rgba(201,164,92,.7); }
-.aresult .summary .top span { flex: 1; display: grid; font: 800 14px/1.2 var(--serif); color: #fff; }
-.aresult .summary .top small { font: 900 10px/1 var(--serif); letter-spacing: 1.2px; color: #c9a45c; }
-.aresult .summary .top b { font: 900 15px/1 ui-rounded, system-ui, sans-serif; color: #efe4cf; }
 
 /* BoardHitVignette: a red edge that flares when you take five or more. */
 .avignette { position: absolute; inset: 0; z-index: 900; pointer-events: none; opacity: 0; background: radial-gradient(ellipse farthest-corner at 50% 50%, transparent 0%, transparent 50%, rgba(217,13,5,.55) 100%); }
@@ -624,21 +640,21 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .aplayercard .portrait svg { width: 100%; height: 100%; display: block; }
 .aplayercard header > div:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .aplayercard header b { font: 700 17px/1.1 var(--serif); color: #f3ead8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.aplayercard header small { font: 800 13px/1 var(--serif); color: #fad685; }
+.aplayercard header small { font: 800 13px/1 var(--sans); color: #fad685; }
 .aplayercard .close { width: 32px; height: 32px; flex: none; background: none; color: rgba(243,234,216,.8); font: 900 13px/1 var(--serif); }
 .aplayercard .statuses { display: grid; gap: 6px; }
-.aplayercard .statuses > div { display: flex; align-items: center; gap: 10px; font: 600 13px/1.25 var(--serif); color: #f3ead8; }
+.aplayercard .statuses > div { display: flex; align-items: center; gap: 10px; font: 600 13px/1.25 var(--sans); color: #f3ead8; }
 .aplayercard .statuses > div.lethal { color: #ff9e85; }
 .aplayercard .zonegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 8px; }
 .aplayercard .zonegrid button { min-height: 64px; display: grid; justify-items: center; align-content: center; gap: 3px; border-radius: 10px; color: #f3ead8;
   background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
 .aplayercard .zonegrid button svg { width: 17px; height: 17px; fill: currentColor; }
-.aplayercard .zonegrid button b { font: 800 13px/1 var(--serif); font-variant-numeric: tabular-nums; }
-.aplayercard .zonegrid button small { font: 800 8px/1 var(--serif); letter-spacing: .1em; }
+.aplayercard .zonegrid button b { font: 800 13px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.aplayercard .zonegrid button small { font: 800 8px/1 var(--sans); letter-spacing: .1em; }
 .aplayercard .zonegrid button.lit { color: #ffe6b3; background: rgba(255,170,80,.16); box-shadow: inset 0 0 0 1px rgba(255,190,110,.8), 0 0 12px rgba(255,150,60,.6); animation: abreathe 2.2s ease-in-out infinite; }
 .aplayercard .named { display: grid; gap: 6px; }
 .aplayercard .named button { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px; border-radius: 10px; text-align: left;
-  color: #f3ead8; font: 600 13px/1.25 var(--serif); background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
+  color: #f3ead8; font: 600 13px/1.25 var(--sans); background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(232,190,110,.32); }
 .aplayercard .named button b { font-weight: 800; font-variant-numeric: tabular-nums; }
 
 /* More actions: every legal action as a glass row. */
@@ -659,13 +675,8 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .azonepill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border-radius: 11px; color: #f3ead8;
   background: linear-gradient(rgba(60,46,36,.92), rgba(28,20,15,.92)); box-shadow: inset 0 0 0 1px rgba(232,190,110,.42), 0 1px 3px rgba(0,0,0,.5); }
 .azonepill svg { width: 12px; height: 12px; fill: currentColor; }
-.azonepill b { font: 800 12px/1 var(--serif); font-variant-numeric: tabular-nums; }
+.azonepill b { font: 800 12px/1 var(--sans); font-variant-numeric: tabular-nums; }
 
-/* GameResultBackdrop's wash under its canvas. */
-.aresult .abackdrop { position: absolute; inset: 0; pointer-events: none; }
-.aresult .abackdrop.win { background: radial-gradient(ellipse 60% 60% at 50% 42%, rgba(158,117,31,.62), rgba(102,71,18,.46)); }
-.aresult .abackdrop.loss { background: radial-gradient(ellipse 60% 60% at 50% 42%, rgba(107,13,10,.62), rgba(51,5,5,.5)); }
-.aresult .abackdrop canvas { width: 100%; height: 100%; display: block; }
 
 /* A phased-out permanent: the tile at 0.42 with "Phased out" over it, and no glow. */
 .acard.phased .spin > .plain, .acard.phased .spin > .tile { opacity: .42; transition: opacity .2s ease-out; }
@@ -696,7 +707,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .acombo .picker .step { width: 40px; height: 40px; border-radius: 50%; color: #f3ead8; background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(201,164,92,.7); font: 900 16px/1 var(--serif); }
 .acombo .picker > b { min-width: 44px; text-align: center; font: 900 22px/1 var(--serif); font-variant-numeric: tabular-nums; }
 .acombo .picker > span { flex: 1; }
-.acombo .aplaque { position: relative; height: 34px; padding: 0 14px; font-size: 13px; min-width: 0; margin: 0; }
+.acombo .aplaque { position: relative; height: 34px; padding: 0 14px; font-size: 14px; min-width: 0; margin: 0; }
 .acombo .go { display: flex; gap: 6px; flex-wrap: wrap; }
 .acombo .bar { width: 100%; max-width: 420px; border-radius: 18px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; color: #f3ead8; }
 .acombo .bar > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
@@ -712,3 +723,92 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .acombo .line i { color: #e2b867; font-style: normal; font-weight: 900; }
 .acombo .line span { flex: 1; }
 @media (prefers-reduced-motion: reduce) { .acombo .bar .spin { transition: none; transform: none !important; } }
+
+/* ---------- the starting roll on the board (MultiplayerD20View with \.arenaBoard): the board dimmed to 0.8 under one large
+   serif line, the roll control, glass seat plates above the hand with "?" before a seat rolls ---------- */
+.aroll { position: absolute; inset: 0; z-index: 805; background: rgba(0,0,0,.8); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: var(--atop, 50px) 24px 0; }
+.aroll h2 { margin: 0; font: 700 26px/1.1 var(--serif); color: var(--atext); text-shadow: 0 0 6px rgba(0,0,0,.9); white-space: nowrap; }
+.aroll .rollcontrol { width: 340px; height: 48px; display: grid; place-items: center; }
+.aroll .rollcontrol .aplaque { position: relative; width: 100%; height: 44px; font-size: 17px; }
+.aroll .chip { min-height: 46px; padding: 0 26px; border-radius: 999px; display: grid; place-items: center; background: rgba(0,0,0,.62);
+  box-shadow: inset 0 0 0 1px var(--ahair), 0 3px 5px rgba(0,0,0,.5); font: 700 24px/1 var(--serif); color: var(--atext); font-variant-numeric: tabular-nums; }
+.aroll .chip.waiting { min-height: 36px; padding: 0 18px; font: 600 14px/1.2 var(--sans); box-shadow: inset 0 0 0 1px var(--ahair); }
+.aroll .plates { display: flex; gap: 10px; width: min(900px, 100%); }
+.aroll .plate { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 5px 12px; border-radius: 12px;
+  background: rgba(0,0,0,.62); box-shadow: inset 0 0 0 1px var(--ahair), 0 3px 5px rgba(0,0,0,.45); }
+.aroll .plate.won { box-shadow: inset 0 0 0 1.5px rgba(255,214,150,.9), 0 3px 10px rgba(255,120,31,.6); }
+.aroll .plate.out { opacity: .78; }
+/* ArenaRollValue: white on a dark disc in a thin gold line, orange for the winner */
+.aroll .plate .value { width: 38px; height: 38px; flex: none; border-radius: 50%; display: grid; place-items: center; font: normal 700 17.5px/1 var(--sans); color: #fff;
+  font-variant-numeric: tabular-nums; background: #121214; box-shadow: inset 0 0 0 1.2px rgba(250,214,133,.6); }
+.aroll .plate .value.none { color: rgba(255,255,255,.6); }
+.aroll .plate.won .value { background: var(--aorange); box-shadow: inset 0 0 0 1.2px rgba(255,214,150,.9); }
+.aroll .plate span { min-width: 0; display: grid; gap: 2px; }
+.aroll .plate b { font: 700 14px/1.2 var(--sans); color: var(--atext); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aroll .plate small { font: 500 12px/1.2 var(--sans); color: rgba(242,235,219,.7); }
+.aroll .plate.out b { color: rgba(242,235,219,.55); }
+.aroll .plate.out small { color: rgba(242,235,219,.45); }
+
+/* ---------- the result, Arena's (ArenaGameResultView): one word on a flare behind the mark, then it settles to the top over
+   your medallion, rank, numbers and the ways on; View Battlefield lifts it ---------- */
+.aresult { position: absolute; inset: 0; z-index: 900; overflow: hidden; background: rgba(0,0,0,.86); transition: background .2s ease-out; }
+.aresult.peek { background: transparent; pointer-events: none; }
+.aresult.peek .rview { pointer-events: auto; }
+.aresult .banner { position: absolute; left: 0; right: 0; top: calc(50% - 70px); height: 108px; display: grid; place-items: center;
+  transform: scale(1.5); opacity: 0; transition: top .6s cubic-bezier(.3,1.1,.5,1), height .6s cubic-bezier(.3,1.1,.5,1), transform .5s cubic-bezier(.3,1.35,.5,1), opacity .3s ease-out; }
+.aresult.landed .banner { transform: none; opacity: 1; }
+.aresult.settled .banner { top: var(--atop, 50px); height: 80px; }
+.aresult .banner > * { grid-area: 1 / 1; }
+.aresult .flare { width: 520px; height: 100%; border-radius: 50%; filter: blur(14px);
+  background: radial-gradient(closest-side, rgba(var(--flare), .85), rgba(var(--flare), .25) 60%, transparent); }
+.aresult .line { width: 440px; height: 2.5px; transform: translateY(6px); filter: blur(1.2px);
+  background: linear-gradient(90deg, transparent, rgb(var(--flare)), rgba(255,255,255,.9), rgb(var(--flare)), transparent); }
+.aresult .mark { display: grid; opacity: .32; mix-blend-mode: plus-lighter; filter: drop-shadow(0 0 18px rgb(var(--flare))); }
+.aresult .mark svg { transition: width .6s, height .6s; }
+.aresult h2 { margin: 0; font: 700 54px/1 var(--serif); letter-spacing: .06em; color: #fff; white-space: nowrap; transition: font-size .6s cubic-bezier(.3,1.1,.5,1);
+  text-shadow: 0 0 14px rgba(var(--flare), .9), 0 1px 2px rgba(0,0,0,.8); }
+.aresult[data-outcome=defeat] h2, .aresult[data-outcome=stopped] h2 { color: #dbdbdb; }
+.aresult.settled h2 { font-size: 40px; }
+.aresult .details { position: absolute; left: 0; right: 0; top: calc(var(--atop, 50px) + 90px); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 20px;
+  animation: arise .45s ease-out both; }
+@keyframes arise { from { opacity: 0; transform: translateY(24px); } }
+.aresult .resultmed { position: relative; display: block; }
+.aresult .resultmed.won::before { content: ""; position: absolute; inset: -7.5%; border-radius: 50%; background: rgba(255,120,40,.7); filter: blur(10px); }
+.aresult .resultmed.lost .bmed { filter: saturate(.15); }
+.aresult .details > p { margin: 0; max-width: 480px; text-align: center; font: 500 14px/1.3 var(--sans); color: rgba(242,235,219,.8); }
+.aresult .figures { display: flex; gap: 22px; }
+.aresult .figure { display: grid; justify-items: center; gap: 2px; }
+.aresult .figure b { font: 700 24px/1 var(--serif); color: var(--atext); font-variant-numeric: tabular-nums; }
+.aresult .figure small { font: 800 10px/1 var(--sans); letter-spacing: .12em; color: rgba(242,235,219,.65); }
+.aresult .ways { display: flex; gap: 12px; margin-top: 4px; }
+.aresult .ways .aplaque { position: relative; min-width: 96px; height: 44px; padding: 0 18px; font-size: 16px; }
+.aresult .rview { position: absolute; top: 6px; right: 120px; min-width: 64px; height: 36px; padding: 0 16px; font-size: 14px; }
+/* the rank strip (RankProgressPanel): the badge, the pips filling or emptying one at a time, the change, the bonuses */
+.rankstrip { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.rankstrip > div { display: grid; gap: 6px; justify-items: center; }
+.rankstrip .rbadge { position: relative; display: grid; place-items: center; animation: abadgeIn .35s cubic-bezier(.3,1.4,.5,1) both; }
+.rankstrip .rglow { position: absolute; width: 150px; height: 150px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(var(--tint),.55), rgba(var(--tint),.12) 55%, transparent 72%); animation: arglow 2.6s ease-in-out infinite alternate; }
+@keyframes arglow { from { transform: scale(.9); opacity: .7; } to { transform: scale(1.06); opacity: 1; } }
+.rankstrip .rbadge > :not(.rglow) { position: relative; }
+.rankstrip .rtitle { font-size: 22px !important; }
+@keyframes abadgeIn { from { transform: scale(.6); opacity: 0; } }
+.rankstrip .rtitle { font: 900 18px/1.1 var(--serif); color: transparent; background: linear-gradient(#ffe69e, rgb(var(--tint))); -webkit-background-clip: text; background-clip: text; }
+.rankstrip .rflame { display: inline-flex; align-items: center; gap: 4px; font: 800 14px/1 var(--sans); color: rgb(var(--tint)); }
+.rankstrip .rflame svg { width: 14px; height: 14px; fill: currentColor; }
+.rankstrip .rpips { display: flex; gap: 6px; padding: 2px 2px; }
+.rankstrip .rpips i { width: 9.2px; height: 9.2px; margin: 0 1.9px; box-sizing: border-box; border: 1.3px solid #c49a55; background: rgba(0,0,0,.55);
+  transform: scaleY(1.25) rotate(45deg); transition: transform .38s cubic-bezier(.3,1.5,.5,1), box-shadow .38s; }
+.rankstrip .rpips i.on { background: linear-gradient(135deg, #fff, rgb(var(--tint)) 50%, rgb(var(--shade))); box-shadow: 0 0 2.6px rgba(var(--tint), .55); }
+.rankstrip .rpips i.hot { transform: scaleY(1.25) rotate(45deg) scale(1.25); }
+.rankstrip .rpips i.on.hot { box-shadow: 0 0 8px rgb(var(--tint)); }
+.rankstrip .rdelta { font: 800 12px/1 var(--sans); color: rgba(242,235,219,.7); }
+.rankstrip .rdelta.up { color: rgb(153,242,140); }
+.rankstrip .rdelta.down { color: rgb(255,140,115); }
+.rankstrip .rbonus { display: flex; gap: 6px; }
+.rankstrip .rbonus em { padding: 3px 8px; border-radius: 9px; font: normal 800 9.5px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #ffb066;
+  background: rgba(20,22,26,.9); box-shadow: inset 0 0 0 1px rgba(255,140,60,.9); }
+@media (prefers-reduced-motion: reduce) { .aresult .banner, .aresult h2, .aresult .mark svg { transition: none; } .aresult .details, .rankstrip .rbadge { animation: none; } }
+
+/* The opening hand shows the cards alone, no costs over them (Caleb, 2026-10-23). */
+.acard.opening .mcost { display: none; }

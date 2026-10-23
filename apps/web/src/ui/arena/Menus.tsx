@@ -83,7 +83,7 @@ export function PhaseStops({ settings, onChange }: { settings: SmartPassSettings
           </div>
         ))}
       </div>
-      <button type="button" className="aplaque leather inline" onClick={() => onChange({ ...settings, stops: new Set(defaultStops) })}>Reset Stops</button>
+      <button type="button" className="aplaque secondary inline" onClick={() => onChange({ ...settings, stops: new Set(defaultStops) })}>Reset Stops</button>
     </div>
   );
 }

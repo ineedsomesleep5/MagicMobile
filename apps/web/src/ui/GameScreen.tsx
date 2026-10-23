@@ -8,9 +8,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { type BoardFXLevel, resolvedLevel } from "../core/boardEvents";
 import { EngineDisplayText } from "../core/displayText";
 import {
-  displayTurn, type GameCommand, type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, thinkingPlayerID, type XmagePromptAbility,
-  type ZoneCard,
+  type GameCommand, type GameSnapshot, isCompleted, isOut, type LegalAction, type PlayerGameState, startingPlayerHeading, thinkingPlayerID,
+  type XmagePromptAbility, type ZoneCard,
 } from "../core/models";
+import type { RankChange } from "../core/rankLadder";
+import { rollPlates } from "../core/startingRoll";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../core/smartPass";
 import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
@@ -26,7 +28,7 @@ import { AutoPayRun, autoPayReady, manaUndoActions, paymentPrompt } from "./aren
 import { Check, type MenuItem, MenuCard, Panel, PhaseStops } from "./arena/Menus";
 import { Inspector } from "./arena/Inspector";
 import { StatusBadge } from "./arena/StatusBadge";
-import { ResultBackdrop } from "./arena/ResultBackdrop";
+import { GameResult } from "./arena/GameResult";
 import { ComboLoopOverlay } from "./arena/ComboLoop";
 import { ORBIT, orbitOffsets, orbitOrder, orbitShown, statusBadges } from "../core/playerStatus";
 import { GameLog } from "./arena/GameLog";
@@ -140,7 +142,7 @@ function useGeometry(ref: React.RefObject<HTMLDivElement | null>) {
   return geo;
 }
 
-interface Plaque { label: string; subtitle?: string; style: "ember" | "leather" | "label" | "oxblood"; want?: boolean; disabled?: boolean; onClick?: () => void }
+interface Plaque { label: string; subtitle?: string; style: "primary" | "secondary" | "quiet" | "danger"; want?: boolean; disabled?: boolean; onClick?: () => void }
 
 /** The phase of a step, as the tavern's phase track counts them (TavernPhaseTrack.describe): 0 beginning … 4 end. */
 function phaseIndex(step: string | undefined): number | undefined {
@@ -155,7 +157,8 @@ function phaseIndex(step: string | undefined): number | undefined {
   }
 }
 
-export function GameScreen({ table }: { table: GameTable }) {
+/** `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game. */
+export function GameScreen({ table, rankChange }: { table: GameTable; rankChange?: RankChange }) {
   useTable(table);
   const session = table.session;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
@@ -472,23 +475,32 @@ export function GameScreen({ table }: { table: GameTable }) {
     const start = toBoard(event.clientX, event.clientY);
     setCarry({ id, start, point: start, moved: false });
   };
+  // The carry as the pointer handlers last left it. The sound and the drop happen in the handlers, never inside a state
+  // updater: React runs updaters while it renders, so a drop sent from one changed the table mid-render (React's "Cannot
+  // update a component while rendering a different component (GameScreen)" warning).
+  const carryNow = useRef(carry);
+  carryNow.current = carry;
   useEffect(() => {
     if (!carry) return;
-    const move = (e: PointerEvent) => setCarry((c) => {
-      if (!c) return c;
+    const move = (e: PointerEvent) => {
+      const c = carryNow.current;
+      if (!c) return;
       const point = toBoard(e.clientX, e.clientY);
       const moved = c.moved || Math.hypot(point.x - c.start.x, point.y - c.start.y) > 6;
       if (moved && !c.moved) gameAudio.play("card-pickup");
-      return { ...c, point, moved };
-    });
-    const up = () => setCarry((c) => {
+      carryNow.current = { ...c, point, moved };
+      setCarry(carryNow.current);
+    };
+    const up = () => {
+      const c = carryNow.current;
+      carryNow.current = undefined;
+      setCarry(undefined);
       if (c?.moved) {
         suppressClick.current = true;
         if (drops(c.point, c.start, geo)) dropCard(c.id);
       }
-      return undefined;
-    });
-    const cancel = () => setCarry(undefined);
+    };
+    const cancel = () => { carryNow.current = undefined; setCarry(undefined); };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", cancel);
@@ -623,7 +635,7 @@ export function GameScreen({ table }: { table: GameTable }) {
         : arrival === 1 ? { ...home, x: ARENA.draw.x, y: Y(ARENA.draw.y), r: 0, s: (ARENA.draw.w * geo.grow) / home.w, z: 950 } : home;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
         extraZone: extra ? actionsFor(snapshot, card.instanceId).find((a) => a.sourceZone)?.sourceZone ?? (me.zones.graveyard.includes(card) ? "graveyard" : "exile") : undefined,
-        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""}`,
+        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""}`,
         onClick: mulligan ? () => inspectCard(card.instanceId) : clickHand, onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand,
         onInspect: inspectCard });
     });
@@ -677,39 +689,39 @@ export function GameScreen({ table }: { table: GameTable }) {
     // An answer on its way: the corner waits (GameActionDockModel's waiting mode); payments and combat keep their own.
     const answering = pending && !paying && !combat;
     if (answering) {
-      primary = { label: "Waiting…", style: "label" };
+      primary = { label: "Waiting…", style: "quiet" };
     } else if (envelope.responseKind === "priority") {
       // The reference's short words: Next to move on, End Turn late in your turn, Resolve over a stack, Pass otherwise.
       const pass = promptActions.find((a) => a.type === "pass_priority");
       const phase = phaseIndex(snapshot.step ?? snapshot.phase);
       const title: [string, string?] = stack.length > 0 ? ["Resolve"] : !activeIsMe ? ["Pass"]
         : phase === 0 ? ["Next", "To Main"] : phase === 1 ? ["Next", "To Combat"] : phase === 2 ? ["Next", "To Main 2"] : ["End Turn"];
-      primary = pass ? { ...act(pass, "ember", title[0], true)!, subtitle: title[1] } : { label: waitingTitle, style: "label" };
+      primary = pass ? { ...act(pass, "primary", title[0], true)!, subtitle: title[1] } : { label: waitingTitle, style: "quiet" };
       // Resolve All: one pass that keeps passing until the stack has resolved (GameplayAffordances.resolveStackCommand).
       if (pass && (snapshot.xmage?.stack.length ?? 0) >= 2 && session?.supportedAnswerActions.has("passUntilStackResolved")) {
         const command: GameCommand = { type: "pass_priority", gameId: snapshot.id, playerId: pass.playerId, promptId: pass.promptId, messageId: pass.messageId,
           expectedBridgeRevision: snapshot.bridgeRevision, answerActions: ["passUntilStackResolved"] };
-        secondary = { label: "Resolve All", style: "leather", onClick: () => session.submit(command, "Resolve the stack", `resolve-stack-${pass.promptId ?? ""}`).catch(fail) };
+        secondary = { label: "Resolve All", style: "secondary", onClick: () => session.submit(command, "Resolve the stack", `resolve-stack-${pass.promptId ?? ""}`).catch(fail) };
       }
     } else if (combat) {
       // arenaCombatButtons: the count of what you declared finishes it; All Attack before anything is declared; Take Back after.
       const declared = declaredCount(snapshot, combat);
       const done = promptActions.find((a) => a.type === "answer_yes_no" && a.confirmed !== false);
-      const finish: Plaque | undefined = done && { label: finishTitle(combat, declared), style: declared === 0 ? "leather" : "ember", want: declared > 0, onClick: () => sendAction(done) };
+      const finish: Plaque | undefined = done && { label: finishTitle(combat, declared), style: declared === 0 ? "secondary" : "primary", want: declared > 0, onClick: () => sendAction(done) };
       const targetable = boardTargetableIds(snapshot);
       const candidates = myCreatures.filter((c) => (combat === "attackers" ? c.isAttacking === true : (c.blocking?.length ?? 0) > 0) && targetable.has(c.instanceId));
       const latest = [...declarationOrder.current].reverse().find((id) => candidates.some((c) => c.instanceId === id)) ?? candidates.at(-1)?.instanceId;
-      const back: Plaque | undefined = latest !== undefined ? { label: "Take Back", style: "leather", onClick: () => {
+      const back: Plaque | undefined = latest !== undefined ? { label: "Take Back", style: "secondary", onClick: () => {
         declarationOrder.current = declarationOrder.current.filter((x) => x !== latest);
         send({ type: "choose_target", targetIds: [latest] }, "Take back");
         showNotice(`Took back ${myCreatures.find((c) => c.instanceId === latest)?.card.name ?? "the creature"}`);
       } } : undefined;
       const everyone = combat === "attackers" && declared === 0 && !attacking ? allAttackTargets(snapshot) : undefined;
       if (attacking) {
-        primary = { label: "Attacking…", style: "ember", disabled: true };
-        secondary = { label: "Stop", style: "leather", onClick: () => { attackQueue.current = undefined; setAttacking(false); } };
+        primary = { label: "Attacking…", style: "primary", disabled: true };
+        secondary = { label: "Stop", style: "secondary", onClick: () => { attackQueue.current = undefined; setAttacking(false); } };
       } else if (everyone && everyone.length > 0) {
-        primary = { label: "All Attack", style: "ember", want: true, onClick: () => { attackQueue.current = new AttackQueue(everyone); setAttacking(true); } };
+        primary = { label: "All Attack", style: "primary", want: true, onClick: () => { attackQueue.current = new AttackQueue(everyone); setAttacking(true); } };
         secondary = finish;
       } else {
         primary = finish;
@@ -720,25 +732,25 @@ export function GameScreen({ table }: { table: GameTable }) {
       // still take clicks); "Paying…" and Stop while it runs; Cancel beside it.
       const cancel = manaUndoActions(snapshot).find((a) => a.type === "cancel_payment" || a.type === "cancel_mana_payment");
       if (autoPaying) {
-        primary = { label: "Paying…", style: "ember", disabled: true };
-        secondary = { label: "Stop", style: "leather", onClick: () => { autoPay.current = undefined; setAutoPaying(false); } };
+        primary = { label: "Paying…", style: "primary", disabled: true };
+        secondary = { label: "Stop", style: "secondary", onClick: () => { autoPay.current = undefined; setAutoPaying(false); } };
       } else {
-        primary = { label: "Auto Pay", style: "ember", want: true, disabled: !autoPayReady(snapshot), onClick: () => {
+        primary = { label: "Auto Pay", style: "primary", want: true, disabled: !autoPayReady(snapshot), onClick: () => {
           autoPay.current = new AutoPayRun();
           setAutoPaying(true);
         } };
-        secondary = cancel && { label: "Cancel", style: "leather", onClick: () => sendAction(cancel) };
+        secondary = cancel && { label: "Cancel", style: "secondary", onClick: () => sendAction(cancel) };
       }
     } else {
       const confirming = (a: LegalAction) => Number(a.type === "answer_yes_no" && a.confirmed === true);
       const ordered = [...promptActions].sort((a, b) => confirming(b) - confirming(a));
-      primary = act(ordered[0], "ember", undefined, true);
-      secondary = act(ordered[1], "leather");
+      primary = act(ordered[0], "primary", undefined, true);
+      secondary = act(ordered[1], "secondary");
       // A decision with nothing on the table or in the corner opens the full list (GameActionDockModel's "Choices").
-      if (!primary && targetIDs.size === 0 && (snapshot.legalActions ?? []).length > 0) primary = { label: "Choices", style: "leather", onClick: () => setSheet("actions") };
+      if (!primary && targetIDs.size === 0 && (snapshot.legalActions ?? []).length > 0) primary = { label: "Choices", style: "secondary", onClick: () => setSheet("actions") };
     }
   } else if (snapshot && !finished && !envelope) {
-    primary = { label: waitingTitle, style: "label" };
+    primary = { label: waitingTitle, style: "quiet" };
   }
   // arenaCaptionText: what the table asks of you in a few words: a payment, a combat declaration, a target on the board.
   const promptLine = (() => {
@@ -769,7 +781,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   // What happened this game, for the result screen (GameStats).
   const stats = useRef(new GameStats());
   useEffect(() => { if (snapshot) stats.current.record(snapshot); }, [snapshot]);
-  useEffect(() => { if (finished) gameAudio.play(won ? "victory" : "defeat", 0.25); }, [finished, won]);
+  useEffect(() => { if (finished) { gameAudio.duckMusic(6); gameAudio.play(won ? "victory" : "defeat", 0.25); } }, [finished, won]);
+  // The in-game playlist while a game is on screen; the menus switch back to theirs (GameAudio.setScene).
+  useEffect(() => { gameAudio.setScene("game"); }, []);
 
   // The relay's turn clock burns its rope smoothly.
   const rope = table.state.turnClock.rope(table.state.localSeatID, performance.now() / 1000);
@@ -853,7 +867,7 @@ export function GameScreen({ table }: { table: GameTable }) {
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
           <div className="av">{mine ? AVATAR.me : AVATAR.opp}</div>
-          <span className="hp">{Math.max(0, player.life)}</span>
+          <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>
           {clock && (
             <svg className="rope" viewBox="0 0 100 100" aria-hidden="true">
               <circle cx="50" cy="50" r="46" fill="none" stroke={clock.strikes > 0 ? "#ff5a2e" : "#ffb36a"} strokeWidth="5" strokeLinecap="round"
@@ -963,7 +977,7 @@ export function GameScreen({ table }: { table: GameTable }) {
     : zone ? () => setZone(undefined) : stackOpen ? () => setStackOpen(false) : panel ? () => setPanel(undefined) : undefined;
   const keys = useRef<{ primary?: () => void; fullControl?: () => void; undo?: () => void; close?: () => void; reading: boolean }>({ reading: false });
   keys.current = {
-    primary: primary?.onClick && !primary.disabled && !(primary.style !== "label" && pending) ? primary.onClick : undefined,
+    primary: primary?.onClick && !primary.disabled && !(primary.style !== "quiet" && pending) ? primary.onClick : undefined,
     fullControl: session && !finished ? () => session.toggleFullControl() : undefined,
     undo: undoMana && !pending ? () => sendAction(undoMana) : undefined,
     close: closeTop, reading: reading !== undefined,
@@ -997,7 +1011,7 @@ export function GameScreen({ table }: { table: GameTable }) {
         event.preventDefault();
         if (!event.repeat && !current.reading && (current.primary || current.fullControl)) startHold();
       } else if (event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
-        const confirm = [...document.querySelectorAll<HTMLButtonElement>(".bfoot .aplaque.ember")].filter((b) => !b.disabled);
+        const confirm = [...document.querySelectorAll<HTMLButtonElement>(".bfoot .aplaque.primary")].filter((b) => !b.disabled);
         if (confirm.length === 1 && !current.reading) { event.preventDefault(); confirm[0].click(); }
       } else if (event.key === "Escape") {
         // The inspector closes itself first.
@@ -1053,7 +1067,9 @@ export function GameScreen({ table }: { table: GameTable }) {
       <div className="avignette" ref={vignetteRef} aria-hidden="true" />
       {session && !finished && <ComboLoopOverlay session={session} />}
       <div className="arena-stage" aria-label="Game table" ref={stageRef}
-        style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})` }}>
+        style={{ height: geo.height, backgroundImage: `url(${geo.plate})`, transform: `translate(${geo.left}px, ${geo.top}px) scale(${geo.scale})`,
+          // Where a full-table layer's title starts: below the opponent's medallion and its life plaque (ArenaSafeArea.top(50)).
+          ["--atop" as string]: `${Math.max(50, T(ARENA.opponentMedallion.y) + ARENA.opponentMedallion.d * geo.grow * 0.6 + 6)}px` }}>
         <div className="pool-light" data-side={snapshot ? (activeIsMe ? "me" : "opp") : undefined}
           style={{ height: 220 * geo.ky, top: snapshot ? Y(activeIsMe ? 205 : 15) : undefined }} />
         <div className="lamp" />
@@ -1203,7 +1219,7 @@ export function GameScreen({ table }: { table: GameTable }) {
         })()}
 
         {/* Above the raised hand while there is an answer to give (the prototype's controls z-index). */}
-        <div className="acontrols" style={{ zIndex: (primary && primary.style !== "label") || secondary ? 600 : 430 }} onClick={stop}>
+        <div className="acontrols" style={{ zIndex: (primary && primary.style !== "quiet") || secondary ? 600 : 430 }} onClick={stop}>
           <PhaseStrip step={snapshot?.step} side={activeIsMe ? "me" : "opp"} top={B(secondary ? ARENA.phaseStrip.raisedY : ARENA.phaseStrip.y) - 10}
             onOpen={() => setSheet("stops")} />
           {/* TavernTableHints: day or night as a small coin, the storm count, above the strip when they matter. */}
@@ -1221,7 +1237,7 @@ export function GameScreen({ table }: { table: GameTable }) {
             disabled={(pending && secondary.label !== "Stop") || secondary.disabled} onClick={secondary.onClick}>{secondary.label}</button>}
           {primary ? (
             <button type="button" className={`aplaque abtn ${primary.style} ${primary.want ? "want" : ""} ${primary.subtitle ? "sub" : ""}`} style={{ top: B(ARENA.primary.y) }}
-              disabled={(primary.style !== "label" && pending) || primary.disabled}
+              disabled={(primary.style !== "quiet" && pending) || primary.disabled}
               onPointerDown={(e) => { if (e.button === 0 && session && !finished) startHold(); }}
               onPointerLeave={() => { window.clearTimeout(plaqueHold.current); plaqueHold.current = undefined; }}
               onClick={() => { if (endHold()) primary.onClick?.(); }}>
@@ -1380,16 +1396,16 @@ export function GameScreen({ table }: { table: GameTable }) {
               {session && (session.state.rememberedAnswers > 0 || session.state.rememberedTriggerOrders > 0) && (
                 <div className="actions">
                   {session.state.rememberedAnswers > 0 && (
-                    <button type="button" className="aplaque leather inline" onClick={() => session.forgetRememberedAnswers()}>Ask Again ({session.state.rememberedAnswers} answered)</button>
+                    <button type="button" className="aplaque secondary inline" onClick={() => session.forgetRememberedAnswers()}>Ask Again ({session.state.rememberedAnswers} answered)</button>
                   )}
                   {session.state.rememberedTriggerOrders > 0 && (
-                    <button type="button" className="aplaque leather inline" onClick={() => session.forgetTriggerOrder()}>Ask Trigger Order Again</button>
+                    <button type="button" className="aplaque secondary inline" onClick={() => session.forgetTriggerOrder()}>Ask Trigger Order Again</button>
                   )}
                 </div>
               )}
               <div className="actions">
-                <button type="button" className="aplaque oxblood inline" disabled={!session || finished} onClick={() => { setSheet(undefined); setConfirmConcede(true); }}>Concede</button>
-                <button type="button" className="aplaque leather inline" onClick={() => table.leave()}>{table.solo ? "Quit" : "Leave Table"}</button>
+                <button type="button" className="aplaque danger inline" disabled={!session || finished} onClick={() => { setSheet(undefined); setConfirmConcede(true); }}>Concede</button>
+                <button type="button" className="aplaque secondary inline" onClick={() => table.leave()}>{table.solo ? "Quit" : "Leave Table"}</button>
               </div>
             </div>
           </Panel>
@@ -1437,17 +1453,19 @@ export function GameScreen({ table }: { table: GameTable }) {
           );
         })()}
 
-        {mulligan && envelope?.confirmation && !showRoll && (
-          // The opening hand (OpeningHandOverlay): XMage's question over the fanned hand, Mulligan and Keep under it.
+        {mulligan && envelope?.confirmation && !showRoll && snapshot && (
+          // The opening hand, Arena's mulligan screen (OpeningHandOverlay, Arena look): who goes first over a thin rule,
+          // XMage's question under it, the fanned hand, the blue Mulligan pill beside the orange Keep, words only.
           <div className="amull" onClick={stop}>
-            <div className="head" style={{ top: geo.height / 2 - 175 }}>
-              <b>OPENING HAND</b>
-              <h2>{cleanMessage(envelope.message)}</h2>
+            <div className="head" style={{ top: geo.height / 2 - 182 }}>
+              <h2>{startingPlayerHeading(snapshot) ?? "Opening Hand"}</h2>
+              <i />
+              <p>{cleanMessage(envelope.message)}</p>
             </div>
-            <div className="choices" style={{ top: geo.height / 2 + 112 }}>
-              <button type="button" className="aplaque leather" disabled={pending}
+            <div className="choices" style={{ top: geo.height / 2 + 110 }}>
+              <button type="button" className="aplaque cool" disabled={pending} data-id="board.opening.mulligan"
                 onClick={() => { gameAudio.play("shuffle"); send({ type: "answer_yes_no", confirmed: true }, envelope.confirmation?.yesLabel ?? "Mulligan"); }}>{envelope.confirmation.yesLabel ?? "Mulligan"}</button>
-              <button type="button" className="aplaque ember want" disabled={pending}
+              <button type="button" className="aplaque primary" disabled={pending} data-id="board.opening.keep"
                 onClick={() => send({ type: "answer_yes_no", confirmed: false }, envelope.confirmation?.noLabel ?? "Keep")}>{envelope.confirmation.noLabel ?? "Keep"}</button>
             </div>
           </div>
@@ -1473,32 +1491,40 @@ export function GameScreen({ table }: { table: GameTable }) {
           </div>
         )}
 
-        {showRoll && roll && (
-          <div className="aoverlay question" onClick={stop}>
-            <div className="aroll glass">
-              <h2 className="title">Who goes first?</h2>
-              <div className="dice">
-                {roll.roll.steps.map((step, index) => {
-                  const shown = index < roll.revealed;
-                  const lastRound = step.roundIndex === roll.roll.rounds.length - 1;
-                  const winner = shown && roll.nextSeatID === undefined && lastRound && step.seatID === roll.roll.winnerSeatID;
-                  return (
-                    <div key={index} className="die">
-                      <div className={`face ${!shown && index === roll.revealed ? "rolling" : ""} ${winner ? "won" : shown && roll.nextSeatID === undefined ? "lost" : ""}`}>{shown ? step.value : "?"}</div>
-                      <span className="small-print" style={{ color: "#efe4cf" }}>{table.state.seatNames[step.seatID] ?? step.seatID}</span>
-                    </div>
-                  );
-                })}
+        {showRoll && roll && (() => {
+          // The starting roll on the board (MultiplayerD20View, Arena look): the board dimmed to 0.8, one large serif line,
+          // the roll or what it waits for, and glass seat plates above the hand ("?" before a seat rolls, orange for the winner).
+          const name = (seat: string) => (seat === table.state.localSeatID ? "You" : table.state.seatNames[seat] ?? "Player");
+          const next = roll.nextSeatID;
+          const winner = roll.roll.winnerSeatID;
+          const headline = next === undefined ? (winner === table.state.localSeatID ? "You go first" : `${name(winner)} goes first`)
+            : next === table.state.localSeatID ? "Your roll" : `${table.state.seatNames[next] ?? "Player"}’s roll`;
+          const last = roll.revealed > 0 ? roll.roll.steps[roll.revealed - 1] : undefined;
+          return (
+            <div className="aroll" onClick={stop} role="dialog" aria-label="Who goes first">
+              <h2>{headline}</h2>
+              {/* The dice's room on iOS (0.3 of the height); the web rolls no 3D dice, so the room stays empty. */}
+              <div className="rollcontrol" style={{ marginTop: Math.max(100, geo.height * 0.3) }}>
+                {next === table.state.localSeatID ? (
+                  <button type="button" className="aplaque primary" disabled={roll.hasRolled || table.state.stage !== "playing"} data-id="multiplayerD20.tapToRoll"
+                    onClick={() => { try { gameAudio.play("dice-roll"); table.rollStartingPlayer(); } catch (error) { fail(error); } }}>
+                    {roll.hasRolled ? "Sharing your roll…" : "Roll D20"}</button>
+                ) : next !== undefined ? <span className="chip waiting">Waiting for {table.state.seatNames[next] ?? "the next player"} to roll…</span>
+                  : last && <span className="chip">Rolled {last.value}</span>}
               </div>
-              <p style={{ margin: 0, font: "600 14px/1.35 var(--serif)" }}>{roll.nextSeatID !== undefined ? roll.status
-                : roll.roll.winnerSeatID === table.state.localSeatID ? "You go first." : `${table.state.seatNames[roll.roll.winnerSeatID]} goes first.`}</p>
-              {roll.nextSeatID === table.state.localSeatID && (
-                <button type="button" className="aplaque ember want" disabled={roll.hasRolled || table.state.stage !== "playing"}
-                  onClick={() => { try { gameAudio.play("dice-roll"); table.rollStartingPlayer(); } catch (error) { fail(error); } }}>Roll the D20</button>
-              )}
+              <div className="plates">
+                {rollPlates(roll.roll, roll.revealed).map((plate) => (
+                  <div key={plate.seatID} className={`plate ${plate.winner ? "won" : ""} ${plate.out ? "out" : ""}`} data-id={`multiplayerD20.seat.${plate.seatID}`}>
+                    <i className={`value ${plate.value === undefined ? "none" : ""}`} aria-hidden="true">{plate.value ?? "?"}</i>
+                    <span><b>{table.state.seatNames[plate.seatID] ?? "Player"}</b>
+                      <small>{plate.winner && plate.value !== undefined ? `Rolled ${plate.value} · Goes first` : plate.out ? "Out of the reroll"
+                        : plate.value === undefined ? "Ready" : plate.tied ? "Tied · reroll" : `Rolled ${plate.value}`}</small></span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {confirmConcede && (
           <div className="aoverlay question" onClick={stop}>
@@ -1506,54 +1532,19 @@ export function GameScreen({ table }: { table: GameTable }) {
               <h2>Concede?</h2>
               <p>{table.solo ? "The AI wins this game." : "You leave this game. The other players are told at once."}</p>
               <div style={{ display: "flex", gap: 12 }}>
-                <button type="button" className="aplaque leather" onClick={() => setConfirmConcede(false)}>Keep playing</button>
-                <button type="button" className="aplaque oxblood" onClick={() => { setConfirmConcede(false); table.concede().catch(fail); }}>Concede</button>
+                <button type="button" className="aplaque secondary" onClick={() => setConfirmConcede(false)}>Keep playing</button>
+                <button type="button" className="aplaque danger" onClick={() => { setConfirmConcede(false); table.concede().catch(fail); }}>Concede</button>
               </div>
             </div>
           </div>
         )}
 
-        {(finished || table.state.stage === "failed") && (() => {
-          // The result (GameCompletionOverlay, Arena look): your medallion rising in gold or falling grey, the title, who won,
-          // what happened, New Game and Main Menu.
-          const winners = snapshot?.winnerPlayerIds ?? [];
-          const title = !finished ? (table.solo ? "Game stopped" : "Table closed") : winners.length === 0 ? "Game Over" : won ? "Victory" : "Defeat";
-          const names = winners.map((id) => (id === viewer ? "You" : snapshot?.players.find((p) => p.playerId === id)?.displayName ?? "Opponent"));
-          const winnerText = !finished ? table.state.status : names.length === 0 ? "XMage has completed the match." : names.length === 1 && names[0] === "You" ? "You won the match." : `Winner: ${names.join(", ")}`;
-          const summary = stats.current;
-          const top = summary.topCard;
-          return (
-            <div className="aresult" data-win={won ? "true" : "false"} onClick={stop}>
-              <ResultBackdrop victory={won} />
-              <div className="box glass">
-                <div className="medal"><div className="av">{AVATAR.me}</div></div>
-                <h2 className="title">{title.toUpperCase()}</h2>
-                <div className="rule" />
-                <p>{winnerText}</p>
-                {finished && summary.turns > 0 && snapshot && (
-                  <div className="summary">
-                    <div className="tiles">
-                      <span><b>{displayTurn(snapshot)}</b>Turns</span>
-                      <span><b>{summary.combatDamage}</b>Combat damage</span>
-                      <span><b>{summary.creaturesDestroyed}</b>Creatures destroyed</span>
-                    </div>
-                    {top && (
-                      <div className="top">
-                        <CardArt card={top.card?.card ?? { name: top.name, typeLine: "" }} version="art_crop" />
-                        <span><small>TOP ATTACKER</small>{top.name}</span>
-                        <b>{top.damage} dmg</b>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="answers">
-                  {table.rematch && <button type="button" className="aplaque ember" onClick={() => table.rematch?.()}>New Game</button>}
-                  <button type="button" className={`aplaque ${table.rematch ? "leather" : "ember"}`} onClick={() => table.leave()}>Main Menu</button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        {(finished || table.state.stage === "failed") && (
+          // The result, Arena's (ArenaGameResultView): the word on its flare, then your medallion, rank, numbers and the ways on.
+          <GameResult snapshot={snapshot} me={me} finished={finished} stoppedTitle={table.solo ? "Game stopped" : "Table closed"}
+            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange}
+            rematch={table.rematch ? () => table.rematch?.() : undefined} leave={() => table.leave()} />
+        )}
 
         {(() => {
           // The recovery banner (OnDeviceRootView.recoveryBanner): what went wrong, and Refresh, Retry response, Leave.
@@ -1571,11 +1562,11 @@ export function GameScreen({ table }: { table: GameTable }) {
                 </div>
               ) : <div className="line"><span>{table.state.status}</span></div>}
               <div className="actions">
-                {session && <button type="button" className="aplaque ember inline" disabled={session.state.working} onClick={() => { session.refresh().catch(fail); }}>Refresh</button>}
+                {session && <button type="button" className="aplaque primary inline" disabled={session.state.working} onClick={() => { session.refresh().catch(fail); }}>Refresh</button>}
                 {session?.hasPending && (
-                  <button type="button" className="aplaque leather inline" disabled={session.state.working} onClick={() => { session.retryPending().catch(fail); }}>Retry response</button>
+                  <button type="button" className="aplaque secondary inline" disabled={session.state.working} onClick={() => { session.retryPending().catch(fail); }}>Retry response</button>
                 )}
-                <button type="button" className="aplaque oxblood inline" onClick={() => table.leave()}>Leave</button>
+                <button type="button" className="aplaque danger inline" onClick={() => table.leave()}>Leave</button>
               </div>
             </div>
           );
@@ -1591,8 +1582,8 @@ function ChatInput({ table }: { table: GameTable }) {
   return (
     <>
       <form className="chat-input" onSubmit={(event) => { event.preventDefault(); table.sendChat(text); setText(""); }}>
-        <input className="slot" value={text} maxLength={400} onChange={(e) => setText(e.target.value)} placeholder="Say something" aria-label="Chat message" />
-        <button type="submit" className="plaque compact">Send</button>
+        <input className="bsearch" value={text} maxLength={400} onChange={(e) => setText(e.target.value)} placeholder="Say something" aria-label="Chat message" />
+        <button type="submit" className="aplaque primary">Send</button>
       </form>
       <div className="emotes">
         {GameEmotes.map((emote) => <button key={emote.raw} type="button" onClick={() => { gameAudio.play("emote"); table.sendEmote(emote); }}>{emote.text}</button>)}

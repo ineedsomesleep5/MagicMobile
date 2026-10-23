@@ -17,7 +17,7 @@ const samePrompt = (a: TurnClockPrompt | undefined, b: TurnClockPrompt | undefin
 
 interface Running { prompt: TurnClockPrompt; deadline: number; limit: number; frozen?: number; handled: boolean }
 
-/** The host's clock for every human seat (kept here for the shared cases and later web hosting). */
+/** The host's clock for every human seat (a hosting browser runs it; parity cases in test/). */
 export class TurnClock {
   private running = new Map<string, Running>();
   private strikeCounts = new Map<string, number>();
@@ -76,6 +76,8 @@ export class TurnClock {
     clock.handled = false; clock.deadline = now + TurnClockRules.grace; clock.limit = TurnClockRules.grace;
     this.answeredByClock.delete(seat);
   }
+
+  clear() { this.running.clear(); this.strikeCounts.clear(); this.answeredByClock.clear(); this.paused = false; }
 
   entries(now: number): TurnClockEntry[] {
     return this.sortedRunning().filter(([, c]) => !c.handled).map(([seat, c]) => ({

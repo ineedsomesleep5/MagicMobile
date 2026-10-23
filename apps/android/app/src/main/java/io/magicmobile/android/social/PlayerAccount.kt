@@ -187,6 +187,15 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
 
     /** The ranked queue, once the player has a profile name. */
     val rankedQueue: RankedQueueService? get() = if (phase == Phase.READY && username != null) SupabaseRankedQueue(api) else null
+    /** Deck sync's server functions (docs/DECK_SYNC.md). */
+    internal val deckSyncAPI: io.magicmobile.android.studio.DeckSyncAPI get() = SupabaseDeckSync(api)
+
+    /** The signed-in profile's id (the access token's `sub`) for deck sync; null until the profile is ready, and in fixtures and UI tests. */
+    suspend fun profileID(): String? {
+        if (phase != Phase.READY || SocialFixtures.isActive || HowToPlayLaunch.isAutomated(LaunchEnvironment.values)) return null
+        return runCatching { api.userID() }.getOrNull()
+    }
+
     /** Friend challenges, once the player has a profile name. */
     val challenges: io.magicmobile.android.game.FriendChallengeService? get() =
         if (phase == Phase.READY && username != null) SupabaseFriendChallenges(api) else null
@@ -582,6 +591,13 @@ internal class SupabaseLite(context: Context) {
         return LinkedIdentity.parse(Json.parseToJsonElement(text) as JsonObject)
     }
 
+    /** The signed-in user's id: the access token's `sub` claim. */
+    suspend fun userID(): String? {
+        val payload = accessToken().split('.').getOrNull(1) ?: return null
+        val claims = Json.parseToJsonElement(String(java.util.Base64.getUrlDecoder().decode(payload.trimEnd('=')), Charsets.UTF_8)) as? JsonObject
+        return (claims?.get("sub") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }
+    }
+
     fun forgetSession() {
         session = null
         prefs.edit().clear().apply()
@@ -673,6 +689,36 @@ internal class SupabaseRankedQueue(private val api: SupabaseLite) : RankedQueueS
 }
 
 /** Friend challenges on the profile server (supabase/migrations/20261004180000_friend_challenges.sql). */
+/** Deck sync over mm_decks_since / mm_deck_save / mm_deck_delete (supabaseDeckSync in the web's deckStudio/sync.ts). */
+internal class SupabaseDeckSync(private val api: SupabaseLite) : io.magicmobile.android.studio.DeckSyncAPI {
+    private fun fields(text: String) = Json.parseToJsonElement(text) as? JsonObject ?: JsonObject(emptyMap())
+    private fun long(value: JsonElement?) = (value as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+    private fun view(value: JsonElement?): io.magicmobile.android.studio.ServerDeck {
+        val row = value as? JsonObject ?: JsonObject(emptyMap())
+        return io.magicmobile.android.studio.ServerDeck((row["id"] as? JsonPrimitive)?.contentOrNull ?: "", (row["name"] as? JsonPrimitive)?.contentOrNull ?: "",
+            long(row["revision"]) ?: 0, long(row["changeSeq"]) ?: 0, (row["deleted"] as? JsonPrimitive)?.booleanOrNull == true,
+            row["deck"]?.takeIf { it !is JsonNull })
+    }
+
+    override suspend fun since(cursor: Long): io.magicmobile.android.studio.DeckSyncAPI.Page {
+        val answer = fields(api.rpc("mm_decks_since", mapOf("p_cursor" to JsonPrimitive(cursor))))
+        return io.magicmobile.android.studio.DeckSyncAPI.Page((answer["decks"] as? JsonArray).orEmpty().map(::view),
+            long(answer["cursor"]) ?: cursor, (answer["more"] as? JsonPrimitive)?.booleanOrNull == true)
+    }
+
+    override suspend fun save(id: String, name: String, document: JsonObject, base: Long?): io.magicmobile.android.studio.DeckSyncAPI.Saved {
+        val answer = fields(api.rpc("mm_deck_save", mapOf("p_id" to JsonPrimitive(id), "p_name" to JsonPrimitive(name), "p_deck" to document,
+            "p_base" to (base?.let(::JsonPrimitive) ?: JsonNull))))
+        return io.magicmobile.android.studio.DeckSyncAPI.Saved((answer["status"] as? JsonPrimitive)?.contentOrNull == "saved", view(answer["deck"]))
+    }
+
+    override suspend fun remove(id: String, base: Long): io.magicmobile.android.studio.DeckSyncAPI.Deleted {
+        val answer = fields(api.rpc("mm_deck_delete", mapOf("p_id" to JsonPrimitive(id), "p_base" to JsonPrimitive(base))))
+        return io.magicmobile.android.studio.DeckSyncAPI.Deleted((answer["status"] as? JsonPrimitive)?.contentOrNull == "conflict",
+            answer["deck"]?.takeIf { it !is JsonNull }?.let(::view))
+    }
+}
+
 internal class SupabaseFriendChallenges(private val api: SupabaseLite) : io.magicmobile.android.game.FriendChallengeService {
     private fun decode(text: String, id: String? = null) = io.magicmobile.android.game.FriendChallenge.parse(
         Json.parseToJsonElement(text) as? JsonObject ?: JsonObject(emptyMap()), id)

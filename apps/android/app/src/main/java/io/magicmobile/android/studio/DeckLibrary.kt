@@ -50,6 +50,8 @@ data class DeckLibraryRecord(
 class DeckLibraryStore(private val store: DeckStore, private val changed: (List<SavedDeck>) -> Unit) {
     var decks by mutableStateOf<List<DeckLibraryRecord>>(emptyList()); private set
     var notice by mutableStateOf<String?>(null)
+    /** Runs after the player deletes a deck (deck sync keeps a tombstone for it). */
+    var onDeleted: ((DeckLibraryRecord) -> Unit)? = null
     private var readFailed = false
 
     init { reload() }
@@ -102,6 +104,37 @@ class DeckLibraryStore(private val store: DeckStore, private val changed: (List<
         if (original.revision != expectedRevision) throw DeckEditingError.StaleRevision
         try { store.delete(original) } catch (error: IllegalArgumentException) { throw DeckEditingError.StaleRevision }
         reloadAfterWrite()
+        onDeleted?.invoke(record)
+    }
+
+    /** A deck by id ignoring case: the server answers ids in lower case, iOS makes them upper case. */
+    fun recordMatching(id: String): DeckLibraryRecord? = decks.firstOrNull { it.id.equals(id, ignoreCase = true) }
+
+    /**
+     * Deck sync (docs/DECK_SYNC.md): a server deck under its own id, replacing this device's copy (its revision moves on)
+     * or added. Answers the record as saved.
+     */
+    fun applySynced(id: String, deck: DeckList, sourceURL: String?): DeckLibraryRecord {
+        guardReadable()
+        OnDeviceDeckEditing.validateDraft(deck)
+        val original = recordMatching(id)?.let { it.saved ?: throw DeckEditingError.CopyRequired }
+        val saved = try { store.save(deck.storedDeck(), original, sourceURL, newID = if (original == null) id else null) }
+            catch (error: IllegalArgumentException) {
+                if (error.message?.contains("changed on disk") == true) throw DeckEditingError.StaleRevision
+                throw DeckEditingError.InvalidEntry
+            }
+        reloadAfterWrite()
+        return DeckLibraryRecord.of(saved)
+    }
+
+    /** Deck sync: a deck deleted on another device leaves this one (no tombstone, unlike the player's delete). */
+    fun removeSynced(id: String) {
+        guardReadable()
+        val original = recordMatching(id)?.saved ?: return
+        try { store.delete(original) } catch (error: IllegalArgumentException) { throw DeckEditingError.StaleRevision }
+        reloadAfterWrite()
+        val selection = "local:${original.id}"
+        loadFavorites().getOrNull()?.takeIf { selection in it }?.let { runCatching { saveFavorites(it - selection) } }
     }
 
     /** Copies local or included decks without touching the original's identity or source. */

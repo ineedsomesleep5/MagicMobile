@@ -24,8 +24,10 @@ class DeckStore(context: Context) {
     @Synchronized fun all(): List<SavedDeck> = root.listFiles().orEmpty().filter { it.name.endsWith(".json") && it.name != "draft.json" }.map {
         decodeSaved(read(AtomicFile(it)),it.name.removeSuffix(".json")).copy(modifiedAtMillis=it.lastModified())
     }.sortedWith(compareByDescending<SavedDeck> { it.favorite }.thenBy { it.deck.name.lowercase() })
-    @Synchronized fun save(deck: Deck, original: SavedDeck? = null, sourceURL: String? = original?.sourceURL): SavedDeck {
-        val id=original?.id ?: UUID.randomUUID().toString(); require(Wire.uuid(id))
+    /** [newID] names a new deck (deck sync keeps the server's id); otherwise a new deck gets a random one. */
+    @Synchronized fun save(deck: Deck, original: SavedDeck? = null, sourceURL: String? = original?.sourceURL, newID: String? = null): SavedDeck {
+        val id=original?.id ?: newID ?: UUID.randomUUID().toString(); require(Wire.uuid(id))
+        if(original == null && newID != null) require(!File(root,"$id.json").exists()) { "A deck with this id is already saved." }
         val file=AtomicFile(File(root,"$id.json"))
         if(original != null) {
             val current=decodeSaved(read(file),id)

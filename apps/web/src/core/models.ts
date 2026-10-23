@@ -426,6 +426,14 @@ export const playerLabel = (s: GameSnapshot, playerID: string | undefined): stri
   if (playerID === viewerID(s)) return "You";
   return s.players.find((p) => p.playerId === playerID)?.displayName ?? playerID;
 };
+/**
+ * Who goes first, as Arena titles the opening hand ("You Go First"): XMage names the starting player as the active player
+ * while the opening hands are kept (GameSnapshot.startingPlayerHeading). Undefined once the first turn has begun.
+ */
+export const startingPlayerHeading = (s: GameSnapshot): string | undefined => {
+  if (s.turn > 1 || s.activePlayerId === undefined) return undefined;
+  return s.activePlayerId === viewerID(s) ? "You Go First" : `${playerLabel(s, s.activePlayerId)} Goes First`;
+};
 
 export const isCreatureCard = (c: ZoneCard) => c.isCreaturePermanent ?? /creature/i.test(c.card.typeLine);
 export const displayPower = (c: ZoneCard) => c.reportedPower ?? (c.power === undefined ? undefined : String(c.power));

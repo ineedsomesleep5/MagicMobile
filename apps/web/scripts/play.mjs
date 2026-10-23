@@ -26,10 +26,6 @@ const maxTurns = Number(args.turns ?? 40);
 // that would kill you unblocked is coming (0: play it out).
 const concedeAt = Number(args["concede-at"] ?? 10);
 const shots = new Set(String(args.shots ?? "").split(",").filter(Boolean).map(Number));
-const deckNames = {
-  "token-triumph": "Token Triumph", "first-flight": "First Flight", "grave-danger": "Grave Danger", "chaos-incarnate": "Chaos Incarnate",
-  "draconic-destruction": "Draconic Destruction",
-};
 mkdirSync(out, { recursive: true });
 
 /** Installed in the page: records the session's answers, the snapshots and the board's effects into window.__rec. */
@@ -210,8 +206,8 @@ function decide(state, memory) {
     const done = acts.find((a) => a.type === "answer_yes_no");
     return done ? { action: done.id } : undefined;
   }
-  // A question on the table (yes/no, the commander's zone): its main answer, the ember plaque, as a player clicks it.
-  if (p.confirmation && state.browser) return { clickIn: ".bstage .answers .aplaque.ember" };
+  // A question on the table (yes/no, the commander's zone): its main answer, the first pill (orange unless it declines), as a player clicks it.
+  if (p.confirmation && state.browser) return { clickIn: ".bstage .answers .aplaque" };
   if (p.targets.length) return { submit: { type: "choose_target", targetIds: [p.targets[0]] }, label: "Choose" };
   // Cards to pick one at a time (the cards a mulligan puts on the bottom, a discard): the next one not yet chosen until
   // XMage's count is met, then its Done.
@@ -244,21 +240,31 @@ async function concedeByMenu(page) {
   try {
     await page.getByRole("button", { name: "Game menu" }).click({ timeout: 3000 });
     await page.getByRole("menuitem", { name: "Game Settings" }).click({ timeout: 3000 });
-    await page.locator(".asettings .aplaque.oxblood", { hasText: "Concede" }).click({ timeout: 3000 });
-    await page.locator(".aquestion .aplaque.oxblood", { hasText: "Concede" }).click({ timeout: 3000 });
+    await page.locator(".asettings .aplaque.danger", { hasText: "Concede" }).click({ timeout: 3000 });
+    await page.locator(".aquestion .aplaque.danger", { hasText: "Concede" }).click({ timeout: 3000 });
     return true;
   } catch { return false; }
 }
 
 async function play(page, game) {
+  // The decks the way a player leaves them chosen: yours in the Play panel, the AI's in the Custom Table's seat.
+  await page.addInitScript(([me, ai]) => {
+    localStorage.setItem("mm.web.deck.selected", `precon:${me}`);
+    localStorage.setItem("mm.web.custom.seats", ai);
+    localStorage.setItem("mm.web.custom.players", "ai");
+    if (!localStorage.getItem("mm.web.name")) localStorage.setItem("mm.web.name", "Player");
+  }, [args.me ?? "token-triumph", args.ai ?? "grave-danger"]);
   await page.goto(url);
   if (args.polls) await page.evaluate(() => { window.__recordPolls = true; });
   await page.addScriptTag({ content: `(${recorder.toString()})()` });
-  const start = page.getByRole("button", { name: "Start the game" });
-  await start.waitFor({ timeout: 180_000 });
-  // Two shelves of deck tiles: yours, then the AI's.
-  await page.locator(".deck-shelf").nth(0).locator(".deck-tile", { hasText: deckNames[args.me ?? "token-triumph"] }).click();
-  await page.locator(".deck-shelf").nth(1).locator(".deck-tile", { hasText: deckNames[args.ai ?? "grave-danger"] }).click();
+  // Through the menus: Play, then Custom (Set Up Table, Start), Quick (Play) or Ranked (Find Match) with --mode,
+  // once the engine is ready.
+  const mode = args.mode ?? "custom";
+  await page.locator("[data-id='menu.play']").click({ timeout: 180_000 });
+  await page.locator(`[data-id='play.${mode}']`).click();
+  if (mode === "custom") await page.locator("[data-id='play.start']").click();
+  const start = page.locator(`[data-id='${{ custom: "setup.start", quick: "quick.start", ranked: "ranked.find" }[mode]}']`);
+  await start.waitFor({ timeout: 30_000 });
   for (let i = 0; i < 360 && !(await start.isEnabled()); i++) await page.waitForTimeout(500);
   await start.click();
   const memory = { casts: 0, failed: new Set(), attacked: new Set(), promptSeen: new Map(), turn: 0, autoPaid: new Set(), allAttack: new Set(), finished: new Set(),
@@ -266,10 +272,25 @@ async function play(page, game) {
   const started = Date.now();
   let lastTurn = 0;
   for (;;) {
-    const roll = page.getByRole("button", { name: "Roll the D20" });
+    // --shots: the pregame and the first question and browser once each, for a look at the board's Arena dress.
+    for (const [name, selector] of shots.size ? [["roll", ".aroll"], ["mulligan", ".amull"], ["question", ".bstage"], ["browser", ".abrowse .bbody"]] : []) {
+      if (memory.looked?.has(name) || !(await page.locator(selector).first().isVisible().catch(() => false))) continue;
+      (memory.looked ??= new Set()).add(name);
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: join(out, `game-${game}-look-${name}.png`) });
+    }
+    const roll = page.getByRole("button", { name: "Roll D20" });
     if (await roll.isVisible().catch(() => false) && await roll.isEnabled().catch(() => false)) await roll.click().catch(() => {});
     const state = await page.evaluate(look);
     if (state.ready && state.over) break;
+    // The opening hand shows once the roll steps aside: wait for it before answering, for its picture.
+    if (shots.size && !memory.looked?.has("mulligan") && /mulligan/i.test(state.prompt?.message ?? "")) {
+      (memory.looked ??= new Set()).add("mulligan");
+      if (await page.locator(".amull").waitFor({ timeout: 8000 }).then(() => true, () => false)) {
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: join(out, `game-${game}-look-mulligan.png`) });
+      }
+    }
     if (state.ready && state.turn !== lastTurn) {
       lastTurn = state.turn; memory.casts = 0;
       // Each turn a wipe sits in hand: what it would take now (why a game showed no wipe).
@@ -403,6 +424,11 @@ async function play(page, game) {
   const final = await page.evaluate(look);
   const rec = await page.evaluate(() => window.__rec);
   const won = final.winners.includes(final.viewer);
+  // The result's word on its flare, before it settles over the medallion (the end shot below).
+  if (shots.size) await page.screenshot({ path: join(out, `game-${game}-result.png`) });
+  // What the menus kept: the finished game in this browser's player record (Recently Played, the rank).
+  await page.waitForTimeout(shots.size ? 2500 : 1500);
+  const stored = await page.evaluate(() => { try { const r = JSON.parse(localStorage.getItem("mm.web.playerRecord") ?? "{}"); return { matches: r.matches?.length ?? 0, last: r.matches?.[0], rank: r.rank?.position }; } catch { return undefined; } });
   await page.screenshot({ path: join(out, `game-${game}-end.png`) });
   const { polls, ...kept } = rec;
   if (args.polls) writeFileSync(join(out, `game-${game}-polls.json`), JSON.stringify(polls));
@@ -417,7 +443,7 @@ async function play(page, game) {
       wipe: [...new Set(rec.fx.filter((f) => f.notice && /: \d+ (to the graveyard|exiled|returned)/.test(f.notice)).map((f) => f.notice))],
       ended: won ? "won" : memory.conceded ? "conceded by the menu" : final.over ? "lost" : "stopped",
     },
-    wipeHeld: memory.wipeHeld, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
+    record: stored, wipeHeld: memory.wipeHeld, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.

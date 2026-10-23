@@ -64,8 +64,15 @@ await writeFile(join(out, "vercel.json"), JSON.stringify({
     { source: "/engine/engine-(.*)", headers: immutable },
     { source: "/assets/(.*)", headers: immutable },
   ],
-  // The app's own paths (/join, /join/CODE) are the single page; files win over this rewrite.
-  rewrites: [{ source: "/(.*)", destination: "/index.html" }],
+  // Deck links: Archidekt and Moxfield don't let another site's page read their APIs (CORS), so the page asks its own
+  // origin and Vercel fetches the fixed endpoint (studioAdapter.fetchLinkedDeck). The table relay allows this origin
+  // itself (CORS), so tables open there directly. Then the app's own paths (/join, /join/CODE) are the single page;
+  // files win over that rewrite.
+  rewrites: [
+    { source: "/provider/archidekt/decks/:id", destination: "https://archidekt.com/api/decks/:id/" },
+    { source: "/provider/moxfield/:path*", destination: "https://api2.moxfield.com/:path*" },
+    { source: "/(.*)", destination: "/index.html" },
+  ],
 }, null, 2) + "\n");
 
 // `vercel link` leaves a token in .env.local here: never upload it.

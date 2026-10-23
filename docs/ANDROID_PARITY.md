@@ -61,6 +61,7 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | StartingRollDice.swift, StartingRollTableView.swift (the 3D starting roll, docs/STARTING_ROLL.md) | `ondevice/StartingRollDice.kt`, `ondevice/StartingRollTable.kt` (Filament instead of SceneKit), `ui/D20Math.kt` | Ported |
 | OnDeviceMultiplayer.swift, RelayTransport.swift (GameKitTransport has no Android counterpart) | app `ondevice/OnDeviceMultiplayer.kt`, `ondevice/RelayTransport.kt` | Ported; relay tables only |
 | DeckStudio/*, DeckLibrary.swift, OnDeviceDeckEditing.swift, NativeDeckMetadataCatalogue.swift, OnDeviceDeckResolver.swift, OnDeviceDeckLinkImporter.swift | core `studio/`, app `studio/` | Ported (37 iOS tests ported) |
+| Deck sync (docs/DECK_SYNC.md; the web's `deckStudio/sync.ts` is the reference) | core `studio/DeckSync.kt`, app `studio/DeckLibrarySync.kt`, `SupabaseDeckSync` in `social/PlayerAccount.kt`, triggers in `ondevice/OnDeviceRootView.kt` | Ported; `deck-sync-cases.json` passes (`DeckSyncTest`) |
 | NativeDownloadsView.swift | app `ondevice/NativeDownloadsView.kt` (Android's download engine and service) | Ported |
 | BoardChrome.swift Tavern* views, BrandUI.swift tavern controls and TavernAppearance | app `ui/TavernKit.kt` (new), `ui/BrandUI.kt`, `ui/IosControls.kt`, `ui/Theme.kt` | Ported (Walnut Tavern) |
 | TavernDesign, TavernSockets, TavernFrameKind, TavernCardParts, BattlefieldTokenStack, PlayerStatusSummary | core `game/TavernSockets.kt` (new) | Ported, same numbers as `scripts/brand/tavern_layout.json` |

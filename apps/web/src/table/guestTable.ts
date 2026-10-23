@@ -37,6 +37,8 @@ export interface TableState {
   reconnecting: boolean;
   chat: ChatLine[];
   bubbles: Record<string, { emote: GameEmote; at: number }>;
+  /** This browser opened the table (HostTable): it may remove joiners while the table fills and runs the game. */
+  isHost?: boolean;
 }
 
 const now = () => performance.now() / 1000;

@@ -22,6 +22,8 @@ struct OnDeviceRootView: View {
     @StateObject private var session: OnDeviceSession
     @StateObject private var setup: OnDeviceSetupModel
     @StateObject private var library = DeckLibraryStore()
+    /// Deck sync (docs/DECK_SYNC.md), made on first appearance so the player's deletes become tombstones from then on.
+    @State private var deckSync: DeckSync?
     @StateObject private var diagnostics: OnDeviceDiagnostics
     @StateObject private var resume: GameResumeCoordinator
     @State private var selectedCard: ZoneCard?
@@ -589,6 +591,22 @@ struct OnDeviceRootView: View {
             if !activeGame { restoreSetupPreferences() }
         }
         .task(id: library.decks.map(\.id)) { await rememberDeckColors() }
+        // Deck sync: when the account is ready or its name changes, on coming back to the app and every 5 minutes while open.
+        .task(id: "\(account.phase == .ready)|\(account.username ?? "")|\(scenePhase == .active)") {
+            guard account.phase == .ready, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await syncDecks()
+                try? await Task.sleep(for: .seconds(300))
+            }
+        }
+        // A change here goes up a few seconds after the last one, when something waits to go up.
+        .task(id: library.decks) {
+            // The first run (on appearance) also makes the sync, which then notes the player's deletes.
+            let sync = deckSyncer()
+            guard account.phase == .ready, sync.hasPendingChanges else { return }
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { await syncDecks() }
+        }
         // Cards drawn by name (the board, the opening hand, profile art) show the art chosen in the playing deck first.
         .onChange(of: selectedDeckID, initial: true) { _, id in CardArtChoices.shared.select(deckID: id) }
         .onChange(of: portraitModeEnabled) { _, enabled in
@@ -1361,6 +1379,22 @@ struct OnDeviceRootView: View {
         return nil
     }
     private static let fixtureLaunch = Date()
+
+    private func deckSyncer() -> DeckSync {
+        if let deckSync { return deckSync }
+        let made = DeckSync(library: library, api: account.deckSyncAPI)
+        deckSync = made
+        return made
+    }
+
+    /// One deck sync for the signed-in profile. Errors stay quiet: the next sync tries again.
+    private func syncDecks() async {
+        let sync = deckSyncer()
+        guard let profile = await account.deckSyncProfile() else { return }
+        try? await sync.sync(account: profile)
+        // A deck changed elsewhere may bring a commander whose colours this phone hasn't remembered yet.
+        await rememberDeckColors()
+    }
 
     /// Reads your decks' colours from the card catalogue once, off the main thread, for their boxes' pips.
     private func rememberDeckColors() async {

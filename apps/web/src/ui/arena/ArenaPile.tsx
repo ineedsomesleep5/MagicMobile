@@ -2,11 +2,11 @@
  * A pile on the table, the library's look for every zone (ArenaPileStack on iOS; Caleb, 2026-10-21: graveyards and
  * exile lie like the library): slivers whose thickness follows the count, a contact shadow, the top card lying on them
  * (the back for a library, the face for a graveyard, the face under a cool veil for exile), leaning with the table, and
- * the count on a leather lozenge. An empty zone is a dashed slot.
+ * the count on Arena's count oval (ArenaCountBadge). An empty zone is a dashed slot.
  */
 import { cardImageURL } from "../cardArt";
 import { LEAN, pileThickness } from "./layout";
-import { CardBack } from "./Symbols";
+import { CardBack, CountBadge } from "./Symbols";
 
 export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover }: {
   x: number; y: number; size: { w: number; h: number }; count: number;
@@ -46,7 +46,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover
           </div>
         )}
       </div>
-      {count > 0 && <span className="pcount">{count}</span>}
+      {count > 0 && <CountBadge count={count} className="pcount" />}
     </button>
   );
 }

@@ -8,8 +8,10 @@ Two ways to play from a desktop browser (`docs/WEB_ENGINE_OPTIONS.md`):
 - **Guest at a phone-hosted table (M2, "Join a friend's table").** The host phone runs XMage; the browser renders
   its own seat and answers its own prompts through the existing relay.
 
-Nothing here changes the relay, Supabase or Vercel. Not yet: hosting from the browser, ranked, sign-in, deck
-import (only the five precons), save and resume, sounds.
+Both open from Arena's menus (`src/ui/menus/`, iOS `Menus/*.swift`): Home, the Play panel with deck boxes (Quick,
+Ranked against the AI, Custom), the Custom Table, Decks, Ranked, How to Play, Options and the Updates inbox, over the
+3D tavern room. Nothing here changes the relay, Supabase or Vercel. Not yet: sign-in and anything shared with the
+phones (profile, friends, ranked against people, deck sync), hosting from the browser, Deck Studio, save and resume.
 
 ## Run it
 
@@ -30,13 +32,18 @@ Games against the AI can be played by a script, in headless desktop Chrome on th
 zsh scripts/dev/heavy.sh "web autoplay" -- node apps/web/scripts/play.mjs --url "http://127.0.0.1:5182/?debug" --me token-triumph --ai chaos-incarnate --games 1 --out /tmp/autoplay
 ```
 
-It plays through the board's own controls (drag to cast, Auto Pay, All Attack, the browsers) and writes what the
+It starts each game through the menus (your deck chosen, Play, Custom, Set Up Table, the AI's deck in the seat,
+Start; `--mode quick` or `--mode ranked` plays Quick Match or Ranked instead, where the menus pick the AI), plays through the board's own controls (drag to cast, Auto Pay, All Attack, the browsers) and writes what the
 board did per game: every answer and who sent it, the effects it painted (with a picture of each kind), banners,
 reveals, the reading-hold check, missing resources and console errors. `--shots 6,10` adds pictures of the log and a
 player card at those turns; `--polls` saves the raw engine polls for the replay fixtures. `--turns 30` concedes
 through the menu after that turn, and `--concede-at 10` (the default) concedes once your life is that low and behind, or
 an attack that would kill you unblocked comes; `0` plays it out. `--want-sweeper` mulligans for a hand with a board
-wipe and casts the wipe once it would take three permanents.
+wipe and casts the wipe once it would take three permanents. Each summary also says what the menus recorded
+(`record`: the match and the rank).
+
+`scripts/menu-shots.mjs --url … --out … [--only home,play] [--size 1280x800]` takes a picture of each menu page in
+headless Chrome, for comparing the pages with iOS.
 
 That run (`claude/web-engine-heap`, GraalVM Community Edition) gives a 137 MB module (43 MB gzip). The M1 bundle
 (run 39599683802, Oracle GraalVM, `engine.js`/`engine.js.wasm`) also works. `ENGINE_DIR=/path/to/bundle` points the
@@ -44,9 +51,12 @@ dev server elsewhere. In the Claude desktop app, the `web-solo` entry in `.claud
 
 ## Solo against the AI (M3)
 
-1. **Setup** (`src/ui/SoloSetup.tsx`, Walnut Tavern): your name, a precon for you and one for the AI, AI skill 1–10
-   (the phones' control and meaning, default 2) and who goes first: "Choose" (XMage asks you) or "Roll D20". The
-   engine starts loading as soon as the page opens; Start waits for it.
+1. **Menus** (`src/ui/menus/MenuShell.tsx`): your deck (a precon or one of the 21 included decks,
+   `public/generated/ai-decks.json`), then Quick Match (an AI at your deck's bracket, or the bracket, deck and skill you
+   pick: `core/aiDeckPool.ts`), Ranked (an AI at your tier: `core/rankLadder.ts`) or a Custom Table (one to three AI
+   seats, AI skill 1–10, who goes first: "Choose" or "Roll D20"). The engine starts loading when the menus open; Play
+   waits for it. A finished game goes into this browser's record (`core/playerRecord.ts`, `mm.web.playerRecord`):
+   Recently Played, the rank on the top bar and the Ranked page, as the phones' local record.
 2. **Engine** (`src/engine/`): `LocalEngine` fetches `/engine/manifest.json`, then a classic worker
    (`engine.worker.ts`) loads the module and the patched Web Image wrapper. Requests go through a
    SharedArrayBuffer (the worker's thread is blocked inside Java, `Atomics.wait`), replies come back as messages.
@@ -87,7 +97,10 @@ concede and the way back to setup; first and cached engine loads.
 
 `scripts/prepare_data.py` (run by `dev` and `build`) writes `public/generated/` from the committed iOS
 resources: the printing index (`printings.tsv`, whose header carries the catalogue hash and upstream
-commit the guest presents) and the five precons. `scripts/prepare_images.sh` converts the tavern art
+commit the guest presents), the five precons, the included AI decks, Deck Studio's card catalogue (`catalogue.json`,
+about 8 MB, 1.75 MB gzipped, loaded only when Deck Studio opens) and the bracket lists (`commander-brackets.json`).
+Deck links go through this origin: `/provider/archidekt/…` and `/provider/moxfield/…` are proxied by Vite and
+rewritten by Vercel, since neither site allows a browser on another origin to read its API. `scripts/prepare_images.sh` converts the tavern art
 from the iOS asset catalogue into the committed `public/tavern/*.webp`.
 
 ## How a guest plays (M2)
@@ -182,7 +195,8 @@ more than a few percent:
 
 https://magicmobile-web.vercel.app is the Vercel project `magicmobile-web` on Caleb's account (2026-10-21; the Arena
 board went live 2026-10-22, deployment `dpl_GMmTv2uJrMy8cyDyjdBYUwnUtzk4` from `claude/web-arena-parity`). It is
-unlisted: nothing links to it and every response carries `X-Robots-Tag: noindex`, until Caleb decides between public
+unlisted (phases 1–4 of the full-app port went live 2026-10-23, deployment `dpl_DSySPFxFdrBsrcGp91TMBeU9Lubg` from
+`claude/web-arena-v2`): nothing links to it and every response carries `X-Robots-Tag: noindex`, until Caleb decides between public
 and private. It is a static deploy of a local build, since the engine isn't in git. To redeploy:
 
 ```
@@ -208,11 +222,12 @@ would have to be split into parts.
 
 ## Not done yet
 
-- Ranked, friends, sign-in and deck import (later web steps); only the five precons are offered.
+- Your decks synced with your phone (phase 5, docs/WEB_PARITY.md section 9). Hosting, challenges and Ranked against
+  people work web to web over the relay; a phone joining a browser's table and the two-account challenge and queue
+  flows still need a real run. Your decks live in this browser (`mm.web.decks`, the phone's
+  `decks.json` shape) until then.
 - **Paused 2026-10-20 (Caleb: M1 first) before any game against a real phone host.** Everything above is checked
   against fixtures and a scripted host only. Next: host a 2-player relay table on the Android emulator (simulator
   builds have no engine) and play it to the end from desktop Chrome; pods are untested.
-- The out-of-game screens (iOS's Arena home, Play panel, deck boxes, options) are not ported; setup is still the
-  tavern form (docs/WEB_PARITY.md section 9).
 - The vertical (portrait) Arena layout isn't ported; the web board is horizontal only.
 - Android's `:core` doesn't run the new shared cases yet (docs/WEB_PARITY.md, "Android follow-ups").

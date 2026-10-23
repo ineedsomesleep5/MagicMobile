@@ -1,8 +1,11 @@
 /** The Arena browsers' reading of XMage's prompts, ported from the iOS Arena board (ArenaBoardModel, NativeGameView+Arena). */
 import { describe, expect, it } from "vitest";
 import type { PromptEnvelopeV2 } from "../src/core/models";
+import type { GameSnapshot } from "../src/core/models";
+import { startingPlayerHeading } from "../src/core/models";
+import { OnDeviceStartingRoll, rollPlates } from "../src/core/startingRoll";
 import {
-  affordableX, amountValues, browserKind, choiceOptions, clampAmount, colorSymbol, headline, lethalDamage, splitName, stepAmount,
+  affordableX, amountValues, browserKind, choiceOptions, clampAmount, colorSymbol, headline, lethalDamage, questionAnswerKind, splitName, stepAmount,
 } from "../src/ui/arena/Browsers";
 
 const prompt = (extra: Partial<PromptEnvelopeV2>): PromptEnvelopeV2 =>
@@ -54,6 +57,41 @@ describe("arena question headline", () => {
   it("names the ability when the long message is about its source", () => {
     const long = "Esper Sentinel: whenever an opponent casts their first noncreature spell each turn, unless that player pays X, you draw a card";
     expect(headline(long, "Esper Sentinel", true)).toEqual({ title: "Use Esper Sentinel's ability?", detail: long });
+  });  // The judge, 2026-10-22: never cut off, never said twice.
+  it("puts the first sentence over the rest, without repeating it", () => {
+    const long = "Return target creature card from your graveyard. Then you lose 2 life and draw a card if you control a Zombie.";
+    expect(headline(long, "Gravedigger", false)).toEqual({ title: "Return target creature card from your graveyard.", detail: "Then you lose 2 life and draw a card if you control a Zombie." });
+  });
+  it("keeps one long sentence whole as the title", () => {
+    const long = "Do you want to pay the additional cost to put a +1/+1 counter on each creature you control until end of turn";
+    expect(headline(long, "Cathars' Crusade", false)).toEqual({ title: long });
+  });
+  it("declines in Arena's blue and takes everything else in orange", () => {
+    expect(["No", "Cancel", "decline", " Mulligan "].map(questionAnswerKind)).toEqual(["cool", "cool", "cool", "cool"]);
+    expect(["Yes", "Pay", "Keep", "Done"].map(questionAnswerKind)).toEqual(["primary", "primary", "primary", "primary"]);
+  });
+});
+
+describe("arena pregame", () => {
+  const snap = (turn: number, active?: string) =>
+    ({ turn, activePlayerId: active, viewerPlayerId: "me", players: [{ playerId: "me", displayName: "Caleb" }, { playerId: "ai", displayName: "AI 1" }] }) as unknown as GameSnapshot;
+  it("titles the opening hand by who goes first (startingPlayerHeading)", () => {
+    expect(startingPlayerHeading(snap(1, "me"))).toBe("You Go First");
+    expect(startingPlayerHeading(snap(0, "ai"))).toBe("AI 1 Goes First");
+    expect(startingPlayerHeading(snap(1))).toBeUndefined();
+    expect(startingPlayerHeading(snap(2, "me"))).toBeUndefined();
+  });
+  it("shows each seat's last roll, a tie once its round is out, the reroll's outsider and the winner", () => {
+    const draws = [12, 12, 5, 9];
+    const roll = OnDeviceStartingRoll.generate(["a", "b", "c"], () => draws.shift() ?? 1);
+    // Round 1: a 12, b 12, c 5; round 2: a 9, b 1.
+    expect(rollPlates(roll, 0).map((p) => p.value)).toEqual([undefined, undefined, undefined]);
+    expect(rollPlates(roll, 2).some((p) => p.tied)).toBe(false);
+    expect(rollPlates(roll, 3).map((p) => p.tied)).toEqual([true, true, false]);
+    const round2 = rollPlates(roll, 4);
+    expect(round2.map((p) => [p.value, p.out])).toEqual([[9, false], [12, false], [5, true]]);
+    const done = rollPlates(roll, 5);
+    expect(done.map((p) => [p.value, p.winner])).toEqual([[9, true], [1, false], [5, false]]);
   });
 });
 

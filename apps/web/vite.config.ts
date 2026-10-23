@@ -51,10 +51,19 @@ const engine = (): Plugin => ({
   configurePreviewServer(server) { server.middlewares.use("/engine", serveEngine); },
 });
 
+/**
+ * Deck-link APIs through this origin, as the hosted site's rewrites do (scripts/stage_vercel.mjs): neither site lets a
+ * browser on another origin read them.
+ */
+const providers = {
+  "/provider/archidekt": { target: "https://archidekt.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/archidekt\/decks\/(\d+)\/?$/, "/api/decks/$1/") },
+  "/provider/moxfield": { target: "https://api2.moxfield.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/moxfield/, "") },
+};
+
 export default defineConfig({
   plugins: [react(), engine()],
-  server: { headers: isolation },
-  preview: { headers: isolation },
+  server: { headers: isolation, proxy: providers },
+  preview: { headers: isolation, proxy: providers },
   // The engine worker must be classic: the Web Image wrapper is loaded with importScripts().
   worker: { format: "iife" },
   test: { include: ["test/**/*.test.ts"], environment: "node" },

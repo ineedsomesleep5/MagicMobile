@@ -21,6 +21,12 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-23 (Claude, deck sync Android): (1) Android's `DeckStore` reads every `*.json` in `filesDir/decks-v1` as a
+  deck, so a file put there (the sync record) makes the whole library unreadable; the record lives beside it in
+  `filesDir/decks-v1-sync.json`. (2) The saved `Deck` keeps names to 300 characters (validateDraft allows 512 bytes), so
+  `forkName` takes a character limit too. (3) `heavy.sh --stop-gradle` runs `gradlew --stop` without your `env
+  JAVA_HOME=...` prefix and fails ("Unable to locate a Java Runtime"); stop the daemons yourself with `JAVA_HOME` set.
+  Where: core `studio/DeckSync.kt`, app `studio/DeckLibrarySync.kt`.
 - 2026-10-23 (Claude, Android Arena board phase D): (1) Inside a `BoxWithConstraints`, `maxWidth` read from a nested
   Row/Column/lambda fails to compile ("cannot be called in this context with an implicit receiver", the scope DslMarker):
   copy it to a `val` at the top of the BoxWithConstraints block. (2) A layer that "steps aside" (View Battlefield) drops its
@@ -175,6 +181,20 @@ contradicting one.
 
 ## Website
 
+- 2026-10-23 (Claude, web Arena look pass): the menus' stylesheet (`ui/menus/menus.css`) defines a global `.glass` whose
+  colours are custom properties set only on `.mroot`. The game is drawn outside `.mroot` (MenuShell returns `GameScreen`
+  before its root), so on the board those `var()`s were undefined, the whole `background` and `border` declarations
+  became invalid at computed-value time, and every glass panel on the table (game log, player card, menus) went
+  see-through. **Rule:** scope a shared class name to its surface (`.arena .glass`, `.mroot ...`), and when a panel
+  looks transparent, check for a later rule with an unresolved `var()` before touching opacity. Where:
+  `apps/web/src/ui/arena/arena.css`.
+- 2026-10-23 (Claude, web): React's dev warning "Cannot update a component (`GameScreen`) while rendering a different
+  component (`GameScreen`)" came from the hand drag: the pointer-up handler called `setCarry((c) => { dropCard(c.id);
+  ... })`, and React runs updater functions during the next render, so the drop's `session.send` changed the table
+  (a `useSyncExternalStore` store) mid-render. It showed in about half the games. **Rule:** updater functions stay pure;
+  read the latest value from a ref in the handler and act there. To find such a warning, wrap `console.error` in an
+  init script with `Error.stackTraceLimit = 60` and print `new Error().stack` (the default 10 frames stop inside React).
+  Where: `apps/web/src/ui/GameScreen.tsx` (`carryNow`).
 - 2026-10-22 (Claude, web Arena parity, night): the final autoplay games stalled on the driver, not the board. (1) A
   choice (a colour question) is answered with `resolve_choice`; the driver sent `choose_choice`, which the session
   ignores, 400+ times without a stall, since nothing failed. Copy the command the board's own control sends. (2) A
@@ -709,3 +729,48 @@ contradicting one.
   error: `} else` ended a line, and the Hearth `Column(` on the next line sat at the `if`'s indent. `compileDebugKotlin`
   and the unit tests pass with it, so it only shows up in lint, about 7 minutes into a release build. Write
   `} else Column(...)` or `} else {` with a brace, and run `:app:lintDebug` before starting a release build.
+- 2026-10-23 (Claude, web accounts): (1) The web page is cross-origin isolated (COOP same-origin, for the engine's
+  SharedArrayBuffer), so a Google sign-in pop-up can never report back to it. The web signs in by a full-page redirect
+  to Google's OIDC implicit flow (`response_type=id_token`, nonce kept in localStorage) with MagicMobile's Web client
+  `917754280625-metef3…`, then sends the ID token to Supabase as the phones do. No Supabase change was needed, but the
+  page's origin must be both an Authorized JavaScript origin and (with the trailing `/`) an Authorized redirect URI on
+  that client. Live site and `http://localhost:5173` were added 2026-10-23; a preview URL or a new port needs adding
+  too, or Google answers `redirect_uri_mismatch`. (2) The server's `mm_heartbeat` accepts only `ios` or `android` as
+  the platform, so the web sends none. (3) A 64-bit game seed can't go through `JSON.stringify` as a number: use
+  `EngineJson.integer(bigint)`, which `encode` writes as a raw integer.
+- 2026-10-23 (Claude, web rank after sign-in): the web showed Bronze IV 0–0 after signing in to a Silver account.
+  `PlayerAccount.start()` returned at once when a load was already running, and React's dev double effect (or a return
+  from Google) starts one before `setForeground`'s first beat. That beat then ran the heartbeat and rank sync with no
+  profile name yet, so they skipped, and the rank only arrived 45 s later. `start()` now hands back the running load,
+  and a sign-in waits for it before loading the signed-in profile. Test: "a foreground beat during a load waits…".
+- 2026-10-23 (Claude, web Deck Studio): (1) Neither deck site lets a browser on our origin read its API: Archidekt
+  answers with `access-control-allow-origin: http://localhost:3000`, Moxfield with Cloudflare's 403 and no CORS headers.
+  The web fetches `/provider/archidekt/…` and `/provider/moxfield/…` on its own origin instead; Vite's dev and preview
+  servers proxy them (`vite.config.ts` `providers`) and Vercel rewrites them (`scripts/stage_vercel.mjs`). Moxfield
+  through Vercel answers 403 from its bot check (checked live 2026-10-23), so on the web a Moxfield deck is pasted as
+  text. Archidekt's deck address must keep its trailing slash, which Vercel's `:path*` drops: the rewrite is
+  `/provider/archidekt/decks/:id` → `…/api/decks/:id/`. (2) Card images
+  in new screens need `crossOrigin="anonymous"`: the page is cross-origin isolated (COEP require-corp), so a plain
+  `<img>` from Scryfall shows broken. (3) Writing ` ` as a regex escape in a TS source file turned into the literal
+  line-separator character in one edit and broke the build; keep such characters as escapes and check the diff.
+- 2026-10-23 (Claude, web hosting): (1) Browsers need CORS to `POST /v1/tables` on the relay (WebSockets aren't
+  CORS-checked). The relay now answers the web app's origins only (`WEB_ORIGINS` in services/table-relay/src/index.js,
+  deployed version fa6cbe16), so each browser counts against its own 5-a-minute creation limit. A new web origin (a
+  custom domain, another dev port) must be added there and the relay redeployed, or Host Table fails with "Could not
+  reach the table service". For a day it went through a Vercel rewrite instead, which shared Vercel's IPs. (2) A hosted table pauses ("Every player must return
+  to the foreground") when the host's tab is hidden, as the phones do when backgrounded; with the Mac's display asleep
+  Chrome also refuses screenshots and pointer clicks from Claude in Chrome, while page JavaScript still runs. Check
+  `document.visibilityState` before reading a pause as a bug. (3) `apps/web/scripts/guest-join.mjs --code X` joins any
+  table as a headless web guest on autopilot, with the profile server blocked so no player is made.
+- 2026-10-23 (Claude, deck sync): the July 2026 `decks`/`deck_entries` tables were never used and couldn't hold the
+  phones' decks (no companion section, 1,000-copy and 100-character limits, no art choice, no tombstones), so sync keeps
+  each deck as one document in the decks.json shape (docs/DECK_SYNC.md). Ids: phones make upper-case UUIDs, Postgres
+  answers lower case: compare ids without case and never rewrite a local id (selection ids, favourites and colours hang
+  off it). Testing SQL functions as a player without leaving data: `begin; set local role authenticated; set local
+  request.jwt.claims = '{"sub":"<uuid>","role":"authenticated"}'; …` with no commit (grant the temp table to
+  `authenticated` first).
+- 2026-10-23 (Claude, deck sync iOS): `DeckLibrary.swift` used to be excluded from `apps/ios/Package.swift`, so
+  `DeckLibraryStore` logic only ran in the simulator test target. It is in the package now (pure Foundation/Combine), so
+  `swift test --package-path apps/ios --filter DeckSyncTests` runs the deck-sync parity cases on macOS without a
+  simulator. Also: `DeckLibraryRecord` decodes a missing `isCloudBacked` as true (read-only, `copyRequired`), so sync
+  writes go through `applySyncedDurably`/`removeSyncedDurably`, which bypass that check and save `isCloudBacked: false`.

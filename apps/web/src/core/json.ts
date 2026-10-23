@@ -71,6 +71,7 @@ export class EngineError extends Error {
   static incompatibleBuild = () => new EngineError("Players must use the same engine, catalogue, and protocol build.", "incompatible_build");
   static unboundPeer = () => new EngineError("This authenticated peer has not been assigned a seat.", "unbound_peer");
   static replayed = () => new EngineError("Duplicate or out-of-order transport message.", "replayed");
+  static hostSuspended = () => new EngineError("The host paused input. Return the host app to the foreground.", "host_suspended");
 }
 
 const utf8 = new TextEncoder();
@@ -101,9 +102,14 @@ export const EngineJson = {
     }
     return value;
   },
+  /**
+   * A 64-bit integer the protocol needs exactly (a ranked game's seed), which a JS number can't hold past 2^53: a marked
+   * string in the value, written as a bare JSON integer by `encode`.
+   */
+  integer: (value: bigint): string => `\u0000int:${value.toString()}`,
   encode(value: J): string {
     validated(value);
-    const text = JSON.stringify(EngineJson.sorted(value));
+    const text = JSON.stringify(EngineJson.sorted(value)).replace(/"\\u0000int:(-?\d+)"/g, "$1");
     if (utf8Length(text) > WireLimits.maxJSONBytes) throw EngineError.messageTooLarge();
     return text;
   },
