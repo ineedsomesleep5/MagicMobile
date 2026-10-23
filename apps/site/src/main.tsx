@@ -384,11 +384,11 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Android build 35 makes the Arena look the default: games
-                open on the Arena board, with the real Magic card back on the
-                piles. Hearth stays in Options as the classic table. It keeps the
-                lighter engine from build 31. Android is an early alpha;
-                physical-phone acceptance is still pending.
+                Android build 36 keeps your decks in sync: sign in and the
+                decks you build show up on every phone signed in to the same
+                profile. Arena stays the default board, with Hearth in Options.
+                It keeps the lighter engine from build 31. Android is an early
+                alpha; physical-phone acceptance is still pending.
               </p>
             </details>
             <details>
@@ -397,10 +397,10 @@ function App() {
                 <Plus size={20} />
               </summary>
               <p>
-                Build 58 makes the Arena look the default: games open on the
-                Arena board, and Hearth stays in Options as the classic table.
-                It runs on iPhone and iPad. Apple has approved this build for
-                Internal and External TestFlight.
+                Build 59 keeps your decks in sync: sign in and the decks you
+                build show up on every phone signed in to the same profile.
+                Arena stays the default board. It runs on iPhone and iPad. Apple
+                has approved this build for Internal and External TestFlight.
               </p>
             </details>
             <details>
