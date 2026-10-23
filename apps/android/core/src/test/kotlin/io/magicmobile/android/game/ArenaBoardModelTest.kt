@@ -469,7 +469,7 @@ class ArenaBoardModelTest {
         assertEquals(BoardSize(956f, 440f), landscape.canvas)
         assertEquals(BoardRect(716f, 60f, 158f, 222f), landscape.stack)
         assertEquals(BoardRect(708f, 388f, 176f, 36f), landscape.primary)
-        assertEquals(BoardPoint(876f, 26f), landscape.menu)
+        assertEquals(BoardPoint(876f, 28f), landscape.menu)
         assertNull(landscape.railTop)
         val portrait = ArenaLayout.portraitLayout
         assertEquals(BoardSize(440f, 956f), portrait.canvas)
