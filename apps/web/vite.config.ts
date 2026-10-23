@@ -57,6 +57,7 @@ const engine = (): Plugin => ({
  */
 const providers = {
   "/provider/archidekt": { target: "https://archidekt.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/archidekt\/decks\/(\d+)\/?$/, "/api/decks/$1/") },
+  "/sb": { target: "https://pbspondpyvrjcnvwhtim.supabase.co", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/sb/, "") },
   "/provider/moxfield": { target: "https://api2.moxfield.com", changeOrigin: true, rewrite: (path: string) => path.replace(/^\/provider\/moxfield/, "") },
 };
 

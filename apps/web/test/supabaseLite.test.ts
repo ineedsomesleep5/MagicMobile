@@ -144,6 +144,29 @@ describe("SupabaseLite", () => {
       .rejects.toBeInstanceOf(SupabaseFailure);
   });
 
+  it("a network that blocks supabase.co reaches it through the page's own route, and keeps that route", async () => {
+    const store = memoryStore({ "mm.web.session": session(NOW + 600_000) });
+    const filtered = (url: string) => url.startsWith(BASE);
+    const { calls, fetch } = fakeFetch((call) => {
+      if (filtered(call.url)) throw new TypeError("Failed to fetch");
+      return { status: 200, body: { username: "CalebF" } };
+    });
+    const api = new SupabaseLite({ store, fetch, now: () => NOW, fallbackBaseURL: "https://magicmobile-web.vercel.app/sb" });
+    await expect(api.rpc("mm_profile")).resolves.toEqual({ username: "CalebF" });
+    expect(calls.map((c) => c.url)).toEqual([`${BASE}/rest/v1/rpc/mm_profile`, "https://magicmobile-web.vercel.app/sb/rest/v1/rpc/mm_profile"]);
+    expect(store.map.get(SupabaseLite.routeKey)).toBe("proxy");
+    // The next request, and the next page load, go straight to the route that works.
+    await api.rpc("mm_profile");
+    const reloaded = new SupabaseLite({ store, fetch, now: () => NOW, fallbackBaseURL: "https://magicmobile-web.vercel.app/sb" });
+    await reloaded.rpc("mm_profile");
+    expect(calls.slice(2).map((c) => c.url.startsWith(BASE))).toEqual([false, false]);
+    // Both routes unreachable: still "offline", and nothing is remembered.
+    const nowhere = memoryStore({ "mm.web.session": session(NOW + 600_000) });
+    const down = new SupabaseLite({ store: nowhere, fetch: async () => { throw new TypeError("Failed to fetch"); }, now: () => NOW, fallbackBaseURL: "/sb" });
+    await expect(down.rpc("mm_profile")).rejects.toMatchObject({ code: "offline" });
+    expect(nowhere.map.get(SupabaseLite.routeKey)).toBeUndefined();
+  });
+
   it("signs in with an ID token, linking with the current bearer", async () => {
     const store = memoryStore({ "mm.web.session": session(NOW + 600_000) });
     const { calls, fetch } = fakeFetch(() => tokens("G1", "rG1", 1800));
