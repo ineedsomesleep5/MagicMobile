@@ -774,3 +774,11 @@ contradicting one.
   `swift test --package-path apps/ios --filter DeckSyncTests` runs the deck-sync parity cases on macOS without a
   simulator. Also: `DeckLibraryRecord` decodes a missing `isCloudBacked` as true (read-only, `copyRequired`), so sync
   writes go through `applySyncedDurably`/`removeSyncedDurably`, which bypass that check and save `isCloudBacked: false`.
+- 2026-10-23 (Claude, web on a filtered network): on Caleb's work network (a ContentKeeper web filter) every request to
+  `*.supabase.co` failed, so the page made no profile ("BOB" was only the typed name) and Google sign-in ended in
+  "You're offline" without any request reaching the server. SupabaseLite now falls back to the site's own `/sb/*` route
+  (a Vercel rewrite and a Vite proxy to the project) when the direct address fails, and remembers it for that browser
+  (`mm.web.supabaseRoute`). Direct stays the default because through Vercel every player would share its addresses
+  against the server's per-address limits. The relay's WebSocket (`*.workers.dev`) can't go through a Vercel rewrite,
+  so tables with people may still be blocked on such a network. When a web report says "nothing happens", check the
+  auth logs for the browser's requests before reading the code: no requests means the network, not the flow.

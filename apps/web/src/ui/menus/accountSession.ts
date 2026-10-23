@@ -22,7 +22,8 @@ const sessionStore: SessionStore = {
   remove: (key) => { try { localStorage.removeItem(key); } catch { /* blocked storage */ } },
 };
 
-export const account = new PlayerAccount({ api: new SupabaseLite({ store: sessionStore }) });
+// A work or school filter may block supabase.co; then the site's own `/sb` route (a Vercel rewrite) reaches it.
+export const account = new PlayerAccount({ api: new SupabaseLite({ store: sessionStore, fallbackBaseURL: `${location.origin}/sb` }) });
 const uploader = new GameUploader(storage);
 /** Challenges to and from friends, and the ranked queue, on the same profile (FriendChallengeCoordinator, RankedMatchmaker). */
 export const challenges = new FriendChallengeCoordinator(new SupabaseFriendChallenges(account.api));

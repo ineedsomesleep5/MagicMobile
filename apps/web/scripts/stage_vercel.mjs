@@ -71,6 +71,8 @@ await writeFile(join(out, "vercel.json"), JSON.stringify({
   rewrites: [
     { source: "/provider/archidekt/decks/:id", destination: "https://archidekt.com/api/decks/:id/" },
     { source: "/provider/moxfield/:path*", destination: "https://api2.moxfield.com/:path*" },
+    // The profile server through this origin, for networks that block supabase.co (SupabaseLite's fallback route).
+    { source: "/sb/:path*", destination: "https://pbspondpyvrjcnvwhtim.supabase.co/:path*" },
     { source: "/(.*)", destination: "/index.html" },
   ],
 }, null, 2) + "\n");

@@ -30,6 +30,11 @@ export interface SupabaseLiteOptions {
   now?: () => number;
   /** Defaults to SupabaseLite.sessionKey. */
   key?: string;
+  /**
+   * The same server through the page's own origin (the site rewrites `/sb/*` to it), for a network that blocks
+   * supabase.co (a school or work filter). Used only after the direct address fails, and then kept for this browser.
+   */
+  fallbackBaseURL?: string;
 }
 
 /** A server error's code ("username_taken"), "offline", or "error". */
@@ -59,12 +64,20 @@ export class SupabaseLite {
   private readonly fetcher: FetchLike;
   private readonly now: () => number;
   private readonly key: string;
+  private readonly fallbackBaseURL?: string;
+  /** Where requests go: the server, or the page's own origin once the server proved unreachable from here. */
+  private base: string;
+  static readonly routeKey = "mm.web.supabaseRoute";
 
   constructor(options: SupabaseLiteOptions) {
     this.store = options.store;
     this.fetcher = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
     this.now = options.now ?? Date.now;
     this.key = options.key ?? SupabaseLite.sessionKey;
+    this.fallbackBaseURL = options.fallbackBaseURL;
+    let proxied = false;
+    try { proxied = this.fallbackBaseURL !== undefined && this.store.get(SupabaseLite.routeKey) === "proxy"; } catch { /* storage blocked */ }
+    this.base = proxied ? this.fallbackBaseURL! : SupabaseLite.baseURL;
     this.session = this.loadSession();
   }
 
@@ -194,10 +207,23 @@ export class SupabaseLite {
 
   /** A failed connection or a timeout is "offline", like URLError on iOS. */
   private async request(path: string, init: RequestInit, timeout: number): Promise<{ status: number; text: string }> {
+    try {
+      return await this.send(this.base, path, init, timeout);
+    } catch (error) {
+      // The server's own address unreachable (a filtered network): try the page's origin, and keep it if it answers.
+      if (this.fallbackBaseURL === undefined || this.base === this.fallbackBaseURL) throw error;
+      const answer = await this.send(this.fallbackBaseURL, path, init, timeout);
+      this.base = this.fallbackBaseURL;
+      try { this.store.set(SupabaseLite.routeKey, "proxy"); } catch { /* storage blocked */ }
+      return answer;
+    }
+  }
+
+  private async send(base: string, path: string, init: RequestInit, timeout: number): Promise<{ status: number; text: string }> {
     const controller = typeof AbortController === "function" ? new AbortController() : undefined;
     const timer = controller ? setTimeout(() => controller.abort(), timeout) : undefined;
     try {
-      const response = await this.fetcher(`${SupabaseLite.baseURL}/${path}`, { ...init, ...(controller ? { signal: controller.signal } : {}) });
+      const response = await this.fetcher(`${base}/${path}`, { ...init, ...(controller ? { signal: controller.signal } : {}) });
       return { status: response.status, text: await response.text() };
     } catch {
       throw new SupabaseFailure("offline");
