@@ -124,10 +124,23 @@ const look = () => {
     chosen: Array.isArray(env?.options?.chosenTargets) ? env.options.chosenTargets : [],
     browser: document.querySelector(".bstage, .bframe") !== null, creatures: me?.zones.battlefield.filter((c) => /creature/i.test(c.card.typeLine)).length ?? 0,
     allCreatures: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine)).length,
+    toughness: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine)).map((c) => (c.toughness ?? 0) - (c.damage ?? 0)),
+    tokens: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => /creature/i.test(c.card.typeLine) && c.card.isToken).length,
+    theirArtifacts: snap.players.filter((p) => p !== me).flatMap((p) => p.zones.battlefield).filter((c) => /artifact/i.test(c.card.typeLine)).length,
   };
 };
 
 const manaValue = (cost) => (cost ?? "").match(/\{[^}]+\}/g)?.reduce((n, sym) => n + (/^\{\d+\}$/.test(sym) ? Number(sym.slice(1, -1)) : sym === "{X}" ? 0 : 1), 0) ?? 0;
+
+/** How many permanents a wipe in hand would take now (the precons' wipes; damage ones count the creatures it kills). */
+function wipeTakes(name, state) {
+  const dies = (damage) => state.toughness.filter((t) => t <= damage).length;
+  if (["Sweltering Suns", "Fiery Confluence", "Magmaquake", "Crippling Fear"].includes(name)) return dies(3);
+  if (name === "Chain Reaction") return dies(state.allCreatures);
+  if (name === "Vandalblast") return state.theirArtifacts;
+  if (name === "Hour of Reckoning") return state.allCreatures - state.tokens;
+  return state.allCreatures;
+}
 
 const SWEEPERS = ["Sweltering Suns", "Chain Reaction", "Cleansing Nova", "Time Wipe", "Citywide Bust", "Magmaquake", "Blasphemous Act", "Deadly Tempest",
   "Necromantic Selection", "Fiery Confluence", "Vandalblast", "Crippling Fear", "Aetherize", "Hour of Reckoning"];
@@ -161,9 +174,10 @@ function decide(state, memory) {
     if (state.mine && /MAIN/.test(state.step ?? "") && state.stack === 0) {
       const land = acts.find((a) => a.type === "play_land");
       if (land) return { action: land.id };
-      // A sweeper first once three or more creatures are out (each game should show a board wipe), else the cheapest.
-      const sweeper = (a) => SWEEPERS.some((name) => (a.label ?? "").includes(name)) && state.allCreatures >= 3 ? (/overload/i.test(a.label) ? -101 : -100) : 0;
-      const spells = acts.filter((a) => a.type === "cast_spell" && !memory.failed.has(a.id))
+      // A wipe first once it would take three or more (each game should show one), held until then; else the cheapest.
+      const wipe = (a) => SWEEPERS.find((name) => (a.label ?? "").includes(name));
+      const sweeper = (a) => wipe(a) && wipeTakes(wipe(a), state) >= 3 ? (/overload/i.test(a.label) ? -101 : -100) : 0;
+      const spells = acts.filter((a) => a.type === "cast_spell" && !memory.failed.has(a.id) && (!args["want-sweeper"] || !wipe(a) || sweeper(a) < 0))
         .sort((a, b) => sweeper(a) - sweeper(b) || manaValue(a.cost) - manaValue(b.cost));
       if (spells.length && memory.casts < 3) {
         memory.casts += 1;
