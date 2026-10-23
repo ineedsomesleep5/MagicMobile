@@ -4,18 +4,21 @@
  * (the back for a library, the face for a graveyard, the face under a cool veil for exile), leaning with the table, and
  * the count on Arena's count oval (ArenaCountBadge). An empty zone is a dashed slot.
  */
+import type { ZoneCard } from "../../core/models";
 import { cardImageURL } from "../cardArt";
+import { type CardReader, readProps } from "./inspectGesture";
 import { LEAN, pileThickness } from "./layout";
 import { CardBack, CountBadge } from "./Symbols";
 
-export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover }: {
+export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader }: {
   x: number; y: number; size: { w: number; h: number }; count: number;
-  /** The face-up top card's name (graveyard, exile); a library shows its back. */
-  top?: string;
+  /** The face-up top card (graveyard, exile); a library shows its back. */
+  top?: ZoneCard;
   kind: "library" | "graveyard" | "exile";
   label: string;
   onOpen?: () => void;
-  onHover?: (name: string | undefined) => void;
+  /** Right-click or a held press reads the top card. */
+  reader?: CardReader;
 }) {
   const { thickness, layers } = pileThickness(count, size.h);
   const left = x - size.w / 2;
@@ -26,7 +29,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover
       style={{ left, top: y - size.h / 2, width: size.w, height: size.h, fontSize: size.w / 15 }}
       aria-label={count === 0 ? `${label}, empty` : `${label}, ${count} card${count === 1 ? "" : "s"}`}
       onClick={(event) => { event.stopPropagation(); onOpen?.(); }}
-      onMouseEnter={top && onHover ? () => onHover(top) : undefined} onMouseLeave={top && onHover ? () => onHover(undefined) : undefined}>
+      {...readProps(reader, top && kind !== "library" ? { name: top.card.name, card: top } : undefined)}>
       <div className="plean" style={lean}>
         {count > 0 && <div className="pshadow" />}
         {Array.from({ length: layers }, (_, i) => {
@@ -39,7 +42,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, onHover
           <div className="ptop" style={{ transform: `translate(${(-thickness * 0.22).toFixed(2)}px, ${(-thickness).toFixed(2)}px)` }}>
             {kind === "library" || !top ? <CardBack /> : (
               <>
-                <img src={cardImageURL(top, "normal")} alt="" crossOrigin="anonymous" draggable={false} />
+                <img src={cardImageURL(top.card.name, "normal")} alt="" crossOrigin="anonymous" draggable={false} />
                 {kind === "exile" && <div className="veil" aria-hidden="true">✦</div>}
               </>
             )}

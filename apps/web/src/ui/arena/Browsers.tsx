@@ -6,6 +6,7 @@
  * the board in view. They send exactly the commands the old prompt panel sent, so the engine never changes for a look.
  */
 import { useEffect, useRef, useState } from "react";
+import { commanderEntries } from "../../core/arenaBoard";
 import { CardChoicePlan, CardChoicePlanRules } from "../../core/cardChoicePlan";
 import { EngineDisplayText } from "../../core/displayText";
 import {
@@ -15,13 +16,14 @@ import {
 import { cardImageURL } from "../cardArt";
 import { AbilityCard, isStackAbility } from "./AbilityCard";
 import { AVATAR } from "./avatars";
+import { type CardReader, readProps } from "./inspectGesture";
 import { CountBadge, ManaSymbol, RulesText } from "./Symbols";
 
 export type Send = (command: Omit<GameCommand, "gameId" | "playerId" | "promptId" | "messageId">, label: string) => void;
 export type SendAction = (action: LegalAction) => void;
 export type BrowserKind = "mulligan" | "question" | "amount" | "split" | "piles" | "abilities" | "modes" | "choices" | "cards" | "players";
-/** A card under the pointer in a browser, to read it large: its name, and whether the zoom goes on the left (it sits right). */
-export type Inspect = (zoom: { name: string; left: boolean } | undefined) => void;
+/** Reads a card in a browser: a right-click, or a press held still (hovering only lifts it). */
+export type Inspect = CardReader;
 
 // ---------------- reading XMage's prompts ----------------
 
@@ -204,15 +206,12 @@ export const lethalDamage = (toughness: number, damage: number, deathtouch: bool
 
 // ---------------- pieces ----------------
 
-const hover = (inspect: Inspect | undefined, name: string | undefined) => (inspect && name ? {
-  onMouseEnter: (event: React.MouseEvent) => inspect({ name, left: event.clientX > window.innerWidth / 2 }),
-  onMouseLeave: () => inspect(undefined),
-} : {});
+const read = (inspect: Inspect | undefined, name: string | undefined, card?: ZoneCard) => readProps(inspect, name ? { name, card } : undefined);
 
 /** The printed card, at a width in board points. */
-function Printed({ name, width, inspect, className = "" }: { name: string; width: number; inspect?: Inspect; className?: string }) {
+function Printed({ name, card, width, inspect, className = "" }: { name: string; card?: ZoneCard; width: number; inspect?: Inspect; className?: string }) {
   return <img className={`bprinted ${className}`} src={cardImageURL(name, "normal")} alt={name} crossOrigin="anonymous" draggable={false}
-    style={{ width, height: width * 1.397 }} {...hover(inspect, name)} />;
+    style={{ width, height: width * 1.397 }} {...read(inspect, name, card)} />;
 }
 
 /** What a question or browser is about: an ability as its ability card, a spell or card as itself. */
@@ -222,13 +221,13 @@ function Subject({ object, card, snapshot, width, inspect }: {
   if (object && (isStackAbility(object) || !object.sourceCard)) {
     const source = card ?? stackSource(object, snapshot);
     return (
-      <div className="bsubject" {...hover(inspect, source?.card.name)}>
+      <div className="bsubject" {...read(inspect, source?.card.name, source)}>
         <AbilityCard source={source} name={source ? undefined : object.sourceName ?? object.name} text={object.rulesText ?? object.name} width={width} />
       </div>
     );
   }
   const shown = object?.sourceCard ?? card;
-  return shown ? <Printed name={shown.card.name} width={width} inspect={inspect} className="bsubject" /> : null;
+  return shown ? <Printed name={shown.card.name} card={shown} width={width} inspect={inspect} className="bsubject" /> : null;
 }
 
 /** A button that keeps stepping while it is held, after a short wait (ArenaRepeatButton); `step` says if it moved. */
@@ -403,7 +402,7 @@ function ModeBrowser({ snapshot, envelope, send, sendAction, pending, height, in
     <Frame title={title} detail={detail} snapshot={snapshot} k={height / 440} inspect={inspect}
       footer={plaques(promptAnswers(snapshot, "choose_mode"), sendAction, pending, "primary")}>
       {envelope.modes!.map((mode, index) => (
-        <button key={mode.id} type="button" className="bpick" disabled={pending} aria-label={clean(mode.label)} {...hover(inspect, source?.card.name)}
+        <button key={mode.id} type="button" className="bpick" disabled={pending} aria-label={clean(mode.label)} {...read(inspect, source?.card.name, source)}
           onClick={() => send({ type: "choose_mode", modeIds: [mode.id] }, mode.label)}>
           <AbilityCard source={source} name={source ? undefined : `Mode ${index + 1}`} kind={source ? `Mode ${index + 1}` : "Mode"}
             text={clean(mode.label).replace(/^\d+\.\s*/, "")} width={width} />
@@ -444,7 +443,7 @@ function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height,
         const number = picked.indexOf(ability.id) + 1;
         return (
           <button key={ability.id} type="button" className={`bpick ${number > 0 ? "numbered" : ""}`} disabled={pending}
-            {...hover(inspect, ability.sourceCard?.card.name ?? ability.sourceName)}
+            {...read(inspect, ability.sourceCard?.card.name ?? ability.sourceName, ability.sourceCard)}
             onClick={() => (ordering ? toggle(ability.id) : send({ type: "choose_ability", abilityId: ability.id }, ability.label))}>
             <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={width} />
             {number > 0 && <CountBadge count={number} size={34} label={`Resolves ${number}`} />}
@@ -483,7 +482,7 @@ function ChoiceBrowser({ snapshot, envelope, send, sendAction, pending, height, 
         <input className="bsearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search choices" aria-label="Search choices" />
       )}
       {asCards ? shown.map((option) => (
-        <button key={option.id} type="button" className="bpick" disabled={pending} aria-label={clean(option.label)} {...hover(inspect, option.card?.card.name)}
+        <button key={option.id} type="button" className="bpick" disabled={pending} aria-label={clean(option.label)} {...read(inspect, option.card?.card.name, option.card)}
           onClick={() => pick(option)}>
           <AbilityCard source={option.card} name={option.card ? undefined : option.label.length < 30 ? option.label : "Choice"}
             kind={option.card ? "Effect" : "Choice"} text={clean(option.text)} width={width} />
@@ -604,7 +603,7 @@ function SplitBrowser({ snapshot, envelope, send, sendAction, pending, height, i
         return (
           <div key={row.slot.id} className="bsplit" style={{ width }} aria-label={`${row.name}: ${value}${dead ? ", lethal" : ""}`}>
             <div className="bface" style={{ width, height: cardHeight }}>
-              {row.card ? <Printed name={row.card.card.name} width={width} inspect={inspect} />
+              {row.card ? <Printed name={row.card.card.name} card={row.card} width={width} inspect={inspect} />
                 : row.player ? <Medallion player={row.player} viewer={row.player.playerId === snapshot.viewerPlayerId} diameter={width * 0.9} life={false} />
                   : row.symbol ? <ManaSymbol symbol={row.symbol} size={width * 0.6} />
                     : <AbilityCard name={row.name} kind="Target" text={row.slot.label} width={width} />}
@@ -633,7 +632,7 @@ function PileBrowser({ snapshot, envelope, send, pending, height, inspect }: Pro
   const width = 96 * Math.min(1.3, height / 440);
   const fan = (p: XmagePromptPile) => p.cards.map((card, index) => (
     <span key={card.instanceId} className="bfan" style={{ marginLeft: index === 0 ? 0 : -width * 0.45, rotate: `${(index - Math.floor(p.cards.length / 2)) * 4}deg` }}>
-      <Printed name={card.card.name} width={width} inspect={inspect} />
+      <Printed name={card.card.name} card={card} width={width} inspect={inspect} />
     </span>
   ));
   return (
@@ -717,7 +716,7 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
     return (
       <button key={c.instanceId} type="button" className={`bcard pick ${marked ? "picked" : ""} ${c.selectable === false ? "off" : ""}`} style={{ width: w }}
         disabled={pending} title={c.disabledReason} aria-pressed={picked} onClick={() => toggle(c.instanceId)}>
-        <Printed name={c.card.name} width={w} inspect={inspect} />
+        <Printed name={c.card.name} card={c} width={w} inspect={inspect} />
         {order !== undefined ? <CountBadge count={order} size={28} /> : marked && !draftKind ? <span className="bcheck" aria-hidden="true">✓</span> : null}
       </button>
     );
@@ -817,15 +816,58 @@ export function ZoneBrowser({ title, cards, snapshot, pending, sendAction, heigh
         const target = targetable(card);
         return (
           <div key={card.instanceId} className={`bcard ${target ? "target" : list.length > 0 ? "usable" : ""}`} style={{ width }}>
-            <Printed name={card.card.name} width={width} inspect={inspect} />
+            <Printed name={card.card.name} card={card} width={width} inspect={inspect} />
             {target && <button type="button" className="aplaque primary" disabled={pending} aria-label={`Choose ${card.card.name}`} onClick={() => chooseTarget!(card)}>Choose</button>}
             {list.slice(0, 3).map((action) => (
               <button key={action.id} type="button" className="aplaque primary" disabled={pending}
                 onClick={() => {
                   // Casting a spell leaves the zone (GameplayAffordances.dismissesZone); other actions keep it open.
-                  if (action.type === "cast_spell") { inspect?.(undefined); close(); }
+                  if (action.type === "cast_spell") close();
                   sendAction(action);
                 }}>
+                {list.length === 1 && action.type === "cast_spell" ? "Cast" : EngineDisplayText.label(action.label)}</button>
+            ))}
+          </div>
+        );
+      })}
+    </Frame>
+  );
+}
+
+const ZONE_WORDS: Record<string, string> = {
+  battlefield: "On the battlefield", graveyard: "In the graveyard", exile: "In exile", hand: "In hand", library: "In the library",
+};
+
+/**
+ * A player's commanders (the command zone as Arena's zone browser, opened from your medallion or a player card): each
+ * commander large, partners side by side, its command-zone casts and next tax under it (iOS's wording), and under yours
+ * the plaque that casts it, the actions the old medallion menu sent. An opponent's is to look at. Done closes it.
+ */
+export function CommanderBrowser({ player, snapshot, pending, sendAction, height, inspect, close }: {
+  player: PlayerGameState; snapshot: GameSnapshot; pending: boolean; sendAction: SendAction; height: number; inspect?: Inspect; close: () => void;
+}) {
+  const mine = player.playerId === snapshot.viewerPlayerId;
+  const entries = commanderEntries(player, snapshot);
+  const title = mine ? "Command" : `${EngineDisplayText.label(player.displayName ?? "", "Opponent")} · Command`;
+  const width = Math.min(280, height * 0.56) / 1.4;
+  const actions = (card: ZoneCard) => !mine ? [] : (snapshot.legalActions ?? []).filter((a) =>
+    (a.cardInstanceId === card.instanceId || a.sourceInstanceId === card.instanceId) && a.type !== "make_mana");
+  return (
+    <Frame title={title} detail={entries.length === 0 ? "No cards" : undefined} snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close}
+      back="Back to the command zone" footer={<button type="button" className="aplaque primary" onClick={close}>Done</button>}>
+      {entries.map((entry) => {
+        const list = entry.card && entry.zone === "command" ? actions(entry.card) : [];
+        const away = entry.zone !== undefined && entry.zone !== "command" ? ZONE_WORDS[entry.zone] : undefined;
+        const counts = [entry.casts !== undefined ? `Command-zone casts: ${entry.casts}` : undefined, entry.tax !== undefined ? `Next tax: {${entry.tax}}` : undefined]
+          .filter((line): line is string => line !== undefined);
+        return (
+          <div key={entry.key} className={`bcard bcommander ${list.length > 0 ? "usable" : ""} ${away ? "away" : ""}`} style={{ width }} data-id={`commander.${entry.name}`}>
+            <Printed name={entry.card?.card.name ?? entry.name} card={entry.card} width={width} inspect={inspect} />
+            {away && <span className="bwhere">{away}</span>}
+            {counts.length > 0 && <span className="btax">{counts.map((line) => <span key={line}><RulesText text={line} /></span>)}</span>}
+            {list.slice(0, 3).map((action) => (
+              <button key={action.id} type="button" className="aplaque primary" disabled={pending}
+                onClick={() => { if (action.type === "cast_spell") close(); sendAction(action); }}>
                 {list.length === 1 && action.type === "cast_spell" ? "Cast" : EngineDisplayText.label(action.label)}</button>
             ))}
           </div>

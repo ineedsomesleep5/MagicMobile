@@ -27,8 +27,14 @@ export const cardImageURL = (name: string, version: ArtVersion): string => {
 export const CARD_BACK_URL = "https://backs.scryfall.io/normal/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg";
 
 /** A mana symbol, flat, as Scryfall draws it (iOS ManaSymbolView; the Arena board has no 3D tavern pips): {W/U} is WU.svg. */
-export const manaSymbolURL = (symbol: string): string =>
-  `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol.toUpperCase().replace(/\//g, ""))}.svg`;
+const symbolFile = (symbol: string) => encodeURIComponent(symbol.toUpperCase().replace(/\//g, ""));
+/**
+ * A card symbol ({T}, {W}, {2/B}…) from the site's own copy of Scryfall's set (public/symbols, scripts/fetch_symbols.mjs):
+ * a network that blocks svgs.scryfall.io (a work filter) would otherwise turn every symbol into a letter.
+ */
+export const manaSymbolURL = (symbol: string): string => `/symbols/${symbolFile(symbol)}.svg`;
+/** Scryfall's own copy, for a symbol newer than the site's set. */
+export const remoteManaSymbolURL = (symbol: string): string => `https://svgs.scryfall.io/card-symbols/${symbolFile(symbol)}.svg`;
 
 const images = new Map<string, Promise<HTMLImageElement | undefined>>();
 let nextSlot = 0;

@@ -18,7 +18,7 @@ import { GameEmotes, TableChatFilter } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
 import { useTable } from "./App";
 import { ArenaCard, type ArenaCardProps } from "./arena/ArenaCard";
-import { AmountPill, Browser, browserKind, cardNamed, type Inspect, type Send, StackBrowser, ZoneBrowser } from "./arena/Browsers";
+import { AmountPill, Browser, browserKind, cardNamed, CommanderBrowser, type Send, StackBrowser, ZoneBrowser } from "./arena/Browsers";
 import {
   ARENA, BASE_GEOMETRY, battlefieldPlaces, drops, geometry, type Geometry, handPlaces, mulliganPlaces, opponentHandPlaces, phaseStrip, type Place, scrubHand, stackPlace,
   STAGE,
@@ -40,6 +40,9 @@ import { combatPhase, commandersTaken, commanderTakenNotice, extraHandCards } fr
 import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
+import { usePacedSnapshot } from "./arena/usePacedSnapshot";
+import { type CardReader, readProps } from "./arena/inspectGesture";
+import { GAME_SPEED_KEY, GAME_SPEED_TITLES, GAME_SPEEDS, type GameSpeed, loadGameSpeed, MAX_PACE_LAG, TABLE_PACE_LAG } from "../core/gameSpeed";
 import { ArenaPile } from "./arena/ArenaPile";
 import { AVATAR } from "./arena/avatars";
 import { ManaSymbol, RulesText } from "./arena/Symbols";
@@ -162,14 +165,19 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   useTable(table);
   const session = table.session;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
-  const snapshot = session?.state.comboRun ? session.presentedSnapshot : session?.state.snapshot;
+  const live = session?.state.comboRun ? session.presentedSnapshot : session?.state.snapshot;
+  // Game speed (Options → Gameplay): the board shows each opponent action for its time before the next one; the live game
+  // runs on. A combo loop's repeats keep their own pace.
+  const [speed, setSpeed] = useState<GameSpeed>(() => loadGameSpeed(storage.get));
+  // At a table with people the turn clock runs, so the board may lag less behind the game there.
+  const paced = usePacedSnapshot(live, session?.state.comboRun ? "fast" : speed, table.solo ? MAX_PACE_LAG : TABLE_PACE_LAG);
+  const snapshot = paced.snapshot;
   const wrapRef = useRef<HTMLDivElement>(null);
   const geo = useGeometry(wrapRef);
   /** Plate points to board points: in proportion (the middle), from the top edge (theirs), from the bottom edge (yours). */
   const Y = (y: number) => y * geo.ky;
   const T = (y: number) => y * geo.grow;
   const B = (y: number) => geo.height - (STAGE.height - y) * geo.grow;
-  const [hovered, setHovered] = useState<string>();
   /** The hand card popped up whole, the one under the pointer (ArenaHandFan's liftedCardID). */
   const [popped, setPopped] = useState<string>();
   const [menu, setMenu] = useState<{ id: string; at: Place; actions: LegalAction[] }>();
@@ -184,11 +192,11 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   /** The prompt whose player choice was opened from a medallion as a panel (several picks). */
   const [playerPanel, setPlayerPanel] = useState<string>();
   const [zone, setZone] = useState<{ title: string; cards: ZoneCard[] }>();
+  /** The player whose commanders are open in the commander browser. */
+  const [commanderView, setCommanderView] = useState<string>();
   const [playerCard, setPlayerCard] = useState<string>();
   const [confirmConcede, setConfirmConcede] = useState(false);
   const [rollDismissed, setRollDismissed] = useState(false);
-  /** A card under the pointer in a browser (the table's own hover is `hovered`). */
-  const [browseZoom, setBrowseZoom] = useState<{ name: string; left: boolean }>();
   const [smartSettings, setSmartSettings] = useState<SmartPassSettings>(() => session?.smartPass ?? loadSmartPass(storage.get));
   const [passAfterCast, setPassAfterCast] = useState(() => storage.get("mm.web.autoPassAfterCast") !== "off");
   const [soundsOn, setSoundsOn] = useState(() => storage.get(SOUND_KEYS.effects) !== "off");
@@ -208,6 +216,9 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   // A long loop runs without the board's effects (BoardFXLevel.suppressedForLoop).
   const fxLevel: BoardFXLevel = session?.state.comboFast ? "off" : resolvedLevel(fxSetting, reduceMotion);
   const fx = useBoardFX(snapshot, session, fxLevel);
+  // Smart pass waits for the board to catch up with the game at this speed.
+  useLayoutEffect(() => { fx.hold.paceUntil = paced.paceUntil; });
+  useEffect(() => () => { fx.hold.paceUntil = undefined; }, [fx.hold]);
   const combatReasons = useRef(new CombatLogReasons());
   const stageRef = useRef<HTMLDivElement>(null);
   const vignetteRef = useRef<HTMLDivElement>(null);
@@ -233,8 +244,8 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   /** Where each card lies, kept after it leaves so its departure starts there; and where a card was before its last move. */
   const places = useRef(new Map<string, Place>());
   const movedFrom = useRef(new Map<string, { place: Place; at: number }>());
-  /** The card being read in the inspector (a right-click or a held mouse button), which holds smart pass while open. */
-  const [reading, setReading] = useState<{ id: string; name: string; card?: ZoneCard }>();
+  /** The card being read in the inspector (a right-click, or a held press while it lasts), which holds smart pass while open. */
+  const [reading, setReading] = useState<{ name: string; card?: ZoneCard; held?: boolean }>();
   /** A hand card being carried to the table: where it started and where the pointer is, in board points. */
   const [carry, setCarry] = useState<{ id: string; start: { x: number; y: number }; point: { x: number; y: number }; moved: boolean }>();
   const suppressClick = useRef(false);
@@ -245,8 +256,11 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   // Development only: the table, for checking a game from the console.
   // Development, or `?debug` on any build: the table and the board's effects, for checking a game from the console or a
   // headless driver (scripts/play.mjs).
+  // `board` is the snapshot the board shows at the game speed (the session's is the live game).
+  const boardRef = useRef(snapshot);
+  boardRef.current = snapshot;
   useEffect(() => {
-    if (import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")) Object.assign(window, { __mm: { table, fx: fxRef } });
+    if (import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")) Object.assign(window, { __mm: { table, fx: fxRef, board: boardRef } });
   }, [table]);
 
   const viewer = snapshot?.viewerPlayerId;
@@ -297,7 +311,8 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
 
   // Every answer from XMage steps Auto Pay once it has landed: a new revision, a new prompt, or the pending answer
   // clearing (ArenaAutoPayDriver).
-  const helperKey = `${snapshot?.bridgeRevision ?? -1}|${envelope?.id ?? ""}|${envelope?.messageId ?? -1}|${session?.state.pendingActionID ?? ""}|${session?.state.working}`;
+  // The live game's, not the paced board's: these helpers answer the game, and the board only ever lags an opponent's action.
+  const helperKey = `${live?.bridgeRevision ?? -1}|${live?.promptEnvelopeV2?.id ?? ""}|${live?.promptEnvelopeV2?.messageId ?? -1}|${session?.state.pendingActionID ?? ""}|${session?.state.working}`;
   const sendTriggerPick = useCallback((pick: TriggerPick) => {
     const current = session?.state.snapshot;
     if (!session || !current?.viewerPlayerId) return;
@@ -413,9 +428,6 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   useEffect(() => { if (firstPanel.current) { firstPanel.current = false; return; } gameAudio.play(panel === "log" ? "page-flip" : panel ? "ui-open" : "ui-close"); }, [panel]);
   // A number takes the button corner (ArenaAmountPill), with the board in view.
   const amountPill = browser === "amount" && !finished;
-  const inspect: Inspect = setBrowseZoom;
-  // A zoom from a browser goes when the browser does.
-  useEffect(() => setBrowseZoom(undefined), [envelope?.id, envelope?.messageId, zone, stackOpen]);
 
   /** A click on a card: answer a target or combat question with it, or offer its legal actions. */
   const clickCard = (id: string, at?: Place) => {
@@ -437,28 +449,6 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
     const bounds = wrapRef.current!.getBoundingClientRect();
     return { x: (clientX - bounds.left - geo.left) / geo.scale, y: (clientY - bounds.top - geo.top) / geo.scale };
   };
-  /** Opens the inspector on a card (CardInspector): its printed face, live state, glossary and attachments. */
-  const inspectCard = (id: string) => {
-    const zoneCard = snapshot?.players.flatMap((p) => [...p.zones.battlefield, ...p.zones.hand, ...p.zones.graveyard, ...p.zones.exile, ...p.zones.command])
-      .find((c) => c.instanceId === id);
-    const object = stack.find((o) => o.id === id);
-    const name = zoneCard?.card.name ?? object?.sourceCard?.card.name ?? object?.sourceName ?? object?.name;
-    if (name) setReading({ id, name, card: zoneCard ?? object?.sourceCard });
-  };
-  // Holding the mouse button on a card for 0.35 s reads it, as a held finger does on iOS.
-  const holdTimer = useRef<number | undefined>(undefined);
-  const pressCard = (id: string, event: React.PointerEvent) => {
-    window.clearTimeout(holdTimer.current);
-    const at = { x: event.clientX, y: event.clientY };
-    holdTimer.current = window.setTimeout(() => { suppressClick.current = true; setCarry(undefined); inspectCard(id); }, 350);
-    const cancel = (e: PointerEvent) => {
-      if (e.type !== "pointermove" || Math.hypot(e.clientX - at.x, e.clientY - at.y) > 6) {
-        window.clearTimeout(holdTimer.current);
-        window.removeEventListener("pointermove", cancel); window.removeEventListener("pointerup", cancel);
-      }
-    };
-    window.addEventListener("pointermove", cancel); window.addEventListener("pointerup", cancel);
-  };
   /** A click on a hand card: a target answer takes it; the popped card plays (ArenaHandFan.play); another pops first. */
   const clickHand = (id: string) => {
     if (suppressClick.current) { suppressClick.current = false; return; }
@@ -470,7 +460,6 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   };
   /** Pressing a hand card may start carrying it to the table (ArenaHandFan's drag). */
   const pressHand = (id: string, event: React.PointerEvent) => {
-    pressCard(id, event);
     if (!snapshot || pending || finished || mulligan) return;
     const start = toBoard(event.clientX, event.clientY);
     setCarry({ id, start, point: start, moved: false });
@@ -480,6 +469,14 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   // update a component while rendering a different component (GameScreen)" warning).
   const carryNow = useRef(carry);
   carryNow.current = carry;
+  /**
+   * Reads a card in the inspector (CardInspector): a right-click keeps it open until a click elsewhere or Esc, a held press
+   * until it is let go (HoldCardInspection). Hovering never opens it. A hold on a hand card ends any carry it started.
+   */
+  const reader: CardReader = useMemo(() => ({
+    open: (target, held) => { carryNow.current = undefined; setCarry(undefined); setReading({ name: target.name, card: target.card, held }); },
+    release: () => setReading((current) => (current?.held ? undefined : current)),
+  }), []);
   useEffect(() => {
     if (!carry) return;
     const move = (e: PointerEvent) => {
@@ -528,9 +525,8 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topObject?.id]);
-  // Reading the spell on the stack card (the pointer on it) holds smart pass, as holding a card open does on iOS.
-  const readingStack = hovered !== undefined && stack.some((o) => o.id === hovered);
-  useEffect(() => { fx.hold.reading = readingStack || reading !== undefined; }, [fx.hold, readingStack, reading]);
+  // Reading a card (the inspector open) holds smart pass, as holding a card open does on iOS.
+  useEffect(() => { fx.hold.reading = reading !== undefined; }, [fx.hold, reading]);
   useEffect(() => () => { fx.hold.reading = false; }, [fx.hold]);
   // Redraw when the turn banner starts and ends, and when the wipe recap goes.
   const [, setFxTick] = useState(0);
@@ -586,7 +582,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   }, [handIDs.join(",")]);
   useEffect(() => () => arrivalTimers.current.forEach((t) => window.clearTimeout(t)), []);
   // A browser over the table keeps the hand resting under its veil.
-  const covered = showBrowser || zone !== undefined || stackOpen;
+  const covered = showBrowser || zone !== undefined || stackOpen || commanderView !== undefined;
   const carrying = carry?.moved === true;
   // The hand rests tucked along the bottom edge; the card under the pointer pops up whole (ArenaHandPosture: the
   // landscape board never opens the fan). A browser over the table or a carried card puts the pop down.
@@ -613,12 +609,12 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   if (snapshot && me) {
     battlefieldPlaces(me.zones.battlefield, "me", undefined, geo, frames).forEach((place, id) => {
       const card = me.zones.battlefield.find((c) => c.instanceId === id)!;
-      add({ id, place, view: "tile", card, frames, owner: "me", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered, onPress: pressCard, onInspect: inspectCard });
+      add({ id, place, view: "tile", card, frames, owner: "me", classes: classFor(card, true), onClick: clickAt(place), reader });
     });
     opponents.forEach((opponent, index) => {
       battlefieldPlaces(opponent.zones.battlefield, "opp", { index, count: opponents.length }, geo, frames).forEach((place, id) => {
         const card = opponent.zones.battlefield.find((c) => c.instanceId === id)!;
-        add({ id, place, view: "tile", card, frames, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), onHover: setHovered, onPress: pressCard, onInspect: inspectCard });
+        add({ id, place, view: "tile", card, frames, owner: "opp", classes: classFor(card, true), onClick: clickAt(place), reader });
       });
       opponentHandPlaces(opponent.zones.handCount ?? opponent.zones.hand.length, { index, count: opponents.length }, geo).forEach((place, i) =>
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
@@ -636,8 +632,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
         extraZone: extra ? actionsFor(snapshot, card.instanceId).find((a) => a.sourceZone)?.sourceZone ?? (me.zones.graveyard.includes(card) ? "graveyard" : "exile") : undefined,
         classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""}`,
-        onClick: mulligan ? () => inspectCard(card.instanceId) : clickHand, onHover: mulligan ? undefined : setHovered, onPress: mulligan ? undefined : pressHand,
-        onInspect: inspectCard });
+        onClick: mulligan ? () => reader.open({ name: card.card.name, card }, false) : clickHand, onPress: mulligan ? undefined : pressHand, reader });
     });
     // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
     stack.slice(0, 1).forEach((item, depth) => {
@@ -655,7 +650,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
       add({
         id: item.id, place, view: "face", name, card: item.sourceCard, label: item.name,
         ability: ability ? { source, name: item.sourceName ?? item.name, text: item.rulesText ?? item.name } : undefined,
-        classes: [landing ? "landing" : "", commander ? "commander" : ""].join(" "), onHover: setHovered, onClick: () => setStackOpen(true), onInspect: inspectCard,
+        classes: [landing ? "landing" : "", commander ? "commander" : ""].join(" "), onClick: () => setStackOpen(true), reader,
       });
     });
   }
@@ -863,7 +858,8 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             // A player target with several picks opens its panel (arenaSubmitPlayerTarget); one pick answers here.
             if (targetable && ((envelope?.maxChoices ?? 1) > 1 || (envelope?.minChoices ?? 1) > 1)) setPlayerPanel(envelope?.id);
             else if (targetable) send({ type: "choose_target", targetIds: [player.playerId] }, player.displayName ?? "Player");
-            else if (ready) setMenu({ id: "commander", at: { x: at.x + 110, y: at.y, w: d, h: d, z: 0 }, actions: commandActions });
+            // Your commander ready to cast opens the commander browser: the card large, its tax, Cast under it.
+            else if (ready) setCommanderView(player.playerId);
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
           <div className="av">{mine ? AVATAR.me : AVATAR.opp}</div>
@@ -909,7 +905,6 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
     const size = { w: spots.size.w * geo.grow, h: spots.size.h * geo.grow };
     const whose = mine ? "Your" : `${player.displayName ?? "Their"}’s`;
     const open = (zone: "graveyard" | "exile") => () => setZone({ title: `${whose} ${zone}`, cards: player.zones[zone] });
-    const hover = (name: string | undefined) => setHovered(name ? `zone:${name}` : undefined);
     return (
       <div key={`piles-${player.playerId}`}>
         <ArenaPile {...at(spots.library)} size={size} count={player.zones.libraryCount ?? 0} kind="library" label={`${whose} library`} />
@@ -923,17 +918,17 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             <button type="button" className={`atoplib ${playable ? "playable" : ""}`} style={{ left: spot.x, top: spot.y, height: size.h, width: size.h / 1.395 }}
               aria-label={`Top of ${mine ? "your" : `${player.displayName ?? "their"}’s`} library: ${top.card.name}${playable ? ", you can play it" : ""}`}
               onClick={(e) => { e.stopPropagation(); setZone({ title: `Top of ${mine ? "your" : `${player.displayName ?? "their"}’s`} library`, cards: [top] }); }}
-              onMouseEnter={() => hover(top.card.name)} onMouseLeave={() => hover(undefined)}>
+              {...readProps(reader, { name: top.card.name, card: top })}>
               <CardArt card={top.card} version="normal" />
               <i aria-hidden="true">{EYE}</i>
             </button>
           );
         })()}
         <ArenaPile {...at(spots.graveyard)} size={size} count={player.zones.graveyard.length} kind="graveyard" label={`${whose} graveyard`}
-          top={player.zones.graveyard.at(-1)?.card.name} onOpen={open("graveyard")} onHover={hover} />
+          top={player.zones.graveyard.at(-1)} onOpen={open("graveyard")} reader={reader} />
         {player.zones.exile.length > 0 && (
           <ArenaPile {...at(spots.exile)} size={size} count={player.zones.exile.length} kind="exile" label={`${whose} exile`}
-            top={player.zones.exile.at(-1)?.card.name} onOpen={open("exile")} onHover={hover} />
+            top={player.zones.exile.at(-1)} onOpen={open("exile")} reader={reader} />
         )}
       </div>
     );
@@ -951,17 +946,6 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
     hand: (id) => (id === viewer ? { x: (handRoom.left + handRoom.right) / 2, y: B(ARENA.hand.downY) } : { x: ARENA.opponentHand.x, y: T(ARENA.opponentHand.y) + 20 }),
   };
 
-  // The card under the pointer, large, away from the side it sits on (never for the hand, which pops up instead).
-  const inspected = (() => {
-    if (browseZoom) return browseZoom;
-    if (!hovered || !snapshot) return undefined;
-    if (hovered.startsWith("zone:")) return { name: hovered.slice(5), left: false };
-    if (handIDs.includes(hovered)) return undefined;
-    const item = cards.get(hovered);
-    if (!item || item.view === "back") return undefined;
-    return { name: item.name ?? item.card?.card.name ?? "", left: item.place.x > 560, card: item.card?.card };
-  })();
-
   const log = snapshot?.log ?? [];
   // One line of combat context under damage and deaths, decided as each entry first appears (CombatLogReasons).
   const logReasons = useMemo(() => { if (snapshot) combatReasons.current.observe(snapshot); return combatReasons.current.reasons; }, [snapshot]);
@@ -972,9 +956,10 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   // The desktop keys for iOS's touches (docs/WEB_PARITY.md, Desktop input): Space taps the primary plaque and a 0.6 s hold
   // of it (or of the plaque) turns on Full control; Enter confirms a browser; Esc closes the top layer; Ctrl/Cmd+Z undoes mana.
   const undoMana = snapshot && paying && !autoPaying ? manaUndoActions(snapshot).find((a) => a.type === "undo_mana") : undefined;
-  const closeTop = browseZoom ? () => setBrowseZoom(undefined) : menu ? () => setMenu(undefined) : cornerMenu ? () => setCornerMenu(undefined)
+  const closeTop = menu ? () => setMenu(undefined) : cornerMenu ? () => setCornerMenu(undefined)
     : playerCard ? () => setPlayerCard(undefined) : confirmConcede ? () => setConfirmConcede(false) : sheet ? () => setSheet(undefined)
-    : zone ? () => setZone(undefined) : stackOpen ? () => setStackOpen(false) : panel ? () => setPanel(undefined) : undefined;
+    : commanderView ? () => setCommanderView(undefined) : zone ? () => setZone(undefined) : stackOpen ? () => setStackOpen(false)
+    : panel ? () => setPanel(undefined) : undefined;
   const keys = useRef<{ primary?: () => void; fullControl?: () => void; undo?: () => void; close?: () => void; reading: boolean }>({ reading: false });
   keys.current = {
     primary: primary?.onClick && !primary.disabled && !(primary.style !== "quiet" && pending) ? primary.onClick : undefined,
@@ -1041,7 +1026,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   }, [session]);
 
   return (
-    <div className="arena" ref={wrapRef} onClick={() => { setCornerMenu(undefined); setPlayerCard(undefined); setMenu(undefined); }}
+    <div className="arena" ref={wrapRef} data-paced={paced.behind ? "behind" : undefined} onClick={() => { setCornerMenu(undefined); setPlayerCard(undefined); setMenu(undefined); }}
       onPointerDownCapture={() => gameAudio.unlock()}
       onClickCapture={(event) => { if ((event.target as Element).closest?.(".aplaque, .aff, .acoin, .amenucard .arow, .aundo")) gameAudio.play("ui-tap"); }}
       onPointerMove={(event) => {
@@ -1104,7 +1089,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             })}
           </svg>
         )}
-        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackOpen && !zone && (() => {
+        {snapshot && stack[0] && revealID !== stack[0].id && !showBrowser && !reading && !playerCard && !stackOpen && !zone && !commanderView && (() => {
           // The top of the stack points at its targets, a spell as well as an ability, with a reticle on each target while it
           // waits; an ability without targets points back at its source (ArenaStackArc, ArenaTargetReticle).
           const top = stack[0];
@@ -1277,17 +1262,6 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
           </div>
         )}
 
-        {inspected && (
-          <div className="ainspect" style={{
-            left: inspected.left ? 250 - (ARENA.zoom.w * Math.min(geo.grow, 1.2)) / 2 : ARENA.zoom.x - (ARENA.zoom.w * Math.min(geo.grow, 1.2)) / 2,
-            top: Math.max(6, Y(ARENA.zoom.y) - (ARENA.zoom.h * Math.min(geo.grow, 1.2)) / 2), width: ARENA.zoom.w * Math.min(geo.grow, 1.2),
-          }}>
-            {/* A card Scryfall can't find by name (most tokens) shows nothing rather than a broken image. */}
-            {/* A token shows its matched printing (CardArt); nothing while it is found or when there is none. */}
-            <CardArt card={("card" in inspected && inspected.card) || { name: inspected.name, typeLine: "" }} version="normal" />
-          </div>
-        )}
-
         {menu && (
           <div className="amenu glass" style={{ left: Math.min(STAGE.width - 260, Math.max(10, menu.at.x - 125)), top: Math.max(10, menu.at.y - menu.at.h / 2 - 12 - 46 * (menu.actions.length + 1)), right: "auto" }}
             onClick={stop}>
@@ -1334,7 +1308,11 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
                 const on = mine && (icon.key === "command" ? commandActions.length > 0 : icon.key !== "hand" && lit(icon.cards));
                 return (
                   <button key={icon.key} type="button" className={on ? "lit" : ""} aria-label={on ? `${icon.name}, ${icon.count}, you can play from it` : `${icon.name}, ${icon.count}`}
-                    onClick={() => { setPlayerCard(undefined); setZone({ title: label(icon.key === "library" ? (icon.cards.length > 0 ? "Library · revealed top card" : "Library") : icon.key === "hand" ? "Hand — visible cards" : icon.name), cards: icon.cards }); }}>
+                    onClick={() => {
+                      setPlayerCard(undefined);
+                      if (icon.key === "command") setCommanderView(player.playerId);
+                      else setZone({ title: label(icon.key === "library" ? (icon.cards.length > 0 ? "Library · revealed top card" : "Library") : icon.key === "hand" ? "Hand — visible cards" : icon.name), cards: icon.cards });
+                    }}>
                     {icon.glyph}<b>{icon.count}</b><small>{icon.name.toUpperCase()}</small>
                   </button>
                 );
@@ -1386,6 +1364,13 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
               )}
               <label><Check on={soundsOn} label="Sounds" onToggle={() => { const on = !soundsOn; setSoundsOn(on); storage.set(SOUND_KEYS.effects, on ? "on" : "off"); }} />Sounds</label>
               <label><Check on={frames} label="Card Frames" onToggle={() => { const on = !frames; setFrames(on); storage.set("mm.web.cardFrames", on ? "on" : "off"); }} />Card Frames</label>
+              <div className="seg" role="group" aria-label="Game speed"><span>Game speed</span>
+                {GAME_SPEEDS.map((value) => (
+                  <button key={value} type="button" aria-pressed={speed === value} onClick={() => { setSpeed(value); storage.set(GAME_SPEED_KEY, value); }}>
+                    {GAME_SPEED_TITLES[value]}
+                  </button>
+                ))}
+              </div>
               <div className="seg" role="group" aria-label="Effects"><span>Effects</span>
                 {(["full", "reduced", "off"] as const).map((level) => (
                   <button key={level} type="button" aria-pressed={fxSetting === level} onClick={() => { setFxSetting(level); storage.set("mm.web.boardEffects", level); }}>
@@ -1424,7 +1409,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             </header>
             {panel === "log" ? (
               // The public log names a printed card, not a lookup of that object's current (possibly hidden) state.
-              <GameLog log={log} reasons={logReasons} inspect={(reference) => setReading({ id: reference.objectID, name: reference.name })} />
+              <GameLog log={log} reasons={logReasons} inspect={(reference) => setReading({ name: reference.name })} />
             ) : (
               <>
                 <ol className="alog chat">{table.state.chat.map((line) => (
@@ -1439,7 +1424,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
         {showBrowser && snapshot && envelope && (
           <div onClick={stop}>
             <Browser key={`${envelope.id}:${envelope.messageId}`} kind={browser} snapshot={snapshot} envelope={envelope} send={send} sendAction={sendAction}
-              pending={pending} height={geo.height} inspect={inspect} answerActions={session?.supportedAnswerActions} orderTriggers={orderTriggers}
+              pending={pending} height={geo.height} inspect={reader} answerActions={session?.supportedAnswerActions} orderTriggers={orderTriggers}
               commitPlan={session ? commitPlan : undefined} />
           </div>
         )}
@@ -1477,7 +1462,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
         )}
         {stackOpen && snapshot && (
           <div onClick={stop}>
-            <StackBrowser snapshot={snapshot} height={geo.height} inspect={inspect} close={() => setStackOpen(false)}
+            <StackBrowser snapshot={snapshot} height={geo.height} inspect={reader} close={() => setStackOpen(false)}
               resolveAll={secondary?.label === "Resolve All" ? secondary.onClick : undefined}
               stopSkipping={skipping && session ? () => session.stopAutoPass() : undefined} />
           </div>
@@ -1486,10 +1471,20 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
         {zone && snapshot && (
           <div onClick={stop}>
             <ZoneBrowser title={zone.title} cards={zone.cards} snapshot={snapshot} pending={pending} sendAction={sendAction} height={geo.height}
-              inspect={inspect} close={() => setZone(undefined)} targetIDs={targetIDs}
+              inspect={reader} close={() => setZone(undefined)} targetIDs={targetIDs}
               chooseTarget={envelope ? (card) => send({ type: "choose_target", targetIds: [card.instanceId] }, card.card.name) : undefined} />
           </div>
         )}
+
+        {commanderView && snapshot && (() => {
+          const player = snapshot.players.find((p) => p.playerId === commanderView);
+          return player && (
+            <div onClick={stop}>
+              <CommanderBrowser player={player} snapshot={snapshot} pending={pending} sendAction={sendAction} height={geo.height} inspect={reader}
+                close={() => setCommanderView(undefined)} />
+            </div>
+          );
+        })()}
 
         {showRoll && roll && (() => {
           // The starting roll on the board (MultiplayerD20View, Arena look): the board dimmed to 0.8, one large serif line,

@@ -26,6 +26,8 @@ const maxTurns = Number(args.turns ?? 40);
 // that would kill you unblocked is coming (0: play it out).
 const concedeAt = Number(args["concede-at"] ?? 10);
 const shots = new Set(String(args.shots ?? "").split(",").filter(Boolean).map(Number));
+// --speed relaxed|standard|fast: the game speed (Options → Gameplay); unset leaves the page's default (Standard).
+const speed = args.speed;
 mkdirSync(out, { recursive: true });
 
 /** Installed in the page: records the session's answers, the snapshots and the board's effects into window.__rec. */
@@ -104,7 +106,9 @@ const look = () => {
   const env = snap.promptEnvelopeV2;
   const me = snap.players.find((p) => p.playerId === snap.viewerPlayerId);
   return {
-    ready: true, turn: snap.turn, step: snap.step, mine: snap.activePlayerId === snap.viewerPlayerId, over: snap.gameStatus === "completed",
+    ready: true, turn: snap.turn, step: snap.step,
+    // The board is still showing an opponent's earlier action (game speed): its plaques answer only once it catches up.
+    behind: document.querySelector(".arena")?.dataset.paced === "behind", mine: snap.activePlayerId === snap.viewerPlayerId, over: snap.gameStatus === "completed",
     winners: snap.winnerPlayerIds ?? [], viewer: snap.viewerPlayerId, working: s.state.working || s.state.pendingActionID !== undefined,
     error: s.state.errorMessage, life: [me?.life, ...snap.players.filter((p) => p !== me).map((p) => p.life)],
     prompt: env && { id: env.id, mine: env.playerId === snap.viewerPlayerId, method: env.method, kind: env.responseKind, message: env.message,
@@ -147,7 +151,7 @@ const SWEEPERS = ["Sweltering Suns", "Chain Reaction", "Cleansing Nova", "Time W
 /** The policy's next move for a look, or undefined to wait. */
 function decide(state, memory) {
   const p = state.prompt;
-  if (!state.ready || state.over || state.working || !p || !p.mine) return undefined;
+  if (!state.ready || state.over || state.working || state.behind || !p || !p.mine) return undefined;
   const acts = state.actions;
   if (/mulligan/i.test(p.message)) {
     // --want-sweeper: mulligan (at most four times) for a hand holding a board wipe, so the game is likely to show one.
@@ -248,12 +252,13 @@ async function concedeByMenu(page) {
 
 async function play(page, game) {
   // The decks the way a player leaves them chosen: yours in the Play panel, the AI's in the Custom Table's seat.
-  await page.addInitScript(([me, ai]) => {
+  await page.addInitScript(([me, ai, pace]) => {
+    if (pace) localStorage.setItem("mm.web.gameSpeed", pace);
     localStorage.setItem("mm.web.deck.selected", `precon:${me}`);
     localStorage.setItem("mm.web.custom.seats", ai);
     localStorage.setItem("mm.web.custom.players", "ai");
     if (!localStorage.getItem("mm.web.name")) localStorage.setItem("mm.web.name", "Player");
-  }, [args.me ?? "token-triumph", args.ai ?? "grave-danger"]);
+  }, [args.me ?? "token-triumph", args.ai ?? "grave-danger", speed]);
   await page.goto(url);
   if (args.polls) await page.evaluate(() => { window.__recordPolls = true; });
   await page.addScriptTag({ content: `(${recorder.toString()})()` });
@@ -391,7 +396,13 @@ async function play(page, game) {
         await page.mouse.move(640, 330, { steps: 12 });
         await page.mouse.up();
         memory.drags += 1;
-        await page.evaluate(() => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "drag" }));
+        // What the board and the live game said about the card when it landed (a refusal's evidence).
+        await page.evaluate((id) => {
+          const live = window.__mm.table.session.state.snapshot; const board = window.__mm.board?.current;
+          const plays = (s) => (s?.legalActions ?? []).filter((a) => (a.cardInstanceId === id || a.sourceInstanceId === id) && (a.type === "cast_spell" || a.type === "play_land")).length;
+          window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "drag", live: plays(live), board: plays(board),
+            behind: document.querySelector(".arena")?.dataset.paced === "behind" });
+        }, move.drag);
       } else if (move.action) {
         await page.evaluate(async (id) => { const s = window.__mm.table.session; const a = s.state.snapshot.legalActions.find((x) => x.id === id); if (a) await s.send(a); }, move.action);
       }
@@ -434,9 +445,22 @@ async function play(page, game) {
   if (args.polls) writeFileSync(join(out, `game-${game}-polls.json`), JSON.stringify(polls));
   writeFileSync(join(out, `game-${game}.json`), JSON.stringify({ final: { turn: final.turn, life: final.life, won }, ...kept }, null, 1));
   const count = (type) => rec.sends.filter((e) => e.type === type).length;
+  // How long each turn took on the clock, by whose it was (the game speed shows in the AI's).
+  const turnSeconds = (whose) => {
+    const spans = new Map();
+    for (const s of rec.snaps) {
+      if (s.active !== whose) continue;
+      const span = spans.get(s.turn) ?? { from: s.t, to: s.t };
+      span.to = s.t;
+      spans.set(s.turn, span);
+    }
+    const list = [...spans.values()].map((s) => (s.to - s.from) / 1000).sort((a, b) => a - b);
+    return list.length ? { turns: list.length, median: Number(list[Math.floor(list.length / 2)].toFixed(1)), max: Number(list.at(-1).toFixed(1)) } : undefined;
+  };
   const clicks = (label) => rec.sends.filter((e) => e.type === "click" && e.label === label).length;
   return { game, turn: final.turn, life: final.life, won, sends: rec.sends.length, drags: count("drag"), autoPay: clicks("Auto Pay"), allAttack: clicks("All Attack"),
     smartPasses: rec.sends.filter((e) => e.by === "smart").length, readHold: memory.readResult ?? "not tested",
+    speed: speed ?? "default", aiTurnSeconds: turnSeconds("ai"), yourTurnSeconds: turnSeconds("you"),
     // The end goal's list for each game (docs/WEB_PARITY.md): a drag cast, Auto Pay, a trigger, All Attack, a board wipe, and a concede or a win.
     covered: {
       dragCast: count("drag") > 0, autoPay: clicks("Auto Pay") > 0, trigger: (rec.painted.trigger ?? 0) > 0, allAttack: clicks("All Attack") > 0,

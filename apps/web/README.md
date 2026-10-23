@@ -39,8 +39,10 @@ reveals, the reading-hold check, missing resources and console errors. `--shots 
 player card at those turns; `--polls` saves the raw engine polls for the replay fixtures. `--turns 30` concedes
 through the menu after that turn, and `--concede-at 10` (the default) concedes once your life is that low and behind, or
 an attack that would kill you unblocked comes; `0` plays it out. `--want-sweeper` mulligans for a hand with a board
-wipe and casts the wipe once it would take three permanents. Each summary also says what the menus recorded
-(`record`: the match and the rank).
+wipe and casts the wipe once it would take three permanents. `--speed relaxed|standard|fast` sets the game speed (the
+page's default is Standard); the driver waits while the board is still showing an earlier opponent action, and each
+summary gives the median and longest seconds per turn, yours and the AI's (`aiTurnSeconds`, `yourTurnSeconds`). Each
+summary also says what the menus recorded (`record`: the match and the rank).
 
 `scripts/menu-shots.mjs --url … --out … [--only home,play] [--size 1280x800]` takes a picture of each menu page in
 headless Chrome, for comparing the pages with iOS.
@@ -76,6 +78,11 @@ dev server elsewhere. In the Claude desktop app, the `web-solo` entry in `.claud
 6. **Smart pass** (`src/core/smartPass.ts`, a port of `OnDeviceSmartPass`): as on the phones, routine priority
    with nothing to play passes by itself; it stops in your main phases and at the AI's attacks and end step when
    you hold a play, and lets your own spells resolve. Passes it made show in the log ("Auto-passed: …").
+7. **Game speed** (`src/core/gameSpeed.ts`, Options → Gameplay and Game Settings; `mm.web.gameSpeed`): Relaxed, Standard
+   (the default) or Fast. The engine and your answers never wait for it: the board (`ui/arena/usePacedSnapshot.ts`) shows
+   the session's snapshots in order and keeps each opponent action on screen 0.6 s (Relaxed 1.1 s, and every step 0.35 s),
+   never more than 4 s behind the game; a snapshot it hasn't caught up to carries no prompt, and smart pass waits for it
+   (`BoardPresentationHold.paceUntil`, at most 10 s). Fast is the board as it was before.
 
 **Cross-origin isolation.** SharedArrayBuffer needs COOP `same-origin` and COEP `require-corp` on the page, set
 for `vite` and `vite preview` in `vite.config.ts` (a static host needs the same headers). Every subresource must
@@ -158,7 +165,7 @@ Prototype's landscape table (artifact T5NcAkjCThiA5hfd9Twwwu) driven by real sna
 
 The iOS Arena build is the reference (Caleb, 2026-10-21 and 2026-10-22): what it does, the web does, laid out for a
 mouse and keyboard. `docs/WEB_PARITY.md` is the checklist, row by row with how each was checked, and lists the desktop
-mapping (hover reads and pops, right-click or a held button opens the inspector, drag plays, Space passes and a held
+mapping (hover pops the hand and only lifts other cards, right-click or a 0.45 s hold opens the inspector, drag plays, Space passes and a held
 Space is Full control, Enter confirms, Esc closes, Ctrl/Cmd+Z undoes mana) and what is intentionally different.
 
 - `src/ui/arena/layout.ts`: iOS `ArenaLayout.landscape` on the 956-point plate: the opponent's lands and creatures at

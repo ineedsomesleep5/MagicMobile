@@ -19,7 +19,7 @@ import {
 import { type DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import { gameAudio } from "../audio";
 import { cardImageURL, manaSymbols } from "../cardArt";
-import { ManaSymbol } from "../arena/Symbols";
+import { ManaSymbol, RulesText } from "../arena/Symbols";
 import { DeckArt } from "./DeckBox";
 import { ImportPanel } from "./DeckImport";
 import { Btn, Caps, PlayButton, PopMenu, type PopItem, SearchField, Segmented } from "./kit";
@@ -393,7 +393,7 @@ function Inspect({ name, card, close }: { name: string; card?: CatalogueCard; cl
         <div>
           <b>{name}</b>
           {card?.typeLine && <small>{card.typeLine}</small>}
-          {card?.oracleText && <p>{card.oracleText.replace(/<br>/g, "\n")}</p>}
+          {card?.oracleText && <p><RulesText text={card.oracleText.replace(/<br>/g, "\n")} /></p>}
           <Btn kind="secondary" compact onClick={close}>Close</Btn>
         </div>
       </div>

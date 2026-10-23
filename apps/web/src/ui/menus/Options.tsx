@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { loadSmartPass, saveSmartPass, type SmartPassSettings } from "../../core/smartPass";
+import { GAME_SPEED_KEY, GAME_SPEED_TITLES, GAME_SPEEDS, type GameSpeed, loadGameSpeed } from "../../core/gameSpeed";
 import {
   categoryKey, DEFAULT_MUSIC_VOLUME, gameAudio, MUSIC, MUSIC_STINGERS, type MusicScene, musicChoiceKey, SOUND_CATEGORIES, SOUND_KEYS, SOUND_TITLES, soundCategory,
 } from "../audio";
@@ -98,8 +99,14 @@ function Gameplay({ openStops }: { openStops: () => void }) {
   const [smart, setSmart] = useState<SmartPassSettings>(() => loadSmartPass(storage.get));
   const update = (next: SmartPassSettings) => { setSmart(next); saveSmartPass(next, storage.set); };
   const [passAfterCast, setPassAfterCast] = useSwitch("mm.web.autoPassAfterCast");
+  const [speed, setSpeed] = useState<GameSpeed>(() => loadGameSpeed(storage.get));
   return (
     <>
+      <div className="mflat">
+        <h3 className="mpagelabel">Game speed</h3>
+        <Segmented stretch label="Game speed" value={speed} onChange={(v) => { setSpeed(v); storage.set(GAME_SPEED_KEY, v); }}
+          options={GAME_SPEEDS.map((value) => ({ label: GAME_SPEED_TITLES[value], value }))} />
+      </div>
       <div className="mcolumns">
         <Checkbox title="Smart Auto-Pass" on={smart.enabled} id="settings.smartAutoPass" onChange={(on) => update({ ...smart, enabled: on })}
           hint="Passes for you when you have nothing to play, and skips steps you don’t stop at." />

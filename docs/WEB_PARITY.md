@@ -1,8 +1,16 @@
 # Web parity with the iOS Arena board
 
 The desktop web game (`apps/web`) plays exactly like the iOS app's Arena board mode, laid out for a desktop browser
-(mouse, hover, keyboard), with nothing redesigned. **iOS is the reference**: when the web and iOS disagree, the web
-changes. This checklist is the definition of done. Add a row whenever you find a behaviour that is missing here, and
+(mouse, hover, keyboard). **iOS is the reference for what the game does**: features, rules, data, wording and pace;
+when the web and iOS disagree on those, the web changes.
+
+**Layout may differ for desktop** (Caleb, 2026-10-23: "the menu doesn't have to be a direct copy of iOS; format it for
+web wherever you see fit; it just needs to update along with any iOS or Android updates"). A web screen may be arranged
+for a wide window (the leaderboard's large podium and standings table, the Home block that grows with the window), as
+long as it shows the same things and calls the same logic (shared `core/` ports and parity cases), so an iOS or Android
+change still lands on the web as a change to the same data and rules. When you port an iOS change, port its behaviour
+and data; keep the web's desktop arrangement unless the change is about layout itself. Desktop-only choices so far:
+Home sizing (9.03), the leaderboard (9.18), inspect on right-click or hold instead of hover, the game-speed setting. This checklist is the definition of done. Add a row whenever you find a behaviour that is missing here, and
 never delete one silently (mark it `dropped` with the reason instead).
 
 Sources: the iOS Arena files on `origin/main` (PRs #217, #219, #220, #221 and the earlier `claude/arena-mode`
@@ -53,7 +61,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 |---|---|
 | Tap a hand card (pops it), tap again (plays) | Hover pops the card under the pointer; click plays it |
 | Carry a card up to play it | Drag it onto the table (same `ArenaLayout.drops` thresholds) |
-| Hold a card to read it | Hover reads it at the zoom spot; right-click (or hold the mouse 0.35 s) opens the full inspector, which holds smart pass |
+| Hold a card to read it | Right-click opens the inspector until a click elsewhere or Esc; a press held still 0.45 s opens it until released (battlefield, hand, stack, piles, the revealed library top, browsers). Hover only lifts or outlines a card (Caleb, 2026-10-23). The inspector holds smart pass |
 | Tap the primary plaque | Space (pass, resolve, the primary answer) |
 | Confirm in a browser or the amount pill | Enter |
 | Tap outside, Done on a browser | Esc |
@@ -81,6 +89,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 1.15 | Effects level Full / Reduced / Off; Reduce Motion caps at Reduced; Off during a fast combo loop | `BoardFXLevel.resolved` | done | `core/boardEvents.ts, ui/GameScreen.tsx` | shared + unit | resolvedLevel caps at Reduced under prefers-reduced-motion; Game Settings segmented control |
 | 1.16 | Card motion: a tile hides while its flight stands in, attackers lunge, attack and block stances hold, flips | `BoardFXDirector.cardMotion` | done | `ui/arena/useBoardFX.ts, ui/arena/BoardFX.tsx` | game | game A, game D: tiles hidden while their flight stands in |
 | 1.17 | AI turns read at Arena pace: polls show each AI action, and smart pass's holds set the pace | session + board | done | `table/guestSession.ts` | game | game A-game D: every AI action shown, smart pass waits on the board |
+| 1.18 | Game speed (web only, Caleb 2026-10-23): Relaxed / Standard (default) / Fast in Options → Gameplay and Game Settings. Standard keeps each opponent action (turn start, land, spell or ability, attackers, blockers, a permanent entering or leaving) on screen 0.6 s; Relaxed 1.1 s plus 0.35 s per step; Fast is 1.01–1.17 unchanged. Presentation only: the board shows snapshots in order (never more than 4 s behind), a snapshot it hasn't caught up to has no prompt, and smart pass waits for it (`paceUntil`, at most 10 s) | none (desktop AI answers at once) | done | `core/gameSpeed.ts, ui/arena/usePacedSnapshot.ts, table/guestSession.ts` | unit + game | `test/gameSpeed.test.ts`; real engine 2026-10-23, Token Triumph vs Grave Danger: after each AI action smart pass next passed at least 593 ms later at Standard (4 games, medians 1.2–2.7 s; the recorder samples every 25 ms), at least 1,098 ms at Relaxed (1 game, played out to the AI's win on turn 13) and as little as 25 ms at Fast; Relaxed's steps at least 405 ms apart, Standard's and Fast's about 60 ms; the reading hold held in every game; no page or console errors |
 
 ## 2. Smart pass, stops and skips (priority 2)
 
@@ -134,7 +143,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 4.06 | A drop with several actions opens the action choice at the table centre; a refusal shows feedback | `panEnded`, `DragActionChoicePopup` | done | `ui/GameScreen.tsx (playFromHand)` | game | one play goes at once; several open the choice at the table centre; none says "is not currently playable" |
 | 4.07 | The hand rests during payments, targets, combat, choices, dragging, spectating | `ArenaHandPosture.resolve` | done | `ui/GameScreen.tsx` | game | 2026-10-21 |
 | 4.08 | A step change lowers the hand; a click on the empty table drops a popped card, then lowers the hand | `arenaTapTable`, `arenaBoard onChange` | done | `ui/GameScreen.tsx` | game | the pop follows the pointer along the hand; leaving the hand puts it down (desktop hover for the tap) |
-| 4.09 | Read a hand card (hold on iOS): right-click or a 0.35 s mouse hold opens the inspector | `ArenaHandFan.held` | done | `ui/GameScreen.tsx (pressCard), ui/arena/Inspector.tsx` | game | |
+| 4.09 | Read a hand card (hold on iOS): right-click, or a press held still 0.45 s (closes on release; a press that moves 8 px first is a drag) | `ArenaHandFan.held`, `HoldCardInspection` | done | `ui/arena/inspectGesture.ts, ui/arena/Inspector.tsx` | unit + game | `test/gameSpeed.test.ts` (press and hold); a headless check on the real engine 2026-10-23: hover opens nothing, a held press opens it and the release closes it, a click doesn't inspect, a right-click stays until Esc; the same in the commander browser |
 | 4.10 | Cards playable from graveyard or exile join the fan's right end with a violet shimmer | `ArenaExtraHand`, `ArenaExtraCardShimmer` | done | `core/arenaBoard.ts (extraHandCards), ui/arena/ArenaCard.tsx (.ashimmer)` | shared | arena-board extraHand cases; violet-cyan edge and its zone mark (c9fc612e) |
 | 4.11 | Draws fly from the library (0.5 s), show at the draw spot (0.4 s), join the hand (0.22 s), staggered 0.25 s, at most 3 | `ArenaHandFan.noteArrivals` | done | `ui/GameScreen.tsx (arrivals)` | game | game F: a drawn card mid-flight to the fan (c9fc612e) |
 | 4.12 | Hand up 0.22 s ease-out with overshoot, down 0.18 s | `postureAnimation` | done | `ui/arena/arena.css ([data-hand])` | game | the pop springs in 0.24 s; the landscape board never raises the fan (ArenaHandPosture) |
@@ -214,6 +223,7 @@ iOS has no keyboard shortcuts, so these are the desktop mapping of its touch ges
 | 8.06 | Stack card: only the top object; tab with the count opens the stack browser; it closes when the stack empties | `ArenaStackCard`, `arenaTable` | done | `ui/GameScreen.tsx` | game | |
 | 8.07 | Stack browser: its count, YOUR RESPONSE / WAITING, numbered count ovals (coins before 2026-10-23), RESOLVES NEXT, Stop skipping / Resolve All / Done | `ArenaStackBrowser` | done | `ui/arena/Browsers.tsx (StackBrowser)` | game | count coin, YOUR RESPONSE / WAITING, numbered coins, gold rim and RESOLVES NEXT, owner, targets, Stop skipping / Resolve All / Done (46537300) |
 | 8.08 | Zone browser: Cast plaques, Choose for targets, library wording | `ArenaZoneBrowser` | done | `ui/arena/Browsers.tsx (ZoneBrowser)` | game | Cast / action plaques, Choose for targets, closes only on a cast (b37576cb); since 2026-10-23 the line only says "Face down", "No cards" or "Choose a card" (judge round 1) |
+| 8.08a | Commander browser: your medallion (when your commander can be cast) or a player card's Command opens the commanders large, partners side by side, "Command-zone casts: N" and "Next tax: {T}" under each, Cast under yours (the old medallion menu's actions), Done; an opponent's is view only; a commander away from the command zone dims and says where it is | `ArenaPlayerCard` → `ArenaZoneBrowser` (command), the prompt panel's commander lines | done | `ui/arena/Browsers.tsx (CommanderBrowser), core/arenaBoard.ts (commanderEntries)` | unit + game | `test/gameSpeed.test.ts` (commander entries); the same check: your medallion opened Emmara large with "Command-zone casts: 0", "Next tax: {0}" and Cast; Cast closed it and started the payment with Emmara on the stack; the AI's opened from its player card with no plaques |
 | 8.09 | Revealed and Looked-at chips by the opponent's piles | `arenaRevealedChips` | done | `ui/GameScreen.tsx (.azonepills)` | game | Revealed and Looked at chips at (818, 12) (b37576cb) |
 | 8.10 | Top of library revealed face up on the deck, playable | `TopOfLibraryCard` | done | `ui/GameScreen.tsx (.atoplib)` | game | face up on the deck, tilted 8°, ember when playable, opens the zone (b37576cb) |
 | 8.11 | Player card: portrait, life, status badges, zone grid with counts, lit where you can cast from, named exile zones | `ArenaPlayerCard` | done | `ui/GameScreen.tsx (.aplayercard), core/playerStatus.ts` | unit + game | test/playerStatus.test.ts; game G: AI 1’s card with Command, Graveyard, Library, Hand and its named exile zone (41174270) |
@@ -350,7 +360,8 @@ rather than filed, because filing an issue is public and waits for Caleb's word:
 ## Intentionally different on desktop
 
 - No portrait layout or spread-hand tab: the web board is horizontal only (README).
-- Hover reads a card where iOS needs a hold; the full inspector is a right-click.
+- A right-click reads a card as well as a hold (0.45 s here, 0.35 s on iOS); hover only lifts or outlines it.
+- Game speed (1.18) exists only on the web: the desktop AI answers far faster than a phone's.
 - Keyboard shortcuts (Desktop input above) have no iOS counterpart.
 - Polling: the browser engine holds a poll and answers at the next snapshot, where iOS polls on a timer (8.22).
 - A full battlefield row overlaps its cards once they reach 70 % instead of scrolling sideways (8.19).
