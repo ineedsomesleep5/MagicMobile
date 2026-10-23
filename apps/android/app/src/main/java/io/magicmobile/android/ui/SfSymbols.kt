@@ -239,6 +239,9 @@ object SfSymbols {
         "speaker.wave.2.fill" -> Icons.Filled.VolumeUp
         "stop.fill" -> Icons.Filled.Stop
         "trophy.fill" -> Icons.Filled.EmojiEvents
+        // The profile's progression emblems (ProfileView.swift).
+        "gamecontroller.fill" -> Icons.Filled.SportsEsports
+        "chart.pie.fill" -> Icons.Filled.PieChart
         "forward.fill" -> Icons.Filled.FastForward
         "checkmark.square.fill" -> Icons.Filled.CheckBox
         "square" -> Icons.Outlined.CheckBoxOutlineBlank

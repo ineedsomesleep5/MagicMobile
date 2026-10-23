@@ -44,7 +44,11 @@ import io.magicmobile.android.ui.TavernPalette
 import io.magicmobile.android.ui.TavernPlaqueButton
 import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.sf
-import io.magicmobile.android.ui.tavernPanel
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaButtonText
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.arenaGlassPanel
 
 /** A friend's challenge arriving on the menu: the mode and Accept or Decline (ChallengeInviteBanner). */
 @Composable
@@ -56,7 +60,7 @@ fun ChallengeInviteBanner(challenge: FriendChallenge, accept: () -> Unit, declin
         value
     }
     Row(modifier.padding(horizontal = 12.dp).widthIn(max = 560.dp).fillMaxWidth()
-        .glow(TavernPalette.ember.copy(alpha = 0.45f), 12.dp, 14.dp).tavernPanel(14.dp).padding(horizontal = 14.dp, vertical = 10.dp)
+        .glow(TavernPalette.ember.copy(alpha = 0.45f), 12.dp, 14.dp).arenaGlassPanel(14.dp).padding(horizontal = 14.dp, vertical = 10.dp)
         .testTag("challenge.invite"), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(44.dp).scale(pulse), contentAlignment = Alignment.Center) {
             val step = challenge.challengerStep
@@ -65,11 +69,11 @@ fun ChallengeInviteBanner(challenge: FriendChallenge, accept: () -> Unit, declin
         }
         Column(Modifier.weight(1f)) {
             Text("${challenge.challenger ?: "A friend"} challenges you", color = TavernPalette.parchment, maxLines = 1,
-                style = sf(15f, SfWeight.heavy, SfDesign.SERIF))
+                style = ArenaMenuStyle.font(15f, SfWeight.heavy))
             Text(if (challenge.isRanked) "Ranked · counts for both" else "Quick Match · friendly", color = TavernPalette.parchment.copy(alpha = 0.8f),
-                style = sf(12f, SfWeight.regular, SfDesign.SERIF))
+                style = ArenaMenuStyle.font(12f, SfWeight.regular))
         }
-        TavernPlaqueButton("Decline", decline, Modifier.testTag("challenge.decline"), kind = TavernButtonKind.SECONDARY)
-        TavernPlaqueButton("Accept", accept, Modifier.testTag("challenge.accept"))
+        ArenaButton(decline, kind = ArenaButtonKind.SECONDARY, compact = true, identifier = "challenge.decline") { ArenaButtonText("Decline") }
+        ArenaButton(accept, kind = ArenaButtonKind.PRIMARY, compact = true, identifier = "challenge.accept") { ArenaButtonText("Accept") }
     }
 }
