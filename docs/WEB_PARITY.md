@@ -262,6 +262,11 @@ the board's flights, banners and reveals, and console errors.
 | final 3 | Token Triumph vs Grave Danger | conceded through the menu, turn 25 | drag casts 23, Auto Pay 16, triggers 49, All Attack 8, blocks 9; no wipe; no errors |
 | final 4 | Draconic Destruction vs Grave Danger | AI won, turn 15 | drag casts 9, triggers 6; no Auto Pay or All Attack came up; no errors |
 | final 5 | First Flight vs Grave Danger | AI won, turn 17 | drag casts 7, Auto Pay 7, triggers 7, All Attack 6; no wipe; no errors |
+| final 6 (`--want-sweeper`) | Draconic Destruction vs Chaos Incarnate | no record: the driver itself crashed | a Playwright read timed out in the driver, not the page; the driver now records its own errors and guards that read |
+| final 7 | First Flight vs Chaos Incarnate | AI won, turn 19 | drag casts 5, Auto Pay 5, triggers 11, All Attack 1, reading hold held; no wipe; no errors |
+| final 8 | Draconic Destruction vs Grave Danger | AI won, turn 17 | drag casts 10, Auto Pay 8, triggers 8, All Attack 1, reading hold held; no wipe; no errors |
+| final 9 | First Flight vs Grave Danger | stopped turn 5 at "Pick a mana color" | the board asked correctly (a choice with no colour name, so Auto Pay can't pick, the same on iOS); the driver answered with `choose_choice`, which the session ignores, instead of the board's `resolve_choice` (fixed in c19fd0bb); no errors |
+| final 10 | Draconic Destruction vs Token Triumph | AI won, turn 18 | drag casts 6, triggers 34; no Auto Pay or All Attack came up; no wipe; no errors |
 
 ## Android follow-ups
 

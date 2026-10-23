@@ -22,6 +22,8 @@ const url = args.url ?? "http://127.0.0.1:5181/?debug";
 const games = Number(args.games ?? 1);
 const out = args.out ?? "/tmp/magicmobile-autoplay";
 const maxTurns = Number(args.turns ?? 40);
+// --concede-at 10: concede through the menu once your life is at or below this and behind every opponent (0: play it out).
+const concedeAt = Number(args["concede-at"] ?? 10);
 const shots = new Set(String(args.shots ?? "").split(",").filter(Boolean).map(Number));
 const deckNames = {
   "token-triumph": "Token Triumph", "first-flight": "First Flight", "grave-danger": "Grave Danger", "chaos-incarnate": "Chaos Incarnate",
@@ -272,7 +274,9 @@ async function play(page, game) {
       await page.waitForTimeout(3000);
       break;
     }
-    if (state.ready && state.turn > maxTurns) {
+    const [life, ...theirs] = state.life ?? [];
+    const losing = concedeAt > 0 && !state.over && life !== undefined && life <= concedeAt && theirs.every((l) => l > life);
+    if (state.ready && (state.turn > maxTurns || losing)) {
       // Concede the way a player does: the gear, Game Settings, Concede, then confirm.
       memory.conceded = await concedeByMenu(page);
       if (!memory.conceded) await page.evaluate(() => window.__mm.table.concede());
