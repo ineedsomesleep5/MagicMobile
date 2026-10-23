@@ -76,6 +76,7 @@ export function PlayButton({ children, onClick, disabled, cancel, id, size = 21 
   return (
     <button type="button" className={`mbtn play ${cancel ? "secondary" : "primary"}`} style={{ fontSize: size }} disabled={disabled} data-id={id}
       onClick={() => { gameAudio.play(cancel ? "ui-back" : "menu-play"); onClick(); }}>
+      {!cancel && <i className="mshine" aria-hidden="true" />}
       <span>{children}</span>
     </button>
   );

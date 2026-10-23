@@ -54,11 +54,16 @@
 .mbtn.pill { min-width: 0; height: 32px; padding: 0 14px; font: 700 12.5px/1 var(--sans) !important; }
 .mbtn.pill.primary::before { box-shadow: 0 0 8px rgba(255,120,31,.35); }
 .mbtn.play { width: 100%; height: 100%; min-height: 44px; font-size: 21px; }
-.mbtn.play.primary span { position: relative; z-index: 1; }
+.mbtn.play.primary span { position: relative; z-index: 2; }
 .mbtn.play.primary { overflow: hidden; }
-.mbtn.play.primary:not(:disabled) > span::after { content: ""; position: absolute; top: -20px; bottom: -20px; left: -120%; width: 60%; z-index: 2;
-  background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent); animation: mshine 4.5s ease-in-out infinite; pointer-events: none; }
-@keyframes mshine { 0%, 62% { transform: translateX(0); } 100% { transform: translateX(700%); } }
+/* The sweep of light (ShineSweep): across the whole pill in 0.9 s of every 3.6 s, off the pill the rest of the time. */
+.mbtn.play .mshine { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 1; }
+.mbtn.play:disabled .mshine { display: none; }
+.mbtn.play .mshine::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; mix-blend-mode: plus-lighter;
+  background: linear-gradient(100deg, transparent 15%, rgba(255,255,255,.42) 50%, transparent 85%); transform: translate3d(-110%, 0, 0);
+  animation: mshine 3.6s linear infinite; will-change: transform; }
+@keyframes mshine { 0% { transform: translate3d(-110%, 0, 0); } 25%, 100% { transform: translate3d(260%, 0, 0); } }
+@media (prefers-reduced-motion: reduce) { .mbtn.play .mshine { display: none; } }
 
 .mclose { width: 44px; height: 44px; display: grid; place-items: center; flex: none; }
 .mclose svg { width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid rgba(242,235,219,.7); padding: 8px; box-sizing: border-box; stroke: var(--text); stroke-width: 3.2; fill: none; stroke-linecap: round; }
@@ -273,11 +278,19 @@
   box-sizing: content-box; display: flex; gap: 10px; justify-content: center; padding-top: 14px; height: var(--h); margin: auto 0; }
 .mfeature { position: relative; width: min(var(--fwmax), var(--h) * 1.92); height: 100%; border-radius: 12px; overflow: hidden; border: 1px solid var(--hair);
   box-shadow: 0 6px 12px rgba(0,0,0,.6); touch-action: pan-y; }
-.mfeaturepage { position: absolute; inset: 0; text-align: left; transition: transform .3s cubic-bezier(.2,.9,.3,1); }
-.mfeaturepage.fwd { animation: mpagein .45s ease-in-out both; }
-.mfeaturepage.back { animation: mpageback .45s ease-in-out both; }
-@keyframes mpagein { from { transform: translateX(100%); } }
-@keyframes mpageback { from { transform: translateX(-100%); } }
+/* A turn slides the old page out and the new one in together, on the GPU, easing out like a hand-turned page. */
+.mfeaturepage { position: absolute; inset: 0; text-align: left; transform: translate3d(0, 0, 0); backface-visibility: hidden;
+  transition: transform .35s cubic-bezier(.22,.8,.28,1); }
+.mfeaturepage.in, .mfeaturepage.out { will-change: transform; animation-duration: .6s; animation-timing-function: cubic-bezier(.65,0,.25,1); animation-fill-mode: both; }
+.mfeaturepage.out { pointer-events: none; }
+.mfeaturepage.in.fwd { animation-name: mpageinright; }
+.mfeaturepage.in.back { animation-name: mpageinleft; }
+.mfeaturepage.out.fwd { animation-name: mpageoutleft; }
+.mfeaturepage.out.back { animation-name: mpageoutright; }
+@keyframes mpageinright { from { transform: translate3d(100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes mpageinleft { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes mpageoutleft { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-100%, 0, 0); } }
+@keyframes mpageoutright { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
 .mfocusart { position: absolute; inset: 0; background-size: cover; background-repeat: no-repeat; }
 .mband { position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(0,0,0,.88)); }
 .mfeaturepage h2 { position: absolute; left: 18px; right: 48px; bottom: 22px; font-size: clamp(24px, var(--h) * .085, 40px); line-height: 1.15; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
@@ -774,5 +787,5 @@ button.mtoolcoin:disabled { opacity: .35; }
 .mrankedsearch .gold { color: var(--gold); font-variant-numeric: tabular-nums; }
 .mrankedsearch small { font: 500 11px/1.2 var(--sans); color: var(--dim); }
 .mhostrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.mtoast { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 50; max-width: min(520px, 100% - 32px); padding: 10px 16px;
+.mtoast { position: absolute; left: 50%; top: calc(var(--bar) + 12px); transform: translateX(-50%); z-index: 50; max-width: min(520px, 100% - 32px); padding: 10px 16px;
   border-radius: 12px; font: 600 13px/1.35 var(--sans); color: var(--text); text-align: center; }

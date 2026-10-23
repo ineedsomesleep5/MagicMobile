@@ -60,16 +60,26 @@ export function Home({ content, still }: { content: HomeContent; still: boolean 
   );
 }
 
-/** The big panel: one feature at a time over its art, arrows and dots, a slow turn on its own, and a drag to turn it. */
+/**
+ * The big panel: one feature at a time over its art, arrows and dots, a slow turn on its own, and a drag to turn it.
+ * A turn slides both pages together, the old one out and the new one in (ArenaFeaturePanel's paging), and every
+ * page's art is loaded up front so a new page never arrives blank.
+ */
 function FeaturePanel({ features, still }: { features: Feature[]; still: boolean }) {
   const [index, setIndex] = useState(0);
-  const [forward, setForward] = useState(true);
+  /** The page sliding out and which way the turn goes, while a turn runs. */
+  const [leaving, setLeaving] = useState<{ index: number; forward: boolean; key: number }>();
   const [drag, setDrag] = useState(0);
   const start = useRef<number | undefined>(undefined);
   const moved = useRef(false);
+  const turns = useRef(0);
+  useEffect(() => {
+    for (const feature of features) { const image = new Image(); image.src = `/menus/${feature.art.asset}.webp`; }
+  }, [features]);
   const step = (delta: number) => {
-    if (features.length === 0) return;
-    setForward(delta > 0);
+    if (features.length < 2) return;
+    turns.current += 1;
+    setLeaving({ index, forward: delta > 0, key: turns.current });
     setIndex((i) => (i + delta + features.length) % features.length);
   };
   useEffect(() => {
@@ -79,6 +89,18 @@ function FeaturePanel({ features, still }: { features: Feature[]; still: boolean
   }, [index, still, features.length]);
   const feature = features[Math.min(index, features.length - 1)];
   if (!feature) return null;
+  const old = leaving ? features[leaving.index] : undefined;
+  // Each page keeps its key for the whole turn, so the one sliding in isn't rebuilt when the turn ends.
+  const page = (f: Feature, className: string, extra?: { onAnimationEnd?: () => void; style?: React.CSSProperties; live?: boolean }) => (
+    <button key={extra?.live ? `live-${turns.current}` : `out-${leaving?.key ?? 0}`} type="button" className={`mfeaturepage ${className}`} style={extra?.style}
+      tabIndex={extra?.live ? 0 : -1} aria-hidden={extra?.live ? undefined : true} onAnimationEnd={extra?.onAnimationEnd}
+      data-id={extra?.live ? `home.feature.${f.id}` : undefined}
+      onClick={() => { if (!extra?.live || moved.current) return; gameAudio.play("ui-open"); f.action(); }}>
+      <FocusedArt art={f.art} />
+      <i className="mband" />
+      <h2>{f.title}</h2>
+    </button>
+  );
   return (
     <div className="mfeature" onPointerDown={(e) => { start.current = e.clientX; moved.current = false; }}
       onPointerMove={(e) => {
@@ -94,12 +116,10 @@ function FeaturePanel({ features, still }: { features: Feature[]; still: boolean
         start.current = undefined; setDrag(0);
       }}
       onPointerLeave={() => { start.current = undefined; setDrag(0); }}>
-      <button key={feature.id} type="button" className={`mfeaturepage ${forward ? "fwd" : "back"}`} style={drag ? { transform: `translateX(${drag}px)`, transition: "none" } : undefined}
-        data-id={`home.feature.${feature.id}`} onClick={() => { if (moved.current) return; gameAudio.play("ui-open"); feature.action(); }}>
-        <FocusedArt art={feature.art} />
-        <i className="mband" />
-        <h2>{feature.title}</h2>
-      </button>
+      {old && leaving && page(old, `out ${leaving.forward ? "fwd" : "back"}`, { onAnimationEnd: () => setLeaving(undefined) })}
+      {page(feature, leaving ? `in ${leaving.forward ? "fwd" : "back"}` : "", {
+        live: true, style: drag ? { transform: `translate3d(${drag}px, 0, 0)`, transition: "none" } : undefined,
+      })}
       {features.length > 1 && <>
         <button type="button" className="marrow left" aria-label="Previous" onClick={() => step(-1)}><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></svg></button>
         <button type="button" className="marrow right" aria-label="Next" onClick={() => step(1)}><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg></button>
