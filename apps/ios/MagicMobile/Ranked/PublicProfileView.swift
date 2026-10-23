@@ -43,7 +43,7 @@ struct PublicProfileView: View {
                 case .failed(let message):
                     note(message, icon: "wifi.exclamationmark")
                     Button(String(localized: "Try again")) { Task { await reload() } }
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                         .accessibilityIdentifier("publicProfile.retry")
                 case .loaded(let profile):
                     if profile.restricted { restricted(profile) } else { content(profile) }
@@ -100,10 +100,10 @@ struct PublicProfileView: View {
             VStack(spacing: 10) {
                 Image(systemName: "hand.raised.fill").font(.system(size: 30, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
                 Text(profile.visibility == .friends ? String(localized: "Only friends can open this profile.") : String(localized: "This profile is private."))
-                    .font(.system(size: 15, weight: .semibold, design: .serif)).multilineTextAlignment(.center)
+                    .font(ArenaMenuStyle.font(15, .semibold)).multilineTextAlignment(.center)
                 if !profile.isFriend {
                     Text(String(localized: "You can still send \(profile.username) a friend request."))
-                        .font(.system(size: 12, design: .serif)).opacity(0.7).multilineTextAlignment(.center)
+                        .font(ArenaMenuStyle.font(12, .regular)).opacity(0.7).multilineTextAlignment(.center)
                 }
             }
             .frame(maxWidth: .infinity).padding(.vertical, 18)
@@ -158,7 +158,7 @@ struct PublicProfileView: View {
                 if let online = profile.online {
                     HStack(spacing: 6) {
                         Circle().fill(online ? Color(red: 0.4, green: 0.85, blue: 0.4) : Color.gray.opacity(0.6)).frame(width: 9, height: 9)
-                        Text(online ? String(localized: "Online") : String(localized: "Offline")).font(.system(size: 12, weight: .semibold, design: .serif)).opacity(0.8)
+                        Text(online ? String(localized: "Online") : String(localized: "Offline")).font(ArenaMenuStyle.font(12, .semibold)).opacity(0.8)
                     }
                 }
             }
@@ -188,20 +188,20 @@ struct PublicProfileView: View {
                     if let challenge, profile.online == true { challengeMenu(profile, challenge) }
                     if account.messagesAvailable {
                         Button { messageWith = profile.username } label: { Label(String(localized: "Message"), systemImage: "bubble.left.fill") }
-                            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                            .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                             .accessibilityIdentifier("publicProfile.message")
                     }
                 case "outgoing":
-                    Button(String(localized: "Request sent")) {}.buttonStyle(TavernButtonStyle(kind: .secondary, compact: true)).disabled(true)
+                    Button(String(localized: "Request sent")) {}.buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true)).disabled(true)
                         .accessibilityIdentifier("publicProfile.requested")
                 case "incoming":
                     Button(String(localized: "Accept request")) { respond(profile, accept: true) }
-                        .buttonStyle(TavernButtonStyle(kind: .primary, compact: true)).accessibilityIdentifier("publicProfile.accept")
+                        .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true)).accessibilityIdentifier("publicProfile.accept")
                     Button(String(localized: "Decline")) { respond(profile, accept: false) }
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true)).accessibilityIdentifier("publicProfile.decline")
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true)).accessibilityIdentifier("publicProfile.decline")
                 default:
                     Button(String(localized: "Add friend")) { addFriend(profile) }
-                        .buttonStyle(TavernButtonStyle(kind: .primary, compact: true)).accessibilityIdentifier("publicProfile.add")
+                        .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true)).accessibilityIdentifier("publicProfile.add")
                 }
                 Spacer(minLength: 0)
                 TavernMenu(arrowEdge: .top) {
@@ -225,11 +225,9 @@ struct PublicProfileView: View {
                 if mayRank { challenge(profile.username, .ranked); close() }
             }
         } label: {
-            Text(String(localized: "Challenge")).font(.system(size: 14, weight: .heavy, design: .serif))
-                .foregroundStyle(Color(red: 1, green: 0.91, blue: 0.66))
-                .padding(.horizontal, 22).frame(minHeight: 44)
-                .background { TavernFill(material: .ember).clipShape(Capsule()).padding(3) }
-                .overlay { TavernCapsuleRim() }
+            ArenaButtonFace(label: Text(String(localized: "Challenge")), kind: .primary, font: ArenaMenuStyle.title(15, .bold),
+                            fills: false, inset: 10, glow: 0.7)
+                .frame(height: 44)
         }
         .accessibilityLabel(String(localized: "Challenge \(profile.username)"))
         .accessibilityIdentifier("publicProfile.challenge")
@@ -314,7 +312,7 @@ struct PublicProfileView: View {
             }
             if profile.games.count > 6 {
                 Button(showAllGames ? String(localized: "Show fewer") : String(localized: "Show more")) { withAnimation { showAllGames.toggle() } }
-                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                    .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("publicProfile.games.more")
             }
         }

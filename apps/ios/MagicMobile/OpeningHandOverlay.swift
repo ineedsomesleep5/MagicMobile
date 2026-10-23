@@ -38,7 +38,13 @@ struct OpeningHandOverlay: View {
     let choice: OpeningHandChoice
     let cards: [ZoneCard]
     let pending: Bool
+    /// Who goes first, as Arena titles this screen ("You Go First"); nil when the table doesn't say yet.
+    var heading: String? = nil
     let answer: (GameCommand, String, String) -> Void
+    /// On the Arena board: Arena's mulligan screen (build_output/arena-game-reference/mulligan-*.jpg): who goes first as
+    /// the title over a thin rule, XMage's question under it, the hand fanned across the board, the blue Mulligan pill
+    /// beside the orange Keep.
+    @Environment(\.arenaBoard) private var arena
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dealt = false
     @State private var focused: ZoneCard?
@@ -46,26 +52,34 @@ struct OpeningHandOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             let count = max(cards.count, 1)
-            let width = min(116, (proxy.size.width - 56) / (CGFloat(count) * 0.5 + 0.62))
+            let landscape = proxy.size.width > proxy.size.height
+            let cap: CGFloat = arena ? (landscape ? min(150, proxy.size.height * 0.42 / BattlefieldLayoutMetrics.magicCardHeightToWidth) : 128) : 116
+            let width = min(cap, (proxy.size.width - 72) / (CGFloat(count) * 0.5 + 0.62))
             let height = width * BattlefieldLayoutMetrics.magicCardHeightToWidth
             ZStack {
-                Color.black.opacity(0.78).ignoresSafeArea()
-                RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.16), .clear], center: .center,
-                               startRadius: 10, endRadius: proxy.size.width * 0.7)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
+                Color.black.opacity(arena ? 0.62 : 0.78).ignoresSafeArea()
+                if !arena {
+                    RadialGradient(colors: [MagicPalette.antiqueGold.opacity(0.16), .clear], center: .center,
+                                   startRadius: 10, endRadius: proxy.size.width * 0.7)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
                 VStack(spacing: 14) {
                     Spacer(minLength: 0)
-                    VStack(spacing: 4) {
-                        Text("OPENING HAND")
-                            .font(.system(size: 13, weight: .black)).tracking(3)
-                            .foregroundStyle(MagicPalette.antiqueGold)
-                        Text(choice.message)
-                            .font(.system(size: 20, weight: .black, design: .serif))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                            .accessibilityIdentifier("board.opening.message")
+                    if arena {
+                        arenaTitle(landscape: landscape)
+                    } else {
+                        VStack(spacing: 4) {
+                            Text("OPENING HAND")
+                                .font(.system(size: 13, weight: .black)).tracking(3)
+                                .foregroundStyle(MagicPalette.antiqueGold)
+                            Text(choice.message)
+                                .font(.system(size: 20, weight: .black, design: .serif))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                                .accessibilityIdentifier("board.opening.message")
+                        }
                     }
                     fan(width: width, height: height, available: proxy.size.width)
                         .frame(height: height * 1.2)
@@ -79,6 +93,7 @@ struct OpeningHandOverlay: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(OpeningHandButtonStyle(primary: false))
+                        .labelStyle(OpeningHandLabelStyle(arena: arena))
                         .accessibilityIdentifier("board.opening.mulligan")
                         Button {
                             answer(choice.keep, choice.keepLabel, "opening-keep-\(choice.promptID)")
@@ -87,6 +102,7 @@ struct OpeningHandOverlay: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(OpeningHandButtonStyle(primary: true))
+                        .labelStyle(OpeningHandLabelStyle(arena: arena))
                         .accessibilityIdentifier("board.opening.keep")
                     }
                     .disabled(pending)
@@ -115,6 +131,26 @@ struct OpeningHandOverlay: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("board.opening")
+    }
+
+    /// Who goes first in Arena's large serif over a thin rule, XMage's question under it in a quiet line.
+    private func arenaTitle(landscape: Bool) -> some View {
+        VStack(spacing: 6) {
+            Text(heading ?? String(localized: "Opening Hand"))
+                .font(ArenaMenuStyle.title(landscape ? 30 : 34, .bold))
+                .foregroundStyle(ArenaGlass.text)
+                .shadow(color: .black.opacity(0.8), radius: 4)
+                .accessibilityAddTraits(.isHeader)
+            Rectangle()
+                .fill(LinearGradient(colors: [.clear, ArenaGlass.text.opacity(0.55), .clear], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 320, height: 1)
+            Text(choice.message)
+                .font(ArenaMenuStyle.font(14, .medium))
+                .foregroundStyle(ArenaGlass.text.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .accessibilityIdentifier("board.opening.message")
+        }
     }
 
     private func fan(width: CGFloat, height: CGFloat, available: CGFloat) -> some View {
@@ -147,9 +183,17 @@ private struct OpeningHandButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.tavernBoard) private var tavern
 
+    @Environment(\.arenaBoard) private var arena
+
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
-        if tavern && TavernUIKit.available {
+        if arena {
+            // Arena's pair: the blue Mulligan pill beside the orange Keep.
+            ArenaButtonFace(label: configuration.label, kind: primary ? .primary : .cool, font: ArenaMenuStyle.title(19, .bold),
+                            pressed: configuration.isPressed, inset: 2, glow: 0.8)
+                .frame(height: 50)
+                .pressSound(primary ? .uiConfirm : nil, isPressed: configuration.isPressed)
+        } else if tavern && TavernUIKit.available {
             // Keep is the ember plaque, Mulligan the leather one.
             TavernButtonStyle(kind: primary ? .primary : .secondary, fontSize: 17)
                 .makeBody(configuration: configuration)
@@ -176,5 +220,18 @@ private struct OpeningHandButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(isEnabled ? 1 : 0.5)
             .pressSound(primary ? .uiConfirm : nil, isPressed: configuration.isPressed)
+    }
+}
+
+/// On the Arena board the pills carry words only, as Arena's do; elsewhere the symbol leads.
+private struct OpeningHandLabelStyle: LabelStyle {
+    let arena: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if arena {
+            configuration.title
+        } else {
+            HStack(spacing: 8) { configuration.icon; configuration.title }
+        }
     }
 }

@@ -80,6 +80,16 @@ final class D20TableScene: NSObject {
     private var shadowGeometry: SCNGeometry
     private var glowGeometry: SCNGeometry
     weak var view: SCNView?
+    /// On the Arena board the dice land on the board itself: no tavern table, a clear background.
+    var onBoard = false {
+        didSet {
+            guard onBoard != oldValue else { return }
+            tableRoot.isHidden = onBoard
+            scene.background.contents = onBoard ? UIColor.clear : Self.walnut
+            requestRender()
+        }
+    }
+    static let walnut = UIColor(red: 0.09, green: 0.05, blue: 0.03, alpha: 1)
     var onEdgeHit: ((Int) -> Void)?
     var onRebound: ((Int) -> Void)?
     var onRest: ((Int) -> Void)?
@@ -125,7 +135,7 @@ final class D20TableScene: NSObject {
         shadowGeometry = Self.texturedQuad(assets.shadow, lit: false)
         glowGeometry = Self.texturedQuad(assets.glow, lit: false)
         super.init()
-        scene.background.contents = UIColor(red: 0.09, green: 0.05, blue: 0.03, alpha: 1)
+        scene.background.contents = Self.walnut
         scene.rootNode.addChildNode(tableRoot)
         scene.rootNode.addChildNode(diceRoot)
         let camera = SCNCamera()
@@ -479,6 +489,8 @@ struct D20TableView: UIViewRepresentable {
     let region: CGRect
     let state: D20TableState
     let reduceMotion: Bool
+    /// The Arena board: the dice roll over the board, with no table of their own.
+    var onBoard = false
     var onEdgeHit: ((Int) -> Void)?
     var onRebound: ((Int) -> Void)?
     var onRest: ((Int) -> Void)?
@@ -491,7 +503,8 @@ struct D20TableView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView(frame: .zero)
-        view.backgroundColor = UIColor(red: 0.09, green: 0.05, blue: 0.03, alpha: 1)
+        view.backgroundColor = onBoard ? .clear : D20TableScene.walnut
+        view.isOpaque = !onBoard
         view.allowsCameraControl = false
         view.isUserInteractionEnabled = false
         view.autoenablesDefaultLighting = false
@@ -506,6 +519,7 @@ struct D20TableView: UIViewRepresentable {
             view.scene = table.scene
             view.pointOfView = table.scene.rootNode.childNodes.first { $0.camera != nil }
             table.view = view
+            table.onBoard = onBoard
             #if DEBUG
             if ProcessInfo.processInfo.environment["MAGICMOBILE_D20_DEBUG"] == "1" {
                 let label = UILabel(frame: CGRect(x: 6, y: 300, width: 378, height: 96))
@@ -527,6 +541,7 @@ struct D20TableView: UIViewRepresentable {
 
     func updateUIView(_ view: SCNView, context: Context) {
         guard let table = context.coordinator.scene else { return }
+        table.onBoard = onBoard
         table.onEdgeHit = onEdgeHit
         table.onRebound = onRebound
         table.onRest = onRest

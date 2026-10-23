@@ -10,7 +10,7 @@ struct SocialNotice: View {
     var body: some View {
         Button(action: dismiss) {
             Text(text)
-                .font(.system(size: 13, weight: .heavy, design: .serif))
+                .font(ArenaMenuStyle.font(13, .heavy))
                 .foregroundStyle(Color(red: 1, green: 0.91, blue: 0.66))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 18).padding(.vertical, 10)

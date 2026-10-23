@@ -289,7 +289,7 @@ struct SupportBanner: View {
                         Text(SupportProject.pitch).lineLimit(1).minimumScaleFactor(0.7)
                         Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .heavy))
                     }
-                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                    .font(ArenaMenuStyle.font(13, .semibold))
                     .foregroundStyle(TavernPalette.parchment.opacity(0.85))
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())

@@ -22,8 +22,21 @@ enum ArenaMenuStyle {
     static let goldFill = LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
                                          startPoint: .top, endPoint: .bottom)
     static let barHeight: CGFloat = 46
+    /// The call to action's orange (Arena's Play), top to bottom.
+    static let orange = LinearGradient(stops: [.init(color: Color(red: 1, green: 0.70, blue: 0.29), location: 0),
+                                               .init(color: Color(red: 0.957, green: 0.478, blue: 0.11), location: 0.48),
+                                               .init(color: Color(red: 0.79, green: 0.26, blue: 0.05), location: 1)],
+                                       startPoint: .top, endPoint: .bottom)
+    /// The thin warm rim around the orange.
+    static let orangeRim = Color(red: 1, green: 0.84, blue: 0.59).opacity(0.9)
 
-    static func font(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font { .system(size: size, weight: weight, design: .serif) }
+    /// Arena's type: the serif display face for titles, names on plates and big numbers; a clean sans for labels, rows,
+    /// captions and body (Caleb chose Arena's mix, 2026-10-22). From 17 pt up a size is a title; `title` sets a smaller
+    /// serif heading on purpose.
+    static func font(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
+        size >= 17 ? title(size, weight) : .system(size: size, weight: weight)
+    }
+    static func title(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font { .system(size: size, weight: weight, design: .serif) }
 }
 
 /// Gold small capitals over a section or a value ("RANKED · GOLD II").
@@ -280,102 +293,145 @@ struct ArenaCornerButton: View {
 
 // MARK: - Plaques
 
-/// The Play plaque: bright ember glass in the brass rim with a halo that breathes, the reference's call to action.
-/// `cancel` is the leather plaque that stands in while a search runs.
+/// What an Arena button asks for: the call to action, the other choice, a destructive one, a word on the table with no
+/// pill (the opponent's turn), or Arena's blue pill beside the orange one (Mulligan beside Keep).
+enum ArenaButtonKind { case primary, secondary, danger, quiet, cool }
+
+/// Arena's button (Caleb chose option A, 2026-10-22): the call to action is an orange pill with a thin warm rim, a lit top
+/// edge and a soft glow; the other choice is a dark glass pill edged in a pale line; danger is a deep red pill. No brass,
+/// rivets, leather or stitching anywhere (those stay with the Hearth board). One face for every Arena button, menus and
+/// board alike, so a table theme never changes them.
+struct ArenaButtonFace<Label: View>: View {
+    let label: Label
+    var kind: ArenaButtonKind = .primary
+    var font: Font
+    var pressed = false
+    /// Fill the frame the caller gives (plaques, Play); otherwise the pill hugs its word.
+    var fills = true
+    /// Filling: how far the pill sits inside its frame, top and bottom, so a 44 pt target can hold a slimmer pill.
+    /// Hugging: the room above and below the word.
+    var inset: CGFloat = 0
+    var glow: Double = 1
+    /// Play's slow sweep of light.
+    var shine = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.brandAmbientMotion) private var ambient
+
+    var body: some View {
+        let lit = kind == .primary && isEnabled
+        label
+            .font(font)
+            .foregroundStyle(kind == .secondary || kind == .quiet ? Color(red: 0.95, green: 0.91, blue: 0.85) : Color.white)
+            .shadow(color: kind == .primary ? Color(red: 0.35, green: 0.1, blue: 0).opacity(0.75) : .black.opacity(0.6), radius: 1.5, y: 1)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .padding(.horizontal, 16)
+            .padding(.vertical, fills ? 0 : inset)
+            .frame(maxWidth: fills ? .infinity : nil, maxHeight: fills ? .infinity : nil)
+            .background {
+                if kind != .quiet { fill.padding(.vertical, edge) }
+            }
+            .overlay {
+                if shine && lit && !reduceMotion && ambient { ShineSweep().clipShape(Capsule()).padding(.vertical, edge) }
+            }
+            .overlay { if kind != .quiet { rim.padding(.vertical, edge) } }
+            .background {
+                if lit && glow > 0 {
+                    Capsule().fill(Color(red: 1, green: 0.47, blue: 0.12)).blur(radius: 10).opacity(0.55 * glow)
+                        .padding(.vertical, edge + 2)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .saturation(isEnabled ? 1 : 0.15)
+            .brightness(isEnabled ? (pressed ? 0.08 : 0) : -0.15)
+            .scaleEffect(pressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: pressed)
+    }
+
+    /// The pill's distance from the frame's top and bottom: the inset when filling a frame, none when hugging the word.
+    private var edge: CGFloat { fills ? inset : 0 }
+
+    @ViewBuilder private var fill: some View {
+        switch kind {
+        case .primary:
+            Capsule().fill(ArenaMenuStyle.orange)
+                .overlay(Capsule().fill(LinearGradient(colors: [.clear, Color(red: 0.43, green: 0.08, blue: 0).opacity(0.35)],
+                                                       startPoint: .center, endPoint: .bottom)))
+        case .danger:
+            Capsule().fill(LinearGradient(colors: [Color(red: 0.78, green: 0.22, blue: 0.18), Color(red: 0.49, green: 0.09, blue: 0.07)],
+                                          startPoint: .top, endPoint: .bottom))
+        case .cool:
+            Capsule().fill(LinearGradient(stops: [.init(color: Color(red: 0.55, green: 0.60, blue: 1), location: 0),
+                                                  .init(color: Color(red: 0.31, green: 0.27, blue: 0.86), location: 0.5),
+                                                  .init(color: Color(red: 0.19, green: 0.12, blue: 0.58), location: 1)],
+                                          startPoint: .top, endPoint: .bottom))
+        case .secondary, .quiet:
+            Capsule().fill(LinearGradient(colors: [Color(red: 0.16, green: 0.17, blue: 0.20).opacity(0.92),
+                                                   Color(red: 0.08, green: 0.085, blue: 0.10).opacity(0.94)],
+                                          startPoint: .top, endPoint: .bottom))
+        }
+    }
+
+    private var rim: some View {
+        let edge: Color = switch kind {
+        case .primary: ArenaMenuStyle.orangeRim
+        case .danger: Color(red: 1, green: 0.66, blue: 0.58).opacity(0.7)
+        case .cool: Color(red: 0.76, green: 0.80, blue: 1).opacity(0.85)
+        default: Color(red: 1, green: 0.9, blue: 0.75).opacity(0.5)
+        }
+        return ZStack {
+            Capsule().strokeBorder(edge, lineWidth: kind == .secondary ? 1 : 1.5)
+            // The top edge catches the light.
+            Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(kind == .secondary ? 0.14 : 0.55), .clear],
+                                                  startPoint: .top, endPoint: .center), lineWidth: 1)
+                .padding(1.5)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Arena's button for menus and panels, in place of the Hearth board's `TavernButtonStyle` (same options).
+struct ArenaButtonStyle: ButtonStyle {
+    var kind: ArenaButtonKind = .primary
+    var compact = false
+    var fontSize: CGFloat?
+    var fullWidth = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        ArenaButtonFace(label: configuration.label, kind: kind,
+                        font: ArenaMenuStyle.title(fontSize ?? (compact ? 14 : 16), kind == .secondary ? .semibold : .bold),
+                        pressed: configuration.isPressed, fills: fullWidth, inset: fullWidth ? 2 : (compact ? 7 : 10),
+                        glow: compact ? 0.6 : 1)
+            .frame(minWidth: compact ? 64 : 96, maxWidth: fullWidth ? .infinity : nil)
+            .frame(height: 44)
+            .pressSound(kind == .secondary ? .uiBack : .uiConfirm, isPressed: configuration.isPressed)
+    }
+}
+
+/// The Play plaque: Arena's orange pill with its glow and a slow sweep of light. `cancel` is the dark pill that stands in
+/// while a search runs.
 struct ArenaPlayButtonStyle: ButtonStyle {
     var cancel = false
     var fontSize: CGFloat = 21
 
     func makeBody(configuration: Configuration) -> some View {
-        ArenaPlayFace(label: configuration.label, pressed: configuration.isPressed, cancel: cancel, fontSize: fontSize)
+        ArenaButtonFace(label: configuration.label, kind: cancel ? .secondary : .primary,
+                        font: ArenaMenuStyle.title(fontSize, .bold), pressed: configuration.isPressed, shine: true)
+            .pressSound(cancel ? .uiBack : .uiConfirm, isPressed: configuration.isPressed)
     }
 }
 
-private struct ArenaPlayFace<Label: View>: View {
-    let label: Label
-    let pressed: Bool
-    let cancel: Bool
-    let fontSize: CGFloat
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.brandAmbientMotion) private var ambient
-    @State private var breathe = false
-
-    var body: some View {
-        let lit = !cancel && isEnabled
-        label
-            .pressSound(cancel ? .uiBack : .uiConfirm, isPressed: pressed)
-            .font(.system(size: fontSize, weight: .bold, design: .serif))
-            .foregroundStyle(cancel ? TavernPalette.parchment : Color(red: 1, green: 0.95, blue: 0.80))
-            .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                Group {
-                    if cancel {
-                        TavernFill(material: .leather)
-                    } else {
-                        // The ember glass lit from within, brighter than the board's corner plaque.
-                        TavernFill(material: .ember)
-                            .overlay {
-                                LinearGradient(colors: [Color(red: 1, green: 0.66, blue: 0.30).opacity(0.75), .clear,
-                                                        Color(red: 0.9, green: 0.30, blue: 0.08).opacity(0.35)],
-                                               startPoint: .top, endPoint: .bottom)
-                                    .blendMode(BlendMode.plusLighter)
-                            }
-                    }
-                }
-                .clipShape(Capsule())
-                .padding(3)
-            }
-            .overlay { if lit && !reduceMotion && ambient { ShineSweep().clipShape(Capsule()).padding(3) } }
-            .overlay { TavernCapsuleRim() }
-            .background {
-                if lit {
-                    Capsule()
-                        .fill(Color(red: 1, green: 0.48, blue: 0.16))
-                        .blur(radius: 14)
-                        .opacity(breathe ? 0.85 : 0.5)
-                        .padding(-4)
-                        .allowsHitTesting(false)
-                }
-            }
-            .contentShape(Capsule())
-            .saturation(isEnabled ? 1 : 0.2)
-            .brightness(isEnabled ? (pressed ? 0.08 : 0) : -0.15)
-            .scaleEffect(pressed && !reduceMotion ? 0.97 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: pressed)
-            .onAppear {
-                guard !reduceMotion, ambient else { return }
-                withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) { breathe = true }
-            }
-    }
-}
-
-/// A small leather pill with gold text (filters, quiet links), the reference's dropdown chips.
+/// A small pill (filters, quiet links), the reference's dropdown chips: dark glass, orange when lit.
 struct ArenaPillButtonStyle: ButtonStyle {
     var lit = false
-    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(ArenaMenuStyle.font(12.5, .bold))
-            .foregroundStyle(lit ? Color(red: 1, green: 0.94, blue: 0.78) : ArenaMenuStyle.gold)
-            .lineLimit(1)
-            .padding(.horizontal, 14)
-            .frame(height: 30)
-            .background {
-                Group { if lit { TavernFill(material: .ember) } else { TavernFill(material: .leather) } }
-                    .clipShape(Capsule())
-            }
-            .overlay(Capsule().strokeBorder(Color(red: 0.86, green: 0.64, blue: 0.30), lineWidth: 1.3))
-            .shadow(color: .black.opacity(0.5), radius: 2, y: 2)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-            .opacity(isEnabled ? 1 : 0.45)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+        ArenaButtonFace(label: configuration.label, kind: lit ? .primary : .secondary, font: ArenaMenuStyle.font(12.5, .bold),
+                        pressed: configuration.isPressed, fills: false, inset: 6, glow: 0.4)
+            .frame(height: 44)
     }
 }
 

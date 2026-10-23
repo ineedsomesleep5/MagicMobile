@@ -537,3 +537,21 @@ contradicting one.
   Play bar arrived, so a short Ideas page could scroll its own source picker under the tabs. It now uses the measured
   height plus 24 pt so the landing scroll still clears the header. Also: `scripts/deck-studio/ios-ui-tests.py` takes
   `build` then `test` as separate runs.
+- 2026-10-22 (Claude, Arena look pass): (1) A `DragGesture` attached with `.gesture` to a view whose child is a `Button`
+  never fires: the Button takes the touch, which is why the home carousel didn't swipe. Use `.highPriorityGesture` and
+  check the drag is mostly sideways. (2) A pill drawn behind a label with `.padding(.vertical, inset)` must have a
+  frame taller than the label, or the capsule shrinks to a line. `ArenaButtonFace` pads hugging pills and insets only
+  filling ones (`fills`). (3) Scryfall's largest art crop is 626 px wide for every card. The home art is that crop,
+  upscaled with Real-ESRGAN (official v0.2.5.0 macOS release, `realesrgan-x4plus`, 4× then Lanczos down to 1252 px),
+  and shipped in the asset catalog. (4) To change how something looks on the Arena board only, branch on
+  `\.arenaBoard` inside the shared style (`TavernButtonStyle`, `StartingRollCover`, `OpeningHandButtonStyle`) rather
+  than at each caller. The menus set it true, and a game sets it to its own board.
+- 2026-10-22 (Claude, TestFlight 56 crash): switching to the Arena board crashed on Caleb's iPhone (iOS 26.6.2) with
+  EXC_BAD_ACCESS in the main thread's stack guard, inside `swift_getTypeByMangledName` called from
+  `NativeGameView.arenaOpponentSeat` under `arenaTable`. The board was one giant `@ViewBuilder` value in a Release build
+  (the piles, overlays, medallion branches and menu inlined into one nested type), and the device's main thread has
+  about 1 MB of stack. Debug builds and the simulator, which has a larger stack, never showed it. The fix type-erases
+  each table layer (`ArenaLayer`, an AnyView over a ZStack, with the z-order applied outside it) and the board in `body`.
+  Rules: don't let one function build a whole screen as a nested view, split it into erased layers or separate `View`
+  structs; read the crash with `asc testflight crashes list --app 6784735182 --sort -createdDate` and
+  `asc testflight crashes log --submission-id <id>` (sandbox off).

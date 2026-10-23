@@ -339,7 +339,7 @@ struct BinderMenuRowLabel: View {
             .frame(width: 22)
             .foregroundStyle(destructive ? DeckStudioPalette.danger : ArenaMenuStyle.gold)
             Text(title)
-                .font(.system(size: 16, weight: checked ? .bold : .regular, design: .serif))
+                .font(ArenaMenuStyle.font(16, checked ? .bold : .regular))
                 .foregroundStyle(destructive ? DeckStudioPalette.danger : DeckStudioPalette.ink)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -437,7 +437,7 @@ struct BinderMenuHeading: View {
     init(_ title: String) { self.title = title }
     var body: some View {
         Text(title).textCase(.uppercase)
-            .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1)
+            .font(ArenaMenuStyle.font(11, .heavy)).tracking(1)
             .foregroundStyle(DeckStudioPalette.accent)
             .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
             .accessibilityAddTraits(.isHeader)
@@ -458,7 +458,7 @@ struct BinderMenuNote: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+        Text(text).font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
             .padding(.horizontal, 14).padding(.vertical, 8)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -568,7 +568,7 @@ private struct BinderDialogCard: View {
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let message = dialog.message {
-                Text(message).font(.system(size: 14, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text(message).font(ArenaMenuStyle.font(14, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
             GrimoireRule()
@@ -588,30 +588,17 @@ private struct BinderDialogCard: View {
     }
 }
 
-/// A dialog's buttons as the Arena board's plaques: ember for the main choice, oxblood leather for a destructive
-/// one, leather for Cancel. Pressing any closes the dialog after its action.
+/// A dialog's buttons on Arena's button face: orange for the main choice, deep red for a destructive one, dark glass for
+/// Cancel. Pressing any closes the dialog after its action.
 private struct BinderDialogButtonStyle: PrimitiveButtonStyle {
     let dismiss: () -> Void
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.trigger(); dismiss() } label: {
-            configuration.label
-                .font(.system(size: 16, weight: .bold, design: .serif))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(configuration.role == nil ? Color(red: 1, green: 0.94, blue: 0.78) : TavernPalette.parchment)
-                .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
-                .background {
-                    Group {
-                        switch configuration.role {
-                        case .destructive?: TavernFill(material: .leather).overlay(MagicPalette.oxblood.opacity(0.7))
-                        case .cancel?: TavernFill(material: .leather)
-                        default: TavernFill(material: .ember)
-                        }
-                    }
-                    .clipShape(Capsule())
-                    .padding(2.5)
-                }
-                .overlay { TavernCapsuleRim() }
-                .contentShape(Capsule())
+            ArenaButtonFace(label: configuration.label,
+                            kind: configuration.role == .destructive ? .danger : configuration.role == .cancel ? .secondary : .primary,
+                            font: ArenaMenuStyle.title(16, .bold), inset: 2, glow: 0.6)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
         }
         .buttonStyle(.plain)
     }

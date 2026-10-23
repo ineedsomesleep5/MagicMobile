@@ -753,7 +753,8 @@ struct NativeGameView: View {
             let boardSurface = GeometryReader { rootProxy in
                 ZStack {
                     if isArenaBoard {
-                        arenaBoard(snapshot: snapshot, human: human, opponent: opponent, rootProxy: rootProxy)
+                        // Erased: the Arena board is a deep view on its own (see arenaTable).
+                        AnyView(arenaBoard(snapshot: snapshot, human: human, opponent: opponent, rootProxy: rootProxy))
                     } else {
                     BattlefieldSurface(portraitModeEnabled: portraitModeEnabled)
                         .ignoresSafeArea()
@@ -1084,8 +1085,10 @@ struct NativeGameView: View {
                 .environment(\.inspectorBattlefield, snapshot.visibleBattlefield)
                 .overlay {
                     if let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {
-                        OpeningHandOverlay(choice: choice, cards: hand, pending: pendingActionId != nil, answer: runCommand)
+                        OpeningHandOverlay(choice: choice, cards: hand, pending: pendingActionId != nil,
+                                           heading: snapshot.startingPlayerHeading, answer: runCommand)
                             .environment(\.tavernBoard, isTavernBoard)
+                            .environment(\.arenaBoard, isArenaBoard)
                             .transition(.opacity)
                     }
                 }

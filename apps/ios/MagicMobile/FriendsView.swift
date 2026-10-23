@@ -640,10 +640,10 @@ private struct FriendRowAction: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(Color(red: 1, green: 0.94, blue: 0.78))
+            .foregroundStyle(Color.white)
             .frame(width: 28, height: 28)
-            .background { TavernFill(material: .ember).clipShape(Circle()) }
-            .overlay(Circle().strokeBorder(Color(red: 0.86, green: 0.64, blue: 0.30), lineWidth: 1.2))
+            .background { Circle().fill(ArenaMenuStyle.orange) }
+            .overlay(Circle().strokeBorder(ArenaMenuStyle.orangeRim, lineWidth: 1.2))
             .shadow(color: ArenaMenuStyle.ember.opacity(0.5), radius: 4)
             .frame(width: 36, height: 44)
             .contentShape(Rectangle())

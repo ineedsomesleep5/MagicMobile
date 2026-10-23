@@ -829,30 +829,42 @@ struct OnDeviceRootView: View {
                     submitStartingChoiceIfNeeded()
                 }
             } else {
-                // Until the host shares the dice: the same leather and brass the roll itself wears.
+                // Until the host shares the dice: the same leather and brass the roll itself wears; dark glass and one
+                // line of status on the Arena board.
+                let arena = BoardMode.resolved(boardMode) == .arena
                 VStack(spacing: 14) {
                     Text("Who goes first?")
-                        .font(.system(.title2, design: .serif, weight: .heavy))
+                        .font(arena ? ArenaMenuStyle.title(26, .bold) : .system(.title2, design: .serif, weight: .heavy))
                         .foregroundStyle(Color(red: 0.98, green: 0.92, blue: 0.80))
                         .shadow(color: .black.opacity(0.7), radius: 0, y: 1)
                     Text(multiplayer.rollStatus)
-                        .font(.system(.subheadline, design: .serif, weight: .medium)).multilineTextAlignment(.center)
-                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
-                    Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
-                        .font(.system(.caption, design: .serif)).multilineTextAlignment(.center)
-                        .foregroundStyle(Color(red: 0.84, green: 0.72, blue: 0.52))
+                        .font(arena ? ArenaMenuStyle.font(14, .medium) : .system(.subheadline, design: .serif, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(arena ? ArenaGlass.text.opacity(0.8) : Color(red: 0.84, green: 0.72, blue: 0.52))
+                    if !arena || multiplayer.hostAISeatSummary != nil {
+                        Text(multiplayer.hostAISeatSummary ?? "Each player rolls a D20. Highest starts; ties reroll.")
+                            .font(arena ? ArenaMenuStyle.font(12, .regular) : .system(.caption, design: .serif)).multilineTextAlignment(.center)
+                            .foregroundStyle(arena ? ArenaGlass.text.opacity(0.7) : Color(red: 0.84, green: 0.72, blue: 0.52))
+                    }
                     Button(multiplayer.hasRolled ? "Waiting for other players…" : "Roll D20") {
                         do { try multiplayer.rollStartingPlayer() }
                         catch { bannerError = error.localizedDescription }
                     }
-                    .buttonStyle(TavernButtonStyle(kind: .primary, fontSize: 17, fullWidth: true))
+                    .buttonStyle(ArenaButtonStyle(kind: .primary, fontSize: 17, fullWidth: true))
                     .disabled(multiplayer.hasRolled)
                     .accessibilityIdentifier("ondevice.multiplayer.roll")
                 }
                 .padding(24)
                 .frame(maxWidth: 440)
-                .background { TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 14)).padding(2) }
-                .overlay { TavernBrassFrame() }
+                .background {
+                    if arena {
+                        RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.7))
+                            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                    } else {
+                        TavernFill(material: .leather).clipShape(RoundedRectangle(cornerRadius: 14)).padding(2)
+                            .overlay { TavernBrassFrame() }
+                    }
+                }
                 .shadow(color: .black.opacity(0.5), radius: 10, y: 5)
                 .padding(.horizontal, 16)
             }
@@ -1271,32 +1283,34 @@ struct OnDeviceRootView: View {
     private var homeContent: ArenaHomeContent {
         let rank = profileRecord.rank
         let season = RankLadder.seasonName(rank.season)
-        let commander = selectedDeck?.commander?.cardName
         return ArenaHomeContent(
             features: [
                 ArenaFeature(id: "ranked", kicker: String(localized: "Ranked season"), title: season,
-                             detail: String(localized: "Climb from Bronze to Mythic. Your deck's bracket sets who you meet."),
-                             art: "Atarka, World Render", colors: ["R", "G"], action: { selectMenuTab(.ranked) }),
+                             art: ArenaHomeArt(asset: "home-art-ur-dragon", focus: UnitPoint(x: 0.62, y: 0.3)),
+                             action: { selectMenuTab(.ranked) }),
                 ArenaFeature(id: "board", kicker: String(localized: "New"), title: String(localized: "The Arena board"),
-                             detail: String(localized: "Corner controls, a tucked hand and the stack on the right. Switch boards in Settings."),
-                             art: "Gishath, Sun's Avatar", colors: ["R", "G", "W"], action: { showUpdates = true }),
+                             art: ArenaHomeArt(asset: "home-art-edgar-markov", focus: UnitPoint(x: 0.55, y: 0.22)),
+                             action: { showUpdates = true }),
                 ArenaFeature(id: "friends", kicker: String(localized: "Friends"), title: String(localized: "Bring a friend to the table"),
-                             detail: String(localized: "Send a challenge, or share a table code to play iPhone against Android."),
-                             art: "Isperia, Supreme Judge", colors: ["W", "U"], action: { showFriends = true }),
+                             art: ArenaHomeArt(asset: "home-art-yshtola", focus: UnitPoint(x: 0.62, y: 0.25)),
+                             action: { showFriends = true }),
                 // The tip jar (it was a strip at the foot of the old menu): the support page, in the browser.
                 ArenaFeature(id: "support", kicker: String(localized: "Support"), title: String(localized: "Enjoying MagicMobile?"),
-                             detail: String(localized: "Help cover server costs. Tips open in your browser; the app stays free with no ads."),
-                             art: "Smothering Tithe", colors: ["W"], action: { openURL(SupportProject.url) }),
+                             art: ArenaHomeArt(asset: "home-art-atraxa", focus: UnitPoint(x: 0.5, y: 0.2)),
+                             action: { openURL(SupportProject.url) }),
             ],
             tiles: [
                 ArenaHomeTile(id: "quick", title: String(localized: "Quick Match"), subtitle: "",
-                              art: commander ?? "Krenko, Mob Boss", colors: selectedDeckColors, action: { openPlayPanel(.quick) }),
+                              art: ArenaHomeArt(asset: "home-art-krenko", focus: UnitPoint(x: 0.5, y: 0.38)),
+                              action: { openPlayPanel(.quick) }),
                 ArenaHomeTile(id: "ranked", title: String(localized: "Ranked"),
                               subtitle: rank.position.tier == .mythic ? rank.position.title
                                 : String(localized: "\(rank.position.title) · \(rank.position.pips) of \(RankPosition.pipsPerDivision) pips"),
-                              art: "Edgar Markov", colors: ["R", "W", "B"], action: { openPlayPanel(.ranked) }),
+                              art: ArenaHomeArt(asset: "home-art-miirym", focus: UnitPoint(x: 0.55, y: 0.4)),
+                              action: { openPlayPanel(.ranked) }),
                 ArenaHomeTile(id: "learn", title: HowToPlayText.title, subtitle: "",
-                              art: "Teferi, Temporal Archmage", colors: ["U"], action: { showHowToPlay = true }),
+                              art: ArenaHomeArt(asset: "home-art-giada", focus: UnitPoint(x: 0.6, y: 0.3)),
+                              action: { showHowToPlay = true }),
             ],
             deck: selectedDeckBox,
             rank: rank.position, wins: rank.wins, losses: rank.losses,
@@ -2247,26 +2261,26 @@ struct OnDeviceRootView: View {
                 if activeGame {
                     HStack(spacing: 8) {
                         Button("Refresh", action: refresh).disabled(!setup.canUseSession)
-                            .buttonStyle(TavernButtonStyle(kind: .primary, compact: true))
+                            .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true))
                         if session.pendingActionID != nil {
                             Button("Retry response") { Task { await setup.perform { try await session.retryPending() } } }
                                 .disabled(!setup.canUseSession)
-                                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                                .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                         }
                         Button(setup.closeFailed ? "Retry closing" : "Leave") {
                             if setup.closeFailed { closeGame() } else { confirmLeave = true }
                         }
-                        .buttonStyle(TavernButtonStyle(kind: .danger, compact: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .danger, compact: true))
                     }
                     .disabled(setup.isBusy || session.isWorking)
                 }
                 if message != nil && diagnostics.report != nil {
                     Button("Review engine error report") { showDiagnostics = true }
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                         .accessibilityIdentifier("ondevice.failureReport")
                 }
             }
-            .font(.system(size: 15, weight: .semibold, design: .serif))
+            .font(ArenaMenuStyle.font(15, .semibold))
             .foregroundStyle(TavernPalette.parchment)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)

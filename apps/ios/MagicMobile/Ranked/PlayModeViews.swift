@@ -212,31 +212,31 @@ struct DeckBracketSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(deckName).font(.system(size: 20, weight: .black, design: .serif))
                         BracketTag(bracket: effective, leather: false)
-                        Text(effective.blurb).font(.system(size: 14, design: .serif)).opacity(0.8)
+                        Text(effective.blurb).font(ArenaMenuStyle.font(14, .regular)).opacity(0.8)
                     }
                     .modifier(TavernParchmentCard())
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(String(localized: "WHAT THE LIST SHOWS")).font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.4)
+                        Text(String(localized: "WHAT THE LIST SHOWS")).font(ArenaMenuStyle.font(11, .heavy)).tracking(1.4)
                             .foregroundStyle(BrandTheme.brassGradient)
                         if report.reasons.isEmpty {
                             Text(String(localized: "No Game Changers, mass land denial, chained extra turns or two-card combos: Bracket 2 at most."))
-                                .font(.system(size: 14, design: .serif))
+                                .font(ArenaMenuStyle.font(14, .regular))
                         } else {
                             ForEach(report.reasons, id: \.self) { line in
-                                Label(line, systemImage: "diamond.fill").font(.system(size: 14, design: .serif))
+                                Label(line, systemImage: "diamond.fill").font(ArenaMenuStyle.font(14, .regular))
                                     .labelStyle(BracketReasonLabelStyle())
                             }
                         }
                         Text(String(localized: "Lowest bracket for this list: \(report.minimum.title)."))
-                            .font(.system(size: 13, weight: .semibold, design: .serif)).opacity(0.8)
+                            .font(ArenaMenuStyle.font(13, .semibold)).opacity(0.8)
                     }
                     .modifier(TavernLeatherCard())
                     if let declared {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text(String(localized: "YOUR CALL")).font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.4)
+                            Text(String(localized: "YOUR CALL")).font(ArenaMenuStyle.font(11, .heavy)).tracking(1.4)
                                 .foregroundStyle(BrandTheme.brassGradient)
                             Text(String(localized: "Brackets are also about intent. Raise the bracket if the deck plays stronger than its list shows. A Core list may be called Exhibition."))
-                                .font(.system(size: 13, design: .serif)).opacity(0.8)
+                                .font(ArenaMenuStyle.font(13, .regular)).opacity(0.8)
                             TavernPicker(title: String(localized: "Bracket"), selection: declared, sections: [
                                 .init(options: [(String(localized: "Use the list (\(report.minimum.title))"), nil)]
                                       + DeckBracketPreference.choices(minimum: report.minimum)
