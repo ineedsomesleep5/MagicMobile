@@ -805,8 +805,15 @@ export class BoardPresentationHold {
   static readonly ingestWait = 1;
   /** How long smart pass waits while you read a card: long, but a bound. */
   static readonly readingWait = 60;
+  /** With a game speed slower than Fast, how long smart pass may wait for the board to catch up and settle. */
+  static readonly pacedWait = 10;
   ingested?: string;
   until?: number;
+  /**
+   * The game speed's pace (core/gameSpeed.ts): when the newest snapshot will have shown and had its time on screen.
+   * Undefined at the Fast speed, where smart pass waits exactly as it did before game speeds.
+   */
+  paceUntil?: number;
   /** The player is reading a card (the inspector is open): smart pass waits until it closes. */
   reading = false;
   record(key: string | undefined, until: number | undefined) { this.ingested = key; this.until = until; }

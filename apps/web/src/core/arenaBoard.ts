@@ -70,6 +70,48 @@ export function commanderTakenNotice(entry: string, snapshot: GameSnapshot): str
   return `${who} took ${name || "Your commander"}. A commander goes to the command zone only after the spell that moved it finishes, so that spell could take it first.`;
 }
 
+/** One commander in the commander browser: its card where it can be seen, the times it was cast from the command zone and its next tax. */
+export interface CommanderEntry {
+  key: string; name: string; card?: ZoneCard;
+  /** Where the card is when it isn't in the command zone ("battlefield", "graveyard", …; undefined when unseen). */
+  zone?: "command" | "battlefield" | "graveyard" | "exile" | "hand" | "library";
+  casts?: number; tax?: number;
+}
+
+/**
+ * A player's commanders for the commander browser: the public commander list in its order (partners side by side), each
+ * with its card from the command zone or wherever it can be seen now, then anything else in the command zone. Casts and
+ * tax come from the commander's public state; a lone commander falls back to the player's known commander tax.
+ */
+export function commanderEntries(player: PlayerGameState, snapshot: GameSnapshot): CommanderEntry[] {
+  // Its own command zone first; elsewhere it can be under anyone's control (a stolen commander).
+  const elsewhere = ["battlefield", "graveyard", "exile", "hand", "library"] as const;
+  const seen = (name: string): { card: ZoneCard; zone: NonNullable<CommanderEntry["zone"]> } | undefined => {
+    const home = player.zones.command.find((c) => c.card.name === name);
+    if (home) return { card: home, zone: "command" };
+    for (const zone of elsewhere) {
+      const card = snapshot.players.flatMap((p) => p.zones[zone]).find((c) => c.card.name === name);
+      if (card) return { card, zone };
+    }
+    return undefined;
+  };
+  const listed = player.commanders ?? [];
+  const entries: CommanderEntry[] = listed.map((commander, index) => {
+    const name = commander.name ?? "Commander";
+    const found = commander.name ? seen(commander.name) : undefined;
+    const tax = commander.commanderTax ?? (listed.length === 1 && player.commanderTaxKnown ? player.commanderTax : undefined);
+    return { key: commander.id || `commander-${index}`, name, card: found?.card, zone: found?.zone, casts: commander.castsFromCommandZone, tax };
+  });
+  const named = new Set(entries.map((e) => e.name));
+  for (const card of player.zones.command) {
+    if (named.has(card.card.name)) continue;
+    named.add(card.card.name);
+    const tax = listed.length === 0 && player.commanderTaxKnown ? player.commanderTax : undefined;
+    entries.push({ key: card.instanceId, name: card.card.name, card, zone: "command", tax });
+  }
+  return entries;
+}
+
 /** ArenaExtraHand: cards you can play from your graveyard or exile, shown beside the hand. */
 export function extraHandCards(player: PlayerGameState, actions: LegalAction[]): ZoneCard[] {
   const playable = new Set(actions.filter((a) => a.type === "cast_spell" || a.type === "play_land").flatMap((a) => [a.cardInstanceId, a.sourceInstanceId])

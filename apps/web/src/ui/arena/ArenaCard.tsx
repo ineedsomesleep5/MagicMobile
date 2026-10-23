@@ -8,6 +8,7 @@ import { abilityBadgePlan, displayPower, displayToughness, isCreatureCard, visib
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols, useCardArtURL } from "../cardArt";
 import { AbilityCard } from "./AbilityCard";
+import { type CardReader, readProps } from "./inspectGesture";
 import { LEAN, type Place } from "./layout";
 import { CardBack, ManaSymbol } from "./Symbols";
 
@@ -158,18 +159,17 @@ export interface ArenaCardProps {
   classes?: string;
   label?: string;
   onClick?: (id: string, event: React.MouseEvent) => void;
-  onHover?: (id: string | undefined) => void;
   /** A hand card: pressing it may start carrying it to the table. */
   onPress?: (id: string, event: React.PointerEvent) => void;
-  /** Right-click (or a long press) reads the card in the inspector. */
-  onInspect?: (id: string) => void;
+  /** Right-click or a press held still reads the card in the inspector; hovering only lifts it. */
+  reader?: CardReader;
 }
 
 /**
  * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
  * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
  */
-export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, extraZone, classes, label, onClick, onHover, onPress, onInspect }: ArenaCardProps) {
+export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, extraZone, classes, label, onClick, onPress, reader }: ArenaCardProps) {
   const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
     width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
@@ -178,15 +178,14 @@ export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames
     ? { transform: `perspective(${LEAN.distance.toFixed(0)}px) rotateX(${LEAN.pitch}deg)`, transformOrigin: `${(LEAN.centerX - left).toFixed(1)}px 50%` }
     : undefined;
   const printed = name ?? card?.card.name ?? "";
+  const read = view === "back" ? {} : readProps(reader, { name: printed, card });
   return (
     <div className={`acard ${classes ?? ""} ${view === "tile" && card?.phasedIn === false ? "phased" : ""}`} data-id={id} data-view={view} data-o={owner} data-hand={inHand ? "" : undefined} style={style} role={onClick ? "button" : undefined}
       aria-label={label ?? (view === "back" ? "Card" : extraZone ? `${printed}, playable from your ${extraZone.toLowerCase()}` : printed)} tabIndex={onClick ? 0 : undefined}
       onClick={onClick ? (event) => onClick(id, event) : undefined}
       onKeyDown={onClick ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(id, event as unknown as React.MouseEvent); } } : undefined}
-      onPointerDown={onPress ? (event) => { if (event.button === 0) onPress(id, event); } : undefined}
-      onContextMenu={onInspect && view !== "back" ? (event) => { event.preventDefault(); onInspect(id); } : undefined}
-      onMouseEnter={onHover && view !== "back" ? () => onHover(id) : undefined}
-      onMouseLeave={onHover && view !== "back" ? () => onHover(undefined) : undefined}>
+      onPointerDown={onPress || read.onPointerDown ? (event) => { if (event.button === 0) onPress?.(id, event); read.onPointerDown?.(event); } : undefined}
+      onContextMenu={read.onContextMenu}>
       <div className="lean" style={lean}>
         <div className="spin" style={{ transform: `rotate(${place.r ?? 0}deg) scale(${place.s ?? 1})` }}>
           {view === "tile" && card && (frames ? <Tile card={card} /> : <PlainTile card={card} width={place.w} />)}

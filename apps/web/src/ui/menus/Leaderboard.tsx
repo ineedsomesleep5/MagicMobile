@@ -5,7 +5,9 @@
  * you're off the list, a pulsing dot for who's online, places gained or lost since the last look, and a band of gold
  * light sweeping Mythic rows. Refreshes every 20 seconds while the page is visible.
  *
- * A full page under the top bar, like RankedPage.
+ * A full page under the top bar, like RankedPage. On the web it is laid out for a desktop window rather than a phone held
+ * sideways (Caleb, 2026-10-23: "take up more space and look better"): one scrolling page with the podium across the
+ * top, large, and the standings below as a table with Record, Win rate and Rank columns. Same data and rules as iOS.
  */
 import { useEffect, useRef, useState } from "react";
 import { type PlayerAccount, RankedLeaderboard, type RankedLeaderboardEntry, type RankedLeaderboardScope } from "../../core/account";
@@ -18,6 +20,12 @@ import { RankEmblem } from "./TopBar";
 import "./social.css";
 
 const REFRESH_SECONDS = 20;
+
+/** Wins out of games played this season, rounded; undefined before the first game. */
+const winRate = (entry: RankedLeaderboardEntry) => {
+  const played = entry.wins + entry.losses;
+  return played === 0 ? undefined : Math.round((entry.wins / played) * 100);
+};
 
 type Load = { kind: "loading" } | { kind: "loaded"; board: RankedLeaderboard } | { kind: "offline" };
 
@@ -83,13 +91,14 @@ export function Leaderboard({ account, onBack, openProfile }: {
         data-id={`leaderboard.row.${entry.username}`} onClick={() => open(entry)}>
         {place === 1 && <svg className="mpodiumcrown" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 11H5zM5.5 19.5h13V21h-13z" /></svg>}
         <span className="mpodiumemblem">
-          {place === 1 && <i className="mrankglow" style={{ ["--tint" as string]: TIER_TINT[rank.tier], width: 86, height: 86 }} />}
-          <RankEmblem tier={rank.tier} size={place === 1 ? 58 : 46} />
+          {place === 1 && <i className="mrankglow" style={{ ["--tint" as string]: TIER_TINT[rank.tier], width: 132, height: 132 }} />}
+          <RankEmblem tier={rank.tier} size={place === 1 ? 92 : 74} />
           {entry.online && <span className="mpodiumdot"><OnlineDot size={12} /></span>}
         </span>
-        <b>{entry.username}</b>
+        <b>{entry.username}{entry.you && <SocialTag text="YOU" />}</b>
         <em>{entry.title ?? RankPosition.title(rank)}</em>
-        <span className={`mpodiumslab ${entry.you ? "you" : ""}`} style={{ height: podiumUp ? (place === 1 ? 72 : place === 2 ? 56 : 44) : 14 }}>
+        <span className="mpodiumrecord">{RankPosition.title(rank)} · {entry.wins}–{entry.losses}{winRate(entry) !== undefined && ` · ${winRate(entry)}%`}</span>
+        <span className={`mpodiumslab ${entry.you ? "you" : ""}`} style={{ height: podiumUp ? (place === 1 ? 96 : place === 2 ? 74 : 56) : 14 }}>
           <strong>{place}</strong>
         </span>
       </button>
@@ -116,6 +125,7 @@ export function Leaderboard({ account, onBack, openProfile }: {
         <span className="mleaderend">
           {move !== undefined && <em className={move > 0 ? "up" : "down"}>{move > 0 ? "▲" : "▼"}{Math.abs(move)}</em>}
           <span className="mleaderrecord">{entry.wins}–{entry.losses}</span>
+          <span className="mleaderrate">{winRate(entry) === undefined ? "–" : `${winRate(entry)}%`}</span>
           {!mythic && (
             <span className="mrankpips" style={{ ["--pip" as string]: "7px" }} aria-hidden="true">
               {Array.from({ length: RankPosition.pipsPerDivision }, (_, i) => <i key={i} className={i < rank.pips ? "on" : ""} data-tier={rank.tier} />)}
@@ -148,12 +158,18 @@ export function Leaderboard({ account, onBack, openProfile }: {
     const board = load.board;
     const me = RankedLeaderboard.pinnedMe(board);
     body = (
-      <div className="mleaderbody">
-        <div className="mcard mpodium mrise" data-id="leaderboard.podium">{podiumOrder(board.entries.slice(0, 3)).map(podiumStep)}</div>
-        <div className="mleaderrows mscroll">
-          {me && row(me, true)}
-          {board.entries.slice(3).map((entry) => row(entry, false))}
-        </div>
+      <div className="mleaderbody mscroll">
+        <div className="mpodium mrise" data-id="leaderboard.podium">{podiumOrder(board.entries.slice(0, 3)).map(podiumStep)}</div>
+        {(me || board.entries.length > 3) && (
+          <div className="mleaderrows">
+            <div className="mleaderhead" aria-hidden="true">
+              <span className="mleaderplace">#</span><span className="grow">Player</span>
+              <span className="mleaderend"><span className="mleaderrecord">Record</span><span className="mleaderrate">Win rate</span><span className="mleaderpipshead">Rank</span></span>
+            </div>
+            {me && row(me, true)}
+            {board.entries.slice(3).map((entry) => row(entry, false))}
+          </div>
+        )}
       </div>
     );
   }

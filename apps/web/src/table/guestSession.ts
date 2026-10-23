@@ -415,9 +415,14 @@ export class GuestSession {
     const key = revisionKey(snapshot);
     const start = nowSeconds();
     const elapsed = () => nowSeconds() - start;
-    while (hold.ingested !== key && elapsed() < BoardPresentationHold.ingestWait && !this.stopped) await pause(20);
-    while (hold.until !== undefined && hold.until > nowSeconds() && elapsed() < BoardPresentationHold.maximumWait && !this.stopped) {
-      await pause(Math.min(hold.until - nowSeconds(), 0.1) * 1000);
+    // A paced board (Game speed) shows this snapshot only once the opponent's actions before it have had their time on
+    // screen, so it gets longer to take it in, and its own pace counts as a hold.
+    const limit = () => (hold.paceUntil !== undefined ? BoardPresentationHold.pacedWait : BoardPresentationHold.maximumWait);
+    const pacing = () => hold.paceUntil !== undefined && nowSeconds() < hold.paceUntil + 0.25;
+    while (hold.ingested !== key && (elapsed() < BoardPresentationHold.ingestWait || pacing()) && elapsed() < limit() && !this.stopped) await pause(20);
+    const heldUntil = () => Math.max(hold.until ?? 0, hold.paceUntil ?? 0);
+    while (heldUntil() > nowSeconds() && elapsed() < limit() && !this.stopped) {
+      await pause(Math.min(heldUntil() - nowSeconds(), 0.1) * 1000);
     }
     while (hold.reading && elapsed() < BoardPresentationHold.readingWait && !this.stopped) await pause(100);
   }

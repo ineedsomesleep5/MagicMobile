@@ -181,6 +181,18 @@ contradicting one.
 
 ## Website
 
+- 2026-10-23 (Claude, web game speed and inspect): (1) Pacing the board (`core/gameSpeed.ts`,
+  `ui/arena/usePacedSnapshot.ts`) delays only what the board shows; the session keeps the live game. Two traps came with
+  it: a snapshot the board shows while newer ones wait still carries its prompt, which the engine has already moved past,
+  so the paced copy drops its prompt and legal actions until the board catches up; and smart pass gives the board only
+  `ingestWait` (1 s) to take in a new snapshot, so a paced board must publish when it will have caught up
+  (`BoardPresentationHold.paceUntil`), or smart pass passes before the player has seen the opponent's action. The
+  helpers that answer the game (Auto Pay, All Attack, trigger order) key on the live snapshot, not the shown one.
+  (2) A press-and-hold that opens the inspector ends with a `click` on the common ancestor of where it began and where it
+  ended (the inspector appeared in between), so it closed menus or hit the table. `inspectGesture.ts` swallows that one
+  click in the window's capture phase. Hovering never opens the inspector any more (Caleb), so the old hover-based
+  reading hold on the stack card is gone; reading means the inspector is open. Where: `apps/web/src/core/gameSpeed.ts`,
+  `apps/web/src/ui/arena/inspectGesture.ts`, `apps/web/src/table/guestSession.ts` (`waitForBoardPresentation`).
 - 2026-10-23 (Claude, web Arena look pass): the menus' stylesheet (`ui/menus/menus.css`) defines a global `.glass` whose
   colours are custom properties set only on `.mroot`. The game is drawn outside `.mroot` (MenuShell returns `GameScreen`
   before its root), so on the board those `var()`s were undefined, the whole `background` and `border` declarations

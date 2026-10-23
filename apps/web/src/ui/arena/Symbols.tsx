@@ -5,21 +5,24 @@
  * Until an image loads, or if it can't, a plain stand-in shows (a coloured disc, a dark back). Also Arena's count oval.
  */
 import { useState } from "react";
-import { CARD_BACK_URL, manaSymbolURL } from "../cardArt";
+import { CARD_BACK_URL, manaSymbolURL, remoteManaSymbolURL } from "../cardArt";
 
 const DISC: Record<string, [string, string]> = {
   W: ["#ebdba8", "#000"], U: ["#528cc7", "#000"], B: ["#2e2926", "#fff"], R: ["#c74029", "#000"], G: ["#408540", "#000"],
 };
 
 export function ManaSymbol({ symbol, size, inline }: { symbol: string; size?: number | string; inline?: boolean }) {
-  const [failed, setFailed] = useState(false);
+  // The site's copy first, then Scryfall's (a symbol newer than the copy), then a lettered disc.
+  const [tries, setTries] = useState(0);
+  const failed = tries >= 2;
   const style = size === undefined ? undefined : { width: size, height: size };
   const className = `msym ${inline ? "inline" : ""}`;
   if (failed) {
     const [background, color] = DISC[symbol] ?? ["#99917f", "#000"];
     return <span className={`${className} disc`} style={{ ...style, background, color }} aria-label={`{${symbol}}`}>{symbol}</span>;
   }
-  return <img className={className} src={manaSymbolURL(symbol)} alt={`{${symbol}}`} crossOrigin="anonymous" draggable={false} style={style} onError={() => setFailed(true)} />;
+  return <img className={className} src={tries === 0 ? manaSymbolURL(symbol) : remoteManaSymbolURL(symbol)} alt={`{${symbol}}`} crossOrigin="anonymous"
+    draggable={false} style={style} onError={() => setTries((n) => n + 1)} />;
 }
 
 /** Text with its {W}, {2}, {X} and {T} drawn as flat symbols in the line (iOS GameRulesText). */

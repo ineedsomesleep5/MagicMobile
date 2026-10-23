@@ -242,3 +242,31 @@
   .mshimmer { display: none; }
   .mpodiumslab { transition: none; }
 }
+
+/* The leaderboard laid out for a desktop window: one page, the podium large across the top, the standings as a table. */
+.mleaderboard .mleaderbody { flex-direction: column; align-items: stretch; gap: 22px; padding-bottom: 32px; }
+/* The towers stand on the room itself, no panel behind them (Caleb, 2026-10-23); a soft floor shadow grounds them. */
+.mleaderboard .mpodium { width: auto; flex: none; padding: 18px 6% 0; gap: 18px; justify-content: center; background: none; border: 0; box-shadow: none;
+  border-bottom: 1px solid rgba(232,190,112,.35); position: relative; }
+.mleaderboard .mpodium::after { content: ""; position: absolute; left: 8%; right: 8%; bottom: -1px; height: 26px; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 100%, rgba(0,0,0,.55), transparent 70%); }
+.mleaderboard .mpodiumslab { box-shadow: 0 10px 24px rgba(0,0,0,.55); }
+.mleaderboard .mpodiumstep { flex: 0 1 260px; gap: 6px; }
+.mleaderboard .mpodiumstep > b { display: flex; align-items: center; gap: 8px; font-size: 20px; }
+.mleaderboard .mpodiumstep.place1 > b { font-size: 24px; }
+.mleaderboard .mpodiumstep > em { font-size: 13px; }
+.mleaderboard .mpodiumcrown { width: 30px; height: 30px; }
+.mleaderboard .mpodiumrecord { font: 600 12.5px/1.2 var(--sans); color: var(--dim); white-space: nowrap; }
+.mleaderboard .mpodiumslab { margin-top: 8px; border-radius: 14px 14px 0 0; }
+.mleaderboard .mpodiumslab strong { padding-top: 12px; font-size: 34px; }
+.mleaderboard .mpodiumstep.place1 .mpodiumslab strong { font-size: 44px; }
+.mleaderboard .mleaderrows { padding: 0; gap: 6px; }
+.mleaderhead { display: flex; align-items: center; gap: 12px; padding: 0 16px 2px; font: 800 10.5px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.mleaderhead .grow { padding-left: 52px; }
+.mleaderboard .mleaderrow { padding: 12px 16px; min-height: 64px; }
+.mleaderboard .mleaderend, .mleaderhead .mleaderend { display: flex; flex-direction: row; align-items: center; gap: 24px; flex: none; }
+.mleaderboard .mleaderrecord, .mleaderhead .mleaderrecord { width: 70px; text-align: right; }
+.mleaderrate { width: 70px; text-align: right; font: 700 14px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.mleaderhead .mleaderrate { font: inherit; }
+.mleaderpipshead { width: 56px; text-align: right; }
+.mleaderboard .mleaderrow .mrankpips { width: 56px; justify-content: flex-end; }

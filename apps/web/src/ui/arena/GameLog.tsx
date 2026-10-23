@@ -6,6 +6,7 @@
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { arenaLogLine, type CardReference, GameLogPresentation, type LogIcon } from "../../core/gameLog";
 import type { GameLogEntry } from "../../core/models";
+import { RulesText } from "./Symbols";
 
 const ICONS: Record<LogIcon, ReactNode> = {
   died: <path d="M6.5 1h7L19 6.5v7L13.5 19h-7L1 13.5v-7zM7 5.6 5.6 7l3 3-3 3L7 14.4l3-3 3 3 1.4-1.4-3-3 3-3L13 5.6l-3 3z" fillRule="evenodd" />,
@@ -32,7 +33,7 @@ function LogText({ message, inspect }: { message: string; inspect: (reference: C
         const card = span.card;
         return card
           ? <button key={index} type="button" className={`${className} link`} onClick={(e) => { e.stopPropagation(); inspect(card); }}>{span.text}</button>
-          : <span key={index} className={className}>{span.text}</span>;
+          : <span key={index} className={className}><RulesText text={span.text} /></span>;
       })}
     </span>
   );

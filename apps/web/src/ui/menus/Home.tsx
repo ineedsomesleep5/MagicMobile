@@ -177,9 +177,12 @@ function Medallion({ progress, title, subtitle, id, action, children }: {
         <svg viewBox="0 0 44 44" aria-hidden="true">
           <circle cx="22" cy="22" r="22" fill="#141210" />
           <circle cx="22" cy="22" r="19.5" fill="none" stroke="rgba(255,255,255,.12)" strokeWidth="3" />
-          <circle cx="22" cy="22" r="19.5" fill="none" stroke="url(#mm-ring)" strokeWidth="3" strokeLinecap="round"
-            strokeDasharray={`${Math.max(0.001, progress) * circumference} ${circumference}`} transform="rotate(-90 22 22)" />
-          <defs><linearGradient id="mm-ring" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffb861" /><stop offset="1" stopColor="#ff804d" /></linearGradient></defs>
+          {/* No arc at all with no progress: a round cap on an empty arc draws a dot (0 of 4 pips). */}
+          {progress > 0 && (
+            <circle cx="22" cy="22" r="19.5" fill="none" stroke={`url(#mm-ring-${id})`} strokeWidth="3" strokeLinecap="round"
+              strokeDasharray={`${Math.min(1, progress) * circumference} ${circumference}`} transform="rotate(-90 22 22)" />
+          )}
+          <defs><linearGradient id={`mm-ring-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffb861" /><stop offset="1" stopColor="#ff804d" /></linearGradient></defs>
         </svg>
         <span className="mmedface">{children}</span>
       </span>
