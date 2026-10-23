@@ -835,17 +835,17 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .aversus { position: absolute; inset: 0; z-index: 900; pointer-events: none; display: flex; align-items: center; justify-content: space-between;
   padding: 0 12%; background: radial-gradient(ellipse at center, rgba(40,16,5,.86), rgba(0,0,0,.9) 70%); transition: opacity .45s ease-in; }
 .aversus.p3 { opacity: 0; }
-.aversus .side { display: flex; flex-direction: column; align-items: center; gap: 14px; transition: transform .45s cubic-bezier(.3,1.25,.5,1); }
-.aversus .side.you { transform: translateX(-120vw); }
-.aversus .side.them { transform: translateX(120vw); }
-.aversus:not(.p0) .side { transform: none; }
+.aversus .vside { display: flex; flex-direction: column; align-items: center; gap: 14px; transition: transform .45s cubic-bezier(.3,1.25,.5,1); }
+.aversus .vside.you { transform: translateX(-120vw); }
+.aversus .vside.them { transform: translateX(120vw); }
+.aversus:not(.p0) .vside { transform: none; }
 .aversus .vseat { display: flex; flex-direction: column; align-items: center; }
 .aversus .arch { width: 220px; height: 306px; border-radius: 110px 110px 12px 12px; overflow: hidden; border: 3px solid var(--agold);
   box-shadow: 0 0 36px rgba(255,120,31,.4), inset 0 0 0 1px rgba(0,0,0,.6); background: #140a05; }
-.aversus .side.several .arch { width: 136px; height: 189px; border-radius: 68px 68px 10px 10px; }
+.aversus .vside.several .arch { width: 136px; height: 189px; border-radius: 68px 68px 10px 10px; }
 .aversus .plate { margin-top: -10px; position: relative; max-width: 200px; padding: 7px 16px; border-radius: 6px; background: rgba(8,8,10,.94);
   border: 1px solid var(--ahair); font: 700 17px/1.1 var(--serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.aversus .side.several .plate { max-width: 130px; font-size: 13px; }
+.aversus .vside.several .plate { max-width: 130px; font-size: 13px; }
 .aversus .ring { position: absolute; left: 50%; top: 50%; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%;
   border: 3px solid var(--agold); opacity: 0; transform: scale(.6); }
 .aversus.p1 .ring { opacity: .9; }

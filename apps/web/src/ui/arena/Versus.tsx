@@ -22,8 +22,8 @@ export function VersusIntro({ you, opponents, finished }: { you: VersusSeat; opp
   const several = opponents.length > 1;
   return (
     <div className={`aversus p${phase}`} aria-label={`${you.name} versus ${opponents.map((o) => o.name).join(", ")}`} role="img">
-      <div className="side you"><Seat seat={you} tilt={-2} /></div>
-      <div className={`side them ${several ? "several" : ""}`}>{opponents.map((o) => <Seat key={o.id} seat={o} tilt={2} />)}</div>
+      <div className="vside you"><Seat seat={you} tilt={-2} /></div>
+      <div className={`vside them ${several ? "several" : ""}`}>{opponents.map((o) => <Seat key={o.id} seat={o} tilt={2} />)}</div>
       <i className="ring" aria-hidden="true" />
       <b className="vs" aria-hidden="true">VS</b>
     </div>
