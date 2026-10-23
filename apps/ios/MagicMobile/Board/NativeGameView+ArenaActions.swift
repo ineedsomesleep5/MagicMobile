@@ -231,7 +231,7 @@ extension NativeGameView {
     /// `resolveOrder` runs first to last. XMage asks which goes on the stack first, which resolves last: the plan is the
     /// picks in reverse, and each ordering prompt gets the first planned trigger it still offers (arenaTriggerStep).
     func arenaOrderTriggers(_ resolveOrder: [XmagePromptAbility], remember: Bool, prompt: PromptEnvelopeV2, snapshot: GameSnapshot) {
-        let picks = resolveOrder.reversed().map(\.id)
+        let picks = ArenaTriggerPlan.start(resolveOrder)
         guard let first = picks.first, let ability = resolveOrder.first(where: { $0.id == first }) else { return }
         arenaTriggerPlan = picks
         arenaTriggerSent = "\(prompt.id):\(prompt.messageId)"
@@ -241,32 +241,19 @@ extension NativeGameView {
     /// The plan answers this ordering prompt by itself: it offers a planned trigger and hasn't been answered yet. A
     /// prompt the plan already answered and still showing (a refused pick) goes back to the browser.
     func arenaTriggerPlanAnswers(_ snapshot: GameSnapshot) -> Bool {
-        guard !arenaTriggerPlan.isEmpty, let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId),
-              prompt.isTriggerOrder, let abilities = prompt.abilities else { return false }
-        return "\(prompt.id):\(prompt.messageId)" != arenaTriggerSent && abilities.contains { arenaTriggerPlan.contains($0.id) }
+        ArenaTriggerPlan.answers(plan: arenaTriggerPlan, sent: arenaTriggerSent, snapshot: snapshot)
     }
 
     /// The next pick of a chosen trigger order. Triggers XMage no longer offers are on the stack and leave the plan; a
     /// target question for one of them keeps it; your next priority, or an ordering prompt with none of its triggers
     /// (the last one XMage places itself), ends it.
     func arenaTriggerStep(snapshot: GameSnapshot) {
-        guard !arenaTriggerPlan.isEmpty, pendingActionId == nil,
-              let prompt = snapshot.promptEnvelopeV2, snapshot.isViewer(prompt.playerId) else { return }
-        guard prompt.isTriggerOrder, let abilities = prompt.abilities, !abilities.isEmpty else {
-            if prompt.responseKind == "priority" || prompt.responseCommand?.type == "pass_priority" {
-                arenaTriggerPlan = []; arenaTriggerSent = nil
-            }
-            return
+        let step = ArenaTriggerPlan.step(plan: arenaTriggerPlan, sent: arenaTriggerSent, snapshot: snapshot, pending: pendingActionId != nil)
+        if step.plan != arenaTriggerPlan { arenaTriggerPlan = step.plan }
+        if step.sent != arenaTriggerSent { arenaTriggerSent = step.sent }
+        if let ability = step.pick, let prompt = snapshot.promptEnvelopeV2 {
+            arenaChooseAbility(ability, prompt: prompt, snapshot: snapshot, remember: false)
         }
-        arenaTriggerPlan = arenaTriggerPlan.filter { id in abilities.contains { $0.id == id } }
-        guard let next = arenaTriggerPlan.first, let ability = abilities.first(where: { $0.id == next }) else {
-            arenaTriggerSent = nil
-            return
-        }
-        let key = "\(prompt.id):\(prompt.messageId)"
-        guard key != arenaTriggerSent else { return }
-        arenaTriggerSent = key
-        arenaChooseAbility(ability, prompt: prompt, snapshot: snapshot, remember: false)
     }
 
     /// XMage asking for a modal spell's mode: the Arena's mode browser answers it.

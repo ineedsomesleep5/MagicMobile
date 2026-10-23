@@ -1,0 +1,199 @@
+{
+  "about": "Answer actions (docs/PROTOCOL.md): which standing instructions a decision can carry. Each case builds the engine prompt (promptId real-prompt, revision 37, payload merged over message/required/options), the command, and the requested actions; it expects the actions sent, the answer with them, or an error, plus the envelope's canRememberAnswer and isTriggerOrder where given. Viewer 00000000-0000-0000-0000-000000000001. Shared cases: ParityGoldenTests.swift (iOS) and apps/web test/answerActions.test.ts.",
+  "viewer": "00000000-0000-0000-0000-000000000001",
+  "cases": [
+    {
+      "name": "a you-may question with a source ability can be remembered",
+      "prompt": {
+        "kind": "ASK",
+        "types": [
+          "boolean"
+        ],
+        "payload": {
+          "options": {
+            "originalId": "11111111-0000-0000-0000-000000000000",
+            "autoAnswerMessage": "Put a quest counter on {this}?"
+          }
+        }
+      },
+      "command": {
+        "type": "answer_yes_no",
+        "confirmed": true
+      },
+      "requested": [
+        "rememberAnswer"
+      ],
+      "canRemember": true,
+      "actions": [
+        {
+          "type": "rememberAnswer",
+          "scope": "ability"
+        }
+      ],
+      "answer": {
+        "kind": "boolean",
+        "value": true,
+        "actions": [
+          {
+            "type": "rememberAnswer",
+            "scope": "ability"
+          }
+        ]
+      }
+    },
+    {
+      "name": "keep this hand has no source ability",
+      "prompt": {
+        "kind": "ASK",
+        "types": [
+          "boolean"
+        ],
+        "payload": {}
+      },
+      "command": {
+        "type": "answer_yes_no",
+        "confirmed": false
+      },
+      "requested": [
+        "rememberAnswer"
+      ],
+      "canRemember": false,
+      "error": true
+    },
+    {
+      "name": "a priority pass can resolve the stack",
+      "prompt": {
+        "kind": "SELECT",
+        "types": [
+          "boolean",
+          "uuid"
+        ],
+        "payload": {
+          "selectMode": "priority"
+        }
+      },
+      "command": {
+        "type": "pass_priority"
+      },
+      "requested": [
+        "passUntilStackResolved"
+      ],
+      "actions": [
+        {
+          "type": "passUntilStackResolved"
+        }
+      ],
+      "answer": {
+        "kind": "boolean",
+        "value": true,
+        "actions": [
+          {
+            "type": "passUntilStackResolved"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a pass can't remember an answer",
+      "prompt": {
+        "kind": "SELECT",
+        "types": [
+          "boolean",
+          "uuid"
+        ],
+        "payload": {
+          "selectMode": "priority"
+        }
+      },
+      "command": {
+        "type": "pass_priority"
+      },
+      "requested": [
+        "rememberAnswer"
+      ],
+      "error": true
+    },
+    {
+      "name": "a cast can't resolve the stack",
+      "prompt": {
+        "kind": "SELECT",
+        "types": [
+          "boolean",
+          "uuid"
+        ],
+        "payload": {
+          "selectMode": "priority"
+        }
+      },
+      "command": {
+        "type": "cast_spell",
+        "sourceInstanceId": "11111111-0000-0000-0000-000000000000"
+      },
+      "requested": [
+        "passUntilStackResolved"
+      ],
+      "error": true
+    },
+    {
+      "name": "the trigger order remembers the ability chosen first",
+      "prompt": {
+        "kind": "PICK_ABILITY",
+        "types": [
+          "uuid"
+        ],
+        "payload": {
+          "abilities": [
+            {
+              "id": "11111111-0000-0000-0000-000000000000",
+              "label": "Gain 1 life"
+            }
+          ]
+        }
+      },
+      "command": {
+        "type": "choose_ability",
+        "abilityId": "11111111-0000-0000-0000-000000000000"
+      },
+      "requested": [
+        "rememberTriggerFirst"
+      ],
+      "triggerOrder": true,
+      "actions": [
+        {
+          "type": "rememberTriggerFirst"
+        }
+      ],
+      "answer": {
+        "kind": "uuid",
+        "value": "11111111-0000-0000-0000-000000000000",
+        "actions": [
+          {
+            "type": "rememberTriggerFirst"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no actions leave the answer as it is",
+      "prompt": {
+        "kind": "SELECT",
+        "types": [
+          "boolean",
+          "uuid"
+        ],
+        "payload": {
+          "selectMode": "priority"
+        }
+      },
+      "command": {
+        "type": "pass_priority"
+      },
+      "requested": [],
+      "actions": [],
+      "answer": {
+        "kind": "boolean",
+        "value": true
+      }
+    }
+  ]
+}

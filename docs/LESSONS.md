@@ -175,6 +175,75 @@ contradicting one.
 
 ## Website
 
+- 2026-10-22 (Claude, web Arena parity, night): the final autoplay games stalled on the driver, not the board. (1) A
+  choice (a colour question) is answered with `resolve_choice`; the driver sent `choose_choice`, which the session
+  ignores, 400+ times without a stall, since nothing failed. Copy the command the board's own control sends. (2) A
+  multi-card library search (Cultivate) may not report what's chosen, so "pick the next card not in chosenTargets"
+  toggles one card forever, and every answer brings a new prompt id, so a same-prompt stall check never fires. The
+  driver now keeps its own picks and stops after thirty identical answers. (3) Wipes depend on the draw (two to four
+  per 99-card precon); Caleb ruled shared cases plus a real sighting cover them. Don't grind games for a rare event.
+  (4) A fresh worktree has no `apps/web/.vercel-deploy/.vercel` link. Write `project.json` from
+  `npx vercel project inspect magicmobile-web` (its ID, team `team_rmblkjhTpvuvB3crwL3q2HJW`) rather than
+  `vercel link --yes`, which can pull env files into a folder that gets uploaded. macOS has no `timeout` command.
+- 2026-10-22 (Claude, web Arena parity, later): (1) A canvas `arc` with a slightly negative radius throws
+  `IndexSizeError`, and thrown inside a React effect it unmounts the whole tree: a game went blank on turn 15. The
+  painter now clamps radii, skips a mark that throws, and sits in an error boundary (`FXBoundary`); a painter test
+  runs every event kind against a recording context. (2) Scryfall's `cards/named?exact=` never finds tokens ("Zombie
+  Token" 404s); iOS searches `!"Zombie" t:token` and picks the printing whose name, type, rules, colours and P/T match
+  (`core/tokenArt.ts`). The driver's `notFound` list in each game's summary shows any picture still asked for by name.
+  (3) Checking that reading a card holds smart pass needs the inspector opened while the reveal still holds the pass
+  (within about 0.8 s of the AI's spell): opened later, the pass has already been decided and the check proves nothing.
+  (4) A subagent running git in the same worktree can leave `index.lock` for a moment; retry the commit instead of
+  deleting the lock.
+  (5) A 32-bit port of a 64-bit hash went negative: in JavaScript `x ^= x >>> 16` yields a *signed* int32 even when
+  `x` was unsigned, so `x % 10000` was negative and the particle noise ran -1..1. It put sparks in the wrong places and
+  threw on a win screen weeks later. Port Swift's `UInt64` arithmetic with BigInt (or `>>> 0` after every XOR) and test
+  the range against an independent implementation.
+- 2026-10-22 (Claude, web Arena parity): four traps checking the board on the real engine. (1) The desktop app's
+  browser pane runs as a background page whenever the app window isn't in front, even with the pane shown and
+  `document.visibilityState` "visible": `requestAnimationFrame` fires about once a second, so effect flights never drew
+  and the board looked broken. Check animation and timing in headless Chrome (`apps/web/scripts/play.mjs`, which records
+  the session's passes, the board's holds, flights and banners per game). (2) Vite's dev server reloads the whole page
+  when a non-component module changes (`guestSession.ts`, `core/*`), and a reload drops the game: a driver kept looping
+  on the setup screen for 18 minutes. Play long games against `vite preview` of a static build, not the dev server.
+  (3) playwright-core 1.63 looks for headless shell build 1243 while the Mac's cache has 1217/1223: launch the installed
+  Chrome with `channel: "chrome"` instead of downloading browsers. (4) An Edit that put `\u2028` in a regex wrote the raw
+  line-separator character, and esbuild failed with "Unterminated regular expression" pointing at the next line; write
+  such escapes with a script and check with `grep -c $'\xe2\x80\xa8'`.
+- 2026-10-21 (Claude, web on Vercel): Vercel's Hobby plan refuses any static file over 100 MB, and the engine module
+  is 137 MB. **Fix:** `stage_vercel.mjs` ships it gzipped (44 MB) and the worker unpacks it with DecompressionStream
+  before the hash check. Vercel serves the `.gz` as `application/gzip` with no Content-Encoding, so the browser leaves
+  it alone. Also: `vercel link` writes a `.env.local` holding a token into the folder it links, so the staged folder
+  carries a `.vercelignore` for it. Preview URLs need a Vercel login, but the project's production URL doesn't. The
+  in-app browser's javascript tool gives up after 45 s: poll in short calls. Where: `apps/web/scripts/stage_vercel.mjs`,
+  `apps/web/README.md` ("Hosted on Vercel").
+
+- 2026-10-21 (Claude, web Arena board): three traps. (1) The page is cross-origin isolated (COEP require-corp), so a
+  CSS `background-image` from another origin is blocked; Scryfall's card back and mana symbols load only as
+  `<img crossorigin="anonymous">`. `curl -I` without an `Origin` header shows no `access-control-allow-origin` on
+  backs.scryfall.io or svgs.scryfall.io; with one it does. (2) Sorting every untapped pile before the tapped ones moved
+  the next land under the pointer when you tapped one, so the next click hit the tapped land. Rows keep XMage's order,
+  as on iOS (`pilesOf` in `layout.ts`). (3) While the desktop app's browser pane is hidden, screenshots lag a render
+  behind; check what changed with `javascript_tool` before trusting a screenshot. Where: `apps/web/src/ui/arena/`.
+
+- 2026-10-21 (Claude, web solo M3): two traps running the Web Image engine under Vite's dev server. (1) Every hot
+  reload of the module that created the engine made a new `LocalEngine`, so each edit started another ~1 GB worker
+  while the old one kept running; after a few edits the tab stalled and a reload hung. The engine singleton lives on
+  `globalThis` (`localEngine()`). (2) Vite's dev server serves a classic worker unbundled, so a value import in
+  `engine.worker.ts` breaks it in dev while `vite build` (IIFE) works: the worker has `import type` only. Also: XMage
+  stops at every step for priority, so a client without smart pass asks for ~10 Pass clicks a turn; the web port
+  is `src/core/smartPass.ts`. Where: `apps/web/src/engine/`, `apps/web/README.md`.
+
+- 2026-10-20 (Claude, web guest M2): three traps in `apps/web`. (1) A ` `/` ` escape written into a JS
+  regex literal can land in the file as the raw character, which ends the literal ("Unterminated regular expression");
+  build such patterns with `new RegExp("…\\u2028…")`. (2) The desktop app's browser pane gives no animation frames
+  while it is hidden, so a Three.js scene that only renders from `requestAnimationFrame` looks frozen in screenshots and
+  `project()` reads a stale camera; `TableScene` renders once directly when the page is hidden and calls
+  `camera.updateMatrixWorld()` after every resize. Updated 2026-10-21 (Claude, web solo M3): the Three.js table is gone;
+  the web board is the DOM Arena board (`src/ui/arena/`), which renders without animation frames. (3) Simulator builds of the iOS app carry no XMage engine (the board
+  says "NO ENGINE"), so a simulator cannot host a relay table; a phone-hosted test needs the Android emulator (with the
+  simulator shut down) or a device. Where: `apps/web/src/core/displayText.ts`, `src/board/TableScene.ts`, `apps/web/README.md`.
+
 - 2026-10-11 (Claude): the donation link lives in one place, the tip button on the site's support page
   (`apps/site/public/support/index.html`). Both apps' support links (main menu, Settings, Updates) and
   the home page open `https://magicmobile-downloads.vercel.app/support/`, so swapping the provider is a
@@ -187,6 +256,44 @@ contradicting one.
   `pgrep -f '^java .*AICalibration'`.
 
 ## Native engine and releases
+
+- 2026-10-21 (Claude, web engine M1): the full engine's Web Image build fails in three places that the phone builds
+  never hit.
+  - **Compiling** ran out of a 10 GB builder heap with 4 threads. Two threads fit.
+  - **Creating the image** (`WasmGCHeapWriter.write`, writing the 89 MB image heap as Wasm initializer code) needs
+    about 17 GB of heap. With `-Xmx14g`, GraalVM's watchdog stopped it after 43 minutes of GC, without touching the
+    swap. A free GitHub runner builds it only with `-Xmx24g` over a 16 GB swapfile on `/mnt`, with the watchdog off
+    (`-H:DeadlockWatchdogInterval=0`); `-Ob` doesn't help with this stage.
+  - **Chrome refused the module** because by default 100,000 image-heap objects go into one initializer function. One
+    came out at 57.7 MB, and V8 caps a Wasm function at 7,654,321 bytes ("size … > maximum function size").
+    `-H:ImageHeapObjectsPerFunction=4000` fixes it.
+
+  The debug `.wat` is about 22× the `.wasm` (3.8 GB here) and is streamed to disk, so it doesn't cost heap.
+
+  **Rule:** check a new build's function sizes before blaming the engine (`node packages/web-engine/wasm_functions.mjs <engine.js.wasm>`).
+  Shrink the image heap (class metadata for 62k types) before relying on routine rebuilds.
+
+  Where: `.github/workflows/magicmobile-web-image.yml`, docs/WEB_ENGINE_M1.md.
+
+- 2026-10-20 (Claude, web engine M1): GraalVM Web Image 25.4 is single-threaded in more ways than "Thread.start runs
+  nothing". `Thread.interrupt()` on the current thread is a no-op too, so XMage's AI timeout (interrupt the search,
+  which then reads `isInterrupted()` in ComputerPlayer6, `PlayerImpl.canRespond`, `GameImpl.checkIfGameIsOver`) cannot
+  work; there is no native zip library, so `GZIPInputStream`, `Inflater` and `CRC32` throw `UnsatisfiedLinkError`; timed
+  waits (`BlockingQueue.poll(timeout)`, `Condition.await`) throw `IllegalMonitorStateException` or "Unsafe.park"; once a
+  `FutureTask.run` after `Thread.interrupt()` trapped the whole instance ("Fatal unsafe read error"). Untimed
+  `poll`/`offer`, `ConcurrentHashMap`, atomics, plain `ReentrantLock`, `java.awt.Color` and Gson work. **Rule:** probe a
+  JDK API in a tiny image before relying on it (a 15–40 s build, ~0.7 GB); the web build rewrites copies of the sources
+  (packages/web-engine/web_sources.py) and never the phone tree. `@JS` natives need `args={...}` unless compiled with
+  `-parameters`, and `javac --release N` cannot see the `org.graalvm.webimage.api` module (compile without `--release`).
+  A `@TargetClass(Thread.class) @Substitute start()` in user code is accepted and makes a stray start fail loudly.
+  Where: docs/WEB_ENGINE_M1.md.
+- 2026-10-20 (Claude, web engine M1): a game copy that ends (a player loses inside it) calls `GameImpl.end()`, which
+  aborts the copy's players, and a `MobileHumanPlayer` copy shares the live player's input channel, so the live human's
+  channel closes. Upstream `CombatUtil.willItSurviveSimple` (the AI choosing blocks) runs state-based actions on such a
+  copy. After that, every question to the human throws "Mobile match stopped", XMage rolls back and asks again, and the
+  game ends without the human. Phones run the same code; it showed up as 5 of 92 seeded JVM games in the web harness.
+  **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
+  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor (not fixed in M1; engine follow-up).
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`

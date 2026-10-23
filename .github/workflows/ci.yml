@@ -32,3 +32,32 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+
+  web:
+    name: Web tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install
+        run: npm ci
+      # public/generated from the apps' catalogue and assets (the engine bundle isn't needed for tests).
+      - name: Data
+        run: npm run data
+      - name: Typecheck
+        run: npm run typecheck
+      # The shared parity cases, the replay against iOS's golden, and the scripted-engine flows.
+      - name: Test
+        run: npm test

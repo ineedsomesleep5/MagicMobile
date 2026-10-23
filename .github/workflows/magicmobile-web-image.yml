@@ -1,0 +1,141 @@
+name: Web engine (GraalVM Web Image)
+# Milestone M1 (docs/WEB_ENGINE_M1.md): the real XMage adapter compiled to WebAssembly for desktop browsers.
+# Manual only (dispatch, or a push to a web-engine branch whose commit message has [web-image]): the full engine's
+# Web Image build needs a ~10 GB builder heap, so it runs here, never on the 8 GB Mac.
+# Ships nothing to players. The bundle artifact (build/web) is benchmarked locally with apps/web-play.
+on:
+  push:
+    branches: ['claude/web-engine-*']
+  workflow_dispatch:
+    inputs:
+      phone_regressions:
+        description: 'Also run the phone real-engine regressions (test_real_engine.sh, about 30 minutes)'
+        type: boolean
+        default: false
+      builder_heap:
+        description: 'native-image builder heap'
+        type: choice
+        options: ['14g', '24g']
+        default: '24g'
+permissions:
+  contents: read
+concurrency:
+  group: web-image-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  web-image:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[web-image]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      # Third-party Maven downloads only: the XMage modules (org/mage) are rebuilt from the pinned source every run.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/org/mage
+          key: web-image-maven-${{ runner.os }}-${{ hashFiles('packages/ondevice-engine/upstream.lock.json') }}
+          restore-keys: web-image-maven-${{ runner.os }}-
+      - name: Build the real XMage JVM input (pinned upstream, adapter, registry, card resources)
+        run: bash packages/ondevice-engine/scripts/build_jvm.sh
+      - name: Phone real-engine regressions (unchanged by the web build)
+        if: inputs.phone_regressions
+        run: bash packages/ondevice-engine/scripts/test_real_engine.sh
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          version: '25.4'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          set-java-home: 'false'
+      - name: Install binaryen (wasm-as), pinned and checksummed
+        run: |
+          set -euo pipefail
+          V=version_133
+          SUM=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
+          curl -sSfL -o "$RUNNER_TEMP/binaryen.tar.gz" "https://github.com/WebAssembly/binaryen/releases/download/$V/binaryen-$V-x86_64-linux.tar.gz"
+          echo "$SUM  $RUNNER_TEMP/binaryen.tar.gz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/binaryen.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-$V/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Web sources, JVM compile and the web mode's own game check (no engine thread may start)
+        env:
+          JAVA_HOME: ${{ env.GRAALVM_HOME }}
+        run: |
+          set -euo pipefail
+          native-image --version
+          wasm-as --version
+          bash packages/web-engine/build_web.sh sources
+          bash packages/web-engine/build_web.sh jvm
+          python3 packages/web-engine/export_precons.py --catalogue packages/ondevice-engine/build/generated/catalogue.jsonl \
+            --swift apps/ios/MagicMobile/PreconCatalog.swift --output packages/web-engine/build/decks
+          # Two games in the web threading mode on GraalVM's JVM, recording native-image reachability metadata
+          # (reflection, resources, proxies) the static exporter may miss.
+          mkdir -p packages/web-engine/build/agent
+          node apps/web-play/scripts/jvm-baseline.mjs --web --games 2p:1,4p:2 --cap 600 \
+            --agent "$PWD/packages/web-engine/build/agent" --out packages/web-engine/build/metrics/ci-jvm-web.json
+          bash packages/web-engine/build_web.sh metadata
+      # Run 39482806260 ran out of a 10 GB heap compiling with 4 threads. Run 39495674113 compiled with 2 threads and laid
+      # out methods within 12 GB at -O2 and -Ob alike, then ran out building the Wasm module (stage 8/8). This run gives
+      # the builder 14 GB backed by swap on /mnt (the runner has about 16 GB of RAM), drops the per-instruction comments
+      # Web Image keeps for its .wat text (-H:WasmComments=NONE) and skips the Closure pass over the small JS wrapper.
+      # Run 39511250420 then spent 43 min in WasmGCHeapWriter at the 12.7 GB usable-heap limit (swap unused) until the
+      # watchdog stopped it. Now: a 24 GB heap that spills into 16 GB of swap, watchdog off, up to 4.5 h. Run 39546958975
+      # built (12 min, 15.5 GB peak) but Chrome refused it: the image heap's 767,914 objects were initialized in nine
+      # functions, the largest 57.7 MB, over V8's 7,654,321-byte function limit; 4,000 objects per function instead.
+      - name: Add swap on /mnt
+        run: |
+          set -euo pipefail
+          sudo fallocate -l 16G /mnt/web-image.swap
+          sudo chmod 600 /mnt/web-image.swap
+          sudo mkswap /mnt/web-image.swap
+          sudo swapon /mnt/web-image.swap
+          free -g
+      - name: Web Image build (native-image --tool:svm-wasm, -O2)
+        timeout-minutes: 270
+        env:
+          MM_WEB_HEAP: ${{ inputs.builder_heap || '24g' }}
+          MM_WEB_BUILDER_THREADS: '2'
+          MM_WEB_OPT: '2'
+          MM_WEB_EXTRA_OPTIONS: >-
+            -H:WasmComments=NONE -H:-ClosureCompiler -H:DeadlockWatchdogInterval=0 -H:+PrintImageHeapPartitionSizes
+            -H:ImageHeapObjectsPerFunction=4000
+            -H:BuildOutputJSONFile=packages/web-engine/build/wasm-build-output.json
+            -J-Xlog:gc:file=packages/web-engine/build/builder-gc.log:time,uptime:filecount=2,filesize=8M
+        run: |
+          set -euo pipefail
+          ( while true; do sleep 60; echo "[mem] $(date -u +%T) $(free -m | awk '/Mem:/{print "used="$3"MB avail="$7"MB"} /Swap:/{print "swap="$3"MB"}' | tr '\n' ' ')"; done ) &
+          /usr/bin/time -v bash packages/web-engine/build_web.sh wasm 2> >(tee packages/web-engine/build/wasm-time.txt >&2)
+          bash packages/web-engine/build_web.sh bundle
+          ls -la packages/web-engine/build/web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-engine-evidence-${{ github.sha }}
+          path: |
+            packages/web-engine/build/wasm/native-image.log
+            packages/web-engine/build/wasm-time*.txt
+            packages/web-engine/build/wasm-build-output.json
+            packages/web-engine/build/builder-gc.log*
+            packages/web-engine/build/metrics/
+            packages/web-engine/build/web-src/web-sources.json
+            packages/web-engine/build/web/manifest.json
+            packages/ondevice-engine/evidence/
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: web-engine-bundle-${{ github.sha }}
+          path: packages/web-engine/build/web/
+          compression-level: 6
+          retention-days: 14
+          if-no-files-found: error

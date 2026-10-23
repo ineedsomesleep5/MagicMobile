@@ -1,0 +1,631 @@
+{
+  "about": "Auto Pay (ArenaAutoPay): `need` reads XMage's remaining-cost text, `production` reads a make_mana action's label (or producedMana), `next` is the next Auto Pay step for a cost, floating mana and actions (tap:<action>[:<colour>], spend:<symbol>, done or blocked:<reason>), and `plan` the full plan's source keys (any order), action ids (any order) or colours. Actions name `actions` entries (each a make_mana for player p1 from `source`). Shared cases: ParityGoldenTests.swift (iOS) and apps/web test/autoPay.test.ts; Android has no Auto Pay yet (docs/WEB_PARITY.md).",
+  "actions": [
+    {
+      "id": "mountain",
+      "source": "m1",
+      "label": "{T}: Add {R}."
+    },
+    {
+      "id": "island",
+      "source": "i1",
+      "label": "{T}: Add {U}."
+    },
+    {
+      "id": "vents-u",
+      "source": "v1",
+      "label": "{T}: Add {U}."
+    },
+    {
+      "id": "vents-r",
+      "source": "v1",
+      "label": "{T}: Add {R}."
+    },
+    {
+      "id": "ring",
+      "source": "s1",
+      "label": "{T}: Add {C}{C}."
+    },
+    {
+      "id": "tower",
+      "source": "t1",
+      "label": "{T}: Add one mana of any color in your commander's color identity."
+    },
+    {
+      "id": "forest",
+      "source": "f1",
+      "label": "{T}: Add {G}."
+    },
+    {
+      "id": "forest2",
+      "source": "f2",
+      "label": "{T}: Add {G}."
+    },
+    {
+      "id": "oran",
+      "source": "o1",
+      "label": "{T}: Add {G}."
+    },
+    {
+      "id": "swarmyard",
+      "source": "y1",
+      "label": "{T}: Add {C}."
+    },
+    {
+      "id": "swamp",
+      "source": "s2",
+      "label": "{T}: Add {B}."
+    },
+    {
+      "id": "treasure",
+      "source": "tr1",
+      "label": "{T}, Sacrifice this artifact: Add one mana of any color."
+    },
+    {
+      "id": "triome",
+      "source": "x1",
+      "label": "{T}: Add {W}, {B}, or {G}."
+    },
+    {
+      "id": "triome-b",
+      "source": "x1",
+      "label": "{T}: Add {B}."
+    },
+    {
+      "id": "vein-tap",
+      "source": "cv1",
+      "label": "{T}: Add {C}."
+    },
+    {
+      "id": "vein-sac",
+      "source": "cv1",
+      "label": "{T}, Sacrifice Crystal Vein: Add {C}{C}.",
+      "card": "Crystal Vein"
+    },
+    {
+      "id": "plains",
+      "source": "p1",
+      "label": "{T}: Add {W}."
+    },
+    {
+      "id": "plains2",
+      "source": "p2",
+      "label": "{T}: Add {W}."
+    },
+    {
+      "id": "forge",
+      "source": "bf1",
+      "label": "{T}: Add {R} or {W}. Battlefield Forge deals 1 damage to you."
+    },
+    {
+      "id": "elf",
+      "source": "e1",
+      "label": "{T}: Add {G}."
+    },
+    {
+      "id": "altar",
+      "source": "al1",
+      "label": "Sacrifice a creature: Add {C}{C}."
+    },
+    {
+      "id": "talisman",
+      "source": "tl1",
+      "label": "{T}, Pay 1 life: Add {B}."
+    },
+    {
+      "id": "signet",
+      "source": "sg1",
+      "label": "{1}, {T}: Add {G}{G}."
+    },
+    {
+      "id": "basic-g",
+      "source": "bx",
+      "label": "Basic",
+      "produced": [
+        "g"
+      ]
+    },
+    {
+      "id": "sol",
+      "source": "sx",
+      "label": "Tap Sol Ring",
+      "produced": [
+        "C",
+        "C"
+      ]
+    },
+    {
+      "id": "dual-produced",
+      "source": "dx",
+      "label": "Tap",
+      "produced": [
+        "W",
+        "U"
+      ]
+    }
+  ],
+  "need": [
+    {
+      "text": "Pay {2}{R}{R}",
+      "generic": 2,
+      "symbols": {
+        "R": 2
+      },
+      "hybrids": []
+    },
+    {
+      "text": "Pay {X}{R}",
+      "generic": 0,
+      "symbols": {
+        "R": 1
+      },
+      "hybrids": []
+    },
+    {
+      "text": "{R/P}",
+      "generic": 0,
+      "symbols": {
+        "R": 1
+      },
+      "hybrids": []
+    },
+    {
+      "text": "{W/U}",
+      "generic": 0,
+      "symbols": {},
+      "hybrids": [
+        [
+          "W",
+          "U"
+        ]
+      ]
+    },
+    {
+      "text": "{2/W}{S}",
+      "generic": 1,
+      "symbols": {},
+      "hybrids": [
+        [
+          "W",
+          "generic2"
+        ]
+      ]
+    },
+    {
+      "text": "{C}",
+      "generic": 0,
+      "symbols": {
+        "C": 1
+      },
+      "hybrids": []
+    },
+    {
+      "text": "Paid",
+      "generic": 0,
+      "symbols": {},
+      "hybrids": []
+    }
+  ],
+  "production": [
+    {
+      "action": "mountain",
+      "options": [
+        [
+          "R"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 1,
+      "colorlessOnly": false
+    },
+    {
+      "action": "forge",
+      "options": [
+        [
+          "R"
+        ],
+        [
+          "W"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 1,
+      "colorlessOnly": false
+    },
+    {
+      "action": "ring",
+      "options": [
+        [
+          "C",
+          "C"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 2,
+      "colorlessOnly": true
+    },
+    {
+      "action": "tower",
+      "options": [],
+      "anyColor": true,
+      "sacrifices": false,
+      "amount": 1,
+      "colorlessOnly": false
+    },
+    {
+      "action": "triome",
+      "options": [
+        [
+          "W"
+        ],
+        [
+          "B"
+        ],
+        [
+          "G"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 1,
+      "colorlessOnly": false
+    },
+    {
+      "action": "treasure",
+      "options": [],
+      "anyColor": true,
+      "sacrifices": true,
+      "amount": 1,
+      "colorlessOnly": false
+    },
+    {
+      "action": "vein-sac",
+      "options": [
+        [
+          "C",
+          "C"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": true,
+      "amount": 2,
+      "colorlessOnly": true
+    },
+    {
+      "action": "signet",
+      "none": true
+    },
+    {
+      "action": "talisman",
+      "none": true
+    },
+    {
+      "action": "altar",
+      "none": true
+    },
+    {
+      "action": "basic-g",
+      "options": [
+        [
+          "G"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 1,
+      "colorlessOnly": false
+    },
+    {
+      "action": "sol",
+      "options": [
+        [
+          "C",
+          "C"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 2,
+      "colorlessOnly": true
+    },
+    {
+      "action": "dual-produced",
+      "options": [
+        [
+          "W"
+        ],
+        [
+          "U"
+        ]
+      ],
+      "anyColor": false,
+      "sacrifices": false,
+      "amount": 1,
+      "colorlessOnly": false
+    }
+  ],
+  "next": [
+    {
+      "name": "coloured pips come first",
+      "text": "Pay {1}{R}",
+      "actions": [
+        "island",
+        "mountain"
+      ],
+      "step": "tap:mountain"
+    },
+    {
+      "name": "generic takes the rest",
+      "text": "Pay {1}",
+      "actions": [
+        "island"
+      ],
+      "step": "tap:island"
+    },
+    {
+      "name": "nothing left to pay",
+      "text": "Paid",
+      "actions": [
+        "island"
+      ],
+      "step": "done"
+    },
+    {
+      "name": "a basic before a dual",
+      "text": "{R}",
+      "actions": [
+        "vents-u",
+        "vents-r",
+        "mountain"
+      ],
+      "step": "tap:mountain"
+    },
+    {
+      "name": "{1}: a basic, so the two-mana rock isn't half wasted",
+      "text": "{1}",
+      "actions": [
+        "ring",
+        "mountain"
+      ],
+      "step": "tap:mountain"
+    },
+    {
+      "name": "{2}: the rock",
+      "text": "{2}",
+      "actions": [
+        "ring",
+        "mountain"
+      ],
+      "step": "tap:ring"
+    },
+    {
+      "name": "any-colour sources wait until needed",
+      "text": "{G}",
+      "actions": [
+        "tower",
+        "forest"
+      ],
+      "step": "tap:forest"
+    },
+    {
+      "name": "an any-colour source names its colour",
+      "text": "{G}",
+      "actions": [
+        "tower"
+      ],
+      "step": "tap:tower:G"
+    },
+    {
+      "name": "Squirrel Girl: a Treasure only because nothing else makes the third green",
+      "text": "{1}{G}{G}{G}",
+      "actions": [
+        "treasure",
+        "swamp",
+        "swarmyard",
+        "oran",
+        "forest"
+      ],
+      "plan": [
+        "f1",
+        "o1",
+        "tr1",
+        "y1"
+      ],
+      "colors": {
+        "tr1": "G"
+      }
+    },
+    {
+      "name": "with a second green land the Treasure stays",
+      "text": "{G}{G}{G}",
+      "actions": [
+        "treasure",
+        "swamp",
+        "swarmyard",
+        "oran",
+        "forest",
+        "forest2"
+      ],
+      "planExcludes": [
+        "tr1"
+      ]
+    },
+    {
+      "name": "one tri-land tap can't pay two pips",
+      "text": "{W}{B}",
+      "actions": [
+        "triome"
+      ],
+      "plan": null
+    },
+    {
+      "name": "Crystal Vein taps before it sacrifices",
+      "text": "{2}",
+      "actions": [
+        "vein-sac",
+        "vein-tap",
+        "plains"
+      ],
+      "planActions": [
+        "plains",
+        "vein-tap"
+      ]
+    },
+    {
+      "name": "Crystal Vein sacrifices when it has to",
+      "text": "{2}",
+      "actions": [
+        "vein-sac",
+        "vein-tap"
+      ],
+      "planActions": [
+        "vein-sac"
+      ]
+    },
+    {
+      "name": "two white from one Plains is blocked before any tap",
+      "text": "{W}{W}",
+      "actions": [
+        "plains",
+        "swamp",
+        "island"
+      ],
+      "step": "blocked:Your untapped mana can't pay this cost"
+    },
+    {
+      "name": "a tri-land is spent after a basic",
+      "text": "{B}",
+      "actions": [
+        "triome-b",
+        "triome",
+        "swamp"
+      ],
+      "step": "tap:swamp"
+    },
+    {
+      "name": "floating mana is spent first",
+      "text": "{R}",
+      "floating": {
+        "R": 1
+      },
+      "actions": [
+        "mountain"
+      ],
+      "step": "spend:R"
+    },
+    {
+      "name": "generic takes floating mana no pip wants",
+      "text": "{1}{R}",
+      "floating": {
+        "G": 2
+      },
+      "actions": [
+        "mountain"
+      ],
+      "step": "spend:G"
+    },
+    {
+      "name": "a colour no source makes",
+      "text": "{G}",
+      "actions": [
+        "mountain"
+      ],
+      "step": "blocked:No untapped source makes {G}"
+    },
+    {
+      "name": "a dual land counts once",
+      "text": "{3}",
+      "actions": [
+        "mountain",
+        "vents-u",
+        "vents-r"
+      ],
+      "step": "blocked:Not enough untapped mana for this cost"
+    },
+    {
+      "name": "a mana creature after a land",
+      "text": "{G}",
+      "actions": [
+        "elf",
+        "forest"
+      ],
+      "kinds": {
+        "e1": "creature",
+        "f1": "land"
+      },
+      "step": "tap:forest"
+    },
+    {
+      "name": "a mana creature when it is the only green",
+      "text": "{1}{G}",
+      "actions": [
+        "elf",
+        "mountain"
+      ],
+      "kinds": {
+        "e1": "creature",
+        "m1": "land"
+      },
+      "step": "tap:elf"
+    },
+    {
+      "name": "a hybrid takes whichever half a source makes",
+      "text": "{W/U}",
+      "actions": [
+        "island"
+      ],
+      "step": "tap:island"
+    },
+    {
+      "name": "{2/W} pays two generic without white",
+      "text": "{2/W}",
+      "actions": [
+        "mountain",
+        "swamp"
+      ],
+      "step": "tap:mountain"
+    },
+    {
+      "name": "{2/W} pays white when it can",
+      "text": "{2/W}",
+      "actions": [
+        "mountain",
+        "plains"
+      ],
+      "step": "tap:plains"
+    },
+    {
+      "name": "Phyrexian red pays with red",
+      "text": "{R/P}",
+      "actions": [
+        "mountain"
+      ],
+      "step": "tap:mountain"
+    },
+    {
+      "name": "sources with costs stay manual",
+      "text": "{G}{G}",
+      "actions": [
+        "signet",
+        "altar",
+        "talisman"
+      ],
+      "step": "blocked:Not enough untapped mana for this cost"
+    },
+    {
+      "name": "a painland pays either colour",
+      "text": "{W}{R}",
+      "actions": [
+        "forge",
+        "mountain"
+      ],
+      "plan": [
+        "bf1",
+        "m1"
+      ]
+    }
+  ]
+}
