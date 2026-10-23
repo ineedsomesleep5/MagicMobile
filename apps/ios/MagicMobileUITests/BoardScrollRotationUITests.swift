@@ -30,7 +30,7 @@ final class BoardScrollRotationUITests: XCTestCase {
         app.launchEnvironment["MAGICMOBILE_FORCE_CARD_PLACEHOLDERS"] = "true"
         // The classic board, chosen as a saved setting so the menu can still change it.
         app.launchEnvironment["MAGICMOBILE_UI_TEST_BOARD_APPEARANCE"] = "arena"
-        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-magicmobile.portraitModeEnabled", "YES"]
         XCUIDevice.shared.orientation = portrait ? .portrait : .landscapeLeft
         app.launch()

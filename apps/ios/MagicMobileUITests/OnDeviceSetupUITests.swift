@@ -15,7 +15,7 @@ final class OnDeviceSetupUITests: XCTestCase {
         // A private preference suite stays writable and survives this test's relaunches.
         // Argument-domain game settings would override AppStorage writes during interaction.
         app.launchEnvironment["MAGICMOBILE_UI_TEST_PREFERENCES"] = UUID().uuidString
-        app.launchArguments = ["-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", 
+        app.launchArguments = ["-magicmobile.boardMode", "hearth", "-magicmobile.boardAppearance", "arena", "-deckStudio.cards.layout.v1", "List", 
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "--ondevice-setup-ui-test"
         ]
