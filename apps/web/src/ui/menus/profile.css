@@ -1,0 +1,202 @@
+/* The profile page (ProfilePage.tsx; iOS Ranked/ProfileView.swift and ProfileVisuals.swift in the Arena look): the
+   player's column and the hero art over the dimmed room, glass cards, wins gold and losses a muted rose. Uses the menu
+   tokens of menus.css (--gold, --text, --dim, --win, --loss, --hair). */
+.mprofile { position: absolute; inset: 0; display: flex; flex-direction: column; width: min(920px, 100% - 32px); margin: 0 auto;
+  --pwin: #fad685; --pwindeep: rgb(237,128,56); --pdraw: rgb(158,148,128); --ptrack: rgba(0,0,0,.42); }
+.mprofilebody { flex: 1; min-height: 0; display: flex; gap: 16px; padding-top: 12px; }
+.mprofileleft { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding-bottom: 28px; }
+.mprofileleft > * { flex: none; }
+.mprofiletabs { flex: none; padding-top: 4px; }
+
+/* The chooser panel sits over the whole menu, as the shell's panels do: this layer undoes the page's offset under the bar. */
+.mprofilepanels { position: absolute; left: 0; right: 0; top: calc(-1 * var(--bar)); bottom: 0; pointer-events: none; }
+.mprofilepanels > * { pointer-events: auto; }
+
+/* The player */
+.mprofilename h1 { font-size: 34px; line-height: 1.1; color: var(--text); text-shadow: 0 0 4px rgba(0,0,0,.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mprofilename { display: flex; flex-direction: column; gap: 4px; }
+.mprofileidentity { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.mprofileidentity > .mcaps { align-self: flex-start; }
+.mprofilerank { display: flex; align-items: center; gap: 14px; padding: 12px; }
+.mprofilerank .grow { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mprofileranktitle { font: 700 20px/1.1 var(--serif); }
+.mprofilerecord { font: 700 13px/1 var(--sans); color: var(--gold); font-variant-numeric: tabular-nums; }
+.mprofilepeak { font: 600 11.5px/1 var(--sans); color: var(--dim); }
+.mprofileprogresscaps { margin-top: 4px; }
+.mprofileprogress { display: flex; gap: 10px; }
+.mprofileprogresstile { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; }
+.mprofileprogressglyph { width: 40px; height: 34px; display: grid; place-items: center; }
+.mprofileprogresstile b { font: 700 19px/1 var(--serif); font-variant-numeric: tabular-nums; }
+
+/* The hero */
+.mprofilehero { position: relative; width: 330px; flex: none; margin-bottom: 4px; border-radius: 16px; overflow: hidden; border: 1px solid var(--hair);
+  box-shadow: 0 6px 14px rgba(0,0,0,.6); background: #0f0d0d; }
+.mprofileheroart { position: absolute; inset: 0; display: block; transition: filter .15s; }
+.mprofileheroart:hover { filter: brightness(1.06); }
+.mprofileheroart:active { filter: brightness(.94); }
+.mprofileheroshade { position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(0,0,0,.85)); pointer-events: none; }
+.mprofileherofoot { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px; display: flex; align-items: flex-end; gap: 8px; }
+.mprofileherofoot em { font: italic 600 13px/1.25 var(--sans); color: rgba(242,235,219,.85); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Story cards */
+.mprofilecard { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mprofilesection { display: flex; align-items: baseline; gap: 6px; }
+.mprofilesection h3 { flex: 1; font: 800 11px/1.2 var(--sans); letter-spacing: 1.4px;
+  background: linear-gradient(#fff2c7, #f0bf6b 55%, #b77a2c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mprofilesection small { font: 600 11px/1 var(--sans); opacity: .7; }
+.mprofileempty { margin: 0; display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; background: rgba(0,0,0,.28);
+  border: 1px dashed rgba(232,190,112,.3); font: 400 13px/1.3 var(--sans); color: rgba(242,235,219,.75); }
+.mprofileempty svg { flex: none; }
+.mprofilerule { display: block; height: 1px; background: var(--hair); opacity: .4; }
+.mprofileseason { display: flex; align-items: center; gap: 8px; font: 400 13px/1.2 var(--sans); }
+.mprofileseason small { font: 400 12px/1 var(--sans); opacity: .7; font-variant-numeric: tabular-nums; }
+
+/* Filter chips: Arena's pills in a row that fades at its right edge */
+.mprofilechips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 6px 2px; min-height: 32px;
+  -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent); mask-image: linear-gradient(90deg, #000 90%, transparent); }
+.mprofilechips::-webkit-scrollbar { display: none; }
+.mprofilechips > .mbtn { flex: none; }
+.mprofilechips .mbtn small { margin-left: 5px; font: 600 11px/1 var(--sans); opacity: .7; font-variant-numeric: tabular-nums; }
+
+/* Record */
+.mprofilerecordrow { display: flex; align-items: center; gap: 14px; }
+.mprofiletiles { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mprofilestat { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 8px;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(232,190,112,.4); }
+.mprofilestat b { font: 900 21px/1 var(--serif); font-variant-numeric: tabular-nums; }
+.mprofilestat small, .mprofilestreak small { font: 800 9px/1.2 var(--sans); letter-spacing: 1px; opacity: .7; white-space: nowrap; }
+.mprofilering { position: relative; flex: none; }
+.mprofilering svg { display: block; }
+.mprofileringseg { animation: mprofilering .9s ease-out both; }
+@keyframes mprofilering { from { stroke-dasharray: 0 var(--c); } }
+.mprofileringtext { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.mprofileringtext b { font-family: var(--serif); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums;
+  background: linear-gradient(#fff2c7, #f0bf6b 55%, #b77a2c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mprofileringtext small { font-family: var(--serif); font-weight: 800; letter-spacing: 1.2px; opacity: .7; margin-top: 2px; }
+.mprofilestreaks { display: flex; gap: 10px; }
+.mprofilestreak { flex: 1; min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 8px;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(232,190,112,.4); }
+.mprofilestreak svg { flex: none; }
+.mprofilestreak.hot svg { filter: drop-shadow(0 0 6px var(--pwindeep)); }
+.mprofilestreak span { display: flex; flex-direction: column; }
+.mprofilestreak b { font: 900 22px/1 var(--serif); font-variant-numeric: tabular-nums; }
+
+/* Games over time */
+.mprofileweeks { display: flex; align-items: flex-end; gap: 7px; }
+.mprofileweek { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.mprofileweek > small { font: 800 11px/1 var(--sans); opacity: .85; font-variant-numeric: tabular-nums; }
+.mprofileweek > em { font: normal 600 9px/1 var(--sans); opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.mprofilebar { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 999px; overflow: hidden; background: var(--ptrack); }
+.mprofilebar i { display: block; flex: none; }
+.mprofilebar i.won, .mprofilelegend i.won { background: linear-gradient(var(--pwin), var(--pwindeep)); }
+.mprofilebar i.lost, .mprofilelegend i.lost { background: var(--loss); }
+.mprofilelegend { display: flex; gap: 14px; font: 600 11px/1 var(--sans); }
+.mprofilelegend span { display: flex; align-items: center; gap: 5px; opacity: .75; }
+.mprofilelegend i { width: 9px; height: 9px; border-radius: 50%; }
+
+/* Rank history */
+.mprofilechart { display: flex; flex-direction: column; gap: 6px; }
+.mprofilechart svg { display: block; overflow: visible; }
+.mprofilecharttier { font: 700 9px/1 var(--sans); }
+.mprofilechartinitial { font: 900 13px/1 var(--sans); }
+.mprofilechartdates { display: flex; justify-content: space-between; font: 600 10px/1 var(--sans); opacity: .65; }
+
+/* Commanders */
+.mprofilecommanders { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mprofilecommander { position: relative; aspect-ratio: .78; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--hair); box-shadow: 0 2px 4px rgba(0,0,0,.5); }
+.mprofilecommander > .mdeckart { position: absolute; inset: 0; }
+.mprofileshade { position: absolute; inset: 0; background: linear-gradient(transparent 50%, rgba(0,0,0,.85)); pointer-events: none; }
+.mprofilecommander > span { position: absolute; left: 7px; right: 7px; bottom: 7px; display: flex; flex-direction: column; gap: 1px; }
+.mprofilecommander b { font: 800 11px/1.2 var(--sans); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mprofilecommander small { font: 600 9px/1.2 var(--sans); color: var(--win); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mprofilecrown { position: absolute; top: 7px; right: 7px; }
+
+/* Colors */
+.mprofilecolors { display: flex; align-items: center; gap: 16px; }
+.mprofilepie { position: relative; flex: none; display: grid; place-items: center; }
+.mprofilepie svg { position: absolute; inset: 0; }
+.mprofilecolorlist { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.mprofilecolorlist > div { display: flex; align-items: center; gap: 8px; font: 600 13px/1 var(--sans); }
+.mprofilecolorlist b { font: 800 12px/1 var(--sans); opacity: .85; font-variant-numeric: tabular-nums; }
+
+/* Trophies */
+.mprofileshelf { display: flex; flex-direction: column; gap: 10px; }
+.mprofilecoins { display: flex; align-items: flex-end; gap: 6px; }
+.mprofilecoin { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding-bottom: 2px; }
+.mprofilecoin > i { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; box-sizing: border-box;
+  background: rgba(0,0,0,.5); border: 2px solid rgba(128,128,128,.5); box-shadow: 0 2px 2px rgba(0,0,0,.4); }
+.mprofilecoin.earned > i { background: radial-gradient(circle at 35% 30%, #ffe69e, #b87a29 55%, #5c3814); border-color: #e8be70;
+  box-shadow: 0 2px 5px rgba(250,199,92,.4); }
+.mprofilecoin.earned svg { filter: drop-shadow(0 1px 0 rgba(255,255,255,.35)); }
+.mprofilecoin > span { height: 24px; font: 800 9px/1.3 var(--sans); text-align: center; opacity: .45; overflow: hidden; }
+.mprofilecoin.earned > span { opacity: .95; }
+.mprofilecoin:hover > i { filter: brightness(1.1); }
+.mprofileplank { display: block; height: 7px; background: linear-gradient(rgb(140,87,41), rgb(71,38,15)); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 2px 3px rgba(0,0,0,.6); }
+.mprofiletrophynote { margin: 0; min-height: 32px; font: 600 12px/1.35 var(--sans); opacity: .9; }
+
+/* Games */
+.mprofilegame { border-radius: 12px; background: rgba(0,0,0,.32); border: 1px solid rgba(232,190,112,.45); }
+.mprofilegamehead { width: 100%; min-height: 76px; display: flex; align-items: center; gap: 12px; padding: 10px; text-align: left; box-sizing: border-box; }
+.mprofilegamehead:hover { background: rgba(255,255,255,.03); border-radius: 12px; }
+.mprofilegameart { width: 58px; height: 58px; flex: none; border-radius: 9px; overflow: hidden; border: 1.5px solid var(--hair); }
+.mprofilegamehead .grow { display: flex; flex-direction: column; gap: 3px; }
+.mprofilegamehead .grow > b { font: 800 15px/1.2 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mprofilegamehead .grow > small { font: 600 12px/1.2 var(--sans); opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mprofilegamemeta { display: flex; align-items: center; gap: 6px; font: 400 11px/1 var(--sans); color: rgba(242,235,219,.65); }
+.mprofiletag { font: normal 800 8.5px/1 var(--sans); letter-spacing: .8px; color: var(--gold); padding: 3px 6px; border-radius: 4px;
+  background: rgba(0,0,0,.4); border: 1px solid rgba(232,190,112,.45); white-space: nowrap; }
+.mprofilegameend { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.mprofilestamp { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font: normal 900 17px/1 var(--serif);
+  background: linear-gradient(rgba(41,43,51,.95), rgba(14,15,19,.97)); border: 1.2px solid currentColor; }
+.mprofilestamp.win { color: var(--win); box-shadow: 0 0 6px rgba(250,214,133,.35); }
+.mprofilestamp.loss { color: var(--loss); }
+.mprofilestamp.draw { color: var(--dim); }
+.mprofilegameend em { font: normal 800 12px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.mprofilegameend em.up { color: var(--win); }
+.mprofilegameend em.down { color: var(--loss); }
+.mprofilegamedetails { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.mprofilegamedetails::before { content: ""; height: 1px; background: var(--hair); opacity: .35; }
+.mprofileopponent { display: flex; align-items: center; gap: 8px; }
+.mprofileopponentart { width: 30px; height: 30px; flex: none; border-radius: 50%; overflow: hidden; border: 1px solid rgba(232,190,112,.6); }
+.mprofileopponent .grow { display: flex; flex-direction: column; }
+.mprofileopponent b { font: 800 13px/1.3 var(--sans); }
+.mprofileopponent small { font: italic 400 11px/1.3 var(--sans); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mprofilegamedetails p { margin: 0; display: flex; gap: 14px; font: 400 11px/1.3 var(--sans); opacity: .7; }
+.mprofilegamedetails p.mprofilenoopponents { font-style: italic; opacity: .55; }
+
+/* Customization */
+.mprofilecustom { flex: 1; display: flex; gap: 14px; padding-bottom: 10px; }
+.mprofilecustomtile { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); background: #0f0d0d; transition: filter .15s, transform .12s; }
+.mprofilecustomtile:hover { filter: brightness(1.06); }
+.mprofilecustomtile:active { transform: scale(.99); }
+.mprofilecustomtile.portrait { flex: 1; min-width: 0; }
+.mprofilecustomtile.title { width: 300px; flex: none; }
+.mprofilecustomtile > .mdeckart { position: absolute; inset: 0; }
+.mprofilecustomtile > .mprofileshade { background: linear-gradient(transparent 60%, rgba(0,0,0,.85)); }
+.mprofilecustomtile > b { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; font: 700 16px/1 var(--sans); color: var(--text); }
+.mprofiletitleface { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); }
+.mprofiletitleface span { min-height: 50px; display: flex; align-items: center; padding: 0 18px; border-radius: 999px; text-align: center;
+  font: 700 17px/1.2 var(--serif); color: var(--gold); background: linear-gradient(rgba(26,28,36,.97), rgba(10,11,15,.98)); border: 1px solid var(--hair); }
+.mprofiletitleface span.none { color: var(--dim); }
+
+/* Choosers */
+.mprofilechooser { flex: 1; min-height: 0; padding: 16px 16px 36px; display: flex; flex-direction: column; gap: 14px; }
+.mprofiletitlegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.mprofiletitletile { min-height: 48px; padding: 0 12px; border-radius: 999px; font: 700 14px/1.2 var(--sans); text-align: center; color: var(--text);
+  background: linear-gradient(rgba(26,28,36,.97), rgba(10,11,15,.98)); border: 1px solid var(--hair); transition: filter .15s; }
+.mprofiletitletile:hover { filter: brightness(1.15); }
+.mprofiletitletile.on { color: var(--gold); border: 2px solid var(--gold); box-shadow: 0 0 8px rgba(250,214,133,.45); }
+.mprofileportraitgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px 10px; }
+.mprofiledeckscaps { align-self: flex-start; }
+.mprofileportrait { display: flex; flex-direction: column; gap: 6px; }
+.mprofilearch { display: block; aspect-ratio: .74; border-radius: 50% 50% 8px 8px / 37% 37% 8px 8px; overflow: hidden; border: 1px solid var(--hair);
+  box-shadow: 0 3px 5px rgba(0,0,0,.5); transition: filter .15s; }
+.mprofileportrait:hover .mprofilearch { filter: brightness(1.1); }
+.mprofileportrait.on .mprofilearch { border: 2.5px solid var(--gold); box-shadow: 0 0 9px rgba(250,214,133,.5); }
+.mprofileportrait > span:last-child { min-height: 28px; font: 600 11px/1.25 var(--serif); text-align: center; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mprofileportrait.on > span:last-child { color: var(--gold); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mprofileringseg { animation: none; }
+}
