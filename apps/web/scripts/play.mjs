@@ -110,7 +110,7 @@ const look = () => {
     error: s.state.errorMessage, life: [me?.life, ...snap.players.filter((p) => p !== me).map((p) => p.life)],
     prompt: env && { id: env.id, mine: env.playerId === snap.viewerPlayerId, method: env.method, kind: env.responseKind, message: env.message,
       targets: env.targetIds ?? env.targets?.map((t) => t.id) ?? [], choices: (env.choices ?? []).map((c) => c.id), abilities: (env.abilities ?? []).map((a) => a.id),
-      modes: (env.modes ?? []).map((m) => m.id), players: (env.players ?? []).map((p) => p.id), cards: (env.cards ?? []).map((c) => c.instanceId),
+      modes: (env.modes ?? []).map((m) => ({ id: m.id, label: m.label ?? "" })), players: (env.players ?? []).map((p) => p.id), cards: (env.cards ?? []).map((c) => c.instanceId),
       confirmation: env.confirmation !== undefined, min: env.minChoices, max: env.maxChoices },
     paying: snap.manaPayment?.active === true || ["mana", "pay_cost", "cost", "x_mana"].includes((env?.responseKind ?? "").toLowerCase()),
     autoPaying: [...document.querySelectorAll(".aplaque")].some((b) => b.textContent === "Paying…"),
@@ -202,9 +202,10 @@ function decide(state, memory) {
     if (next) return { submit: { type: "choose_target", targetIds: [next] }, label: "Choose" };
   }
   if (p.abilities.length) return { submit: { type: "choose_ability", abilityId: p.abilities[0] }, label: "Ability" };
-  if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [p.modes[0]] }, label: "Mode" };
+  // A modal wipe (Cleansing Nova) takes its creatures mode; any other mode spell its first.
+  if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [(p.modes.find((m) => /all creatures/i.test(m.label)) ?? p.modes[0]).id] }, label: "Mode" };
   if (p.players.length) return { submit: { type: "choose_player", playerIds: [p.players[0]] }, label: "Player" };
-  if (p.choices.length) return { submit: { type: "choose_choice", choiceIds: [p.choices[0]] }, label: "Choice" };
+  if (p.choices.length) return { submit: { type: "resolve_choice", choiceIds: [p.choices.find((id) => id !== "") ?? p.choices[0]] }, label: "Choice" };
   const no = acts.find((a) => a.type === "answer_yes_no" && a.confirmed === false);
   const first = no ?? acts[0];
   return first ? { action: first.id } : undefined;
