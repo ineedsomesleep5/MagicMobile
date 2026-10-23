@@ -794,6 +794,12 @@ contradicting one.
   against the server's per-address limits. The relay's WebSocket (`*.workers.dev`) can't go through a Vercel rewrite,
   so tables with people may still be blocked on such a network. When a web report says "nothing happens", check the
   auth logs for the browser's requests before reading the code: no requests means the network, not the flow.
+- 2026-10-23 (Claude, CI type-check budget): the `swift` job's 200 ms budget counts `Board/` expressions only, and runner
+  speed moves timings by about 10%, so an expression near the line fails some runs and passes others.
+  `CardTile.swift`'s `.background { handGlow }` measured 205 ms in a long modifier chain (it failed #229 once and #235).
+  A trailing `@ViewBuilder` closure in a long chain is expensive to infer: move it into a small `ViewModifier` and keep
+  the content in one branch, so the view keeps its identity. `ArenaBoardPresentation.swift:818` measures about 2 s, but
+  it sits outside `Board/`, so it isn't gated.
 - 2026-10-23 (Claude, web board polish): three quiet web traps from Caleb's playtest. (1) `.arena-stage button
   { font-family: var(--sans) }` (0,1,1) outranks `.aplaque`'s serif (0,1,0), so every board button drew in the system
   sans (Segoe UI on Windows) and looked unlike iOS; `.arena-stage button.aplaque` restores the serif. Check computed
