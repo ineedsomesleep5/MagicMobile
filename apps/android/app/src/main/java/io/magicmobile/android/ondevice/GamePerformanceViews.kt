@@ -49,7 +49,8 @@ fun GamePerformancePanel() {
     var showReport by remember { mutableStateOf(false) }
     Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TavernPanelTitle("Game Performance")
-        Text("Memory and heat from your recent games, to compare app versions. Numbers only, no cards or names. Nothing is sent unless you share it.",
+        // The Arena look drops the explanation (AGENTS.md: no helper text).
+        if (!io.magicmobile.android.menus.LocalArenaBoard.current) Text("Memory and heat from your recent games, to compare app versions. Numbers only, no cards or names. Nothing is sent unless you share it.",
             color = TavernPalette.parchment.copy(alpha = 0.65f), style = sf(12f, design = SfDesign.SERIF))
         Text(entries.lastOrNull()?.let { "Last game: ${it.line}" } ?: "Finish a game to record one.", Modifier.testTag("settings.performance.last"),
             color = TavernPalette.parchment.copy(alpha = 0.85f), style = sf(12f, SfWeight.semibold, SfDesign.SERIF))

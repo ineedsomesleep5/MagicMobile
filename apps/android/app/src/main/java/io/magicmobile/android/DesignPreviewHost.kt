@@ -52,7 +52,10 @@ object DesignPreview {
         // Profiles and friends (ranked/SocialFixtures.kt): a fixture account instead of the server, and a screen to open at launch.
         "MAGICMOBILE_UI_TEST_SOCIAL", "MAGICMOBILE_UI_TEST_OPEN",
         // The starting roll preview (MAGICMOBILE_DESIGN_PREVIEW=starting-roll): seats 2-4, and 1 to roll by itself.
-        "MAGICMOBILE_STARTING_ROLL_SEATS", "MAGICMOBILE_STARTING_ROLL_AUTO")
+        "MAGICMOBILE_STARTING_ROLL_SEATS", "MAGICMOBILE_STARTING_ROLL_AUTO",
+        // The Arena board (iOS `-magicmobile.boardMode arena`): the board mode and Card Frames for the preview, and the hand's
+        // posture (open, pop, spread); MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST=sections fills the sections on crowded-battlefield.
+        "MAGICMOBILE_BOARD_MODE", "MAGICMOBILE_CARD_FRAMES", "MAGICMOBILE_ARENA_HAND", "MAGICMOBILE_BOARD_RESOURCE_LAYOUT_UI_TEST")
 
     fun extras(intent: Intent?): Map<String, String> {
         if (!BuildConfig.DEBUG || intent == null) return emptyMap()
@@ -100,6 +103,13 @@ fun DesignPreviewHost() {
         }
     }
     var portrait by AppPreferences.boolean(PortraitModePreference.key, true)
+    // The board the preview shows (MAGICMOBILE_BOARD_MODE=arena) and its Card Frames (MAGICMOBILE_CARD_FRAMES=1 or 0).
+    var boardMode by AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+    var arenaFrames by AppPreferences.boolean(io.magicmobile.android.game.CardFramesPreference.arenaKey, io.magicmobile.android.game.CardFramesPreference.arenaDefault)
+    LaunchedEffect(Unit) {
+        LaunchEnvironment["MAGICMOBILE_BOARD_MODE"]?.let { boardMode = io.magicmobile.android.game.BoardMode.resolved(it).rawValue }
+        LaunchEnvironment["MAGICMOBILE_CARD_FRAMES"]?.let { arenaFrames = it == "1" || it == "true" }
+    }
     if (preview == "board-fx" && LaunchEnvironment["MAGICMOBILE_BOARD_FX_AUTOPLAY"] == "1") {
         LaunchedEffect(Unit) {
             while (true) {

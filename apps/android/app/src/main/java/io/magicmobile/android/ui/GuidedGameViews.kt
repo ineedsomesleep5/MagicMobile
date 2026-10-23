@@ -19,6 +19,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -60,7 +61,8 @@ fun GuidedGameWelcomeView(playGuided: () -> Unit, readHowToPlay: () -> Unit, ski
         Box(modifier, contentAlignment = Alignment.TopCenter) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp).widthIn(max = 460.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Box(Modifier.size(60.dp).tavernFill(TavernMaterial.LEATHER, CircleShape).border(1.2.dp, BrandTheme.brassGradient, CircleShape),
+                // Dark glass in the gold hairline, as the Arena menus draw it (it was a leather coin).
+                Box(Modifier.size(60.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape).border(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape),
                     contentAlignment = Alignment.Center) {
                     SfImage("graduationcap.fill", TavernPalette.brass, 26.dp)
                 }

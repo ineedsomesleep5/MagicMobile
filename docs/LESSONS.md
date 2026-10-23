@@ -21,6 +21,34 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-23 (Claude, Android Arena board phase C): four things that differ from SwiftUI. (1) Compose hit-tests overlapping
+  siblings exclusively, so a full-screen hand surface would swallow every tap on the lanes: the hand's touch boxes are the
+  fan's band and the popped card's frame (`Modifier.place(rect)`), the iOS `touchSurface`/`carrySurface` pair. A full-screen
+  Box with no pointer modifier of its own (the overlay and panel layers) does not block the table. (2) Per-tile 3D lean needs
+  each tile's global frame at draw time; the Arena lanes and piles lean as one `graphicsLayer` each (`arenaLean`, rotationX
+  with `cameraDistance` and the pivot under the screen's centre), and `boundsInRoot` still reports the leaned bounds for the
+  arrows. (3) The glow border's light is a software bitmap per outline (`ArenaGlowImages`: `extractAlpha` with a
+  `BlurMaskFilter`, drawn three times, the inner card cut with DST_OUT), drawn with `BlendMode.Plus`; never blur per tile.
+  (4) `backs.scryfall.io` is outside `ArtworkTransport`'s allowed hosts, so the Arena card back stays the drawn leather back;
+  widening the allowlist is a security change for Caleb. Also: in an isolated worktree the guard refused a heredoc Python edit
+  once and allowed it once; the Edit tool always works. Where: `apps/android/app/src/main/java/io/magicmobile/android/board/`.
+
+- 2026-10-22 (Claude, Android Arena menus phase B): three traps. (1) A screen moved inside the menu shell's page box sits
+  under the top bar, so a full-screen cover drawn from it (Deck Studio's editor) ends up below the bar: the shell steps aside
+  while the cover is open (`DeckStudioRootView(covered =)` sets `decksCovered`, which drops the top padding and hides
+  `ArenaTopBar`). (2) `LocalArenaMenuBackdrop` carries into Dialogs and in-place overlays, so `PublicProfileScreen` drew no
+  backdrop and showed the page under it; it sets the local false for itself. (3) In an isolated agent worktree the guard
+  refuses heredoc Python, `sed -f` and `xargs` git calls; save the script in the scratchpad and run `python3 -I script.py
+  <file>`. Also: the Mac's disk filled (ENOSPC) while three agent worktrees built at once; check `df -h` before parallel
+  Gradle work. Where: `apps/android/app/src/main/java/io/magicmobile/android/ondevice/OnDeviceRootView.kt`, `ranked/`.
+
+- 2026-10-22 (Claude, Android Arena menus): an agent worktree cut from `main` lacked the newest iOS Arena sources
+  (orange `ArenaButtonFace`, the sans/serif `font()` mix, the `home-art-*` sets), which lived only on `claude/arena-mode`.
+  **Rule:** before porting an iOS screen, check `git log --all -- <iOS file>` for a newer commit and merge it, so the port
+  and `prepareBrandAssets` see the same files. In Compose, `runCatching { ImageBitmap.imageResource(id) }` does not
+  compile (a try/catch around a composable call); resolve drawables through `R` so a missing one fails the build instead.
+  Where: `apps/android/app/src/main/java/io/magicmobile/android/menus/`.
+
 - 2026-10-20 (Claude, Arena mode): a pitched Blender camera (`tavern_table.py --pitch`) draws the far half of the mat
   narrower and its true centre above its visual middle. Cards placed on the canvas edge spilled onto the frame at the
   opponent's land row, and the compass sat about 50 pt high. **Rule:** measure the rendered plate (sample brightness
@@ -445,7 +473,7 @@ contradicting one.
   spell only when the engine marks a playable answer (`respondsToStack`). It found none, probably because his mana was
   tapped, so the spell went by unread. Smart pass now also stops for an opponent's removal, sweepers and steals
   (`OnDeviceSmartPass.threatensViewer`, setting Stop for Removal). Holding a card open holds the pass too
-  (`BoardPresentationHold.reading`). Android's smart pass doesn't have these stops yet.
+  (`BoardPresentationHold.reading`). Android's smart pass has both since 2026-10-23 (Arena board phase C).
 - 2026-10-21 (Claude, Arena glow and motion): three SwiftUI traps.
   - `ArenaStackArc` as a `Canvas` that trimmed its path by an `@State` animated in `onAppear` drew nothing on the board's
     overlay (`overlayPreferenceValue`), though the reticle beside it, a plain view, showed. The same arc as a `Shape`

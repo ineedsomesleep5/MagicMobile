@@ -84,85 +84,44 @@ object Grimoire {
 
 }
 
-/** GrimoirePaper: a parchment tone with the tavern's paper grain multiplied into it. */
-fun Modifier.grimoirePaper(tone: Color = DeckStudioPalette.background, grain: Float = 0.26f, shape: Shape = RectangleShape): Modifier = composed {
-    val image = tavernImage(R.drawable.tavern_ui_parchment)
+/**
+ * GrimoirePaper: a page's surface. It was the book's grained parchment; since the Arena menus (Caleb, 2026-10-22) a page
+ * ([DeckStudioPalette.background], the default) is Arena's dark glass, a little lighter at the top, and anything lighter
+ * (a plate, [DeckStudioPalette.surface]) a lighter pane over it. `grain` is kept for callers.
+ */
+fun Modifier.grimoirePaper(tone: Color = DeckStudioPalette.background, @Suppress("UNUSED_PARAMETER") grain: Float = 0.26f, shape: Shape = RectangleShape): Modifier =
     drawWithCache {
-        // The texture is a @3x kit image: one point per three pixels, tiled.
-        val shader = ImageShader(image, TileMode.Repeated, TileMode.Repeated)
-        shader.setLocalMatrix(android.graphics.Matrix().apply { setScale(density / 3f, density / 3f) })
-        val brush = ShaderBrush(shader)
         val outline = shape.createOutline(size, layoutDirection, this)
+        val page = tone == DeckStudioPalette.background
+        val brush = Brush.verticalGradient(listOf(io.magicmobile.android.menus.ArenaGlass.top.copy(alpha = 0.94f),
+            io.magicmobile.android.menus.ArenaGlass.bottom.copy(alpha = 0.96f)))
         onDrawBehind {
-            drawOutline(outline, tone)
-            drawOutline(outline, brush, alpha = grain, blendMode = BlendMode.Multiply)
+            if (page) drawOutline(outline, brush) else drawOutline(outline, Color.White.copy(alpha = 0.055f))
         }
     }
-}
 
-/**
- * Makes a full screen of Deck Studio a page of the book: grained parchment, and over it only the gutter's
- * shadow and the leaf edges at the page's sides. Nothing is laid over the middle of the page, so card art keeps
- * its own colours. A loose leaf (a sheet) has no spine.
- */
-fun Modifier.grimoirePage(bound: Boolean = true): Modifier = grimoirePaper().drawWithContent {
-    drawContent()
-    if (!bound) return@drawWithContent
-    // Upright the spine is the left edge. Sideways the book is a spread: the spine runs down the middle (the
-    // screens lay their content out as two pages, clear of it) with leaf edges at both sides.
-    if (size.width > size.height) {
-        gutter(size.width / 2, leading = true); gutter(size.width / 2, leading = false)
-        leafEdges(trailing = true); leafEdges(trailing = false)
-    } else {
-        gutter(0f, leading = false); leafEdges(trailing = true)
-    }
-}
+/** Makes a full screen of Deck Studio a page: Arena's dark glass (the book's spine and leaf edges are gone). */
+fun Modifier.grimoirePage(@Suppress("UNUSED_PARAMETER") bound: Boolean = true): Modifier = grimoirePaper()
 
-/** The shadow where a page curves down into the spine at `x`, falling away to one side. */
-private fun DrawScope.gutter(x: Float, leading: Boolean) {
-    val width = Grimoire.gutterWidth.toPx(); val ink = DeckStudioPalette.ink
-    val left = if (leading) x - width else x
-    val from = if (leading) left + width else left; val to = if (leading) left else left + width
-    drawRect(Brush.horizontalGradient(0f to ink.copy(alpha = 0.34f), 0.35f to ink.copy(alpha = 0.12f), 1f to Color.Transparent, startX = from, endX = to),
-        Offset(left, 0f), Size(width, size.height))
-}
-
-/** The cut edges of the leaves behind this page: a few fine lines down the fore-edge. */
-private fun DrawScope.leafEdges(trailing: Boolean) {
-    val width = Grimoire.edgeWidth.toPx(); val ink = DeckStudioPalette.ink
-    val origin = if (trailing) size.width - width else 0f
-    drawRect(Brush.horizontalGradient(listOf(ink.copy(alpha = if (trailing) 0.02f else 0.16f), ink.copy(alpha = if (trailing) 0.16f else 0.02f)),
-        startX = origin, endX = origin + width), Offset(origin, 0f), Size(width, size.height))
-    for (index in 0 until 4) {
-        drawRect(ink.copy(alpha = 0.22f), Offset(origin + (index + 0.5f) * width / 4, 0f), Size(0.6.dp.toPx(), size.height))
-    }
-}
-
-/** A place to write on the page (a search or text field): paler paper inside a hairline of ink. */
+/** A place to write on the page (a search or text field): a darker pane in the gold hairline. */
 fun Modifier.grimoireField(shape: Shape): Modifier =
-    background(DeckStudioPalette.surfaceElevated, shape).border(0.8.dp, DeckStudioPalette.ink.copy(alpha = 0.2f), shape)
+    background(Color.Black.copy(alpha = 0.5f), shape).border(0.9.dp, binderHairline(0.7f), shape)
 
-/** A chapter heading in the book's hand: small capitals over a title, closed by an inked rule with the brand's sparkle. */
+/** A chapter heading: gold small capitals over a serif title with a black shadow, and a dim line under it. */
 @Composable
 fun GrimoireHeading(kicker: String, title: String, subtitle: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(kicker.uppercase(), color = DeckStudioPalette.accent, style = sf(12f, SfWeight.semibold, SfDesign.SERIF, tracking = 2.2f))
-        Text(title, color = DeckStudioPalette.ink, style = sf(36f, SfWeight.bold, SfDesign.SERIF))
-        subtitle?.let { Text(it, color = DeckStudioPalette.secondaryInk, style = sf(15f, design = SfDesign.SERIF).copy(fontStyle = FontStyle.Italic)) }
-        GrimoireRule()
+        io.magicmobile.android.menus.ArenaCaps(kicker, 11f)
+        Text(title, color = io.magicmobile.android.menus.ArenaMenuStyle.text,
+            style = sf(30f, SfWeight.bold, SfDesign.SERIF).copy(shadow = Shadow(Color.Black, Offset.Zero, 4f)))
+        subtitle?.let { Text(it, color = io.magicmobile.android.menus.ArenaMenuStyle.dim, style = sf(14f)) }
     }
 }
 
-/** An inked rule across the page with the sparkle at its centre. */
+/** A gold hairline across the page. */
 @Composable
 fun GrimoireRule(modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().height(10.dp).clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        val ink = DeckStudioPalette.ink
-        Canvas(Modifier.weight(1f).height(1.dp)) { drawRect(Brush.horizontalGradient(listOf(ink.copy(alpha = 0f), ink.copy(alpha = 0.45f)))) }
-        BrandSparkle(9.dp, DeckStudioPalette.accent)
-        Canvas(Modifier.weight(1f).height(1.dp)) { drawRect(Brush.horizontalGradient(listOf(ink.copy(alpha = 0.45f), ink.copy(alpha = 0f)))) }
-    }
+    Box(modifier.fillMaxWidth().height(1.dp).background(binderHairline(0.5f)).clearAndSetSemantics {})
 }
 
 /**

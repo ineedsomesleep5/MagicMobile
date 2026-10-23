@@ -531,6 +531,8 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
             }
             RememberedChoicesPanel()
             GameMenuSectionLabel("Options")
+            BoardModePicker()
+            CardFramesToggle()
             PortraitModeToggle(portraitModeEnabled, setPortraitModeEnabled)
             FollowTurnsToggle()
             AutoPassAfterCastToggle()

@@ -409,6 +409,26 @@ object GameBoardPreviewFixtures {
                 battlefield.addAll(0, listOf(card("$seat-resource-sword", "Fixture Sword", "Artifact — Equipment", "{1}", "Equip {1}."),
                     card("$seat-resource-oath", "Fixture Oath", "Enchantment", "{2}", "Creatures you control get +1/+1.")))
             }
+            if (resourceLayoutMode == "sections") {
+                // Opt-in Arena board fixture: a wider army, a planeswalker and the other non-creature permanents that share its
+                // section, and a Treasure in the back row.
+                for ((number, name) in listOf("Elvish Mystic", "Savannah Lions", "Raging Goblin", "Goblin Guide").withIndex()) {
+                    battlefield += card("$seat-section-creature-$number", name, "Creature", "{1}", "Development fixture permanent.", 1)
+                }
+                val walker = card("$seat-section-walker", if (index == 0) "Ajani, Caller of the Pride" else "Liliana of the Veil", "Legendary Planeswalker",
+                    if (index == 0) "{1}{W}{W}" else "{1}{B}{B}", "+1: Development fixture loyalty ability.")
+                walker["counters"] = mutableMapOf("loyalty" to if (index == 0) 4 else 3)
+                battlefield += walker
+                if (index == 0) {
+                    val battle = card("$seat-section-battle", "Invasion of Gobakhan", "Battle — Siege", "{1}{W}", "When this Siege enters, look at target opponent's hand.")
+                    battle["counters"] = mutableMapOf("defense" to 3)
+                    battlefield += battle
+                    battlefield += card("$seat-section-treasure", "Treasure", "Token Artifact — Treasure", "", "{T}, Sacrifice this artifact: Add one mana of any color.")
+                } else {
+                    battlefield += card("$seat-section-saga", "Fable of the Mirror-Breaker", "Enchantment — Saga", "{2}{R}",
+                        "(As this Saga enters and after your draw step, add a lore counter.)")
+                }
+            }
             if (state == GameBoardDesignPreviewState.COMBAT_ARROWS) {
                 val id = if (index == 0) "human-preview-creature-0" else "ai-1-preview-creature-0"
                 battlefield.firstOrNull { it["instanceId"] == id }?.let {

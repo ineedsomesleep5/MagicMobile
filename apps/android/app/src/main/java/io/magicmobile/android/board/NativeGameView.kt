@@ -222,8 +222,16 @@ fun NativeGameView(
     val boardFXLevel by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
     val boardSoundsEnabled by AppPreferences.boolean(GameAudio.effectsKey, true)
     val boardAppearance by AppPreferences.string(BoardAppearancePreference.key, BoardAppearancePreference.defaultValue)
-    /** The Walnut Tavern table: controls sit on the plate's sockets and pop-ups wear the tavern kit. */
-    val isTavernBoard = BattlefieldBackdrop.resolved(boardAppearance) == BattlefieldBackdrop.TAVERN
+    /** The Arena board (BoardMode.ARENA, Options → Board → Table): the reference game's board on the leaning tavern table. */
+    val boardMode by AppPreferences.string(io.magicmobile.android.game.BoardMode.key, io.magicmobile.android.game.BoardMode.defaultValue)
+    val isArenaBoard = io.magicmobile.android.game.BoardMode.resolved(boardMode) == io.magicmobile.android.game.BoardMode.ARENA
+    val hearthCardFrames by AppPreferences.boolean(io.magicmobile.android.game.CardFramesPreference.hearthKey, io.magicmobile.android.game.CardFramesPreference.hearthDefault)
+    val arenaCardFrames by AppPreferences.boolean(io.magicmobile.android.game.CardFramesPreference.arenaKey, io.magicmobile.android.game.CardFramesPreference.arenaDefault)
+    /** A short notice in the Arena caption (Auto Pay stopping, a taken commander, a board wipe's recap). */
+    var arenaNotice by remember { mutableStateOf<String?>(null) }
+    var arenaLastStackTop by remember { mutableStateOf<io.magicmobile.android.game.XmageStackObject?>(null) }
+    /** The Walnut Tavern table: controls sit on the plate's sockets and pop-ups wear the tavern kit. The Arena board is a tavern table too. */
+    val isTavernBoard = BattlefieldBackdrop.resolved(boardAppearance) == BattlefieldBackdrop.TAVERN || isArenaBoard
     val cardBounds = remember { CardBoundsRegistry() }
     val holdInspection = remember { HoldCardInspection() }
     val density = LocalDensity.current.density
@@ -238,6 +246,12 @@ fun NativeGameView(
     if (human == null || opponent == null) { LoadingGameView(null, loadingMessage, loadingError); return }
     val currentSnapshot by rememberUpdatedState(board)
     val currentPending by rememberUpdatedState(pendingActionId)
+
+    /** The prompt-detail panel's key, less the questions the Arena board answers in its own corner (a number's pill). */
+    fun boardDetailChoiceKey(snap: GameSnapshot): String? {
+        if (isArenaBoard && io.magicmobile.android.game.ArenaTableRules.amountPrompt(snap, startingRollVisible) != null) return null
+        return PortraitInteractionPolicy.detailChoiceKey(snap)
+    }
 
     fun openPromptDetails() {
         if (PortraitInteractionPolicy.cardChoiceKey(currentSnapshot) != null) isCardChoiceOpen = true else isPromptDetailOpen = true
@@ -262,7 +276,7 @@ fun NativeGameView(
         committedCardChoice = if (plan.stopped) null else plan
         if (plan.stopped) {
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snap) != null
-            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snap) != null
+            isPromptDetailOpen = boardDetailChoiceKey(snap) != null
         }
         if (command != null) runCommand(command, "Apply card choice", "card-plan-${command.promptId ?: ""}-${command.messageId ?: 0}")
     }
@@ -275,7 +289,7 @@ fun NativeGameView(
             reviewCardChoiceAfterPending = true; isCardChoiceOpen = false; isPromptDetailOpen = false
         } else {
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snap) != null
-            isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(snap) != null
+            isPromptDetailOpen = boardDetailChoiceKey(snap) != null
         }
     }
 
@@ -439,11 +453,24 @@ fun NativeGameView(
         }
     }
 
+    fun showArenaNotice(text: String, seconds: Double) {
+        onInteractionFeedback(text)
+        GameHaptics.warning(view)
+        arenaNotice = text
+        scope.launch { delay((seconds * 1000).toLong()); if (arenaNotice == text) arenaNotice = null }
+    }
+
     fun ingestBoardFX(snap: GameSnapshot) {
         val level = BoardFXLevel.resolved(boardFXLevel, BoardMotion.reduceMotion)
         val scheduled = boardFX.ingest(snap, level, System.currentTimeMillis(), turnBannerEndsAt)
         BoardPresentationHold.shared.record(BoardFXRevisionKey(snap), boardFX.smartPassHoldUntil)
         fxVersion += 1
+        if (isArenaBoard) {
+            // A spell that just left the stack and took three or more permanents with it is named in the caption.
+            val resolved = arenaLastStackTop?.let { last -> if (snap.stackTopFirst.any { it.id == last.id }) null else last.displayName }
+            arenaLastStackTop = snap.stackTopFirst.firstOrNull()
+            io.magicmobile.android.game.ArenaSweepRecap.text(resolved, scheduled.map { it.event })?.let { showArenaNotice(it, 3.5) }
+        }
         if (scheduled.isEmpty()) return
         playBoardFXHaptics(scope, view, scheduled, snap.viewerID)
         if (boardSoundsEnabled) {
@@ -500,7 +527,7 @@ fun NativeGameView(
     LaunchedEffect(Unit) {
         updateAIWaitStart(board)
         isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
-        isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(board) != null
+        isPromptDetailOpen = boardDetailChoiceKey(board) != null
         interactionMode = GameBoardInteractionState.mode(board, pendingActionId, selection.selectedCard)
         if (board.id == "design-preview-zone-inspection") inspectBoardZone(BoardZoneReference.Player(board.viewerID, BoardZoneReference.PlayerZone.GRAVEYARD))
     }
@@ -525,7 +552,7 @@ fun NativeGameView(
     }
     OnChange(board.promptEnvelopeV2?.id) { _, _ ->
         advanceCommittedCardChoice()
-        isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(board) != null
+        isPromptDetailOpen = boardDetailChoiceKey(board) != null
     }
     OnChange(board.promptEnvelopeV2?.messageId) { _, _ -> advanceCommittedCardChoice() }
     OnChange(pendingActionId) { old, new ->
@@ -534,7 +561,7 @@ fun NativeGameView(
             if (reviewCardChoiceAfterPending) {
                 reviewCardChoiceAfterPending = false
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
-                isPromptDetailOpen = PortraitInteractionPolicy.detailChoiceKey(board) != null
+                isPromptDetailOpen = boardDetailChoiceKey(board) != null
             } else if (old != null && committedCardChoice?.submittedPromptIsUnchanged(board) == true) cancelCommittedCardChoice()
             else advanceCommittedCardChoice()
         }
@@ -548,7 +575,7 @@ fun NativeGameView(
         isLogOpen = true
     }
     OnChange(commandFailure) { old, new -> if (committedCardChoice != null && CardChoiceCommandFailure.isNewFailure(old, new)) cancelCommittedCardChoice() }
-    OnChange(PortraitInteractionPolicy.detailChoiceKey(board)) { _, key ->
+    OnChange(boardDetailChoiceKey(board)) { _, key ->
         isPromptDetailOpen = key != null
         // A decision that needs you, not a routine priority pass (the starting roll answers its own).
         if (key != null && !startingRollVisible) GameAudio.play(GameSound.RESPONSE_ALERT)
@@ -621,11 +648,12 @@ fun NativeGameView(
                 // A showcase at the centre finishes first, so the banner and a cast never stack.
                 boardFX.centreBusyUntil?.let { busy -> val wait = busy - System.currentTimeMillis(); if (wait > 0) delay(minOf(wait, (io.magicmobile.android.game.BoardFXScheduler.maximumHold * 1000).toLong())) }
                 if (board.isViewer(board.activePlayerId)) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                turnBannerEndsAt = System.currentTimeMillis() + 1950
+                // The Arena board's banner is the reference's 0.9 s, during the draw.
+                turnBannerEndsAt = System.currentTimeMillis() + if (isArenaBoard) 900 else 1950
                 showsTurnBanner = true; showsTurnCue = !isTavernBoard
                 // A phase change during the banner restarts this effect; hide the banner even then,
                 // or the restarted effect (same turn key) leaves it on screen for the whole turn.
-                try { delay(1600) } finally { showsTurnBanner = false }
+                try { delay(if (isArenaBoard) 700L else 1600L) } finally { showsTurnBanner = false }
                 mergePhaseCueIntoBar()
                 return@LaunchedEffect
             }
@@ -647,10 +675,27 @@ fun NativeGameView(
     CompositionLocalProvider(LocalBoardFXCardMotion provides boardFX.cardMotion(board.viewerID), LocalBoardFXClock provides boardFXClock,
         LocalBoardHUDPulse provides hudPulse, LocalBoardZoneInspectionAction provides ::inspectBoardZone, LocalCardBounds provides cardBounds,
         LocalHoldCardInspection provides holdInspection, LocalInspectorBattlefield provides board.visibleBattlefield,
-        io.magicmobile.android.ui.LocalTavernBoard provides isTavernBoard) {
+        io.magicmobile.android.ui.LocalTavernBoard provides isTavernBoard,
+        // The Arena board's sheets, menus, dialogs and pop-ups wear its glass, not the Hearth board's leather.
+        io.magicmobile.android.menus.LocalArenaBoard provides isArenaBoard,
+        LocalCardFrames provides if (isArenaBoard) arenaCardFrames else hearthCardFrames) {
         Box(Modifier.fillMaxSize().background(rgb(0.055, 0.085, 0.10))) {
             // The board surface, shaken as one piece by big hits.
             Box(Modifier.fillMaxSize().graphicsLayer { translationX = shakeX * density; translationY = shakeY * density }) {
+                if (isArenaBoard) {
+                    // The status bar leaves during a game on the Arena table too; the board runs edge to edge.
+                    HideStatusBarWhileShown()
+                    ArenaBoard(ArenaBoardHost(board, human, opponent, selection, pendingActionId, pendingCardInstanceId, liveUpdateStatus,
+                        combatSelection, { combatSelection = it }, combatPreviewArrows, isOverPlayerDropZone, { isOverPlayerDropZone = it },
+                        interactionMode, { interactionMode = it }, inspectingZoneTitle, inspectingZoneCards, inspectingZoneReference,
+                        { inspectingZoneTitle = null; inspectingZoneCards = emptyList(); inspectingZoneReference = null },
+                        isPromptDetailOpen, { isPromptDetailOpen = true }, isCardChoiceOpen, committedCardChoice != null, dragActionChoice, { dragActionChoice = it },
+                        aiWaitBeganAt, didAutoRefreshAIWaitKey == aiWaitKey, didAutoReconnectAIWaitKey == aiWaitKey, didAutoDiagnoseAIWaitKey == aiWaitKey,
+                        boardFX, boardFXClock, { boardFX.prune(System.currentTimeMillis()); fxVersion += 1 }, onInteractionFeedback, runAction, runCommand,
+                        refreshGame, reconnectGame, ::submitTarget, ::handleCombatCardTap, ::submitAttackers, ::submitBlockers, ::finishAttackers, ::finishBlockers,
+                        combatBackAction(board), { focusTracker = focusTracker.select(it) }, { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails,
+                        ::localViewZone, ::inspectBoardZone, isStackSheetOpen, { isStackSheetOpen = it }, arenaNotice, ::showArenaNotice))
+                } else {
                 BattlefieldSurface(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null, onClick = ::clearBoardSelection))
                 BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
                     .onGloballyPositioned { cardBounds.boardOrigin = it.positionInRoot() }) {
@@ -687,6 +732,7 @@ fun NativeGameView(
                         { isLogOpen = true }, { isGameMenuOpen = true }, ::openPromptDetails, ::localViewZone, { isPromptDetailOpen = true },
                         combatBackAction(board))
                     }
+                }
                 }
                 if (board.source == "design-preview") {
                     Text("DEVELOPMENT FIXTURE · NO ENGINE", Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing)
@@ -765,9 +811,31 @@ fun NativeGameView(
             AnimatedVisibility(board.isCompleted, enter = if (BoardMotion.reduceMotion) fadeIn() else scaleIn() + fadeIn(), exit = fadeOut()) {
                 GameCompletionOverlay(board, newGame, quitGame, gameStats)
             }
+            // The Arena board's panels: on the table in glass, never a sheet (boardSheet / ArenaPanelOverlay).
+            if (isArenaBoard) {
+                io.magicmobile.android.menus.ArenaPanel(isLogOpen, { isLogOpen = false }, maxWidth = 640.dp) {
+                    GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth(), combatReasons)
+                }
+                io.magicmobile.android.menus.ArenaPanel(isPromptDetailOpen, { isPromptDetailOpen = false }, maxWidth = 640.dp, fitsContent = true) {
+                    key("${board.promptEnvelopeV2?.id ?: ""}:${board.promptEnvelopeV2?.messageId ?: 0}") {
+                        UniversalPromptActionPanel(board, selection.selectedCard?.let { GameBoardInteractionState.cardActions(it, board.legalActions ?: emptyList()) } ?: emptyList(),
+                            selection, pendingActionId, runAction, runCommand, { title, cards -> isPromptDetailOpen = false; localViewZone(title, cards) },
+                            { isPromptDetailOpen = false }, Modifier.padding(14.dp).fillMaxWidth(), showsGameSurfaceSections = board.promptEnvelopeV2 == null)
+                    }
+                }
+                io.magicmobile.android.menus.ArenaPanel(isGameMenuOpen, { isGameMenuOpen = false }, maxWidth = 640.dp) {
+                    GameManagementMenu(board, board.legalActions?.firstOrNull { it.type == "concede" }, runAction, portraitModeEnabled, setPortraitModeEnabled,
+                        { isGameMenuOpen = false; isPromptInspectorOpen = true }, { gameMenuConfirmation = GameMenuConfirmation.START_NEW },
+                        { gameMenuConfirmation = GameMenuConfirmation.QUIT }) { isGameMenuOpen = false }
+                }
+                io.magicmobile.android.menus.ArenaPanel(isPromptInspectorOpen, { isPromptInspectorOpen = false }, maxWidth = 640.dp) {
+                    PromptDebugInspector(board, liveUpdateStatus)
+                }
+            }
         }
 
-        // --- Sheets ---
+        // --- Sheets (the Hearth board) ---
+        if (!isArenaBoard) {
         if (isLogOpen) BoardSheet({ isLogOpen = false }, sound = false) {
             GameLogDrawer(board.log, { isLogOpen = false }, Modifier.padding(14.dp).fillMaxWidth().heightInScreen(0.8f), combatReasons)
         }
@@ -785,6 +853,7 @@ fun NativeGameView(
                 { gameMenuConfirmation = GameMenuConfirmation.QUIT }) { isGameMenuOpen = false }
         }
         if (isPromptInspectorOpen) BoardSheet({ isPromptInspectorOpen = false }) { PromptDebugInspector(board, liveUpdateStatus) }
+        }
         gameMenuConfirmation?.let { confirmation ->
             ConfirmationDialog(confirmation.title, confirmation.message, listOf(
                 if (confirmation == GameMenuConfirmation.START_NEW) ConfirmationAction("Start New Game", true) { isGameMenuOpen = false; newGame() }
