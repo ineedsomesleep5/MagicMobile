@@ -130,7 +130,7 @@ const look = () => {
 const manaValue = (cost) => (cost ?? "").match(/\{[^}]+\}/g)?.reduce((n, sym) => n + (/^\{\d+\}$/.test(sym) ? Number(sym.slice(1, -1)) : sym === "{X}" ? 0 : 1), 0) ?? 0;
 
 const SWEEPERS = ["Sweltering Suns", "Chain Reaction", "Cleansing Nova", "Time Wipe", "Citywide Bust", "Magmaquake", "Blasphemous Act", "Deadly Tempest",
-  "Necromantic Selection"];
+  "Necromantic Selection", "Fiery Confluence", "Vandalblast", "Crippling Fear", "Aetherize", "Hour of Reckoning"];
 
 /** The policy's next move for a look, or undefined to wait. */
 function decide(state, memory) {
@@ -162,7 +162,7 @@ function decide(state, memory) {
       const land = acts.find((a) => a.type === "play_land");
       if (land) return { action: land.id };
       // A sweeper first once three or more creatures are out (each game should show a board wipe), else the cheapest.
-      const sweeper = (a) => SWEEPERS.some((name) => (a.label ?? "").includes(name)) && state.allCreatures >= 3 ? -100 : 0;
+      const sweeper = (a) => SWEEPERS.some((name) => (a.label ?? "").includes(name)) && state.allCreatures >= 3 ? (/overload/i.test(a.label) ? -101 : -100) : 0;
       const spells = acts.filter((a) => a.type === "cast_spell" && !memory.failed.has(a.id))
         .sort((a, b) => sweeper(a) - sweeper(b) || manaValue(a.cost) - manaValue(b.cost));
       if (spells.length && memory.casts < 3) {
@@ -204,8 +204,8 @@ function decide(state, memory) {
     if (next) return { submit: { type: "choose_target", targetIds: [next] }, label: "Choose" };
   }
   if (p.abilities.length) return { submit: { type: "choose_ability", abilityId: p.abilities[0] }, label: "Ability" };
-  // A modal wipe (Cleansing Nova) takes its creatures mode; any other mode spell its first.
-  if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [(p.modes.find((m) => /all creatures/i.test(m.label)) ?? p.modes[0]).id] }, label: "Mode" };
+  // A modal wipe (Cleansing Nova, Fiery Confluence) takes its creatures mode; any other mode spell its first.
+  if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [(p.modes.find((m) => /(all|each) creature/i.test(m.label)) ?? p.modes[0]).id] }, label: "Mode" };
   if (p.players.length) return { submit: { type: "choose_player", playerIds: [p.players[0]] }, label: "Player" };
   if (p.choices.length) return { submit: { type: "resolve_choice", choiceIds: [p.choices.find((id) => id !== "") ?? p.choices[0]] }, label: "Choice" };
   const no = acts.find((a) => a.type === "answer_yes_no" && a.confirmed === false);
