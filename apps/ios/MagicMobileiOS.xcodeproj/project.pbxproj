@@ -102,6 +102,7 @@
 		3ECBD0A4221A9460BDBCEF32 /* BoardEventTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B892F4CD432E22F7B9F3DB29 /* BoardEventTimeline.swift */; };
 		3EE455CD7ECF515892E69BA6 /* arrive-planeswalker.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 19B7367E027F452F316250F8 /* arrive-planeswalker.m4a */; };
 		3EE6F61D6EEB500B5AB2A84F /* ArenaHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA713DB09F1EBB7078F9316E /* ArenaHomeView.swift */; };
+		3F3EA64DA22A80985CC24060 /* LawsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84F9C57CADD4AF136E4C5CB7 /* LawsTests.swift */; };
 		3F4314DA60472BEFFF15C67F /* OnDevicePromptAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9F3D91659B183C793814CA9 /* OnDevicePromptAdapterTests.swift */; };
 		3F96EC34853B9833765AD8A7 /* PlayerPortrait.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7707EF30309D547A5EB5D9DF /* PlayerPortrait.swift */; };
 		40529D097E18E4E7CBC89843 /* page-flip.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 76E54418984EA67F8EC8C2C6 /* page-flip.m4a */; };
@@ -626,6 +627,7 @@
 		81C3500BADA0CAAC23387CDB /* OnDeviceMultiplayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceMultiplayerTests.swift; sourceTree = "<group>"; };
 		81DC81F2357A0AE11588EE7C /* creature-wizard-2.m4a */ = {isa = PBXFileReference; path = "creature-wizard-2.m4a"; sourceTree = "<group>"; };
 		82174CD2213C389DEF7B246E /* OnDeviceSnapshotAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceSnapshotAdapterTests.swift; sourceTree = "<group>"; };
+		84F9C57CADD4AF136E4C5CB7 /* LawsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LawsTests.swift; sourceTree = "<group>"; };
 		85BC3BF684A952E9F5E80725 /* CardImageURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardImageURL.swift; sourceTree = "<group>"; };
 		85D6073802F72C7570B63EFF /* creature-beast.m4a */ = {isa = PBXFileReference; path = "creature-beast.m4a"; sourceTree = "<group>"; };
 		860E2CBE7896CA937E309ED2 /* PortraitPolishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortraitPolishTests.swift; sourceTree = "<group>"; };
@@ -1127,6 +1129,7 @@
 				CDB9846C2175210129AC92F1 /* GuidedGameTests.swift */,
 				8D79F5F594B8E0006ACA341E /* HoldCardInspectionTests.swift */,
 				71109D10367C90948D0DD475 /* HowToPlayTests.swift */,
+				84F9C57CADD4AF136E4C5CB7 /* LawsTests.swift */,
 				A8847ABC91603BF5DA5F4CE5 /* MagicMobileTests.swift */,
 				6278BC94062AF0C483006986 /* NativeArtworkBackgroundQueueTests.swift */,
 				D5A810408B7BAD86EF851937 /* NativeArtworkCatalogueTests.swift */,
@@ -1936,6 +1939,7 @@
 				6F5525FB5FE47C9321615804 /* GuidedGameTests.swift in Sources */,
 				9857CC2789D36CFBC1F7C8E7 /* HoldCardInspectionTests.swift in Sources */,
 				A027D40215D35D66677834B2 /* HowToPlayTests.swift in Sources */,
+				3F3EA64DA22A80985CC24060 /* LawsTests.swift in Sources */,
 				5E56D36ECA96BCF27A83C003 /* MagicMobileTests.swift in Sources */,
 				60AD4579591957F0F18F0A4D /* NativeArtworkBackgroundQueueTests.swift in Sources */,
 				12E98F92911BC8644751C1B9 /* NativeArtworkCatalogueTests.swift in Sources */,

@@ -170,8 +170,9 @@ struct ArenaLayout: Equatable {
         // The skip pill in the corner right of the main button, as in the reference.
         passAhead: CGRect(x: 890, y: 392, width: 40, height: 28),
         undo: CGRect(x: 650, y: 343, width: 52, height: 26),
-        // Low enough that the gear's 44 pt target stays on screen on a 402 pt tall phone held sideways.
-        menu: CGPoint(x: 876, y: 26),
+        // Low enough that the gear's 44 pt target stays on screen on any phone held sideways, down to a 360 pt tall Android
+        // (ArenaLayoutLawsTest).
+        menu: CGPoint(x: 876, y: 28),
         floatingMana: CGPoint(x: 80, y: 405),
         captionY: 197, bannerY: 210,
         // The whole table above the tucked hand, your land row included, as in the reference (Caleb, 2026-10-21: the
@@ -207,7 +208,7 @@ struct ArenaLayout: Equatable {
         phaseStripX: 272...428, phaseStripY: 860, phaseStripRaisedY: 822,
         passAhead: CGRect(x: 197, y: 887, width: 64, height: 30),
         undo: CGRect(x: 197, y: 843, width: 64, height: 30),
-        menu: CGPoint(x: 414, y: 28),
+        menu: CGPoint(x: 412, y: 30),
         floatingMana: CGPoint(x: 112, y: 752),
         captionY: 446, bannerY: 446,
         dropArea: CGRect(x: 0, y: 0, width: 440, height: 700),

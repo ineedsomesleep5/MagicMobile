@@ -146,7 +146,7 @@ data class ArenaLayout(
             stack = BoardRect(716f, 60f, 158f, 222f), draw = BoardRect(686f, 187f, 106f, 148f),
             primary = BoardRect(708f, 388f, 176f, 36f), secondary = BoardRect(708f, 335f, 176f, 37f),
             phaseStripX = 708f..884f, phaseStripY = 368f, phaseStripRaisedY = 314f,
-            passAhead = BoardRect(890f, 392f, 40f, 28f), undo = BoardRect(650f, 343f, 52f, 26f), menu = BoardPoint(876f, 26f),
+            passAhead = BoardRect(890f, 392f, 40f, 28f), undo = BoardRect(650f, 343f, 52f, 26f), menu = BoardPoint(876f, 28f),
             floatingMana = BoardPoint(80f, 405f), captionY = 197f, bannerY = 210f,
             dropArea = BoardRect(0f, 0f, 956f, 352f), railTop = null, dropCorner = BoardRect(640f, 300f, 316f, 140f))
 
@@ -168,7 +168,7 @@ data class ArenaLayout(
             stack = BoardRect(312f, 363f, 116f, 166f), draw = BoardRect(280f, 530f, 100f, 140f),
             primary = BoardRect(272f, 882f, 156f, 40f), secondary = BoardRect(272f, 840f, 156f, 36f),
             phaseStripX = 272f..428f, phaseStripY = 860f, phaseStripRaisedY = 822f,
-            passAhead = BoardRect(197f, 887f, 64f, 30f), undo = BoardRect(197f, 843f, 64f, 30f), menu = BoardPoint(414f, 28f),
+            passAhead = BoardRect(197f, 887f, 64f, 30f), undo = BoardRect(197f, 843f, 64f, 30f), menu = BoardPoint(412f, 30f),
             floatingMana = BoardPoint(112f, 752f), captionY = 446f, bannerY = 446f,
             dropArea = BoardRect(0f, 0f, 440f, 700f), railTop = 815f)
 
