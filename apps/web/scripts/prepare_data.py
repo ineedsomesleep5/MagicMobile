@@ -4,7 +4,8 @@
 Writes public/generated/ (git-ignored):
 - printings.tsv: the compact name -> printing index Android also ships (scripts/android/prepare_assets.py),
   headed by the catalogue hash and upstream commit, which are the relay identity a guest presents;
-- precons.json: the five included Commander precons, unchanged from PreconCatalog.swift.
+- precons.json: the five included Commander precons, unchanged from PreconCatalog.swift;
+- ai-decks.json: the bracket AI decks (AIDeckPool.swift), copied unchanged from the iOS resources.
 """
 import json, re
 from pathlib import Path
@@ -47,7 +48,14 @@ fixtures = repo / 'apps/ios/MagicMobileTests/Fixtures/OnDevice'
 for name in ('2p-priority', '2p-battlefield', '2p-combat', '2p-stack', '2p-mana', '2p-attackers'):
     (out / 'preview' / f'{name}.json').write_bytes((fixtures / f'{name}.json').read_bytes())
 (out / 'precons.json').write_text(json.dumps({'decks': decks}, ensure_ascii=False))
-print('Prepared', len(data['cards']), 'printings and', len(decks), 'precons for catalogue', data['catalogueHash'][:12])
+ai_source = repo / 'apps/ios/MagicMobile/Resources/ai-decks.json'
+ai = json.loads(ai_source.read_bytes())
+assert ai['schemaVersion'] == 1 and isinstance(ai['decks'], list) and ai['decks'], 'Unexpected ai-decks schema'
+assert len({deck['id'] for deck in ai['decks']} | {deck['id'] for deck in decks}) == len(ai['decks']) + len(decks), 'Duplicate AI deck IDs'
+for deck in ai['decks']:
+    assert deck['id'].startswith('ai-') and sum(1 for x in deck['entries'] if x['section'] == 'commander') == 1, deck['id']
+(out / 'ai-decks.json').write_bytes(ai_source.read_bytes())
+print('Prepared', len(data['cards']), 'printings,', len(decks), 'precons and', len(ai['decks']), 'AI decks for catalogue', data['catalogueHash'][:12])
 
 # The game's sounds (apps/ios/MagicMobile/Resources/Audio, GameAudio.swift): browsers can't decode the short cues'
 # .caf, so they become AAC .m4a with macOS afconvert; the .m4a files are copied. Skipped where afconvert is missing

@@ -26,10 +26,6 @@ const maxTurns = Number(args.turns ?? 40);
 // that would kill you unblocked is coming (0: play it out).
 const concedeAt = Number(args["concede-at"] ?? 10);
 const shots = new Set(String(args.shots ?? "").split(",").filter(Boolean).map(Number));
-const deckNames = {
-  "token-triumph": "Token Triumph", "first-flight": "First Flight", "grave-danger": "Grave Danger", "chaos-incarnate": "Chaos Incarnate",
-  "draconic-destruction": "Draconic Destruction",
-};
 mkdirSync(out, { recursive: true });
 
 /** Installed in the page: records the session's answers, the snapshots and the board's effects into window.__rec. */
@@ -251,14 +247,22 @@ async function concedeByMenu(page) {
 }
 
 async function play(page, game) {
+  // The decks the way a player leaves them chosen: yours in the Play panel, the AI's in the Custom Table's seat.
+  await page.addInitScript(([me, ai]) => {
+    localStorage.setItem("mm.web.deck.selected", `precon:${me}`);
+    localStorage.setItem("mm.web.custom.seats", ai);
+    localStorage.setItem("mm.web.custom.players", "ai");
+    if (!localStorage.getItem("mm.web.name")) localStorage.setItem("mm.web.name", "Player");
+  }, [args.me ?? "token-triumph", args.ai ?? "grave-danger"]);
   await page.goto(url);
   if (args.polls) await page.evaluate(() => { window.__recordPolls = true; });
   await page.addScriptTag({ content: `(${recorder.toString()})()` });
-  const start = page.getByRole("button", { name: "Start the game" });
-  await start.waitFor({ timeout: 180_000 });
-  // Two shelves of deck tiles: yours, then the AI's.
-  await page.locator(".deck-shelf").nth(0).locator(".deck-tile", { hasText: deckNames[args.me ?? "token-triumph"] }).click();
-  await page.locator(".deck-shelf").nth(1).locator(".deck-tile", { hasText: deckNames[args.ai ?? "grave-danger"] }).click();
+  // Through the menus: Play, Custom, Set Up Table, then Start once the engine is ready.
+  await page.locator("[data-id='menu.play']").click({ timeout: 180_000 });
+  await page.locator("[data-id='play.custom']").click();
+  await page.locator("[data-id='play.start']").click();
+  const start = page.locator("[data-id='setup.start']");
+  await start.waitFor({ timeout: 30_000 });
   for (let i = 0; i < 360 && !(await start.isEnabled()); i++) await page.waitForTimeout(500);
   await start.click();
   const memory = { casts: 0, failed: new Set(), attacked: new Set(), promptSeen: new Map(), turn: 0, autoPaid: new Set(), allAttack: new Set(), finished: new Set(),
@@ -403,6 +407,9 @@ async function play(page, game) {
   const final = await page.evaluate(look);
   const rec = await page.evaluate(() => window.__rec);
   const won = final.winners.includes(final.viewer);
+  // What the menus kept: the finished game in this browser's player record (Recently Played, the rank).
+  await page.waitForTimeout(1500);
+  const stored = await page.evaluate(() => { try { const r = JSON.parse(localStorage.getItem("mm.web.playerRecord") ?? "{}"); return { matches: r.matches?.length ?? 0, last: r.matches?.[0], rank: r.rank?.position }; } catch { return undefined; } });
   await page.screenshot({ path: join(out, `game-${game}-end.png`) });
   const { polls, ...kept } = rec;
   if (args.polls) writeFileSync(join(out, `game-${game}-polls.json`), JSON.stringify(polls));
@@ -417,7 +424,7 @@ async function play(page, game) {
       wipe: [...new Set(rec.fx.filter((f) => f.notice && /: \d+ (to the graveyard|exiled|returned)/.test(f.notice)).map((f) => f.notice))],
       ended: won ? "won" : memory.conceded ? "conceded by the menu" : final.over ? "lost" : "stopped",
     },
-    wipeHeld: memory.wipeHeld, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
+    record: stored, wipeHeld: memory.wipeHeld, notices: rec.fx.filter((f) => f.notice).map((f) => f.notice), painted: rec.painted, errors: rec.errors };
 }
 
 // The installed Google Chrome (new headless mode): no Playwright browser download needed.

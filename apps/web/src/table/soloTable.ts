@@ -23,7 +23,8 @@ export interface SoloSetup {
   name: string;
   /** Resolved engine decks (DeckResolver.resolve). */
   deck: J;
-  aiDeck: J;
+  /** One to three AI opponents' decks, seated as AI 1–3. */
+  aiDecks: J[];
   /** 1–10, the phones' AI skill control (PROTOCOL.md). */
   aiSkill: number;
   startingPlayerMode: StartingPlayerMode;
@@ -34,13 +35,14 @@ export const AI_SEAT = "player2";
 /** The phones' AI seat name (OnDeviceAppConfiguration.aiGameSeats). */
 export const AI_NAME = "AI 1";
 
-/** OnDeviceAppConfiguration.aiGameSeats for one AI opponent: the apps send only aiSkill, no seeds. */
+/** OnDeviceAppConfiguration.aiGameSeats: the human in player1, AI 1–3 after; the apps send only aiSkill, no seeds. */
 export function soloConfiguration(setup: SoloSetup): JObject {
+  if (setup.aiDecks.length < 1 || setup.aiDecks.length > 3) throw EngineError.invalid("Choose 1–3 AI opponents.");
   if (!Number.isInteger(setup.aiSkill) || setup.aiSkill < 1 || setup.aiSkill > 10) throw EngineError.invalid("Choose AI skill from 1–10.");
   return {
     seats: [
       { seatId: SOLO_SEAT, name: setup.name, controller: "human", deck: setup.deck },
-      { seatId: AI_SEAT, name: AI_NAME, controller: "ai", deck: setup.aiDeck, aiSkill: setup.aiSkill },
+      ...setup.aiDecks.map((deck, index) => ({ seatId: `player${index + 2}`, name: `AI ${index + 1}`, controller: "ai", deck, aiSkill: setup.aiSkill })),
     ],
   };
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { AIDeckPool } from "../core/aiDeckPool";
 import { DeckResolver, type DeckList } from "../core/deckResolver";
 import { TableJoinLink } from "../core/tableChat";
 import type { GameTable } from "../table/gameTable";
@@ -7,11 +8,10 @@ import { RELAY_ADAPTER_VERSION } from "../table/lobby";
 import { PreviewRelay } from "../table/previewHost";
 import { setArtResolver } from "./cardArt";
 import { GameScreen } from "./GameScreen";
-import { Solo } from "./SoloSetup";
-import { storage } from "./storage";
-
-export interface Loaded { resolver: DeckResolver; decks: DeckList[] }
-
+import { BrandMark } from "./menus/BrandMark";
+import { GuestRoom } from "./menus/GuestRoom";
+import { type MenuData, MenuShell } from "./menus/MenuShell";
+import "./menus/menus.css";
 
 /** A code from /join/CODE, ?code=CODE or a pasted link. */
 const initialCode = () => {
@@ -25,146 +25,61 @@ export const useTable = (table: GameTable) => {
 };
 
 export function App() {
-  const [loaded, setLoaded] = useState<Loaded>();
+  const [data, setData] = useState<MenuData>();
   const [loadError, setLoadError] = useState<string>();
   useEffect(() => {
-    Promise.all([fetch("/generated/printings.tsv").then((r) => r.text()), fetch("/generated/precons.json").then((r) => r.json())])
-      .then(([tsv, precons]) => {
-        const resolver = new DeckResolver(tsv);
-        setArtResolver(resolver);
-        setLoaded({ resolver, decks: precons.decks });
-      })
-      .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
+    Promise.all([
+      fetch("/generated/printings.tsv").then((r) => r.text()),
+      fetch("/generated/precons.json").then((r) => r.json()),
+      fetch("/generated/ai-decks.json").then((r) => r.json()),
+    ]).then(([tsv, precons, aiDecks]) => {
+      const resolver = new DeckResolver(tsv);
+      setArtResolver(resolver);
+      setData({ resolver, precons: precons.decks, pool: new AIDeckPool(aiDecks, precons) });
+    }).catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, []);
-  if (loadError) return <div className="screen"><div className="panel join"><h1 className="title">MagicMobile</h1><p className="error">{loadError}</p></div></div>;
-  if (!loaded) return <div className="screen"><div className="panel join"><h1 className="title">MagicMobile</h1><p className="muted">Opening the card catalogue…</p></div></div>;
-  return <Home loaded={loaded} />;
+  if (!data) return <Loading error={loadError} />;
+  return <Root data={data} />;
 }
 
-/** Solo against the AI on this computer is the front door; a join link or code opens a friend's relay table. */
-function Home({ loaded }: { loaded: Loaded }) {
-  const [mode, setMode] = useState<"solo" | "join">(() =>
-    initialCode() !== "" || location.pathname.startsWith("/join") || new URLSearchParams(location.search).has("preview") ? "join" : "solo");
-  return mode === "join" ? <Table loaded={loaded} onSolo={() => setMode("solo")} /> : <Solo loaded={loaded} onJoin={() => setMode("join")} />;
+/** The mark on the room's colour while the cards load, as the phones' launch screen. */
+function Loading({ error }: { error?: string }) {
+  return (
+    <div className="mroot mloading">
+      <BrandMark size={96} glint />
+      {error && <p>{error}</p>}
+    </div>
+  );
 }
 
-function Table({ loaded, onSolo }: { loaded: Loaded; onSolo: () => void }) {
+interface Joining { code: string; name: string; deck: DeckList }
+
+/** The menus, or a friend's relay table joined from them (or from a /join/CODE link). */
+function Root({ data }: { data: MenuData }) {
+  const [joining, setJoining] = useState<Joining>();
+  const code = useMemo(initialCode, []);
+  if (joining) return <Guest data={data} joining={joining} leave={() => setJoining(undefined)} />;
+  return <MenuShell data={data} initialJoinCode={code} onJoin={(join, name, deck) => setJoining({ code: join, name, deck })} />;
+}
+
+function Guest({ data, joining, leave }: { data: MenuData; joining: Joining; leave: () => void }) {
   const table = useMemo(() => {
-    const identity = { upstreamCommit: loaded.resolver.upstreamCommit, catalogueHash: loaded.resolver.catalogueHash, adapterVersion: RELAY_ADAPTER_VERSION };
+    const identity = { upstreamCommit: data.resolver.upstreamCommit, catalogueHash: data.resolver.catalogueHash, adapterVersion: RELAY_ADAPTER_VERSION };
     const preview = import.meta.env.DEV && new URLSearchParams(location.search).has("preview");
     return preview ? new GuestTable(identity, () => new PreviewRelay(identity) as never) : new GuestTable(identity);
-  }, [loaded]);
+  }, [data]);
   useTable(table);
-  const [name, setName] = useState(storage.get("mm.web.name") ?? "");
-  const [deckID, setDeckID] = useState(storage.get("mm.web.deck") ?? loaded.decks[0].id);
-  const deck = loaded.decks.find((d) => d.id === deckID) ?? loaded.decks[0];
-
   useEffect(() => {
+    try { table.join(joining.code, joining.name, data.resolver.resolve(joining.deck)); } catch { /* the room shows the failure */ }
     const visibility = () => table.setForeground(document.visibilityState === "visible");
     const leaving = () => table.leave();
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pagehide", leaving);
     return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pagehide", leaving); };
-  }, [table]);
-
+  }, [table, joining, data]);
   const stage = table.state.stage;
-  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) {
-    return <GameScreen table={table} />;
-  }
-  if (stage === "room") return <RoomScreen table={table} name={name} deck={deck} resolver={loaded.resolver} decks={loaded.decks} setDeckID={setDeckID} />;
-  return (
-    <JoinScreen table={table} decks={loaded.decks} resolver={loaded.resolver} name={name} setName={setName} deckID={deck.id}
-      setDeckID={(id) => { setDeckID(id); storage.set("mm.web.deck", id); }} onSolo={onSolo} />
-  );
-}
-
-function JoinScreen({ table, decks, resolver, name, setName, deckID, setDeckID, onSolo }: {
-  table: GuestTable; decks: DeckList[]; resolver: DeckResolver; name: string; setName: (v: string) => void; deckID: string; setDeckID: (v: string) => void;
-  onSolo: () => void;
-}) {
-  const [code, setCode] = useState(initialCode);
-  const [error, setError] = useState<string>();
-  const state = table.state;
-  const busy = state.stage === "joining" || state.stage === "waiting";
-  const join = () => {
-    setError(undefined);
-    try {
-      const deck = decks.find((d) => d.id === deckID)!;
-      storage.set("mm.web.name", name.trim());
-      table.join(code, name, resolver.resolve(deck));
-    } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
-  };
-  return (
-    <div className="screen">
-      <form className="panel join" onSubmit={(event) => { event.preventDefault(); if (!busy) join(); }}>
-        <header><img src="/tavern/seal.webp" alt="" /><div><h1 className="title">MagicMobile</h1><div className="muted">Join a friend’s table from your desktop</div></div></header>
-        {busy ? (
-          <>
-            <div className="prompt-message">{state.status}</div>
-            <ul className="seats">
-              {state.waiting.map((peer, index) => (
-                <li key={peer.id}><span className="grow">{peer.name}</span>{index === 0 && <span className="tag">Host</span>}{peer.id === table.localPeerID && <span className="tag parchment">You</span>}</li>
-              ))}
-            </ul>
-            <button type="button" className="plaque" onClick={() => table.leave()}>Leave table</button>
-          </>
-        ) : (
-          <>
-            <label className="field"><span className="label">Your name</span>
-              <input className="slot" value={name} maxLength={40} autoComplete="nickname" onChange={(e) => setName(e.target.value)} placeholder="Name at the table" required /></label>
-            <label className="field"><span className="label">Table code</span>
-              <input className="slot" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABC234" spellCheck={false} required
-                style={{ letterSpacing: ".2em", fontWeight: 800 }} /></label>
-            <label className="field"><span className="label">Deck</span>
-              <select className="slot" value={deckID} onChange={(e) => setDeckID(e.target.value)}>
-                {decks.map((d) => <option key={d.id} value={d.id}>{d.name}{d.subtitle ? ` — ${d.subtitle}` : ""}</option>)}
-              </select></label>
-            {(error || state.stage === "failed") && <div className="error">{error ?? state.status}</div>}
-            <button type="submit" className="plaque primary" disabled={name.trim().length === 0 || code.trim().length === 0}>Join table</button>
-            <p className="small-print">The host’s phone runs the game. Ask them for the six-letter code on their table screen, and keep this tab in front while you play.</p>
-            <button type="button" className="plaque compact" onClick={onSolo}>Play the XMage AI instead</button>
-          </>
-        )}
-      </form>
-      {window.innerWidth < 760 && <div className="toast narrow-note">MagicMobile on the web is built for a desktop browser window.</div>}
-    </div>
-  );
-}
-
-function RoomScreen({ table, name, deck, resolver, decks, setDeckID }: {
-  table: GuestTable; name: string; deck: DeckList; resolver: DeckResolver; decks: DeckList[]; setDeckID: (id: string) => void;
-}) {
-  const room = table.state.room;
-  const [error, setError] = useState<string>();
-  const ready = () => {
-    setError(undefined);
-    try { table.markReady(name, resolver.resolve(deck)); } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
-  };
-  return (
-    <div className="screen">
-      <div className="panel join">
-        <h2 className="panel-title">Match room · {table.state.tableCode}</h2>
-        <ul className="seats">
-          {room?.players.map((player) => (
-            <li key={player.id}>
-              <span className="grow">{player.name}<br /><span className="small-print">{player.commanders.join(" · ") || (player.isReady ? "Ready" : "Choosing a deck…")}</span></span>
-              {player.isHost && <span className="tag">Host</span>}
-              {player.isReady ? <span className="tag ember">Ready</span> : <span className="tag">Waiting</span>}
-            </li>
-          ))}
-        </ul>
-        {room?.aiSummary && <div className="small-print">{room.aiSummary}</div>}
-        <label className="field"><span className="label">Your deck</span>
-          <select className="slot" value={deck.id} disabled={room?.localReady} onChange={(e) => setDeckID(e.target.value)}>
-            {decks.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select></label>
-        {error && <div className="error">{error}</div>}
-        <div className="prompt-message">{table.state.status}</div>
-        <div className="row">
-          <button type="button" className="plaque" onClick={() => table.leave()}>Leave</button>
-          <button type="button" className="plaque primary" style={{ flex: 1 }} disabled={room?.localReady} onClick={ready}>{room?.localReady ? "Ready" : "Ready up"}</button>
-        </div>
-      </div>
-    </div>
-  );
+  // A closed table (left, or the game over and left) returns to the menus.
+  useEffect(() => { if (stage === "idle" && table.state.status === "Match closed.") leave(); }, [stage, table, leave]);
+  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} />;
+  return <GuestRoom table={table} name={joining.name} deck={joining.deck} resolver={data.resolver} leave={() => { table.leave(); leave(); }} />;
 }

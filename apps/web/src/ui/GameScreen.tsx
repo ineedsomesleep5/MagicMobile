@@ -769,7 +769,9 @@ export function GameScreen({ table }: { table: GameTable }) {
   // What happened this game, for the result screen (GameStats).
   const stats = useRef(new GameStats());
   useEffect(() => { if (snapshot) stats.current.record(snapshot); }, [snapshot]);
-  useEffect(() => { if (finished) gameAudio.play(won ? "victory" : "defeat", 0.25); }, [finished, won]);
+  useEffect(() => { if (finished) { gameAudio.duckMusic(6); gameAudio.play(won ? "victory" : "defeat", 0.25); } }, [finished, won]);
+  // The in-game playlist while a game is on screen; the menus switch back to theirs (GameAudio.setScene).
+  useEffect(() => { gameAudio.setScene("game"); }, []);
 
   // The relay's turn clock burns its rope smoothly.
   const rope = table.state.turnClock.rope(table.state.localSeatID, performance.now() / 1000);
