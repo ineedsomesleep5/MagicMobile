@@ -1,6 +1,7 @@
 /**
- * The profile's account cards (iOS AccountSignInCard, PlayerProfileView.privacyCard): "Keep your profile" signs in with
- * Google so the same name, friends and rank open on every phone and browser; signed in, it shows the account and Sign
+ * The profile's account cards (iOS AccountSignInCard, PlayerProfileView.privacyCard): "Sign in" with Google opens the
+ * profile of that Google account here (or keeps this browser's profile when the account has none yet), so the same name,
+ * friends, rank and decks open on every phone and browser; signed in, it shows the account and Sign
  * Out (asked first in a small glass question, never a browser dialog). Then who may see the profile. Apple sign-in waits
  * for a web Services ID on the Apple account, so only Google is offered here.
  */
@@ -22,14 +23,14 @@ export function AccountSignInCard() {
   const busy = isSigningIn || phase === "loading";
   return (
     <section className="mcard mprofilecard" data-id="profile.accountCard">
-      <CardTitle text={linkedIdentities.length === 0 ? "Keep your profile" : "Your account"} />
+      <CardTitle text={linkedIdentities.length === 0 ? "Sign in" : "Your account"} />
       {linkedIdentities.length === 0 ? (
         <>
-          <p className="mprofilenote">Sign in to keep your name, friends and rank on every phone and browser. Your profile here comes with you.</p>
+          <p className="mprofilenote">Your name, friends, rank and decks follow your Google account to every phone and browser.</p>
           <Btn kind="primary" id="profile.account.google" disabled={busy}
             onClick={() => { void signInWithGoogle().catch(() => account.setNotice(PlayerAccountRules.message("error"))); }}>
             <svg className="mgoogle" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3z" fill="#fff" /><path d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z" fill="#fff" opacity=".85" /><path d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2z" fill="#fff" opacity=".7" /><path d="M12 6c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10C7.2 7.7 9.4 6 12 6z" fill="#fff" opacity=".9" /></svg>
-            Continue with Google
+            Sign in with Google
           </Btn>
         </>
       ) : (

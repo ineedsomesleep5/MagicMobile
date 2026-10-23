@@ -45,17 +45,32 @@ export async function signInWithGoogle(): Promise<void> {
   location.assign(await beginGoogleSignIn(sessionStore, redirectURI()));
 }
 
+/** What a page load coming back from Google came to, for the message the menus show. */
+export type GoogleReturn = { kind: "none" } | { kind: "signedIn"; username?: string } | { kind: "failed"; message: string };
+
 /**
- * Back from Google: finishes the sign-in and clears the token from the address bar. Returns true when this page load
- * was a sign-in, so the menus can open the profile.
+ * Back from Google: finishes the sign-in and clears the token from the address bar. Every outcome is reported (the
+ * reason also goes to the console), so a sign-in never ends in a page that looks unchanged.
  */
-export async function completeGoogleSignIn(): Promise<boolean> {
-  if (!isGoogleRedirect(location.hash)) return false;
+export async function completeGoogleSignIn(): Promise<GoogleReturn> {
+  if (!isGoogleRedirect(location.hash)) return { kind: "none" };
   const reply = finishGoogleSignIn(sessionStore, location.hash);
   history.replaceState(null, "", location.pathname + location.search);
-  if ("error" in reply) { account.setNotice(reply.error === "sign_in_cancelled" ? undefined : "Google sign-in didn't finish. Try again."); return true; }
+  if ("error" in reply) {
+    console.warn("Google sign-in did not finish:", reply.error);
+    const message = reply.error === "sign_in_cancelled" ? "Google sign-in was cancelled."
+      : reply.error === "error" ? "This browser lost track of the sign-in it started. Try again in this tab."
+      : `Google refused the sign-in (${reply.error}). Try again.`;
+    account.setNotice(message);
+    return { kind: "failed", message };
+  }
   await account.signIn("google", reply.idToken, reply.nonce);
-  return true;
+  if (account.state.linkedIdentities.some((identity) => identity.provider === "google")) {
+    return { kind: "signedIn", username: account.state.username };
+  }
+  const message = account.state.notice ?? "Google sign-in didn't finish. Try again.";
+  console.warn("Google sign-in did not finish:", message);
+  return { kind: "failed", message };
 }
 
 /** The browser's record as the account's RankedRecord: pending ranked results, their game records, the server's rank. */

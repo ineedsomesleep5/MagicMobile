@@ -105,9 +105,10 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const player = useAccount();
   const server = useMemo(() => connectRecord(record, () => setRecordVersion((v) => v + 1)), [record]);
   useEffect(() => {
-    void completeGoogleSignIn().then((signedIn) => {
-      if (signedIn) { setMenuTab("profile"); setPlayPanel(false); setCustom(false); }
-      else if (account.state.phase === "idle") void account.start();
+    void completeGoogleSignIn().then((back) => {
+      if (back.kind === "none") { if (account.state.phase === "idle") void account.start(); return; }
+      setMenuTab("profile"); setPlayPanel(false); setCustom(false);
+      setNotice(back.kind === "signedIn" ? (back.username ? `Signed in as ${back.username}` : "Signed in with Google") : back.message);
     });
     const visible = () => account.setForeground(document.visibilityState === "visible");
     visible();
