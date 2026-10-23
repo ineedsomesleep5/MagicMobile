@@ -1384,7 +1384,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 io.magicmobile.android.menus.ArenaOptionsView(portraitModeEnabled, { portraitModeEnabled = it }, setup.identity?.upstreamCommit, optionsStartPage)
             }
             io.magicmobile.android.menus.ArenaPanel(showUpdates, { showUpdates = false }, io.magicmobile.android.menus.ArenaPanelPlacement.TRAILING) {
-                UpdatesSheet(setup.identity?.upstreamCommit) { showUpdates = false }
+                NativeUpdateNewsView(setup.identity?.upstreamCommit)
             }
             io.magicmobile.android.menus.ArenaPanel(showHowToPlay, ::closeHowToPlay, fitsContent = true) {
                 // The first visit opens straight into the table's tutorial; the menu offers both.
@@ -1594,77 +1594,6 @@ private fun ArtworkPreferenceToggle() {
         TavernToggle("Scryfall live images", enabled, { value -> enabled = value; Artwork.setEnabled(context, value) })
         Text("Show saved art first, then sharper images online. Offline download quality stays unchanged.", color = setupSecondary, style = SfText.caption())
         Text("Scryfall receives card names—including your hand—and your IP address.", color = setupSecondary, style = SfText.caption())
-    }
-}
-
-/** NativeUpdateNewsView.swift. */
-@Composable
-private fun UpdatesSheet(upstreamCommit: String?, done: () -> Unit) {
-    val context = LocalContext.current
-    fun open(url: String) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } }
-    Column(Modifier.fillMaxWidth()) {
-        IosSheetHeader("Updates", done)
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            IosListSection("Installed build") {
-                IosListRow("MagicMobile", value = "${BuildConfig.VERSION_NAME} (${BuildConfig.RELEASE_BUILD})")
-                upstreamCommit?.let { IosListRow("XMage revision", value = it.take(12), monospacedValue = true) }
-            }
-            IosListSection("What's new") {
-                IosListRow("Message your friends from Friends, or from the game menu in the middle of a game. A banner shows a new message.", systemImage = "bubble.left.and.bubble.right.fill")
-                IosListRow("Repeat a combo: do the same thing three times in a turn and the game offers to repeat it, as many times as you pick, until you can't, or until they lose. It waits for your triggers and keeps choosing the same kind of target.", systemImage = "arrow.triangle.2.circlepath")
-                IosListRow("Ranked opens the Ranked Hall, with a live leaderboard of this season's players and who's online.", systemImage = "trophy.fill")
-                IosListRow("Spread-out token piles stack back up with the Stack chip.", systemImage = "square.stack.3d.up.fill")
-                IosListRow("Keep your profile: sign in with Google on the Profile screen, and your name, friends and rank follow you to any phone.", systemImage = "person.crop.circle.badge.checkmark")
-                IosListRow("Choose the artwork for any card in Deck Studio. Your pick shows in games and offline, survives export and import, and online images match it.", systemImage = "paintpalette.fill")
-                IosListRow("The offline download now includes every token and emblem.", systemImage = "arrow.down.to.line.circle.fill")
-                IosListRow("The stack is a stack of parchment slips: what resolves next, whose it is, its targets, and Resolve all.", systemImage = "square.stack.3d.up.fill")
-                IosListRow("Don't ask again: tick it on a card's \"you may\" question and the game answers it for you for the rest of the game. Change your mind in the game menu.", systemImage = "checkmark.square.fill")
-                IosListRow("Resolve all: one tap lets a pile of triggers on the stack resolve, and it stops if an opponent responds.", systemImage = "forward.fill")
-                IosListRow("Your spells resolve without an extra tap. Turn off Pass After Casting in Settings to hold priority.", systemImage = "bolt.fill")
-                IosListRow("Pick any number of cards at once with Select all, and remember which of your triggers goes first.", systemImage = "rectangle.stack.fill")
-                IosListRow("The AI waits less while your triggers resolve, and XMage is updated with 78 new cards and many card fixes.", systemImage = "sparkles")
-                IosListRow("When you can see the top of your library (Conspicuous Snoop, Future Sight, Courser of Kruphix), it sits beside your portrait. Tap it to see it large and cast or play it.", systemImage = "eye.fill")
-                IosListRow("Your portrait glows when you can cast from your graveyard, exile or the top of your library, not only your commander, and the zone menu says which.", systemImage = "sparkles")
-                IosListRow("A small sun or moon shows when it's day or night, the storm count shows under the turn plate, and City's Blessing shows on your medallion.", systemImage = "moon.stars")
-                IosListRow("The starting roll has more table: the header sits at the top and the dice get the room below it.", systemImage = "dice")
-                IosListRow("Pages turn like real paper: drag a page by its edge and it curls under your finger.", systemImage = "hand.draw.fill")
-                IosListRow("The starting roll happens on the tavern table: every player's d20 tumbles across it and lands.", systemImage = "dice")
-                IosListRow("Your profile shows your games at a glance: win rate, favourite commanders, colours and rank history. Your game history lives there now.", systemImage = "chart.bar.fill")
-                IosListRow("Find friends as you type their name, and open any player's profile. Choose whether yours is public, friends only or private.", systemImage = "person.2.fill")
-                IosListRow("Deck Studio's menus and prompts are the binder's own, and held sideways both pages fill the binder with Add cards floating over the page.", systemImage = "list.bullet.rectangle.portrait")
-                IosListRow("Decks is a spell book that opens into a leather card binder: chapters are stitched leather index tabs, and every card sits in a sleeve with a minus and a plus beneath it. Held sideways it lies open as two pages.", systemImage = "book.fill")
-                IosListRow("Switch between your deck and every card you can add, and filter both by mana value with the brass coins.", systemImage = "books.vertical.fill")
-                IosListRow("Easier on your battery: the game rests while it waits for you, and the app is a smaller download.", systemImage = "battery.100")
-                IosListRow("Challenge a friend to a Quick Match, or to Ranked when you're in the same tier. Friend ranked games count.", systemImage = "figure.fencing")
-                IosListRow("A real 3D tavern room behind the menu that shifts as you tilt your phone, with flickering candles.", systemImage = "flame.fill")
-                IosListRow("Your profile picture is your favorite commander's art.", systemImage = "person.crop.circle")
-                IosListRow("The menu fits on one screen, and Downloads matches the tavern.", systemImage = "rectangle.stack.fill")
-                IosListRow("Smoother rank badge turns and lighter menu animations.", systemImage = "sparkles")
-                IosListRow("Ranked: climb from Bronze to Mythic in monthly seasons, against players near your rank or an AI at your tier.", systemImage = "shield.lefthalf.filled")
-                IosListRow("Quick Match: one AI at your deck's bracket, or choose its bracket, deck and skill.", systemImage = "bolt.fill")
-                IosListRow("Every deck shows its Commander bracket, with the Game Changers and combos behind it.", systemImage = "checkmark.seal")
-                IosListRow("Your profile: rank, season history, stats, achievements, titles and match history.", systemImage = "person.crop.circle")
-                IosListRow("21 new included decks from Bracket 1 to 4, for you and for the AI.", systemImage = "rectangle.stack.fill")
-                IosListRow("The Walnut Tavern: a new table, menus and painted card frames, in portrait and landscape.", systemImage = "table.furniture")
-                IosListRow("Every spell is cast with its own moment at the centre of the table; your commander gets the big one.", systemImage = "sparkles")
-                IosListRow("Tap a player's medallion for their counters, poison and commander damage, and swap between opponents.", systemImage = "person.crop.circle")
-                IosListRow("Big boards run smoother: identical tokens stack once there are eight.", systemImage = "square.stack.3d.up")
-                IosListRow("A Back button while declaring attackers and blockers.", systemImage = "arrow.uturn.backward")
-                IosListRow("Friends, table chat and invite links that open straight into your table.", systemImage = "person.2.fill")
-            }
-            IosListSection("XMage news", footer = "Opens GitHub. Upstream changes are not installed automatically. New cards and abilities become available only after a compatible MagicMobile build is tested and released.") {
-                IosListRow("XMage release notes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/releases") }
-                IosListRow("Latest upstream changes", systemImage = "arrow.up.right.square") { open("https://github.com/magefree/mage/commits/master/") }
-            }
-            // Same notice as the download site's footer.
-            IosListSection("About", footer = "Independent fan project. Not affiliated with Wizards of the Coast. Magic: The Gathering and card artwork belong to their respective owners.") {
-                IosListRow("Card images", value = "Scryfall")
-                IosListRow("Privacy", systemImage = "arrow.up.right.square") { open("https://magicmobile-downloads.vercel.app/privacy/") }
-            }
-            IosListSection("Support MagicMobile", footer = SupportProject.NOTE) {
-                IosListRow(SupportProject.ACTION, systemImage = "heart.fill") { open(SupportProject.URL) }
-            }
-        }
     }
 }
 
