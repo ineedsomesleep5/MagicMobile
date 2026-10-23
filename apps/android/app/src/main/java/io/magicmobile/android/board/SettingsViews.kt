@@ -23,9 +23,33 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import io.magicmobile.android.menus.ArenaCaps
+import io.magicmobile.android.menus.ArenaCloseButton
+import io.magicmobile.android.menus.ArenaDiamond
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.ArenaSegmented
+import io.magicmobile.android.menus.LocalArenaBoard
+import io.magicmobile.android.menus.LocalArenaPanelClose
+import io.magicmobile.android.menus.arenaCard
+import io.magicmobile.android.menus.arenaGlassBackground
+import io.magicmobile.android.menus.arenaScrollFade
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,8 +104,24 @@ import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.tavernFill
 import io.magicmobile.android.ui.tavernPanelChrome
 
-/** One group of settings: a leather panel in brass trim with parchment text (TavernSettingsPanel). */
-fun Modifier.tavernSettingsPanel(): Modifier = this.fillMaxWidth().tavernPanelChrome(true, 10.dp).padding(horizontal = 14.dp, vertical = 10.dp)
+/** On the menu's Options pages the settings lie flat on the panel's glass, as Arena's do, instead of in cards (`\.arenaOptionsFlat`). */
+val LocalArenaOptionsFlat = compositionLocalOf { false }
+
+/**
+ * One group of settings (TavernSettingsPanel): a leather panel in brass trim with parchment text; in the Arena menus a
+ * lighter pane in the gold hairline on the panel's glass, and flat on the glass on Options' pages.
+ */
+fun Modifier.tavernSettingsPanel(): Modifier = composed {
+    val arena = LocalArenaBoard.current
+    val flat = LocalArenaOptionsFlat.current
+    val shape = RoundedCornerShape(12.dp)
+    when {
+        arena && flat -> Modifier.fillMaxWidth().padding(vertical = 2.dp)
+        arena -> Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.045f), shape)
+            .border(0.8.dp, ArenaGlass.hairlineTop.copy(alpha = 0.47f), shape).padding(horizontal = 14.dp, vertical = 10.dp)
+        else -> Modifier.fillMaxWidth().tavernPanelChrome(true, 10.dp).padding(horizontal = 14.dp, vertical = 10.dp)
+    }
+}
 
 object PortraitModePreference { const val key = "magicmobile.portraitModeEnabled" }
 
@@ -102,18 +142,24 @@ fun FollowTurnsToggle() {
     }
 }
 
+/** `includesAudio` off where sound has a page of its own (the menu's Options). */
 @Composable
-fun BoardEffectsPicker() {
+fun BoardEffectsPicker(includesAudio: Boolean = true) {
     var level by AppPreferences.string(BoardFXLevel.key, BoardFXLevel.defaultValue)
+    val arena = LocalArenaBoard.current
+    val ink = if (arena) ArenaMenuStyle.text else TavernPalette.parchment
     Column(Modifier.tavernSettingsPanel(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Board Effects", color = TavernPalette.parchment, style = sf(16f, SfWeight.semibold, SfDesign.SERIF))
-            Text("Spell, combat and life animations. Reduce Motion always limits them.", Modifier.alpha(0.65f), color = TavernPalette.parchment,
+            // The Arena look names the choice and nothing more (no helper line).
+            Text(if (arena) "Effects" else "Board Effects", color = ink, style = sf(16f, SfWeight.semibold, SfDesign.SERIF))
+            if (!arena) Text("Spell, combat and life animations. Reduce Motion always limits them.", Modifier.alpha(0.65f), color = ink,
                 style = sf(12f, design = SfDesign.SERIF), maxLines = 2)
         }
-        IosSegmented(BoardFXLevel.entries.toList(), BoardFXLevel.of(level) ?: BoardFXLevel.FULL, { level = it.rawValue }, { it.title },
+        if (arena) ArenaSegmented(BoardFXLevel.entries.map { it.title to it }, BoardFXLevel.of(level) ?: BoardFXLevel.FULL, { level = it.rawValue },
+            Modifier.fillMaxWidth(), identifier = "settings.boardEffects", stretch = true)
+        else IosSegmented(BoardFXLevel.entries.toList(), BoardFXLevel.of(level) ?: BoardFXLevel.FULL, { level = it.rawValue }, { it.title },
             Modifier.semantics { contentDescription = "settings.boardEffects" })
-        GameAudioSettings()
+        if (includesAudio) GameAudioSettings()
     }
 }
 
@@ -137,37 +183,47 @@ fun GameAudioSettings() {
             GameAudio.settingsChanged()
         }, color = TavernPalette.parchment)
         if (musicOn) TavernSlider(musicVolume.toFloat(), { musicVolume = it.toDouble(); GameAudio.settingsChanged() }, label = "Music volume")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Sounds follow your phone's media volume.", Modifier.weight(1f).alpha(0.6f), color = TavernPalette.parchment, style = sf(12f, design = SfDesign.SERIF))
-            TavernPlaqueButton("Sound Lab", { soundLabOpen = true }, Modifier.semantics { contentDescription = "settings.soundLab" },
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // The Arena look drops the helper line (AGENTS.md); the Hearth board's game menu keeps it.
+            if (LocalArenaBoard.current) Spacer(Modifier.weight(1f))
+            else Text("Sounds follow your phone's media volume.", Modifier.weight(1f).alpha(0.6f), color = TavernPalette.parchment, style = sf(12f, design = SfDesign.SERIF))
+            // In Arena's Options the Sound Lab opens as a page of the panel, not a sheet.
+            val openLab = io.magicmobile.android.menus.LocalArenaOpenSoundLab.current
+            TavernPlaqueButton("Sound Lab", { if (openLab != null) openLab() else soundLabOpen = true }, Modifier.semantics { contentDescription = "settings.soundLab" },
                 kind = TavernButtonKind.SECONDARY, systemImage = "waveform")
         }
     }
-    if (soundLabOpen) BoardSheet({ soundLabOpen = false }, BrandTheme.canvas, skipPartiallyExpanded = true) { SoundLabView { soundLabOpen = false } }
+    if (soundLabOpen) BoardSheet({ soundLabOpen = false }, ArenaGlass.bottom, skipPartiallyExpanded = true) { SoundLabView(done = { soundLabOpen = false }) }
 }
 
 /** Orchestral stingers cut from Kevin MacLeod pieces, credited with the tracks. */
 object MusicCredits { val stingers = listOf("Discovery Hit", "Greta Sting", "Danse Macabre - Big Hit 1") }
 
-/** Every game sound and music track, auditionable, with a switch per category and the credits the music license asks for. */
+/**
+ * SoundLabView.swift: every game sound and music track, auditionable, with a switch per category and the credits the music
+ * license asks for. An Arena page (Caleb, 2026-10-22: no sheets in the menus): inside Options it opens from Audio with a back
+ * chevron; on its own (the game menu's sheet) it closes with its own button.
+ */
 @Composable
-fun SoundLabView(done: () -> Unit) {
+fun SoundLabView(back: (() -> Unit)? = null, done: (() -> Unit)? = null) {
     var menuChoice by AppPreferences.string(GameMusic.MENU.choiceKey, "shuffle")
     var gameChoice by AppPreferences.string(GameMusic.GAME.choiceKey, "shuffle")
     var previewing by remember { mutableStateOf<String?>(null) }
+    val panelClose = LocalArenaPanelClose.current
     DisposableEffect(Unit) { onDispose { GameAudio.endPreview() } }
 
+    /** A track by its title alone: the composer is in the credits below. */
     @Composable
-    fun trackRow(title: String, subtitle: String, selected: Boolean, previewID: String?, action: () -> Unit) {
-        BrandPressable(action, Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)) {
+    fun trackRow(title: String, selected: Boolean, previewID: String?, identifier: String, action: () -> Unit) {
+        BrandPressable(action, Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).testTag(identifier)
+            .semantics(mergeDescendants = true) { this.selected = selected }) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SfImage(if (selected) "checkmark.circle.fill" else "circle", if (selected) BrandTheme.ember else BrandTheme.border, 22.dp)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text(title, color = BrandTheme.ink, style = sf(15f, SfWeight.bold))
-                    Text(subtitle, color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.semibold))
-                }
-                if (previewID != null) Box(Modifier.size(34.dp).background(BrandTheme.surfaceRaised, CircleShape), contentAlignment = Alignment.Center) {
-                    SfImage(if (previewing == previewID) "speaker.wave.2.fill" else "play.fill", BrandTheme.ember, 14.dp)
+                // Arena's chosen diamond, lit gold.
+                ArenaDiamond(selected, Modifier.width(16.dp))
+                Text(title, Modifier.weight(1f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(15f, if (selected) SfWeight.bold else SfWeight.medium))
+                if (previewID != null) Box(Modifier.size(34.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                    .border(1.dp, ArenaGlass.hairline, CircleShape).clearAndSetSemantics { }, contentAlignment = Alignment.Center) {
+                    SfImage(if (previewing == previewID) "speaker.wave.2.fill" else "play.fill", ArenaMenuStyle.gold, 13.dp)
                 }
             }
         }
@@ -175,43 +231,51 @@ fun SoundLabView(done: () -> Unit) {
 
     @Composable
     fun musicPanel(scene: GameMusic, choice: String, setChoice: (String) -> Unit) {
-        Column(Modifier.fillMaxWidth().brandPanel(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(scene.title, color = BrandTheme.ink, style = sf(17f, SfWeight.heavy))
-            Text(if (scene == GameMusic.MENU) "Plays in menus and while you build decks." else "Plays under the game, a little quieter.",
-                Modifier.padding(bottom = 6.dp), color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.semibold))
-            trackRow("Shuffle all", "A new track each time", choice == "shuffle", null) { setChoice("shuffle"); GameAudio.settingsChanged(true) }
-            for (track in scene.tracks) trackRow(track.title, "Kevin MacLeod", choice == track.file, track.file) {
+        Column(Modifier.arenaCard(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(scene.title, Modifier.padding(bottom = 4.dp), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(17f, SfWeight.bold))
+            trackRow("Shuffle all", choice == "shuffle", null, "soundlab.music.${scene.rawValue}.shuffle") {
+                setChoice("shuffle"); GameAudio.settingsChanged(true)
+            }
+            for (track in scene.tracks) trackRow(track.title, choice == track.file, track.file, "soundlab.music.${scene.rawValue}.${track.file}") {
                 setChoice(track.file); previewing = track.file; GameAudio.preview(track, scene)
             }
         }
     }
 
-    Column(Modifier.fillMaxWidth().background(BrandTheme.canvas)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.weight(1f))
-            Text("Sound Lab", color = BrandTheme.ink, style = SfText.headline())
-            Spacer(Modifier.weight(1f))
-            IosTextButton("Done", done, color = BrandTheme.ember, bold = true)
-        }
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Text("Tap any sound to hear it. Switch off a whole group if it gets in the way. Your picks are saved on this phone.",
-                color = BrandTheme.inkSecondary, style = sf(14f, SfWeight.semibold))
-            BrandDivider(title = "Music")
-            musicPanel(GameMusic.MENU, menuChoice) { menuChoice = it }
-            musicPanel(GameMusic.GAME, gameChoice) { gameChoice = it }
-            BrandDivider(title = "Sound effects")
-            GameSoundCategory.entries.forEach { SoundLabCategory(it) }
-            BrandDivider(title = "Credits")
-            Column(Modifier.fillMaxWidth().brandPanel(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                creditBlock("Music", (GameMusic.MENU.tracks + GameMusic.GAME.tracks).map { "“${it.title}” Kevin MacLeod (incompetech.com)" } +
-                    MusicCredits.stingers.map { "“$it” Kevin MacLeod (incompetech.com), excerpt" } +
-                    listOf("Licensed under Creative Commons: By Attribution 4.0 License", "http://creativecommons.org/licenses/by/4.0/"))
-                creditBlock("Sound effects", listOf(
-                    "Recordings from the Sonniss.com GDC Game Audio Bundles (royalty-free), by David Dumais Audio, Sound Spark LLC, Gamemaster Audio, Articulated Sounds, Airborne Sound, Double Trouble Audio, Bluezone, 3maze, Timothy McHugh, Sound Ex Machina and more.",
-                    "Card recordings from Kenney.nl Casino Audio (CC0)."))
-                creditBlock("Table art", listOf(
-                    "3D props made with Meshy (meshy.ai). The medallion, corner ornament, candle and tankard are licensed under Creative Commons: By Attribution 4.0 License.",
-                    "Wood and leather textures from Poly Haven (polyhaven.com, CC0)."))
+    CompositionLocalProvider(LocalArenaBoard provides true, LocalContentColor provides ArenaMenuStyle.text) {
+        // Inside a panel the panel's glass shows; on its own (the game menu's sheet) it draws its own.
+        Column(Modifier.fillMaxWidth().then(if (panelClose == null) Modifier.arenaGlassBackground() else Modifier)) {
+            // The Options pages' head: the back chevron on the left, the title centred in serif, the close button on the right.
+            Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(top = 6.dp, bottom = 2.dp)
+                .drawBehind { drawRect(ArenaGlass.hairline, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()), alpha = 0.45f) }) {
+                FitText("Sound Lab", ArenaMenuStyle.font(26f, SfWeight.bold), Modifier.align(Alignment.Center).padding(horizontal = 56.dp).semantics { heading() },
+                    color = ArenaMenuStyle.text, minimumScale = 0.7f)
+                if (back != null) BrandPressable({ GameAudio.play(GameSound.UI_BACK); back() }, Modifier.align(Alignment.CenterStart).size(44.dp)
+                    .testTag("panel.back").semantics { contentDescription = "Back"; role = Role.Button }) {
+                    SfImage("chevron.left", ArenaMenuStyle.text, 17.dp)
+                }
+                ArenaCloseButton({ (panelClose ?: done)?.invoke() }, Modifier.align(Alignment.CenterEnd), identifier = "soundlab.done")
+            }
+            Column(Modifier.fillMaxWidth().arenaScrollFade(48.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.widthIn(max = 620.dp).fillMaxWidth().padding(16.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    ArenaCaps("Music")
+                    musicPanel(GameMusic.MENU, menuChoice) { menuChoice = it }
+                    musicPanel(GameMusic.GAME, gameChoice) { gameChoice = it }
+                    ArenaCaps("Sound effects", modifier = Modifier.padding(top = 6.dp))
+                    GameSoundCategory.entries.forEach { SoundLabCategory(it) }
+                    ArenaCaps("Credits", modifier = Modifier.padding(top = 6.dp))
+                    Column(Modifier.arenaCard(14.dp).testTag("soundlab.credits"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        creditBlock("Music", (GameMusic.MENU.tracks + GameMusic.GAME.tracks).map { "“${it.title}” Kevin MacLeod (incompetech.com)" } +
+                            MusicCredits.stingers.map { "“$it” Kevin MacLeod (incompetech.com), excerpt" } +
+                            listOf("Licensed under Creative Commons: By Attribution 4.0 License", "http://creativecommons.org/licenses/by/4.0/"))
+                        creditBlock("Sound effects", listOf(
+                            "Recordings from the Sonniss.com GDC Game Audio Bundles (royalty-free), by David Dumais Audio, Sound Spark LLC, Gamemaster Audio, Articulated Sounds, Airborne Sound, Double Trouble Audio, Bluezone, 3maze, Timothy McHugh, Sound Ex Machina and more.",
+                            "Card recordings from Kenney.nl Casino Audio (CC0)."))
+                        creditBlock("Table art", listOf(
+                            "3D props made with Meshy (meshy.ai). The medallion, corner ornament, candle and tankard are licensed under Creative Commons: By Attribution 4.0 License.",
+                            "Wood and leather textures from Poly Haven (polyhaven.com, CC0)."))
+                    }
+                }
             }
         }
     }
@@ -220,8 +284,8 @@ fun SoundLabView(done: () -> Unit) {
 @Composable
 private fun creditBlock(title: String, lines: List<String>) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(title.uppercase(), color = BrandTheme.ember, style = sf(11f, SfWeight.heavy, tracking = 1.8f))
-        lines.forEach { Text(it, color = BrandTheme.inkSecondary, style = sf(12f, SfWeight.medium)) }
+        ArenaCaps(title, 9.5f)
+        lines.forEach { Text(it, color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(12f, SfWeight.medium)) }
     }
 }
 
@@ -229,19 +293,24 @@ private fun creditBlock(title: String, lines: List<String>) {
 @Composable
 private fun SoundLabCategory(category: GameSoundCategory) {
     var enabled by AppPreferences.boolean(category.key, true)
-    Column(Modifier.fillMaxWidth().brandPanel(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        TavernToggle(category.title, enabled, { enabled = it }, subtitle = category.detail)
+    Column(Modifier.arenaCard(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TavernToggle(category.title, enabled, { enabled = it }, Modifier.testTag("soundlab.category.${category.rawValue}"), subtitle = category.detail)
         val sounds = GameSound.sounds(category)
-        AdaptiveGrid(138f, 8f, sounds.size) { index ->
-            val sound = sounds[index]
-            BrandPressable({ GameAudio.play(sound, audition = true) }, Modifier.fillMaxWidth().semantics { contentDescription = "Play ${sound.title}" }) {
-                Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp).background(BrandTheme.surfaceRaised, RoundedCornerShape(10.dp))
-                    .border(1.dp, BrandTheme.border, RoundedCornerShape(10.dp)).padding(horizontal = 11.dp).alpha(if (enabled) 1f else 0.6f),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SfImage("play.fill", BrandTheme.ember, 11.dp)
-                    FitText(sound.title, sf(13f, SfWeight.bold), Modifier.weight(1f), color = if (enabled) BrandTheme.ink else BrandTheme.inkSecondary, minimumScale = 0.8f)
+        Box(Modifier.alpha(if (enabled) 1f else 0.6f)) {
+            AdaptiveGrid(138f, 8f, sounds.size) { index ->
+                val sound = sounds[index]
+                BrandPressable({ GameAudio.play(sound, audition = true) }, Modifier.fillMaxWidth().testTag("soundlab.play.${sound.rawValue}")
+                    .semantics { contentDescription = "Play ${sound.title}" }) {
+                    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp).background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                        .border(0.9.dp, ArenaGlass.hairline, RoundedCornerShape(10.dp)).padding(horizontal = 11.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SfImage("play.fill", ArenaMenuStyle.gold, 10.dp)
+                        FitText(sound.title, ArenaMenuStyle.font(13f, SfWeight.semibold), Modifier.weight(1f),
+                            color = if (enabled) ArenaMenuStyle.text else ArenaMenuStyle.dim, minimumScale = 0.8f)
+                    }
                 }
             }
         }
     }
 }
+

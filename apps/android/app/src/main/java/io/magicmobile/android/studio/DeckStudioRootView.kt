@@ -10,53 +10,52 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -64,25 +63,35 @@ import io.magicmobile.android.board.BoardSheet
 import io.magicmobile.android.board.ConfirmationAction
 import io.magicmobile.android.board.ConfirmationDialog
 import io.magicmobile.android.board.MenuEntry
+import io.magicmobile.android.game.ArenaBoxGeometry
 import io.magicmobile.android.game.CardCountText
+import io.magicmobile.android.game.CommanderBracket
+import io.magicmobile.android.menus.ArenaArt
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaButtonText
+import io.magicmobile.android.menus.ArenaDeckBox
+import io.magicmobile.android.menus.ArenaDeckBoxModel
+import io.magicmobile.android.menus.ArenaGlass
+import io.magicmobile.android.menus.ArenaMenuStyle
+import io.magicmobile.android.menus.ArenaNewDeckBox
+import io.magicmobile.android.menus.ArenaPillButton
+import io.magicmobile.android.menus.ArenaPips
+import io.magicmobile.android.menus.ArenaPlayButton
+import io.magicmobile.android.menus.ArenaRoomBackdrop
+import io.magicmobile.android.menus.ArenaSectionHeader
+import io.magicmobile.android.menus.LocalArenaMenuBackdrop
+import io.magicmobile.android.menus.arenaGlassPanel
+import io.magicmobile.android.menus.arenaScrollFade
+import io.magicmobile.android.ranked.tint
 import io.magicmobile.android.ondevice.OnDeviceSetupModel
 import io.magicmobile.android.ondevice.OnDeviceSetupPreferences
-import io.magicmobile.android.ui.AppPreferences
-import io.magicmobile.android.ui.SfImage
+import io.magicmobile.android.ui.GameAudio
+import io.magicmobile.android.ui.GameSound
 import io.magicmobile.android.ui.SfWeight
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.DateFormat
-import java.util.Date
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.statusBarsPadding
-import io.magicmobile.android.ui.tavernFill
 
 /** Shares text through the system share sheet (SwiftUI ShareLink). */
 fun shareText(context: Context, text: String) {
@@ -99,33 +108,35 @@ private sealed class StudioRoute {
 }
 
 /**
- * DeckStudioRootView.swift: the collection and editor share a quiet, artwork-led workshop. [open]
- * opens a deck straight away (the setup screen's "Fix in Deck Studio").
+ * DeckStudioRootView.swift: Arena's Decks page (decks-1), under the menu shell's top bar over the dimmed room. The filters
+ * along the top, every deck as a deck box across the page (the first tap opens a box, a second opens the deck), and the chosen
+ * deck on a strip along the foot with Edit Deck and Play. [open] opens a deck straight away (the setup screen's "Fix in Deck
+ * Studio"). The editor and the importer are full-screen covers that draw their own dimmed room.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select: (String) -> Unit, preparePlay: () -> Unit, dismiss: () -> Unit,
-                       open: DeckStudioOpen? = null) {
+                       open: DeckStudioOpen? = null, covered: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     DeckStudioServices.install(context)
     val library = setup.library
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf(DeckStudioLibraryQuery()) }
-    var grid by AppPreferences.boolean("deckStudio.library.grid.v1", true)
     var tags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var favorites by remember { mutableStateOf<Set<String>>(emptySet()) }
     var favoritesReadable by remember { mutableStateOf(true) }
     var catalogue by remember { mutableStateOf<StudioCatalogue?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var route by remember { mutableStateOf<StudioRoute?>(null) }
-    // Moving between the library and a deck or the importer turns the page of the book.
     val stage = rememberGrimoireStage()
-    val spread = androidx.compose.ui.platform.LocalConfiguration.current.let { Grimoire.isSpread(it.screenWidthDp, it.screenHeightDp) }
     fun turn(next: StudioRoute?) = stage.turnPage(forward = next != null) { route = next }
     var pendingDelete by remember { mutableStateOf<DeckLibraryRecord?>(null) }
     var showPreferences by remember { mutableStateOf(false) }
     var pendingFix by remember { mutableStateOf<DeckStudioOpen?>(null) }
     var openedFromSetup by remember { mutableStateOf<DeckStudioOpen?>(null) }
     var statuses by remember { mutableStateOf<Map<String, DeckStudioPlayStatus>>(emptyMap()) }
+    /** The deck whose box stands open and whose details show on the strip (the playing deck until another is chosen). */
+    var focused by rememberSaveable { mutableStateOf<String?>(null) }
     val currentSelection by rememberUpdatedState(selectedDeckID)
     val currentSelect by rememberUpdatedState(select)
     val play = remember {
@@ -136,15 +147,16 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     val records = library.decks.map { Entry(it, false) } + setup.precons.map { Entry(DeckLibraryRecord.included(it), true) }
     // A saved deck's bracket: the list check, raised by the player's own label (DeckBracketPreference).
     val bracketPrefs by io.magicmobile.android.ui.AppPreferences.string(io.magicmobile.android.game.DeckBracketPreference.KEY, "{}")
-    fun deckBracket(id: String, record: DeckLibraryRecord): io.magicmobile.android.game.CommanderBracket {
+    fun deckBracket(id: String, record: DeckLibraryRecord): CommanderBracket {
         val played = record.entries.filter { it.section in setOf("deck", "main", "commander", "commanders") }.map { it.cardName }
         val minimum = setup.bracketRules.evaluate(listOfNotNull(record.commander?.cardName) + played).minimum
         val declared = runCatching {
             (kotlinx.serialization.json.Json.parseToJsonElement(bracketPrefs) as kotlinx.serialization.json.JsonObject)[id]
-                ?.let { (it as kotlinx.serialization.json.JsonPrimitive).content.toIntOrNull() }?.let(io.magicmobile.android.game.CommanderBracket::of)
+                ?.let { (it as kotlinx.serialization.json.JsonPrimitive).content.toIntOrNull() }?.let(CommanderBracket::of)
         }.getOrNull()
         return io.magicmobile.android.game.DeckBracketPreference.effective(minimum, declared)
     }
+    fun bracket(entry: Entry): CommanderBracket = if (entry.included) CommanderBracket.CORE else deckBracket(entry.id, entry.record)
     fun reloadTags() { scope.launch { tags = withContext(Dispatchers.IO) { DeckStudioServices.organization.tagIndex(records.map { it.record.id }) } } }
     val visible = run {
         val items = records.map { value ->
@@ -155,6 +167,8 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
         val byID = records.associateBy { it.id }
         query.apply(items, favorites).mapNotNull { byID[it.id] }
     }
+    val focusedID = ArenaDecksPage.focusedID(focused, selectedDeckID, records.map { it.id }, visible.map { it.id })
+    val focusedEntry = records.firstOrNull { it.id == focusedID }
 
     fun saveFavorites() {
         if (!favoritesReadable) return
@@ -177,6 +191,7 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
             favorites = favorites - "local:${record.id}"; saveFavorites()
             scope.launch(Dispatchers.IO) { runCatching { DeckStudioServices.checkResults.remove("local:${record.id}") } }
             if (selectedDeckID == "local:${record.id}") select(OnDeviceSetupPreferences.defaultDeckID)
+            if (focused == "local:${record.id}") focused = null
         } catch (failure: Exception) { error = failure.message }
         pendingDelete = null
     }
@@ -203,11 +218,14 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     }
     LaunchedEffect(library.decks.map { it.id }) { reloadTags() }
     BackHandler(route == null) { dismiss() }
-    LightSystemBars()
+    // The editor and the importer cover the whole screen, the menu shell's top bar too: the shell steps aside meanwhile.
+    val currentCovered by rememberUpdatedState(covered)
+    LaunchedEffect(route != null) { currentCovered(route != null) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { currentCovered(false) } }
 
     val metadata = catalogue?.metadata
     val resolver = catalogue?.resolver
-    // Each tile's status comes only from a stored result whose key matches the deck as it is now.
+    // Each box's status comes only from a stored result whose key matches the deck as it is now.
     val checkRevision = DeckStudioServices.checkRevision
     LaunchedEffect(records.map { it.id to it.record.revision }, resolver, checkRevision) {
         val current = resolver ?: return@LaunchedEffect
@@ -219,10 +237,12 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
             }
         }
     }
+    fun needsFixes(id: String) = resolver != null && statuses[id] == DeckStudioPlayStatus.NEEDS_FIXES
+    fun openEntry(entry: Entry) = turn(StudioRoute.Deck(entry.record, entry.included))
     fun openDeck(target: DeckStudioOpen) {
         val entry = records.firstOrNull { it.id == target.deckID } ?: return
         pendingFix = target.takeIf { it.cards.isNotEmpty() }
-        turn(StudioRoute.Deck(entry.record, entry.included))
+        openEntry(entry)
     }
     /** Fix deck: the open workspace filters its own cards; from the library it opens the deck first. */
     fun fix(target: DeckStudioOpen) { if (route is StudioRoute.Deck) pendingFix = target else openDeck(target) }
@@ -231,120 +251,91 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
         openedFromSetup = open
         openDeck(open)
     }
-    fun playRecord(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver, entry.record.name)
+    // Development fixture (MAGICMOBILE_UI_TEST_OPEN=deck): the playing deck's workspace.
+    var fixtureHandled by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(records.map { it.id }) {
+        if (fixtureHandled || io.magicmobile.android.ranked.SocialFixtures.openScreen != "deck") return@LaunchedEffect
+        if (records.any { it.id == selectedDeckID }) { fixtureHandled = true; openDeck(DeckStudioOpen(selectedDeckID)) }
+    }
+    fun playEntry(entry: Entry) = play.play(DeckStudioPlaySelection.source(entry.id, entry.record.deckList), resolver, entry.record.name)
+    fun actions(entry: Entry): List<MenuEntry> = listOf<MenuEntry>(MenuEntry.Section(entry.record.name)) +
+        deckActions(context, entry.record, entry.included, playEnabled = resolver != null && !play.checking, play = { playEntry(entry) },
+            open = { openEntry(entry) },
+            duplicate = {
+                try {
+                    val copy = library.duplicateLocalDurably(entry.record, entry.record.name + " — Copy")
+                    scope.launch(Dispatchers.IO) {
+                        runCatching { DeckStudioServices.organization.duplicate(entry.record.id, copy.id) }
+                            .onFailure { error = "Cards were copied, but their optional details could not be copied: ${it.message}" }
+                    }
+                    reloadTags(); turn(StudioRoute.Deck(copy, false))
+                } catch (failure: Exception) { error = failure.message }
+            }, delete = { pendingDelete = entry.record })
+
     GrimoirePages(stage) {
-      // The library is the binder's first page (concept B, 2026-10-06): its head on the leather, the page below.
-      // This screen's pages, for page turns that move only the paper (GrimoireStage).
-      val binderScreen = remember { Any() }
-      Box(Modifier.fillMaxSize().binderCover()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = 4.dp, end = 4.dp, bottom = 2.dp)) {
-            val head: @Composable () -> Unit = {
-                BinderHead("Done", dismiss, title = "Deck Studio", strapTag = "deckStudio.library.close") {
-                    BinderPlaque(icon = "slider.horizontal.3", square = true, label = "Deck artwork and privacy") { showPreferences = true }
-                }
-            }
-            // The parts of the library, shared by the single page (upright) and the two pages of a spread.
-            val nowPlaying: @Composable (Modifier) -> Unit = { modifier ->
-                records.firstOrNull { it.id == selectedDeckID }?.let { playing ->
-                    DeckStudioNowPlayingStrip(playing.record.name, statuses[playing.id], { turn(StudioRoute.Deck(playing.record, playing.included)) }, modifier)
-                }
-            }
-            val intro: @Composable () -> Unit = {
-                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                    LibraryHeader(onCreate = { turn(StudioRoute.Deck(null, false)) }, onImport = { turn(StudioRoute.Importer) },
-                        importEnabled = catalogue?.resolver != null)
-                    DeckStudioArtworkInvitation()
+        Box(Modifier.fillMaxSize()) {
+            BinderCover()
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val wide = maxWidth > maxHeight
+                Column(Modifier.fillMaxSize().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LibraryBar(wide, query, { query = it }, importEnabled = resolver != null, import = { turn(StudioRoute.Importer) },
+                        preferences = { showPreferences = true })
+                    // Anything to tell the player: the library's notices and the artwork invitation.
                     (error ?: library.notice)?.let { DeckStudioNotice("Your library is preserved", it, "exclamationmark.triangle") }
                     catalogue?.error?.let { message ->
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            DeckStudioNotice("Card catalogue unavailable", message)
-                            StudioPlainButton("Retry local catalogue", { catalogue = null; loadCatalogue() })
-                        }
+                        DeckStudioNotice("Card catalogue unavailable", message)
+                        ArenaPillButton("Retry local catalogue", { catalogue = null; loadCatalogue() })
                     }
-                    LibraryFilters(query) { query = it }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${visible.size} decks", color = DeckStudioPalette.secondaryInk, style = StudioText.subheadline)
-                        Spacer(Modifier.weight(1f))
-                        StudioMenu({
-                            DeckStudioLibraryQuery.Sort.entries.map { sort ->
-                                MenuEntry.Item(sort.title, checked = sort == query.sort) { query = query.copy(sort = sort) }
+                    DeckStudioArtworkInvitation()
+                    DeckShelf(Modifier.weight(1f).fillMaxWidth(), visible.size, focused = visible.indexOfFirst { it.id == focusedID }.takeIf { it >= 0 },
+                        emptyTitle = if (query.text.isEmpty()) "Your next deck starts here" else "No matching decks",
+                        create = { turn(StudioRoute.Deck(null, false)) }) { index, width ->
+                        val entry = visible[index]
+                        val chosen = entry.id == focusedID
+                        val draft = remember(entry.record) { NativeDeckDraft.of(entry.record.deckList) }
+                        var menu by remember { mutableStateOf(false) }
+                        val model = ArenaDeckBoxModel(entry.id, entry.record.name, entry.record.commander?.cardName,
+                            DeckStudioDraftPresentation.colors(draft, metadata) ?: emptyList(), bracket(entry).label,
+                            ArenaDecksPage.tag(needsFixes(entry.id), entry.id == selectedDeckID))
+                        Box(Modifier.testTag("deckStudio.deck.${entry.id}").semantics { if (chosen) selected = true }
+                            // Arena's way: the first tap opens the box and shows the deck; a second opens it for editing.
+                            .combinedClickable(remember { MutableInteractionSource() }, null, onLongClickLabel = "Deck actions", onLongClick = { menu = true }) {
+                                when (ArenaDecksPage.tap(chosen)) {
+                                    ArenaDecksPage.Tap.EDIT -> openEntry(entry)
+                                    ArenaDecksPage.Tap.OPEN_BOX -> { GameAudio.play(GameSound.UI_TAP); focused = entry.id }
+                                }
+                            }) {
+                            // The pencil only on the chosen box, so the others' names have the whole plate.
+                            ArenaDeckBox(model, selected = chosen, width = width, edit = if (chosen) ({ openEntry(entry) }) else null)
+                            io.magicmobile.android.board.BinderDropdown(menu, { menu = false }) {
+                                io.magicmobile.android.board.BinderMenuEntries(if (menu) actions(entry) else emptyList()) { menu = false }
                             }
-                        }) { BinderPlaque(title = query.sort.title, icon = "arrow.up.arrow.down") }
-                        BinderPlaque(icon = if (grid) "list.bullet" else "square.grid.2x2", square = true, label = if (grid) "Show deck list" else "Show deck grid") { grid = !grid }
-                    }
-                    if (visible.isEmpty()) StudioContentUnavailable(if (query.text.isEmpty()) "Your next deck starts here" else "No matching decks",
-                        "rectangle.stack", "Create a deck, import a list, or change your filters.")
-                }
-            }
-            val shelf: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit = {
-                items(visible, key = { it.id }) { value ->
-                    DeckTile(value.record, value.included, value.id == selectedDeckID, statuses[value.id], grid, metadata, tags[value.record.id] ?: emptyList(),
-                        bracket = if (value.included) io.magicmobile.android.game.CommanderBracket.CORE else deckBracket(value.id, value.record),
-                        showTags = tags.values.any { it.isNotEmpty() }, favorite = value.id in favorites,
-                        open = { turn(StudioRoute.Deck(value.record, value.included)) }, toggleFavorite = { toggleFavorite(value.id) },
-                        actions = {
-                            deckActions(context, value.record, value.included, playEnabled = resolver != null && !play.checking, play = { playRecord(value) },
-                                open = { turn(StudioRoute.Deck(value.record, value.included)) },
-                                duplicate = {
-                                    try {
-                                        val copy = library.duplicateLocalDurably(value.record, value.record.name + " — Copy")
-                                        scope.launch(Dispatchers.IO) {
-                                            runCatching { DeckStudioServices.organization.duplicate(value.record.id, copy.id) }
-                                                .onFailure { error = "Cards were copied, but their optional details could not be copied: ${it.message}" }
-                                        }
-                                        reloadTags(); turn(StudioRoute.Deck(copy, false))
-                                    } catch (failure: Exception) { error = failure.message }
-                                }, delete = { pendingDelete = value.record })
-                        })
-                }
-            }
-            if (spread) {
-                // Sideways the binder lies open as a spread: the library's heading and filters are the left page,
-                // the decks the right, and each scrolls by itself. Nothing runs across the fold.
-                // The head is written on the left page, so both pages are the same height (Caleb, 2026-10-06).
-                Row(Modifier.fillMaxSize().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = false, screen = binderScreen) {
-                        Column(Modifier.fillMaxSize()) {
-                            head()
-                            nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp))
-                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp)) { intro() }
                         }
                     }
-                    BinderPage(Modifier.weight(1f).fillMaxHeight(), gutterStart = true, screen = binderScreen) {
-                        LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize(),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = shelf)
-                    }
-                }
-            } else {
-                Spacer(Modifier.height(4.dp))
-                BinderPage(Modifier.weight(1f).fillMaxWidth(), gutterStart = true, screen = binderScreen) {
-                    Column(Modifier.fillMaxSize()) {
-                        head()
-                        nowPlaying(Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp).widthIn(max = 960.dp))
-                        LazyVerticalGrid(if (grid) GridCells.Adaptive(160.dp) else GridCells.Fixed(1), Modifier.fillMaxSize().widthIn(max = 1000.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 40.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            item(span = { GridItemSpan(maxLineSpan) }) { intro() }
-                            shelf()
-                        }
+                    focusedEntry?.let { entry ->
+                        val draft = remember(entry.record) { NativeDeckDraft.of(entry.record.deckList) }
+                        DeckStrip(entry.id, entry.record.name, DeckStudioDraftPresentation.commanders(draft),
+                            entry.record.commander?.cardName ?: "", DeckStudioDraftPresentation.colors(draft, metadata) ?: emptyList(), bracket(entry),
+                            "${CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))} · ${if (entry.included) "Included" else "Your deck"}",
+                            needsFixes(entry.id), wide, favorite = entry.id in favorites, toggleFavorite = { toggleFavorite(entry.id) }, actions = { actions(entry) },
+                            playEnabled = resolver != null && !play.checking, edit = { openEntry(entry) }, play = { playEntry(entry) })
                     }
                 }
             }
-        }
-        // Each of these is the next page of the book: leaving turns back to this one.
-        StudioCover(route != null, animated = false) {
-            when (val current = route) {
-                is StudioRoute.Deck -> DeckStudioWorkspaceScreen(library, current.record, current.included, metadata, catalogue?.resolver,
-                    play = play, close = { turn(null); reloadTags() }, fix = pendingFix, consumeFix = { pendingFix = null })
-                // A new import opens in its workspace, where Play is one tap away; the playing deck is unchanged.
-                StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, metadata = metadata, didImport = { saved -> reloadTags(); turn(StudioRoute.Deck(saved, false)) },
-                    close = { turn(null); reloadTags() })
-                null -> {}
+            // The editor and the importer: full-screen covers outside the shell, each drawing its own dimmed room.
+            StudioCover(route != null, animated = false) {
+                when (val current = route) {
+                    is StudioRoute.Deck -> DeckStudioWorkspaceScreen(library, current.record, current.included, metadata, catalogue?.resolver,
+                        play = play, close = { turn(null); reloadTags() }, fix = pendingFix, consumeFix = { pendingFix = null })
+                    // A new import opens in its workspace, where Play is one tap away; the playing deck is unchanged.
+                    StudioRoute.Importer -> DeckStudioImportScreen(library, catalogue?.resolver, metadata = metadata, didImport = { saved -> reloadTags(); turn(StudioRoute.Deck(saved, false)) },
+                        close = { turn(null); reloadTags() })
+                    null -> {}
+                }
             }
+            DeckStudioPlayBanner(play, setUpGame = { route = null; dismiss(); preparePlay() }, Modifier.align(Alignment.BottomCenter))
         }
-        DeckStudioPlayBanner(play, setUpGame = { route = null; dismiss(); preparePlay() }, Modifier.align(Alignment.BottomCenter))
-      }
     }
     DeckStudioPlaySheets(play, fix = ::fix)
     if (showPreferences) BoardSheet({ showPreferences = false }, background = rgbLight, paper = true, skipPartiallyExpanded = false) {
@@ -355,80 +346,224 @@ fun DeckStudioRootView(setup: OnDeviceSetupModel, selectedDeckID: String, select
     }
     pendingDelete?.let { record ->
         val replacement = setup.precons.firstOrNull { "precon:${it.id}" == OnDeviceSetupPreferences.defaultDeckID }?.name ?: "The default deck"
-        val message = listOfNotNull(DeckStudioPlayText.deletePlaying(replacement).takeIf { selectedDeckID == "local:${record.id}" },
-            "Included decks and source websites are never changed.").joinToString(" ")
+        val message = if (selectedDeckID == "local:${record.id}") DeckStudioPlayText.deletePlaying(replacement) else "Included decks and source websites are never changed."
         ConfirmationDialog("Delete this local deck?", message,
             listOf(ConfirmationAction("Delete ${record.name}", destructive = true) { delete(record) }), light = true) { pendingDelete = null }
     }
 }
 
-/** The grouped-form background of a light sheet (systemGroupedBackground). */
-/** A sheet over the studio: a loose leaf of the book's paper (it was the system's grouped grey). */
-val rgbLight: Color = DeckStudioPalette.surface
-
-/** A light sheet's bar: centred title and a trailing Done (or custom) action. */
+/** The bar over the boxes: search, which decks, their order, Import and the artwork settings. */
 @Composable
-fun StudioSheetBar(title: String, done: (() -> Unit)? = null, doneTitle: String = "Done", doneEnabled: Boolean = true,
-                   cancel: (() -> Unit)? = null, cancelTitle: String = "Cancel") {
-    // A loose leaf's head in the book's own hand (BinderLeafHead on iOS): the title on the parchment over an inked
-    // rule, with brass plaques for its actions, never the system's bar (Caleb, 2026-10-06).
-    Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.widthIn(min = 90.dp), contentAlignment = Alignment.CenterStart) { cancel?.let { BinderPlaque(title = cancelTitle, onClick = it) } }
-            Text(title, Modifier.weight(1f).semantics { heading() }, color = DeckStudioPalette.ink, style = sf(19f, SfWeight.bold),
-                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            Box(Modifier.widthIn(min = 90.dp), contentAlignment = Alignment.CenterEnd) { done?.let { BinderPlaque(title = doneTitle, enabled = doneEnabled, onClick = it) } }
+private fun LibraryBar(wide: Boolean, query: DeckStudioLibraryQuery, change: (DeckStudioLibraryQuery) -> Unit, importEnabled: Boolean, import: () -> Unit,
+                       preferences: () -> Unit) {
+    val artwork: @Composable () -> Unit = {
+        BinderPlaque(icon = "photo.on.rectangle.angled", square = true, label = "Deck artwork and privacy", onClick = preferences)
+    }
+    val pills: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            StudioMenu({
+                listOf<MenuEntry>(MenuEntry.Section("Show decks")) + DeckStudioLibraryQuery.Filter.entries.map { filter ->
+                    MenuEntry.Item(filter.title, checked = filter == query.filter) { change(query.copy(filter = filter)) }
+                }
+            }, Modifier.testTag("deckStudio.library.filter")) {
+                BinderPlaque(title = if (query.filter == DeckStudioLibraryQuery.Filter.ALL) "All decks" else query.filter.title, trailingIcon = "chevron.down")
+            }
+            StudioMenu({
+                listOf<MenuEntry>(MenuEntry.Section("Sort decks")) + DeckStudioLibraryQuery.Sort.entries.map { sort ->
+                    MenuEntry.Item(sort.title, checked = sort == query.sort) { change(query.copy(sort = sort)) }
+                }
+            }) { BinderPlaque(title = query.sort.title, trailingIcon = "chevron.down") }
+            BinderPlaque(Modifier.testTag("deckStudio.import"), title = "Import", icon = "square.and.arrow.down", enabled = importEnabled, onClick = import)
         }
-        GrimoireRule(Modifier.fillMaxWidth())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            BinderSearchField(query.text, { change(query.copy(text = it)) }, "Search decks", Modifier.widthIn(min = 210.dp, max = 300.dp),
+                tag = "deckStudio.library.search")
+            pills()
+            Spacer(Modifier.weight(1f))
+            artwork()
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                BinderSearchField(query.text, { change(query.copy(text = it)) }, "Search decks, commanders or tags", Modifier.weight(1f),
+                    tag = "deckStudio.library.search")
+                artwork()
+            }
+            pills()
+        }
     }
 }
 
 /**
- * A full-screen cover over the studio (SwiftUI fullScreenCover). It slides up, unless it is a page of the
- * spell book: then it is simply there, and GrimoireStage turns a page over the change.
+ * Every deck as a deck box (the first cell makes a new deck), rows apart by an open lid's rise. The chosen box comes fully into
+ * view, lid and all, as Arena scrolls to it; on arrival a playing deck past the first row rests just above the strip.
  */
 @Composable
-fun StudioCover(visible: Boolean, animated: Boolean = true, content: @Composable () -> Unit) {
-    val page = Modifier.fillMaxSize().grimoirePaper().clickable(remember { MutableInteractionSource() }, null) {}
-    if (!animated) { if (visible) Box(page) { content() }; return }
-    AnimatedVisibility(visible, enter = slideInVertically(androidx.compose.animation.core.tween(320)) { it } + fadeIn(),
-        exit = slideOutVertically(androidx.compose.animation.core.tween(260)) { it } + fadeOut()) {
-        Box(page) { content() }
-    }
-}
-
-@Composable
-private fun LibraryHeader(onCreate: () -> Unit, onImport: () -> Unit, importEnabled: Boolean) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        GrimoireHeading("Your collection", "My Decks", "Find your next move.")
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DeckStudioEmberButton("Create deck", onCreate, Modifier.weight(1f).testTag("deckStudio.create"), icon = "plus")
-            BinderPlaque(Modifier.weight(1f).testTag("deckStudio.import"), title = "Import", icon = "square.and.arrow.down", enabled = importEnabled) { onImport() }
+private fun DeckShelf(modifier: Modifier, count: Int, focused: Int?, emptyTitle: String, create: () -> Unit,
+                      box: @Composable (index: Int, width: Dp) -> Unit) {
+    BoxWithConstraints(modifier) {
+        val grid = ArenaDecksPage.grid(maxWidth.value - 8f)
+        val width = grid.boxWidth.dp
+        val geometry = ArenaBoxGeometry(grid.boxWidth)
+        val rise = (geometry.rise * 1.5f).dp
+        val rowHeight = (geometry.boxHeight + geometry.plateHeight - geometry.plateOverlap).dp
+        val list = rememberLazyListState()
+        val viewport = maxHeight
+        val density = LocalDensity.current
+        val scope = rememberCoroutineScope()
+        // Item 0 is the heading, then the empty page (when nothing shows), then the rows.
+        val firstRow = if (count == 0) 2 else 1
+        fun scrollTo(index: Int, anchor: Float, animated: Boolean) {
+            val row = ArenaDecksPage.row(ArenaDecksPage.cell(index), grid.columns)
+            // The row's foot rests at `anchor` of the page's height.
+            val offset = with(density) { -((viewport * anchor) - rowHeight - rise).roundToPx() }
+            scope.launch { runCatching { if (animated) list.animateScrollToItem(firstRow + row, offset) else list.scrollToItem(firstRow + row, offset) } }
         }
-    }
-}
-
-@Composable
-private fun LibraryFilters(query: DeckStudioLibraryQuery, change: (DeckStudioLibraryQuery) -> Unit) {
-    // The binder's brass rail, as on a deck's Cards page: the search, and the shelves as chips.
-    BinderRail {
-        BinderSearchField(query.text, { change(query.copy(text = it)) }, "Search decks, commanders or tags", tag = "deckStudio.library.search")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (filter in DeckStudioLibraryQuery.Filter.entries) {
-                val selected = query.filter == filter
-                Box(Modifier.defaultMinSize(minHeight = 44.dp).clickable(role = Role.Tab) { change(query.copy(filter = filter)) }
-                    .semantics { this.selected = selected }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.height(36.dp)
-                        .then(if (selected) Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.EMBER, CircleShape) else Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape))
-                        .border(1.dp, if (selected) Binder.brassLight.copy(alpha = 0.7f) else io.magicmobile.android.ui.TavernPalette.brass.copy(alpha = 0.5f), CircleShape)
-                        .padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                        Text(filter.title, color = if (selected) Binder.emberText else io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.75f),
-                            style = sf(14f, SfWeight.bold))
+        var arrived by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(focused) {
+            val index = focused ?: return@LaunchedEffect
+            if (!arrived) {
+                arrived = true
+                if (!ArenaDecksPage.scrollsOnArrival(index, grid.columns)) return@LaunchedEffect
+                kotlinx.coroutines.delay(300)
+                scrollTo(index, 0.94f, animated = false)
+            } else scrollTo(index, 0.62f, animated = true)
+        }
+        val rows = ArenaDecksPage.rows(count, grid.columns)
+        LazyColumn(Modifier.fillMaxSize().arenaScrollFade(28.dp, 14.dp).testTag("deckStudio.library.grid"), state = list) {
+            item(key = "heading") { ArenaSectionHeader("My Decks", count = count) }
+            if (count == 0) item(key = "empty") { BinderEmptyLeaf(emptyTitle, "rectangle.stack", "Create a deck, import a list, or change your filters.") }
+            items(rows, key = { "row-$it" }) { row ->
+                // Only a box open in the first row needs room above it.
+                val top = if (row == 0) (if (ArenaDecksPage.firstRowOpen(focused, grid.columns)) rise + 10.dp else 8.dp) else rise + 10.dp
+                Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = top, bottom = if (row == rows - 1) 16.dp else 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(ArenaDecksPage.GAP.dp), verticalAlignment = Alignment.Top) {
+                    for (column in 0 until grid.columns) {
+                        val cell = row * grid.columns + column
+                        Box(Modifier.width(width)) {
+                            when {
+                                cell == 0 -> Box(Modifier.testTag("deckStudio.create").semantics { contentDescription = "Create deck" }
+                                    .clickable(remember { MutableInteractionSource() }, null) { GameAudio.play(GameSound.UI_OPEN); create() }) {
+                                    ArenaNewDeckBox(width = width)
+                                }
+                                cell - 1 < count -> box(cell - 1, width)
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** A deck's bracket as Arena's small glass tag with the bracket's jewel. */
+@Composable
+private fun ArenaBracketTag(bracket: CommanderBracket, identifier: String) {
+    BinderTag("B${bracket.level}", Modifier.testTag(identifier).clearAndSetSemantics { contentDescription = bracket.title }, accent = bracket.tint)
+}
+
+/**
+ * The chosen deck along the foot of the page: its art, name and pips, its bracket and check, the favourite star and ⋯, then
+ * Edit Deck and Play. Sideways it is one row (Arena's decks-1, so the boxes keep the page); upright two.
+ */
+@Composable
+private fun DeckStrip(id: String, name: String, commanders: List<String>, commander: String, colors: List<String>, bracket: CommanderBracket, summary: String,
+                      needsFixes: Boolean, wide: Boolean, favorite: Boolean, toggleFavorite: () -> Unit, actions: () -> List<MenuEntry>,
+                      playEnabled: Boolean, edit: () -> Unit, play: () -> Unit) {
+    val tools: @Composable () -> Unit = {
+        Row {
+            BinderCoin(if (favorite) "star.fill" else "star", if (favorite) "Unfavorite $name" else "Favorite $name", lit = favorite, onClick = toggleFavorite)
+            StudioMenu(actions) { BinderCoin("ellipsis", "Options for $name") }
+        }
+    }
+    val editButton: @Composable (Modifier) -> Unit = { modifier ->
+        ArenaButton(edit, modifier, ArenaButtonKind.SECONDARY, compact = true, fullWidth = !wide, label = "Edit Deck", identifier = "deckStudio.edit") {
+            ArenaButtonText("Edit Deck")
+        }
+    }
+    val playButton: @Composable (Modifier) -> Unit = { modifier ->
+        ArenaPlayButton("Play", play, modifier.height(44.dp), fontSize = 18f, enabled = playEnabled, identifier = "deckStudio.library.play")
+    }
+    val art: @Composable () -> Unit = {
+        val shape = RoundedCornerShape(8.dp)
+        ArenaArt(commander, colors, Modifier.size(if (wide) 40.dp else 52.dp, if (wide) 40.dp else 64.dp).clip(shape).border(0.9.dp, ArenaGlass.hairline, shape))
+    }
+    Column(Modifier.fillMaxWidth().arenaGlassPanel(14.dp, 0.92f).testTag("deckStudio.detail").padding(horizontal = 12.dp, vertical = if (wide) 4.dp else 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (wide) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                art()
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(name, Modifier.semantics { heading() }, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(15f, SfWeight.bold),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ArenaPips(colors, 13.dp)
+                        ArenaBracketTag(bracket, "deckStudio.bracket.$id")
+                        if (needsFixes) DeckStudioPlayStatusChip(DeckStudioPlayStatus.NEEDS_FIXES)
+                    }
+                }
+                tools()
+                editButton(Modifier.width(120.dp))
+                playButton(Modifier.width(150.dp))
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                art()
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(name, Modifier.semantics { heading() }, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(16f, SfWeight.bold),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(commanders.joinToString(" • "), color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11.5f, SfWeight.medium).copy(fontStyle = FontStyle.Italic),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ArenaPips(colors, 14.dp)
+                        ArenaBracketTag(bracket, "deckStudio.bracket.$id")
+                        Text(summary, Modifier.weight(1f, fill = false), color = ArenaMenuStyle.dim, style = ArenaMenuStyle.font(11f, SfWeight.medium), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                        if (needsFixes) DeckStudioPlayStatusChip(DeckStudioPlayStatus.NEEDS_FIXES)
+                    }
+                }
+                tools()
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                editButton(Modifier.weight(1f))
+                playButton(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** The background of a sheet over the studio: a loose pane of Arena's glass. */
+val rgbLight: Color = DeckStudioPalette.surface
+
+/** A sheet's head (BinderLeafHead on iOS): the title in large type with its actions as pills, over a gold hairline. */
+@Composable
+fun StudioSheetBar(title: String, done: (() -> Unit)? = null, doneTitle: String = "Done", doneEnabled: Boolean = true,
+                   cancel: (() -> Unit)? = null, cancelTitle: String = "Cancel") {
+    Row(Modifier.fillMaxWidth().background(ArenaGlass.top.copy(alpha = 0.97f))
+        .drawBehind { drawRect(binderHairline(0.6f), androidx.compose.ui.geometry.Offset(0f, size.height - 1.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx())) }
+        .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.widthIn(min = 90.dp), contentAlignment = Alignment.CenterStart) { cancel?.let { BinderPlaque(title = cancelTitle, onClick = it) } }
+        Text(title, Modifier.weight(1f).semantics { heading() }, color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(20f, SfWeight.bold),
+            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Box(Modifier.widthIn(min = 90.dp), contentAlignment = Alignment.CenterEnd) { done?.let { BinderPlaque(title = doneTitle, enabled = doneEnabled, onClick = it) } }
+    }
+}
+
+/**
+ * A full-screen cover over the studio (SwiftUI fullScreenCover), outside the menu shell: it draws its own dimmed room, so the
+ * screens inside it leave theirs out. It slides up unless [animated] is false.
+ */
+@Composable
+fun StudioCover(visible: Boolean, animated: Boolean = true, content: @Composable () -> Unit) {
+    val page: @Composable () -> Unit = {
+        Box(Modifier.fillMaxSize().background(Color.Black).clickable(remember { MutableInteractionSource() }, null) {}) {
+            ArenaRoomBackdrop(0.45f)
+            CompositionLocalProvider(LocalArenaMenuBackdrop provides true) { content() }
+        }
+    }
+    if (!animated) { if (visible) page(); return }
+    AnimatedVisibility(visible, enter = slideInVertically(androidx.compose.animation.core.tween(320)) { it } + fadeIn(),
+        exit = slideOutVertically(androidx.compose.animation.core.tween(260)) { it } + fadeOut()) { page() }
 }
 
 private fun deckActions(context: Context, record: DeckLibraryRecord, included: Boolean, playEnabled: Boolean, play: () -> Unit, open: () -> Unit,
@@ -439,59 +574,14 @@ private fun deckActions(context: Context, record: DeckLibraryRecord, included: B
         add(MenuEntry.Item(DeckStudioPlayText.play, "play.fill", enabled = playEnabled) { play() })
         add(MenuEntry.Item("Open deck", "pencil") { open() })
         add(MenuEntry.Item("Duplicate locally", "doc.on.doc") { duplicate() })
+        add(MenuEntry.Divider)
         json?.let { add(MenuEntry.Item("Export native JSON", "square.and.arrow.up") { shareText(context, it) }) }
         if (text != null) add(MenuEntry.Item("Export plain text", "doc.plaintext") { shareText(context, text) })
         else add(MenuEntry.Label("Plain text unavailable · use JSON to preserve this draft"))
-        if (!included && !record.isCloudBacked) add(MenuEntry.Item("Delete local deck", "trash", destructive = true) { delete() })
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DeckTile(record: DeckLibraryRecord, included: Boolean, selected: Boolean, status: DeckStudioPlayStatus?, grid: Boolean, metadata: NativeDeckMetadataCatalogue?,
-                     tags: List<String>, bracket: io.magicmobile.android.game.CommanderBracket?, showTags: Boolean, favorite: Boolean, open: () -> Unit, toggleFavorite: () -> Unit, actions: () -> List<MenuEntry>) {
-    val draft = remember(record) { NativeDeckDraft.of(record.deckList) }
-    val colors = DeckStudioDraftPresentation.colors(draft, metadata)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    var contextMenu by remember { mutableStateOf(false) }
-    // Each deck is a little book on the page: a plate in a brass edge with book-corner protectors.
-    Column(Modifier.fillMaxWidth().binderPlate(BinderCornerStyle.BOOK)) {
-        // Long-press opens the same deck actions as the ⋯ button, like the iOS tile's context menu.
-        Column(Modifier.fillMaxWidth().scale(if (pressed) 0.985f else 1f).alpha(if (pressed) 0.86f else 1f)
-            .combinedClickable(interaction, null, onLongClickLabel = "Deck actions", onLongClick = { contextMenu = true }) { open() }
-            .semantics { contentDescription = "deckStudio.deck.${if (included) record.id else "local:${record.id}"}" },
-            verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.fillMaxWidth().height(if (grid) 164.dp else 130.dp).clip(RoundedCornerShape(0.dp))) {
-                DeckStudioArtwork(record.commander?.cardName ?: "", Modifier.fillMaxSize(), hero = true, colors = colors,
-                    art = io.magicmobile.android.CardArtSelection.Exact(record.commander?.printing))
-                if (selected) DeckStudioPlayingBadge(Modifier.padding(10.dp))
-                // The deck's Commander bracket (game/Ranked.kt).
-                bracket?.let { Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) { io.magicmobile.android.ranked.BracketTag(it, short = true) } }
-                // Only a deck that needs fixes says so on its tile (Caleb, 2026-10-03).
-                status?.takeIf { it == io.magicmobile.android.studio.DeckStudioPlayStatus.NEEDS_FIXES }?.let { DeckStudioPlayStatusChip(it, Modifier.align(Alignment.BottomStart).padding(10.dp)) }
-                DeckTileContextMenu(contextMenu, { contextMenu = false }, actions)
-            }
-            DeckStudioTileDetails(record.name, DeckStudioDraftPresentation.commanders(draft).joinToString(" • "), colors, tags, showTags,
-                "${CardCountText.label(DeckStudioDraftPresentation.gameCount(draft))} · ${if (included) "Included" else "Local draft"}",
-                Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp))
+        if (!included && !record.isCloudBacked) {
+            add(MenuEntry.Divider)
+            add(MenuEntry.Item("Delete local deck", "trash", destructive = true) { delete() })
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (included) "Make it your own" else DateFormat.getDateInstance(DateFormat.LONG).format(Date(record.updatedAt)),
-                Modifier.weight(1f), color = DeckStudioPalette.secondaryInk, style = sf(11f), minLines = 2, maxLines = 2)
-            // Brass coins: the favourite star (lit with ember once chosen) and the deck's options.
-            BinderCoin(if (favorite) "star.fill" else "star", if (favorite) "Unfavorite ${record.name}" else "Favorite ${record.name}", lit = favorite,
-                onClick = toggleFavorite)
-            StudioMenu(actions) { BinderCoin("ellipsis", "Options for ${record.name}") }
-        }
-    }
-}
-
-/** The tile's long-press menu: the ⋯ menu's entries in the binder's own drop-down. */
-@Composable
-private fun DeckTileContextMenu(expanded: Boolean, dismiss: () -> Unit, entries: () -> List<MenuEntry>) {
-    io.magicmobile.android.board.BinderDropdown(expanded, dismiss) {
-        io.magicmobile.android.board.BinderMenuEntries(if (expanded) entries() else emptyList(), dismiss)
     }
 }
 
@@ -512,16 +602,3 @@ fun DeckStudioTileDetails(name: String, commanders: String, colors: List<String>
 /** A fixed-height pad under content that scrolls behind a bottom inset. */
 @Composable
 fun BottomSpacer(height: Dp = 24.dp) = Spacer(Modifier.navigationBarsPadding().height(height))
-
-/** Deck Studio is light (`.preferredColorScheme(.light)`): dark status and navigation bar icons while it shows. */
-@Composable
-fun LightSystemBars() {
-    val view = androidx.compose.ui.platform.LocalView.current
-    androidx.compose.runtime.DisposableEffect(view) {
-        val window = (view.context as? android.app.Activity)?.window
-        val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
-        val status = controller?.isAppearanceLightStatusBars; val navigation = controller?.isAppearanceLightNavigationBars
-        controller?.isAppearanceLightStatusBars = true; controller?.isAppearanceLightNavigationBars = true
-        onDispose { status?.let { controller.isAppearanceLightStatusBars = it }; navigation?.let { controller.isAppearanceLightNavigationBars = it } }
-    }
-}

@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -79,22 +80,23 @@ import io.magicmobile.android.ui.SfImage
 import io.magicmobile.android.ui.SfWeight
 import io.magicmobile.android.ui.rgb
 
-/** DeckStudioDesignTokens.swift: a quiet ivory workspace lets real card artwork supply the colour. */
-/** Walnut & Ember's workbench: aged parchment pages in dark brown ink, so real card artwork still supplies the colour. */
+/**
+ * DeckStudioDesignTokens.swift: Deck Studio's colours in the Arena menus (Caleb, 2026-10-22): light type on dark glass, gold
+ * for accents (it was parchment in dark brown ink). The names stay: `ink` is the main type, `background` and the surfaces glass.
+ */
 object DeckStudioPalette {
-    val background = rgb(0.87, 0.79, 0.64)
-    val surface = rgb(0.95, 0.90, 0.79)
-    val surfaceElevated = rgb(0.98, 0.95, 0.87)
-    val ink = rgb(0.20, 0.11, 0.05)
-    val secondaryInk = rgb(0.40, 0.29, 0.18)
-    // The menu's ember hue, darkened for readable text on parchment.
-    val accent = rgb(0.60, 0.23, 0.10)
-    val success = rgb(0.17, 0.36, 0.20)
-    val warning = rgb(0.50, 0.28, 0.06)
-    val danger = rgb(0.62, 0.13, 0.10)
-    val separator = rgb(0.74, 0.60, 0.38)
-    /** The iOS system blue, for plain toolbar and link buttons in the light appearance. */
-    val link = ink
+    val background = rgb(0.07, 0.075, 0.09)
+    val surface = rgb(0.12, 0.125, 0.15)
+    val surfaceElevated = rgb(0.17, 0.17, 0.20)
+    val ink = rgb(0.95, 0.92, 0.86)
+    val secondaryInk = rgb(0.95, 0.92, 0.86).copy(alpha = 0.66f)
+    val accent = rgb(0.98, 0.84, 0.52)
+    val success = rgb(0.60, 0.86, 0.58)
+    val warning = rgb(1.0, 0.74, 0.40)
+    val danger = rgb(1.0, 0.52, 0.46)
+    val separator = rgb(0.62, 0.47, 0.24)
+    /** Plain toolbar and link buttons. */
+    val link = accent
 }
 
 object DeckStudioMetrics {
@@ -107,11 +109,11 @@ object DeckStudioMetrics {
 }
 
 /**
- * Inside the book all type is serif unless a style asks otherwise (SwiftUI `.fontDesign(.serif)` on the page).
- * Deck Studio's files use this `sf`, not the app-wide one.
+ * Deck Studio's type follows Arena's mix (ArenaMenuStyle.font): from 17 pt up the serif title face, below it the sans,
+ * unless a style asks for a design. Deck Studio's files use this `sf`, not the app-wide one.
  */
-fun sf(size: Float, weight: androidx.compose.ui.text.font.FontWeight = SfWeight.regular, design: SfDesign = SfDesign.SERIF, tracking: Float = 0f): TextStyle =
-    io.magicmobile.android.ui.sf(size, weight, design, tracking)
+fun sf(size: Float, weight: androidx.compose.ui.text.font.FontWeight = SfWeight.regular, design: SfDesign? = null, tracking: Float = 0f): TextStyle =
+    io.magicmobile.android.ui.sf(size, weight, design ?: if (io.magicmobile.android.game.ArenaMenuType.isTitle(size)) SfDesign.SERIF else SfDesign.DEFAULT, tracking)
 
 /** SwiftUI text styles at the default Dynamic Type size (Large). */
 object StudioText {
@@ -130,15 +132,15 @@ object StudioText {
 
 fun TextStyle.weight(weight: androidx.compose.ui.text.font.FontWeight): TextStyle = copy(fontWeight = weight)
 
-/** DeckStudioButtonStyle in Walnut & Ember: riveted plaques, ember glass for the main action and leather for the rest. */
+/** DeckStudioButtonStyle in the Arena menus: Arena's orange pill for the main action, its dark glass pill for the rest. */
 @Composable
 fun StudioButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true, enabled: Boolean = true,
                  icon: String? = null, fillWidth: Boolean = false, compactText: Boolean = false) {
-    io.magicmobile.android.ui.TavernButton({ GameAudio.play(GameSound.UI_TICK); onClick() }, modifier.semantics { contentDescription = title },
-        if (primary) io.magicmobile.android.ui.TavernButtonKind.PRIMARY else io.magicmobile.android.ui.TavernButtonKind.SECONDARY,
-        fontSize = if (compactText) 14f else 15f, fullWidth = fillWidth, enabled = enabled) {
-        icon?.let { SfImage(it, androidx.compose.material3.LocalContentColor.current, 17.dp) }
-        io.magicmobile.android.ui.TavernButtonText(title)
+    io.magicmobile.android.menus.ArenaButton(onClick, modifier,
+        if (primary) io.magicmobile.android.menus.ArenaButtonKind.PRIMARY else io.magicmobile.android.menus.ArenaButtonKind.SECONDARY,
+        fontSize = if (compactText) 14f else 15f, fullWidth = fillWidth, enabled = enabled, label = title) {
+        icon?.let { SfImage(it, androidx.compose.material3.LocalContentColor.current, 15.dp) }
+        io.magicmobile.android.menus.ArenaButtonText(title)
     }
 }
 
@@ -165,11 +167,10 @@ fun StudioIconButton(icon: String, label: String, onClick: () -> Unit, modifier:
     }
 }
 
-/** DeckStudioPanel: 16-point padding on the surface colour, 22-point corners. */
-/** A plate of the book's own paper, a shade lighter than the page, edged with a hairline of ink. */
+/** DeckStudioPanel: 16-point padding on a lighter pane of glass in the gold hairline, 22-point corners. */
 fun Modifier.studioPanel(): Modifier = fillMaxWidth()
     .grimoirePaper(DeckStudioPalette.surface, 0.2f, RoundedCornerShape(DeckStudioMetrics.panelRadius))
-    .border(0.8.dp, DeckStudioPalette.ink.copy(alpha = 0.14f), RoundedCornerShape(DeckStudioMetrics.panelRadius))
+    .border(0.8.dp, binderHairline(0.7f), RoundedCornerShape(DeckStudioMetrics.panelRadius))
     .padding(DeckStudioMetrics.panelPadding)
 
 @Composable
@@ -290,8 +291,8 @@ fun StudioDisclosure(title: String, modifier: Modifier = Modifier, initiallyExpa
                 icon?.let { SfImage(it, color, (titleStyle.fontSize.value + 1f).dp) }
                 Text(title, Modifier.weight(1f), color = color, style = titleStyle)
             }
-            Box(Modifier.size(22.dp).background(Binder.brass, CircleShape).border(0.8.dp, Binder.brassDeep, CircleShape), contentAlignment = Alignment.Center) {
-                SfImage("chevron.down", Binder.engraved, 10.dp, Modifier.rotate(rotation))
+            Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                SfImage("chevron.down", io.magicmobile.android.menus.ArenaMenuStyle.gold, 11.dp, Modifier.rotate(rotation))
             }
         }
         if (expanded) Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
@@ -322,7 +323,7 @@ fun DeckStudioArtworkInvitation(modifier: Modifier = Modifier) {
 @Composable
 fun NativeArtworkPreferenceRows() {
     val (remote, setRemote) = rememberArtworkConsent()
-    Column(Modifier.fillMaxWidth().background(DeckStudioPalette.surfaceElevated, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
+    Column(Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         io.magicmobile.android.ui.TavernToggle("Scryfall live images", remote, setRemote,
             Modifier.semantics { contentDescription = "nativeArtwork.downloads" }, color = DeckStudioPalette.ink)
@@ -338,7 +339,7 @@ fun StudioToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Unit, modi
     io.magicmobile.android.ui.TavernToggle(title, isOn, onChange, modifier, enabled = enabled, color = DeckStudioPalette.ink)
 }
 
-/** A count with brass minus and plus coins (BinderStepper on iOS). */
+/** A count with glass minus and plus circles (BinderStepper on iOS). */
 @Composable
 fun StudioStepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
                   style: TextStyle = StudioText.body) {
@@ -348,8 +349,10 @@ fun StudioStepper(label: String, value: Int, range: IntRange, onChange: (Int) ->
         for ((symbol, active, step, name) in listOf(Quad("minus", canDecrease, -1, "Decrement $label"), Quad("plus", canIncrease, 1, "Increment $label"))) {
             Box(Modifier.size(47.dp, 44.dp).clickable(enabled = active, role = Role.Button) { onChange(value + step) }
                 .semantics { contentDescription = name }, contentAlignment = Alignment.Center) {
-                Box(Modifier.size(30.dp).alpha(if (active) 1f else 0.45f).shadow(1.5.dp, CircleShape).background(Binder.brass, CircleShape)
-                    .border(0.8.dp, Binder.brassDeep, CircleShape), contentAlignment = Alignment.Center) { SfImage(symbol, Binder.engraved, 12.dp) }
+                Box(Modifier.size(30.dp).alpha(if (active) 1f else 0.4f).background(Color.White.copy(alpha = 0.07f), CircleShape)
+                    .border(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline, CircleShape), contentAlignment = Alignment.Center) {
+                    SfImage(symbol, io.magicmobile.android.menus.ArenaMenuStyle.text, 11.dp)
+                }
             }
         }
     }
@@ -357,35 +360,37 @@ fun StudioStepper(label: String, value: Int, range: IntRange, onChange: (Int) ->
 
 private data class Quad(val symbol: String, val active: Boolean, val step: Int, val name: String)
 
-/** A choice as the binder's switch (GrimoireChoice on iOS): a dark inset in a brass edge, the chosen option ember glass. */
+/** A choice as Arena's segmented control (GrimoireChoice on iOS): a dark inset in the gold hairline, the chosen option filled gold. */
 @Composable
 fun <T> StudioSegmented(options: List<T>, selected: T, onSelect: (T) -> Unit, title: (T) -> String, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val outer = RoundedCornerShape(9.dp); val inner = RoundedCornerShape(7.dp)
-    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).background(rgb(0.12, 0.06, 0.035).copy(alpha = 0.88f), outer)
-        .border(1.5.dp, Binder.brass, outer).padding(3.dp)) {
+    Row(modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).background(Color.Black.copy(alpha = 0.5f), outer)
+        .border(0.9.dp, binderHairline(0.7f), outer).padding(3.dp)) {
         for (option in options) {
             val isSelected = option == selected
             Box(Modifier.weight(1f).height(36.dp)
-                .then(if (isSelected) Modifier.tavernFill(io.magicmobile.android.ui.TavernMaterial.EMBER, inner).border(1.dp, Binder.brassLight.copy(alpha = 0.6f), inner) else Modifier)
+                .then(if (isSelected) Modifier.background(io.magicmobile.android.menus.ArenaMenuStyle.goldFill, inner) else Modifier)
                 .clickable(enabled = enabled, role = Role.Button) { onSelect(option) }
                 .semantics { this.selected = isSelected }.padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center) {
-                Text(title(option), color = if (isSelected) Binder.emberText else io.magicmobile.android.ui.TavernPalette.parchment.copy(alpha = 0.72f),
-                    style = sf(14f, SfWeight.bold).copy(shadow = Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1.5f), 1f)), maxLines = 1)
+                Text(title(option), color = if (isSelected) io.magicmobile.android.menus.ArenaMenuStyle.inkOnGold else io.magicmobile.android.menus.ArenaMenuStyle.dim,
+                    style = sf(14f, SfWeight.bold), maxLines = 1)
             }
         }
     }
 }
 
-/** A run-in heading on a page (a section of the deck's cards): small capitals, an inked rule, a count (GrimoireSubheading on iOS). */
+/** A run-in heading on a page (a section of the deck's cards): gold small capitals, a count, over a faint gold hairline (GrimoireSubheading on iOS). */
 @Composable
 fun GrimoireSubheading(title: String, count: Int? = null, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title.uppercase(), color = DeckStudioPalette.ink, style = sf(12f, SfWeight.semibold, SfDesign.SERIF, tracking = 1.6f), maxLines = 1)
-        Box(Modifier.weight(1f).height(1.dp).background(DeckStudioPalette.ink.copy(alpha = 0.28f)))
+    Row(modifier.fillMaxWidth().drawBehind {
+        drawRect(binderHairline(0.45f), Offset(0f, size.height - 1.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx()))
+    }.padding(bottom = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title.uppercase(), Modifier.weight(1f), color = io.magicmobile.android.menus.ArenaMenuStyle.gold,
+            style = sf(11f, SfWeight.heavy, tracking = 1.8f), maxLines = 1)
         count?.let {
-            Text("$it", Modifier.semantics { contentDescription = CardCountText.label(it) }, color = DeckStudioPalette.secondaryInk,
-                style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
+            Text("$it", Modifier.semantics { contentDescription = CardCountText.label(it) }, color = io.magicmobile.android.menus.ArenaMenuStyle.dim,
+                style = sf(12f, SfWeight.bold).copy(fontFeatureSettings = "tnum"))
         }
     }
 }
@@ -425,12 +430,12 @@ fun StudioTextInput(value: String, onChange: (String) -> Unit, placeholder: Stri
                     capitalization: KeyboardCapitalization = KeyboardCapitalization.None, enabled: Boolean = true, onSubmit: (() -> Unit)? = null) {
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     BasicTextField(value, onChange, modifier, enabled = enabled, singleLine = singleLine, textStyle = style.copy(color = DeckStudioPalette.ink),
-        cursorBrush = SolidColor(DeckStudioPalette.ink),
+        cursorBrush = SolidColor(DeckStudioPalette.accent),
         keyboardOptions = KeyboardOptions(capitalization = capitalization, autoCorrectEnabled = false, keyboardType = keyboardType, imeAction = imeAction),
         keyboardActions = KeyboardActions(onAny = { onSubmit?.invoke(); focus.clearFocus() }),
         decorationBox = { inner ->
             Box {
-                if (value.isEmpty()) Text(placeholder, color = rgb(0.24, 0.24, 0.26).copy(alpha = 0.3f), style = style, maxLines = if (singleLine) 1 else Int.MAX_VALUE)
+                if (value.isEmpty()) Text(placeholder, color = DeckStudioPalette.secondaryInk.copy(alpha = 0.5f), style = style, maxLines = if (singleLine) 1 else Int.MAX_VALUE)
                 inner()
             }
         })

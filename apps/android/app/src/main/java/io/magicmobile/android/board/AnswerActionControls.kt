@@ -152,7 +152,8 @@ fun PhaseStopsGrid() {
     var raw by AppPreferences.string(OnDeviceSmartPass.STOPS_KEY, OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops))
     val stops = OnDeviceSmartPass.Settings.decode(raw)
     Column(Modifier.fillMaxWidth()) {
-        Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
+        // In the Arena look the grid speaks for itself (AGENTS.md: no helper text); off, it says why nothing stops.
+        if (!io.magicmobile.android.menus.LocalArenaBoard.current || !enabled) Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
              else "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops.",
             Modifier.padding(bottom = 12.dp), color = TavernPalette.parchment.copy(alpha = 0.75f), style = sf(13f, design = SfDesign.SERIF))
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

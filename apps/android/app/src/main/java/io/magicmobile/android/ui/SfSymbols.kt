@@ -239,6 +239,9 @@ object SfSymbols {
         "speaker.wave.2.fill" -> Icons.Filled.VolumeUp
         "stop.fill" -> Icons.Filled.Stop
         "trophy.fill" -> Icons.Filled.EmojiEvents
+        // The profile's progression emblems (ProfileView.swift).
+        "gamecontroller.fill" -> Icons.Filled.SportsEsports
+        "chart.pie.fill" -> Icons.Filled.PieChart
         "forward.fill" -> Icons.Filled.FastForward
         "checkmark.square.fill" -> Icons.Filled.CheckBox
         "square" -> Icons.Outlined.CheckBoxOutlineBlank
@@ -261,6 +264,17 @@ object SfSymbols {
         "ticket.fill" -> Icons.Filled.ConfirmationNumber
         "seal.fill" -> Icons.Filled.Verified
         "figure.fencing" -> Icons.Filled.SportsKabaddi
+        // The Arena menus (menus/): the top bar's tabs and utilities, the Play panel and the home page's rail.
+        "house.fill" -> Icons.Filled.Home
+        "person.fill" -> Icons.Filled.Person
+        "envelope.fill" -> Icons.Filled.Email
+        "newspaper.fill" -> Icons.Filled.Newspaper
+        "arrow.down.circle.fill" -> Icons.Filled.ArrowCircleDown
+        "clock.arrow.circlepath" -> Icons.Filled.History
+        "dice.fill" -> Icons.Filled.Casino
+        "hand.point.up.left.fill" -> Icons.Filled.TouchApp
+        "laurel.leading" -> Laurel
+        "diamond.fill" -> Diamond
         else -> Icons.Filled.Circle
     }
 
@@ -289,6 +303,29 @@ object SfSymbols {
             moveTo(9f, 18.5f); lineTo(10.2f, 18.5f); lineTo(10.2f, 20.5f); lineTo(9f, 20.5f); close()
             moveTo(11.4f, 18.5f); lineTo(12.6f, 18.5f); lineTo(12.6f, 20.5f); lineTo(11.4f, 20.5f); close()
             moveTo(13.8f, 18.5f); lineTo(15f, 18.5f); lineTo(15f, 20.5f); lineTo(13.8f, 20.5f); close()
+        }.build()
+    }
+
+    /** SF "laurel.leading": a sprig of five leaves curving up from the stem. */
+    val Laurel: ImageVector by lazy {
+        ImageVector.Builder("laurel", 24.dp, 24.dp, 24f, 24f).path(fill = SolidColor(Color.White)) {
+            // The stem, a thin crescent.
+            moveTo(15.5f, 22f); curveTo(9f, 19.5f, 6.5f, 13f, 9.5f, 3f); curveTo(7.4f, 12.5f, 10f, 18.6f, 16f, 21f); close()
+            // Leaves on the outer side of the stem, bottom to top.
+            moveTo(12.2f, 18.6f); curveTo(10.2f, 19.6f, 7.4f, 19.2f, 5.6f, 17.4f); curveTo(8f, 16.6f, 10.6f, 17f, 12.2f, 18.6f); close()
+            moveTo(9.8f, 15.2f); curveTo(7.8f, 15.8f, 5.2f, 14.8f, 4f, 12.6f); curveTo(6.4f, 12.2f, 8.8f, 13.2f, 9.8f, 15.2f); close()
+            moveTo(8.8f, 11.4f); curveTo(6.8f, 11.4f, 4.8f, 9.8f, 4.2f, 7.4f); curveTo(6.4f, 7.6f, 8.4f, 9.2f, 8.8f, 11.4f); close()
+            moveTo(9f, 7.6f); curveTo(7.4f, 7f, 6.2f, 5.2f, 6.4f, 3.2f); curveTo(8.2f, 4f, 9.2f, 5.6f, 9f, 7.6f); close()
+            // Leaves on the inner side.
+            moveTo(12.6f, 17.4f); curveTo(13f, 15.4f, 14.8f, 13.8f, 16.8f, 13.6f); curveTo(16.4f, 15.6f, 14.6f, 17.2f, 12.6f, 17.4f); close()
+            moveTo(10.6f, 13.4f); curveTo(10.8f, 11.4f, 12.4f, 9.6f, 14.4f, 9.2f); curveTo(14.2f, 11.2f, 12.6f, 13f, 10.6f, 13.4f); close()
+        }.build()
+    }
+
+    /** SF "diamond.fill": a square stood on its corner. */
+    val Diamond: ImageVector by lazy {
+        ImageVector.Builder("diamond", 24.dp, 24.dp, 24f, 24f).path(fill = SolidColor(Color.White)) {
+            moveTo(12f, 2.5f); lineTo(21.5f, 12f); lineTo(12f, 21.5f); lineTo(2.5f, 12f); close()
         }.build()
     }
 
