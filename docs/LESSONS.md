@@ -756,3 +756,10 @@ contradicting one.
   Chrome also refuses screenshots and pointer clicks from Claude in Chrome, while page JavaScript still runs. Check
   `document.visibilityState` before reading a pause as a bug. (3) `apps/web/scripts/guest-join.mjs --code X` joins any
   table as a headless web guest on autopilot, with the profile server blocked so no player is made.
+- 2026-10-23 (Claude, deck sync): the July 2026 `decks`/`deck_entries` tables were never used and couldn't hold the
+  phones' decks (no companion section, 1,000-copy and 100-character limits, no art choice, no tombstones), so sync keeps
+  each deck as one document in the decks.json shape (docs/DECK_SYNC.md). Ids: phones make upper-case UUIDs, Postgres
+  answers lower case: compare ids without case and never rewrite a local id (selection ids, favourites and colours hang
+  off it). Testing SQL functions as a player without leaving data: `begin; set local role authenticated; set local
+  request.jwt.claims = '{"sub":"<uuid>","role":"authenticated"}'; …` with no commit (grant the temp table to
+  `authenticated` first).
