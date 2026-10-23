@@ -378,7 +378,9 @@ fun OnDeviceDiagnosticsEntry(setup: OnDeviceSetupModel) {
     var confirmDelete by remember { mutableStateOf(false) }
     val failure = setup.errorMessage ?: setup.session.errorMessage
     LaunchedEffect(failure) { if (failure != null) store.capture(setup.status) { setup.diagnosticReport() } }
-    if (store.report != null) {
+    if (store.report != null && io.magicmobile.android.menus.LocalArenaBoard.current) {
+        io.magicmobile.android.menus.ArenaPillButton("Engine error report", { store.beginAttempt(); open = true }, identifier = "ondevice.diagnostics")
+    } else if (store.report != null) {
         IosTextButton("Engine error report", { store.beginAttempt(); open = true },
             Modifier.semantics { contentDescription = "Engine error report" }, color = BrandTheme.ember)
     }

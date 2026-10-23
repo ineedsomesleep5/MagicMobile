@@ -39,13 +39,18 @@ object OnDeviceSmartPass {
     const val STOPS_KEY = "magicmobile.phaseStops"
     /** Off by default: smart pass lets your own spells and triggers resolve (Arena's default; engine release A). */
     const val STOP_FOR_OWN_SPELLS_KEY = "magicmobile.stopForOwnSpells"
+    /** On by default (Caleb, 2026-10-21: a board wipe that took his commander went by unread): stop when an opponent's spell
+     *  or ability would destroy, exile, bounce or take what you control, even with nothing to answer it (Stop for Removal). */
+    const val STOP_FOR_THREATS_KEY = "magicmobile.stopForThreats"
     /** Your main phases, and your opponents' attacks and end step: where instants usually matter. */
     val defaultStops: Set<String> = setOf(stopKey(Step.MAIN1, true), stopKey(Step.MAIN2, true),
         stopKey(Step.DECLARE_ATTACKERS, false), stopKey(Step.END, false))
 
     data class Settings(val enabled: Boolean = true, val stops: Set<String> = defaultStops,
                         /** Stop for your own spells and triggers on the stack when you could respond to them. */
-                        val stopForOwnSpells: Boolean = false) {
+                        val stopForOwnSpells: Boolean = false,
+                        /** Stop for an opponent's spell or ability that threatens your permanents, response or not. */
+                        val stopForThreats: Boolean = true) {
         companion object {
             fun encode(stops: Set<String>): String = stops.sorted().joinToString(",")
             fun decode(raw: String?): Set<String> =
@@ -64,7 +69,9 @@ object OnDeviceSmartPass {
                          val topStackIsMine: Boolean? = null,
                          /** Some non-mana play could answer the stack or a pending attack (engine `respondsToStack`; a row
                           *  without the field counts as a response, so older engines keep today's stops). */
-                         val hasResponse: Boolean = true)
+                         val hasResponse: Boolean = true,
+                         /** The top of the stack is an opponent's and threatens what you control ([threatensViewer]). */
+                         val threatensMe: Boolean = false)
 
     /** The prompt to pass, or null when the player should decide. */
     fun passPrompt(value: Situation, settings: Settings): OnDeviceYieldPolicy.Prompt? {
@@ -75,6 +82,8 @@ object OnDeviceSmartPass {
             context.turn <= 0 || !context.selfAuthority || context.resyncRequired || active.isNullOrEmpty() ||
             prompt == null || prompt.submitted || !OnDeviceYieldPolicy.ordinaryPriority(prompt, context.viewerID) ||
             value.manaFloating) return null
+        // An opponent's removal or sweeper waits for you to read it and let it resolve, answer or not.
+        if (!context.emptyStack && value.threatensMe && settings.stopForThreats && value.topStackIsMine != true) return null
         if (!value.hasPlay) return prompt
         // Something on the stack: your own spell or trigger resolves (unless you asked to stop for those);
         // otherwise stop only when you hold a play that actually answers it.
@@ -86,6 +95,30 @@ object OnDeviceSmartPass {
         // During an attack, a stop is worth making only with a play that answers it (a trick, a flash blocker).
         if (step in setOf(Step.DECLARE_ATTACKERS, Step.DECLARE_BLOCKERS, Step.COMBAT_DAMAGE) && !value.hasResponse) return prompt
         return if (stopKey(step, active == context.viewerID) in settings.stops) null else prompt
+    }
+
+    private val sweeps = listOf("destroy all", "exile all", "destroy each", "exile each", "return all", "all creatures",
+        "each creature", "all nonland permanents", "each nonland permanent", "all other creatures", "sacrifices",
+        "gain control of all", "gains control of all")
+
+    /**
+     * Whether the top of the stack is an opponent's spell or ability that would destroy, exile, bounce, damage or take what
+     * you control: it targets one of your permanents (or you, when it is a spell), or it is an untargeted sweeper, edict or
+     * steal by its rules text. A hint for when to stop and let you read, never a rules decision.
+     */
+    fun threatensViewer(snapshot: GameSnapshot): Boolean {
+        val top = snapshot.stackTopFirst.firstOrNull() ?: return false
+        val controller = top.controllerId ?: return false
+        if (snapshot.isViewer(controller)) return false
+        val viewer = snapshot.players.firstOrNull { snapshot.isViewer(it.playerId) } ?: return false
+        val mine = viewer.zones.battlefield.flatMap { listOf(it.instanceId, it.id) }.toSet()
+        val targets = (top.targetIds ?: emptyList()).toSet()
+        if (targets.any { it in mine }) return true
+        val isSpell = (top.objectType ?: "").uppercase() == "SPELL"
+        if (isSpell && (viewer.playerId in targets || snapshot.viewerID in targets)) return true
+        if (targets.isNotEmpty() || mine.isEmpty()) return false
+        val text = (top.rulesText ?: "").lowercase()
+        return sweeps.any { text.contains(it) }
     }
 
     /** Whether some non-mana play could answer what is pending (engine `respondsToStack`, missing means yes). */

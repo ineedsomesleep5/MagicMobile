@@ -776,6 +776,8 @@ class BoardPresentationHold {
     /** The last snapshot the board took in, and until when (epoch ms) its held effects play. */
     @Volatile var ingested: BoardFXRevisionKey? = null; private set
     @Volatile var until: Long? = null; private set
+    /** The player is reading a card (the inspector is open): smart pass waits until it closes (Arena board). */
+    @Volatile var reading: Boolean = false
 
     fun record(key: BoardFXRevisionKey?, until: Long?) {
         ingested = key
@@ -791,5 +793,7 @@ class BoardPresentationHold {
          * tenth of a second, and passing before the board has seen the snapshot skips its hold.
          */
         const val INGEST_WAIT_MS = 1_000L
+        /** Holding a card open to read it holds the pass, at most a minute. */
+        const val READING_WAIT_MS = 60_000L
     }
 }

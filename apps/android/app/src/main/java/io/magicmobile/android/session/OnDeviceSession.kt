@@ -409,7 +409,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         val view = poll?.snapshot?.get("gameView") ?: return null
         val owner = view["players"].array?.firstOrNull { it["playerId"].string == context.viewerID } ?: return null
         return OnDeviceSmartPass.Situation(context, view["step"].string, OnDeviceSmartPass.hasPlay(view), OnDeviceSmartPass.manaFloating(owner),
-            OnDeviceSmartPass.topStackIsMine(poll?.snapshot, context.viewerID), OnDeviceSmartPass.hasResponse(view))
+            OnDeviceSmartPass.topStackIsMine(poll?.snapshot, context.viewerID), OnDeviceSmartPass.hasResponse(view),
+            !context.emptyStack && (snapshot?.let(OnDeviceSmartPass::threatensViewer) ?: false))
     }
 
     private fun smartPassPrompt(): OnDeviceYieldPolicy.Prompt? {
@@ -473,10 +474,12 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         fun elapsed() = System.currentTimeMillis() - start
         while (presentationHold.ingested != key && elapsed() < BoardPresentationHold.INGEST_WAIT_MS) delay(20)
         while (elapsed() < BoardPresentationHold.MAXIMUM_WAIT_MS) {
-            val left = (presentationHold.until ?: return) - System.currentTimeMillis()
-            if (left <= 0) return
+            val left = (presentationHold.until ?: break) - System.currentTimeMillis()
+            if (left <= 0) break
             delay(minOf(left, 100L))
         }
+        // Holding a card to read it holds the pass too, as tapping the reference game's spell does (the Arena board).
+        while (presentationHold.reading && elapsed() < BoardPresentationHold.READING_WAIT_MS) delay(100)
     }
 
     val canEndTurn: Boolean get() = canStartYield(OnDeviceYieldPolicy.Mode.SAFE_END_TURN)
@@ -570,8 +573,10 @@ class OnDeviceSession(private val scope: CoroutineScope) {
         }
         // `controlled` is only a viewer marker upstream. A routed self-priority prompt and active timer are required.
         val selfAuthority = controls.isEmpty() && (!priority || timer) && (prompt == null || priority)
+        // A skip that passes responses still stops for an opponent's removal or sweeper, if you asked to (Stop for Removal).
+        val threat = stack.isNotEmpty() && (smartPass?.stopForThreats ?: true) && (snapshot?.let(OnDeviceSmartPass::threatensViewer) ?: false)
         return OnDeviceYieldPolicy.Context(poll.matchID, poll.seatID, viewer, active, turn, poll.phase, allowsSeatScopedAutoYield,
-            isForeground && !isClosing, stack.isEmpty(), selfAuthority, poll.resyncRequired, prompt)
+            isForeground && !isClosing, stack.isEmpty(), selfAuthority, poll.resyncRequired, prompt, threat)
     }
 
     suspend fun send(action: LegalAction) {

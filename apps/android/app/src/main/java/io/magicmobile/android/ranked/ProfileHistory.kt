@@ -26,6 +26,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.studio.DeckStudioRecordedGame
+import io.magicmobile.android.menus.ArenaButton
+import io.magicmobile.android.menus.ArenaButtonKind
+import io.magicmobile.android.menus.ArenaButtonText
+import io.magicmobile.android.menus.ArenaMenuStyle
 import io.magicmobile.android.studio.DeckStudioServices
 import io.magicmobile.android.ui.SfDesign
 import io.magicmobile.android.ui.SfImage
@@ -94,12 +98,12 @@ fun ProfileHistorySettings(details: ProfileGameDetails) {
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SfImage("shield.fill", TavernPalette.brass, 16.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("History settings & privacy", color = parchment, style = sf(15f, SfWeight.heavy, SfDesign.SERIF))
-                Text(status, Modifier.alpha(0.7f), color = parchment, style = sf(12f, SfWeight.semibold, SfDesign.SERIF))
+                Text("History settings & privacy", color = parchment, style = ArenaMenuStyle.font(15f, SfWeight.heavy))
+                Text(status, Modifier.alpha(0.7f), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold))
             }
             SfImage("chevron.down", TavernPalette.brass, 13.dp, Modifier.rotate(if (open) 180f else 0f))
         }
-        details.notice?.let { Text(it, color = ProfilePalette.win, style = sf(12f, SfWeight.semibold, SfDesign.SERIF)) }
+        details.notice?.let { Text(it, color = ProfilePalette.win, style = ArenaMenuStyle.font(12f, SfWeight.semibold)) }
         if (open) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             TavernToggle("Save AI game summaries", enabled, { value ->
                 enabled = value; if (!value) detailed = false; store.setEnabled(value)
@@ -107,14 +111,14 @@ fun ProfileHistorySettings(details: ProfileGameDetails) {
             TavernToggle("Save detailed public game history", detailed, { value -> detailed = value; store.setDetailedEnabled(value) },
                 Modifier.testTag("deckHistory.detail"), enabled = enabled, color = parchment)
             Text("Both choices are local and apply to future AI matches. Detail saves sampled public life totals, battlefield counts, visible cards and recognized public notices. It never saves hands, opponent decks or raw game messages. Turning detail off keeps saved history until you delete it.",
-                Modifier.alpha(0.75f), color = parchment, style = sf(12f, SfWeight.regular, SfDesign.SERIF))
+                Modifier.alpha(0.75f), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.regular))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TavernPlaqueButton("Refresh history", { scope.launch { details.refresh() } }, Modifier.testTag("deckHistory.refresh"), kind = TavernButtonKind.SECONDARY)
-                TavernPlaqueButton("Clear all history", { confirmClear = true }, Modifier.testTag("deckHistory.clear"), kind = TavernButtonKind.DANGER)
+                ArenaButton({ scope.launch { details.refresh() } }, kind = ArenaButtonKind.SECONDARY, compact = true, identifier = "deckHistory.refresh") { ArenaButtonText("Refresh history") }
+                ArenaButton({ confirmClear = true }, kind = ArenaButtonKind.DANGER, compact = true, identifier = "deckHistory.clear") { ArenaButtonText("Clear all history") }
             }
-            Text("Up to 100 recent sessions within 8 MB; oldest sessions are removed first.", Modifier.alpha(0.6f), color = parchment, style = sf(11f, SfWeight.regular, SfDesign.SERIF))
+            Text("Up to 100 recent sessions within 8 MB; oldest sessions are removed first.", Modifier.alpha(0.6f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.regular))
         }
     }
-    if (confirmClear) TavernConfirmationDialog("Delete all local game history?", "Decks are not deleted. Games already in progress will not restore the cleared history.",
-        listOf(TavernDialogAction("Delete history", destructive = true) { scope.launch { details.clear() } })) { confirmClear = false }
+    if (confirmClear) ArenaConfirmation("Delete all local game history?", "Decks are not deleted. Games already in progress will not restore the cleared history.",
+        "Delete history", destructive = true, { scope.launch { details.clear() } }) { confirmClear = false }
 }

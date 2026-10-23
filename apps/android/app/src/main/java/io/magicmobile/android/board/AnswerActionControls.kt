@@ -75,6 +75,13 @@ fun RememberChoiceToggle(title: String, isOn: Boolean, onChange: (Boolean) -> Un
     Row(modifier.defaultMinSize(minHeight = 44.dp).clickable { onChange(!isOn) }
         .semantics { contentDescription = "prompt.remember"; stateDescription = if (isOn) "On" else "Off"; role = Role.Checkbox },
         horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (io.magicmobile.android.menus.LocalArenaBoard.current) {
+            // On the Arena board: a gold diamond and light sans words, Arena's checkbox, no brass or parchment.
+            SfImage(if (isOn) "diamond.fill" else "diamond", if (isOn) io.magicmobile.android.menus.ArenaMenuStyle.gold
+                else io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.7f), 12.dp)
+            Text(title, color = io.magicmobile.android.menus.ArenaGlass.text.copy(alpha = 0.9f), style = io.magicmobile.android.menus.ArenaMenuStyle.font(13f, SfWeight.medium), maxLines = 2)
+            return@Row
+        }
         SfImage(if (isOn) "checkmark.square.fill" else "square", if (isOn) TavernPalette.brass else TavernPalette.parchment.copy(alpha = 0.7f), 15.dp)
         Text(title, color = TavernPalette.parchment.copy(alpha = 0.92f), style = sf(13f, SfWeight.semibold, SfDesign.SERIF), maxLines = 2)
     }
@@ -114,6 +121,7 @@ fun AutoPassAfterCastToggle() {
 fun SmartAutoPassToggle() {
     var isOn by AppPreferences.boolean(OnDeviceSmartPass.ENABLED_KEY, true)
     var stopForOwn by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_OWN_SPELLS_KEY, false)
+    var stopForThreats by AppPreferences.boolean(OnDeviceSmartPass.STOP_FOR_THREATS_KEY, true)
     var showStops by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.tavernSettingsPanel().semantics { contentDescription = "settings.smartAutoPass" }, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TavernToggle("Smart Auto-Pass", isOn, { isOn = it },
@@ -121,6 +129,9 @@ fun SmartAutoPassToggle() {
         TavernToggle("Stop for My Own Spells", stopForOwn, { stopForOwn = it },
             Modifier.semantics { contentDescription = "settings.stopForOwnSpells" },
             subtitle = "Off: your own spells and triggers resolve without a stop, as on Arena.", enabled = isOn, color = TavernPalette.parchment)
+        TavernToggle("Stop for Removal", stopForThreats, { stopForThreats = it }, Modifier.semantics { contentDescription = "settings.stopForThreats" },
+            subtitle = "An opponent's spell that destroys, exiles or takes your permanents waits for you, even when you can't answer it.",
+            color = TavernPalette.parchment)
         TavernButton({ showStops = true }, Modifier.fillMaxWidth().semantics { contentDescription = "settings.phaseStops" },
             kind = TavernButtonKind.SECONDARY, compact = true, enabled = isOn) {
             SfImage("hand.raised.fill", TavernPalette.parchment, 13.dp); TavernButtonText("Phase Stops")
@@ -152,7 +163,8 @@ fun PhaseStopsGrid() {
     var raw by AppPreferences.string(OnDeviceSmartPass.STOPS_KEY, OnDeviceSmartPass.Settings.encode(OnDeviceSmartPass.defaultStops))
     val stops = OnDeviceSmartPass.Settings.decode(raw)
     Column(Modifier.fillMaxWidth()) {
-        Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
+        // In the Arena look the grid speaks for itself (AGENTS.md: no helper text); off, it says why nothing stops.
+        if (!io.magicmobile.android.menus.LocalArenaBoard.current || !enabled) Text(if (enabled) "With something to play, the game stops at the steps you mark. With nothing to play it passes for you. It stops when you can answer an opponent's spell or attack, and lets your own spells resolve unless you turn on Stop for My Own Spells in Settings."
              else "Smart Auto-Pass is off, so every step waits for you. Turn it on in Settings to use these stops.",
             Modifier.padding(bottom = 12.dp), color = TavernPalette.parchment.copy(alpha = 0.75f), style = sf(13f, design = SfDesign.SERIF))
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

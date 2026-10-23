@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.magicmobile.android.studio.grimoirePaper
+import io.magicmobile.android.menus.arenaGlassPanel
 import io.magicmobile.android.ui.GameAudio
 import io.magicmobile.android.ui.LocalTavernBoard
 import io.magicmobile.android.ui.TavernConfirmationDialog
@@ -150,10 +151,13 @@ private fun MenuEntries(entries: List<MenuEntry>, light: Boolean, dismiss: () ->
 @Composable
 fun BinderDropdown(expanded: Boolean, dismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(11.dp)
-    MaterialTheme(colorScheme = androidx.compose.material3.lightColorScheme(surface = Color.Transparent, surfaceContainer = Color.Transparent)) {
-        DropdownMenu(expanded, dismiss, Modifier.widthIn(min = 240.dp, max = 320.dp).grimoirePaper(DeckStudioPalette.surface, 0.2f, shape),
-            offset = DpOffset(0.dp, 6.dp), shape = shape, containerColor = Color.Transparent, tonalElevation = 0.dp, shadowElevation = 10.dp,
-            border = androidx.compose.foundation.BorderStroke(1.6.dp, Binder.brass), content = content)
+    // Arena's glass card in the gold hairline (GrimoireBinderMenu.swift BinderMenuCard).
+    MaterialTheme(colorScheme = androidx.compose.material3.darkColorScheme(surface = Color.Transparent, surfaceContainer = Color.Transparent)) {
+        DropdownMenu(expanded, dismiss, Modifier.widthIn(min = 240.dp, max = 320.dp)
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(io.magicmobile.android.menus.ArenaGlass.top.copy(alpha = 0.98f),
+                io.magicmobile.android.menus.ArenaGlass.bottom.copy(alpha = 0.98f))), shape),
+            offset = DpOffset(0.dp, 6.dp), shape = shape, containerColor = Color.Transparent, tonalElevation = 0.dp, shadowElevation = 14.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline), content = content)
     }
 }
 
@@ -172,20 +176,20 @@ fun BinderMenuEntries(entries: List<MenuEntry>, dismiss: () -> Unit) {
                     Box(Modifier.width(22.dp), contentAlignment = Alignment.Center) {
                         when {
                             entry.mana != null -> ManaSymbolView(entry.mana, 20.dp)
-                            entry.icon != null -> SfImage(entry.icon, if (entry.destructive) DeckStudioPalette.danger else Binder.brassDeep, 15.dp)
+                            entry.icon != null -> SfImage(entry.icon, if (entry.destructive) DeckStudioPalette.danger else io.magicmobile.android.menus.ArenaMenuStyle.gold, 15.dp)
                         }
                     }
                     Text(entry.title, Modifier.weight(1f), color = ink,
-                        style = sf(16f, if (entry.checked) SfWeight.bold else SfWeight.regular, io.magicmobile.android.ui.SfDesign.SERIF))
+                        style = io.magicmobile.android.menus.ArenaMenuStyle.font(16f, if (entry.checked) SfWeight.bold else SfWeight.regular))
                     if (entry.checked) SfImage("checkmark", DeckStudioPalette.accent, 13.dp)
                 }
             }
             is MenuEntry.Label -> Text(entry.title, Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), color = DeckStudioPalette.secondaryInk,
-                style = sf(13f, SfWeight.regular, io.magicmobile.android.ui.SfDesign.SERIF))
+                style = io.magicmobile.android.menus.ArenaMenuStyle.font(13f, SfWeight.regular))
             is MenuEntry.Section -> {
                 if (index > 0) BinderMenuRule()
                 Text(entry.title.uppercase(), Modifier.padding(start = 14.dp, top = 8.dp, bottom = 2.dp).semantics { heading() }, color = DeckStudioPalette.accent,
-                    style = sf(11f, SfWeight.heavy, io.magicmobile.android.ui.SfDesign.SERIF, tracking = 1f))
+                    style = io.magicmobile.android.menus.ArenaMenuStyle.font(11f, SfWeight.heavy).copy(letterSpacing = androidx.compose.ui.unit.TextUnit(1f, androidx.compose.ui.unit.TextUnitType.Sp)))
             }
             MenuEntry.Divider -> BinderMenuRule()
         }
@@ -255,23 +259,22 @@ fun ConfirmationDialog(title: String, message: String?, actions: List<Confirmati
 }
 
 /**
- * A Deck Studio confirmation on a parchment card in a brass edge (binderConfirm on iOS): brass for the main choice,
- * oxblood leather for a destructive one, a quiet Cancel.
+ * A Deck Studio confirmation on Arena's glass panel (binderConfirm on iOS), its buttons on Arena's face: orange for the main
+ * choice, deep red for a destructive one, dark glass for Cancel.
  */
 @Composable
 private fun BinderConfirmationDialog(title: String, message: String?, actions: List<ConfirmationAction>, cancelTitle: String, dismiss: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
     Dialog(dismiss, DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().clickable(onClick = dismiss, indication = null,
             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }), contentAlignment = Alignment.Center) {
             Column(Modifier.widthIn(max = 380.dp).padding(horizontal = 20.dp).fillMaxWidth()
-                .grimoirePaper(DeckStudioPalette.surface, 0.2f, shape).border(2.dp, Binder.brass, shape).binderCorners(18.dp, BinderCornerStyle.LEAF)
+                .arenaGlassPanel(16.dp, 0.98f)
                 .clickable(enabled = false) {}.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(title, Modifier.semantics { heading() }, color = DeckStudioPalette.ink,
-                    style = sf(19f, SfWeight.bold, io.magicmobile.android.ui.SfDesign.SERIF), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    style = io.magicmobile.android.menus.ArenaMenuStyle.font(19f, SfWeight.bold), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 message?.let {
-                    Text(it, color = DeckStudioPalette.secondaryInk, style = sf(14f, SfWeight.regular, io.magicmobile.android.ui.SfDesign.SERIF),
+                    Text(it, color = DeckStudioPalette.secondaryInk, style = io.magicmobile.android.menus.ArenaMenuStyle.font(14f, SfWeight.regular),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
                 io.magicmobile.android.studio.GrimoireRule()
@@ -282,21 +285,14 @@ private fun BinderConfirmationDialog(title: String, message: String?, actions: L
     }
 }
 
-/** kind: 0 main (brass), 1 destructive (oxblood leather), 2 cancel (quiet). */
+/** kind: 0 main (orange), 1 destructive (deep red), 2 cancel (dark glass). */
 @Composable
 private fun BinderDialogButton(title: String, kind: Int, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(9.dp)
-    val base = Modifier.fillMaxWidth().heightIn(min = 44.dp)
-    val fill = when (kind) {
-        0 -> base.background(Binder.brass, shape).border(1.dp, Binder.brassDeep.copy(alpha = 0.7f), shape)
-        1 -> base.binderLeather(Binder.oxblood, 0.7f, shape).border(1.dp, Binder.brassDeep.copy(alpha = 0.7f), shape)
-        else -> base.background(DeckStudioPalette.ink.copy(alpha = 0.06f), shape).border(1.dp, DeckStudioPalette.ink.copy(alpha = 0.2f), shape)
-    }
-    Box(fill.clip(shape).clickable(role = androidx.compose.ui.semantics.Role.Button) { onClick() }, contentAlignment = Alignment.Center) {
-        Text(title, color = if (kind == 1) io.magicmobile.android.ui.TavernPalette.parchment else Binder.engraved,
-            style = sf(16f, SfWeight.heavy, io.magicmobile.android.ui.SfDesign.SERIF), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-    }
+    io.magicmobile.android.menus.ArenaButton(onClick, Modifier.fillMaxWidth(), when (kind) {
+        0 -> io.magicmobile.android.menus.ArenaButtonKind.PRIMARY
+        1 -> io.magicmobile.android.menus.ArenaButtonKind.DANGER
+        else -> io.magicmobile.android.menus.ArenaButtonKind.SECONDARY
+    }, fullWidth = true, label = title) { io.magicmobile.android.menus.ArenaButtonText(title) }
 }
 
 /**
@@ -316,7 +312,7 @@ fun BoardSheet(onDismiss: () -> Unit, background: Color = rgb(0.11, 0.11, 0.12),
         scrimColor = Color.Black.copy(alpha = 0.32f), contentWindowInsets = { WindowInsets(0) }) {
         val shape = RoundedCornerShape(36.dp)
         // A sheet opened from the tavern board: leather backing under a brass rule, and the tavern kit inside (`.tavernSheet`).
-        val backing = if (paper) Modifier.grimoirePaper(shape = shape).border(0.8.dp, io.magicmobile.android.studio.DeckStudioPalette.ink.copy(alpha = 0.25f), shape)
+        val backing = if (paper) Modifier.grimoirePaper(shape = shape).border(1.dp, io.magicmobile.android.menus.ArenaGlass.hairline, shape)
         else if (tavern) Modifier.tavernFill(TavernMaterial.LEATHER, shape,
             overlayBrush = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))
             .border(1.dp, TavernPalette.brass.copy(alpha = 0.55f), shape)
