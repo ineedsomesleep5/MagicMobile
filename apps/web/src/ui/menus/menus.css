@@ -264,10 +264,14 @@
 
 /* Home (ArenaHomeView), landscape: the block in the middle, the foot along the bottom */
 .mpage { position: absolute; left: 0; right: 0; top: var(--bar); bottom: 0; }
-.mhome { position: absolute; inset: 0; display: flex; flex-direction: column; transition: opacity .2s ease-out; }
+.mhome { position: absolute; inset: 0; display: flex; flex-direction: column; transition: opacity .2s ease-out; container-type: size; }
 .mhome.still { opacity: 0; }
-.mhomeblock { display: flex; gap: 10px; justify-content: center; padding-top: 14px; height: clamp(170px, calc(100% - 64px - 30px), 250px); }
-.mfeature { position: relative; width: min(480px, (100% - 40px) * .62); height: 100%; border-radius: 12px; overflow: hidden; border: 1px solid var(--hair);
+/* The phone's block is 250 pt tall at most; a desktop window is taller, so the block grows into the room above the foot
+   as long as the panel stays wider than about 3:2, and keeps the phone's 480:250 when the window is short. A window
+   too narrow to fill its height centres the block in what's left. */
+.mhomeblock { --fwmax: calc((100cqw - 40px) * .62); --h: clamp(170px, min(100cqh - 64px - 14px - 40px, var(--fwmax) / 1.45), 640px);
+  box-sizing: content-box; display: flex; gap: 10px; justify-content: center; padding-top: 14px; height: var(--h); margin: auto 0; }
+.mfeature { position: relative; width: min(var(--fwmax), var(--h) * 1.92); height: 100%; border-radius: 12px; overflow: hidden; border: 1px solid var(--hair);
   box-shadow: 0 6px 12px rgba(0,0,0,.6); touch-action: pan-y; }
 .mfeaturepage { position: absolute; inset: 0; text-align: left; transition: transform .3s cubic-bezier(.2,.9,.3,1); }
 .mfeaturepage.fwd { animation: mpagein .45s ease-in-out both; }
@@ -276,18 +280,18 @@
 @keyframes mpageback { from { transform: translateX(-100%); } }
 .mfocusart { position: absolute; inset: 0; background-size: cover; background-repeat: no-repeat; }
 .mband { position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(0,0,0,.88)); }
-.mfeaturepage h2 { position: absolute; left: 18px; right: 48px; bottom: 22px; font-size: 24px; line-height: 1.15; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
+.mfeaturepage h2 { position: absolute; left: 18px; right: 48px; bottom: 22px; font-size: clamp(24px, var(--h) * .085, 40px); line-height: 1.15; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
 .marrow { position: absolute; top: 50%; width: 44px; height: 64px; margin-top: -32px; display: grid; place-items: center; z-index: 2; }
 .marrow.left { left: 0; } .marrow.right { right: 0; }
 .marrow svg { width: 18px; height: 18px; stroke: rgba(255,255,255,.85); stroke-width: 3.4; fill: none; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px #000); }
 .mdots { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; gap: 5px; z-index: 2; }
 .mdots i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.35); }
 .mdots i.on { background: #fff; }
-.mhometiles { width: min(270px, 100% - 40px - min(480px, (100% - 40px) * .62) - 10px); display: flex; flex-direction: column; gap: 8px; }
+.mhometiles { width: min(var(--h) * 1.08, 100cqw - 40px - min(var(--fwmax), var(--h) * 1.92) - 10px); display: flex; flex-direction: column; gap: 8px; }
 .mtile { position: relative; flex: 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--hair); box-shadow: 0 4px 8px rgba(0,0,0,.55); text-align: left; }
 .mtile .mband { background: linear-gradient(transparent 30%, rgba(0,0,0,.85)); }
 .mtile span { position: absolute; left: 12px; right: 12px; bottom: 9px; }
-.mtile b { display: block; font: 700 16px/1.1 var(--serif); text-shadow: 0 0 2px #000; }
+.mtile b { display: block; font: 700 clamp(16px, var(--h) * .056, 24px)/1.1 var(--serif); text-shadow: 0 0 2px #000; }
 .mtile small { display: block; font: 600 11px/1.2 var(--sans); color: var(--gold); }
 .mtile:hover, .mfeaturepage:hover { filter: brightness(1.06); }
 .mhomefoot { margin-top: auto; height: 64px; padding: 0 16px 10px; display: flex; align-items: center; gap: 12px; }
