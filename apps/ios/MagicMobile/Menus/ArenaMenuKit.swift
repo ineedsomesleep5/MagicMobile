@@ -39,6 +39,32 @@ enum ArenaMenuStyle {
     static func title(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font { .system(size: size, weight: weight, design: .serif) }
 }
 
+/// The phone's safe area for Arena's full-table layers. Their dim ignores the safe area so it reaches every edge, so their
+/// content must clear the camera cutout and the home bar itself (Caleb, 2026-10-22: a title sat under the Dynamic
+/// Island): a centred title starts at `top(_:)`, and in landscape a row of cards keeps `side` clear of the cutout. The
+/// Arena board measures it from its own geometry and passes it down (`\.arenaSafeArea`); never read UIKit's window
+/// insets in a body instead (that made the scry browser lose its cards, LESSONS 2026-10-22).
+struct ArenaSafeArea: Equatable {
+    var insets = EdgeInsets()
+
+    /// Top padding for a layer's title: below the cutout, and never less than `minimum`.
+    func top(_ minimum: CGFloat) -> CGFloat { max(minimum, insets.top + 8) }
+
+    /// Room kept on both sides in landscape, where the cutout sits at one of them.
+    var side: CGFloat { max(insets.leading, insets.trailing) }
+}
+
+private struct ArenaSafeAreaKey: EnvironmentKey {
+    static let defaultValue = ArenaSafeArea()
+}
+
+extension EnvironmentValues {
+    var arenaSafeArea: ArenaSafeArea {
+        get { self[ArenaSafeAreaKey.self] }
+        set { self[ArenaSafeAreaKey.self] = newValue }
+    }
+}
+
 /// Gold small capitals over a section or a value ("RANKED · GOLD II").
 struct ArenaCaps: View {
     let text: String

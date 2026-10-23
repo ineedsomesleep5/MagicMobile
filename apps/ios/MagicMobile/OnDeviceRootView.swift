@@ -1285,7 +1285,7 @@ struct OnDeviceRootView: View {
         let season = RankLadder.seasonName(rank.season)
         return ArenaHomeContent(
             features: [
-                ArenaFeature(id: "ranked", kicker: String(localized: "Ranked season"), title: season,
+                ArenaFeature(id: "ranked", kicker: String(localized: "Ranked season"), title: String(localized: "Ranked · \(season)"),
                              art: ArenaHomeArt(asset: "home-art-ur-dragon", focus: UnitPoint(x: 0.62, y: 0.3)),
                              action: { selectMenuTab(.ranked) }),
                 ArenaFeature(id: "board", kicker: String(localized: "New"), title: String(localized: "The Arena board"),
@@ -1303,9 +1303,8 @@ struct OnDeviceRootView: View {
                 ArenaHomeTile(id: "quick", title: String(localized: "Quick Match"), subtitle: "",
                               art: ArenaHomeArt(asset: "home-art-krenko", focus: UnitPoint(x: 0.5, y: 0.38)),
                               action: { openPlayPanel(.quick) }),
-                ArenaHomeTile(id: "ranked", title: String(localized: "Ranked"),
-                              subtitle: rank.position.tier == .mythic ? rank.position.title
-                                : String(localized: "\(rank.position.title) · \(rank.position.pips) of \(RankPosition.pipsPerDivision) pips"),
+                // The rank shows on the rail and the top bar; the tile names the mode only (the judge, 2026-10-22).
+                ArenaHomeTile(id: "ranked", title: String(localized: "Ranked"), subtitle: "",
                               art: ArenaHomeArt(asset: "home-art-miirym", focus: UnitPoint(x: 0.55, y: 0.4)),
                               action: { openPlayPanel(.ranked) }),
                 ArenaHomeTile(id: "learn", title: HowToPlayText.title, subtitle: "",

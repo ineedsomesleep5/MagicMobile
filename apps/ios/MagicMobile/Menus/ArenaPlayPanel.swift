@@ -541,7 +541,8 @@ struct ArenaPlayBlade: View {
         let brackets = CommanderBracket.allCases.filter { $0 != .cedh }
         let chosen = brackets.first { $0.rawValue == model.quickBracket.wrappedValue }
         let matched = model.deckBracket.map { String(localized: "Match my deck · B\(min(4, $0.rawValue))") } ?? String(localized: "Match my deck")
-        ArenaCaps(text: String(localized: "Opponent · \(chosen?.name ?? matched)"), size: 9.5)
+        // The opponent's bracket, named plainly: the chosen gem's bracket, or "Match my deck" (the judge, 2026-10-22).
+        ArenaCaps(text: chosen.map { String(localized: "Opponent · \($0.name)") } ?? String(localized: "Opponent · Match my deck"), size: 9.5)
             .padding(.top, 6)
         HStack(spacing: 4) {
             bracketGem(String(localized: "Match"), value: 0, label: matched)
@@ -653,8 +654,6 @@ struct ArenaPlayBlade: View {
                 Text(rank.position.title).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
                 Text(String(localized: "\(rank.wins) wins · \(rank.losses) losses"))
                     .font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
-                Text(RankLadder.seasonName(rank.season))
-                    .font(ArenaMenuStyle.font(10.5, .medium)).foregroundStyle(ArenaMenuStyle.dim).lineLimit(1)
             }
         }
         .padding(.top, 4).padding(.bottom, 10)
@@ -881,9 +880,8 @@ struct ArenaSearchStatus: View {
                         Text(String(format: "%d:%02d", elapsed / 60, elapsed % 60))
                             .font(ArenaMenuStyle.font(14, .bold)).monospacedDigit().foregroundStyle(ArenaMenuStyle.gold)
                     }
-                    Text(String(localized: "An AI takes the seat in \(left) s."))
-                        .font(ArenaMenuStyle.font(11, .medium)).foregroundStyle(ArenaMenuStyle.dim)
-                    Button(String(localized: "Play the AI now"), action: playAINow)
+                    // The countdown rides on the button, not a line of its own (the judge, 2026-10-22).
+                    Button(String(localized: "Play the AI now · \(left) s"), action: playAINow)
                         .buttonStyle(ArenaPillButtonStyle())
                         .accessibilityIdentifier("ranked.search.ai")
                 }

@@ -3,6 +3,7 @@ import SwiftUI
 /// One UUID per native PICK_TARGET response. XMage owns subsequent selection,
 /// deselection and ordering prompts; the UI never invents a batch response.
 struct BoardCardChoiceView: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.arenaBoard) private var arena
@@ -652,21 +653,19 @@ extension BoardCardChoiceView {
         return draftKind == .selection ? "Choose cards" : "Choose a card"
     }
 
-    private var arenaInstruction: String {
-        switch arenaZones {
-        case .scry: return "Tap a card to move it between the bottom and the top of your library."
-        case .surveil: return "Tap a card to move it between the top of your library and your graveyard."
-        case .piles: return "Tap a card to move it between the piles."
-        case nil: break
-        }
+    /// XMage's own words under the title, only when they add to it (what to search for, how many). Scry, surveil, piles
+    /// and ordering say nothing more: the wells and the order badges show it (Caleb's copy rule, the judge 2026-10-22).
+    private var arenaInstruction: String? {
+        guard arenaZones == nil, draftKind != .topOrder, draftKind != .bottomOrder else { return nil }
         let message = PromptDisplayText.clean(CardChoicePlan.context(prompt))
-        if draftKind == .topOrder || draftKind == .bottomOrder { return "Tap the cards in order: 1 goes first." }
-        return message
+        let words = message.trimmingCharacters(in: CharacterSet(charactersIn: ". ")).lowercased()
+        return words.isEmpty || words == arenaTitle.lowercased() ? nil : message
     }
 
     private func arenaCardWidth(_ size: CGSize) -> CGFloat {
         if size.width > size.height {
-            let reserved: CGFloat = 150 + (cards.count > 6 ? 46 : 0) + (targets.isEmpty ? 0 : 56) + (arenaZones != nil ? 30 : 0)
+            // The title starts under the opponent's medallion (safeArea.top(50)), so that much more is reserved.
+            let reserved: CGFloat = 192 + (cards.count > 6 ? 46 : 0) + (targets.isEmpty ? 0 : 56) + (arenaZones != nil ? 30 : 0)
             return max(74, min(150, (size.height - reserved) / 1.4))
         }
         return arenaZones != nil ? min(112, (size.width - 72) / 3.2) : min(124, (size.width - 64) / 3)
@@ -693,13 +692,15 @@ extension BoardCardChoiceView {
                         .foregroundStyle(ArenaGlass.text)
                         .shadow(color: .black, radius: 2)
                         .accessibilityIdentifier("board.choice.title")
+                    if let arenaInstruction {
                     Text(arenaInstruction)
-                        .font(.system(size: 13, weight: .medium, design: .serif))
+                        .font(ArenaMenuStyle.font(13, .medium))
                         .foregroundStyle(ArenaGlass.text.opacity(0.8))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .padding(.horizontal, 24)
                         .accessibilityIdentifier("board.choice.header")
+                    }
                 }
                 if cards.count > 6 {
                     TextField("Name, type or rules text", text: $search)
@@ -728,7 +729,8 @@ extension BoardCardChoiceView {
                 }
                 arenaFooter
             }
-            .padding(.top, landscape ? 8 : 96)
+            .padding(.top, safeArea.top(landscape ? 50 : 96))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .padding(.bottom, landscape ? 8 : 26)
             .padding(.trailing, landscape && source != nil ? 150 : 0)
             .opacity(peeking ? 0 : 1)
@@ -745,10 +747,11 @@ extension BoardCardChoiceView {
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 .frame(minHeight: 44)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, landscape ? 4 : 50)
-                .padding(.trailing, 16)
                 .accessibilityIdentifier("board.choice.viewBattlefield")
+                // Clear of the gear in landscape; padded before it is placed, so it never widens the layer.
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Card choice dialog")
@@ -823,7 +826,7 @@ extension BoardCardChoiceView {
     private func arenaWell(_ title: String, ids: [String], top: Bool, zones: ArenaZones, width: CGFloat, fill: Bool) -> some View {
         VStack(spacing: 6) {
             Text(title.uppercased())
-                .font(.system(size: 13, weight: .heavy, design: .serif)).tracking(1.2)
+                .font(ArenaMenuStyle.font(13, .heavy)).tracking(1.2)
                 .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 10) {
@@ -836,11 +839,9 @@ extension BoardCardChoiceView {
                         }
                     }
                     if ids.isEmpty {
-                        Text(zones == .scry ? "Tap a card to put it here" : "Tap a card to move it here")
-                            .font(.system(size: 12, design: .serif).italic())
-                            .foregroundStyle(ArenaGlass.text.opacity(0.55))
-                            .multilineTextAlignment(.center)
-                            .frame(width: width, height: width * 1.4 + 20 + (zones == .scry ? 34 : 0))
+                        // An empty well keeps its size; it says nothing (the card goes where you tap it).
+                        Color.clear
+                            .frame(width: width, height: width * 1.4 + (zones == .scry ? 34 : 0))
                     }
                 }
                 .padding(10)
@@ -886,7 +887,7 @@ extension BoardCardChoiceView {
                         .shadow(color: marked ? Color(red: 1, green: 0.75, blue: 0.3) : .clear, radius: 8)
                 }
                 .overlay(alignment: .top) {
-                    if let order { TavernCoin(value: order, size: 28).offset(y: -14) }
+                    if let order { ArenaCountBadge(count: order, size: 28).offset(y: -14) }
                     else if marked && !draftActive { Image(systemName: "checkmark.circle.fill").font(.system(size: 24))
                         .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.4)).background(Circle().fill(.black)).offset(y: -12) }
                 }
@@ -894,12 +895,6 @@ extension BoardCardChoiceView {
                 .offset(y: marked ? -10 : 0)
                 .shadow(color: .black.opacity(0.6), radius: 6, y: 4)
                 .animation(.spring(response: 0.25, dampingFraction: 0.8), value: marked)
-            Text(card.card.name)
-                .font(.system(size: 11, weight: .semibold, design: .serif))
-                .foregroundStyle(ArenaGlass.text.opacity(selectable ? 0.9 : 0.5))
-                .lineLimit(1).minimumScaleFactor(0.7)
-                .frame(width: width)
-                .accessibilityIdentifier("board.choice.caption.\(card.id)")
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)

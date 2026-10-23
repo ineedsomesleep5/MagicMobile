@@ -95,7 +95,7 @@ struct FriendsView: View {
             }, myRankStep: myRankStep) { profileFor = nil }
         }
         .tavernConfirmation(active: true, title: String(localized: "Delete your profile?"),
-                            message: String(localized: "Your player name, friends and blocks are removed for good. A new profile starts the next time you open Friends."),
+                            message: String(localized: "Your player name, friends, blocks and game history are removed from MagicMobile's server for good. Your decks and games on this phone stay."),
                             isPresented: $confirmDelete,
                             actions: [TavernDialogAction(title: String(localized: "Delete profile"), destructive: true) {
                                 Task { if await account.deleteAccount() { closePanel() } }
@@ -152,9 +152,6 @@ struct FriendsView: View {
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("friends.deleteAccount")
-            Text(String(localized: "Deletes your player name, friends, blocks and game history from MagicMobile's server. Your decks and games on this phone stay."))
-                .font(ArenaMenuStyle.font(10.5, .medium)).foregroundStyle(ArenaMenuStyle.dim.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

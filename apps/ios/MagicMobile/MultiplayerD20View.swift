@@ -84,12 +84,14 @@ struct MultiplayerD20View: View {
             // runs its full length across the table (Caleb, 2026-10-07: the dice had too little room).
             let plateRows = CGFloat((playerIDs.count + max(1, columnCount) - 1) / max(1, columnCount))
             let plates = plateRows * 66 + max(0, plateRows - 1) * 12
-            let uprightRoll = max(260, geometry.size.height - 128 - 64 - plates - 18 * 3 - 12)
+            // On the Arena board the plates sit above the hand and your medallion, so the throw takes less of the height.
+            let uprightRoll = arena ? min(geometry.size.height * 0.34, 300)
+                : max(260, geometry.size.height - 128 - 64 - plates - 18 * 3 - 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: wide ? 8 : 18) {
                     header(wide: wide)
                     // The roll area stays, so the dice stay in view under the result; it only speaks while rolling.
-                    rollArea(height: wide ? max(120, geometry.size.height - 178) : uprightRoll)
+                    rollArea(height: wide ? (arena ? max(100, geometry.size.height * 0.3) : max(120, geometry.size.height - 178)) : uprightRoll)
                     resultAndRollControl(wide: wide)
                     LazyVGrid(columns: columns, spacing: wide ? 10 : 12) {
                         ForEach(playerIDs, id: \.self) { playerID in
@@ -217,9 +219,11 @@ struct MultiplayerD20View: View {
             .minimumScaleFactor(0.6)
             .accessibilityAddTraits(.isHeader)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 60)
-            .overlay(alignment: .trailing) { skipPlaque }
-            .padding(.top, wide ? 4 : 24)
+            .padding(.horizontal, wide ? 90 : 60)
+            // Skip left of the board's gear in landscape.
+            .overlay(alignment: .trailing) { skipPlaque.padding(.trailing, wide ? 56 : 0) }
+            // Under the opponent's medallion and plaque in landscape.
+            .padding(.top, wide ? 44 : 24)
     }
 
     /// The title plate (the board's panel), the skip plaque at its corner. In landscape it is one
@@ -547,10 +551,11 @@ private struct ArenaRollValue: View {
     var lit = false
 
     var body: some View {
-        Text(value.map(String.init) ?? "–")
+        // A "?" until the seat has rolled.
+        Text(value.map(String.init) ?? "?")
             .font(.system(size: size * 0.46, weight: .bold))
             .monospacedDigit()
-            .foregroundStyle(Color.white.opacity(value == nil ? 0.5 : 1))
+            .foregroundStyle(Color.white.opacity(value == nil ? 0.6 : 1))
             .frame(width: size, height: size)
             .background(Circle().fill(lit ? AnyShapeStyle(ArenaMenuStyle.orange) : AnyShapeStyle(Color(red: 0.07, green: 0.07, blue: 0.08))))
             .overlay(Circle().strokeBorder(lit ? ArenaMenuStyle.orangeRim : ArenaMenuStyle.gold.opacity(0.6), lineWidth: 1.2))
@@ -607,7 +612,7 @@ struct StartingRollCover<Content: View>: View {
 
     var body: some View {
         ZStack {
-            (arena ? Color.black.opacity(0.4) : Self.canvas).ignoresSafeArea()
+            (arena ? Color.black.opacity(0.8) : Self.canvas).ignoresSafeArea()
             content
         }
         .accessibilityElement(children: .contain)

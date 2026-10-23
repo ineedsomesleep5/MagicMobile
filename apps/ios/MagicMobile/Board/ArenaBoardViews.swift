@@ -225,30 +225,9 @@ struct ArenaTableBackdrop: View {
     }
 }
 
-/// Text with a thin black outline, for numbers laid over a picture.
-struct ArenaOutlinedText: View {
-    let text: String
-    let size: CGFloat
-    var color: Color = ArenaPalette.cream
-
-    var body: some View {
-        let outline = max(0.8, size * 0.05)
-        Text(text)
-            .font(.system(size: size, weight: .black, design: .serif))
-            .monospacedDigit()
-            .foregroundStyle(color)
-            .shadow(color: .black, radius: 0, x: outline, y: outline)
-            .shadow(color: .black, radius: 0, x: -outline, y: outline)
-            .shadow(color: .black, radius: 0, x: outline, y: -outline)
-            .shadow(color: .black, radius: 0, x: -outline, y: -outline)
-            .shadow(color: .black.opacity(0.7), radius: size * 0.12, y: size * 0.06)
-            .lineLimit(1)
-            .minimumScaleFactor(0.5)
-    }
-}
-
-/// A player's life medallion: their picture inside a brass ring, the life total over it. It glows ember on its owner's
-/// turn and red (attack) or blue (target) while it can be chosen.
+/// A player's life medallion as Arena draws it (build_output/arena-game-reference/battlefield-next-1.jpg): their picture in
+/// a thin gold ring, the life total on a dark plaque edged in gold over the ring's foot. It glows ember on its owner's
+/// turn and red (attack) or blue (target) while it can be chosen. No brass coin.
 struct ArenaHeroMedallion: View {
     let player: PlayerGameState
     let diameter: CGFloat
@@ -258,26 +237,24 @@ struct ArenaHeroMedallion: View {
     var showsLife = true
 
     var body: some View {
-        let portrait = diameter * 0.74
+        let portrait = diameter * 0.9
         ZStack {
             if commanderReady { TavernCommanderReadyGlow(diameter: portrait) }
             PlayerPortrait(player: player, size: portrait)
                 .frame(width: portrait, height: portrait)
                 .clipShape(Circle())
-                .overlay(Circle().fill(RadialGradient(colors: [.clear, .black.opacity(0.35)], center: .center,
-                                                      startRadius: portrait * 0.25, endRadius: portrait * 0.55)))
-            ring
-            if !showsLife {
-                EmptyView()
-            } else if player.isOut {
-                ArenaOutlinedText(text: "Out", size: diameter * 0.24, color: .gray)
-            } else {
-                ArenaOutlinedText(text: "\(player.life)", size: diameter * 0.34)
-                    .contentTransition(.numericText(value: Double(player.life)))
-                    .animation(.easeOut(duration: 0.3), value: player.life)
-            }
+                .overlay(Circle().fill(RadialGradient(colors: [.clear, .black.opacity(0.3)], center: .center,
+                                                      startRadius: portrait * 0.3, endRadius: portrait * 0.55)))
+            Circle()
+                .strokeBorder(LinearGradient(colors: [Color(red: 1, green: 0.90, blue: 0.62), ArenaMenuStyle.gold,
+                                                      Color(red: 0.62, green: 0.44, blue: 0.18)],
+                                             startPoint: .top, endPoint: .bottom), lineWidth: max(1.5, diameter * 0.045))
+                .frame(width: diameter * 0.96, height: diameter * 0.96)
         }
         .frame(width: diameter, height: diameter)
+        .overlay(alignment: .bottom) {
+            if showsLife { lifePlaque.offset(y: diameter * 0.1) }
+        }
         .background {
             if let glow {
                 Circle().fill(glow).frame(width: diameter * 1.15, height: diameter * 1.15).blur(radius: diameter * 0.12)
@@ -291,16 +268,42 @@ struct ArenaHeroMedallion: View {
         .animation(.easeInOut(duration: 0.3), value: active)
     }
 
-    @ViewBuilder private var ring: some View {
-        if let frame = UIImage(named: "tavern-medallion-frame") {
-            Image(uiImage: frame).resizable().scaledToFit()
-                .frame(width: diameter, height: diameter)
-                .allowsHitTesting(false)
-        } else {
-            Circle().strokeBorder(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), TavernPalette.brass, TavernPalette.brassDark],
-                                                 startPoint: .top, endPoint: .bottom), lineWidth: diameter * 0.11)
-                .frame(width: diameter, height: diameter)
+    private var lifePlaque: some View {
+        Group {
+            if player.isOut {
+                Text("Out").font(.system(size: diameter * 0.17, weight: .bold)).foregroundStyle(Color.gray)
+            } else {
+                Text("\(player.life)")
+                    .font(ArenaMenuStyle.title(diameter * 0.26, .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.white)
+                    .contentTransition(.numericText(value: Double(player.life)))
+                    .animation(.easeOut(duration: 0.3), value: player.life)
+            }
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .frame(width: diameter * 0.56, height: diameter * 0.34)
+        .background(ArenaPlaqueShape().fill(LinearGradient(colors: [Color(red: 0.16, green: 0.16, blue: 0.19),
+                                                                    Color(red: 0.05, green: 0.05, blue: 0.07)],
+                                                           startPoint: .top, endPoint: .bottom)))
+        .overlay(ArenaPlaqueShape().stroke(ArenaMenuStyle.gold.opacity(0.85), lineWidth: max(1, diameter * 0.02)))
+    }
+}
+
+/// Arena's life plaque: a flat-topped, six-sided badge.
+struct ArenaPlaqueShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset = rect.width * 0.14
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + inset, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -1370,7 +1373,7 @@ struct ArenaAbilityBrowser: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.64).ignoresSafeArea().accessibilityHidden(true)
+            Color.black.opacity(0.8).ignoresSafeArea().accessibilityHidden(true)
             VStack(spacing: 12) {
                 Text(ordering ? "Order your triggers" : "Choose an ability")
                     .font(.system(size: 22, weight: .bold, design: .serif))
@@ -1461,6 +1464,7 @@ struct ArenaAbilityBrowser: View {
 /// what it targets sits underneath. A tap reads a card; Resolve All and Done below. Landscape lays them in one row,
 /// portrait in two columns, so many show at once.
 struct ArenaStackBrowser: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let snapshot: GameSnapshot
     let screen: CGSize
     var resolveAll: (() -> Void)?
@@ -1486,7 +1490,7 @@ struct ArenaStackBrowser: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.7).ignoresSafeArea()
+            Color.black.opacity(0.8).ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
                 .accessibilityHidden(true)
@@ -1513,7 +1517,8 @@ struct ArenaStackBrowser: View {
                 }
                 buttons
             }
-            .padding(.top, landscape ? 10 : 56)
+            .padding(.top, safeArea.top(landscape ? 50 : 56))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .padding(.bottom, landscape ? 10 : 28)
         }
         .accessibilityElement(children: .contain)
@@ -1622,6 +1627,7 @@ struct ArenaStackBrowser: View {
 /// title, the card it's about stands in the middle (an ability as its ability card), and the answers sit under it as
 /// plaques. "View Battlefield" steps it aside.
 struct ArenaQuestionStage<Answers: View>: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let title: String
     let object: XmageStackObject?
     let card: ZoneCard?
@@ -1645,10 +1651,13 @@ struct ArenaQuestionStage<Answers: View>: View {
         if !name.isEmpty, clean.localizedCaseInsensitiveContains(name), object.map(ArenaStackCard.isAbility) ?? false {
             return ("Use \(name)'s ability?", clean)
         }
+        // Otherwise its first sentence over the rest, or the whole question when it is one long sentence: never cut off, and
+        // never said twice (the judge, 2026-10-22).
         if let stop = clean.range(of: ". "), clean.distance(from: clean.startIndex, to: stop.lowerBound) < 70 {
-            return (String(clean[..<stop.lowerBound]) + ".", clean)
+            let rest = clean[stop.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            return (String(clean[..<stop.lowerBound]) + ".", rest.isEmpty ? nil : rest)
         }
-        return (String(clean.prefix(60)).trimmingCharacters(in: .whitespaces) + "…", clean)
+        return (clean, nil)
     }
 
     var body: some View {
@@ -1658,7 +1667,7 @@ struct ArenaQuestionStage<Answers: View>: View {
         let headline = Self.headline(title, object: object, card: card)
         let art = object?.displaySourceCard ?? card
         ZStack {
-            Color.black.opacity(peeking ? 0 : 0.72).ignoresSafeArea()
+            Color.black.opacity(peeking ? 0 : 0.8).ignoresSafeArea()
                 .allowsHitTesting(!peeking)
                 .accessibilityHidden(true)
             VStack(spacing: landscape ? 10 : 18) {
@@ -1700,7 +1709,8 @@ struct ArenaQuestionStage<Answers: View>: View {
                 .onTapGesture { if let art { inspect(art) } }
                 answers
             }
-            .padding(.top, landscape ? 0 : 40)
+            .padding(.top, safeArea.top(landscape ? 50 : 40))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .opacity(peeking ? 0 : 1)
             .allowsHitTesting(!peeking)
             Button(peeking ? "Back to the question" : "View Battlefield") { peeking.toggle() }
@@ -1710,10 +1720,11 @@ struct ArenaQuestionStage<Answers: View>: View {
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 .frame(minHeight: 44)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, landscape ? 4 : 50)
-                .padding(.trailing, 16)
                 .accessibilityIdentifier("arena.question.viewBattlefield")
+                // Clear of the gear (top right in landscape): padded before it is placed, so it never widens the layer.
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
@@ -1724,6 +1735,7 @@ struct ArenaQuestionStage<Answers: View>: View {
 /// A modal spell's modes the Arena way: each mode is a card with the spell's art over its text, side by side over the
 /// dimmed table; a tap chooses it (XMage asks again for each further mode). The prompt's own answers (Done) sit below.
 struct ArenaModeBrowser: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let title: String
     let detail: String
     let source: ZoneCard?
@@ -1734,29 +1746,43 @@ struct ArenaModeBrowser: View {
     let choose: (ChoicePromptOption) -> Void
     let inspect: (ZoneCard) -> Void
 
+    private var landscape: Bool { screen.width > screen.height }
+
+    /// Upright, more than two modes sit two to a row so none runs off the edge (the judge, 2026-10-22).
+    private var columns: Int { landscape || modes.count <= 2 ? max(1, modes.count) : 2 }
+
     private var cardSize: CGSize {
-        let landscape = screen.width > screen.height
-        let height = min(landscape ? screen.height * 0.52 : 250, 250)
-        return CGSize(width: height * 0.72, height: height)
+        if landscape {
+            let height = min(screen.height * 0.52, 250)
+            return CGSize(width: height * 0.72, height: height)
+        }
+        let width = min(180, (screen.width - 48 - 16 * CGFloat(columns - 1)) / CGFloat(columns))
+        return CGSize(width: width, height: width / 0.72)
     }
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.7).ignoresSafeArea().accessibilityHidden(true)
+            Color.black.opacity(0.8).ignoresSafeArea().accessibilityHidden(true)
             VStack(spacing: 12) {
                 Text(title)
-                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .font(ArenaMenuStyle.title(22, .bold))
                     .foregroundStyle(ArenaGlass.text)
                     .shadow(color: .black, radius: 2)
-                Text(detail)
-                    .font(ArenaMenuStyle.font(14, .medium))
-                    .foregroundStyle(ArenaGlass.text.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
+                if detail.lowercased() != title.lowercased() {
+                    Text(detail)
+                        .font(ArenaMenuStyle.font(14, .medium))
+                        .foregroundStyle(ArenaGlass.text.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 24)
+                }
+                ScrollView(landscape ? .horizontal : .vertical, showsIndicators: false) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cardSize.width), spacing: 16), count: columns), spacing: 16) {
                         ForEach(Array(modes.enumerated()), id: \.element.id) { index, mode in
-                            ArenaAbilityCard(source: source, name: source == nil ? "Mode \(index + 1)" : nil, kind: "Mode \(index + 1)",
+                            // The card names its mode once: in the type line under the source's art, or as its name
+                            // when there is no source card.
+                            ArenaAbilityCard(source: source, name: source == nil ? "Mode \(index + 1)" : nil,
+                                             kind: source == nil ? "Mode" : "Mode \(index + 1)",
                                              text: Self.text(of: mode), size: cardSize)
                                 .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
                                 .contentShape(Rectangle())
@@ -1772,6 +1798,9 @@ struct ArenaModeBrowser: View {
                     .padding(.vertical, 18)
                     .frame(minWidth: screen.width)
                 }
+                .mask(ArenaScrollFade(depth: landscape ? 0 : 20))
+                // Upright the cards scroll in the room left, so the title stays on screen.
+                .frame(maxHeight: landscape ? nil : .infinity)
                 if !answers.isEmpty {
                     HStack(spacing: 12) {
                         ForEach(answers, id: \.id) { answer in
@@ -1782,6 +1811,9 @@ struct ArenaModeBrowser: View {
                     }
                 }
             }
+            .padding(.top, safeArea.top(landscape ? 50 : 96))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
+            .padding(.bottom, landscape ? 10 : 28)
             .disabled(pending)
             .opacity(pending ? 0.7 : 1)
         }
@@ -1802,6 +1834,7 @@ struct ArenaModeBrowser: View {
 /// at the top, the content in the middle, answers at the bottom, the source card on the right in landscape and "View
 /// Battlefield" top right, which steps the browser aside.
 struct ArenaBrowserFrame<Content: View, Footer: View>: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let title: String
     var detail: String? = nil
     var source: XmageStackObject? = nil
@@ -1817,7 +1850,7 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
         let landscape = screen.width > screen.height
         let showsSource = landscape && (source != nil || sourceCard != nil)
         ZStack {
-            Color.black.opacity(peeking ? 0 : 0.72).ignoresSafeArea()
+            Color.black.opacity(peeking ? 0 : 0.8).ignoresSafeArea()
                 .allowsHitTesting(!peeking)
                 .accessibilityHidden(true)
             VStack(spacing: landscape ? 8 : 12) {
@@ -1842,7 +1875,8 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
                 content.frame(maxHeight: .infinity)
                 footer
             }
-            .padding(.top, landscape ? 8 : 96)
+            .padding(.top, safeArea.top(landscape ? 50 : 96))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .padding(.bottom, landscape ? 10 : 28)
             .padding(.trailing, showsSource ? 150 : 0)
             .opacity(peeking ? 0 : 1)
@@ -1859,10 +1893,11 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 .frame(minHeight: 44)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, landscape ? 4 : 50)
-                .padding(.trailing, 16)
                 .accessibilityIdentifier("\(identifier).viewBattlefield")
+                // Clear of the gear (top right in landscape): padded before it is placed, so it never widens the layer.
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
@@ -2310,8 +2345,11 @@ struct ArenaPlayerChoice: View {
 
     var body: some View {
         let diameter: CGFloat = min(screen.width, screen.height) * (seats.count > 2 ? 0.24 : 0.3)
+        // Upright, three or four players sit two to a row so none is cut off at the edge (the judge, 2026-10-22).
+        let columns = screen.width > screen.height || seats.count <= 2 ? seats.count : 2
         ArenaBrowserFrame(title: title, detail: detail, screen: screen, identifier: "arena.playerChoice") {
-            HStack(spacing: diameter * 0.35) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(diameter * 1.25), spacing: diameter * 0.3), count: max(1, columns)),
+                      spacing: diameter * 0.3) {
                 ForEach(seats) { seat in
                     Button {
                         guard !pending else { return }
@@ -2326,9 +2364,11 @@ struct ArenaPlayerChoice: View {
                                     .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 2))
                             }
                             Text(seat.name)
-                                .font(.system(size: 18, weight: .bold, design: .serif))
+                                .font(ArenaMenuStyle.title(18, .bold))
                                 .foregroundStyle(ArenaGlass.text)
                                 .shadow(color: .black, radius: 2)
+                                .padding(.top, diameter * 0.1)
+                                .lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }
                     .buttonStyle(.plain)
@@ -2862,6 +2902,7 @@ struct ArenaFloatingMana: View {
 /// violet for a draw. A tap, or a moment, lifts the word to the top over your medallion, your rank, the game's numbers
 /// and the two ways on. View Battlefield lifts it all to look at the final board. No trophy, flag or tavern panel.
 struct ArenaGameResultView: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let snapshot: GameSnapshot
     var stats: GameStats?
     var rankChange: RankChange?
@@ -2900,12 +2941,12 @@ struct ArenaGameResultView: View {
         GeometryReader { proxy in
             let landscape = proxy.size.width > proxy.size.height
             ZStack {
-                Color.black.opacity(peeking ? 0 : 0.7).ignoresSafeArea()
+                Color.black.opacity(peeking ? 0 : 0.86).ignoresSafeArea()
                     .allowsHitTesting(!peeking)
                 if !peeking {
                     VStack(spacing: landscape ? 10 : 18) {
                         banner(landscape: landscape)
-                            .padding(.top, settled ? (landscape ? 12 : 56) : max(0, proxy.size.height / 2 - (landscape ? 70 : 90)))
+                            .padding(.top, settled ? safeArea.top(landscape ? 50 : 104) : max(0, proxy.size.height / 2 - (landscape ? 70 : 90)))
                         if settled {
                             details(landscape: landscape)
                                 .transition(.opacity.combined(with: .offset(y: 24)))
@@ -2915,6 +2956,7 @@ struct ArenaGameResultView: View {
                     // Held to the screen: the flare is wider and spills off both sides, but it must not widen the layer,
                     // or View Battlefield is laid out past the screen's edge.
                     .frame(width: proxy.size.width)
+                    .padding(.horizontal, landscape ? safeArea.side : 0)
                     .contentShape(Rectangle())
                     .onTapGesture { settle() }
                 }
@@ -2924,7 +2966,7 @@ struct ArenaGameResultView: View {
                 .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                 .accessibilityIdentifier("board.result.viewBattlefield")
                 .padding(.top, landscape ? 6 : 50)
-                .padding(.trailing, 16)
+                .padding(.trailing, landscape ? 120 : 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
