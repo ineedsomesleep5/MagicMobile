@@ -2,11 +2,11 @@
  * Ranked's front room as Arena's Season Rewards (iOS Ranked/RankedHallViews.swift): "Ranked" with the season's end in
  * ember and Play Ranked beside it, a stair of tier plaques from Bronze to Mythic (what each allows, which you reached,
  * yours edged in gold), your current rank in its own column with its glow, and your past seasons. The ladder lives in
- * this browser's record until accounts arrive; then the live leaderboard joins it.
+ * this browser's record, which takes the server's standing when you have a profile; the live leaderboard opens beside it.
  */
 import type { PlayerRecordStore } from "../../core/playerRecord";
 import { RankLadder, RankPosition, type RankState, RankTier } from "../../core/rankLadder";
-import { Caps, PlayButton } from "./kit";
+import { Caps, Pill, PlayButton } from "./kit";
 import { RankBadge } from "./PlayPanel";
 import { RankEmblem } from "./TopBar";
 
@@ -21,7 +21,9 @@ function seasonEnds(season: string) {
   return days <= 1 ? "Season ends tomorrow" : `Season ends in ${days} days`;
 }
 
-export function RankedPage({ rank, play }: { rank: RankState; record: PlayerRecordStore; play: () => void }) {
+export function RankedPage({ rank, play, leaderboard, profile }: {
+  rank: RankState; record: PlayerRecordStore; play: () => void; leaderboard: () => void; profile: () => void;
+}) {
   const tier = rank.position.tier;
   const reachedIndex = RankTier.index(tier);
   return (
@@ -32,6 +34,8 @@ export function RankedPage({ rank, play }: { rank: RankState; record: PlayerReco
           <span className="mrankedends">{seasonEnds(rank.season)}</span>
         </div>
         <div className="mrankedplay"><PlayButton size={16} id="ranked.hall.play" onClick={play}>Play Ranked</PlayButton></div>
+        <Pill id="ranked.hall.leaderboard" onClick={leaderboard}>Leaderboard</Pill>
+        <Pill id="ranked.hall.profile" onClick={profile}>Profile</Pill>
       </header>
       <div className="mrankedbody">
         <div className="mrankedleft mscroll">

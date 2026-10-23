@@ -17,7 +17,11 @@ import { GameScreen } from "../GameScreen";
 import { storage } from "../storage";
 import { AccountSignInCard, PrivacyCard } from "./AccountCards";
 import { account, completeGoogleSignIn, connectRecord, useAccount } from "./accountSession";
+import { Conversation } from "./Conversation";
 import { CustomTable, type AIDeckGroup } from "./CustomTable";
+import { FriendsPanel } from "./FriendsPanel";
+import { Leaderboard } from "./Leaderboard";
+import { PublicProfile } from "./PublicProfile";
 import type { DeckBoxModel } from "./DeckBox";
 import { DecksPage } from "./DecksPage";
 import { Home, type HomeContent } from "./Home";
@@ -126,7 +130,15 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   // An invite link opens the Custom Table on Online with its code.
   const [custom, setCustom] = useState(initialJoinCode !== "");
   useEffect(() => { if (initialJoinCode) setPlayerMode("online"); }, [initialJoinCode, setPlayerMode]);
-  const [panel, setPanel] = useState<"settings" | "updates" | "learn" | "bracket">();
+  const [panel, setPanel] = useState<"settings" | "updates" | "learn" | "bracket" | "friends">();
+  /** A player's public profile or a conversation, over the menus (and over Friends when opened from it). */
+  const [social, setSocial] = useState<{ kind: "profile" | "conversation"; username: string }>();
+  const [leaderboard, setLeaderboard] = useState(false);
+  useEffect(() => {
+    const open = (event: Event) => setSocial({ kind: "profile", username: (event as CustomEvent<string>).detail });
+    window.addEventListener("mm:open-profile", open);
+    return () => window.removeEventListener("mm:open-profile", open);
+  }, []);
   const [game, setGame] = useState<ActiveGame>();
   /** What the last Ranked game did to your rank, for the result's rank strip. */
   const [rankChange, setRankChange] = useState<{ key: number; change: RankChange }>();
@@ -250,8 +262,9 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
   };
   const selectTab = (next: MenuTab) => {
     if (next === "learn") { setPanel("learn"); return; }
-    setMenuTab(next); setPlayPanel(false); setCustom(false);
+    setMenuTab(next); setPlayPanel(false); setCustom(false); setLeaderboard(false);
   };
+  const joinTable = (code: string) => { if (deck) onJoin(code, (player.state.username ?? (name.trim() || "Player")).slice(0, 24), deck.deckList); };
 
   const homeContent: HomeContent = {
     features: [
@@ -269,6 +282,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     rank: { tier: rank.position.tier, title: RankPosition.title(rank.position), pips: rank.position.pips, pipsPerDivision: RankPosition.pipsPerDivision, mythic: rank.position.tier === "mythic" },
     wins: rank.wins, losses: rank.losses,
     play: () => openPlay(), openDeck: () => openPlay(), openRank: () => selectTab("ranked"),
+    friends: () => setPanel("friends"), friendsOnline: player.state.onlineFriendCount, unread: player.state.incomingCount + player.state.unreadMessages > 0,
   };
 
   const quickResolvedBracket = quickBracket === 0 ? Math.min(4, deckBracket ?? 2) : quickBracket;
@@ -291,7 +305,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
     friendWays: ["join"], mayStart, status: error ?? engineStatus, recent,
     close: () => setPlayPanel(false), explainBracket: () => setPanel("bracket"),
     startQuick, findRanked, openCustom: () => { setPlayPanel(false); setCustom(true); },
-    rankedHall: () => { setPlayPanel(false); setMenuTab("ranked"); }, leaderboard: () => { setPlayPanel(false); setMenuTab("ranked"); },
+    rankedHall: () => { setPlayPanel(false); setMenuTab("ranked"); setLeaderboard(false); }, leaderboard: () => { setPlayPanel(false); setMenuTab("ranked"); setLeaderboard(true); },
     friendWay: () => { setPlayerMode("online"); setPlayPanel(false); setCustom(true); },
     chooseRecent: (g) => { setSelectedDeckID(g.deckID); setMode(g.mode === "quick" ? "quick" : g.mode === "ranked" ? "ranked" : "custom"); },
   };
@@ -304,7 +318,7 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
 
   if (game) return <GameScreen key={game.key} table={game.table} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
 
-  const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : undefined;
+  const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : panel === "friends" ? "messages" : undefined;
   const covered = panel !== undefined;
   const page = custom ? "custom" : menuTab;
   return (
@@ -324,7 +338,10 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
         )}
         {page === "home" && <Home content={homeContent} still={covered} />}
         {page === "decks" && <DecksPage sections={sections} selectedDeckID={selectedDeckID} select={setSelectedDeckID} play={() => openPlay()} />}
-        {page === "ranked" && <RankedPage rank={rank} record={record} play={() => openPlay("ranked")} />}
+        {page === "ranked" && !leaderboard && <RankedPage rank={rank} record={record} play={() => openPlay("ranked")}
+          leaderboard={() => setLeaderboard(true)} profile={() => selectTab("profile")} />}
+        {page === "ranked" && leaderboard && <Leaderboard account={player} onBack={() => setLeaderboard(false)}
+          openProfile={(username) => setSocial({ kind: "profile", username })} />}
         {page === "profile" && <ProfilePage record={record} playerName={player.state.username ?? (name.trim() || "Player")}
           deckCommanders={pool.all.map((d) => d.commander)} onChange={() => { setRecordVersion((v) => v + 1); server.publish(); }}
           account={<><AccountSignInCard /><PrivacyCard /></>} />}
@@ -332,7 +349,20 @@ export function MenuShell({ data, onJoin, initialJoinCode = "" }: {
       {playPanel && <PlayPanel model={playModel} />}
       <TopBar selected={covered && lit ? undefined : panel === "learn" ? "learn" : custom ? undefined : menuTab} select={selectTab} lit={lit}
         rank={{ tier: rank.position.tier, title: RankPosition.title(rank.position) }} openRank={() => selectTab("ranked")}
-        updates={() => setPanel("updates")} settings={() => setPanel("settings")} />
+        updates={() => setPanel("updates")} settings={() => setPanel("settings")}
+        messages={() => setPanel("friends")} unread={player.state.incomingCount + player.state.unreadMessages > 0} />
+      <MenuPanel open={panel === "friends"} onClose={() => setPanel(undefined)} placement="leading" label="Friends">
+        <FriendsPanel account={player} onClose={() => setPanel(undefined)} join={joinTable}
+          openProfile={(username) => setSocial({ kind: "profile", username })} openConversation={(username) => setSocial({ kind: "conversation", username })} />
+      </MenuPanel>
+      <MenuPanel open={social?.kind === "profile"} onClose={() => setSocial(undefined)} label="Player profile" maxWidth={760}>
+        {social?.kind === "profile" && <PublicProfile account={player} username={social.username} onClose={() => setSocial(undefined)}
+          message={(username) => setSocial({ kind: "conversation", username })} />}
+      </MenuPanel>
+      <MenuPanel open={social?.kind === "conversation"} onClose={() => setSocial(undefined)} label="Conversation" maxWidth={620}>
+        {social?.kind === "conversation" && <Conversation account={player} username={social.username} onClose={() => setSocial(undefined)}
+          openProfile={(username) => setSocial({ kind: "profile", username })} />}
+      </MenuPanel>
       <MenuPanel open={panel === "settings"} onClose={() => setPanel(undefined)} label="Options" maxWidth={560} fits>
         <Options onClose={() => setPanel(undefined)} upstream={data.resolver.upstreamCommit} />
       </MenuPanel>

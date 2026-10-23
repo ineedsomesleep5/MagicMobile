@@ -24,6 +24,8 @@ const SHOTS = {
   decks: ["menu.tab.decks"],
   hall: ["menu.tab.ranked"],
   profile: ["menu.tab.profile"],
+  social: ["menu.messages"],
+  leaderboard: ["menu.tab.ranked", "ranked.hall.leaderboard"],
   options: ["menu.settings"],
   gameplay: ["menu.settings", "settings.open.gameplay"],
   board: ["menu.settings", "settings.open.board"],
@@ -44,7 +46,7 @@ try {
       await page.locator(`[data-id='${id}']`).first().click();
       await page.waitForTimeout(450);
     }
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(name === "social" || name === "leaderboard" || name === "profile" ? 4000 : 700);
     await page.screenshot({ path: join(out, `${name}.png`), timeout: 120_000 });
   }
   console.log(JSON.stringify({ shots: only, errors }));
