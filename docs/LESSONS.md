@@ -732,3 +732,8 @@ contradicting one.
   too, or Google answers `redirect_uri_mismatch`. (2) The server's `mm_heartbeat` accepts only `ios` or `android` as
   the platform, so the web sends none. (3) A 64-bit game seed can't go through `JSON.stringify` as a number: use
   `EngineJson.integer(bigint)`, which `encode` writes as a raw integer.
+- 2026-10-23 (Claude, web rank after sign-in): the web showed Bronze IV 0–0 after signing in to a Silver account.
+  `PlayerAccount.start()` returned at once when a load was already running, and React's dev double effect (or a return
+  from Google) starts one before `setForeground`'s first beat. That beat then ran the heartbeat and rank sync with no
+  profile name yet, so they skipped, and the rank only arrived 45 s later. `start()` now hands back the running load,
+  and a sign-in waits for it before loading the signed-in profile. Test: "a foreground beat during a load waits…".

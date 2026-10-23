@@ -418,6 +418,19 @@ describe("PlayerAccount", () => {
     expect(h.account.state.notice).toBe("Thanks. Rude was reported.");
   });
 
+  it("a foreground beat during a load waits for the profile, so the first heartbeat and rank sync have the name", async () => {
+    const h = harness(profileServer({ mm_heartbeat: () => ok() }));
+    let named: (string | undefined)[] = [];
+    h.account.afterRefresh = () => { named = [...named, h.account.state.username]; };
+    // The page's load: a start already running (the dev double effect, or a return from Google), then the beat.
+    void h.account.start();
+    h.account.setForeground(true);
+    await settle();
+    expect(h.rpcCalls("mm_profile")).toHaveLength(1);
+    expect(h.rpcCalls("mm_heartbeat")).toHaveLength(1);
+    expect(named).toEqual(["Caleb_22"]);
+  });
+
   it("presence: a heartbeat now and every 45 seconds while in the foreground, hosting sent at once", async () => {
     const h = harness(profileServer({ mm_heartbeat: () => ok() }));
     let after = 0;

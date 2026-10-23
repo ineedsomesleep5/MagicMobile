@@ -764,6 +764,7 @@ export class PlayerAccount {
   private listeners = new Set<() => void>();
   private foregroundRun = 0;
   private cancelBeat?: () => void;
+  private starting?: Promise<void>;
   private searchRun = 0;
 
   constructor(options: PlayerAccountOptions) {
@@ -788,9 +789,19 @@ export class PlayerAccount {
 
   setNotice(notice: string | undefined) { this.set({ notice }); }
 
-  /** Signs in (making the anonymous account on first use) and loads the profile. Safe to call often. */
-  async start(): Promise<void> {
-    if (this.state.phase === "loading") return;
+  /**
+   * Signs in (making the anonymous account on first use) and loads the profile. Safe to call often: a call while one is
+   * loading waits for it, so the first heartbeat and rank sync see the profile's name.
+   */
+  start(): Promise<void> {
+    if (this.starting) return this.starting;
+    const running = this.load();
+    this.starting = running;
+    void running.finally(() => { if (this.starting === running) this.starting = undefined; });
+    return running;
+  }
+
+  private async load(): Promise<void> {
     this.set({ phase: "loading" });
     try {
       const profile = await this.api.rpc("mm_profile");
@@ -831,6 +842,8 @@ export class PlayerAccount {
         if (code(error) !== "identity_already_exists") throw error;
         await this.api.signInWithIdToken(idToken, provider, nonce, false);
       }
+      // A load that began before the sign-in may still hold the old profile: let it end, then load the signed-in one.
+      await this.starting?.catch(() => undefined);
       this.set({ phase: "idle" });
       await this.start();
       this.set({ notice: undefined });
