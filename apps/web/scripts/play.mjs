@@ -302,7 +302,7 @@ async function play(page, game) {
     if (move?.clickIn) {
       const plaque = page.locator(move.clickIn).first();
       if (await plaque.count() > 0) {
-        const label = await plaque.textContent();
+        const label = await plaque.textContent({ timeout: 2000 }).catch(() => move.clickIn);
         await plaque.click({ timeout: 3000 }).catch(() => {});
         await page.evaluate((name) => window.__rec.sends.push({ t: Math.round(performance.now() - window.__rec.t0), type: "click", label: name }), label);
       }
@@ -386,7 +386,15 @@ try {
     // Which resources were missing (card art, sounds), once each.
     const notFound = new Set();
     page.on("response", (r) => { if (r.status() >= 400) notFound.add(`${r.status()} ${r.url().split("?")[0]}${r.url().includes("exact=") ? "?" + r.url().split("?")[1].split("&")[0] : ""}`); });
-    const result = await play(page, game);
+    let result;
+    try {
+      result = await play(page, game);
+    } catch (error) {
+      // A driver failure (not the board's): keep its message and what the page showed, and go on to the next game.
+      writeFileSync(join(out, `game-${game}-driver-error.txt`), String(error?.stack ?? error));
+      await page.screenshot({ path: join(out, `game-${game}-driver-error.png`) }).catch(() => {});
+      result = { game, driverError: String(error?.message ?? error).split("\n")[0] };
+    }
     results.push({ ...result, consoleErrors: consoleErrors.filter((e) => !e.startsWith("Failed to load resource")), notFound: [...notFound] });
     console.log(JSON.stringify(results.at(-1)));
     await page.close();
