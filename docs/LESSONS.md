@@ -136,6 +136,16 @@ contradicting one.
 
 ## Website
 
+- 2026-10-22 (Claude, web Arena parity, night): the final autoplay games stalled on the driver, not the board. (1) A
+  choice (a colour question) is answered with `resolve_choice`; the driver sent `choose_choice`, which the session
+  ignores, 400+ times without a stall, since nothing failed. Copy the command the board's own control sends. (2) A
+  multi-card library search (Cultivate) may not report what's chosen, so "pick the next card not in chosenTargets"
+  toggles one card forever, and every answer brings a new prompt id, so a same-prompt stall check never fires. The
+  driver now keeps its own picks and stops after thirty identical answers. (3) Wipes depend on the draw (two to four
+  per 99-card precon); Caleb ruled shared cases plus a real sighting cover them. Don't grind games for a rare event.
+  (4) A fresh worktree has no `apps/web/.vercel-deploy/.vercel` link. Write `project.json` from
+  `npx vercel project inspect magicmobile-web` (its ID, team `team_rmblkjhTpvuvB3crwL3q2HJW`) rather than
+  `vercel link --yes`, which can pull env files into a folder that gets uploaded. macOS has no `timeout` command.
 - 2026-10-22 (Claude, web Arena parity, later): (1) A canvas `arc` with a slightly negative radius throws
   `IndexSizeError`, and thrown inside a React effect it unmounts the whole tree: a game went blank on turn 15. The
   painter now clamps radii, skips a mark that throws, and sits in an error boundary (`FXBoundary`); a painter test
