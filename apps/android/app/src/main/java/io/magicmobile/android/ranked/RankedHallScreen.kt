@@ -287,7 +287,8 @@ fun RankedLeaderboardScreen(account: PlayerAccount, back: () -> Unit) {
     val open: (RankedLeaderboard.Entry) -> Unit = { GameAudio.play(GameSound.UI_OPEN); profile = it.username }
 
     Box(Modifier.fillMaxSize()) {
-        BrandBackdrop(Modifier.fillMaxSize(), cards = false)
+        // Inside the Arena menu shell the room is already drawn behind the page.
+        if (!io.magicmobile.android.menus.LocalArenaMenuBackdrop.current) BrandBackdrop(Modifier.fillMaxSize(), cards = false)
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Box(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { TavernScreenHeader("Leaderboard", back, "Ranked Hall") }
             val loaded = (load as? BoardLoad.Loaded)?.board

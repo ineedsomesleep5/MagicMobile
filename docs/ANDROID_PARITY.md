@@ -67,6 +67,10 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | PortraitBoardViews.swift and GameplayActionDock.swift tavern pieces (medallions, phase plate, card-back fan, mana gems, pass disc, rings, stack tray, status pop-over) | app `board/TavernBoardViews.kt` (new), `board/HudViews.kt`, `board/CommandBar.kt` | Ported |
 | NativeGameView.tavernLandscapeContent | app `board/LandscapeBoard.kt` (`LandscapeCenterColumn`) | Ported |
 | GuidedGame.swift, GuidedGameViews.swift (the guided first game: coach notes, first-launch welcome) | core `game/GuidedGame.kt`, app `ui/GuidedGameViews.kt` | Ported; rules and words checked by `guided-game-cases.json` |
+| Menus/ArenaMenuKit.swift (ArenaMenuStyle, ArenaButtonFace and its styles, ArenaTopBar, controls, backdrops) | app `menus/ArenaMenuKit.kt`; rules in core `game/ArenaMenus.kt` | Ported (phase A) |
+| Menus/ArenaPanels.swift (arenaPanel, ArenaPanelHeader, ArenaOptionsView, ArenaPromptPanel) | app `menus/ArenaPanels.kt` | Ported (phase A); Options pages reuse the Android settings pieces |
+| Menus/ArenaHomeView.swift, OnDeviceRootView.swift `arenaMenu`/`homeContent` | app `menus/ArenaHomeView.kt`, `ondevice/OnDeviceRootView.kt` | Ported (phase A) |
+| Menus/ArenaPlayPanel.swift, Menus/ArenaDeckBox.swift | app `menus/ArenaPlayPanel.kt`, `menus/ArenaDeckBox.kt` | Ported (phase A); no Game Center rows |
 
 ## Walnut Tavern (iOS builds 23–26)
 
@@ -159,6 +163,20 @@ in the same-named Kotlin file:
 
 The Arena board (`BoardMode.arena`, key `magicmobile.boardMode`, Settings → Board) is iOS only so far. Android still shows Hearth whatever the key says. Port as one piece: `ArenaBoardModel.swift` (layout, hand posture, Auto Pay, combat phase, extra hand; its tests are portable) into core, the views (`Board/ArenaBoardViews.swift`, `ArenaHandFan.swift`, `NativeGameView+Arena*.swift`) into same-named Kotlin files, and the plates come over by name (`tavern-arena-*`).
 
+## Arena menus (iOS 2026-10-22, Android phase A 2026-10-22)
+
+The menus are Arena's on both platforms whatever the board (docs/ARENA_STYLE.md, "Menus"). Android phase A ported the kit,
+the panels, the shell (top bar with Home, Profile, Decks, Ranked, Learn over the room), the home page and the Play panel with
+its deck boxes. `menus.LocalArenaBoard` is iOS's `\.arenaBoard`: true over the menu shell, the setup screen, Deck Studio and
+every panel, so the tavern kit's `TavernButton`, `TavernToggle`, `TavernSlider`, `TavernStepper`, `tavernPanelChrome`,
+`TavernSheetBackground` and `TavernMenu` draw Arena's face there; the game never sets it, so the Hearth board is unchanged.
+The seven home images come from `home-art-*.imageset` through `prepareBrandAssets` (`R.drawable.home_art_*`).
+
+Still to port (later phases): the custom table as Arena's event page (Android shows its setup screen with Arena controls),
+Deck Studio as the Decks tab inside the shell (it opens full screen, without the book film), Profile and Ranked as Arena pages
+(they show inside the shell over the dimmed room, still in their tavern cards), Updates as Arena's inbox, Downloads'
+readout, Friends' Arena look, and the Arena board itself (the home feature "The Arena board" points at it).
+
 ## Log
 
 - 2026-09-24 (Claude): Started. Engine client, model, adapters, message log, yield policy and
@@ -240,3 +258,15 @@ The Arena board (`BoardMode.arena`, key `magicmobile.boardMode`, Settings → Bo
   `scripts/android/prepare_assets.py`; the rank badges and spin frames arrive as `tavern_rank_*` drawables.
 - `RankedParityTest` checks `parity/ranked-cases.json` (shared with iOS `RankedParityTests.swift`), the AI decks,
   the record file round trip and the matchmaker. Play now opens the mode chooser; Custom Table is the old setup.
+  (2026-10-22: the Arena Play panel replaced the mode chooser, the Quick Match and Ranked screens and the search and
+  challenge overlays, as on iOS.)
+
+- 2026-10-22 (Claude): Arena menus, phase A, on top of `claude/arena-mode` (e3b81255). New `menus/` package (ArenaMenuKit,
+  ArenaPanels, ArenaHomeView, ArenaPlayPanel, ArenaDeckBox, each named after its iOS file) and core `game/ArenaMenus.kt`
+  (tabs, play modes, the plaque's word and action, recently played, deck grid, box geometry, deck colours, home art crop,
+  feature turning) with `ArenaMenusTest` (14 tests). The root shows the Arena shell instead of `TavernMainMenu`, and
+  Options, Updates, Friends, Downloads, How to Play, the welcome, the bracket and the offline-art question open as glass
+  panels (`ArenaPanel`) instead of bottom sheets and dialogs. Removed with their iOS counterparts: `TavernMainMenu`,
+  `PlayModeChooser`, `PlayDeckSection`, `QuickMatchScreen`, `RankedLobbyScreen`, `RankedSearchOverlay`,
+  `ChallengeWaitingOverlay`, `SupportBanner` and the old Settings sheet. Not yet checked on an emulator: the top bar on a
+  360 dp phone, the deck boxes opening (3D lid), the feature panel's swipe, the blade's seam, and every panel's height.

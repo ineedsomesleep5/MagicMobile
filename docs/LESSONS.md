@@ -21,6 +21,13 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-22 (Claude, Android Arena menus): an agent worktree cut from `main` lacked the newest iOS Arena sources
+  (orange `ArenaButtonFace`, the sans/serif `font()` mix, the `home-art-*` sets), which lived only on `claude/arena-mode`.
+  **Rule:** before porting an iOS screen, check `git log --all -- <iOS file>` for a newer commit and merge it, so the port
+  and `prepareBrandAssets` see the same files. In Compose, `runCatching { ImageBitmap.imageResource(id) }` does not
+  compile (a try/catch around a composable call); resolve drawables through `R` so a missing one fails the build instead.
+  Where: `apps/android/app/src/main/java/io/magicmobile/android/menus/`.
+
 - 2026-10-20 (Claude, Arena mode): a pitched Blender camera (`tavern_table.py --pitch`) draws the far half of the mat
   narrower and its true centre above its visual middle. Cards placed on the canvas edge spilled onto the frame at the
   opponent's land row, and the compass sat about 50 pt high. **Rule:** measure the rendered plate (sample brightness

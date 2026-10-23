@@ -139,7 +139,9 @@ fun GameAudioSettings() {
         if (musicOn) TavernSlider(musicVolume.toFloat(), { musicVolume = it.toDouble(); GameAudio.settingsChanged() }, label = "Music volume")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Sounds follow your phone's media volume.", Modifier.weight(1f).alpha(0.6f), color = TavernPalette.parchment, style = sf(12f, design = SfDesign.SERIF))
-            TavernPlaqueButton("Sound Lab", { soundLabOpen = true }, Modifier.semantics { contentDescription = "settings.soundLab" },
+            // In Arena's Options the Sound Lab opens as a page of the panel, not a sheet.
+            val openLab = io.magicmobile.android.menus.LocalArenaOpenSoundLab.current
+            TavernPlaqueButton("Sound Lab", { if (openLab != null) openLab() else soundLabOpen = true }, Modifier.semantics { contentDescription = "settings.soundLab" },
                 kind = TavernButtonKind.SECONDARY, systemImage = "waveform")
         }
     }

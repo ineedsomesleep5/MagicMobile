@@ -319,7 +319,8 @@ fun Modifier.leatherCard(): Modifier = this.fillMaxWidth().glow(Color.Black.copy
 @Composable
 fun TavernLobbyPage(title: String, back: () -> Unit, backTitle: String = "Main menu", content: @Composable ColumnScope.() -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        BrandBackdrop(Modifier.fillMaxSize(), cards = false)
+        // Inside the Arena menu shell the room is already drawn behind the page.
+        if (!io.magicmobile.android.menus.LocalArenaMenuBackdrop.current) BrandBackdrop(Modifier.fillMaxSize(), cards = false)
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Box(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)) { TavernScreenHeader(title, back, backTitle) }
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -332,63 +333,6 @@ fun TavernLobbyPage(title: String, back: () -> Unit, backTitle: String = "Main m
 @Composable
 private fun SectionLabel(text: String, color: Color = TavernPalette.brass) {
     Text(text.uppercase(), Modifier.semantics { heading() }, color = color, style = sf(11f, SfWeight.heavy, SfDesign.SERIF, tracking = 1.4f))
-}
-
-// MARK: - Mode chooser
-
-@Composable
-fun PlayModeChooser(rank: RankPosition, seasonName: String, quick: () -> Unit, ranked: () -> Unit, custom: () -> Unit, back: () -> Unit) {
-    TavernLobbyPage("Play Commander", back) {
-        ModeCard("Quick Match", "One AI opponent at your deck's bracket. Choose the bracket, deck and skill, or let the tavern pick.", "play.quick", quick) {
-            SfImage("bolt.fill", TavernPalette.brass, 26.dp)
-        }
-        ModeCard("Ranked", "1v1 from Bronze to Mythic. Win to climb, lose and you slip. Season: $seasonName.", "play.ranked", ranked) {
-            RankBadge(rank, 52.dp, showsPips = false)
-        }
-        ModeCard("Custom Table", "Up to three AI opponents, or an online table with friends on iPhone and Android.", "play.custom", custom) {
-            SfImage("person.3.fill", TavernPalette.brass, 22.dp)
-        }
-    }
-}
-
-@Composable
-private fun ModeCard(title: String, detail: String, tag: String, action: () -> Unit, icon: @Composable () -> Unit) {
-    Row(Modifier.clickable { GameAudio.play(GameSound.UI_OPEN); action() }.testTag(tag).semantics(mergeDescendants = true) { contentDescription = "$title. $detail" }
-        .parchmentCard(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(64.dp).background(TavernPalette.leather.copy(alpha = 0.9f), CircleShape).border(2.dp, TavernPalette.brassLine, CircleShape),
-            contentAlignment = Alignment.Center) { icon() }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, color = parchmentInk, style = sf(21f, SfWeight.black, SfDesign.SERIF))
-            Text(detail, color = parchmentInk.copy(alpha = 0.78f), style = sf(14f, SfWeight.medium, SfDesign.SERIF))
-        }
-        SfImage("chevron.right", brassLabel, 15.dp)
-    }
-}
-
-// MARK: - Deck + bracket
-
-@Composable
-fun PlayDeckSection(deckName: String?, commander: String?, bracket: CommanderBracket?, canDeclare: Boolean, deckID: String,
-                    sections: List<TavernPickerSection<String>>, selectDeck: (String) -> Unit, editDecks: () -> Unit, explainBracket: () -> Unit,
-                    enabled: Boolean = true) {
-    Column(Modifier.parchmentCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            CommanderDeckPortrait(commander, Modifier.size(84.dp, 117.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("YOUR DECK", color = brassLabel, style = sf(10f, SfWeight.heavy, SfDesign.SERIF, tracking = 1.6f))
-                Text(deckName ?: "Choose a deck", color = parchmentInk, style = sf(19f, SfWeight.black, SfDesign.SERIF))
-                commander?.let { Text(it, color = parchmentInk.copy(alpha = 0.75f), style = sf(13f, SfWeight.regular, SfDesign.SERIF)) }
-                if (bracket != null) Row(Modifier.defaultMinSize(minHeight = 44.dp).clickable(onClick = explainBracket).testTag("play.deck.bracket")
-                    .semantics(mergeDescendants = true) { contentDescription = "${bracket.title}. Bracket details" },
-                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BracketTag(bracket)
-                    SfImage(if (canDeclare) "slider.horizontal.3" else "info.circle", brassLabel, 12.dp)
-                }
-            }
-        }
-        TavernPicker("Your deck", deckID, sections, selectDeck, Modifier.testTag("play.deck"), enabled = enabled)
-        TavernPlaqueButton("Browse, import or edit decks", editDecks, kind = TavernButtonKind.SECONDARY, systemImage = "rectangle.stack.badge.plus", enabled = enabled)
-    }
 }
 
 /** Why a deck is in its bracket, and the player's own label for it (nil `declared` for included decks). */
@@ -432,138 +376,6 @@ fun DeckBracketSheet(deckName: String, report: BracketReport, declared: Commande
 }
 
 private fun Modifier.matchParentSizeCompat(): Modifier = this.fillMaxSize()
-
-// MARK: - Quick Match
-
-@Composable
-fun QuickMatchScreen(deckBracket: CommanderBracket?, opponentBracket: Int, setOpponentBracket: (Int) -> Unit, opponentDeckID: String,
-                     setOpponentDeckID: (String) -> Unit, aiSkill: Int, setAISkill: (Int) -> Unit, startingMode: String, setStartingMode: (String) -> Unit,
-                     pool: List<AIDeck>, mayStart: Boolean, status: String?, start: () -> Unit, back: () -> Unit, deckSlot: @Composable () -> Unit) {
-    val resolved = if (opponentBracket == 0) minOf(4, deckBracket?.level ?: 2) else opponentBracket
-    val poolDecks = AIDeckPool.pool(resolved, pool)
-    LaunchedEffect(resolved) { if (opponentDeckID.isNotEmpty() && poolDecks.none { it.id == opponentDeckID }) setOpponentDeckID("") }
-    TavernLobbyPage("Quick Match", back) {
-        deckSlot()
-        Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionLabel("Your opponent")
-            TavernPicker("Opponent bracket", opponentBracket, listOf(
-                TavernPickerSection(null, listOf((deckBracket?.let { "Match my deck (Bracket ${minOf(4, it.level)})" } ?: "Match my deck") to 0)),
-                TavernPickerSection("Choose", CommanderBracket.entries.filter { it != CommanderBracket.CEDH }.map { it.title to it.level })),
-                setOpponentBracket, Modifier.testTag("quick.bracket"))
-            TavernPicker("Opponent deck", opponentDeckID, listOf(TavernPickerSection(null, listOf("Surprise me" to "")),
-                TavernPickerSection("Bracket $resolved decks", poolDecks.map { "${it.name} · ${it.commander}" to it.id })), setOpponentDeckID,
-                Modifier.testTag("quick.deck"))
-            TavernStepper("AI skill: $aiSkill", aiSkill, 1..10, setAISkill, Modifier.testTag("quick.skill"), color = TavernPalette.parchment)
-            Text("3 is a fair fight. Higher skill thinks longer and may slow turns.", color = TavernPalette.parchment.copy(alpha = 0.7f),
-                style = sf(12f, SfWeight.regular, SfDesign.SERIF))
-            TavernPicker("Who goes first?", startingMode, listOf(TavernPickerSection(null, listOf("Choose at the table" to "choose", "Roll a D20" to "roll"))),
-                setStartingMode, Modifier.testTag("quick.startingPlayer"))
-        }
-        status?.let { Text(it, color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF)) }
-        TavernButton({ GameAudio.play(GameSound.MENU_PLAY); start() }, Modifier.testTag("quick.start").semantics { contentDescription = "Start Quick Match" },
-            fontSize = 17f, fullWidth = true, enabled = mayStart) {
-            SfImage("flame.fill", rgb(1.0, 0.91, 0.66), 15.dp)
-            TavernButtonText("Start Quick Match")
-        }
-    }
-}
-
-// MARK: - Ranked
-
-@Composable
-fun RankedLobbyScreen(rank: RankState, deckBracket: CommanderBracket?, canSearchPeople: Boolean, mayStart: Boolean, status: String?,
-                      find: () -> Unit, profile: () -> Unit, back: () -> Unit, deckSlot: @Composable () -> Unit) {
-    val tier = rank.position.tier
-    val eligible = (deckBracket?.level ?: 99) <= tier.maxDeckBracket
-    val appeared = remember { Any() }
-    TavernLobbyPage("Ranked", back) {
-        Column(Modifier.leatherCard().testTag("ranked.standing"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RankBadge(rank.position, 132.dp, showsPips = true, showsTitle = true, spinKey = appeared)
-            val left = RankLadder.seasonEnd(rank.season)?.let { maxOf(0L, (it - System.currentTimeMillis() + 86_399_999) / 86_400_000) }
-            Text("Season: ${RankLadder.seasonName(rank.season)}" + (left?.let { if (it == 1L) " · 1 day left" else " · $it days left" } ?: ""),
-                color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.semibold, SfDesign.SERIF))
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                Stat("Wins", "${rank.wins}"); Stat("Losses", "${rank.losses}"); Stat("Peak", rank.peak.title)
-            }
-            TavernPlaqueButton("Your profile", profile, Modifier.testTag("ranked.profile"), kind = TavernButtonKind.SECONDARY, systemImage = "person.crop.circle")
-        }
-        deckSlot()
-        Column(Modifier.leatherCard(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionLabel("At ${tier.label}")
-            val range = tier.opponentBrackets
-            val brackets = if (range.first == range.last) "${range.first}" else "${range.first}–${range.last}"
-            Rule("person.2.fill", if (tier.preconOpponentsOnly) "AI opponents play official precon decks at skill ${tier.aiSkill}."
-                else "Opponents play Bracket $brackets decks. AI opponents play at skill ${tier.aiSkill}.")
-            Rule("checkmark.seal.fill", "Your deck may be up to Bracket ${tier.maxDeckBracket}. A lower bracket earns +1 pip for each win.")
-            // Ladder option B (Caleb, 2026-10-15): Arena's steps and a floor at each tier.
-            Rule("arrow.up.arrow.down", (if (tier.winPips == 2) "Each win fills two pips" else "Each win fills a pip") + " " +
-                (if (tier.lossPips == 0) "and a loss costs nothing here." else "and each loss empties one."))
-            Rule("shield.fill", if (tier == RankTier.MYTHIC) "A loss at Mythic can drop you back to Diamond, never lower."
-                else "Four pips win a division, and a loss never drops you out of ${tier.label}.")
-            Rule(if (canSearchPeople) "antenna.radiowaves.left.and.right" else "cpu",
-                if (canSearchPeople) "We look for a player near your rank first. If nobody's searching, an AI takes the seat."
-                else "Profiles are offline, so an AI takes the seat. AI games count the same.")
-        }
-        if (!eligible && deckBracket != null) Row(Modifier.testTag("ranked.ineligible"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SfImage("exclamationmark.triangle.fill", rgb(1.0, 0.72, 0.5), 14.dp)
-            Text("${deckBracket.title} is above ${tier.label}'s limit (Bracket ${tier.maxDeckBracket}). Choose another deck.",
-                color = rgb(1.0, 0.72, 0.5), style = sf(14f, SfWeight.semibold, SfDesign.SERIF))
-        }
-        status?.let { Text(it, color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF)) }
-        TavernButton({ GameAudio.play(GameSound.MENU_PLAY); find() }, Modifier.testTag("ranked.find").semantics { contentDescription = "Find Ranked Match" },
-            fontSize = 17f, fullWidth = true, enabled = mayStart && eligible) {
-            SfImage("shield.lefthalf.filled", rgb(1.0, 0.91, 0.66), 15.dp)
-            TavernButtonText("Find Ranked Match")
-        }
-    }
-}
-
-@Composable
-private fun Stat(title: String, value: String) {
-    Column(Modifier.semantics(mergeDescendants = true) {}, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = TavernPalette.parchment, style = sf(18f, SfWeight.black, SfDesign.SERIF))
-        Text(title.uppercase(), color = TavernPalette.parchment.copy(alpha = 0.7f), style = sf(9f, SfWeight.heavy, SfDesign.SERIF, tracking = 1.2f))
-    }
-}
-
-@Composable
-private fun Rule(icon: String, text: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.width(20.dp).padding(top = 2.dp), contentAlignment = Alignment.Center) { SfImage(icon, TavernPalette.brass, 13.dp) }
-        Text(text, color = TavernPalette.parchment, style = sf(14f, SfWeight.regular, SfDesign.SERIF))
-    }
-}
-
-/** Searching the ranked queue: a turning badge, the time, and what happens next. */
-@Composable
-fun RankedSearchOverlay(phase: RankedMatchmaker.Phase, rank: RankPosition, playAI: () -> Unit, cancel: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).clickable(remember { MutableInteractionSource() }, null) {}
-        .testTag("ranked.search"), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(20.dp).widthIn(max = 420.dp).fillMaxWidth().tavernPanel(16.dp).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            RankSpinEmblem(rank.tier, 110.dp, durationMillis = 2400, forever = true)
-            if (phase is RankedMatchmaker.Phase.Matched) {
-                Text("Challenger found", color = TavernPalette.parchment, style = sf(22f, SfWeight.black, SfDesign.SERIF))
-                Text(phase.ticket.opponent ?: "Another player", color = TavernPalette.brass, style = sf(18f, SfWeight.bold, SfDesign.SERIF))
-                Text("Setting the table…", color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(14f, SfWeight.regular, SfDesign.SERIF))
-            } else {
-                val since = (phase as? RankedMatchmaker.Phase.Searching)?.since ?: System.currentTimeMillis()
-                var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-                LaunchedEffect(since) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(500) } }
-                val elapsed = maxOf(0L, (now - since) / 1000)
-                val left = maxOf(0L, RankedMatchmaker.SEARCH_MILLIS / 1000 - elapsed)
-                Text("Looking for a challenger", color = TavernPalette.parchment, style = sf(22f, SfWeight.black, SfDesign.SERIF), textAlign = TextAlign.Center)
-                Text("%d:%02d".format(elapsed / 60, elapsed % 60), color = TavernPalette.parchment, style = sf(30f, SfWeight.black, SfDesign.SERIF))
-                Text("An AI takes the seat in $left s if nobody's searching.", color = TavernPalette.parchment.copy(alpha = 0.8f),
-                    style = sf(13f, SfWeight.regular, SfDesign.SERIF), textAlign = TextAlign.Center)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TavernPlaqueButton("Cancel", cancel, Modifier.testTag("ranked.search.cancel"), kind = TavernButtonKind.SECONDARY, compact = false)
-                    TavernPlaqueButton("Play the AI now", playAI, Modifier.testTag("ranked.search.ai"), compact = false)
-                }
-            }
-        }
-    }
-}
 
 // MARK: - Result strip and rank moments
 

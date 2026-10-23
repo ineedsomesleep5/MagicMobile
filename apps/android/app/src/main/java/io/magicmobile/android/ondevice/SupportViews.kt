@@ -59,31 +59,6 @@ private fun openSupport(): () -> Unit {
     return { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SupportProject.URL))) } }
 }
 
-/** SupportBanner: a small strip at the foot of the main menu. Its x hides it for good; Settings and Updates keep the link. */
-@Composable
-fun SupportBanner(modifier: Modifier = Modifier) {
-    var dismissed by AppPreferences.boolean(SupportProject.DISMISSED_KEY, false)
-    if (dismissed) return
-    val open = openSupport()
-    val shape = RoundedCornerShape(50)
-    Row(modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp)
-        .background(Color.Black.copy(alpha = 0.35f), shape).border(1.dp, TavernPalette.brass.copy(alpha = 0.35f), shape),
-        verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f, fill = false).defaultMinSize(minHeight = 44.dp).clickable(onClick = open).testTag("menu.support")
-            .semantics { role = Role.Button }.padding(start = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-            SfImage("heart.fill", TavernPalette.ember, 13.dp)
-            FitText(SupportProject.PITCH, sf(13f, SfWeight.semibold, SfDesign.SERIF), Modifier.weight(1f, fill = false),
-                color = TavernPalette.parchment.copy(alpha = 0.85f), minimumScale = 0.7f)
-            SfImage("arrow.up.right.square", TavernPalette.parchment.copy(alpha = 0.85f), 11.dp)
-        }
-        Box(Modifier.size(44.dp).clickable { dismissed = true }.testTag("menu.support.dismiss")
-            .semantics { contentDescription = "Hide support banner"; role = Role.Button }, contentAlignment = Alignment.Center) {
-            SfImage("xmark", TavernPalette.parchment.copy(alpha = 0.6f), 11.dp)
-        }
-    }
-}
-
 /** SupportSettingsPanel: the always-on support panel at the foot of Settings. */
 @Composable
 fun SupportSettingsPanel() {

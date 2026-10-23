@@ -46,25 +46,6 @@ import io.magicmobile.android.ui.glow
 import io.magicmobile.android.ui.sf
 import io.magicmobile.android.ui.tavernPanel
 
-/** The challenger's wait while their friend answers (ChallengeWaitingOverlay, FriendChallengeViews.swift). */
-@Composable
-fun ChallengeWaitingOverlay(friend: String, mode: PlayMode, rank: RankPosition, cancel: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).clickable(remember { MutableInteractionSource() }, null) {}
-        .testTag("challenge.waiting"), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(20.dp).widthIn(max = 420.dp).fillMaxWidth().tavernPanel(16.dp).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (mode == PlayMode.RANKED) RankSpinEmblem(rank.tier, 104.dp, durationMillis = 2400, forever = true)
-            else Box(Modifier.height(104.dp), contentAlignment = Alignment.Center) { SfImage("figure.fencing", TavernPalette.brass, 54.dp) }
-            Text(if (mode == PlayMode.RANKED) "Ranked challenge sent" else "Quick Match challenge sent", color = TavernPalette.parchment,
-                style = sf(22f, SfWeight.black, SfDesign.SERIF), textAlign = TextAlign.Center)
-            Text("Waiting for $friend…", color = TavernPalette.brass, style = sf(18f, SfWeight.bold, SfDesign.SERIF), textAlign = TextAlign.Center)
-            Text(if (mode == PlayMode.RANKED) "This game counts for both of you." else "A friendly game: no rank change.",
-                color = TavernPalette.parchment.copy(alpha = 0.8f), style = sf(13f, SfWeight.regular, SfDesign.SERIF), textAlign = TextAlign.Center)
-            TavernPlaqueButton("Withdraw challenge", cancel, Modifier.testTag("challenge.cancel"), kind = TavernButtonKind.SECONDARY, compact = false)
-        }
-    }
-}
-
 /** A friend's challenge arriving on the menu: the mode and Accept or Decline (ChallengeInviteBanner). */
 @Composable
 fun ChallengeInviteBanner(challenge: FriendChallenge, accept: () -> Unit, decline: () -> Unit, modifier: Modifier = Modifier) {
