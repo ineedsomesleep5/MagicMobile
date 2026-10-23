@@ -169,7 +169,7 @@ struct CardTile: View {
         }
         .shadow(color: tileShadow.color, radius: tileShadow.radius, y: tileShadow.y)
         // After the shadow, so the light casts none.
-        .background { handGlow }
+        .modifier(HandGlowBackground(glow: arenaHandGlow))
         .rotationEffect(.degrees(card.tapped == true && !ignoreTappedRotation ? 90 : 0))
         .animation(GameBoardMotion.reduced(accessibilityReduceMotion) ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: card.tapped)
         .contentShape(RoundedRectangle(cornerRadius: 6))
@@ -181,12 +181,6 @@ struct CardTile: View {
         .accessibilityHint(playHint)
     }
 
-    /// The Arena hand's outline glow, out of the body so it stays inside CI's 200 ms type-check budget.
-    @ViewBuilder private var handGlow: some View {
-        if let arenaHandGlow {
-            ArenaOutlineGlow(outline: .card, tone: arenaHandGlow.tone, breathes: arenaHandGlow.breathes)
-        }
-    }
 
     /// The tile's shadow, typed here so the body stays inside CI's 200 ms type-check budget.
     private var tileShadow: (color: Color, radius: CGFloat, y: CGFloat) {
@@ -602,6 +596,23 @@ struct TokenCopyCardFace: View {
             Image(systemName: loading ? "hourglass" : "sparkles")
                 .font(.system(size: max(width * 0.18, 10), weight: .semibold))
                 .foregroundStyle(MagicPalette.antiqueGold.opacity(loading ? 0.34 : 0.42))
+        }
+    }
+}
+
+/// The Arena hand's outline glow behind a tile. A modifier keeps the background closure out of the tile's long modifier
+/// chain, where its overload inference alone measured 205 ms in CI (budget 200 ms).
+private struct HandGlowBackground: ViewModifier {
+    let glow: (tone: ArenaOutlineGlow.Tone, breathes: Bool)?
+
+    func body(content: Content) -> some View {
+        // One branch for the content, so a tile keeps its identity as the glow comes and goes.
+        content.background { glowView }
+    }
+
+    @ViewBuilder private var glowView: some View {
+        if let glow {
+            ArenaOutlineGlow(outline: .card, tone: glow.tone, breathes: glow.breathes)
         }
     }
 }
