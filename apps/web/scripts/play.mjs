@@ -66,7 +66,8 @@ const recorder = () => {
     lastKey = key;
     rec.snaps.push({ t: now(), turn: snap.turn, step: snap.step, active: snap.activePlayerId === snap.viewerPlayerId ? "you" : "ai",
       top: top ? `${top.name}${top.controllerId === snap.viewerPlayerId ? " (you)" : " (ai)"}` : undefined,
-      board: snap.players.map((p) => p.zones.battlefield.length).join("/"), life: snap.players.map((p) => p.life).join("/") });
+      board: snap.players.map((p) => p.zones.battlefield.length).join("/"), life: snap.players.map((p) => p.life).join("/"),
+      sick: snap.players.flatMap((p) => p.zones.battlefield).filter((c) => c.summoningSickness === true).length });
     if (rec.snaps.length > 6000) rec.snaps.splice(0, 2000);
   }, 25);
   let last = "";
@@ -277,8 +278,8 @@ async function play(page, game) {
   const started = Date.now();
   let lastTurn = 0;
   for (;;) {
-    // --shots: the pregame and the first question and browser once each, for a look at the board's Arena dress.
-    for (const [name, selector] of shots.size ? [["roll", ".aroll"], ["mulligan", ".amull"], ["question", ".bstage"], ["browser", ".abrowse .bbody"]] : []) {
+    // --shots: the versus intro, the pregame and the first question and browser once each, for a look at the board's Arena dress.
+    for (const [name, selector] of shots.size ? [["versus", ".aversus"], ["roll", ".aroll"], ["mulligan", ".amull"], ["question", ".bstage"], ["browser", ".abrowse .bbody"]] : []) {
       if (memory.looked?.has(name) || !(await page.locator(selector).first().isVisible().catch(() => false))) continue;
       (memory.looked ??= new Set()).add(name);
       await page.waitForTimeout(500);

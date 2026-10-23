@@ -794,3 +794,13 @@ contradicting one.
   against the server's per-address limits. The relay's WebSocket (`*.workers.dev`) can't go through a Vercel rewrite,
   so tables with people may still be blocked on such a network. When a web report says "nothing happens", check the
   auth logs for the browser's requests before reading the code: no requests means the network, not the flow.
+- 2026-10-23 (Claude, web board polish): three quiet web traps from Caleb's playtest. (1) `.arena-stage button
+  { font-family: var(--sans) }` (0,1,1) outranks `.aplaque`'s serif (0,1,0), so every board button drew in the system
+  sans (Segoe UI on Windows) and looked unlike iOS; `.arena-stage button.aplaque` restores the serif. Check computed
+  font, not the class rule, when a web button "looks off". (2) The summoning-sickness hourglass existed only on the
+  framed tile; the default frames-off `PlainTile` never drew it. A board mark belongs on both card views. (3) XMage can
+  give a card a new object ID when it changes zones: `GameStats` matched dead creatures by ID only and counted 0
+  destroyed; it now also matches a new graveyard card of the same name, as `BoardEventDiffer` already did. Also: card
+  backs and mana symbols are served from the site (`public/arena/card-back.jpg`, `public/symbols`) because filtered
+  networks block `backs.scryfall.io`/`svgs.scryfall.io`, and Recent games read every device's games through
+  `mm_my_games` (the record of each device was local only).

@@ -11,7 +11,8 @@
  * match dashboard (the web keeps no detailed game records), so a game card opens its details in place.
  */
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Achievement, colorName, type MatchRecord, type PlayerRecordStore } from "../../core/playerRecord";
+import { Achievement, colorName, type MatchRecord, playerStats, type PlayerRecordStore } from "../../core/playerRecord";
+import { mergeMatches } from "../../core/remoteGames";
 import {
   percent, portraitChoices, ProfileGame, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek, rankChartRange,
 } from "../../core/profileSummary";
@@ -105,8 +106,10 @@ function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
 
 // MARK: The page
 
-export function ProfilePage({ record, playerName, deckCommanders, onChange, account }: {
+export function ProfilePage({ record, remote = [], playerName, deckCommanders, onChange, account }: {
   record: PlayerRecordStore; playerName: string; deckCommanders: string[]; onChange: () => void;
+  /** Your games the server has from other devices (mm_my_games); they join this browser's by their id. */
+  remote?: readonly MatchRecord[];
   /** The account and privacy cards, which follow the games (AccountSignInCard, privacyCard). */
   account?: ReactNode;
 }) {
@@ -123,9 +126,9 @@ export function ProfilePage({ record, playerName, deckCommanders, onChange, acco
     if (record.rank !== before) onChange();
   }, [record]); // once per record, as iOS refreshes on appear
 
-  const matches = record.matches;
-  const stats = record.stats;
-  const unlocked = record.achievements;
+  const matches = useMemo(() => mergeMatches(record.matches, remote), [record.matches, remote]);
+  const stats = useMemo(() => playerStats(matches), [matches]);
+  const unlocked = useMemo(() => Achievement.unlocked(matches, record.rank), [matches, record.rank]);
   const scoped = useMemo(() => (deckFilter === undefined ? [...matches] : matches.filter((m) => m.deckID === deckFilter)), [matches, deckFilter]);
   const summary = useMemo(() => ProfileSummary.forDeck(matches, deckFilter), [matches, deckFilter]);
   const all = useMemo(() => ProfileSummary.fromMatches(matches), [matches]);

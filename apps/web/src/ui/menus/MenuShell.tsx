@@ -12,7 +12,7 @@ import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
 import { DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import { DeckSync, supabaseDeckSync, SyncState } from "../../core/deckStudio/sync";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
-import { type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
+import { type MatchRecord, type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
 import type { FriendChallenge } from "../../core/account";
@@ -228,6 +228,14 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     return () => window.removeEventListener("mm:open-profile", open);
   }, []);
   const [game, setGame] = useState<ActiveGame>();
+  // Your games from the phone too (mm_my_games), read each time the profile opens and after each game.
+  const [remoteGames, setRemoteGames] = useState<readonly MatchRecord[]>([]);
+  useEffect(() => {
+    if (menuTab !== "profile" || game || player.state.phase !== "ready" || !player.state.username) return;
+    let live = true;
+    void account.myGames().then((games) => { if (live && games) setRemoteGames(games); });
+    return () => { live = false; };
+  }, [menuTab, game, player.state.phase, player.state.username]);
   /** What the last Ranked game did to your rank, for the result's rank strip. */
   const [rankChange, setRankChange] = useState<{ key: number; change: RankChange }>();
   const [error, setError] = useState<string>();
@@ -496,7 +504,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       const winners = snapshot.winnerPlayerIds ?? [];
       const outcome = winners.length === 0 ? "draw" : viewer && winners.includes(viewer) ? "win" : "loss";
       const change = record.record({
-        mode: game.mode, outcome, opponents: game.opponents.map((o, i) => ({ name: `AI ${i + 1}`, commander: o.commander, isAI: true })),
+        mode: game.mode, outcome, opponents: game.opponents.map((o) => ({ name: o.name, commander: o.commander, isAI: true })),
         opponentBracket: game.opponents[0]?.bracket, aiSkill: game.skill, deckID: game.deck.id, deckName: game.deck.name, commander: game.deck.commander,
         colors: [...game.deck.colors], deckBracket: game.deckBracket, turns: snapshot.turn, aiDeckID: game.opponents[0]?.id,
       });
@@ -618,7 +626,11 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       .map((d) => ({ id: d.id, name: d.name, commander: d.commander, colors: [...d.colors], bracket: d.bracket })) })).filter((g) => g.decks.length > 0),
   ];
 
-  if (game) return <GameScreen key={game.key} table={game.table} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
+  if (game) {
+    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined },
+      opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
+    return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
+  }
   if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
 
   const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : panel === "friends" ? "messages" : undefined;
@@ -646,7 +658,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
           leaderboard={() => setLeaderboard(true)} profile={() => selectTab("profile")} />}
         {page === "ranked" && leaderboard && <Leaderboard account={player} onBack={() => setLeaderboard(false)}
           openProfile={(username) => setSocial({ kind: "profile", username })} />}
-        {page === "profile" && <ProfilePage record={record} playerName={player.state.username ?? (name.trim() || "Player")}
+        {page === "profile" && <ProfilePage record={record} remote={remoteGames} playerName={player.state.username ?? (name.trim() || "Player")}
           deckCommanders={pool.all.map((d) => d.commander)} onChange={() => { setRecordVersion((v) => v + 1); server.publish(); }}
           account={<><AccountSignInCard /><PrivacyCard /></>} />}
       </div>

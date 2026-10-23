@@ -11,6 +11,8 @@
 .arena-stage { position: absolute; left: 0; top: 0; width: 956px; height: 440px; transform-origin: 0 0; border-radius: 14px;
   background: #2a1a10 url(/arena/table.jpg) center/100% 100% no-repeat; }
 .arena-stage button { font-family: var(--sans); border: 0; cursor: pointer; color: inherit; }
+/* Arena buttons are serif (ArenaMenuStyle.title); the rule above would hand them the system sans (Segoe UI on Windows). */
+.arena-stage button.aplaque { font-family: var(--serif); }
 
 /* ambient lamplight over the active player's half */
 .arena .pool-light { position: absolute; left: 172px; width: 610px; height: 220px; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .4s ease, top .4s ease;
@@ -53,7 +55,7 @@
 .acard .tile .tedge { position: absolute; left: 3.7%; right: 3.7%; top: 92%; height: 10.8%; border-radius: 0 0 .9em .9em;
   background: linear-gradient(#7a5426, #3a2410 60%, #20140a); box-shadow: 0 .15em .25em rgba(0,0,0,.5); }
 .acard .tile .tapmark { position: absolute; left: 50%; top: 22%; width: 49%; transform: translateX(-50%); opacity: .72; filter: drop-shadow(0 0 .25em rgba(0,0,0,.7)); }
-.acard .tile .sick { position: absolute; left: 50%; bottom: 3%; width: 17%; transform: translateX(-50%); filter: drop-shadow(0 0 .2em #000); }
+.acard .tile .sick, .acard .plain .sick { position: absolute; right: 4%; top: 4%; width: 22%; min-width: 13px; z-index: 2; filter: drop-shadow(0 0 .15em rgba(0,0,0,.6)); }
 /* Card Frames off (the default): the reference game's battlefield card (CardTile.plainFace on iOS). The card is 15em wide. */
 .acard .plain { position: absolute; inset: 0; filter: var(--dim,) var(--glow,) var(--hover,); transition: filter .3s; }
 /* Hover only lifts a card on the table and, when nothing else lights it, outlines it softly; reading it is a right-click or a
@@ -121,6 +123,11 @@
    six-sided plaque edged in gold over the ring's foot; no brass ring. `.bmed` is the browsers' and the result's. */
 .amed .av, .bmed .av { position: absolute; inset: 5%; border-radius: 50%; overflow: hidden; background: #2a1408; }
 .amed .av svg, .bmed .av svg { display: block; width: 100%; height: 100%; }
+/* The commander's art as the portrait (PlayerPortrait), the stand-in under it until it loads; grey once out. */
+.portraitart { position: relative; display: block; width: 100%; height: 100%; }
+.portraitart > svg { display: block; width: 100%; height: 100%; }
+.portraitart > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .3s; }
+.portraitart.gone { filter: grayscale(1); opacity: .5; }
 .amed .av::after, .bmed .av::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, transparent 55%, rgba(0,0,0,.3)); }
 .amed::after, .bmed::after { content: ""; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none; padding: max(1.5px, calc(var(--d) * .045));
   background: linear-gradient(#ffe69e, #fad685, #9e702e); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -355,7 +362,7 @@
 .abrowse header p { margin: 0; text-align: center; font: 500 13px/1.3 var(--sans); color: rgba(242,235,219,.8); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 /* the title starts below the opponent's medallion and its life plaque (ArenaSafeArea.top(50) in landscape) */
 .abrowse .bbody { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: var(--atop, 50px) 24px 12px; }
-.abrowse .bcontent { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: safe center; gap: 16px; overflow-x: auto; overflow-y: hidden; padding: 14px 24px; }
+.abrowse .bcontent { flex: 1; min-height: 0; width: 100%; display: flex; align-items: safe center; justify-content: safe center; gap: 16px; overflow-x: auto; overflow-y: hidden; padding: 14px 24px; }
 .abrowse .bcontent.column { flex-direction: column; overflow: hidden auto; gap: 10px; }
 .abrowse .bfoot { flex: none; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
 .abrowse .bfoot .aplaque { position: relative; min-width: 140px; height: 40px; padding: 0 22px; font-size: 15px; }
@@ -384,7 +391,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 /* The commander browser: a commander away from the command zone dims, with where it is; casts and tax under each. */
 .bcommander.away img.bprinted { filter: saturate(.4) brightness(.55); }
 .bcommander .bwhere { font: 800 10px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #fad584; text-align: center; }
-.bcommander .btax { display: grid; gap: 2px; font: 600 12px/1.3 var(--sans); color: rgba(243,234,216,.85); text-align: center; }
+.bcommander .btax { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; font: 600 13px/1.3 var(--sans); color: rgba(243,234,216,.85); text-align: center; }
 .bcommander .btax .msym { width: 1.15em; height: 1.15em; vertical-align: -.2em; }
 .bzone { font: 800 9px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #fad584; }
 .bsymbol { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; font: 600 13px/1.2 var(--sans); color: #f2ebdb; }
@@ -822,3 +829,29 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 
 /* The opening hand shows the cards alone, no costs over them (Caleb, 2026-10-23). */
 .acard.opening .mcost { display: none; }
+
+/* The versus intro (VersusIntroOverlay): the room dimmed, your commander from the left and theirs from the right in gold
+   arches over black name plates, the VS medallion slamming down inside an expanding ring; over everything, never hit. */
+.aversus { position: absolute; inset: 0; z-index: 900; pointer-events: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12%; background: radial-gradient(ellipse at center, rgba(40,16,5,.86), rgba(0,0,0,.9) 70%); transition: opacity .45s ease-in; }
+.aversus.p3 { opacity: 0; }
+.aversus .side { display: flex; flex-direction: column; align-items: center; gap: 14px; transition: transform .45s cubic-bezier(.3,1.25,.5,1); }
+.aversus .side.you { transform: translateX(-120vw); }
+.aversus .side.them { transform: translateX(120vw); }
+.aversus:not(.p0) .side { transform: none; }
+.aversus .vseat { display: flex; flex-direction: column; align-items: center; }
+.aversus .arch { width: 220px; height: 306px; border-radius: 110px 110px 12px 12px; overflow: hidden; border: 3px solid var(--agold);
+  box-shadow: 0 0 36px rgba(255,120,31,.4), inset 0 0 0 1px rgba(0,0,0,.6); background: #140a05; }
+.aversus .side.several .arch { width: 136px; height: 189px; border-radius: 68px 68px 10px 10px; }
+.aversus .plate { margin-top: -10px; position: relative; max-width: 200px; padding: 7px 16px; border-radius: 6px; background: rgba(8,8,10,.94);
+  border: 1px solid var(--ahair); font: 700 17px/1.1 var(--serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aversus .side.several .plate { max-width: 130px; font-size: 13px; }
+.aversus .ring { position: absolute; left: 50%; top: 50%; width: 90px; height: 90px; margin: -45px 0 0 -45px; border-radius: 50%;
+  border: 3px solid var(--agold); opacity: 0; transform: scale(.6); }
+.aversus.p1 .ring { opacity: .9; }
+.aversus.p2 .ring, .aversus.p3 .ring { opacity: 0; transform: scale(4.5); transition: transform .7s ease-out, opacity .7s ease-out; }
+.aversus .vs { position: absolute; left: 50%; top: 50%; width: 86px; height: 86px; margin: -43px 0 0 -43px; border-radius: 50%; display: grid; place-items: center;
+  font: 900 33px/1 var(--serif); color: var(--agold); text-shadow: 0 1px 1px #000; border: 3px solid var(--agold);
+  background: radial-gradient(circle, #29201a, #08080a 70%); box-shadow: 0 0 14px rgba(255,120,31,.75);
+  opacity: 0; transform: scale(3.2); transition: transform .28s cubic-bezier(.3,1.6,.5,1), opacity .2s; }
+.aversus.p2 .vs, .aversus.p3 .vs { opacity: 1; transform: scale(1); }

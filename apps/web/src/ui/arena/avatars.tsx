@@ -1,4 +1,8 @@
-/** The two medallion portraits (the prototype's): yours lit in ember, theirs in arcane blue. */
+import { useState } from "react";
+import { isOut, type PlayerGameState } from "../../core/models";
+import { cardImageURL } from "../cardArt";
+
+/** The two stand-in portraits (the prototype's): yours lit in ember, theirs in arcane blue. */
 export const AVATAR = {
   me: (
     <svg viewBox="0 0 100 100" aria-hidden="true">
@@ -16,3 +20,27 @@ export const AVATAR = {
     </svg>
   ),
 };
+
+/** A player's first commander's name, if the table shows one (PlayerPortrait.commanderName). */
+export const commanderName = (player?: PlayerGameState) =>
+  player?.commanders?.map((c) => c.name).find((name): name is string => !!name) ?? player?.zones.command[0]?.card.name;
+
+/**
+ * A player's portrait (iOS PlayerPortrait): their commander's art, cropped round; the stand-in until it loads or with no
+ * commander. Greyed once they're out.
+ */
+export function Portrait({ player, viewer }: { player?: PlayerGameState; viewer: boolean }) {
+  const name = commanderName(player);
+  const [loaded, setLoaded] = useState<string>();
+  const [failed, setFailed] = useState<string>();
+  const ready = name !== undefined && loaded === name;
+  return (
+    <span className={`portraitart ${player && isOut(player) ? "gone" : ""}`}>
+      {!ready && (viewer ? AVATAR.me : AVATAR.opp)}
+      {name && failed !== name && (
+        <img key={name} src={cardImageURL(name, "art_crop")} alt="" crossOrigin="anonymous" draggable={false}
+          style={{ opacity: ready ? 1 : 0 }} onLoad={() => setLoaded(name)} onError={() => setFailed(name)} />
+      )}
+    </span>
+  );
+}

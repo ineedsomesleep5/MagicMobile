@@ -12,6 +12,7 @@
  * `subscribe(listener)` hears them, so React reads it with useSyncExternalStore.
  */
 import { arr, bool, get, int, isObject, isUuid, type J, type JObject, str } from "./json";
+import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
 import { ProfileGame, ProfileSummary } from "./profileSummary";
 import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonRecord } from "./rankLadder";
@@ -1054,6 +1055,12 @@ export class PlayerAccount {
   async rankedLeaderboard(scope: RankedLeaderboardScope, limit = 50): Promise<RankedLeaderboard | undefined> {
     if (!this.hasName) return undefined;
     try { return RankedLeaderboard.parse(await this.api.rpc("mm_ranked_leaderboard", { p_scope: scope, p_limit: limit })); } catch { return undefined; }
+  }
+
+  /** Your games from every device (mm_my_games), newest first; undefined when they can't be read now. */
+  async myGames(): Promise<MatchRecord[] | undefined> {
+    if (!this.hasName) return undefined;
+    try { return parseMyGames(await this.api.rpc("mm_my_games", { p_limit: 300 })); } catch { return undefined; }
   }
 
   /** Another player's ranked card, or undefined when they have none (or can't be seen). */
