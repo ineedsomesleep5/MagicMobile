@@ -19,9 +19,11 @@ const TAPMARK = (
     <path d="M12 3a9 9 0 1 0 9 9h-3a6 6 0 1 1-6-6v3l5-4.5L12 0z" fill="#fff" stroke="rgba(0,0,0,.35)" strokeWidth=".6" />
   </svg>
 );
+/** Summoning sickness (CardTile): an hourglass in an amber disc on the top right, creatures only. */
 const SICK = (
-  <svg className="sick" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M6 2h12v2c0 3-2.2 5.2-4.3 8 2.1 2.8 4.3 5 4.3 8v2H6v-2c0-3 2.2-5.2 4.3-8C8.2 9.2 6 7 6 4zm2 2c0 2 1.6 3.8 4 6.6C14.4 7.8 16 6 16 4z" fill="#ffdb8f" />
+  <svg className="sick" viewBox="0 0 24 24" role="img" aria-label="Summoning sick">
+    <circle cx="12" cy="12" r="11.3" fill="#f2b33d" fillOpacity=".92" stroke="rgba(0,0,0,.32)" strokeWidth=".7" />
+    <path d="M8 5.5h8v1.4c0 2-1.4 3.4-2.8 5.1 1.4 1.7 2.8 3.1 2.8 5.1v1.4H8v-1.4c0-2 1.4-3.4 2.8-5.1C9.4 10.3 8 8.9 8 6.9zm1.6 1.4c0 1.3 1 2.5 2.4 4.2 1.4-1.7 2.4-2.9 2.4-4.2z" fill="#2b2a2e" />
   </svg>
 );
 
@@ -41,7 +43,7 @@ export function Tile({ card }: { card: ZoneCard }) {
       {/* A new look gets a new canvas, so a slow paint of the old one can never draw over it. */}
       <canvas key={key} ref={ref} width={TILE.width} height={TILE.height} />
       {card.tapped && !card.isAttacking && TAPMARK}
-      {card.summoningSickness && SICK}
+      {card.summoningSickness && isCreatureCard(card) && SICK}
     </div>
   );
 }
@@ -94,6 +96,7 @@ export function PlainTile({ card, width = 66 }: { card: ZoneCard; width?: number
         </div>
       </div>
       {card.tapped && !card.isAttacking && TAPMARK}
+      {card.summoningSickness && isCreatureCard(card) && SICK}
       {/* The keyword and ability icons along the bottom left (BattlefieldAbilityBadges), "+N" for those that don't fit. */}
       {badges.visible.length + badges.hiddenCount > 0 && (
         <div className="pbadges" style={{ ["--badge" as string]: `${(badges.size + 4) / (width / 15)}em` }}>

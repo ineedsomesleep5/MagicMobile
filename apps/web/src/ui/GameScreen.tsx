@@ -44,7 +44,8 @@ import { usePacedSnapshot } from "./arena/usePacedSnapshot";
 import { type CardReader, readProps } from "./arena/inspectGesture";
 import { GAME_SPEED_KEY, GAME_SPEED_TITLES, GAME_SPEEDS, type GameSpeed, loadGameSpeed, MAX_PACE_LAG, TABLE_PACE_LAG } from "../core/gameSpeed";
 import { ArenaPile } from "./arena/ArenaPile";
-import { AVATAR } from "./arena/avatars";
+import { commanderName, Portrait } from "./arena/avatars";
+import { VersusIntro, type VersusSeat } from "./arena/Versus";
 import { ManaSymbol, RulesText } from "./arena/Symbols";
 import "./arena/arena.css";
 import { CardArt, cardImageURL } from "./cardArt";
@@ -160,8 +161,11 @@ function phaseIndex(step: string | undefined): number | undefined {
   }
 }
 
-/** `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game. */
-export function GameScreen({ table, rankChange }: { table: GameTable; rankChange?: RankChange }) {
+/**
+ * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game. `versus`: the
+ * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game).
+ */
+export function GameScreen({ table, rankChange, versus }: { table: GameTable; rankChange?: RankChange; versus?: { you: VersusSeat; opponents: VersusSeat[] } }) {
   useTable(table);
   const session = table.session;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
@@ -266,6 +270,26 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
   const viewer = snapshot?.viewerPlayerId;
   const me = snapshot?.players.find((p) => p.playerId === viewer);
   const opponents = useMemo(() => snapshot?.players.filter((p) => p.playerId !== viewer) ?? [], [snapshot, viewer]);
+
+  // The versus intro as a game opens (OnDeviceRootView.makeVersusIntro): a table's own seats when it knows them, else the
+  // chosen decks, else the players the first snapshot shows. With Reduce Motion only its sound plays.
+  const [versusShown, setVersusShown] = useState(!reduceMotion);
+  useEffect(() => { gameAudio.play("versus"); }, []);
+  const versusSeats = (() => {
+    if (!versusShown) return undefined;
+    const seats = table.state.tableSeats;
+    const local = seats.find((seat) => seat.isLocal);
+    if (local && seats.length > 1) {
+      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander },
+        opponents: seats.filter((seat) => !seat.isLocal).slice(0, 3).map((seat) => ({ id: seat.id, name: seat.name, commander: seat.commanders[0] })) };
+    }
+    if (versus && versus.opponents.length > 0) return { you: versus.you, opponents: versus.opponents.slice(0, 3) };
+    if (snapshot && me && opponents.length > 0) {
+      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me) },
+        opponents: opponents.slice(0, 3).map((p) => ({ id: p.playerId, name: p.displayName ?? "Opponent", commander: commanderName(p) })) };
+    }
+    return undefined;
+  })();
   const pending = session?.state.pendingActionID !== undefined || session?.state.working === true;
   const envelope = snapshot?.promptEnvelopeV2;
   const finished = snapshot !== undefined && isCompleted(snapshot);
@@ -862,7 +886,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             else if (ready) setCommanderView(player.playerId);
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
-          <div className="av">{mine ? AVATAR.me : AVATAR.opp}</div>
+          <div className="av"><Portrait player={player} viewer={mine} /></div>
           <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>
           {clock && (
             <svg className="rope" viewBox="0 0 100 100" aria-hidden="true">
@@ -1295,7 +1319,7 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             <div className="aplayercard glass" style={mine ? { left: 40, bottom: geo.height - B(330) } : { left: 520, top: T(60) }} onClick={stop}
               role="dialog" aria-label={`${name}’s card`}>
               <header>
-                <div className="portrait">{mine ? AVATAR.me : AVATAR.opp}</div>
+                <div className="portrait"><Portrait player={player} viewer={mine} /></div>
                 <div><b>{name}</b><small>{isOut(player) ? "Out of the game" : `${player.life} life`}</small></div>
                 <button type="button" className="close" aria-label={`Close ${name}’s card`} onClick={() => setPlayerCard(undefined)}>✕</button>
               </header>
@@ -1485,6 +1509,8 @@ export function GameScreen({ table, rankChange }: { table: GameTable; rankChange
             </div>
           );
         })()}
+
+        {versusSeats && <VersusIntro you={versusSeats.you} opponents={versusSeats.opponents} finished={() => setVersusShown(false)} />}
 
         {showRoll && roll && (() => {
           // The starting roll on the board (MultiplayerD20View, Arena look): the board dimmed to 0.8, one large serif line,

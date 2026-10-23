@@ -41,3 +41,33 @@ describe("game-summary-cases.json", () => {
     }
   });
 });
+
+describe("creatures destroyed", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const board = (battlefield: any[], graveyard: any[]): GameSnapshot => {
+    const json = structuredClone(root.base);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    json.players = json.players.map((player: any) => {
+      if (player.playerId !== json.viewerPlayerId) { player.zones.battlefield = battlefield; player.zones.graveyard = graveyard; }
+      return player;
+    });
+    json.xmage.combat = [];
+    return json;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creature = (id: string): any => { const card = structuredClone(Object.values(root.cards)[0] as any); card.instanceId = id; return card; };
+
+  it("counts a creature that reaches the graveyard under a new object ID", () => {
+    const stats = new GameStats();
+    stats.record(board([creature("bear-1")], []));
+    stats.record(board([], [creature("bear-2")]));
+    expect(stats.creaturesDestroyed).toBe(1);
+  });
+
+  it("does not count a creature that left for somewhere else", () => {
+    const stats = new GameStats();
+    stats.record(board([creature("bear-1")], [creature("old")]));
+    stats.record(board([], [creature("old")]));
+    expect(stats.creaturesDestroyed).toBe(0);
+  });
+});

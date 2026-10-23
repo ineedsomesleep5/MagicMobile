@@ -5,7 +5,8 @@
 import { displayPower, type GameSnapshot, isCreatureCard, viewerID, type ZoneCard } from "./models";
 
 interface Attack { defender: string; attackers: { name: string; power: number; card: ZoneCard }[] }
-interface Capture { life: Record<string, number>; creatures: Record<string, Set<string>>; attacks: Attack[] }
+/** Creatures on each battlefield (id → name) and each graveyard's card ids. */
+interface Capture { life: Record<string, number>; creatures: Record<string, Map<string, string>>; graveyards: Record<string, Set<string>>; attacks: Attack[] }
 
 /** A token's art name, without its " Token" suffix (NativeAssetStore.tokenArtworkName). */
 export const tokenArtworkName = (name: string) => {
@@ -37,7 +38,9 @@ export class GameStats {
     const yours = new Map((me?.zones.battlefield ?? []).map((c) => [c.instanceId, c] as const));
     const capture: Capture = {
       life: Object.fromEntries(snapshot.players.map((p) => [p.playerId, p.life])),
-      creatures: Object.fromEntries(snapshot.players.map((p) => [p.playerId, new Set(p.zones.battlefield.filter((c) => c.isCreaturePermanent ?? isCreatureCard(c)).map((c) => c.instanceId))])),
+      creatures: Object.fromEntries(snapshot.players.map((p) => [p.playerId,
+        new Map(p.zones.battlefield.filter((c) => c.isCreaturePermanent ?? isCreatureCard(c)).map((c) => [c.instanceId, c.card.name] as const))])),
+      graveyards: Object.fromEntries(snapshot.players.map((p) => [p.playerId, new Set(p.zones.graveyard.map((c) => c.instanceId))])),
       attacks: (snapshot.xmage?.combat ?? []).flatMap((group) => {
         if (group.blocked || group.defenderId === viewer) return [];
         const mine = group.attackers.flatMap((attacker) => {
@@ -69,12 +72,22 @@ export class GameStats {
         this.cardByName.set(attacker.name, attacker.card);
       }
     }
-    // A creature that left the battlefield for its owner's graveyard died (tokens just vanish).
+    // A creature that left the battlefield for its owner's graveyard died (tokens just vanish). XMage can give a card a new
+    // object ID as it changes zones, so a new graveyard card of the same name counts too (BoardEventDiffer does the same).
     for (const player of snapshot.players) {
-      const gone = [...(old.creatures[player.playerId] ?? [])].filter((id) => !(next.creatures[player.playerId] ?? new Set()).has(id));
+      const before = old.creatures[player.playerId] ?? new Map<string, string>();
+      const after = next.creatures[player.playerId] ?? new Map<string, string>();
+      const gone = [...before].filter(([id]) => !after.has(id));
       if (gone.length === 0) continue;
+      const earlier = old.graveyards[player.playerId] ?? new Set<string>();
       const graveyard = new Set(player.zones.graveyard.map((c) => c.instanceId));
-      const died = gone.filter((id) => graveyard.has(id)).length;
+      const arrivals = player.zones.graveyard.filter((c) => !earlier.has(c.instanceId) && !before.has(c.instanceId)).map((c) => c.card.name);
+      const died = gone.filter(([id, name]) => {
+        if (graveyard.has(id)) return true;
+        const index = arrivals.indexOf(name);
+        if (index >= 0) arrivals.splice(index, 1);
+        return index >= 0;
+      }).length;
       if (player.playerId === viewerID(snapshot)) this.creaturesLost += died; else this.creaturesDestroyed += died;
     }
   }

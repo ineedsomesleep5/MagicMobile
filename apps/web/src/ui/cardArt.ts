@@ -23,8 +23,11 @@ export const cardImageURL = (name: string, version: ArtVersion): string => {
   return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(front)}&format=image&version=${version}`;
 };
 
-/** The Magic card back as Scryfall serves it (iOS CardImageURL's "Hidden card"; the Arena board's ArenaCardBack). */
-export const CARD_BACK_URL = "https://backs.scryfall.io/normal/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg";
+/**
+ * The Magic card back (iOS CardImageURL's "Hidden card"; the Arena board's ArenaCardBack), from the site's own copy of
+ * Scryfall's backs.scryfall.io image: a work filter that blocks that host would otherwise leave every back blank.
+ */
+export const CARD_BACK_URL = "/arena/card-back.jpg";
 
 /** A mana symbol, flat, as Scryfall draws it (iOS ManaSymbolView; the Arena board has no 3D tavern pips): {W/U} is WU.svg. */
 const symbolFile = (symbol: string) => encodeURIComponent(symbol.toUpperCase().replace(/\//g, ""));

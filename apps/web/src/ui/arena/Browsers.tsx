@@ -15,7 +15,7 @@ import {
 } from "../../core/models";
 import { cardImageURL } from "../cardArt";
 import { AbilityCard, isStackAbility } from "./AbilityCard";
-import { AVATAR } from "./avatars";
+import { Portrait } from "./avatars";
 import { type CardReader, readProps } from "./inspectGesture";
 import { CountBadge, ManaSymbol, RulesText } from "./Symbols";
 
@@ -504,7 +504,7 @@ function ChoiceBrowser({ snapshot, envelope, send, sendAction, pending, height, 
 export function Medallion({ player, viewer, diameter, life = true }: { player?: PlayerGameState; viewer: boolean; diameter: number; life?: boolean }) {
   return (
     <span className="bmed" style={{ ["--d" as string]: `${diameter}px` }}>
-      <span className="av">{viewer ? AVATAR.me : AVATAR.opp}</span>
+      <span className="av"><Portrait player={player} viewer={viewer} /></span>
       {player && life && <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>}
     </span>
   );
@@ -849,25 +849,34 @@ export function CommanderBrowser({ player, snapshot, pending, sendAction, height
   const mine = player.playerId === snapshot.viewerPlayerId;
   const entries = commanderEntries(player, snapshot);
   const title = mine ? "Command" : `${EngineDisplayText.label(player.displayName ?? "", "Opponent")} · Command`;
-  const width = Math.min(280, height * 0.56) / 1.4;
   const actions = (card: ZoneCard) => !mine ? [] : (snapshot.legalActions ?? []).filter((a) =>
     (a.cardInstanceId === card.instanceId || a.sourceInstanceId === card.instanceId) && a.type !== "make_mana");
+  const usable = entries.flatMap((entry) => (entry.card && entry.zone === "command" ? actions(entry.card) : []));
+  // One commander with one way to use it puts Cast beside Done; several keep their own buttons under each card.
+  const single = entries.length === 1 && usable.length === 1 ? usable[0] : undefined;
+  const use = (action: LegalAction) => { if (action.type === "cast_spell") close(); sendAction(action); };
+  // The card fits what's left of the height: the title, the casts and tax, its buttons and the footer stay in view.
+  const width = Math.max(110, Math.min(220, (height - (single || usable.length === 0 ? 250 : 292)) / 1.4));
   return (
     <Frame title={title} detail={entries.length === 0 ? "No cards" : undefined} snapshot={snapshot} k={height / 440} inspect={inspect} onDismiss={close}
-      back="Back to the command zone" footer={<button type="button" className="aplaque primary" onClick={close}>Done</button>}>
+      back="Back to the command zone" footer={<>
+        {single && <button type="button" className="aplaque primary" disabled={pending} onClick={() => use(single)}>
+          {single.type === "cast_spell" ? "Cast" : EngineDisplayText.label(single.label)}</button>}
+        <button type="button" className={`aplaque ${single ? "secondary" : "primary"}`} onClick={close}>Done</button>
+      </>}>
       {entries.map((entry) => {
-        const list = entry.card && entry.zone === "command" ? actions(entry.card) : [];
+        const list = entry.card && entry.zone === "command" && !single ? actions(entry.card) : [];
         const away = entry.zone !== undefined && entry.zone !== "command" ? ZONE_WORDS[entry.zone] : undefined;
         const counts = [entry.casts !== undefined ? `Command-zone casts: ${entry.casts}` : undefined, entry.tax !== undefined ? `Next tax: {${entry.tax}}` : undefined]
           .filter((line): line is string => line !== undefined);
+        const lit = entry.card !== undefined && entry.zone === "command" && actions(entry.card).length > 0;
         return (
-          <div key={entry.key} className={`bcard bcommander ${list.length > 0 ? "usable" : ""} ${away ? "away" : ""}`} style={{ width }} data-id={`commander.${entry.name}`}>
+          <div key={entry.key} className={`bcard bcommander ${lit ? "usable" : ""} ${away ? "away" : ""}`} style={{ width }} data-id={`commander.${entry.name}`}>
             <Printed name={entry.card?.card.name ?? entry.name} card={entry.card} width={width} inspect={inspect} />
             {away && <span className="bwhere">{away}</span>}
             {counts.length > 0 && <span className="btax">{counts.map((line) => <span key={line}><RulesText text={line} /></span>)}</span>}
             {list.slice(0, 3).map((action) => (
-              <button key={action.id} type="button" className="aplaque primary" disabled={pending}
-                onClick={() => { if (action.type === "cast_spell") close(); sendAction(action); }}>
+              <button key={action.id} type="button" className="aplaque primary" disabled={pending} onClick={() => use(action)}>
                 {list.length === 1 && action.type === "cast_spell" ? "Cast" : EngineDisplayText.label(action.label)}</button>
             ))}
           </div>
