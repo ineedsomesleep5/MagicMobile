@@ -49,12 +49,12 @@ extension NativeGameView {
                 .contentShape(Rectangle())
                 .onTapGesture { arenaTapTable(snapshot: snapshot) }
                 .accessibilityHidden(true)
-            arenaTable(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas)
+            ArenaLayer { arenaTable(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas) }
         }
         .frame(width: screen.width, height: screen.height)
         .coordinateSpace(name: "portrait-board")
         .overlayPreferenceValue(PortraitCardBoundsKey.self) { anchors in
-            arenaDrawnLayers(anchors: anchors, snapshot: snapshot, human: human, opponent: opponent, canvas: canvas)
+            ArenaLayer { arenaDrawnLayers(anchors: anchors, snapshot: snapshot, human: human, opponent: opponent, canvas: canvas) }
         }
         .ignoresSafeArea()
         // A swipe up from the bottom edge first shows the home bar instead of leaving the game: the hand lives there.
@@ -63,6 +63,7 @@ extension NativeGameView {
         .environment(\.tavernBoard, true)
         .environment(\.arenaBoard, true)
         .environment(\.arenaTableLean, ArenaTableLean(canvas: canvas))
+        .environment(\.arenaSafeArea, ArenaSafeArea(insets: rootProxy.safeAreaInsets))
         // Every new answer from XMage steps the helpers: its revision, a new prompt or the pending answer clearing.
         .modifier(ArenaAutoPayDriver(key: "\(snapshot.bridgeRevision ?? -1)|\(snapshot.promptEnvelopeV2?.id ?? "")|"
                                          + "\(snapshot.promptEnvelopeV2?.messageId ?? -1)|\(pendingActionId ?? "")",
@@ -113,11 +114,15 @@ extension NativeGameView {
 
     // MARK: Layers
 
+    /// The table's layers. Each large layer is type-erased (`ArenaLayer`, an AnyView in its own ZStack, the z-order kept
+    /// outside it): built as one nested view this table overflowed the main thread's stack in Release builds on iPhone
+    /// (TestFlight 56, iOS 26.6.2: EXC_BAD_ACCESS in the stack guard while the runtime instantiated the opponent seat's
+    /// type). Keep new layers erased the same way.
     @ViewBuilder
     private func arenaTable(snapshot: GameSnapshot, human: PlayerGameState, opponent: PlayerGameState, canvas: ArenaCanvas) -> some View {
         let posture = arenaHandPosture(snapshot: snapshot)
         let controlsOnTop = arenaControlsOnTop(snapshot: snapshot)
-        arenaLanes(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas)
+        ArenaLayer { arenaLanes(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas) }
         if isOverPlayerDropZone {
             // Over the table a carried card lights the table's edge, the reference's way: soft warm light, no box.
             let area = canvas.area(canvas.layout.dropArea)
@@ -133,18 +138,23 @@ extension NativeGameView {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
-        arenaOpponentSeat(snapshot: snapshot, opponent: opponent, canvas: canvas)
+        ArenaLayer { arenaOpponentSeat(snapshot: snapshot, opponent: opponent, canvas: canvas) }
         // A browser over the table (card choices, the stack, abilities, questions) says what to do and shows the card it's
         // about itself.
         let browserOpen = arenaScreenUp(snapshot)
         let amountPrompt = browserOpen ? nil : arenaAmountPrompt(snapshot)
-        arenaStack(snapshot: snapshot, canvas: canvas)
+        ArenaLayer { arenaStack(snapshot: snapshot, canvas: canvas) }
             .opacity(browserOpen ? 0 : 1)
-        arenaCaption(snapshot: snapshot, canvas: canvas)
+            .zIndex(30)
+        ArenaLayer { arenaCaption(snapshot: snapshot, canvas: canvas) }
             .opacity(browserOpen ? 0 : 1)
-        arenaRevealedChips(snapshot: snapshot, canvas: canvas)
+            .zIndex(35)
+        ArenaLayer { arenaRevealedChips(snapshot: snapshot, canvas: canvas) }
             .opacity(browserOpen ? 0 : 1)
-        arenaViewerSeat(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas)
+            .zIndex(36)
+        // Over the front rail and a resting hand, under a raised one (its own parts keep their order inside).
+        ArenaLayer { arenaViewerSeat(snapshot: snapshot, human: human, opponent: opponent, canvas: canvas) }
+            .zIndex(64)
         if let railTop = canvas.layout.railTop {
             // The front rail drawn again over a resting hand, so the hand tucks behind the table's edge.
             ArenaFrontRail(top: canvas.y(railTop))
@@ -152,7 +162,7 @@ extension NativeGameView {
         }
         let openingHand = OpeningHandChoice(snapshot) != nil
         // The opening hand's own screen shows these cards and its buttons; the fan and corner wait behind it.
-        arenaHand(snapshot: snapshot, human: human, canvas: canvas, posture: posture)
+        ArenaLayer { arenaHand(snapshot: snapshot, human: human, canvas: canvas, posture: posture) }
             .opacity(openingHand ? 0 : 1)
             .allowsHitTesting(!openingHand)
             // An opened hand, and in landscape a card popped out of it, cover your medallion and mana; controls the table
@@ -179,11 +189,11 @@ extension NativeGameView {
                           y: secondary.midY + (cancel == nil ? 0 : 24))
                 .zIndex(75)
         } else if !snapshot.isSpectating && !openingHand && !browserOpen {
-            arenaControls(snapshot: snapshot, canvas: canvas)
+            ArenaLayer { arenaControls(snapshot: snapshot, canvas: canvas) }
                 // The spread hand sits over the table, not the rail, so the corner stays on top of it.
                 .zIndex(controlsOnTop || posture != .raised ? 70 : 45)
         }
-        arenaOverlays(snapshot: snapshot, human: human, canvas: canvas)
+        ArenaLayer { arenaOverlays(snapshot: snapshot, human: human, canvas: canvas) }
             .zIndex(90)
             // The stack browser closes once the stack empties, so it doesn't reopen with the next spell.
             .onChange(of: snapshot.stackTopFirst.isEmpty) { _, empty in
@@ -437,7 +447,7 @@ extension NativeGameView {
             .position(medallionCenter)
         if snapshot.thinkingPlayerID == opponent.playerId {
             Text("Thinking…")
-                .font(.system(size: 11, weight: .semibold, design: .serif)).italic()
+                .font(ArenaMenuStyle.font(11, .semibold)).italic()
                 .foregroundStyle(TavernPalette.parchment.opacity(0.85))
                 .shadow(color: .black, radius: 2)
                 .fixedSize()
@@ -702,7 +712,7 @@ extension NativeGameView {
         Button(action: open) {
             HStack(spacing: 4) {
                 Image(systemName: symbol).font(.system(size: 11, weight: .bold))
-                Text("\(count)").font(.system(size: 12, weight: .heavy, design: .serif)).monospacedDigit()
+                Text("\(count)").font(ArenaMenuStyle.font(12, .heavy)).monospacedDigit()
             }
             .foregroundStyle(ArenaGlass.text)
             .padding(.horizontal, 9).frame(height: 22)
@@ -823,12 +833,13 @@ extension NativeGameView {
 
     private func arenaGameMenu(snapshot: GameSnapshot) -> some View {
         Button { arenaCornerMenu = "game" } label: {
-            ZStack {
-                if let coin = UIImage(named: "tavern-ui-coin") { Image(uiImage: coin).resizable().scaledToFit() }
-                Image(systemName: "gearshape.fill").font(.system(size: 13, weight: .black))
-                    .foregroundStyle(Color(red: 0.25, green: 0.12, blue: 0.04))
-            }
-            .frame(width: 30, height: 30)
+            // Arena's gear: a light symbol on a dark glass disc, no brass coin.
+            Image(systemName: "gearshape.fill").font(.system(size: 14, weight: .bold))
+                .foregroundStyle(ArenaGlass.text)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(LinearGradient(colors: [ArenaGlass.top, ArenaGlass.bottom], startPoint: .top, endPoint: .bottom)))
+                .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+                .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
         }
@@ -897,7 +908,8 @@ extension NativeGameView {
             let bounds = CardChoicePlan.selectionBounds(modes.message)
             let firstLine = PromptDisplayText.clean(modes.message.components(separatedBy: "\n").first ?? "")
             ArenaModeBrowser(title: (modes.maxChoices ?? 1) > 1 ? "Choose modes" : "Choose a mode",
-                             detail: bounds.map { b in b.1 == Int.max ? "Tap a mode to add it" : "Tap a mode to add it · up to \(b.1), at least \(b.0)" }
+                             detail: bounds.map { b in b.1 == Int.max ? "Any number" : b.0 == b.1 ? "Choose \(b.1)"
+                                                          : b.0 > 0 ? "Up to \(b.1), at least \(b.0)" : "Up to \(b.1)" }
                                 ?? firstLine,
                              source: arenaModeSource(modes, snapshot: snapshot), modes: modes.modes ?? [], pending: pendingActionId != nil,
                              screen: canvas.screen,
@@ -1221,4 +1233,16 @@ extension NativeGameView {
         GameHaptics.success()
         runCommand(command, "Target \(snapshot.playerLabel(id))", "\(promptId)-\(id)")
     }
+}
+
+/// One layer of the Arena table, type-erased: its views in a ZStack inside an AnyView, so the table is a list of shallow
+/// layers rather than one deeply nested view type (see `arenaTable`). Apply a layer's z-order to the ArenaLayer.
+struct ArenaLayer: View {
+    private let content: AnyView
+
+    init<Content: View>(@ViewBuilder _ content: () -> Content) {
+        self.content = AnyView(ZStack { content() })
+    }
+
+    var body: some View { content }
 }

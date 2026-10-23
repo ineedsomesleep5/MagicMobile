@@ -73,7 +73,7 @@ struct RankedHallView: View {
         let title = VStack(alignment: .leading, spacing: 2) {
             Text(String(localized: "Ranked")).font(.system(size: 30, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
                 .accessibilityAddTraits(.isHeader)
-            Text(seasonEnds).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(ArenaMenuStyle.ember)
+            Text(seasonEnds).font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaMenuStyle.ember)
         }
         let ways = HStack(spacing: 8) {
             Button(String(localized: "Play Ranked")) { GameAudio.shared.play(.menuPlay); play() }
@@ -126,9 +126,9 @@ struct RankedHallView: View {
         return HStack(spacing: 12) {
             RankEmblem(tier: step, size: 34)
             VStack(alignment: .leading, spacing: 2) {
-                Text(step.name).font(.system(size: 15, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
+                Text(step.name).font(ArenaMenuStyle.font(15, .bold)).foregroundStyle(ArenaMenuStyle.text)
                 Text(String(localized: "Decks up to Bracket \(step.maxDeckBracket)"))
-                    .font(.system(size: 11.5, weight: .medium, design: .serif)).foregroundStyle(ArenaMenuStyle.dim)
+                    .font(ArenaMenuStyle.font(11.5, .medium)).foregroundStyle(ArenaMenuStyle.dim)
             }
             Spacer(minLength: 6)
             if current {
@@ -193,7 +193,7 @@ struct RankedHallView: View {
             ArenaCaps(text: String(localized: "Past seasons"))
             if rank.history.isEmpty {
                 Text(String(localized: "First season"))
-                    .font(.system(size: 14, design: .serif)).opacity(0.8)
+                    .font(ArenaMenuStyle.font(14, .regular)).opacity(0.8)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
@@ -209,9 +209,9 @@ struct RankedHallView: View {
     private func seasonChip(_ record: SeasonRecord) -> some View {
         VStack(spacing: 4) {
             RankEmblem(tier: record.final.tier, size: 44)
-            Text(record.final.title).font(.system(size: 12, weight: .black, design: .serif)).lineLimit(1)
-            Text(RankLadder.seasonName(record.season)).font(.system(size: 10, weight: .semibold, design: .serif)).opacity(0.75)
-            Text("\(record.wins)–\(record.losses)").font(.system(size: 11, weight: .bold, design: .serif)).monospacedDigit().opacity(0.85)
+            Text(record.final.title).font(ArenaMenuStyle.font(12, .black)).lineLimit(1)
+            Text(RankLadder.seasonName(record.season)).font(ArenaMenuStyle.font(10, .semibold)).opacity(0.75)
+            Text("\(record.wins)–\(record.losses)").font(ArenaMenuStyle.font(11, .bold)).monospacedDigit().opacity(0.85)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(minWidth: 92)
@@ -223,7 +223,7 @@ struct RankedHallView: View {
     private func stat(_ title: String, _ value: String) -> some View {
         VStack(spacing: 2) {
             Text(value).font(.system(size: 18, weight: .black, design: .serif)).monospacedDigit()
-            Text(title.uppercased()).font(.system(size: 9, weight: .heavy, design: .serif)).tracking(1.2).opacity(0.7)
+            Text(title.uppercased()).font(ArenaMenuStyle.font(9, .heavy)).tracking(1.2).opacity(0.7)
         }
         .accessibilityElement(children: .combine)
     }
@@ -432,11 +432,11 @@ struct RankedLeaderboardView: View {
         HStack(spacing: 10) {
             LeaderboardOnlineDot(size: 10)
             Text(board.online == 1 ? String(localized: "1 player online") : String(localized: "\(board.online) players online"))
-                .font(.system(size: 14, weight: .bold, design: .serif))
+                .font(ArenaMenuStyle.font(14, .bold))
                 .lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 6)
             Text(String(localized: "\(board.total) ranked · \(RankLadder.seasonName(board.season))"))
-                .font(.system(size: 12, weight: .semibold, design: .serif)).opacity(0.75)
+                .font(ArenaMenuStyle.font(12, .semibold)).opacity(0.75)
                 .lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 16)
@@ -548,17 +548,17 @@ struct RankedLeaderboardView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(entry.username).font(.system(size: 16, weight: .black, design: .serif)).lineLimit(1)
+                        Text(entry.username).font(ArenaMenuStyle.font(16, .black)).lineLimit(1)
                         if entry.you { TavernTag(text: String(localized: "YOU"), leather: true) }
                     }
                     Text(entry.title.map { "\(rank.title) · \($0)" } ?? rank.title)
-                        .font(.system(size: 12, design: .serif)).opacity(0.75).lineLimit(1)
+                        .font(ArenaMenuStyle.font(12, .regular)).opacity(0.75).lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 4) {
                     if let move = moves[entry.username] { moveMark(move) }
                     Text("\(entry.wins)–\(entry.losses)")
-                        .font(.system(size: 13, weight: .bold, design: .serif)).monospacedDigit().opacity(0.85)
+                        .font(ArenaMenuStyle.font(13, .bold)).monospacedDigit().opacity(0.85)
                     if !mythic { RankPips(filled: rank.pips, tier: rank.tier, size: 7) }
                 }
             }
@@ -588,7 +588,7 @@ struct RankedLeaderboardView: View {
     private func moveMark(_ move: Int) -> some View {
         HStack(spacing: 2) {
             Image(systemName: move > 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill").font(.system(size: 8, weight: .black))
-            Text("\(abs(move))").font(.system(size: 11, weight: .heavy, design: .serif)).monospacedDigit()
+            Text("\(abs(move))").font(ArenaMenuStyle.font(11, .heavy)).monospacedDigit()
         }
         .foregroundStyle(move > 0 ? ArenaMenuStyle.win : ArenaMenuStyle.loss)
         .transition(.scale.combined(with: .opacity))
@@ -605,7 +605,7 @@ struct RankedLeaderboardView: View {
 
     private func note(_ text: String, icon: String, identifier: String) -> some View {
         Label(text, systemImage: icon)
-            .font(.system(size: 14, weight: .semibold, design: .serif))
+            .font(ArenaMenuStyle.font(14, .semibold))
             .fixedSize(horizontal: false, vertical: true)
             .modifier(TavernLeatherCard())
             .accessibilityIdentifier(identifier)

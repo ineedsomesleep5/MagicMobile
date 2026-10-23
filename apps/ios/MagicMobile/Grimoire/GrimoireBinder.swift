@@ -72,7 +72,6 @@ private struct BinderScreenModifier: ViewModifier {
             .binderOverlayHost()
             .scrollContentBackground(.hidden)
             .background { BinderCover().ignoresSafeArea() }
-            .fontDesign(.serif)
             .foregroundStyle(ArenaMenuStyle.text)
             .environment(\.arenaBoard, true)
             .preferredColorScheme(.dark)
@@ -171,23 +170,12 @@ struct BinderIndexTabs: View {
 
 // MARK: - The binder's controls
 
-/// "Done" and "Cancel": a leather plaque in the brass capsule rim, like the Arena board's secondary plaque.
+/// "Done" and "Cancel": Arena's dark glass pill.
 struct BinderStrapButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 15, weight: .bold, design: .serif))
-            .foregroundStyle(TavernPalette.parchment)
-            .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
-            .padding(.horizontal, 18).frame(minHeight: 38)
-            .background { TavernFill(material: .leather).clipShape(Capsule()).padding(2.5) }
-            .overlay { TavernCapsuleRim() }
-            .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
-            .opacity(isEnabled ? 1 : 0.45)
-            .brightness(configuration.isPressed ? 0.08 : 0)
+        ArenaButtonFace(label: configuration.label, kind: .secondary, font: ArenaMenuStyle.title(15, .semibold),
+                        pressed: configuration.isPressed, fills: false, inset: 9)
             .frame(minHeight: 44)
-            .contentShape(Rectangle())
     }
 }
 
@@ -222,8 +210,8 @@ struct BinderHead<Trailing: View>: View {
     }
 }
 
-/// A pill (Save, Sort, the rail's tools): gold type on leather in a thin gold rim, as Arena's filter pills; `square`
-/// is a round glass button with a gold symbol. `on` lights it ember.
+/// A pill (Save, Sort, the rail's tools): Arena's dark glass pill, as its filter pills; `square` is a round glass button
+/// with a gold symbol. `on` lights it orange.
 struct BinderPlaque<Label: View>: View {
     var square = false
     var on = false
@@ -244,15 +232,9 @@ struct BinderPlaque<Label: View>: View {
                                                  : AnyShapeStyle(Color.black.opacity(0.5))))
                     .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
             } else {
-                label
-                    .font(.system(size: 14, weight: .bold, design: .serif))
-                    .labelStyle(.titleAndIcon)
-                    .lineLimit(1)
-                    .foregroundStyle(on ? Color(red: 1, green: 0.94, blue: 0.8) : ArenaMenuStyle.gold)
-                    .padding(.horizontal, 14)
-                    .frame(height: 32)
-                    .background { Group { if on { TavernFill(material: .ember) } else { TavernFill(material: .leather) } }.clipShape(Capsule()) }
-                    .overlay(Capsule().strokeBorder(Color(red: 0.86, green: 0.64, blue: 0.30), lineWidth: 1.2))
+                // Arena's dark glass pill, orange when lit.
+                ArenaButtonFace(label: label.labelStyle(.titleAndIcon), kind: on ? .primary : .secondary,
+                                font: ArenaMenuStyle.font(14, .semibold), pressed: pressed, fills: false, inset: 7, glow: 0.4)
             }
         }
         .shadow(color: .black.opacity(pressed ? 0.15 : 0.45), radius: pressed ? 1 : 2.5, y: pressed ? 0 : 2)
@@ -301,7 +283,7 @@ struct BinderSearchField: View {
             Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .bold)).foregroundStyle(ArenaMenuStyle.dim)
                 .frame(width: 24, height: 24).accessibilityHidden(true)
             TextField(placeholder, text: $text, prompt: Text(placeholder).foregroundStyle(ArenaMenuStyle.dim))
-                .font(.system(size: 15, design: .serif))
+                .font(ArenaMenuStyle.font(15, .regular))
                 .foregroundStyle(ArenaMenuStyle.text)
                 .tint(ArenaMenuStyle.gold)
                 .autocorrectionDisabled()
@@ -350,7 +332,7 @@ struct BinderShelfSwitch: View {
         return Button { shelf = value } label: {
             Label(title, systemImage: icon)
                 .labelStyle(compact ? AnyLabelStyle(.iconOnly) : AnyLabelStyle(.titleAndIcon))
-                .font(.system(size: 14, weight: .bold, design: .serif))
+                .font(ArenaMenuStyle.font(14, .bold))
                 .lineLimit(1).minimumScaleFactor(0.8)
                 .foregroundStyle(chosen ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.dim)
                 .frame(maxWidth: compact ? nil : .infinity, minHeight: compact ? 34 : 36)
@@ -386,7 +368,7 @@ struct BinderManaFilter: View {
                 Button { if on { selection.remove(value) } else { selection.insert(value) } } label: {
                     // Arena's mana value filter: a number in a glass circle, gold when chosen.
                     Text(value == 7 ? "7+" : "\(value)")
-                        .font(.system(size: value == 7 ? 12 : 14, weight: .heavy, design: .serif)).monospacedDigit()
+                        .font(ArenaMenuStyle.font(value == 7 ? 12 : 14, .heavy)).monospacedDigit()
                         .foregroundStyle(on ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.text)
                         .frame(width: 30, height: 30)
                         .background(Circle().fill(on ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.black.opacity(0.5))))
@@ -433,7 +415,7 @@ struct BinderGauge: View {
             }
             .frame(height: 5)
             if showsCount {
-                Text("\(count)/\(target)").font(.system(size: 13, weight: .heavy, design: .serif)).monospacedDigit()
+                Text("\(count)/\(target)").font(ArenaMenuStyle.font(13, .heavy)).monospacedDigit()
                     .foregroundStyle(ArenaMenuStyle.text)
             }
         }
@@ -527,7 +509,7 @@ struct BinderSleeve: View {
                 else { Color.clear.frame(width: 36, height: 34).accessibilityHidden(true) }
             }
             Text("\(quantity)")
-                .font(.system(size: 14, weight: .heavy, design: .serif)).monospacedDigit()
+                .font(ArenaMenuStyle.font(14, .heavy)).monospacedDigit()
                 .contentTransition(.numericText())
                 .foregroundStyle(ArenaMenuStyle.text)
                 .frame(minWidth: 28, minHeight: 22)

@@ -225,30 +225,9 @@ struct ArenaTableBackdrop: View {
     }
 }
 
-/// Text with a thin black outline, for numbers laid over a picture.
-struct ArenaOutlinedText: View {
-    let text: String
-    let size: CGFloat
-    var color: Color = ArenaPalette.cream
-
-    var body: some View {
-        let outline = max(0.8, size * 0.05)
-        Text(text)
-            .font(.system(size: size, weight: .black, design: .serif))
-            .monospacedDigit()
-            .foregroundStyle(color)
-            .shadow(color: .black, radius: 0, x: outline, y: outline)
-            .shadow(color: .black, radius: 0, x: -outline, y: outline)
-            .shadow(color: .black, radius: 0, x: outline, y: -outline)
-            .shadow(color: .black, radius: 0, x: -outline, y: -outline)
-            .shadow(color: .black.opacity(0.7), radius: size * 0.12, y: size * 0.06)
-            .lineLimit(1)
-            .minimumScaleFactor(0.5)
-    }
-}
-
-/// A player's life medallion: their picture inside a brass ring, the life total over it. It glows ember on its owner's
-/// turn and red (attack) or blue (target) while it can be chosen.
+/// A player's life medallion as Arena draws it (build_output/arena-game-reference/battlefield-next-1.jpg): their picture in
+/// a thin gold ring, the life total on a dark plaque edged in gold over the ring's foot. It glows ember on its owner's
+/// turn and red (attack) or blue (target) while it can be chosen. No brass coin.
 struct ArenaHeroMedallion: View {
     let player: PlayerGameState
     let diameter: CGFloat
@@ -258,26 +237,24 @@ struct ArenaHeroMedallion: View {
     var showsLife = true
 
     var body: some View {
-        let portrait = diameter * 0.74
+        let portrait = diameter * 0.9
         ZStack {
             if commanderReady { TavernCommanderReadyGlow(diameter: portrait) }
             PlayerPortrait(player: player, size: portrait)
                 .frame(width: portrait, height: portrait)
                 .clipShape(Circle())
-                .overlay(Circle().fill(RadialGradient(colors: [.clear, .black.opacity(0.35)], center: .center,
-                                                      startRadius: portrait * 0.25, endRadius: portrait * 0.55)))
-            ring
-            if !showsLife {
-                EmptyView()
-            } else if player.isOut {
-                ArenaOutlinedText(text: "Out", size: diameter * 0.24, color: .gray)
-            } else {
-                ArenaOutlinedText(text: "\(player.life)", size: diameter * 0.34)
-                    .contentTransition(.numericText(value: Double(player.life)))
-                    .animation(.easeOut(duration: 0.3), value: player.life)
-            }
+                .overlay(Circle().fill(RadialGradient(colors: [.clear, .black.opacity(0.3)], center: .center,
+                                                      startRadius: portrait * 0.3, endRadius: portrait * 0.55)))
+            Circle()
+                .strokeBorder(LinearGradient(colors: [Color(red: 1, green: 0.90, blue: 0.62), ArenaMenuStyle.gold,
+                                                      Color(red: 0.62, green: 0.44, blue: 0.18)],
+                                             startPoint: .top, endPoint: .bottom), lineWidth: max(1.5, diameter * 0.045))
+                .frame(width: diameter * 0.96, height: diameter * 0.96)
         }
         .frame(width: diameter, height: diameter)
+        .overlay(alignment: .bottom) {
+            if showsLife { lifePlaque.offset(y: diameter * 0.1) }
+        }
         .background {
             if let glow {
                 Circle().fill(glow).frame(width: diameter * 1.15, height: diameter * 1.15).blur(radius: diameter * 0.12)
@@ -291,16 +268,42 @@ struct ArenaHeroMedallion: View {
         .animation(.easeInOut(duration: 0.3), value: active)
     }
 
-    @ViewBuilder private var ring: some View {
-        if let frame = UIImage(named: "tavern-medallion-frame") {
-            Image(uiImage: frame).resizable().scaledToFit()
-                .frame(width: diameter, height: diameter)
-                .allowsHitTesting(false)
-        } else {
-            Circle().strokeBorder(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), TavernPalette.brass, TavernPalette.brassDark],
-                                                 startPoint: .top, endPoint: .bottom), lineWidth: diameter * 0.11)
-                .frame(width: diameter, height: diameter)
+    private var lifePlaque: some View {
+        Group {
+            if player.isOut {
+                Text("Out").font(.system(size: diameter * 0.17, weight: .bold)).foregroundStyle(Color.gray)
+            } else {
+                Text("\(player.life)")
+                    .font(ArenaMenuStyle.title(diameter * 0.26, .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.white)
+                    .contentTransition(.numericText(value: Double(player.life)))
+                    .animation(.easeOut(duration: 0.3), value: player.life)
+            }
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .frame(width: diameter * 0.56, height: diameter * 0.34)
+        .background(ArenaPlaqueShape().fill(LinearGradient(colors: [Color(red: 0.16, green: 0.16, blue: 0.19),
+                                                                    Color(red: 0.05, green: 0.05, blue: 0.07)],
+                                                           startPoint: .top, endPoint: .bottom)))
+        .overlay(ArenaPlaqueShape().stroke(ArenaMenuStyle.gold.opacity(0.85), lineWidth: max(1, diameter * 0.02)))
+    }
+}
+
+/// Arena's life plaque: a flat-topped, six-sided badge.
+struct ArenaPlaqueShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset = rect.width * 0.14
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + inset, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -356,7 +359,8 @@ struct ArenaCardBack: View {
 
     private func leatherBack(width: CGFloat) -> some View {
         ZStack {
-            TavernFill(material: .leather)
+            LinearGradient(colors: [Color(red: 0.16, green: 0.15, blue: 0.16), Color(red: 0.07, green: 0.065, blue: 0.07)],
+                           startPoint: .top, endPoint: .bottom)
             LinearGradient(colors: [.white.opacity(0.08), .clear, .black.opacity(0.28)], startPoint: .top, endPoint: .bottom)
         }
         .overlay(RoundedRectangle(cornerRadius: width * 0.06).strokeBorder(Color.black.opacity(0.85), lineWidth: max(1, width * 0.06)))
@@ -436,19 +440,23 @@ struct ArenaTableLeanEffect: ViewModifier {
     }
 }
 
-/// A count on a small leather lozenge in a brass edge.
+/// A count on the Arena table (a pile, the stack, a browser card's order): a white number on a dark oval in a thin gold
+/// line, as Arena marks counts. The Hearth board keeps its brass coin (TavernCoin).
 struct ArenaCountBadge: View {
     let count: Int
+    /// The badge's height: 17 on a pile, larger for the stack's size or a browser card's order.
+    var size: CGFloat = 17
 
     var body: some View {
         Text("\(count)")
-            .font(.system(size: 11, weight: .heavy, design: .serif))
+            .font(.system(size: max(11, size * 0.5), weight: .bold))
             .monospacedDigit()
-            .foregroundStyle(TavernPalette.label)
-            .padding(.horizontal, 5)
-            .frame(minWidth: 20, minHeight: 17)
-            .background(TavernPalette.leather, in: Capsule())
-            .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1.2))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, max(5, size * 0.18))
+            .frame(minWidth: size + 3, minHeight: size)
+            .background(Capsule().fill(Color(red: 0.07, green: 0.07, blue: 0.08).opacity(0.94)))
+            .overlay(Capsule().strokeBorder(ArenaMenuStyle.gold.opacity(0.7), lineWidth: 1))
+            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
             .fixedSize()
     }
 }
@@ -753,66 +761,30 @@ struct ArenaPhaseShape: Shape {
 
 // MARK: - Controls
 
-/// The corner's plaque buttons: ember glass for the call to action, leather for the secondary one, a quiet label when
-/// it's the opponent's turn. The capsule is drawn a little inside a 44 pt target.
+/// The corner's plaque buttons on Arena's button face: the orange pill for the call to action, the dark glass pill for the
+/// other choice, a quiet word when it's the opponent's turn. The pill is drawn a little inside a 44 pt target.
 struct ArenaPlaqueButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, waiting }
     var kind: Kind = .primary
     var fontSize: CGFloat = 18
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: kind == .waiting ? fontSize * 0.8 : fontSize, weight: .bold, design: .serif))
-            .foregroundStyle(kind == .secondary ? TavernPalette.parchment : kind == .waiting ? TavernPalette.parchment.opacity(0.9)
-                             : Color(red: 1, green: 0.91, blue: 0.66))
-            .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                if kind != .waiting {
-                    Group {
-                        if kind == .primary { TavernFill(material: .ember) } else { TavernFill(material: .leather) }
-                    }
-                    .clipShape(Capsule())
-                    .padding(3)
-                    .overlay { TavernCapsuleRim() }
-                    .padding(.vertical, 3)
-                }
-            }
-            .contentShape(Rectangle())
-            .saturation(isEnabled ? 1 : 0.2)
-            .brightness(isEnabled ? (configuration.isPressed ? 0.08 : 0) : -0.12)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .shadow(color: .black.opacity(kind == .waiting ? 0 : 0.45), radius: 4, y: 2)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+        ArenaButtonFace(label: configuration.label,
+                        kind: kind == .primary ? .primary : kind == .secondary ? .secondary : .quiet,
+                        font: ArenaMenuStyle.title(kind == .waiting ? fontSize * 0.8 : fontSize, .bold),
+                        pressed: configuration.isPressed, inset: 3, glow: 0.8)
             .pressSound(.uiTap, isPressed: configuration.isPressed)
     }
 }
 
-/// A small brass-rimmed leather pill: pass ahead (">>") and Undo.
+/// A small pill: pass ahead (">>") and Undo. Dark glass, orange while lit.
 struct ArenaPillStyle: ButtonStyle {
     var lit = false
-    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .heavy, design: .serif))
-            .foregroundStyle(lit ? Color.white : Color(red: 0.96, green: 0.8, blue: 0.48))
-            .lineLimit(1).minimumScaleFactor(0.7)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                Group { if lit { TavernFill(material: .ember) } else { TavernFill(material: .leather) } }
-                    .clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(TavernPalette.brass, lineWidth: 1.5))
-            }
-            .shadow(color: lit ? TavernPalette.ember.opacity(0.8) : .black.opacity(0.5), radius: lit ? 8 : 3, y: 2)
+        ArenaButtonFace(label: configuration.label, kind: lit ? .primary : .secondary, font: ArenaMenuStyle.font(13, .heavy),
+                        pressed: configuration.isPressed, glow: 0.7)
             .contentShape(Rectangle().inset(by: -8))
-            .opacity(isEnabled ? 1 : 0.45)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
     }
 }
 
@@ -889,9 +861,9 @@ struct ArenaMenuCard: View {
                                 .frame(width: 22)
                         }
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(item.title).font(.system(size: 16, weight: .semibold, design: .serif))
+                            Text(item.title).font(ArenaMenuStyle.font(16, .semibold))
                             if let subtitle = item.subtitle {
-                                Text(subtitle).font(.system(size: 11, weight: .medium, design: .serif)).opacity(0.65)
+                                Text(subtitle).font(ArenaMenuStyle.font(11, .medium)).opacity(0.65)
                             }
                         }
                         .foregroundStyle(ArenaGlass.text)
@@ -1078,7 +1050,7 @@ struct ArenaStackCard: View {
                 VStack(spacing: 3) {
                     if count > 1 {
                         Text("\(count)")
-                            .font(.system(size: 15, weight: .heavy, design: .serif)).monospacedDigit()
+                            .font(ArenaMenuStyle.font(15, .heavy)).monospacedDigit()
                             .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
                     }
                     Image(systemName: "chevron.left").font(.system(size: 10, weight: .black))
@@ -1401,14 +1373,14 @@ struct ArenaAbilityBrowser: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.64).ignoresSafeArea().accessibilityHidden(true)
+            Color.black.opacity(0.8).ignoresSafeArea().accessibilityHidden(true)
             VStack(spacing: 12) {
                 Text(ordering ? "Order your triggers" : "Choose an ability")
                     .font(.system(size: 22, weight: .bold, design: .serif))
                     .foregroundStyle(ArenaGlass.text)
                     .shadow(color: .black, radius: 2)
                 Text(ordering ? "Tap them in the order they resolve: 1 resolves first." : PromptDisplayText.clean(prompt.message))
-                    .font(.system(size: 14, weight: .medium, design: .serif))
+                    .font(ArenaMenuStyle.font(14, .medium))
                     .foregroundStyle(ArenaGlass.text.opacity(0.8))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -1466,7 +1438,7 @@ struct ArenaAbilityBrowser: View {
                 }
             }
             .overlay(alignment: .top) {
-                if let number { TavernCoin(value: number, size: 34).offset(y: -17).transition(.scale) }
+                if let number { ArenaCountBadge(count: number, size: 34).offset(y: -17).transition(.scale) }
             }
             .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
             .scaleEffect(number != nil ? 1.04 : 1)
@@ -1492,6 +1464,7 @@ struct ArenaAbilityBrowser: View {
 /// what it targets sits underneath. A tap reads a card; Resolve All and Done below. Landscape lays them in one row,
 /// portrait in two columns, so many show at once.
 struct ArenaStackBrowser: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let snapshot: GameSnapshot
     let screen: CGSize
     var resolveAll: (() -> Void)?
@@ -1517,7 +1490,7 @@ struct ArenaStackBrowser: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.7).ignoresSafeArea()
+            Color.black.opacity(0.8).ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
                 .accessibilityHidden(true)
@@ -1544,7 +1517,8 @@ struct ArenaStackBrowser: View {
                 }
                 buttons
             }
-            .padding(.top, landscape ? 10 : 56)
+            .padding(.top, safeArea.top(landscape ? 50 : 56))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .padding(.bottom, landscape ? 10 : 28)
         }
         .accessibilityElement(children: .contain)
@@ -1559,12 +1533,12 @@ struct ArenaStackBrowser: View {
                     .font(.system(size: 22, weight: .bold, design: .serif))
                     .foregroundStyle(ArenaGlass.text)
                     .shadow(color: .black, radius: 2)
-                TavernCoin(value: snapshot.xmage?.stack.count ?? objects.count, size: 28)
+                ArenaCountBadge(count: snapshot.xmage?.stack.count ?? objects.count, size: 28)
                     .accessibilityLabel("\(snapshot.xmage?.stack.count ?? objects.count) on the stack")
             }
             HStack(spacing: 8) {
                 Text(objects.count > 1 ? "Resolves left to right" : "Resolves next")
-                    .font(.system(size: 13, weight: .medium, design: .serif))
+                    .font(ArenaMenuStyle.font(13, .medium))
                     .foregroundStyle(ArenaGlass.text.opacity(0.75))
                 TavernTag(text: responding ? "YOUR RESPONSE" : "WAITING", leather: true, accent: responding ? TavernPalette.ember : nil)
             }
@@ -1613,20 +1587,20 @@ struct ArenaStackBrowser: View {
                         .allowsHitTesting(false)
                 }
             }
-            .overlay(alignment: .top) { TavernCoin(value: position + 1, size: 30).offset(y: -15) }
+            .overlay(alignment: .top) { ArenaCountBadge(count: position + 1, size: 30).offset(y: -15) }
             .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
             .contentShape(Rectangle())
             .onTapGesture { if let card = object.displaySourceCard { inspect(card) } }
             VStack(spacing: 2) {
                 Text(next ? "RESOLVES NEXT" : owner(object).uppercased())
-                    .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
+                    .font(ArenaMenuStyle.font(10, .heavy)).tracking(0.8)
                     .foregroundStyle(next ? Color(red: 0.98, green: 0.72, blue: 0.4) : ArenaGlass.text.opacity(0.65))
                 if next {
-                    Text(owner(object)).font(.system(size: 11, design: .serif).italic()).foregroundStyle(ArenaGlass.text.opacity(0.75))
+                    Text(owner(object)).font(ArenaMenuStyle.font(11, .regular).italic()).foregroundStyle(ArenaGlass.text.opacity(0.75))
                 }
                 if let targets = object.targetIds, !targets.isEmpty {
                     Label(StackTargetPresentation.labels(for: targets, in: snapshot).joined(separator: ", "), systemImage: "scope")
-                        .font(.system(size: 11, weight: .semibold, design: .serif))
+                        .font(ArenaMenuStyle.font(11, .semibold))
                         .foregroundStyle(ArenaGlass.text)
                 }
             }
@@ -1653,6 +1627,7 @@ struct ArenaStackBrowser: View {
 /// title, the card it's about stands in the middle (an ability as its ability card), and the answers sit under it as
 /// plaques. "View Battlefield" steps it aside.
 struct ArenaQuestionStage<Answers: View>: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let title: String
     let object: XmageStackObject?
     let card: ZoneCard?
@@ -1676,10 +1651,13 @@ struct ArenaQuestionStage<Answers: View>: View {
         if !name.isEmpty, clean.localizedCaseInsensitiveContains(name), object.map(ArenaStackCard.isAbility) ?? false {
             return ("Use \(name)'s ability?", clean)
         }
+        // Otherwise its first sentence over the rest, or the whole question when it is one long sentence: never cut off, and
+        // never said twice (the judge, 2026-10-22).
         if let stop = clean.range(of: ". "), clean.distance(from: clean.startIndex, to: stop.lowerBound) < 70 {
-            return (String(clean[..<stop.lowerBound]) + ".", clean)
+            let rest = clean[stop.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            return (String(clean[..<stop.lowerBound]) + ".", rest.isEmpty ? nil : rest)
         }
-        return (String(clean.prefix(60)).trimmingCharacters(in: .whitespaces) + "…", clean)
+        return (clean, nil)
     }
 
     var body: some View {
@@ -1689,7 +1667,7 @@ struct ArenaQuestionStage<Answers: View>: View {
         let headline = Self.headline(title, object: object, card: card)
         let art = object?.displaySourceCard ?? card
         ZStack {
-            Color.black.opacity(peeking ? 0 : 0.72).ignoresSafeArea()
+            Color.black.opacity(peeking ? 0 : 0.8).ignoresSafeArea()
                 .allowsHitTesting(!peeking)
                 .accessibilityHidden(true)
             VStack(spacing: landscape ? 10 : 18) {
@@ -1706,7 +1684,7 @@ struct ArenaQuestionStage<Answers: View>: View {
                     .accessibilityIdentifier("arena.question.title")
                 if let detail = headline.detail {
                     GameRulesText(source: detail, cardName: object?.displaySourceName ?? card?.card.name, symbolSize: 13)
-                        .font(.system(size: 13, weight: .medium, design: .serif))
+                        .font(ArenaMenuStyle.font(13, .medium))
                         .foregroundStyle(ArenaGlass.text.opacity(0.8))
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
@@ -1731,20 +1709,22 @@ struct ArenaQuestionStage<Answers: View>: View {
                 .onTapGesture { if let art { inspect(art) } }
                 answers
             }
-            .padding(.top, landscape ? 0 : 40)
+            .padding(.top, safeArea.top(landscape ? 50 : 40))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .opacity(peeking ? 0 : 1)
             .allowsHitTesting(!peeking)
             Button(peeking ? "Back to the question" : "View Battlefield") { peeking.toggle() }
-                .font(.system(size: 12, weight: .bold, design: .serif))
+                .font(ArenaMenuStyle.font(12, .bold))
                 .foregroundStyle(ArenaGlass.text)
                 .padding(.horizontal, 14).frame(height: 32)
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 .frame(minHeight: 44)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, landscape ? 4 : 50)
-                .padding(.trailing, 16)
                 .accessibilityIdentifier("arena.question.viewBattlefield")
+                // Clear of the gear (top right in landscape): padded before it is placed, so it never widens the layer.
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
@@ -1755,6 +1735,7 @@ struct ArenaQuestionStage<Answers: View>: View {
 /// A modal spell's modes the Arena way: each mode is a card with the spell's art over its text, side by side over the
 /// dimmed table; a tap chooses it (XMage asks again for each further mode). The prompt's own answers (Done) sit below.
 struct ArenaModeBrowser: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let title: String
     let detail: String
     let source: ZoneCard?
@@ -1765,29 +1746,43 @@ struct ArenaModeBrowser: View {
     let choose: (ChoicePromptOption) -> Void
     let inspect: (ZoneCard) -> Void
 
+    private var landscape: Bool { screen.width > screen.height }
+
+    /// Upright, more than two modes sit two to a row so none runs off the edge (the judge, 2026-10-22).
+    private var columns: Int { landscape || modes.count <= 2 ? max(1, modes.count) : 2 }
+
     private var cardSize: CGSize {
-        let landscape = screen.width > screen.height
-        let height = min(landscape ? screen.height * 0.52 : 250, 250)
-        return CGSize(width: height * 0.72, height: height)
+        if landscape {
+            let height = min(screen.height * 0.52, 250)
+            return CGSize(width: height * 0.72, height: height)
+        }
+        let width = min(180, (screen.width - 48 - 16 * CGFloat(columns - 1)) / CGFloat(columns))
+        return CGSize(width: width, height: width / 0.72)
     }
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.7).ignoresSafeArea().accessibilityHidden(true)
+            Color.black.opacity(0.8).ignoresSafeArea().accessibilityHidden(true)
             VStack(spacing: 12) {
                 Text(title)
-                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .font(ArenaMenuStyle.title(22, .bold))
                     .foregroundStyle(ArenaGlass.text)
                     .shadow(color: .black, radius: 2)
-                Text(detail)
-                    .font(.system(size: 14, weight: .medium, design: .serif))
-                    .foregroundStyle(ArenaGlass.text.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) {
+                if detail.lowercased() != title.lowercased() {
+                    Text(detail)
+                        .font(ArenaMenuStyle.font(14, .medium))
+                        .foregroundStyle(ArenaGlass.text.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 24)
+                }
+                ScrollView(landscape ? .horizontal : .vertical, showsIndicators: false) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cardSize.width), spacing: 16), count: columns), spacing: 16) {
                         ForEach(Array(modes.enumerated()), id: \.element.id) { index, mode in
-                            ArenaAbilityCard(source: source, name: source == nil ? "Mode \(index + 1)" : nil, kind: "Mode \(index + 1)",
+                            // The card names its mode once: in the type line under the source's art, or as its name
+                            // when there is no source card.
+                            ArenaAbilityCard(source: source, name: source == nil ? "Mode \(index + 1)" : nil,
+                                             kind: source == nil ? "Mode" : "Mode \(index + 1)",
                                              text: Self.text(of: mode), size: cardSize)
                                 .shadow(color: .black.opacity(0.6), radius: 8, y: 5)
                                 .contentShape(Rectangle())
@@ -1803,6 +1798,9 @@ struct ArenaModeBrowser: View {
                     .padding(.vertical, 18)
                     .frame(minWidth: screen.width)
                 }
+                .mask(ArenaScrollFade(depth: landscape ? 0 : 20))
+                // Upright the cards scroll in the room left, so the title stays on screen.
+                .frame(maxHeight: landscape ? nil : .infinity)
                 if !answers.isEmpty {
                     HStack(spacing: 12) {
                         ForEach(answers, id: \.id) { answer in
@@ -1813,6 +1811,9 @@ struct ArenaModeBrowser: View {
                     }
                 }
             }
+            .padding(.top, safeArea.top(landscape ? 50 : 96))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
+            .padding(.bottom, landscape ? 10 : 28)
             .disabled(pending)
             .opacity(pending ? 0.7 : 1)
         }
@@ -1833,6 +1834,7 @@ struct ArenaModeBrowser: View {
 /// at the top, the content in the middle, answers at the bottom, the source card on the right in landscape and "View
 /// Battlefield" top right, which steps the browser aside.
 struct ArenaBrowserFrame<Content: View, Footer: View>: View {
+    @Environment(\.arenaSafeArea) private var safeArea
     let title: String
     var detail: String? = nil
     var source: XmageStackObject? = nil
@@ -1848,7 +1850,7 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
         let landscape = screen.width > screen.height
         let showsSource = landscape && (source != nil || sourceCard != nil)
         ZStack {
-            Color.black.opacity(peeking ? 0 : 0.72).ignoresSafeArea()
+            Color.black.opacity(peeking ? 0 : 0.8).ignoresSafeArea()
                 .allowsHitTesting(!peeking)
                 .accessibilityHidden(true)
             VStack(spacing: landscape ? 8 : 12) {
@@ -1863,7 +1865,7 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
                         .accessibilityIdentifier("\(identifier).title")
                     if let detail, !detail.isEmpty {
                         Text(detail)
-                            .font(.system(size: 13, weight: .medium, design: .serif))
+                            .font(ArenaMenuStyle.font(13, .medium))
                             .foregroundStyle(ArenaGlass.text.opacity(0.8))
                             .multilineTextAlignment(.center)
                             .lineLimit(2)
@@ -1873,7 +1875,8 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
                 content.frame(maxHeight: .infinity)
                 footer
             }
-            .padding(.top, landscape ? 8 : 96)
+            .padding(.top, safeArea.top(landscape ? 50 : 96))
+            .padding(.horizontal, landscape ? safeArea.side : 0)
             .padding(.bottom, landscape ? 10 : 28)
             .padding(.trailing, showsSource ? 150 : 0)
             .opacity(peeking ? 0 : 1)
@@ -1884,16 +1887,17 @@ struct ArenaBrowserFrame<Content: View, Footer: View>: View {
                     .padding(.trailing, 14)
             }
             Button(peeking ? "Back to the choice" : "View Battlefield") { peeking.toggle() }
-                .font(.system(size: 12, weight: .bold, design: .serif))
+                .font(ArenaMenuStyle.font(12, .bold))
                 .foregroundStyle(ArenaGlass.text)
                 .padding(.horizontal, 14).frame(height: 32)
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 .frame(minHeight: 44)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, landscape ? 4 : 50)
-                .padding(.trailing, 16)
                 .accessibilityIdentifier("\(identifier).viewBattlefield")
+                // Clear of the gear (top right in landscape): padded before it is placed, so it never widens the layer.
+                .padding(.top, landscape ? 4 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
@@ -1936,7 +1940,7 @@ struct ArenaAnswerRow: View {
                     VStack(spacing: 0) {
                         Text(primary.title)
                         if let subtitle = primary.subtitle {
-                            Text(subtitle.uppercased()).font(.system(size: 8, weight: .heavy, design: .serif)).opacity(0.85)
+                            Text(subtitle.uppercased()).font(ArenaMenuStyle.font(8, .heavy)).opacity(0.85)
                         }
                     }
                 }
@@ -1977,11 +1981,10 @@ struct ArenaZoneBrowser: View {
         runTargetAction != nil && (targetableIDs.contains(card.instanceId) || targetableIDs.contains(card.id))
     }
 
-    private var detail: String {
-        if cards.isEmpty { return title.contains("Library") ? "The library is face down. Only a revealed top card shows here." : "No cards here." }
-        if cards.contains(where: targetable) { return "Choose a card." }
-        if cards.contains(where: { !actions($0).isEmpty }) { return "Play a card from here, or hold one to read it." }
-        return cards.count == 1 ? "1 card. Hold it to read it." : "\(cards.count) cards. Hold one to read it."
+    /// Only what the table can't show: an empty zone, or that a card is wanted. No how-to lines (Caleb, 2026-10-22).
+    private var detail: String? {
+        if cards.isEmpty { return title.contains("Library") ? "Face down" : "No cards" }
+        return cards.contains(where: targetable) ? "Choose a card" : nil
     }
 
     private func perform(_ action: LegalAction) {
@@ -2004,11 +2007,16 @@ struct ArenaZoneBrowser: View {
                         .frame(minWidth: screen.width - 48)
                 }
             } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cardSize.width), spacing: 12, alignment: .top), count: 3), spacing: 14) {
-                        ForEach(cards) { tile($0) }
-                    }
-                    .padding(.vertical, 12)
+                // As many columns as cards, up to three, centred on the table; it scrolls only when they don't fit, so one
+                // card sits in the middle with its plaque under it, as in Arena's browsers (Caleb, 2026-10-22).
+                let grid = LazyVGrid(columns: Array(repeating: GridItem(.fixed(cardSize.width), spacing: 12, alignment: .top),
+                                                    count: min(3, cards.count)), spacing: 14) {
+                    ForEach(cards) { tile($0) }
+                }
+                .padding(.vertical, 12)
+                ViewThatFits(in: .vertical) {
+                    grid.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ScrollView(showsIndicators: false) { grid.frame(maxWidth: .infinity) }
                 }
             }
         } footer: {
@@ -2115,7 +2123,7 @@ struct ArenaPlayerCard: View {
                         .foregroundStyle(ArenaGlass.text)
                         .lineLimit(1).minimumScaleFactor(0.7)
                     Text(player.isOut ? "Out of the game" : "\(player.life) life")
-                        .font(.system(size: 13, weight: .heavy, design: .serif))
+                        .font(ArenaMenuStyle.font(13, .heavy))
                         .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
                 }
                 Spacer(minLength: 0)
@@ -2133,7 +2141,7 @@ struct ArenaPlayerCard: View {
                         HStack(spacing: 10) {
                             TavernStatusBadge(badge: badge, size: 26).frame(width: 30, height: 30).accessibilityHidden(true)
                             Text(badge.label)
-                                .font(.system(size: 13, weight: .semibold, design: .serif))
+                                .font(ArenaMenuStyle.font(13, .semibold))
                                 .foregroundStyle(badge.nearLethal ? Color(red: 1, green: 0.62, blue: 0.52) : ArenaGlass.text)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -2147,8 +2155,8 @@ struct ArenaPlayerCard: View {
                     Button { open(.player(playerID: player.playerId, zone: icon.zone)) } label: {
                         VStack(spacing: 3) {
                             Image(systemName: icon.symbol).font(.system(size: 17, weight: .bold))
-                            Text("\(icon.count)").font(.system(size: 13, weight: .heavy, design: .serif)).monospacedDigit()
-                            Text(icon.name.uppercased()).font(.system(size: 8, weight: .heavy, design: .serif)).tracking(0.8)
+                            Text("\(icon.count)").font(ArenaMenuStyle.font(13, .heavy)).monospacedDigit()
+                            Text(icon.name.uppercased()).font(ArenaMenuStyle.font(8, .heavy)).tracking(0.8)
                                 .lineLimit(1).minimumScaleFactor(0.7)
                         }
                         .foregroundStyle(icon.lit ? Color(red: 1, green: 0.9, blue: 0.7) : ArenaGlass.text)
@@ -2168,12 +2176,12 @@ struct ArenaPlayerCard: View {
                         Button { open(reference) } label: {
                             HStack {
                                 Text(reference.title(in: snapshot))
-                                    .font(.system(size: 13, weight: .semibold, design: .serif))
+                                    .font(ArenaMenuStyle.font(13, .semibold))
                                     .multilineTextAlignment(.leading)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 6)
                                 Text("\(reference.cards(in: snapshot).count)")
-                                    .font(.system(size: 13, weight: .heavy, design: .serif)).monospacedDigit()
+                                    .font(ArenaMenuStyle.font(13, .heavy)).monospacedDigit()
                             }
                             .foregroundStyle(ArenaGlass.text)
                             .padding(.horizontal, 12).frame(minHeight: 40)
@@ -2259,7 +2267,7 @@ struct ArenaChoiceBrowser: View {
                                 VStack(spacing: 6) {
                                     ManaSymbolView(symbol: option.symbol ?? "C", size: 54)
                                         .shadow(color: .black.opacity(0.6), radius: 6, y: 3)
-                                    Text(option.label).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(ArenaGlass.text)
+                                    Text(option.label).font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaGlass.text)
                                 }
                                 .frame(minWidth: 64, minHeight: 88)
                             }
@@ -2273,7 +2281,7 @@ struct ArenaChoiceBrowser: View {
                             ForEach(shown) { option in
                                 Button { pick(option) } label: {
                                     GameRulesText(source: PromptDisplayText.clean(option.label), symbolSize: 14)
-                                        .font(.system(size: 14, weight: .semibold, design: .serif))
+                                        .font(ArenaMenuStyle.font(14, .semibold))
                                         .foregroundStyle(ArenaGlass.text)
                                         .multilineTextAlignment(.center)
                                         .lineLimit(3)
@@ -2337,8 +2345,11 @@ struct ArenaPlayerChoice: View {
 
     var body: some View {
         let diameter: CGFloat = min(screen.width, screen.height) * (seats.count > 2 ? 0.24 : 0.3)
+        // Upright, three or four players sit two to a row so none is cut off at the edge (the judge, 2026-10-22).
+        let columns = screen.width > screen.height || seats.count <= 2 ? seats.count : 2
         ArenaBrowserFrame(title: title, detail: detail, screen: screen, identifier: "arena.playerChoice") {
-            HStack(spacing: diameter * 0.35) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(diameter * 1.25), spacing: diameter * 0.3), count: max(1, columns)),
+                      spacing: diameter * 0.3) {
                 ForEach(seats) { seat in
                     Button {
                         guard !pending else { return }
@@ -2353,9 +2364,11 @@ struct ArenaPlayerChoice: View {
                                     .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 2))
                             }
                             Text(seat.name)
-                                .font(.system(size: 18, weight: .bold, design: .serif))
+                                .font(ArenaMenuStyle.title(18, .bold))
                                 .foregroundStyle(ArenaGlass.text)
                                 .shadow(color: .black, radius: 2)
+                                .padding(.top, diameter * 0.1)
+                                .lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }
                     .buttonStyle(.plain)
@@ -2390,7 +2403,7 @@ struct ArenaAmountPill: View {
                 lens("−", places: -1, current: current, wide: false)
                 Button { submit(current) } label: {
                     VStack(spacing: -1) {
-                        Text(label).font(.system(size: 12, weight: .bold, design: .serif))
+                        Text(label).font(ArenaMenuStyle.font(12, .bold))
                         Text(label.hasSuffix("X") ? "X = \(current)" : "\(current)")
                             .font(.system(size: 18, weight: .heavy, design: .serif)).monospacedDigit()
                             .contentTransition(.numericText(value: Double(current)))
@@ -2398,7 +2411,7 @@ struct ArenaAmountPill: View {
                     .foregroundStyle(Color(red: 1, green: 0.93, blue: 0.75))
                     .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
                     .frame(width: 112, height: 50)
-                    .background { TavernFill(material: .ember).clipShape(Capsule()) }
+                    .background { Capsule().fill(ArenaMenuStyle.orange) }
                     .overlay(Capsule().strokeBorder(Color(red: 1, green: 0.85, blue: 0.5).opacity(0.9), lineWidth: 1.2))
                     .shadow(color: TavernPalette.ember.opacity(0.7), radius: 8)
                 }
@@ -2574,7 +2587,7 @@ struct ArenaSplitBrowser: View {
                 .contentShape(Rectangle())
                 .onLongPressGesture(minimumDuration: 0.3) { if let card = row.card { inspect(card) } }
             Text(name)
-                .font(.system(size: 12, weight: .semibold, design: .serif)).foregroundStyle(ArenaGlass.text)
+                .font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaGlass.text)
                 .lineLimit(1).frame(width: size.width)
             HStack(spacing: 10) {
                 stepper("−", by: -1, index: index, row: row)
@@ -2678,7 +2691,7 @@ struct ArenaPileBrowser: View {
                     let chosen = picked == pile.id
                     VStack(spacing: 8) {
                         Text("\(pile.label.uppercased()) · \(pile.cards.count == 1 ? "1 CARD" : "\(pile.cards.count) CARDS")")
-                            .font(.system(size: 13, weight: .heavy, design: .serif)).tracking(1.2)
+                            .font(ArenaMenuStyle.font(13, .heavy)).tracking(1.2)
                             .foregroundStyle(Color(red: 0.98, green: 0.84, blue: 0.52))
                         HStack(spacing: -width * 0.45) {
                             ForEach(Array(pile.cards.enumerated()), id: \.element.id) { index, card in
@@ -2690,7 +2703,7 @@ struct ArenaPileBrowser: View {
                                     .onLongPressGesture(minimumDuration: 0.3) { inspect(card) }
                             }
                             if pile.cards.isEmpty {
-                                Text("Empty").font(.system(size: 14, design: .serif).italic()).foregroundStyle(ArenaGlass.text.opacity(0.6))
+                                Text("Empty").font(ArenaMenuStyle.font(14, .regular).italic()).foregroundStyle(ArenaGlass.text.opacity(0.6))
                                     .frame(width: width, height: width * 1.4)
                             }
                         }
@@ -2828,7 +2841,7 @@ struct ArenaPromptCaption: View {
 
     var body: some View {
         GameRulesText(source: text, symbolSize: 15)
-            .font(.system(size: 15, weight: .semibold, design: .serif))
+            .font(ArenaMenuStyle.font(15, .semibold))
             .foregroundStyle(TavernPalette.parchment)
             .shadow(color: .black, radius: 2)
             .shadow(color: .black.opacity(0.8), radius: 6)
@@ -2856,7 +2869,7 @@ struct ArenaFloatingMana: View {
                     .shadow(color: .black.opacity(0.75), radius: 1.5, y: 1)
                     .overlay(alignment: .bottomTrailing) {
                         if count > 1 {
-                            Text("\(count)").font(.system(size: 10, weight: .black, design: .serif)).monospacedDigit()
+                            Text("\(count)").font(ArenaMenuStyle.font(10, .black)).monospacedDigit()
                                 .foregroundStyle(.white).padding(.horizontal, 3)
                                 .background(Capsule().fill(Color.black.opacity(0.85)))
                                 .offset(x: 5, y: 4)
@@ -2880,5 +2893,192 @@ struct ArenaFloatingMana: View {
         .padding(.horizontal, 5)
         .background(Capsule().fill(Color.black.opacity(0.45)).frame(height: 28))
         .overlay(Capsule().strokeBorder(TavernPalette.brass.opacity(0.55), lineWidth: 1).frame(height: 28))
+    }
+}
+
+
+/// The end of a game on the Arena board, as Arena shows it (build_output/arena-game-reference/victory-*.jpg): the board
+/// dims and one word lands on a flare of light behind the MagicMobile mark, orange for Victory, cold steel for Defeat,
+/// violet for a draw. A tap, or a moment, lifts the word to the top over your medallion, your rank, the game's numbers
+/// and the two ways on. View Battlefield lifts it all to look at the final board. No trophy, flag or tavern panel.
+struct ArenaGameResultView: View {
+    @Environment(\.arenaSafeArea) private var safeArea
+    let snapshot: GameSnapshot
+    var stats: GameStats?
+    var rankChange: RankChange?
+    var rematchTitle: String?
+    let newGame: () -> Void
+    let quitGame: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var landed = false
+    @State private var settled = false
+    @State private var peeking = false
+
+    private enum Outcome { case victory, defeat, draw }
+
+    private var outcome: Outcome {
+        guard let winners = snapshot.winnerPlayerIds, !winners.isEmpty else { return .draw }
+        return winners.contains(snapshot.viewerID) ? .victory : .defeat
+    }
+
+    private var word: String {
+        switch outcome {
+        case .victory: String(localized: "Victory")
+        case .defeat: String(localized: "Defeat")
+        case .draw: String(localized: "Draw")
+        }
+    }
+
+    private var flare: Color {
+        switch outcome {
+        case .victory: Color(red: 1, green: 0.52, blue: 0.14)
+        case .defeat: Color(red: 0.46, green: 0.58, blue: 0.74)
+        case .draw: Color(red: 0.62, green: 0.40, blue: 0.96)
+        }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let landscape = proxy.size.width > proxy.size.height
+            ZStack {
+                Color.black.opacity(peeking ? 0 : 0.86).ignoresSafeArea()
+                    .allowsHitTesting(!peeking)
+                if !peeking {
+                    VStack(spacing: landscape ? 10 : 18) {
+                        banner(landscape: landscape)
+                            .padding(.top, settled ? safeArea.top(landscape ? 50 : 104) : max(0, proxy.size.height / 2 - (landscape ? 70 : 90)))
+                        if settled {
+                            details(landscape: landscape)
+                                .transition(.opacity.combined(with: .offset(y: 24)))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    // Held to the screen: the flare is wider and spills off both sides, but it must not widen the layer,
+                    // or View Battlefield is laid out past the screen's edge.
+                    .frame(width: proxy.size.width)
+                    .padding(.horizontal, landscape ? safeArea.side : 0)
+                    .contentShape(Rectangle())
+                    .onTapGesture { settle() }
+                }
+                Button(peeking ? String(localized: "Back") : String(localized: "View Battlefield")) {
+                    withAnimation(.easeOut(duration: 0.2)) { peeking.toggle() }
+                }
+                .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
+                .accessibilityIdentifier("board.result.viewBattlefield")
+                .padding(.top, landscape ? 6 : 50)
+                .padding(.trailing, landscape ? 120 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.7)) { landed = true }
+            UINotificationFeedbackGenerator().notificationOccurred(outcome == .victory ? .success : .error)
+        }
+        .task {
+            do { try await Task.sleep(for: .seconds(reduceMotion ? 0.3 : 1.8)) } catch { return }
+            settle()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Game completed. \(word)")
+    }
+
+    private func settle() {
+        guard !settled else { return }
+        withAnimation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.85)) { settled = true }
+    }
+
+    /// The word on its flare, the mark glowing behind it.
+    private func banner(landscape: Bool) -> some View {
+        let size: CGFloat = landscape ? (settled ? 40 : 54) : (settled ? 44 : 60)
+        return ZStack {
+            Ellipse()
+                .fill(RadialGradient(colors: [flare.opacity(0.85), flare.opacity(0.25), .clear], center: .center,
+                                     startRadius: 0, endRadius: 220))
+                .frame(width: 520, height: size * 1.9)
+                .blur(radius: 14)
+            Capsule()
+                .fill(LinearGradient(colors: [.clear, flare, Color.white.opacity(0.9), flare, .clear], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 440, height: 2.5)
+                .blur(radius: 1.2)
+                .offset(y: size * 0.12)
+            if let mark = UIImage(named: "LaunchMark") {
+                Image(uiImage: mark)
+                    .resizable().scaledToFit()
+                    .frame(height: size * 1.7)
+                    .opacity(0.32)
+                    .shadow(color: flare, radius: 18)
+                    .blendMode(.plusLighter)
+            }
+            Text(word.uppercased())
+                .font(ArenaMenuStyle.title(size, .bold))
+                .tracking(size * 0.06)
+                .foregroundStyle(outcome == .defeat ? Color(white: 0.86) : Color.white)
+                .shadow(color: flare.opacity(0.9), radius: 14)
+                .shadow(color: .black.opacity(0.8), radius: 2, y: 1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .scaleEffect(landed || reduceMotion ? 1 : 1.5)
+        .opacity(landed || reduceMotion ? 1 : 0)
+        .frame(height: size * 2)
+    }
+
+    /// Your medallion, the rank you hold after the game, the game's numbers, then Main Menu and the rematch.
+    private func details(landscape: Bool) -> some View {
+        VStack(spacing: landscape ? 8 : 14) {
+            if let viewer = snapshot.human {
+                ArenaHeroMedallion(player: viewer, diameter: landscape ? 84 : 120, active: outcome == .victory, showsLife: false)
+                    .saturation(outcome == .defeat ? 0.15 : 1)
+                    .accessibilityHidden(true)
+            }
+            if let rankChange {
+                HStack(spacing: 10) {
+                    RankEmblem(tier: rankChange.after.tier, size: landscape ? 40 : 52)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(rankChange.after.title).font(ArenaMenuStyle.title(20, .bold)).foregroundStyle(ArenaGlass.text)
+                        Text(rankLine(rankChange)).font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if let stats, stats.turns > 0 {
+                HStack(spacing: landscape ? 22 : 28) {
+                    figure("\(stats.turns)", String(localized: "Turns"))
+                    figure("\(stats.combatDamage)", String(localized: "Damage"))
+                    figure("\(stats.creaturesDestroyed)", String(localized: "Destroyed"))
+                }
+            }
+            HStack(spacing: 12) {
+                Button(String(localized: "Main Menu"), action: quitGame)
+                    .buttonStyle(ArenaButtonStyle(kind: .secondary))
+                Button(rematchTitle ?? String(localized: "New Game"), action: newGame)
+                    .buttonStyle(ArenaButtonStyle(kind: .primary))
+                    .accessibilityIdentifier("board.result.rematch")
+            }
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func figure(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(ArenaMenuStyle.title(24, .bold)).monospacedDigit().foregroundStyle(ArenaGlass.text)
+            Text(label.uppercased()).font(ArenaMenuStyle.font(10, .heavy)).tracking(1.2).foregroundStyle(ArenaGlass.text.opacity(0.65))
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func rankLine(_ change: RankChange) -> String {
+        switch change.kind {
+        case .tierUp: String(localized: "Promoted")
+        case .tierDown: String(localized: "Demoted")
+        case .divisionUp: String(localized: "Division up")
+        case .divisionDown: String(localized: "Division down")
+        case .pipUp: String(localized: "+\(change.pipDelta) pip")
+        case .pipDown: String(localized: "\(change.pipDelta) pip")
+        case .none: String(localized: "Ranked")
+        }
     }
 }

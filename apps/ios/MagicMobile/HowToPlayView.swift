@@ -424,14 +424,14 @@ struct HowToPlayTile: View {
                 LinearGradient(colors: [tint, tint.opacity(0.5), .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
                     .overlay {
                         Image(systemName: symbol).font(.system(size: width * 0.24, weight: .light))
-                            .foregroundStyle(BrandTheme.brassGradient).opacity(0.75)
+                            .foregroundStyle(ArenaMenuStyle.gold).opacity(0.75)
                     }
                     .frame(width: width * window.width, height: height * window.height)
                     .offset(x: width * window.minX, y: height * window.minY)
                 Image(uiImage: frame).resizable().interpolation(.high).frame(width: width, height: height)
             } else {
                 RoundedRectangle(cornerRadius: 6).fill(tint)
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(TavernPalette.brass, lineWidth: 1.5))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                     .frame(width: width, height: height)
             }
         }
@@ -443,7 +443,7 @@ struct HowToPlayTile: View {
                     Image(uiImage: ribbon).resizable().interpolation(.high)
                     Text(name)
                         .font(.system(size: max(7, width * 0.105), weight: .bold, design: .serif))
-                        .foregroundStyle(TavernPalette.ink)
+                        .foregroundStyle(ArenaGlass.text)
                         .lineLimit(1).minimumScaleFactor(0.55)
                         .frame(width: width * 0.62)
                         .offset(y: -ribbonHeight * 0.06)
@@ -456,7 +456,8 @@ struct HowToPlayTile: View {
     }
 }
 
-/// A player's medallion: initial in a brass ring, life on a coin below.
+/// A player's medallion as the Arena board draws it: an initial on dark glass in a thin gold ring, life on a dark oval
+/// below.
 struct HowToPlayMedallion: View {
     var label = "A"
     var life: Int? = 40
@@ -464,20 +465,16 @@ struct HowToPlayMedallion: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(RadialGradient(colors: [Color(red: 0.34, green: 0.20, blue: 0.10), Color(red: 0.12, green: 0.07, blue: 0.04)],
+            Circle().fill(RadialGradient(colors: [Color(red: 0.20, green: 0.21, blue: 0.25), Color(red: 0.06, green: 0.06, blue: 0.08)],
                                          center: .init(x: 0.4, y: 0.3), startRadius: 0, endRadius: size / 2))
             Text(label)
-                .font(.system(size: size * 0.42, weight: .black, design: .serif))
-                .foregroundStyle(TavernPalette.parchment)
-            if let ring = UIImage(named: "tavern-pass-ring") {
-                Image(uiImage: ring).resizable().scaledToFit()
-            } else {
-                Circle().strokeBorder(BrandTheme.brassGradient, lineWidth: size * 0.08)
-            }
+                .font(ArenaMenuStyle.title(size * 0.42, .bold))
+                .foregroundStyle(ArenaGlass.text)
+            Circle().strokeBorder(ArenaMenuStyle.gold.opacity(0.8), lineWidth: max(1, size * 0.04))
         }
         .frame(width: size, height: size)
         .overlay(alignment: .bottom) {
-            if let life { TavernCoin(value: life, size: size * 0.44).offset(y: size * 0.2) }
+            if let life { ArenaCountBadge(count: life, size: size * 0.42).offset(y: size * 0.2) }
         }
         .shadow(color: .black.opacity(0.5), radius: 3, y: 2)
     }
@@ -501,53 +498,35 @@ struct HowToPlayHourglass: View {
     }
 }
 
-/// A plaque as a label: the ember primary or the leather secondary button face.
+/// A button as a label: Arena's orange pill, or its dark glass one.
 struct HowToPlayPlaque: View {
     let text: String
     var icon: String? = nil
     var primary = true
 
     var body: some View {
-        HStack(spacing: 5) {
-            if let icon { Image(systemName: icon).font(.system(size: 10, weight: .black)) }
-            Text(text).font(.system(size: 12, weight: .heavy, design: .serif))
-        }
-        .lineLimit(1)
-        .foregroundStyle(primary ? Color(red: 1, green: 0.91, blue: 0.66) : TavernPalette.parchment)
-        .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
-        .padding(.horizontal, 14)
-        .frame(height: 34)
-        .background {
-            Group {
-                if primary { TavernFill(material: .ember) } else { TavernFill(material: .leather) }
-            }
-            .clipShape(Capsule())
-            .padding(2)
-        }
-        .overlay { TavernCapsuleRim() }
-        .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
+        ArenaButtonFace(label: HStack(spacing: 5) {
+                            if let icon { Image(systemName: icon).font(.system(size: 10, weight: .black)) }
+                            Text(text)
+                        },
+                        kind: primary ? .primary : .secondary, font: ArenaMenuStyle.title(13, .bold), fills: false, inset: 8, glow: 0.5)
+            .allowsHitTesting(false)
     }
 }
 
-/// A parchment name ribbon on its own, the banner under a showcased spell.
+/// A name plate on its own, the banner under a showcased spell: light serif on dark glass in a gold hairline.
 private struct HowToPlayRibbon: View {
     let text: String
     var width: CGFloat = 120
     var body: some View {
-        ZStack {
-            if let ribbon = TavernCardParts.ribbon {
-                Image(uiImage: ribbon).resizable().interpolation(.high)
-            } else {
-                RoundedRectangle(cornerRadius: 4).fill(TavernPalette.parchment)
-            }
-            Text(text)
-                .font(.system(size: width * 0.095, weight: .heavy, design: .serif))
-                .foregroundStyle(TavernPalette.ink)
-                .lineLimit(1).minimumScaleFactor(0.6)
-                .frame(width: width * 0.64)
-        }
-        .frame(width: width, height: width * 0.24)
-        .shadow(color: .black.opacity(0.5), radius: 3, y: 2)
+        Text(text)
+            .font(ArenaMenuStyle.title(width * 0.095, .bold))
+            .foregroundStyle(ArenaGlass.text)
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .frame(width: width * 0.84, height: width * 0.2)
+            .background(Capsule().fill(Color.black.opacity(0.6)))
+            .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+            .shadow(color: .black.opacity(0.5), radius: 3, y: 2)
     }
 }
 
@@ -556,7 +535,7 @@ private struct HowToPlayTouch: View {
     let phase: Double
     var body: some View {
         let p = max(0, min(1, phase))
-        Circle().strokeBorder(TavernPalette.brass, lineWidth: 2)
+        Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 2)
             .frame(width: 18 + 26 * p, height: 18 + 26 * p)
             .opacity(1 - p)
     }
@@ -595,13 +574,13 @@ private struct HowToPlayDecksScene: View {
             HowToPlayTile(kind: .creature, name: "Emmara", tint: Color(red: 0.2, green: 0.45, blue: 0.28), width: 78, symbol: "crown.fill")
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("YOUR DECK").font(.system(size: 9, weight: .heavy, design: .serif)).tracking(2)
+                    Text("YOUR DECK").font(ArenaMenuStyle.font(9, .heavy)).tracking(2)
                         .foregroundStyle(Color(red: 0.62, green: 0.16, blue: 0.08))
-                    Text("Token Triumph").font(.system(size: 17, weight: .black, design: .serif)).foregroundStyle(TavernPalette.ink)
+                    Text("Token Triumph").font(.system(size: 17, weight: .black, design: .serif)).foregroundStyle(ArenaGlass.text)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 8)))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
+                .modifier(HowToPlayGlass(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 TavernTag(text: "PLAYING", leather: true)
                 HowToPlayPlaque(text: DeckStudioPlayText.play, icon: "play.fill")
             }
@@ -646,9 +625,7 @@ private struct HowToPlayTableScene: View {
             let step = Int(loop(t, Double(callouts.count) * 1.5) / 1.5)
             HStack(spacing: 14) {
                 ZStack {
-                    TavernFill(material: .leather).overlay(Color.black.opacity(0.25))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay { TavernBrassFrame(scale: 0.6) }
+                    HowToPlayTable()
                     VStack(spacing: 6) {
                         HStack {
                             HowToPlayMedallion(label: "A", life: 40, size: 30).padding(.leading, 4)
@@ -680,10 +657,10 @@ private struct HowToPlayTableScene: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(callouts.enumerated()), id: \.offset) { offset, label in
                         HStack(spacing: 6) {
-                            Circle().fill(offset == step ? AnyShapeStyle(BrandTheme.brassGradient) : AnyShapeStyle(Color.black.opacity(0.4)))
+                            Circle().fill(offset == step ? AnyShapeStyle(ArenaMenuStyle.orange) : AnyShapeStyle(Color.black.opacity(0.4)))
                                 .frame(width: 8, height: 8)
                             Text(label).font(.system(size: 12, weight: offset == step ? .black : .semibold, design: .serif))
-                                .foregroundStyle(TavernPalette.parchment.opacity(offset == step ? 1 : 0.6))
+                                .foregroundStyle(ArenaGlass.text.opacity(offset == step ? 1 : 0.6))
                         }
                     }
                 }
@@ -697,8 +674,8 @@ private struct HowToPlayTableScene: View {
                                 CGRect(x: 106, y: 142, width: 40, height: 40)]
         let frame = frames[min(step, frames.count - 1)]
         return RoundedRectangle(cornerRadius: 8)
-            .strokeBorder(BrandTheme.brassGradient, lineWidth: 2)
-            .shadow(color: TavernPalette.brass.opacity(0.8), radius: 4)
+            .strokeBorder(Color.white.opacity(0.85), lineWidth: 2)
+            .shadow(color: ArenaMenuStyle.gold.opacity(0.8), radius: 4)
             .frame(width: frame.width, height: frame.height)
             .position(x: frame.midX, y: frame.midY)
             .animation(.easeInOut(duration: 0.35), value: step)
@@ -737,8 +714,8 @@ private struct HowToPlayCastScene: View {
                         HowToPlayTile(kind: .land, tint: Color(red: 0.35, green: 0.33, blue: 0.3), width: 34)
                             .rotationEffect(.degrees(p > 1.2 ? 90 : 0))
                             .animation(.easeOut(duration: 0.3), value: p > 1.2)
-                        Image(systemName: "hand.tap.fill").font(.system(size: 16, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
-                        Text("tap a land").font(.system(size: 11, weight: .semibold, design: .serif)).foregroundStyle(TavernPalette.parchment.opacity(0.8))
+                        Image(systemName: "hand.tap.fill").font(.system(size: 16, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
+                        Text("tap a land").font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaGlass.text.opacity(0.8))
                     }
                 }
             }
@@ -789,7 +766,7 @@ private struct HowToPlayPriorityScene: View {
                     TavernTag(text: "PASS PRIORITY")
                     HStack(spacing: 8) {
                         Image(systemName: "forward.end.fill").modifier(TavernRingLabel())
-                        Text("Skip").font(.system(size: 13, weight: .bold, design: .serif)).foregroundStyle(TavernPalette.parchment)
+                        Text("Skip").font(ArenaMenuStyle.font(13, .bold)).foregroundStyle(ArenaGlass.text)
                     }
                     TavernStackTray(count: 1, topName: "Counterspell", open: {}, width: 124)
                         .allowsHitTesting(false)
@@ -844,7 +821,7 @@ private struct HowToPlayPileScene: View {
                                 .offset(x: CGFloat(card) * (4 + 18 * spread), y: CGFloat(-card) * (3 - 3 * spread))
                         }
                     }
-                    TavernCoin(value: 9, size: 24).offset(x: 10, y: 8).opacity(1 - spread)
+                    ArenaCountBadge(count: 9, size: 24).offset(x: 10, y: 8).opacity(1 - spread)
                     if p < 1.2 { HowToPlayTouch(phase: p / 1.2).offset(x: -20, y: -20) }
                 }
                 .frame(width: 120, height: 80)
@@ -873,18 +850,18 @@ private struct HowToPlayReadingScene: View {
                         Image(systemName: "text.book.closed")
                         Text("GAME LOG").tracking(1.6)
                     }
-                    .font(.system(size: 9, weight: .heavy, design: .serif))
+                    .font(ArenaMenuStyle.font(9, .heavy))
                     .foregroundStyle(Color(red: 0.62, green: 0.16, blue: 0.08))
                     ForEach([96, 70, 84, 58], id: \.self) { width in
                         HStack(spacing: 5) {
-                            Circle().fill(TavernPalette.brass).frame(width: 5, height: 5)
-                            Capsule().fill(TavernPalette.ink.opacity(0.35)).frame(width: CGFloat(width), height: 5)
+                            Circle().fill(ArenaMenuStyle.gold).frame(width: 5, height: 5)
+                            Capsule().fill(ArenaGlass.text.opacity(0.35)).frame(width: CGFloat(width), height: 5)
                         }
                     }
                 }
                 .padding(10)
-                .background(TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 10)))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
+                .modifier(HowToPlayGlass(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
             }
         }
     }
@@ -895,18 +872,17 @@ private struct HowToPlayResumeScene: View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
                 HowToPlayHourglass(size: 44)
-                Text("10 min").font(.system(size: 26, weight: .black, design: .serif)).foregroundStyle(TavernPalette.parchment)
+                Text("10 min").font(.system(size: 26, weight: .black, design: .serif)).foregroundStyle(ArenaGlass.text)
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(GameResumeText.promptTitle).font(.system(size: 13, weight: .heavy, design: .serif)).foregroundStyle(TavernPalette.ink)
+                Text(GameResumeText.promptTitle).font(ArenaMenuStyle.font(13, .heavy)).foregroundStyle(ArenaGlass.text)
                 HStack(spacing: 6) {
                     HowToPlayPlaque(text: GameResumeText.resume, icon: "play.fill")
                     HowToPlayPlaque(text: GameResumeText.abandon, primary: false)
                 }
             }
             .padding(12)
-            .background(TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 12)))
-            .overlay { TavernBrassFrame(scale: 0.7) }
+            .modifier(HowToPlayGlass(cornerRadius: 12))
         }
     }
 }
@@ -916,13 +892,13 @@ private struct HowToPlayFriendsScene: View {
         HStack(spacing: 14) {
             phone("Y")
             VStack(spacing: 6) {
-                Text("TABLE CODE").font(.system(size: 8, weight: .heavy, design: .serif)).tracking(1.4)
+                Text("TABLE CODE").font(ArenaMenuStyle.font(8, .heavy)).tracking(1.4)
                     .foregroundStyle(Color(red: 0.62, green: 0.16, blue: 0.08))
-                Text("K7Q 2MX").font(.system(size: 19, weight: .black, design: .monospaced)).foregroundStyle(TavernPalette.ink)
+                Text("K7Q 2MX").font(.system(size: 19, weight: .black, design: .monospaced)).foregroundStyle(ArenaGlass.text)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(TavernFill(material: .parchment).clipShape(RoundedRectangle(cornerRadius: 8)))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(TavernPalette.brassLine, lineWidth: 1.2))
+            .modifier(HowToPlayGlass(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
             .overlay(alignment: .bottom) { TavernTag(text: "ONLINE", leather: true).offset(y: 16) }
             phone("A")
         }
@@ -931,7 +907,7 @@ private struct HowToPlayFriendsScene: View {
     private func phone(_ label: String) -> some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
             .fill(Color.black.opacity(0.55))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(BrandTheme.brassGradient, lineWidth: 1.5))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
             .overlay { HowToPlayMedallion(label: label, life: nil, size: 30) }
             .frame(width: 48, height: 86)
     }
@@ -943,9 +919,7 @@ private struct HowToPlayFormatScene: View {
     var body: some View {
         HStack(spacing: 24) {
             ZStack {
-                TavernFill(material: .leather).overlay(Color.black.opacity(0.25))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay { TavernBrassFrame(scale: 0.5) }
+                HowToPlayTable()
                     .frame(width: 96, height: 96)
                 HowToPlayMedallion(label: "A", life: nil, size: 30).offset(y: -58)
                 HowToPlayMedallion(label: "B", life: nil, size: 30).offset(x: 62)
@@ -954,9 +928,9 @@ private struct HowToPlayFormatScene: View {
             }
             .frame(width: 150, height: 150)
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) { TavernCoin(value: 100, size: 30); Text("cards, one of each").serifNote() }
-                HStack(spacing: 8) { TavernCoin(value: 40, size: 30); Text("life each").serifNote() }
-                HStack(spacing: 8) { Image(systemName: "crown.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(BrandTheme.brassGradient).frame(width: 30); Text("a legendary leader").serifNote() }
+                HStack(spacing: 8) { ArenaCountBadge(count: 100, size: 30); Text("cards, one of each").serifNote() }
+                HStack(spacing: 8) { ArenaCountBadge(count: 40, size: 30); Text("life each").serifNote() }
+                HStack(spacing: 8) { Image(systemName: "crown.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold).frame(width: 30); Text("a legendary leader").serifNote() }
             }
         }
     }
@@ -985,7 +959,7 @@ private struct HowToPlayCommanderScene: View {
                     HStack(spacing: 6) {
                         TavernGenericGem(value: 3)
                         ForEach(0..<casts, id: \.self) { _ in
-                            Text("+2").font(.system(size: 13, weight: .black, design: .serif)).foregroundStyle(TavernPalette.parchment)
+                            Text("+2").font(ArenaMenuStyle.font(13, .black)).foregroundStyle(ArenaGlass.text)
                                 .transition(.scale.combined(with: .opacity))
                         }
                     }
@@ -1029,7 +1003,7 @@ private struct HowToPlayTurnScene: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    Image(systemName: "arrow.turn.down.right").font(.system(size: 12, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
+                    Image(systemName: "arrow.turn.down.right").font(.system(size: 12, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold)
                     Text("then the player on your left").serifNote()
                 }
             }
@@ -1086,7 +1060,7 @@ private struct HowToPlayStackScene: View {
                 .frame(width: 130, height: 120, alignment: .bottom)
                 VStack(alignment: .leading, spacing: 10) {
                     TavernTag(text: "LAST IN", leather: true)
-                    Image(systemName: "arrow.down").font(.system(size: 12, weight: .black)).foregroundStyle(BrandTheme.brassGradient)
+                    Image(systemName: "arrow.down").font(.system(size: 12, weight: .black)).foregroundStyle(ArenaMenuStyle.gold)
                     TavernTag(text: "FIRST OUT", leather: true)
                 }
             }
@@ -1128,14 +1102,14 @@ private struct HowToPlayWinningScene: View {
                     .opacity(life == 0 ? 0.45 : 1)
                     .saturation(life == 0 ? 0.2 : 1)
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) { TavernCoin(value: 0, size: 26); Text("life").serifNote() }
+                    HStack(spacing: 8) { ArenaCountBadge(count: 0, size: 26); Text("life").serifNote() }
                     HStack(spacing: 8) {
                         Image(systemName: "drop.triangle.fill").font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.4)).frame(width: 26)
                         Text("10 poison").serifNote()
                     }
                     HStack(spacing: 8) {
-                        Image(systemName: "crown.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(BrandTheme.brassGradient).frame(width: 26)
+                        Image(systemName: "crown.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(ArenaMenuStyle.gold).frame(width: 26)
                         Text("21 from one commander").serifNote()
                     }
                 }
@@ -1147,7 +1121,7 @@ private struct HowToPlayWinningScene: View {
 private extension Text {
     /// A short note beside a scene's piece, in parchment serif.
     func serifNote() -> some View {
-        font(.system(size: 12, weight: .semibold, design: .serif)).foregroundStyle(TavernPalette.parchment.opacity(0.9))
+        font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaGlass.text.opacity(0.9))
     }
 }
 
@@ -1205,3 +1179,31 @@ struct HowToPlayD20Shape: Shape {
     HowToPlayView()
 }
 #endif
+
+/// A note or a card in a lesson: dark glass in the gold hairline (the Arena menus' look), where the tavern had parchment.
+private struct HowToPlayGlass: ViewModifier {
+    var cornerRadius: CGFloat = 10
+
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: cornerRadius).fill(Color.black.opacity(0.55)))
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+    }
+}
+
+/// The table in a lesson: the Arena board's own surface, in its glass edge.
+private struct HowToPlayTable: View {
+    var body: some View {
+        Group {
+            if let table = UIImage(named: "tavern-arena-portrait") {
+                Image(uiImage: table).resizable().scaledToFill()
+            } else {
+                LinearGradient(colors: [Color(red: 0.22, green: 0.16, blue: 0.11), Color(red: 0.10, green: 0.07, blue: 0.05)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .overlay(Color.black.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+    }
+}

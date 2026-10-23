@@ -133,25 +133,25 @@ struct AccountSignInCard: View {
             ProfileSectionTitle(text: account.linkedIdentities.isEmpty ? String(localized: "Keep your profile") : String(localized: "Your account"))
             if account.linkedIdentities.isEmpty {
                 Text("Sign in to keep your name, friends and rank on every phone. Your profile on this phone comes with you.")
-                    .font(.system(size: 13, design: .serif)).opacity(0.85).fixedSize(horizontal: false, vertical: true)
+                    .font(ArenaMenuStyle.font(13, .regular)).opacity(0.85).fixedSize(horizontal: false, vertical: true)
                 Button { run(provider: "apple") { try await apple.signIn() } } label: {
                     Label(String(localized: "Continue with Apple"), systemImage: "apple.logo")
                 }
-                .buttonStyle(TavernButtonStyle(kind: .primary, fullWidth: true))
+                .buttonStyle(ArenaButtonStyle(kind: .primary, fullWidth: true))
                 .accessibilityIdentifier("profile.account.apple")
                 Button { run(provider: "google") { try await google.signIn() } } label: {
                     Label(String(localized: "Continue with Google"), systemImage: "g.circle.fill")
                 }
-                .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
+                .buttonStyle(ArenaButtonStyle(kind: .secondary, fullWidth: true))
                 .accessibilityIdentifier("profile.account.google")
             } else {
                 ForEach(account.linkedIdentities) { identity in
                     Label(identity.email.map { "\(identity.title) · \($0)" } ?? identity.title,
                           systemImage: identity.provider == "apple" ? "apple.logo" : "g.circle.fill")
-                        .font(.system(size: 14, weight: .semibold, design: .serif))
+                        .font(ArenaMenuStyle.font(14, .semibold))
                 }
                 Button(String(localized: "Sign Out")) { confirmingSignOut = true }
-                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                    .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("profile.account.signOut")
             }
             if account.isSigningIn { ProgressView().tint(TavernPalette.parchment) }

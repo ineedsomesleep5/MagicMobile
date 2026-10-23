@@ -35,7 +35,7 @@ struct DeckStudioButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         if TavernUIKit.available {
             // The Arena board's plaques: ember glass for the main action, leather for the rest.
-            TavernButtonStyle(kind: primary ? .primary : .secondary, fontSize: 15).makeBody(configuration: configuration)
+            ArenaButtonStyle(kind: primary ? .primary : .secondary, fontSize: 15).makeBody(configuration: configuration)
         } else {
             plain(configuration)
         }

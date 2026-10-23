@@ -1869,27 +1869,12 @@ struct PanelActionButtonStyle: ButtonStyle {
     @ViewBuilder
     func makeBody(configuration: Configuration) -> some View {
         if arena && plaques {
-            // The answers of an Arena question screen: ember and leather plaques, as in the reference.
-            let ember = isPrimary && !isDanger
-            configuration.label
-                .font(.system(size: 16, weight: .bold, design: .serif))
-                .foregroundStyle(ember ? Color(red: 1, green: 0.91, blue: 0.66) : TavernPalette.parchment)
-                .shadow(color: .black.opacity(0.75), radius: 1, y: 1)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 22)
-                .frame(minWidth: 130, minHeight: 46)
-                .background {
-                    Group { if ember { TavernFill(material: .ember) } else { TavernFill(material: .leather) } }
-                        .clipShape(Capsule())
-                        .padding(3)
-                        .overlay { TavernCapsuleRim() }
-                }
-                .contentShape(Capsule())
-                .saturation(isEnabled ? 1 : 0.2)
-                .brightness(isEnabled ? (configuration.isPressed ? 0.08 : 0) : -0.12)
-                .scaleEffect(configuration.isPressed ? 0.96 : 1)
-                .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+            // The answers of an Arena question screen, as in the reference (optional-trigger-prompt-1.jpg): the orange
+            // pill goes ahead ("Do it"), Arena's blue pill declines.
+            ArenaButtonFace(label: configuration.label, kind: isDanger ? .danger : isPrimary ? .primary : .cool,
+                            font: ArenaMenuStyle.title(17, .bold), pressed: configuration.isPressed, inset: 1, glow: 0.7)
+                .frame(minWidth: 140)
+                .frame(height: 48)
         } else if arena {
             arenaBody(configuration)
         } else if tavern && TavernUIKit.available {

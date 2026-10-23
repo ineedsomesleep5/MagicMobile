@@ -298,6 +298,9 @@ private struct StartingRollFixtureScreen: View {
                         dismissed = true
                     }
                 }
+                // As OnDeviceRootView does: the roll follows the board (on the Arena board it rolls on the board).
+                .environment(\.arenaBoard, BoardMode.resolved(UserDefaults.standard.string(forKey: BoardMode.key)
+                                                                ?? BoardMode.defaultValue) == .arena)
             }
         }
         .onAppear {

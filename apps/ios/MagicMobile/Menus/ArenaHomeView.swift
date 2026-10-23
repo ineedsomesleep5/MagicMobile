@@ -1,14 +1,19 @@
 import SwiftUI
 
+/// Art shipped with the app for the home page: a commander's art crop at 1252 px (Scryfall's 626 px crop, upscaled 2×), so
+/// it stays sharp at 3× where a card image's art window (about 408 px) went soft. `focus` is the point the crop keeps in
+/// view (a face, a head), as a fraction of the picture.
+struct ArenaHomeArt {
+    let asset: String
+    let focus: UnitPoint
+}
+
 /// One page of the home page's featured panel.
 struct ArenaFeature: Identifiable {
     let id: String
     let kicker: String
     let title: String
-    let detail: String
-    /// A card whose art fills the panel.
-    let art: String
-    var colors: [String] = []
+    let art: ArenaHomeArt
     let action: () -> Void
 }
 
@@ -17,8 +22,7 @@ struct ArenaHomeTile: Identifiable {
     let id: String
     let title: String
     let subtitle: String
-    let art: String
-    var colors: [String] = []
+    let art: ArenaHomeArt
     let action: () -> Void
 }
 
@@ -154,6 +158,7 @@ struct ArenaFeaturePanel: View {
     let features: [ArenaFeature]
     @State private var index = 0
     @State private var forward = true
+    @GestureState private var dragX: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.brandAmbientMotion) private var ambient
 
@@ -169,19 +174,14 @@ struct ArenaFeaturePanel: View {
                     feature.action()
                 } label: {
                     ZStack(alignment: .bottomLeading) {
-                        // A touch larger than the frame, so an art crop's own dark edge never shows as a seam.
-                        ArenaArt(name: feature.art, colors: feature.colors)
-                            .scaleEffect(1.06)
+                        ArenaFocusedArt(art: feature.art)
                         // A dark band only behind the words: the art stays crisp above it.
                         LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.88), location: 1)],
                                        startPoint: .top, endPoint: .bottom)
                         VStack(alignment: .leading, spacing: 4) {
-                            ArenaCaps(text: feature.kicker)
-                            Text(feature.title).font(ArenaMenuStyle.font(20, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                            Text(feature.title).font(ArenaMenuStyle.title(24, .bold)).foregroundStyle(ArenaMenuStyle.text)
                                 .shadow(color: .black, radius: 3)
                                 .lineLimit(2).minimumScaleFactor(0.8)
-                            Text(feature.detail).font(ArenaMenuStyle.font(12.5, .medium)).foregroundStyle(ArenaMenuStyle.text.opacity(0.85))
-                                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.leading, 18)
                         .padding(.trailing, 48)
@@ -198,6 +198,7 @@ struct ArenaFeaturePanel: View {
                 .accessibilityIdentifier("home.feature.\(feature.id)")
                 .accessibilityHint(String(localized: "Opens it"))
                 .id(feature.id)
+                .offset(x: dragX)
                 .transition(reduceMotion ? .opacity : slide)
             }
             if features.count > 1 { controls }
@@ -205,9 +206,19 @@ struct ArenaFeaturePanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ArenaGlass.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
-        .gesture(DragGesture(minimumDistance: 24).onEnded { value in
-            if value.translation.width < -40 { step(1) } else if value.translation.width > 40 { step(-1) }
-        })
+        // The page follows the finger and turns past a third of a swipe. High priority, or the page's own Button takes the
+        // touch and a swipe never turns it (Caleb, 2026-10-22).
+        .highPriorityGesture(DragGesture(minimumDistance: 12)
+            .updating($dragX) { value, state, _ in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                state = value.translation.width
+            }
+            .onEnded { value in
+                let moved = value.predictedEndTranslation.width
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                if moved < -60 { step(1) } else if moved > 60 { step(-1) }
+            })
+        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.3, dampingFraction: 0.86), value: dragX)
         // Restarts when a panel closes, so the pages turn again.
         .task(id: "\(index)-\(ambient)") {
             guard features.count > 1, !reduceMotion, ambient else { return }
@@ -271,11 +282,11 @@ struct ArenaHomeTileView: View {
             tile.action()
         } label: {
             ZStack(alignment: .bottomLeading) {
-                ArenaArt(name: tile.art, colors: tile.colors)
+                ArenaFocusedArt(art: tile.art)
                 LinearGradient(stops: [.init(color: .clear, location: wide ? 0.35 : 0.3), .init(color: .black.opacity(0.85), location: 1)],
                                startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(tile.title).font(ArenaMenuStyle.font(wide ? 17 : 15, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                    Text(tile.title).font(ArenaMenuStyle.title(wide ? 20 : 16, .bold)).foregroundStyle(ArenaMenuStyle.text)
                         .shadow(color: .black, radius: 2)
                     if !tile.subtitle.isEmpty {
                         Text(tile.subtitle).font(ArenaMenuStyle.font(11, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
@@ -294,6 +305,34 @@ struct ArenaHomeTileView: View {
         .buttonStyle(BrandPressStyle())
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("home.tile.\(tile.id)")
+    }
+}
+
+/// Shipped home art filling its frame, cropped around its focus point rather than its centre.
+struct ArenaFocusedArt: View {
+    let art: ArenaHomeArt
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let image = UIImage(named: art.asset), image.size.width > 0, image.size.height > 0 {
+                let frame = proxy.size
+                let scale = max(frame.width / image.size.width, frame.height / image.size.height)
+                let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                // Put the focus at the frame's centre, then keep the picture covering the frame.
+                let x = min(0, max(frame.width - size.width, frame.width / 2 - size.width * art.focus.x))
+                let y = min(0, max(frame.height - size.height, frame.height / 2 - size.height * art.focus.y))
+                Image(uiImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: size.width, height: size.height)
+                    .offset(x: x, y: y)
+                    .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+                    .clipped()
+            } else {
+                ArenaColorGlass(colors: [])
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 

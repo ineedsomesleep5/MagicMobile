@@ -95,7 +95,7 @@ struct FriendsView: View {
             }, myRankStep: myRankStep) { profileFor = nil }
         }
         .tavernConfirmation(active: true, title: String(localized: "Delete your profile?"),
-                            message: String(localized: "Your player name, friends and blocks are removed for good. A new profile starts the next time you open Friends."),
+                            message: String(localized: "Your player name, friends, blocks and game history are removed from MagicMobile's server for good. Your decks and games on this phone stay."),
                             isPresented: $confirmDelete,
                             actions: [TavernDialogAction(title: String(localized: "Delete profile"), destructive: true) {
                                 Task { if await account.deleteAccount() { closePanel() } }
@@ -152,9 +152,6 @@ struct FriendsView: View {
                 .buttonStyle(.plain)
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("friends.deleteAccount")
-            Text(String(localized: "Deletes your player name, friends, blocks and game history from MagicMobile's server. Your decks and games on this phone stay."))
-                .font(ArenaMenuStyle.font(10.5, .medium)).foregroundStyle(ArenaMenuStyle.dim.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -640,10 +637,10 @@ private struct FriendRowAction: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(Color(red: 1, green: 0.94, blue: 0.78))
+            .foregroundStyle(Color.white)
             .frame(width: 28, height: 28)
-            .background { TavernFill(material: .ember).clipShape(Circle()) }
-            .overlay(Circle().strokeBorder(Color(red: 0.86, green: 0.64, blue: 0.30), lineWidth: 1.2))
+            .background { Circle().fill(ArenaMenuStyle.orange) }
+            .overlay(Circle().strokeBorder(ArenaMenuStyle.orangeRim, lineWidth: 1.2))
             .shadow(color: ArenaMenuStyle.ember.opacity(0.5), radius: 4)
             .frame(width: 36, height: 44)
             .contentShape(Rectangle())

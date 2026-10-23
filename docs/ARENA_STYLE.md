@@ -33,9 +33,18 @@ no footage, design it in the same language (below) and say so in the PR.
 - **Glass:** dark smoked glass in a gold hairline (`ArenaGlass.top/bottom/hairline/text`, `ArenaGlassPanel`,
   `ArenaGlassRow`, `ArenaGlassBackground`). Light text (`ArenaGlass.text`), gold labels
   (`Color(red: 0.98, green: 0.84, blue: 0.52)`).
-- **Plaques:** `ArenaPlaqueButtonStyle` (ember primary, leather secondary, quiet waiting). Pills: `ArenaPillStyle`.
+- **Buttons (Caleb chose option A, 2026-10-22):** one face for every Arena button, `ArenaButtonFace` in
+  `Menus/ArenaMenuKit.swift`. The call to action is an orange pill (`ArenaMenuStyle.orange`, `#ffb24a` → `#f47a1c` →
+  `#c9420d`) with a thin warm rim (`orangeRim`), a lit top edge and a soft glow. The other choice is a dark glass pill
+  edged in a pale line; danger is a deep red pill; `cool` is Arena's blue pill (Mulligan beside Keep). No brass,
+  rivets, leather or stitching. Styles on top of it: `ArenaButtonStyle` (menus; same options as `TavernButtonStyle`),
+  `ArenaPlayButtonStyle` (Play, with a slow shine), `ArenaPlaqueButtonStyle` and `ArenaPillStyle` (the board's corner),
+  `ArenaPillButtonStyle` and `BinderPlaque` (chips). `TavernButtonStyle` draws the Arena face wherever
+  `\.arenaBoard` is true (the menus, and views both boards share on the Arena board), so the Hearth board keeps its
+  plaques and nothing else shows them.
 - **Dim:** browsers dim the table to about 0.7 black; questions 0.72; panels 0.55.
-- **Coins:** `TavernCoin` numbers order (1 resolves first, stack positions, picks).
+- **Counts:** `ArenaCountBadge`, a white number on a dark oval in a thin gold line (piles, the stack's size, the order
+  of cards). `TavernCoin` is the Hearth board's.
 - **Highlights:** chosen cards rise about 10 pt in a gold glow (`Color(red: 1, green: 0.82, blue: 0.4)`); the next to
   resolve is lit gold. Cards you can't choose dim to about 0.42.
 - **The glow border** (`ArenaOutlineGlow`, Caleb's pick from the web board, memory `frame-outline-glow`): light that
@@ -51,9 +60,15 @@ no footage, design it in the same language (below) and say so in the PR.
 
 ## Type
 
-- Titles: system serif, bold, 22–26 pt, light text with a black shadow.
-- Instructions: serif medium, 13–14 pt, 0.8 opacity, at most two lines.
-- Labels on glass: serif heavy 10–13 pt capitals with tracking (zone names, "RESOLVES NEXT").
+Arena's mix (Caleb, 2026-10-22): the serif display face for titles, names on plates, buttons and big numbers; a clean
+sans for labels, rows, captions and body.
+
+- `ArenaMenuStyle.font(size, weight)`: from 17 pt up it is the serif title face; below, the system sans.
+  `ArenaMenuStyle.title(size, weight)` sets a smaller serif heading on purpose. Use these, not
+  `.system(..., design: .serif)`, in anything Arena draws. Deck Studio no longer sets `.fontDesign(.serif)`.
+- Titles: serif bold, 22–34 pt, light text with a black shadow.
+- Instructions: rare (cut helper text, see Copy below); sans medium 13–14 pt, 0.75 opacity, one line.
+- Labels on glass: sans heavy 10–13 pt capitals with tracking (zone names, "RESOLVES NEXT").
 - Card text stays the card's own (CardTile / ArenaAbilityCard).
 
 ## Components
@@ -84,10 +99,35 @@ no footage, design it in the same language (below) and say so in the PR.
 Every browser sits in `ArenaBrowserFrame` with its answers in `ArenaAnswerRow`. Abilities are drawn as `ArenaAbilityCard`: the source's art crop on top, its name, a type line ("Ability", "Mode 2"),
 the text below, and a loyalty badge for planeswalker abilities.
 
+## Game screens (references in `build_output/arena-game-reference/`)
+
+- **Starting roll** (`MultiplayerD20View` with `\.arenaBoard`): the dice roll on the board itself. `D20TableView`'s
+  `onBoard` hides the tavern table and renders on a clear background, `StartingRollCover` dims the board to 0.4 instead
+  of covering it, and there is one large serif line ("Your roll", "You go first") with Skip at its end, glass seat
+  plates and the orange Roll pill. Arena itself has no roll; it names the first player on the mulligan screen, which
+  ours does too.
+- **Opening hand** (`OpeningHandOverlay`, references `mulligan-*.jpg`): "You Go First" / "<name> Goes First"
+  (`GameSnapshot.startingPlayerHeading`) over a thin rule, XMage's question under it, the hand fanned across the board
+  inside the screen, the blue Mulligan pill beside the orange Keep, words only.
+- **Result** (`ArenaGameResultView`, references `victory-*.jpg`, `draw-result-japanese.jpg`): the board dims and one
+  word lands on a flare behind the MagicMobile mark (orange Victory, cold steel Defeat, violet Draw); after a moment or
+  a tap the word rises over your medallion, your rank, three numbers and Main Menu / New Game. View Battlefield lifts
+  it. Never Arena's Planeswalker sigil (Wizards' mark).
+- **Zone browsers:** as many columns as cards (up to three), centred both ways; scroll only when they don't fit. A
+  plaque under a card is exactly the card's width.
+
 ## Browser anatomy (all full-table screens)
 
-1. Dim the table; hide the corner buttons, caption and stack card (`browserOpen` in `NativeGameView+Arena.swift`).
-2. Title and one line of instructions at the top (portrait: below "View Battlefield").
+0. **Safe area (Caleb, 2026-10-22):** a full-table layer's dim ignores the safe area, but its content never does.
+   - Titles start at `ArenaSafeArea.top(minimum)`: below the camera cutout upright, and below the opponent's medallion
+     and plaque in landscape (minimum 50).
+   - In landscape the content keeps `ArenaSafeArea.side` on both sides, so cards never slide under the cutout.
+   - View Battlefield and Skip sit left of the gear in landscape (trailing 120), padded before they are placed.
+   - Use the helper, not fixed numbers.
+1. Dim the table to about 0.8 (0.86 under the result); hide the corner buttons, caption and stack card (`browserOpen` in
+   `NativeGameView+Arena.swift`).
+2. Title at the top (portrait: below "View Battlefield"); a line under it only for what the table can't show ("No
+   cards", "Choose a card").
 3. The cards in the middle: one row in landscape (scrolls sideways), a grid of two or three columns in portrait.
 4. Zones when cards go to places (Bottom | Top, Graveyard | Library, Pile 1 | Pile 2): wells in a gold hairline with
    gold capital labels; a tap moves a card across.
@@ -176,9 +216,17 @@ Arena's deck boxes, shut and open: `~/Movies/motion-assets/yt/ZvNnTWRy3xU/f/` (`
   and the gear, news and downloads move to the home page's corner). Pages sit under it over `ArenaRoomBackdrop`
   (dimmed 0.55 behind a page, 0.72 behind Decks, undimmed on home). A page inside the shell leaves its own backdrop
   out (`\.arenaMenuBackdrop`).
-- **Home** (`ArenaHomeView`): the featured panel (pages turn on their own; art crisp, a dark band only behind the
-  words) and three tiles in the middle, medallions on a gold rail with ticks (deck, rank, season), friends in the
-  lower left, the breathing ember Play plaque (`ArenaPlayButtonStyle`) in the lower right. Nothing scrolls.
+- **Home** (`ArenaHomeView`): the featured panel (pages turn on their own and follow a swipe; a kicker and a title, no
+  detail line; a dark band only behind the words) and three tiles in the middle, medallions on a gold rail with ticks
+  (deck, rank, season), friends in the lower left, the orange Play pill (`ArenaPlayButtonStyle`) in the lower right.
+  Nothing scrolls. The art ships in the app (`home-art-*` in the asset catalog, `ArenaHomeArt` with a focus point,
+  drawn by `ArenaFocusedArt`). Each is Scryfall's 626 px art crop, upscaled 2× (Real-ESRGAN x4plus at 4×, then
+  Lanczos to 1252 px), because a card image's art window is about 408 px and goes soft at 3×.
+  - The big panel: The Ur-Dragon (Jaime Jones, CMM 361), Edgar Markov (Volkan Baǵa, INR 234), Y'shtola, Night's
+    Blessed (Magali Villeneuve, FIC 7) and Atraxa, Praetors' Voice (Victor Adame Minguez, 2XM 190). Caleb chose the
+    first three.
+  - The tiles: Krenko, Mob Boss (Lie Setiawan, FDN 204), Miirym, Sentinel Wyrm (Kekai Kotaki, CLB 284) and Giada, Font
+    of Hope (Kai Carpenter, FDN 141).
 - **Play** (`ArenaPlayPanel`): the room 0.78 dark, the decks as boxes on the left (shelves, scrolled to the chosen
   deck's shelf), the blade on the right with its burning seam (`ArenaSeam`): Find Match, Friends, Recently Played tabs;
   Quick, Ranked, Custom gems; diamond option rows (`ArenaOptionRow`) fading out above the footer; Play in the footer.

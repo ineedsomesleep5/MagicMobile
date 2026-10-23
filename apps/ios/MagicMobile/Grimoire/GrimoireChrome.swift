@@ -297,7 +297,7 @@ struct GrimoireChoice<Option: Hashable>: View {
             ForEach(options, id: \.0) { option, label in
                 let chosen = selection == option
                 Button { selection = option } label: {
-                    Text(label).font(.system(size: 14, weight: .bold, design: .serif)).lineLimit(1).minimumScaleFactor(0.75)
+                    Text(label).font(ArenaMenuStyle.font(14, .bold)).lineLimit(1).minimumScaleFactor(0.75)
                         .foregroundStyle(chosen ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.dim)
                         .padding(.horizontal, 10).frame(minHeight: 36).frame(maxWidth: .infinity)
                         .background {
@@ -327,11 +327,11 @@ struct GrimoireSubheading: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title).textCase(.uppercase)
-                .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(1.8)
+                .font(ArenaMenuStyle.font(11, .heavy)).tracking(1.8)
                 .foregroundStyle(ArenaMenuStyle.gold)
             Spacer()
             if let count {
-                Text("\(count)").font(.system(size: 12, weight: .bold, design: .serif)).monospacedDigit()
+                Text("\(count)").font(ArenaMenuStyle.font(12, .bold)).monospacedDigit()
                     .foregroundStyle(ArenaMenuStyle.dim)
                     .accessibilityLabel(CardCountText.label(count))
             }
@@ -358,7 +358,7 @@ struct GrimoireHeading: View {
                 .foregroundStyle(ArenaMenuStyle.text)
                 .shadow(color: .black, radius: 2)
             if let subtitle {
-                Text(subtitle).font(.system(size: 14, design: .serif))
+                Text(subtitle).font(ArenaMenuStyle.font(14, .regular))
                     .foregroundStyle(ArenaMenuStyle.dim)
             }
         }

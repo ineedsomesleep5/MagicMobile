@@ -47,10 +47,10 @@ struct DeckStudioArtworkPicker: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(name).font(.system(size: 22, weight: .bold, design: .serif)).fixedSize(horizontal: false, vertical: true)
             Text(current.map { "Showing \($0.label)" } ?? "Showing the default artwork")
-                .font(.system(size: 14, weight: .semibold, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                .font(ArenaMenuStyle.font(14, .semibold)).foregroundStyle(DeckStudioPalette.secondaryInk)
                 .accessibilityIdentifier("deckStudio.artwork.current")
             Text("The art you pick is saved with this card in this deck. It shows in the deck, on the board and in exports, and never changes the card's rules.")
-                .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk).fixedSize(horizontal: false, vertical: true)
+                .font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk).fixedSize(horizontal: false, vertical: true)
             if current != nil {
                 Button("Use the default artwork") { choose(nil); dismiss() }
                     .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
@@ -66,7 +66,7 @@ struct DeckStudioArtworkPicker: View {
                 .buttonStyle(BinderPlaqueButtonStyle()).fixedSize(horizontal: true, vertical: false)
         }
         if printings.isEmpty, busy {
-            Text("Looking up printings…").font(.system(size: 14, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+            Text("Looking up printings…").font(ArenaMenuStyle.font(14, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
         }
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12, alignment: .top)], alignment: .leading, spacing: 14) {
             ForEach(printings) { tile($0) }
@@ -101,8 +101,8 @@ struct DeckStudioArtworkPicker: View {
                         }
                     }
                     .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
-                Text(printing?.label ?? item.set.uppercased()).font(.system(size: 12, weight: .heavy, design: .serif))
-                Text(item.caption).font(.system(size: 10, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                Text(printing?.label ?? item.set.uppercased()).font(ArenaMenuStyle.font(12, .heavy))
+                Text(item.caption).font(ArenaMenuStyle.font(10, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
                     .lineLimit(2).multilineTextAlignment(.center)
             }
         }

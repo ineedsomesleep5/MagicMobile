@@ -237,7 +237,7 @@ struct DeckStudioPreflightBar: View {
                     .foregroundStyle(DeckStudioPalette.ink)
                     .accessibilityLabel("\(CardCountText.label(preflight.count)) of \(DeckStudioPreflight.targetCount)")
                 // One line, still honest: it is a quick check, and XMage decides (the judge, 2026-10-22: no separate caption).
-                Text("Quick check · \(preflight.summary)").font(.system(size: 13, weight: .semibold, design: .serif))
+                Text("Quick check · \(preflight.summary)").font(ArenaMenuStyle.font(13, .semibold))
                     .foregroundStyle(preflight.issueCount == 0 ? ArenaMenuStyle.gold : DeckStudioPalette.warning)
                     .lineLimit(1).minimumScaleFactor(0.8)
                     .accessibilityLabel("\(preflight.summary). \(DeckStudioPreflight.caption)")
@@ -311,15 +311,15 @@ struct DeckStudioQuickAddBar: View {
                     .shadow(color: .black.opacity(binder ? 0.25 : 0), radius: 8, y: 3)
             }
             // The bar floats over the page (Caleb, 2026-10-06), so its notes are written in ink.
-            if let error { Text(error).font(.system(size: 13, weight: .semibold, design: .serif)).foregroundStyle(DeckStudioPalette.danger) }
-            else if let note { Text(note).font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk) }
+            if let error { Text(error).font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(DeckStudioPalette.danger) }
+            else if let note { Text(note).font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk) }
             else if focused, text.isEmpty {
                 Text(DeckStudioPlayText.quickAddHint)
-                    .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                    .font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
             }
             if let toast {
                 HStack {
-                    Text(toast.message).font(.system(size: 13, weight: .bold, design: .serif)).lineLimit(2)
+                    Text(toast.message).font(ArenaMenuStyle.font(13, .bold)).lineLimit(2)
                         .foregroundStyle(ArenaMenuStyle.text)
                     Spacer(minLength: 8)
                     Button(DeckStudioPlayText.undo) { model.undo(); self.toast = nil }

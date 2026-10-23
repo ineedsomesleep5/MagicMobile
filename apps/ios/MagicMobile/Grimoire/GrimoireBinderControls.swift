@@ -186,7 +186,7 @@ struct BinderMenuPicker<Value: Hashable>: View {
         } label: {
             BinderPlaque {
                 HStack(spacing: 6) {
-                    Text(current).font(.system(size: 14, weight: .heavy, design: .serif))
+                    Text(current).font(ArenaMenuStyle.font(14, .heavy))
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold))
                 }
             }
@@ -222,7 +222,7 @@ struct BinderTag: View {
                     .shadow(color: accent.opacity(0.9), radius: 3)
             }
             Text(text)
-                .font(.system(size: 10, weight: .heavy, design: .serif)).tracking(0.8)
+                .font(ArenaMenuStyle.font(10, .heavy)).tracking(0.8)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
         .foregroundStyle(material == .ember ? Color(red: 1, green: 0.95, blue: 0.82) : ArenaMenuStyle.gold)
@@ -279,7 +279,7 @@ struct BinderChip: View {
     var body: some View {
         HStack(spacing: 5) {
             if let icon { Image(systemName: icon).font(.system(size: 11, weight: .bold)) }
-            Text(title).font(.system(size: 13, weight: .bold, design: .serif)).lineLimit(1)
+            Text(title).font(ArenaMenuStyle.font(13, .bold)).lineLimit(1)
         }
         .foregroundStyle(chosen ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.dim)
         .padding(.horizontal, 12).frame(minHeight: 30)
@@ -300,8 +300,8 @@ struct BinderNote: View {
         HStack(alignment: .top, spacing: 10) {
             BinderStamp(icon: icon, size: 28).padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 15, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
-                Text(message).font(.system(size: 13, design: .serif)).foregroundStyle(ArenaMenuStyle.dim)
+                Text(title).font(ArenaMenuStyle.font(15, .bold)).foregroundStyle(ArenaMenuStyle.text)
+                Text(message).font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(ArenaMenuStyle.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -323,7 +323,7 @@ struct BinderEmptyLeaf: View {
             Text(title).font(.system(size: 20, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
                 .multilineTextAlignment(.center)
             if let message {
-                Text(message).font(.system(size: 14, design: .serif)).foregroundStyle(ArenaMenuStyle.dim)
+                Text(message).font(ArenaMenuStyle.font(14, .regular)).foregroundStyle(ArenaMenuStyle.dim)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
         }
