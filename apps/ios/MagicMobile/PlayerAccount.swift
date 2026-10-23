@@ -317,6 +317,18 @@ final class PlayerAccount: ObservableObject {
     /// Friend challenges, once the player has a profile name.
     var challenges: FriendChallengeService? { phase == .ready && username != nil ? SupabaseFriendChallenges(api: api) : nil }
 
+    /// Deck sync's server calls (docs/DECK_SYNC.md) over this account's client.
+    var deckSyncAPI: DeckSyncAPI { SupabaseDeckSync(api: api) }
+
+    /// The signed-in profile's id that deck sync keeps its record for; nil until the account is ready, and on fixtures.
+    func deckSyncProfile() async -> String? {
+        guard phase == .ready else { return nil }
+        #if DEBUG
+        if SocialFixtures.isActive { return nil }
+        #endif
+        return try? await api.userID()
+    }
+
     /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2).
     struct RankedAITicket: Equatable {
         let id: UUID
@@ -761,6 +773,22 @@ final class SupabaseLite: @unchecked Sendable {
             throw Failure(code: Self.errorCode(data) ?? "error")
         }
         return LinkedIdentity.parse(json)
+    }
+
+    /// The signed-in user's id, from the access token's `sub`.
+    func userID() async throws -> String? {
+        Self.subject(ofToken: try await accessToken())
+    }
+
+    /// A JWT's `sub` claim (base64url payload); nil when it has none.
+    static func subject(ofToken token: String) -> String? {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return nil }
+        var payload = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return claims["sub"] as? String
     }
 
     func forgetSession() {

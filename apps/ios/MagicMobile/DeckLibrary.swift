@@ -86,6 +86,39 @@ struct DeckLibraryRecord: Codable, Hashable, Identifiable {
     var cardCount: Int { deckList.totalCards }
 }
 
+/// What deck sync carries (docs/DECK_SYNC.md): the record's saved shape without its id, name and bookkeeping,
+/// `{format, commander?, entries, source: {kind, url?}}`.
+enum DeckDocument {
+    private static let bookkeeping = ["id", "name", "revision", "updatedAt", "isCloudBacked"]
+
+    static func of(_ record: DeckLibraryRecord) -> [String: Any] {
+        guard let data = try? JSONEncoder.magicMobileDecks.encode(record),
+              var object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [:] }
+        for key in bookkeeping { object.removeValue(forKey: key) }
+        return object
+    }
+
+    /// A server document as a deck's content (format, commander, entries, source URL); nil when it isn't one.
+    static func read(name: String, _ document: Any?) -> DeckLibraryRecord? {
+        var object = document as? [String: Any] ?? [:]
+        for key in bookkeeping { object.removeValue(forKey: key) }
+        object["name"] = name
+        guard JSONSerialization.isValidJSONObject(object), let data = try? JSONSerialization.data(withJSONObject: object) else { return nil }
+        return try? JSONDecoder.magicMobileDecks.decode(DeckLibraryRecord.self, from: data)
+    }
+
+    /// The same name and document, whatever the key order: the sync's "already equal" test.
+    static func same(_ record: DeckLibraryRecord, name: String, document: Any?) -> Bool {
+        guard record.name == name, let document, let theirs = canonical(document) else { return false }
+        return canonical(of(record)) == theirs
+    }
+
+    private static func canonical(_ value: Any) -> Data? {
+        guard JSONSerialization.isValidJSONObject(value) else { return nil }
+        return try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+    }
+}
+
 extension JSONDecoder {
     static var magicMobileDecks: JSONDecoder {
         let decoder = JSONDecoder()
@@ -116,7 +149,10 @@ final class DeckLibraryStore: ObservableObject {
     @Published private(set) var decks: [DeckLibraryRecord] = []
     @Published var notice: String?
 
-    private let cacheURL: URL
+    /// decks.json; deck sync keeps its record beside it.
+    let cacheURL: URL
+    /// Runs after the player deletes a deck (deck sync turns a synced one into a tombstone); not for removeSyncedDurably.
+    var onDeleted: ((DeckLibraryRecord) -> Void)?
     private var cacheBaseline: Data?
     private var cacheReadFailed = false
 
@@ -158,8 +194,40 @@ final class DeckLibraryStore: ObservableObject {
 
     func deleteLocalDurably(id: String, expectedRevision: Int) throws {
         let index = try localIndex(id: id, expectedRevision: expectedRevision)
+        let record = decks[index]
         var candidate = decks; candidate.remove(at: index)
         try persistDurably(candidate)
+        onDeleted?(record)
+    }
+
+    /// A deck by id ignoring case: the server answers ids in lower case, iOS makes them upper case.
+    func record(matching id: String) -> DeckLibraryRecord? {
+        let key = id.lowercased()
+        return decks.first { $0.id.lowercased() == key }
+    }
+
+    /// Deck sync: a server deck under its own id, replacing this device's copy (its revision moves on, the local id is
+    /// kept) or added first. Synced decks are editable. Answers the record as saved.
+    func applySyncedDurably(_ content: DeckLibraryRecord, id: String) throws -> DeckLibraryRecord {
+        try OnDeviceDeckEditing.validateDraft(content.deckList)
+        let key = id.lowercased()
+        let index = decks.firstIndex { $0.id.lowercased() == key }
+        let old = index.map { decks[$0] }
+        guard (old?.revision ?? 0) < Int.max else { throw OnDeviceDeckEditing.Error.staleRevision }
+        let record = DeckLibraryRecord(id: old?.id ?? id, name: content.name, format: content.format, commander: content.commander,
+                                       entries: content.entries, sourceURL: content.sourceURL,
+                                       revision: (old?.revision ?? 0) + 1, updatedAt: .now, isCloudBacked: false)
+        var candidate = decks
+        if let index { candidate[index] = record } else { candidate.insert(record, at: 0) }
+        try persistDurably(candidate)
+        return record
+    }
+
+    /// Deck sync: a deck deleted on another device leaves this one (no tombstone, unlike the player's delete).
+    func removeSyncedDurably(id: String) throws {
+        let key = id.lowercased()
+        guard decks.contains(where: { $0.id.lowercased() == key }) else { return }
+        try persistDurably(decks.filter { $0.id.lowercased() != key })
     }
 
     /// Copies imported/cloud records without mutating their identity or provenance.

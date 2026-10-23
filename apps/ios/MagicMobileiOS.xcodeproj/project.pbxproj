@@ -167,6 +167,7 @@
 		61F5B891E8E0825CA2B5D615 /* creature-squirrel-3.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 9891F94100E2B6BE7A5D5E3E /* creature-squirrel-3.m4a */; };
 		625B15F7BA0A612080B18B1F /* ui-tap.caf in Resources */ = {isa = PBXBuildFile; fileRef = 0BDDDE9538ED2F22D45B76A2 /* ui-tap.caf */; };
 		62CE2C1B4CB0351D06237B48 /* creature-ooze-1.m4a in Resources */ = {isa = PBXBuildFile; fileRef = BECF9F07DCDB840391CAD32A /* creature-ooze-1.m4a */; };
+		633E944D045FD7FB0EDA61A7 /* DeckSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 058A6F256A1B1B3818012230 /* DeckSync.swift */; };
 		64774CA4AF3BEF13421C84F9 /* TableChatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01185AEE490D6677672B1123 /* TableChatTests.swift */; };
 		64916E6D5DB67D17C54870DD /* ProfileHistoryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5FD46961088A1EE5028054 /* ProfileHistoryUITests.swift */; };
 		66AE98EC0204B1730439A3C1 /* DeckStudioEditorOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A84CB0529992320EDB94E78 /* DeckStudioEditorOperations.swift */; };
@@ -336,6 +337,7 @@
 		D2E089CDF9632261BE3D1881 /* NativeGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B6B13C7760E08AB713BE5AA /* NativeGameView.swift */; };
 		D427B72C060696322A131804 /* PageCurl.metal in Sources */ = {isa = PBXBuildFile; fileRef = 73EF1AAB576974F522E630EA /* PageCurl.metal */; };
 		D52D11529A30C9F803F757B5 /* creature-wolf.m4a in Resources */ = {isa = PBXBuildFile; fileRef = B795B71554E99839B1E5179A /* creature-wolf.m4a */; };
+		D5BB46869DAFF61621423A6F /* DeckSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28ADF61F65FFA90E56FD789 /* DeckSyncTests.swift */; };
 		D5F1B8E47E4EC2C59757F2E5 /* music-menu-4.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 619AE047B553E57279DEAC03 /* music-menu-4.m4a */; };
 		D6F34A2AC883611AC41BD711 /* NativeDeckArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1722A4752D3856C3BE4097AE /* NativeDeckArtworkTests.swift */; };
 		D72E744D05ABA30CF168A5B9 /* GameResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9C4605720EAE8CA9AE7379 /* GameResumeTests.swift */; };
@@ -433,6 +435,7 @@
 		039B77208AFBED6A6EA40C3D /* BattlefieldAdaptiveSizing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BattlefieldAdaptiveSizing.swift; sourceTree = "<group>"; };
 		050CFDDBEFC8A3ED48848333 /* land-drop.m4a */ = {isa = PBXFileReference; path = "land-drop.m4a"; sourceTree = "<group>"; };
 		054A5EFAB42630A1B2F600A8 /* DeckStudioCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioCore.swift; sourceTree = "<group>"; };
+		058A6F256A1B1B3818012230 /* DeckSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckSync.swift; sourceTree = "<group>"; };
 		062EC23FFFBBEA16B6775A9C /* music-game-2.m4a */ = {isa = PBXFileReference; path = "music-game-2.m4a"; sourceTree = "<group>"; };
 		0657411D28BA352642F20722 /* TurnClock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnClock.swift; sourceTree = "<group>"; };
 		077066AA5631F71FD1CEF8EA /* grimoire-open-portrait.mp4 */ = {isa = PBXFileReference; path = "grimoire-open-portrait.mp4"; sourceTree = "<group>"; };
@@ -751,6 +754,7 @@
 		CF44FAA8BB0C61DAA8E1C4C5 /* creature-zombie-1.m4a */ = {isa = PBXFileReference; path = "creature-zombie-1.m4a"; sourceTree = "<group>"; };
 		D1246E1EFE7ADC14F6CC9B0C /* NativeEngine-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NativeEngine-Bridging-Header.h"; sourceTree = "<group>"; };
 		D1D1857991A72F61AD1ACE07 /* DeckStudioRoleGroups.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRoleGroups.swift; sourceTree = "<group>"; };
+		D28ADF61F65FFA90E56FD789 /* DeckSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckSyncTests.swift; sourceTree = "<group>"; };
 		D353EB14DA096DFAB134CB7D /* arrive-enchantment.m4a */ = {isa = PBXFileReference; path = "arrive-enchantment.m4a"; sourceTree = "<group>"; };
 		D3D325D181BE42FEA68EFE39 /* creature-eldrazi.m4a */ = {isa = PBXFileReference; path = "creature-eldrazi.m4a"; sourceTree = "<group>"; };
 		D436C065EC7F640B89DE98B1 /* DeckStudioRoleAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStudioRoleAnalysis.swift; sourceTree = "<group>"; };
@@ -1113,6 +1117,7 @@
 				B185C53A91B6851F26E4D1CD /* DeckStudioPreflightTests.swift */,
 				617C22961151F12CBFFA4E39 /* DeckStudioReplayTests.swift */,
 				49D79412BAEE1AAFF99487D7 /* DeckStudioTileLayoutTests.swift */,
+				D28ADF61F65FFA90E56FD789 /* DeckSyncTests.swift */,
 				596DD22EE93138299473D1A0 /* FriendMessagesTests.swift */,
 				C358DDEAF223DDACA7E05097 /* GameAudioTests.swift */,
 				BF0CBD72B102EF72829ECBE6 /* GameLogPresentationTests.swift */,
@@ -1250,6 +1255,7 @@
 				327B6E116B54238C1BF459E0 /* DeckStudioScryfall.swift */,
 				ABDBB34E02563A49074BE4DE /* DeckStudioValidationService.swift */,
 				EFCEDA5E3A0CD434FD28F655 /* DeckStudioValidationState.swift */,
+				058A6F256A1B1B3818012230 /* DeckSync.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -1790,6 +1796,7 @@
 				AB0937C200B4B60D2ACC8F1C /* DeckStudioValidationService.swift in Sources */,
 				59AD6567ADC50F26BB8A3056 /* DeckStudioValidationState.swift in Sources */,
 				80DA852EFC43322C3AFEFECB /* DeckStudioWorkspaceScreen.swift in Sources */,
+				633E944D045FD7FB0EDA61A7 /* DeckSync.swift in Sources */,
 				3B3FD1ECDE8F7EBD594D4534 /* FriendChallengeViews.swift in Sources */,
 				450F5BB873D1CC8E320A16B9 /* FriendChallenges.swift in Sources */,
 				9413361DB547B44C048727D4 /* FriendConversationView.swift in Sources */,
@@ -1919,6 +1926,7 @@
 				EA2FD26E42969EFFE3FF6695 /* DeckStudioPreflightTests.swift in Sources */,
 				F127F0729E689EB306C40293 /* DeckStudioReplayTests.swift in Sources */,
 				12BB366945F510DE3EFB6F71 /* DeckStudioTileLayoutTests.swift in Sources */,
+				D5BB46869DAFF61621423A6F /* DeckSyncTests.swift in Sources */,
 				F92053AA59E0E92D8F1CB1D6 /* FriendMessagesTests.swift in Sources */,
 				9F277046EF7FDF4946FC2B01 /* GameAudioTests.swift in Sources */,
 				A1EB8BCA1D5440E2D4CC3912 /* GameLogPresentationTests.swift in Sources */,
