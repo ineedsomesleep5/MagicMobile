@@ -219,9 +219,16 @@ function decide(state, memory) {
   if (p.cards.length && (!counted || Number(counted[1]) < Number(counted[2]))) {
     // A wipe stays in hand when a mulligan puts cards on the bottom.
     const wipes = new Set(state.handIds.filter((_, i) => SWEEPERS.includes(state.handNames[i])));
-    const next = p.cards.find((id) => !state.chosen.includes(id) && !wipes.has(id)) ?? p.cards.find((id) => !state.chosen.includes(id));
-    if (next) return { submit: { type: "choose_target", targetIds: [next] }, label: "Choose" };
-  }
+    // The driver's own picks too: a prompt that doesn't report what's chosen would otherwise toggle one card forever.
+    const context = p.message.replace(/\s*\(selected[^)]*\)/i, "");
+    if (memory.picks?.context !== context) memory.picks = { context, ids: new Set() };
+    const open = (id) => !state.chosen.includes(id) && !memory.picks.ids.has(id);
+    const next = p.cards.find((id) => open(id) && !wipes.has(id)) ?? p.cards.find(open);
+    if (next && (!p.max || memory.picks.ids.size < p.max)) {
+      memory.picks.ids.add(next);
+      return { submit: { type: "choose_target", targetIds: [next] }, label: "Choose" };
+    }
+  } else if (!p.cards.length) memory.picks = undefined;
   if (p.abilities.length) return { submit: { type: "choose_ability", abilityId: p.abilities[0] }, label: "Ability" };
   // A modal wipe (Cleansing Nova, Fiery Confluence) takes its creatures mode; any other mode spell its first.
   if (p.modes.length) return { submit: { type: "choose_mode", modeIds: [(p.modes.find((m) => /(all|each) creature/i.test(m.label)) ?? p.modes[0]).id] }, label: "Mode" };
@@ -327,6 +334,17 @@ async function play(page, game) {
     const wanted = await page.evaluate(() => window.__rec.shots.splice(0));
     for (const kind of wanted) await page.screenshot({ path: join(out, `game-${game}-fx-${kind}.png`) });
     const move = decide(state, memory);
+    // The same answer thirty times running is a loop, not a game: a stall like the one above.
+    const said = move?.submit ? JSON.stringify(move.submit) : undefined;
+    memory.repeats = said !== undefined && said === memory.said ? (memory.repeats ?? 0) + 1 : 0;
+    memory.said = said;
+    if (memory.repeats >= 30) {
+      console.log(`game ${game} repeated ${said} on ${JSON.stringify(state.prompt)}`);
+      await page.screenshot({ path: join(out, `game-${game}-stall.png`) });
+      await page.evaluate(() => window.__mm.table.concede());
+      await page.waitForTimeout(3000);
+      break;
+    }
     if (move?.clickIn) {
       const plaque = page.locator(move.clickIn).first();
       if (await plaque.count() > 0) {
@@ -420,6 +438,8 @@ try {
     } catch (error) {
       // A driver failure (not the board's): keep its message and what the page showed, and go on to the next game.
       writeFileSync(join(out, `game-${game}-driver-error.txt`), String(error?.stack ?? error));
+      const kept = await page.evaluate(() => { const { polls, ...rest } = window.__rec ?? {}; return rest; }).catch(() => undefined);
+      if (kept) writeFileSync(join(out, `game-${game}-driver-error.json`), JSON.stringify(kept, null, 1));
       await page.screenshot({ path: join(out, `game-${game}-driver-error.png`) }).catch(() => {});
       result = { game, driverError: String(error?.message ?? error).split("\n")[0] };
     }
