@@ -1,32 +1,17 @@
 import SwiftUI
 
-/// Deck Studio's Play: the Arena board's ember plaque in the brass capsule rim. `settled` is the calm "✓ Playing"
-/// state on leather: nothing left to do. (`jewel` kept for callers; the plaque carries no jewel.)
+/// Deck Studio's Play: Arena's orange pill. `settled` is the calm "✓ Playing" state on dark glass: nothing left to do.
+/// (`jewel` kept for callers; the pill carries no jewel.)
 struct DeckStudioPlayButtonStyle: ButtonStyle {
     var settled = false
     var compact = false
     var jewel = false
-    @Environment(\.isEnabled) private var enabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: compact ? 15 : 17, weight: .bold, design: .serif))
-            .lineLimit(1).minimumScaleFactor(0.75)
-            .padding(.horizontal, compact ? 14 : 18).padding(.vertical, 6)
+        ArenaButtonFace(label: configuration.label, kind: settled ? .secondary : .primary,
+                        font: ArenaMenuStyle.title(compact ? 15 : 17, .bold), pressed: configuration.isPressed, fills: false,
+                        inset: compact ? 7 : 10, glow: 0.8)
             .frame(minHeight: compact ? DeckStudioMetrics.touchTarget : DeckStudioMetrics.controlHeight)
-            .foregroundStyle(settled ? TavernPalette.parchment : Color(red: 1, green: 0.94, blue: 0.80))
-            .shadow(color: .black.opacity(0.7), radius: 0.5, y: 1)
-            .background {
-                Group { if settled { TavernFill(material: .leather) } else { TavernFill(material: .ember) } }
-                    .clipShape(Capsule()).padding(2.5)
-            }
-            .overlay { TavernCapsuleRim() }
-            .shadow(color: settled ? .black.opacity(0.4) : ArenaMenuStyle.ember.opacity(enabled ? 0.45 : 0), radius: settled ? 3 : 10, y: settled ? 2 : 0)
-            .opacity(settled || enabled ? 1 : 0.45)
-            .brightness(configuration.isPressed ? 0.06 : 0)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
@@ -132,7 +117,7 @@ struct DeckStudioNowPlayingStrip: View {
                 Image(systemName: "flame.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(ArenaMenuStyle.ember)
                     .frame(width: 26, height: 26)
                 Text(DeckStudioPlayText.nowPlayingStrip(name, status))
-                    .font(.system(size: 14, weight: .bold, design: .serif))
+                    .font(ArenaMenuStyle.font(14, .bold))
                     .foregroundStyle(ArenaMenuStyle.text)
                     .lineLimit(2).multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
@@ -230,10 +215,10 @@ private struct DeckStudioNowPlayingBanner: View {
             }
             .frame(width: 32, height: 32).shadow(color: .black.opacity(0.55), radius: 1.5, y: 1).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(DeckStudioPlayText.nowPlaying(name)).font(.system(size: 15, weight: .bold, design: .serif)).lineLimit(2)
+                Text(DeckStudioPlayText.nowPlaying(name)).font(ArenaMenuStyle.font(15, .bold)).lineLimit(2)
                     .foregroundStyle(Color(red: 0.98, green: 0.86, blue: 0.62))
                 if excludedCards > 0 {
-                    Text(DeckStudioPlayText.excluded(excludedCards)).font(.system(size: 13, design: .serif))
+                    Text(DeckStudioPlayText.excluded(excludedCards)).font(ArenaMenuStyle.font(13, .regular))
                         .foregroundStyle(TavernPalette.parchment.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -430,7 +415,7 @@ struct OnDeviceSetupDeckDetails: View {
             if let deck {
                 HStack(spacing: 6) {
                     Text(CardCountText.label(DeckStudioDraftPresentation.gameCount(NativeDeckDraft(deck: deck))))
-                        .font(.system(size: 12, weight: .semibold, design: .serif)).monospacedDigit().foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .font(ArenaMenuStyle.font(12, .semibold)).monospacedDigit().foregroundStyle(DeckStudioPalette.secondaryInk)
                     if let colors = DeckStudioDeckColors.colors(for: commanders) {
                         ArenaPips(colors: colors, size: 16)
                         .accessibilityElement(children: .ignore)
@@ -439,7 +424,7 @@ struct OnDeviceSetupDeckDetails: View {
                 }
                 if status == .needsFixes {
                     Button { openStudio(fixCards(key: key, deck: deck)) } label: {
-                        Label(status.setupLine, systemImage: "exclamationmark.triangle.fill").font(.system(size: 12, weight: .semibold, design: .serif))
+                        Label(status.setupLine, systemImage: "exclamationmark.triangle.fill").font(ArenaMenuStyle.font(12, .semibold))
                     }
                     .foregroundStyle(DeckStudioPalette.warning)
                     .accessibilityIdentifier("ondevice.deckStatus.fix")

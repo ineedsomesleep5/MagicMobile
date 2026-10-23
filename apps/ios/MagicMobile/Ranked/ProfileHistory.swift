@@ -64,8 +64,8 @@ struct ProfileHistorySettings: View {
                 HStack(spacing: 10) {
                     Image(systemName: "shield.fill").font(.system(size: 16, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(String(localized: "History settings & privacy")).font(.system(size: 15, weight: .heavy, design: .serif))
-                        Text(status).font(.system(size: 12, weight: .semibold, design: .serif)).opacity(0.7)
+                        Text(String(localized: "History settings & privacy")).font(ArenaMenuStyle.font(15, .heavy))
+                        Text(status).font(ArenaMenuStyle.font(12, .semibold)).opacity(0.7)
                     }
                     Spacer(minLength: 6)
                     Image(systemName: "chevron.down").font(.system(size: 13, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
@@ -79,7 +79,7 @@ struct ProfileHistorySettings: View {
             .accessibilityValue(open ? String(localized: "Expanded") : String(localized: "Collapsed"))
             .accessibilityIdentifier("deckHistory.settings")
             if let notice = details.notice {
-                Text(notice).font(.system(size: 12, weight: .semibold, design: .serif)).foregroundStyle(ProfilePalette.win)
+                Text(notice).font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ProfilePalette.win)
             }
             if open {
                 VStack(alignment: .leading, spacing: 12) {
@@ -94,17 +94,17 @@ struct ProfileHistorySettings: View {
                     }))
                     .disabled(!enabled)
                     Text(String(localized: "Both choices are local and apply to future AI matches. Detail saves sampled public life totals, battlefield counts, visible cards and recognized public notices. It never saves hands, opponent decks or raw game messages. Turning detail off keeps saved history until you delete it."))
-                        .font(.system(size: 12, design: .serif)).opacity(0.75).fixedSize(horizontal: false, vertical: true)
+                        .font(ArenaMenuStyle.font(12, .regular)).opacity(0.75).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 10) {
                         Button(String(localized: "Refresh history")) { Task { await details.refresh() } }
-                            .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                            .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                             .accessibilityIdentifier("deckHistory.refresh")
                         Button(String(localized: "Clear all history")) { confirmClear = true }
-                            .buttonStyle(TavernButtonStyle(kind: .danger, compact: true))
+                            .buttonStyle(ArenaButtonStyle(kind: .danger, compact: true))
                             .accessibilityIdentifier("deckHistory.clear")
                     }
                     Text(String(localized: "Up to 100 recent sessions within 8 MB; oldest sessions are removed first."))
-                        .font(.system(size: 11, design: .serif)).opacity(0.6)
+                        .font(ArenaMenuStyle.font(11, .regular)).opacity(0.6)
                 }
                 .transition(.opacity)
             }

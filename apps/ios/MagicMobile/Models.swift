@@ -107,6 +107,13 @@ struct GameSnapshot: Decodable {
 
     func isViewer(_ playerID: String?) -> Bool { playerID == viewerID }
 
+    /// Who goes first, as Arena titles the opening hand ("You Go First"): XMage names the starting player as the active
+    /// player while the opening hands are kept. Nil once the first turn has begun, or before the table says.
+    var startingPlayerHeading: String? {
+        guard turn <= 1, let id = activePlayerId else { return nil }
+        return isViewer(id) ? String(localized: "You Go First") : String(localized: "\(playerLabel(id)) Goes First")
+    }
+
     func playerLabel(_ playerID: String?) -> String {
         guard let playerID else { return "Waiting" }
         if isViewer(playerID) { return "You" }

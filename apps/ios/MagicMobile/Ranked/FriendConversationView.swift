@@ -35,7 +35,7 @@ struct FriendConversationView: View {
                     .padding(.top, 8)
                 if let online {
                     Text(online ? String(localized: "Online now") : String(localized: "Offline"))
-                        .font(.system(size: 12, weight: .semibold, design: .serif))
+                        .font(ArenaMenuStyle.font(12, .semibold))
                         .foregroundStyle(online ? LeaderboardOnlineDot.color : TavernPalette.parchment.opacity(0.6))
                         .padding(.top, 4)
                         .accessibilityIdentifier("conversation.presence")
@@ -81,7 +81,7 @@ struct FriendConversationView: View {
                         } label: {
                             Label(String(localized: "Earlier messages"), systemImage: "arrow.up.circle")
                         }
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                         .disabled(loadingEarlier)
                         .padding(.bottom, 6)
                         .accessibilityIdentifier("conversation.earlier")
@@ -90,14 +90,14 @@ struct FriendConversationView: View {
                         SocialWaiting(text: String(localized: "Opening your messages…")).padding(.top, 40)
                     } else if let failure, messages.isEmpty {
                         Label(failure, systemImage: "wifi.exclamationmark")
-                            .font(.system(size: 14, weight: .semibold, design: .serif))
+                            .font(ArenaMenuStyle.font(14, .semibold))
                             .modifier(TavernLeatherCard())
                             .accessibilityIdentifier("conversation.error")
                     } else if messages.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "bubble.left.and.bubble.right.fill").font(.system(size: 30)).foregroundStyle(BrandTheme.brassGradient)
                             Text(String(localized: "Say hello to \(username). Messages stay between you two."))
-                                .font(.system(size: 14, design: .serif)).multilineTextAlignment(.center).opacity(0.8)
+                                .font(ArenaMenuStyle.font(14, .regular)).multilineTextAlignment(.center).opacity(0.8)
                         }
                         .padding(.top, 40)
                         .accessibilityIdentifier("conversation.empty")
@@ -105,7 +105,7 @@ struct FriendConversationView: View {
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         if index == 0 || startsNewDay(message, after: messages[index - 1]) {
                             Text(message.sentAt.formatted(.dateTime.weekday(.wide).month().day()))
-                                .font(.system(size: 11, weight: .heavy, design: .serif)).tracking(0.8).opacity(0.55)
+                                .font(ArenaMenuStyle.font(11, .heavy)).tracking(0.8).opacity(0.55)
                                 .padding(.top, 10)
                         }
                         bubble(message, isLastMine: message.fromMe && message.id == messages.last(where: \.fromMe)?.id)
@@ -129,7 +129,7 @@ struct FriendConversationView: View {
     private func bubble(_ message: FriendMessage, isLastMine: Bool) -> some View {
         VStack(alignment: message.fromMe ? .trailing : .leading, spacing: 2) {
             Text(FriendMessageRules.shown(message))
-                .font(.system(size: 15, design: .serif))
+                .font(ArenaMenuStyle.font(15, .regular))
                 .foregroundStyle(message.fromMe ? Color(red: 0.16, green: 0.08, blue: 0.03) : ArenaMenuStyle.text)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -147,7 +147,7 @@ struct FriendConversationView: View {
                 Text(message.sentAt.formatted(date: .omitted, time: .shortened))
                 if isLastMine, message.read { Text("· " + String(localized: "Read")) }
             }
-            .font(.system(size: 10, design: .serif)).opacity(0.55)
+            .font(ArenaMenuStyle.font(10, .regular)).opacity(0.55)
         }
         .frame(maxWidth: .infinity, alignment: message.fromMe ? .trailing : .leading)
         .padding(message.fromMe ? .leading : .trailing, 48)
@@ -168,7 +168,7 @@ struct FriendConversationView: View {
                 HStack(spacing: 6) {
                     ForEach(Self.quickReplies, id: \.self) { reply in
                         Button { send(reply) } label: {
-                            Text(reply).font(.system(size: 12, weight: .heavy, design: .serif))
+                            Text(reply).font(ArenaMenuStyle.font(12, .heavy))
                                 .padding(.horizontal, 12).frame(minHeight: 36)
                                 .background(Capsule().fill(Color.black.opacity(0.5)))
                                 .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9).opacity(0.7))
@@ -191,10 +191,10 @@ struct FriendConversationView: View {
                     .accessibilityIdentifier("conversation.field")
                 Button { send(draft) } label: {
                     Image(systemName: "paperplane.fill").font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Color(red: 1, green: 0.91, blue: 0.66))
+                        .foregroundStyle(Color.white)
                         .frame(width: 46, height: 46)
-                        .background { TavernFill(material: .ember).clipShape(Circle()).padding(2) }
-                        .overlay { TavernCapsuleRim().clipShape(Circle()) }
+                        .background { Circle().fill(ArenaMenuStyle.orange).padding(2) }
+                        .overlay { Circle().strokeBorder(ArenaMenuStyle.orangeRim, lineWidth: 1.5).padding(2) }
                 }
                 .buttonStyle(.plain)
                 .disabled(sending || FriendMessageRules.sanitize(draft) == nil)
@@ -427,8 +427,8 @@ struct FriendMessageBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "bubble.left.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(BrandTheme.brassGradient)
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.system(size: 13, weight: .black, design: .serif))
-                Text(text).font(.system(size: 12, design: .serif)).lineLimit(1).opacity(0.85)
+                Text(name).font(ArenaMenuStyle.font(13, .black))
+                Text(text).font(ArenaMenuStyle.font(12, .regular)).lineLimit(1).opacity(0.85)
             }
             Spacer(minLength: 4)
             Button(action: dismiss) {
@@ -440,7 +440,7 @@ struct FriendMessageBanner: View {
         .foregroundStyle(TavernPalette.parchment)
         .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
         .background(Capsule().fill(Color.black.opacity(0.5)))
-        .overlay(TavernCapsuleRim(thin: true))
+        .overlay(Capsule().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.6), radius: 8, y: 4)
         .frame(maxWidth: 420)
         .contentShape(Capsule())

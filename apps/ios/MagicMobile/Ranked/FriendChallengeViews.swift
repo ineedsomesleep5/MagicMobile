@@ -23,16 +23,16 @@ struct ChallengeInviteBanner: View {
             .scaleEffect(pulse ? 1.08 : 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(String(localized: "\(challenge.challenger ?? String(localized: "A friend")) challenges you"))
-                    .font(.system(size: 15, weight: .heavy, design: .serif)).lineLimit(1).minimumScaleFactor(0.75)
+                    .font(ArenaMenuStyle.font(15, .heavy)).lineLimit(1).minimumScaleFactor(0.75)
                 Text(challenge.isRanked ? String(localized: "Ranked · counts for both") : String(localized: "Quick Match · friendly"))
-                    .font(.system(size: 12, design: .serif)).opacity(0.8)
+                    .font(ArenaMenuStyle.font(12, .regular)).opacity(0.8)
             }
             Spacer(minLength: 4)
             Button(String(localized: "Decline"), action: decline)
-                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                 .accessibilityIdentifier("challenge.decline")
             Button(String(localized: "Accept"), action: accept)
-                .buttonStyle(TavernButtonStyle(kind: .primary, compact: true))
+                .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true))
                 .accessibilityIdentifier("challenge.accept")
         }
         .foregroundStyle(TavernPalette.parchment)

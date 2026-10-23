@@ -153,11 +153,11 @@ struct PlayerProfileView: View {
             .disabled(!signedIn || !account.visibilityKnown)
             .opacity(signedIn && account.visibilityKnown ? 1 : 0.55)
             Text(privacyNote(signedIn: signedIn))
-                .font(.system(size: 12, design: .serif)).opacity(0.8).fixedSize(horizontal: false, vertical: true)
+                .font(ArenaMenuStyle.font(12, .regular)).opacity(0.8).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("profile.privacy.note")
             if signedIn && account.profilesAvailable {
                 Button(String(localized: "See it as others do")) { previewAsOthers = true }
-                    .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                    .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                     .accessibilityIdentifier("profile.privacy.preview")
             }
         }
@@ -208,10 +208,10 @@ struct PlayerProfileView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(rank.position.title).font(.system(size: 20, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
                     if rank.position.tier != .mythic { RankPips(filled: rank.position.pips, tier: rank.position.tier, size: 10) }
-                    Text("\(rank.wins)–\(rank.losses)").font(.system(size: 13, weight: .bold, design: .serif)).monospacedDigit()
+                    Text("\(rank.wins)–\(rank.losses)").font(ArenaMenuStyle.font(13, .bold)).monospacedDigit()
                         .foregroundStyle(ArenaMenuStyle.gold)
                     if rank.peak != rank.position {
-                        Text(String(localized: "Peak \(rank.peak.title)")).font(.system(size: 11.5, weight: .semibold, design: .serif))
+                        Text(String(localized: "Peak \(rank.peak.title)")).font(ArenaMenuStyle.font(11.5, .semibold))
                             .foregroundStyle(ArenaMenuStyle.dim)
                     }
                 }
@@ -269,7 +269,7 @@ struct PlayerProfileView: View {
                 if !wide { nameBlock(size: 30) }
                 HStack(alignment: .bottom, spacing: 8) {
                     if let commander = record.shownCommander {
-                        Text(commander).font(.system(size: 13, weight: .semibold, design: .serif)).italic()
+                        Text(commander).font(ArenaMenuStyle.font(13, .semibold)).italic()
                             .foregroundStyle(ArenaMenuStyle.text.opacity(0.85)).lineLimit(2).minimumScaleFactor(0.8)
                     }
                     Spacer(minLength: 6)
@@ -323,7 +323,7 @@ struct PlayerProfileView: View {
                 face()
                 LinearGradient(stops: [.init(color: .clear, location: 0.6), .init(color: .black.opacity(0.85), location: 1)],
                                startPoint: .top, endPoint: .bottom)
-                Text(title).font(.system(size: 16, weight: .bold, design: .serif)).foregroundStyle(ArenaMenuStyle.text)
+                Text(title).font(ArenaMenuStyle.font(16, .bold)).foregroundStyle(ArenaMenuStyle.text)
                     .padding(.bottom, 12)
             }
             .clipShape(shape)
@@ -390,7 +390,7 @@ struct PlayerProfileView: View {
             choosing = nil
         } label: {
             Text(value?.title ?? String(localized: "No title"))
-                .font(.system(size: 14, weight: .bold, design: .serif))
+                .font(ArenaMenuStyle.font(14, .bold))
                 .foregroundStyle(on ? ArenaMenuStyle.gold : ArenaMenuStyle.text)
                 .lineLimit(2).minimumScaleFactor(0.8).multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
@@ -479,9 +479,9 @@ struct PlayerProfileView: View {
                         // Where the season finished, as the Ranked Hall shows it (the judge, 2026-10-22: one answer).
                         RankEmblem(tier: past.final.tier, size: 22)
                         Text("\(RankLadder.seasonName(past.season)): \(past.final.title)")
-                            .font(.system(size: 13, design: .serif))
+                            .font(ArenaMenuStyle.font(13, .regular))
                         Spacer(minLength: 0)
-                        Text("\(past.wins)–\(past.losses)").font(.system(size: 12, design: .serif)).monospacedDigit().opacity(0.7)
+                        Text("\(past.wins)–\(past.losses)").font(ArenaMenuStyle.font(12, .regular)).monospacedDigit().opacity(0.7)
                     }
                 }
             }
@@ -557,7 +557,7 @@ struct PlayerProfileView: View {
     private func legend(_ color: Color, _ text: String) -> some View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 9, height: 9)
-            Text(text).font(.system(size: 11, weight: .semibold, design: .serif)).opacity(0.75)
+            Text(text).font(ArenaMenuStyle.font(11, .semibold)).opacity(0.75)
         }
         .accessibilityHidden(true)
     }
@@ -620,7 +620,7 @@ struct PlayerProfileView: View {
                 Button(showAllGames ? String(localized: "Show fewer") : String(localized: "Show more")) {
                     withAnimation { showAllGames.toggle() }
                 }
-                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                 .accessibilityIdentifier("profile.games.more")
             }
         }

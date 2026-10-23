@@ -236,11 +236,20 @@ struct GameCompletionOverlay: View {
     private var isVictory: Bool { snapshot.winnerPlayerIds?.contains(snapshot.viewerID) == true }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.tavernBoard) private var tavern
-    /// The Arena board shows your own medallion instead of the trophy: rising in gold, or falling grey.
+    /// The Arena board shows Arena's own result (ArenaGameResultView); this card is the Hearth board's.
     @Environment(\.arenaBoard) private var arena
     @State private var revealed = false
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if arena {
+            ArenaGameResultView(snapshot: snapshot, stats: stats, rankChange: rankChange, rematchTitle: rematchTitle,
+                                newGame: newGame, quitGame: quitGame)
+        } else {
+            tavernResult
+        }
+    }
+
+    private var tavernResult: some View {
         ZStack {
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
@@ -250,20 +259,10 @@ struct GameCompletionOverlay: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 12) {
-                if arena, let viewer = snapshot.human {
-                    ArenaHeroMedallion(player: viewer, diameter: 104, active: isVictory, showsLife: false)
-                        .saturation(isVictory ? 1 : 0)
-                        .brightness(isVictory ? 0 : -0.15)
-                        .scaleEffect(revealed || reduceMotion ? 1 : (isVictory ? 0.4 : 1.1))
-                        .offset(y: revealed || reduceMotion ? 0 : (isVictory ? 50 : -30))
-                        .rotationEffect(.degrees(revealed || reduceMotion || isVictory ? 0 : -4))
-                        .accessibilityHidden(true)
-                } else {
                 Image(systemName: isVictory ? "trophy.fill" : "flag.checkered")
                     .font(.system(size: 40, weight: .black))
                     .foregroundStyle(isVictory ? MagicPalette.antiqueGold : Color(red: 0.8, green: 0.35, blue: 0.3))
                     .shadow(color: (isVictory ? MagicPalette.antiqueGold : .red).opacity(0.6), radius: 12)
-                }
 
                 Text(title.uppercased())
                     .font(.system(size: 48, weight: .black, design: .serif))
@@ -1447,7 +1446,8 @@ struct TavernCapsuleRim: View {
 }
 
 /// Plaque buttons from the kit: primary is ember glass, secondary dark leather, both in a
-/// riveted brass rim, like the pass button.
+/// riveted brass rim, like the pass button. Views both boards share (the D20, the opening hand, game menus, choices) use
+/// it; on the Arena board, and in the menus, it draws Arena's button instead, so no Hearth rim shows there.
 struct TavernButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, danger }
 
@@ -1457,8 +1457,19 @@ struct TavernButtonStyle: ButtonStyle {
     var fullWidth = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.arenaBoard) private var arena
 
-    func makeBody(configuration: Configuration) -> some View {
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if arena {
+            ArenaButtonStyle(kind: kind == .primary ? .primary : kind == .danger ? .danger : .secondary,
+                             compact: compact, fontSize: fontSize, fullWidth: fullWidth)
+                .makeBody(configuration: configuration)
+        } else {
+            tavern(configuration)
+        }
+    }
+
+    private func tavern(_ configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: fontSize ?? (compact ? 12 : 14), weight: .heavy, design: .serif))
             .foregroundStyle(kind == .secondary ? TavernPalette.parchment : Color(red: 1, green: 0.91, blue: 0.66))

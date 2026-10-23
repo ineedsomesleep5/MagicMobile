@@ -33,6 +33,9 @@ struct MultiplayerD20View: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The Arena board: the dice roll on the board itself under one line of title, with glass plates and Arena's buttons
+    /// (Caleb, 2026-10-22: the roll belongs on the board it will be played on). The Hearth board keeps its tavern table.
+    @Environment(\.arenaBoard) private var arena
     @State private var shownRoundIndex: Int?
     @State private var activeSeatID: String?
     @State private var activeValue: Int?
@@ -117,7 +120,7 @@ struct MultiplayerD20View: View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .global).origin
             D20TableView(size: proxy.size, region: rollRegion.offsetBy(dx: -origin.x, dy: -origin.y),
-                         state: tableState, reduceMotion: reduceMotion,
+                         state: tableState, reduceMotion: reduceMotion, onBoard: arena,
                          onEdgeHit: { turn in
                              guard turn == spinTurns, edgeHitTurn != turn else { return }
                              edgeHitTurn = turn
@@ -154,12 +157,11 @@ struct MultiplayerD20View: View {
         ZStack {
             if landed, let activeValue {
                 Text("Rolled \(activeValue)")
-                    .font(.system(.title2, design: .serif, weight: .heavy).monospacedDigit())
-                    .foregroundStyle(Ink.brown)
+                    .font(arena ? ArenaMenuStyle.title(24, .bold).monospacedDigit() : .system(.title2, design: .serif, weight: .heavy).monospacedDigit())
+                    .foregroundStyle(arena ? ArenaGlass.text : Ink.brown)
                     .padding(.horizontal, 26)
                     .frame(minHeight: 46)
-                    .background { TavernFill(material: .parchment).clipShape(Capsule()).padding(3) }
-                    .overlay { TavernCapsuleRim() }
+                    .background { chip(lit: false) }
                     .shadow(color: .black.opacity(0.5), radius: 5, y: 3)
                     .fixedSize()
                     .accessibilityIdentifier("multiplayerD20.result")
@@ -172,13 +174,12 @@ struct MultiplayerD20View: View {
                         .accessibilityIdentifier("multiplayerD20.tapToRoll")
                 } else {
                     Text("Waiting for \(seatNames[nextSeat] ?? "the next player") to roll…")
-                        .font(.system(.subheadline, design: .serif, weight: .bold))
-                        .foregroundStyle(Ink.brass)
+                        .font(arena ? ArenaMenuStyle.font(14, .semibold) : .system(.subheadline, design: .serif, weight: .bold))
+                        .foregroundStyle(arena ? ArenaGlass.text : Ink.brass)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 18)
                         .frame(minHeight: 36)
-                        .background { TavernFill(material: .leather).clipShape(Capsule()).padding(1.5) }
-                        .overlay { TavernCapsuleRim(thin: true) }
+                        .background { chip(lit: false, thin: true) }
                         .accessibilityIdentifier("multiplayerD20.waiting")
                 }
             }
@@ -194,9 +195,40 @@ struct MultiplayerD20View: View {
         return steps[playedStepCount].seatID
     }
 
+    /// A result or waiting chip: parchment or leather in brass on the Hearth board, dark glass on the Arena board.
+    @ViewBuilder private func chip(lit: Bool, thin: Bool = false) -> some View {
+        if arena {
+            Capsule().fill(Color.black.opacity(0.62))
+                .overlay(Capsule().strokeBorder(lit ? AnyShapeStyle(ArenaMenuStyle.orangeRim) : AnyShapeStyle(ArenaGlass.hairline), lineWidth: 1))
+        } else if thin {
+            TavernFill(material: .leather).clipShape(Capsule()).padding(1.5).overlay { TavernCapsuleRim(thin: true) }
+        } else {
+            TavernFill(material: .parchment).clipShape(Capsule()).padding(3).overlay { TavernCapsuleRim() }
+        }
+    }
+
+    /// On the Arena board: who rolls or who goes first, large over the board, as Arena announces it; Skip at its end.
+    private func arenaTitle(wide: Bool) -> some View {
+        Text(headline)
+            .font(ArenaMenuStyle.title(wide ? 26 : 32, .bold))
+            .foregroundStyle(ArenaGlass.text)
+            .shadow(color: .black.opacity(0.9), radius: 6)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .accessibilityAddTraits(.isHeader)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 60)
+            .overlay(alignment: .trailing) { skipPlaque }
+            .padding(.top, wide ? 4 : 24)
+    }
+
     /// The title plate (the board's panel), the skip plaque at its corner. In landscape it is one
     /// line tall so the table keeps the room.
-    private func header(wide: Bool) -> some View {
+    @ViewBuilder private func header(wide: Bool) -> some View {
+        if arena { arenaTitle(wide: wide) } else { tavernHeader(wide: wide) }
+    }
+
+    private func tavernHeader(wide: Bool) -> some View {
         Group {
             if wide {
                 HStack(alignment: .center, spacing: 12) {
@@ -290,19 +322,26 @@ struct MultiplayerD20View: View {
         let isRolling = activeSeatID == playerID
         let isWinner = playbackFinished && roll.winnerSeatID == playerID
         let isOut = shownRoundIndex.map { $0 > 0 && rounds[$0][playerID] == nil && value != nil } ?? false
-        let ink = isWinner ? Ink.cream : (isOut ? Ink.muted : Ink.brown)
-        let secondary = isWinner ? Ink.cream.opacity(0.85) : (isOut ? Ink.muted.opacity(0.8) : Ink.brownSoft)
+        let ink = arena ? ArenaGlass.text.opacity(isOut ? 0.55 : 1) : isWinner ? Ink.cream : (isOut ? Ink.muted : Ink.brown)
+        let secondary = arena ? ArenaGlass.text.opacity(isOut ? 0.45 : 0.7)
+            : isWinner ? Ink.cream.opacity(0.85) : (isOut ? Ink.muted.opacity(0.8) : Ink.brownSoft)
 
         return HStack(spacing: compact ? 8 : 12) {
-            SeatCoin(value: isRolling ? nil : value, size: compact ? 38 : 46, lit: isWinner)
-                .accessibilityHidden(true)
+            Group {
+                if arena {
+                    ArenaRollValue(value: isRolling ? nil : value, size: compact ? 38 : 46, lit: isWinner)
+                } else {
+                    SeatCoin(value: isRolling ? nil : value, size: compact ? 38 : 46, lit: isWinner)
+                }
+            }
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .font(.system(compact ? .subheadline : .body, design: .serif, weight: .heavy))
+                    .font(arena ? ArenaMenuStyle.font(compact ? 14 : 16, .bold) : .system(compact ? .subheadline : .body, design: .serif, weight: .heavy))
                     .foregroundStyle(ink)
                     .lineLimit(2)
                 Text(status(for: playerID, value: value, isRolling: isRolling, isOut: isOut, isWinner: isWinner))
-                    .font(.system(.caption, design: .serif, weight: .semibold))
+                    .font(arena ? ArenaMenuStyle.font(12, .medium) : .system(.caption, design: .serif, weight: .semibold))
                     .foregroundStyle(secondary)
                     .lineLimit(2)
             }
@@ -312,11 +351,18 @@ struct MultiplayerD20View: View {
         .padding(.vertical, compact ? 5 : 10)
         .frame(maxWidth: .infinity, minHeight: compact ? 50 : 66, alignment: .leading)
         .background {
-            TavernFill(material: isWinner ? .ember : (isOut ? .leather : .parchment))
-                .clipShape(RoundedRectangle(cornerRadius: 10)).padding(2)
+            if arena {
+                RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.62))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(isWinner ? AnyShapeStyle(ArenaMenuStyle.orangeRim) : AnyShapeStyle(ArenaGlass.hairline), lineWidth: isWinner ? 1.5 : 1))
+            } else {
+                TavernFill(material: isWinner ? .ember : (isOut ? .leather : .parchment))
+                    .clipShape(RoundedRectangle(cornerRadius: 10)).padding(2)
+                    .overlay { TavernBrassFrame(scale: 0.5) }
+            }
         }
-        .overlay { TavernBrassFrame(scale: 0.5) }
-        .shadow(color: isWinner ? TavernPalette.ember.opacity(0.6) : .black.opacity(0.45), radius: isWinner ? 10 : 5, y: 3)
+        .shadow(color: isWinner ? (arena ? Color(red: 1, green: 0.47, blue: 0.12) : TavernPalette.ember).opacity(0.6) : .black.opacity(0.45),
+                radius: isWinner ? 10 : 5, y: 3)
         .opacity(isOut ? 0.78 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription(for: playerID, name: name,
@@ -494,6 +540,23 @@ struct MultiplayerD20View: View {
     }
 }
 
+/// The number a seat rolled on the Arena board: white on a dark disc in a thin gold line, orange for the winner.
+private struct ArenaRollValue: View {
+    let value: Int?
+    var size: CGFloat = 44
+    var lit = false
+
+    var body: some View {
+        Text(value.map(String.init) ?? "–")
+            .font(.system(size: size * 0.46, weight: .bold))
+            .monospacedDigit()
+            .foregroundStyle(Color.white.opacity(value == nil ? 0.5 : 1))
+            .frame(width: size, height: size)
+            .background(Circle().fill(lit ? AnyShapeStyle(ArenaMenuStyle.orange) : AnyShapeStyle(Color(red: 0.07, green: 0.07, blue: 0.08))))
+            .overlay(Circle().strokeBorder(lit ? ArenaMenuStyle.orangeRim : ArenaMenuStyle.gold.opacity(0.6), lineWidth: 1.2))
+    }
+}
+
 /// The number a seat rolled, struck on a brass coin; blank (a dash) before the seat has rolled.
 private struct SeatCoin: View {
     let value: Int?
@@ -539,10 +602,12 @@ struct StartingRollCover<Content: View>: View {
     /// behind from showing through while the table loads).
     static var canvas: Color { Color(red: 0.09, green: 0.05, blue: 0.03) }
     @ViewBuilder let content: Content
+    /// On the Arena board the roll happens on the board: it shows through, dimmed.
+    @Environment(\.arenaBoard) private var arena
 
     var body: some View {
         ZStack {
-            Self.canvas.ignoresSafeArea()
+            (arena ? Color.black.opacity(0.4) : Self.canvas).ignoresSafeArea()
             content
         }
         .accessibilityElement(children: .contain)

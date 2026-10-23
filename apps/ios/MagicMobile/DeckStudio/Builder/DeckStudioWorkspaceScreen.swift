@@ -370,10 +370,10 @@ struct DeckStudioWorkspaceScreen: View {
                     .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 1))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.draft.name.isEmpty ? "Untitled draft" : model.draft.name)
-                        .font(.system(size: 16, weight: .bold, design: .serif)).lineLimit(1).minimumScaleFactor(0.7)
+                        .font(ArenaMenuStyle.font(16, .bold)).lineLimit(1).minimumScaleFactor(0.7)
                         .accessibilityAddTraits(.isHeader)
                     Text(DeckStudioDraftPresentation.commanders(model.draft).joined(separator: " • "))
-                        .font(.system(size: 11, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .font(ArenaMenuStyle.font(11, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
                 Spacer(minLength: 0)
@@ -393,7 +393,7 @@ struct DeckStudioWorkspaceScreen: View {
                         HStack {
                             ArenaCaps(text: group.title, size: 9.5)
                             Spacer()
-                            Text("\(group.count)").font(.system(size: 11, weight: .bold, design: .serif)).monospacedDigit()
+                            Text("\(group.count)").font(ArenaMenuStyle.font(11, .bold)).monospacedDigit()
                                 .foregroundStyle(DeckStudioPalette.secondaryInk)
                         }
                         .padding(.top, 10).padding(.bottom, 3)
@@ -434,7 +434,7 @@ struct DeckStudioWorkspaceScreen: View {
                 HStack {
                     ArenaCaps(text: group.title, size: 9.5)
                     Spacer()
-                    Text("\(group.count)").font(.system(size: 11, weight: .bold, design: .serif)).monospacedDigit()
+                    Text("\(group.count)").font(ArenaMenuStyle.font(11, .bold)).monospacedDigit()
                         .foregroundStyle(DeckStudioPalette.secondaryInk)
                 }
                 .padding(.top, 10).padding(.bottom, 3)
@@ -477,9 +477,9 @@ struct DeckStudioWorkspaceScreen: View {
         HStack(spacing: 0) {
             BinderGuardedButton { inspect(row.cardName, art: .exact(row.printing)) } label: {
                 HStack(spacing: 6) {
-                    Text("\(row.quantity)").font(.system(size: 12, weight: .bold, design: .serif)).monospacedDigit()
+                    Text("\(row.quantity)").font(ArenaMenuStyle.font(12, .bold)).monospacedDigit()
                         .foregroundStyle(ArenaMenuStyle.gold).frame(width: 18, alignment: .trailing)
-                    Text(row.cardName).font(.system(size: 12.5, weight: .semibold, design: .serif)).lineLimit(1)
+                    Text(row.cardName).font(ArenaMenuStyle.font(12.5, .semibold)).lineLimit(1)
                         .foregroundStyle(ArenaMenuStyle.text)
                     Spacer(minLength: 4)
                     if let cost = metadata?.card(named: row.cardName)?.manaCost, !cost.isEmpty {
@@ -577,13 +577,13 @@ struct DeckStudioWorkspaceScreen: View {
                     HStack(spacing: 6) {
                         DeckStudioColorIdentity(colors: DeckStudioDraftPresentation.colors(model.draft, metadata: metadata))
                         Text(DeckStudioDraftPresentation.commanders(model.draft).joined(separator: " • "))
-                            .font(.system(size: 12, design: .serif)).lineLimit(1).minimumScaleFactor(0.8)
+                            .font(ArenaMenuStyle.font(12, .regular)).lineLimit(1).minimumScaleFactor(0.8)
                             .foregroundStyle(DeckStudioPalette.secondaryInk)
                     }
                     BinderGauge(count: DeckStudioDraftPresentation.gameCount(model.draft))
                     // "Edit a copy" already says an included deck is read-only.
                     if !model.readOnly {
-                        Text(model.saveLabel).font(.system(size: 11, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(1)
+                        Text(model.saveLabel).font(ArenaMenuStyle.font(11, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk).lineLimit(1)
                     }
                 }
             }

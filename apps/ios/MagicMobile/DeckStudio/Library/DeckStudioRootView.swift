@@ -288,7 +288,7 @@ struct DeckStudioRootView: View {
             let edit = Button { turn(to: .deck(record, entry.included)) } label: {
                 Text("Edit Deck").lineLimit(1).fixedSize().frame(maxWidth: .infinity)
             }
-                .buttonStyle(TavernButtonStyle(kind: .secondary, compact: true))
+                .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
                 .accessibilityIdentifier("deckStudio.edit")
             let playButton = Button { playFromLibrary(entry) } label: { Text("Play").frame(maxWidth: .infinity) }
                 .buttonStyle(ArenaPlayButtonStyle(fontSize: 18))
@@ -586,7 +586,7 @@ struct DeckStudioArtworkInvitation: View {
             DisclosureGroup(isExpanded: $expanded) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Turn on artwork across the app to send displayed card names and your IP address to Scryfall. Saved images remain available offline. Change this anytime in Artwork & privacy.")
-                        .font(.system(size: 13, design: .serif)).foregroundStyle(DeckStudioPalette.secondaryInk)
+                        .font(ArenaMenuStyle.font(13, .regular)).foregroundStyle(DeckStudioPalette.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Turn on") { remoteArtwork = true }
                         .buttonStyle(BinderPlaqueButtonStyle())
@@ -596,7 +596,7 @@ struct DeckStudioArtworkInvitation: View {
             } label: {
                 HStack(spacing: 10) {
                     BinderStamp(icon: "photo.on.rectangle.angled", size: 28)
-                    Text("Online card images are off").font(.system(size: 15, weight: .bold, design: .serif))
+                    Text("Online card images are off").font(ArenaMenuStyle.font(15, .bold))
                 }
                 .frame(minHeight: 32)
             }
