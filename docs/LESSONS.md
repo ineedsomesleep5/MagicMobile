@@ -810,3 +810,11 @@ contradicting one.
   backs and mana symbols are served from the site (`public/arena/card-back.jpg`, `public/symbols`) because filtered
   networks block `backs.scryfall.io`/`svgs.scryfall.io`, and Recent games read every device's games through
   `mm_my_games` (the record of each device was local only).
+- 2026-10-24 (Claude, download site "Hall and Cut"): two quiet traps. (1) A Scroll Craft `pan` act moves its rail by
+  `p` in the engine's frame; correcting that rail from a second layer in your own rAF (to hold at each exhibit) lands a
+  frame apart, so the walk shakes side to side when scrolled. Pin the act instead and set the rail's one transform from
+  the act's own rect (`apps/site/src/hall.ts`). When scripting scroll tests, pass `behavior: 'instant'`: scrollcraft.css
+  sets `scroll-behavior: smooth`, so back-to-back `scrollTo` calls cancel each other and the page barely moves.
+  (2) Three.js r155+ lights are physical: a port of the app's D20 lighting (SceneKit, or three r128's legacy lights)
+  needs `PointLight(color, i * Math.PI, 0, 0)` and `AmbientLight(color, i * Math.PI)` to come out the same
+  (`apps/site/src/barDie.ts`).
