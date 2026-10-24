@@ -1,0 +1,214 @@
+{
+ "schemaVersion": 1,
+ "about": "Deck Power (docs/DECK_POWER.md): each part scores 0-1 between its norms, the weighted mix maps to 1-10. scripts/ranked/deck_power.py reads this file; retune here, not in code.",
+ "weights": {
+  "speed": 0.12,
+  "mana": 0.22,
+  "interaction": 0.07,
+  "consistency": 0.07,
+  "threats": 0.23,
+  "synergy": 0.03,
+  "commander": 0.14,
+  "combos": 0.1,
+  "resilience": 0.02
+ },
+ "norms": {
+  "speed": {
+   "effectiveManaValue": [
+    4.6,
+    2.6
+   ],
+   "cheapPlays": [
+    10,
+    30
+   ],
+   "mix": [
+    0.7,
+    0.3
+   ]
+  },
+  "mana": {
+   "ramp": [
+    4,
+    24
+   ],
+   "cheapRampFactor": 2,
+   "creatureRampFactor": 0.5,
+   "idealLands": 37,
+   "landsPerRamp": 0.15,
+   "landSpread": 6,
+   "tappedShare": [
+    0,
+    0.35
+   ],
+   "mix": [
+    0.7,
+    0.15,
+    0.15
+   ]
+  },
+  "interaction": {
+   "count": [
+    4,
+    24
+   ],
+   "instantBonus": 0.5,
+   "wipeFactor": 0.5
+  },
+  "consistency": {
+   "draw": [
+    4,
+    18
+   ],
+   "tutors": [
+    0,
+    10
+   ],
+   "mix": [
+    0.35,
+    0.65
+   ]
+  },
+  "threats": {
+   "evasive": [
+    0,
+    25
+   ],
+   "big": [
+    0,
+    16
+   ],
+   "bigPower": 5,
+   "finishers": [
+    0,
+    6
+   ],
+   "creatures": [
+    15,
+    38
+   ],
+   "mix": [
+    0.4,
+    0.25,
+    0.1,
+    0.25
+   ]
+  },
+  "synergy": {
+   "themeShare": [
+    0.2,
+    0.75
+   ]
+  },
+  "combos": {
+   "points": [
+    0,
+    6
+   ],
+   "comboPoints": 2,
+   "gameChangersFull": 3,
+   "gameChangerBeyond": 0.5
+  },
+  "resilience": {
+   "protection": [
+    0,
+    8
+   ],
+   "recursion": [
+    0,
+    10
+   ],
+   "mix": [
+    1,
+    0
+   ]
+  },
+  "cheats": {
+   "bigManaValue": 5,
+   "keep": 4,
+   "saturation": 10,
+   "maxShare": 0.6,
+   "commanderCopies": 3,
+   "selfDiscount": 2
+  }
+ },
+ "commanders": {
+  "The Ur-Dragon": {
+   "strength": 0.9,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Edgar Markov": {
+   "strength": 0.85,
+   "theme": [
+    "Vampire"
+   ]
+  },
+  "Krenko, Mob Boss": {
+   "strength": 0.75,
+   "theme": [
+    "Goblin"
+   ]
+  },
+  "Gishath, Sun's Avatar": {
+   "strength": 0.7,
+   "theme": [
+    "Dinosaur"
+   ]
+  },
+  "Lathril, Blade of the Elves": {
+   "strength": 0.55,
+   "theme": [
+    "Elf"
+   ]
+  },
+  "Wilhelt, the Rotcleaver": {
+   "strength": 0.5,
+   "theme": [
+    "Zombie"
+   ]
+  },
+  "Atarka, World Render": {
+   "strength": 0.6,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Isperia, Supreme Judge": {
+   "strength": 0.45,
+   "theme": [
+    "Flying"
+   ]
+  },
+  "Emmara, Soul of the Accord": {
+   "strength": 0.4,
+   "theme": [
+    "token",
+    "populate"
+   ]
+  },
+  "Gisa and Geralf": {
+   "strength": 0.5,
+   "theme": [
+    "Zombie"
+   ]
+  },
+  "Kardur, Doomscourge": {
+   "strength": 0.3,
+   "theme": [
+    "goad",
+    "attacks? each combat"
+   ]
+  }
+ },
+ "defaultCommander": {
+  "strength": 0.5
+ },
+ "penalties": {
+  "multiplayerCards": {
+   "perCard": 0.1,
+   "max": 0.6
+  }
+ }
+}

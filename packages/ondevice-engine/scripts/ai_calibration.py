@@ -99,15 +99,21 @@ def mix(seed: int, *parts: int) -> int:
 
 
 def schedule(skill_a: int, skill_b: int, decks: list[str], games: int, seed: int, budget: str,
-             overrides: dict | None = None) -> list[dict]:
+             overrides: dict | None = None, against: list[str] | None = None) -> list[dict]:
     """Every block of 4 games plays one deck pair with both deck assignments and both seatings.
 
     Skill A plays deck X going first, deck X going second, deck Y going first, deck Y going second, so
     neither deck strength nor going first favours either skill. Pairs come in a seeded order and repeat.
+    With `against` (reference decks), each pool deck meets each reference instead of every other pool deck.
     """
-    if len(decks) < 2:
+    if against:
+        pairs = [(x, y) for x in decks for y in against if x != y]
+    elif len(decks) < 2:
         raise SystemExit('A pool needs at least two decks')
-    pairs = list(itertools.combinations(decks, 2))
+    else:
+        pairs = list(itertools.combinations(decks, 2))
+    if not pairs:
+        raise SystemExit('No deck pairs to play')
     random.Random(seed).shuffle(pairs)
     rows = []
     for game in range(games):
@@ -373,12 +379,14 @@ def deck_balance(tables: list[list[dict]]) -> str:
 
 
 def pairing_jobs(out: Path, skill_a: int, skill_b: int, pool: str, games: int, seed: int, budget: str,
-                 overrides: dict | None = None):
+                 overrides: dict | None = None, against: str = ''):
     o = {k: str(v) for k, v in (overrides or {}).items() if v not in (None, '')}
     tag = lambda side: ''.join(f'{k[0]}{o[k + "_" + side]}' for k in ('depth', 'mistake') if k + '_' + side in o)
     path = out / f'skill{skill_a}{tag("a")}-vs-skill{skill_b}{tag("b")}-{budget}.csv'
     done = done_games(path)
-    rows = [r for r in schedule(skill_a, skill_b, pool_decks(pool), games, seed, budget, o) if r['game'] not in done]
+    references = pool_decks(against) if against else None
+    rows = [r for r in schedule(skill_a, skill_b, pool_decks(pool), games, seed, budget, o, references)
+            if r['game'] not in done]
     return path, [(path, r) for r in rows]
 
 
@@ -439,6 +447,8 @@ def main():
                          help='override the skill default (engines with AIDifficulty): search depth 1-10 or mistake 0-100%%')
     run.add_argument('--pool', default='core+precon',
                      help='precon, core, upgraded, optimized, core+precon, or comma-separated deck ids')
+    run.add_argument('--against', default='',
+                     help='reference decks (a pool name or deck ids): each pool deck plays each of these, not each other')
     common(run)
     matrix = sub.add_parser('matrix', help='every pairing in a matrix file')
     matrix.add_argument('file', type=Path)
@@ -463,21 +473,21 @@ def main():
     deck_index()
     args.out.mkdir(parents=True, exist_ok=True)
     if args.command == 'run':
-        specs = [(args.skill_a, args.skill_b, args.pool, {k: getattr(args, k) for k in OVERRIDES})]
+        specs = [(args.skill_a, args.skill_b, args.pool, {k: getattr(args, k) for k in OVERRIDES}, args.against)]
     else:
         # A pairing is [skill_a, skill_b] or {"a": 1, "b": 6, "depth_a": 2, "mistake_a": 15, ...}.
         spec = json.loads(args.file.read_text())
         specs = []
         for p in spec['pairings']:
             if isinstance(p, list):
-                specs.append((p[0], p[1], spec.get('pool', 'core+precon'), {}))
+                specs.append((p[0], p[1], spec.get('pool', 'core+precon'), {}, spec.get('against', '')))
             else:
                 specs.append((p['a'], p['b'], p.get('pool', spec.get('pool', 'core+precon')),
-                              {k: p[k] for k in OVERRIDES if k in p}))
+                              {k: p[k] for k in OVERRIDES if k in p}, p.get('against', spec.get('against', ''))))
         args.games = spec.get('games', args.games)
     paths, jobs = [], []
-    for skill_a, skill_b, pool, overrides in specs:
-        path, new = pairing_jobs(args.out, skill_a, skill_b, pool, args.games, args.seed, args.budget, overrides)
+    for skill_a, skill_b, pool, overrides, against in specs:
+        path, new = pairing_jobs(args.out, skill_a, skill_b, pool, args.games, args.seed, args.budget, overrides, against)
         paths.append(path)
         jobs += new
     # Interleave pairings so partial results cover every pairing.
