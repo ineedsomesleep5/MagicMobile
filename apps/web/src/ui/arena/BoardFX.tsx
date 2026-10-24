@@ -10,7 +10,7 @@ import { BoardFXScheduler, subjectID } from "../../core/boardEvents";
 import type { ZoneCard } from "../../core/models";
 import { Face, PlainTile, Tile } from "./ArenaCard";
 import { paint } from "./fxPainter";
-import { LEAN, type Place, STAGE } from "./layout";
+import { leanTransform, type Place, STAGE } from "./layout";
 import { fxNow } from "./useBoardFX";
 
 interface Point { x: number; y: number }
@@ -225,9 +225,7 @@ export function BoardFXOverlay({ active, subjects, rect, anchors, frames, stackI
         const at = placement(kind, p, duration);
         if (!at) return null;
         const left = at.x - at.w / 2;
-        const leanStyle: React.CSSProperties | undefined = at.lean > 0
-          ? { transform: `perspective(${LEAN.distance.toFixed(0)}px) rotateX(${(LEAN.pitch * at.lean).toFixed(2)}deg)`, transformOrigin: `${(LEAN.centerX - left).toFixed(1)}px 50%` }
-          : undefined;
+        const leanStyle: React.CSSProperties | undefined = at.lean > 0 ? { transform: leanTransform(at.lean) } : undefined;
         const burn = at.burn;
         const exile = kind.kind === "depart" && kind.destination === "exile";
         return (
