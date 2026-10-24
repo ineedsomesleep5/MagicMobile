@@ -9,7 +9,7 @@ import { paintTile, TILE, tileKey } from "../../board/tileArt";
 import { cardImageURL, manaSymbols, useCardArtURL } from "../cardArt";
 import { AbilityCard } from "./AbilityCard";
 import { type CardReader, readProps } from "./inspectGesture";
-import { LEAN, type Place } from "./layout";
+import { leanTransform, type Place } from "./layout";
 import { CardBack, ManaSymbol } from "./Symbols";
 
 export type CardView = "face" | "tile" | "back";
@@ -170,16 +170,14 @@ export interface ArenaCardProps {
 
 /**
  * Three layers: the card's place (it glides there), the table's lean for cards lying on the table (ArenaTableLean: the
- * plate's pitch, converging on the board's centre line), and the card's own tilt and scale (tapped, fanned, lifted).
+ * plate's pitch, drawn flat as the iPhone draws it), and the card's own tilt and scale (tapped, fanned, lifted).
  */
 export const ArenaCard = memo(function ArenaCard({ id, place, view, card, frames, ability, name, owner, inHand, extraZone, classes, label, onClick, onPress, reader }: ArenaCardProps) {
   const left = place.x - place.w / 2;
   const style: React.CSSProperties = {
     width: place.w, height: place.h, fontSize: place.w / 15, transform: `translate(${left.toFixed(1)}px,${(place.y - place.h / 2).toFixed(1)}px)`, zIndex: place.z,
   };
-  const lean: React.CSSProperties | undefined = place.lean
-    ? { transform: `perspective(${LEAN.distance.toFixed(0)}px) rotateX(${LEAN.pitch}deg)`, transformOrigin: `${(LEAN.centerX - left).toFixed(1)}px 50%` }
-    : undefined;
+  const lean: React.CSSProperties | undefined = place.lean ? { transform: leanTransform() } : undefined;
   const printed = name ?? card?.card.name ?? "";
   const read = view === "back" ? {} : readProps(reader, { name: printed, card });
   return (

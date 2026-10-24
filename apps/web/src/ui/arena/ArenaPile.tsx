@@ -7,7 +7,7 @@
 import type { ZoneCard } from "../../core/models";
 import { cardImageURL } from "../cardArt";
 import { type CardReader, readProps } from "./inspectGesture";
-import { LEAN, pileThickness } from "./layout";
+import { leanTransform, pileThickness } from "./layout";
 import { CardBack, CountBadge } from "./Symbols";
 
 export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader }: {
@@ -22,7 +22,7 @@ export function ArenaPile({ x, y, size, count, top, kind, label, onOpen, reader 
 }) {
   const { thickness, layers } = pileThickness(count, size.h);
   const left = x - size.w / 2;
-  const lean = { transform: `perspective(${LEAN.distance.toFixed(0)}px) rotateX(${LEAN.pitch}deg)`, transformOrigin: `${(LEAN.centerX - left).toFixed(1)}px 50%` };
+  const lean = { transform: leanTransform() };
   const lift = (i: number) => `translate(${(-thickness * 0.22 * i / Math.max(layers, 1)).toFixed(2)}px, ${(-thickness * i / Math.max(layers, 1)).toFixed(2)}px)`;
   return (
     <button type="button" className={`apile ${kind} ${count === 0 ? "empty" : ""}`} disabled={!onOpen || count === 0}
