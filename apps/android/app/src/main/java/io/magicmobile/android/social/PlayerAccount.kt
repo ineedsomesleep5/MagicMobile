@@ -471,6 +471,21 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         if (notice == null) notice = "Thanks. $name was reported."
     }
 
+    /**
+     * A freeze report (docs/FREEZE_LOG.md), only after the player taps Send: true once the server stored it. Fails quietly
+     * offline or over the hourly limit; the report stays on the phone.
+     */
+    suspend fun sendDiagnostic(kind: String, report: String): Boolean {
+        if (SocialFixtures.isActive || HowToPlayLaunch.isAutomated(LaunchEnvironment.values)) return false
+        return try {
+            api.rpc("mm_send_diagnostic", mapOf("p_platform" to JsonPrimitive("android"),
+                "p_app_version" to JsonPrimitive(io.magicmobile.android.BuildConfig.VERSION_NAME),
+                "p_build" to JsonPrimitive(io.magicmobile.android.BuildConfig.VERSION_CODE.toString()),
+                "p_kind" to JsonPrimitive(kind), "p_report" to JsonPrimitive(report.take(io.magicmobile.android.game.FreezeReport.MAX_CHARACTERS))))
+                .trim() == "true"
+        } catch (error: Exception) { false }
+    }
+
     /** Deletes the account and everything tied to it; a new one is made the next time. */
     suspend fun deleteAccount(): Boolean = try {
         api.rpc("mm_delete_account")

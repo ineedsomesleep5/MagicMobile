@@ -517,7 +517,7 @@ fun LoadingGameView(status: String? = null, message: String? = null, error: Stri
 @Composable
 fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runAction: (LegalAction) -> Unit, portraitModeEnabled: Boolean,
                        setPortraitModeEnabled: (Boolean) -> Unit, openPromptInspector: () -> Unit, confirmStartNew: () -> Unit, confirmQuit: () -> Unit,
-                       dismiss: () -> Unit) {
+                       showsFreezeReport: Boolean = true, dismiss: () -> Unit) {
     val gameConcede = LocalGameConcede.current
     var confirmingConcede by remember { mutableStateOf(false) }
     var showHowToPlay by rememberSaveable { mutableStateOf(false) }
@@ -563,6 +563,12 @@ fun GameManagementMenu(snapshot: GameSnapshot, concedeAction: LegalAction?, runA
                             androidx.compose.foundation.shape.CircleShape).padding(horizontal = 6.dp, vertical = 1.dp), color = Color.White,
                             style = io.magicmobile.android.ui.sf(11f, io.magicmobile.android.ui.SfWeight.black))
                     }
+                }
+            }
+            // The Arena board has it in the gear's menu instead.
+            io.magicmobile.android.ondevice.LocalFreezeReport.current?.takeIf { showsFreezeReport }?.let { report ->
+                CompactActionButton({ dismiss(); report() }, Modifier.fillMaxWidth().testTag("board.menu.reportFreeze")) {
+                    SfImage("exclamationmark.bubble", androidx.compose.material3.LocalContentColor.current, 13.dp); Spacer(Modifier.width(5.dp)); CompactActionText("Report a freeze")
                 }
             }
             RememberedChoicesPanel()

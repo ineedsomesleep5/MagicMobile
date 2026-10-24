@@ -21,6 +21,11 @@ contradicting one.
 
 ## Style and Android parity
 
+- 2026-10-24 (Claude, Android freeze log): the app's JVM unit tests (`:app:testDebugUnitTest`) build `OnDeviceSession` without
+  `unitTests.isReturnDefaultValues`, so any `android.*` call the session reaches (`SystemClock`, `Build`, `Debug`) throws there.
+  **Rule:** code the session calls on every poll uses `System.nanoTime()` and wraps device lookups in `runCatching`; keep the
+  pure part in core. The freeze log lives in `OnDeviceDiagnostics.directory` (`noBackupFilesDir/Diagnostics`). Where: core `game/FreezeLog.kt`, app `ondevice/FreezeLog.kt`.
+
 - 2026-10-23 (Claude, deck sync Android): (1) Android's `DeckStore` reads every `*.json` in `filesDir/decks-v1` as a
   deck, so a file put there (the sync record) makes the whole library unreadable; the record lives beside it in
   `filesDir/decks-v1-sync.json`. (2) The saved `Deck` keeps names to 300 characters (validateDraft allows 512 bytes), so
@@ -818,3 +823,9 @@ contradicting one.
   (2) Three.js r155+ lights are physical: a port of the app's D20 lighting (SceneKit, or three r128's legacy lights)
   needs `PointLight(color, i * Math.PI, 0, 0)` and `AmbientLight(color, i * Math.PI)` to come out the same
   (`apps/site/src/barDie.ts`).
+- 2026-10-24 (Claude, freeze logger): a TestFlight "froze in ranked" report came with no crash log
+  (`asc testflight crashes log` said no `betaCrashLogs` resource) and the server had no trace of the game: a freeze
+  leaves nothing behind unless the app records it. The phones now keep a freeze log (docs/FREEZE_LOG.md) and send it
+  only on the player's Send; read sent reports with `select created_at, platform, build, kind, report from
+  diagnostic_reports order by created_at desc`. A hang's frames are binary offsets (MetricKit); symbolicate them with
+  the build's dSYM. The main-thread watchdog pauses when the scene leaves `.active`, or a suspended app reads as a hang.

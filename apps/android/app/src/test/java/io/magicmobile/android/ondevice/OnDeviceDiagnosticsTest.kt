@@ -98,6 +98,20 @@ class OnDeviceDiagnosticsTest {
         assertNull(OnDeviceDiagnostics(directory, "0.1.1 (2026092501)", platform).report)
     }
 
+    @Test fun freezeLogJoinsTheReportAndIsDeleted() {
+        val directory = temporaryDirectory()
+        val incident = io.magicmobile.android.game.FreezeIncident("f", "engine-quiet", 1_761_300_000_000, null,
+            listOf("Mode" to "ranked"), listOf("+3.0s Ranked: searching"))
+        io.magicmobile.android.game.FreezeStore(directory).save(listOf(incident))
+        val store = OnDeviceDiagnostics(directory, "0.1.1 (30)", "Android 15 (API 35)")
+        assertEquals(io.magicmobile.android.game.FreezeReport.section(listOf(incident)), store.report)
+        assertTrue(store.report!!.startsWith("Freeze log (1, newest last)\n\nFreeze · engine-quiet"))
+        assertTrue(store.isHistorical)
+        store.clear()
+        assertNull(store.report)
+        assertTrue(directory.listFiles().isNullOrEmpty())
+    }
+
     @Test fun engineReportIsBoundedAndReopeningKeepsItsTimestamp() = runBlocking {
         val directory = temporaryDirectory()
         val store = OnDeviceDiagnostics(directory, "0.1.1 (1)", "Android 15 (API 35)")

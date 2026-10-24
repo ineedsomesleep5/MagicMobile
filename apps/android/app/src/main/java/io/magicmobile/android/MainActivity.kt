@@ -22,6 +22,8 @@ class MainActivity: ComponentActivity() {
         io.magicmobile.android.ui.GamePerformanceRecorder.init(this)
         // Local crash and ANR summaries for the report sheet (background thread); nothing is uploaded.
         if (savedInstanceState==null) io.magicmobile.android.ondevice.OnDeviceSystemReports.recordAtStartup(this)
+        // The freeze log's watchdog and the earlier run's unsent freeze (docs/FREEZE_LOG.md); nothing is sent without Send.
+        io.magicmobile.android.ondevice.FreezeLog.start(this)
         // Menus and the board are always dark, like the iOS app.
         WindowCompat.getInsetsController(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
         io.magicmobile.android.studio.DeckStudioServices.install(this)
@@ -36,10 +38,16 @@ class MainActivity: ComponentActivity() {
         return super.dispatchTouchEvent(event)
     }
 
+    override fun onStart() { super.onStart(); io.magicmobile.android.ondevice.FreezeLog.setForeground(true) }
+    override fun onStop() { super.onStop(); io.magicmobile.android.ondevice.FreezeLog.setForeground(false) }
+
+    override fun onLowMemory() { super.onLowMemory(); io.magicmobile.android.ondevice.FreezeLog.crumb("Low memory") }
+
     /** Memory pressure while running: free the decoded artwork (it reloads from disk), not the sounds or music. */
     @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        io.magicmobile.android.ondevice.FreezeLog.crumb("Memory trim (level $level)")
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && level < android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             io.magicmobile.android.ui.GamePerformanceRecorder.noteMemoryWarning()
             io.magicmobile.android.Artwork.releaseMemory()

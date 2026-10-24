@@ -843,7 +843,7 @@ fun NativeGameView(
                 io.magicmobile.android.menus.ArenaPanel(isGameMenuOpen, { isGameMenuOpen = false }, maxWidth = 640.dp) {
                     GameManagementMenu(board, board.legalActions?.firstOrNull { it.type == "concede" }, runAction, portraitModeEnabled, setPortraitModeEnabled,
                         { isGameMenuOpen = false; isPromptInspectorOpen = true }, { gameMenuConfirmation = GameMenuConfirmation.START_NEW },
-                        { gameMenuConfirmation = GameMenuConfirmation.QUIT }) { isGameMenuOpen = false }
+                        { gameMenuConfirmation = GameMenuConfirmation.QUIT }, showsFreezeReport = false) { isGameMenuOpen = false }
                 }
                 io.magicmobile.android.menus.ArenaPanel(isPromptInspectorOpen, { isPromptInspectorOpen = false }, maxWidth = 640.dp) {
                     PromptDebugInspector(board, liveUpdateStatus)

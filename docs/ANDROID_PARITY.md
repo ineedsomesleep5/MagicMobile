@@ -90,6 +90,7 @@ iOS change has one obvious Android counterpart. Update the table and the log bef
 | Board/ArenaHandFan.swift | app `board/ArenaHandFan.kt` | Ported (phase C) |
 | Board/NativeGameView+Arena.swift, NativeGameView+ArenaActions.swift | app `board/NativeGameViewArena.kt` (Kotlin file names hold no `+`) | Ported (phases C and D, the trigger-order plan included) |
 | OnDeviceYieldPolicy.swift Stop for Removal (`threatensViewer`, `stopForThreats`, StopReason.threat), BoardPresentationHold.reading | core `game/OnDeviceSmartPass.kt`, `game/OnDeviceYieldPolicy.kt`, `game/BoardEventTimeline.kt`; app `session/OnDeviceSession.kt` | Ported (phase C) |
+| FreezeRules, FreezeLog (docs/FREEZE_LOG.md) | core `game/FreezeLog.kt` (rules, stall episodes, breadcrumbs, store, report text; `FreezeLogTest` runs parity/freeze-cases.json); app `ondevice/FreezeLog.kt` (watchdog, context, Send), hooks in `session/OnDeviceSession.kt`, `ondevice/OnDeviceRootView.kt`, `MainActivity.kt` | Built 2026-10-24; not run on a device yet |
 
 ## Walnut Tavern (iOS builds 23–26)
 

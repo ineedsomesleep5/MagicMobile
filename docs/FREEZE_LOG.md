@@ -31,7 +31,7 @@ No account details, no deck lists. Prompt messages can name cards.
 ## Where it goes
 
 - On the phone: `freeze-log.json` in the diagnostics folder (iOS Application Support/MagicMobile/Diagnostics, excluded
-  from backups; Android's files/diagnostics), the last 5 incidents. It's part of the diagnostics report sheet.
+  from backups; Android's no-backup Diagnostics folder), the last 5 incidents. It's part of the diagnostics report sheet.
 - To the developer, only on Send: the next launch after a freeze asks "The last game froze. Send the report?"; the
   game menu's Report a freeze records and sends at once (it asks first). Both call `mm_send_diagnostic`, which stores
   the text in `diagnostic_reports` (own rows only, 64 KB, 20 an hour). Nothing reads it back to the app.
