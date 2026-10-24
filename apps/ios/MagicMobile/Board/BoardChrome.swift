@@ -185,6 +185,20 @@ struct GameConcedeHandler {
 
 struct GameConcedeKey: EnvironmentKey { static let defaultValue: GameConcedeHandler? = nil }
 
+/// The game menu's Report a freeze (docs/FREEZE_LOG.md): records this moment and sends it.
+struct GameFreezeReportHandler {
+    let report: @MainActor () -> Void
+}
+
+struct GameFreezeReportKey: EnvironmentKey { static let defaultValue: GameFreezeReportHandler? = nil }
+
+extension EnvironmentValues {
+    var gameFreezeReport: GameFreezeReportHandler? {
+        get { self[GameFreezeReportKey.self] }
+        set { self[GameFreezeReportKey.self] = newValue }
+    }
+}
+
 extension EnvironmentValues {
     var gameConcede: GameConcedeHandler? {
         get { self[GameConcedeKey.self] }

@@ -552,6 +552,20 @@ final class PlayerAccount: ObservableObject {
     }
 
     /// Sends one finished game. Never throws: the caller keeps what could not be sent and tries again later.
+    /// Sends a freeze report the player chose to send (docs/FREEZE_LOG.md); false when it couldn't go now. Never throws.
+    func sendDiagnostic(kind: String, report: String) async -> Bool {
+        guard phase == .ready else { return false }
+        let info = Bundle.main.infoDictionary
+        let params: [String: Any] = [
+            "p_platform": "ios", "p_app_version": String((info?["CFBundleShortVersionString"] as? String ?? "").prefix(40)),
+            "p_build": String((info?["CFBundleVersion"] as? String ?? "").prefix(40)), "p_kind": kind,
+            "p_report": String(report.prefix(65_000))]
+        do {
+            _ = try await api.rpc("mm_send_diagnostic", params)
+            return true
+        } catch { return false }
+    }
+
     func recordGame(_ match: MatchRecord) async -> GameUploadResult {
         guard phase == .ready, username != nil else { return .unavailable }
         #if DEBUG

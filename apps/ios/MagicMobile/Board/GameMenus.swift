@@ -273,7 +273,9 @@ struct GameManagementMenu: View {
     @Environment(\.gameConcede) private var gameConcede
     @Environment(\.tavernBoard) private var tavern
     @Environment(\.friendMessages) private var friendMessages
+    @Environment(\.gameFreezeReport) private var gameFreezeReport
     @State private var confirmingConcede = false
+    @State private var confirmingFreezeReport = false
     @State private var showHowToPlay = false
     @State private var showMessages = false
     let snapshot: GameSnapshot
@@ -336,6 +338,16 @@ struct GameManagementMenu: View {
                     .buttonStyle(CompactActionButtonStyle(isPrimary: false))
                     .accessibilityIdentifier("board.menu.howToPlay")
 
+                    // The game stopped moving: send what it looks like now (docs/FREEZE_LOG.md).
+                    if gameFreezeReport != nil {
+                        Button { confirmingFreezeReport = true } label: {
+                            Label("Report a freeze", systemImage: "exclamationmark.bubble.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(CompactActionButtonStyle(isPrimary: false))
+                        .accessibilityIdentifier("board.menu.reportFreeze")
+                    }
+
                     // Friends' messages without leaving the game.
                     if let friendMessages {
                         Button { showMessages = true } label: {
@@ -396,6 +408,16 @@ struct GameManagementMenu: View {
                 if let gameConcede { gameConcede.concede() } else if let concedeAction { runAction(concedeAction) }
             }],
             cancelTitle: "Keep Playing"
+        )
+        .tavernConfirmation(
+            active: tavern,
+            title: "Report a freeze?",
+            message: "Sends this game's state and your recent actions to the developer. Not your account or decks.",
+            isPresented: $confirmingFreezeReport,
+            actions: [TavernDialogAction(title: "Send") {
+                close()
+                gameFreezeReport?.report()
+            }]
         )
     }
 

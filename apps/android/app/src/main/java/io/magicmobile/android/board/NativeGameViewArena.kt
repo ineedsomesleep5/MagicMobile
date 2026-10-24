@@ -658,7 +658,8 @@ fun ArenaBoard(host: ArenaBoardHost) {
                 cornerMenu?.let { menu ->
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)).clearAndSetSemantics { }
                         .clickable(remember { MutableInteractionSource() }, null) { cornerMenu = null })
-                    val items = if (menu == "game") arenaGameMenuItems(snapshot, turnControl, host, { host.setStackOpen(true) }, { showPhaseStops = true })
+                    val reportFreeze = io.magicmobile.android.ondevice.LocalFreezeReport.current
+                    val items = if (menu == "game") arenaGameMenuItems(snapshot, turnControl, host, { host.setStackOpen(true) }, { showPhaseStops = true }, reportFreeze)
                         else turnControl?.let(::arenaPassAheadItems) ?: emptyList()
                     val gear = canvas.point(layout.menu)
                     val modifier = if (menu == "game") Modifier.align(Alignment.TopEnd).padding(top = (gear.y + 26).dp, end = max(12f, canvas.screen.width - gear.x - 22).dp)
@@ -781,7 +782,7 @@ fun ArenaBoard(host: ArenaBoardHost) {
 
 /** The gear's menu, as an Arena menu card on the table. */
 private fun arenaGameMenuItems(snapshot: GameSnapshot, control: NativeTurnControl?, host: ArenaBoardHost, openStack: () -> Unit,
-                               openStops: () -> Unit): List<ArenaMenuItem> = buildList {
+                               openStops: () -> Unit, reportFreeze: (() -> Unit)?): List<ArenaMenuItem> = buildList {
     add(ArenaMenuItem("log", "Game Log", symbol = "list.bullet.rectangle", action = host.openLog))
     if (snapshot.stackTopFirst.isNotEmpty()) add(ArenaMenuItem("stack", "Stack (${snapshot.stackTopFirst.size})", symbol = "square.stack.3d.up", action = openStack))
     add(ArenaMenuItem("stops", "Phase Stops", symbol = "pause.circle", action = openStops))
@@ -791,6 +792,7 @@ private fun arenaGameMenuItems(snapshot: GameSnapshot, control: NativeTurnContro
     }
     if (snapshot.source == "xmage-ondevice") add(ArenaMenuItem("more", "More actions", symbol = "ellipsis", action = host.openPromptDetails))
     add(ArenaMenuItem("settings", "Game Settings", symbol = "gearshape.fill", action = host.openSettings))
+    reportFreeze?.let { add(ArenaMenuItem("report-freeze", "Report a freeze", symbol = "exclamationmark.bubble", action = it)) }
 }
 
 /** Revealed and looked-at cards, as small glass pills beside the opponent's piles, clear of the creature rows. */

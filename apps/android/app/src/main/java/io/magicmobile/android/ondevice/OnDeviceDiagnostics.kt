@@ -66,6 +66,8 @@ class OnDeviceDiagnostics(private val directory: File,
     private var engineReport: String? = null
     private var persistedReport: String? = null
     private var systemReport: String? = null
+    /** The freeze log's incidents (FreezeLog, docs/FREEZE_LOG.md). */
+    private var freezeReport: String? = null
     private var captureGeneration = 0
     private var clearing = false
     private val file: File get() = File(directory, "latest-engine-failure.txt")
@@ -80,19 +82,21 @@ class OnDeviceDiagnostics(private val directory: File,
             }
         } catch (error: Exception) { errorMessage = "Could not load the saved engine report: ${error.message}" }
         systemReport = OnDeviceSystemReports.section(OnDeviceSystemReports.load(directory))
+        freezeReport = io.magicmobile.android.game.FreezeReport.section(io.magicmobile.android.game.FreezeStore(directory).load())
         publish()
     }
 
     private fun publish() {
-        val parts = listOfNotNull(engineReport, systemReport)
+        val parts = listOfNotNull(engineReport, systemReport, freezeReport)
         report = if (parts.isEmpty()) null else parts.joinToString("\n\n")
-        // Crash and ANR summaries always describe an earlier session.
-        if (engineReport == null) isHistorical = systemReport != null
+        // Crash, ANR and freeze summaries always describe something earlier.
+        if (engineReport == null) isHistorical = systemReport != null || freezeReport != null
     }
 
-    /** Exit reports recorded after this store opened (the startup reader runs in the background). */
+    /** Exit reports and freezes recorded after this store opened (the startup reader runs in the background). */
     fun reloadSystemReports() {
         systemReport = OnDeviceSystemReports.section(OnDeviceSystemReports.load(directory))
+        freezeReport = io.magicmobile.android.game.FreezeReport.section(io.magicmobile.android.game.FreezeStore(directory).load())
         publish()
     }
 
@@ -134,13 +138,14 @@ class OnDeviceDiagnostics(private val directory: File,
         }
     }
 
-    /** Deletes the engine report and the crash and ANR summaries. */
+    /** Deletes the engine report, the crash and ANR summaries and the freeze log. */
     fun clear() {
         captureGeneration += 1
         if (file.exists() && !file.delete()) throw IllegalStateException("Could not delete the saved report.")
         engineReport = null; persistedReport = null
         OnDeviceSystemReports.clear(directory)
-        systemReport = null
+        io.magicmobile.android.game.FreezeStore(directory).clear()
+        systemReport = null; freezeReport = null
         errorMessage = null; isHistorical = false
         publish()
     }
@@ -378,6 +383,8 @@ fun OnDeviceDiagnosticsEntry(setup: OnDeviceSetupModel) {
     var confirmDelete by remember { mutableStateOf(false) }
     val failure = setup.errorMessage ?: setup.session.errorMessage
     LaunchedEffect(failure) { if (failure != null) store.capture(setup.status) { setup.diagnosticReport() } }
+    // Freezes recorded since the store opened.
+    LaunchedEffect(Unit) { store.reloadSystemReports() }
     if (store.report != null && io.magicmobile.android.menus.LocalArenaBoard.current) {
         io.magicmobile.android.menus.ArenaPillButton("Engine error report", { store.beginAttempt(); open = true }, identifier = "ondevice.diagnostics")
     } else if (store.report != null) {
@@ -390,7 +397,7 @@ fun OnDeviceDiagnosticsEntry(setup: OnDeviceSetupModel) {
             Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).verticalScroll(rememberScrollState()).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Engine error report", color = MagicPalette.parchment, style = SfText.headline())
-                Text("Only the latest engine error report and this app's recent crash and ANR summaries are kept on this phone, " +
+                Text("Only the latest engine error report, this app's recent crash and ANR summaries and its last freezes are kept on this phone, " +
                     "excluded from backups. Error text may contain private card information. Nothing is uploaded automatically; " +
                     "review it before sharing.", color = MagicPalette.parchment, style = SfText.footnote())
                 store.errorMessage?.let { Text(it, color = Color(1f, 0.45f, 0.4f), style = SfText.footnote()) }

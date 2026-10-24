@@ -276,6 +276,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     }
     var studioOpen by remember { mutableStateOf<io.magicmobile.android.studio.DeckStudioOpen?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
+    // The freeze log (docs/FREEZE_LOG.md): the game menu's Report a freeze, and the launch question once answered.
+    var confirmFreezeReport by remember { mutableStateOf(false) }
+    var freezeOfferClosed by remember { mutableStateOf<String?>(null) }
     var bannerError by remember { mutableStateOf<String?>(null) }
     /** The session error the player closed; a different error shows again. */
     var dismissedSessionError by remember { mutableStateOf<String?>(null) }
@@ -897,11 +900,34 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         if (activeGame) { matchmaker.finish(); rankedConnectJob?.cancel() }
         if (activeGame) io.magicmobile.android.ui.GamePerformanceRecorder.begin(activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "online" else "custom", activeMatch?.aiSkill)
         else io.magicmobile.android.ui.GamePerformanceRecorder.end()
+        if (activeGame) {
+            FreezeLog.mode = activeMatch?.mode?.raw ?: if (setup.usingMultiplayer) "table" else "custom"
+            FreezeLog.crumb("Game started (${FreezeLog.mode}${if (setup.resume.resumedGame) ", resumed" else ""})")
+        } else FreezeLog.mode = "none"
         GameAudio.setScene(if (activeGame) GameMusic.GAME else GameMusic.MENU)
         // A resumed game is not a new matchup: no versus intro.
         if (!activeGame || setup.resume.resumedGame) { versusIntro = null; return@LaunchedEffect }
         if (reduceMotion) GameAudio.play(GameSound.VERSUS, after = 0.2)
         else { versusIntro = makeVersusIntro(); GameAudio.play(GameSound.VERSUS, after = 0.05) }
+    }
+    LaunchedEffect(matchPhase) {
+        when (val phase = matchPhase) {
+            io.magicmobile.android.game.RankedMatchmaker.Phase.Idle -> {}
+            is io.magicmobile.android.game.RankedMatchmaker.Phase.Searching -> FreezeLog.crumb("Ranked: searching")
+            is io.magicmobile.android.game.RankedMatchmaker.Phase.Matched ->
+                FreezeLog.crumb("Ranked: matched (${if (phase.ticket.matchId == null) "AI" else if (phase.ticket.isHost) "host" else "guest"})")
+        }
+    }
+    // Session errors log themselves; these are the setup's and the menus' own.
+    LaunchedEffect(bannerError) { bannerError?.takeIf { it != session.errorMessage }?.let { FreezeLog.crumb("Notice: $it") } }
+    fun sendFreezeReport(incident: io.magicmobile.android.game.FreezeIncident) {
+        scope.launch {
+            val sent = FreezeLog.send(incident) { kind, report -> vm.account.sendDiagnostic(kind, report) }
+            val notice = if (sent) "Freeze report sent. Thank you." else "The freeze report couldn't be sent. It's still saved on this phone."
+            bannerError = notice
+            delay(5_000)
+            if (bannerError == notice) bannerError = null
+        }
     }
     val errorKey = setup.errorMessage ?: session.errorMessage
     LaunchedEffect(errorKey) {
@@ -1200,6 +1226,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                         },
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
                         LocalGameConcede provides GameConcedeHandler { concede() },
+                        LocalFreezeReport provides { confirmFreezeReport = true },
                         LocalEmoteCenter provides vm.emotes,
                         // Messages from friends inside a game too: the game menu's Messages button.
                         io.magicmobile.android.social.LocalFriendMessages provides
@@ -1496,6 +1523,21 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     "Choose downloads", "Not now", "offlineArt") {
                     offlineArtPromptSeen = true; showOfflineArtPrompt = false
                     scope.launch { delay(350); showDownloads = true }
+                }
+            }
+            // An Arena question on the main menu after a freeze in an earlier run; nothing is sent without Send.
+            val freezeOffer = FreezeLog.launchOffer?.takeIf { it.id != freezeOfferClosed }
+            io.magicmobile.android.menus.ArenaPanel(freezeOffer != null && menuIsFree && !showOfflineArtPrompt,
+                { freezeOffer?.let { freezeOfferClosed = it.id; FreezeLog.decline(it) } }, maxWidth = 460.dp, fitsContent = true) {
+                io.magicmobile.android.menus.ArenaPromptPanel("The last game froze. Send the report?",
+                    "It holds the game's state and your recent actions, not your account or decks.", "Send", "Not now", "freezeReport") {
+                    freezeOffer?.let { freezeOfferClosed = it.id; sendFreezeReport(it) }
+                }
+            }
+            if (confirmFreezeReport) {
+                io.magicmobile.android.ranked.ArenaConfirmation("Send a freeze report with this game's state?", null, "Send", destructive = false,
+                    confirm = { sendFreezeReport(FreezeLog.record(io.magicmobile.android.game.FreezeRules.REPORTED, game = session.freezeContext())) }) {
+                    confirmFreezeReport = false
                 }
             }
             if (confirmLeave) {

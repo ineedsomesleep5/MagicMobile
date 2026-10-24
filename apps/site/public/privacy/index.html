@@ -36,7 +36,7 @@
     <p>MagicMobile is an independent, non-commercial fan project. There are no ads, no analytics and no tracking in the apps, the browser game or on this site, and nothing is sold or shared for advertising.</p>
 
     <h2>On your device</h2>
-    <p>Your decks, game settings, a saved game you can resume, downloaded card art, and the app's own crash and engine reports are kept on your device. Games against the AI run entirely on your device, in the browser too. Crash reports are only shared if you choose to send one from the app.</p>
+    <p>Your decks, game settings, a saved game you can resume, downloaded card art, and the app's own crash and engine reports are kept on your device. Games against the AI run entirely on your device, in the browser too. Crash reports are only shared if you choose to send one from the app. The app also notes when a game freezes; if you tap Send on its question, or Report a freeze in the game menu, the report (the game&rsquo;s state at that moment, your recent moves, your app version, phone model and memory use, not your decks or account details) is stored with your account ID in MagicMobile&rsquo;s database so the freeze can be fixed.</p>
     <p>The browser game keeps the same kind of things in your browser's storage for this site: your decks and settings, your profile's sign-in session, and finished games waiting to upload. It also keeps the game engine in the browser's cache so it only downloads once. Clearing this site's data in your browser removes them.</p>
 
     <h2>Profiles and friends</h2>
@@ -68,7 +68,7 @@
     <p>Online tables pass game moves and chat messages between players' devices through a relay on Cloudflare. The relay keeps a table's roster and undelivered messages only while the table is open and deletes them when everyone leaves or after 30 idle minutes. Chat is not stored on a server unless someone reports a message. Game Center tables use Apple's Game Center.</p>
 
     <h2>Card images and deck imports</h2>
-    <p>With <strong>Scryfall live images</strong> on (the default on phones; you can turn it off in Settings), the app requests card images from Scryfall, which receives the card names being shown, including cards in your hand, and your IP address. Downloaded images then work offline. The browser game always loads card images and mana symbols from Scryfall.</p>
+    <p>With <strong>Scryfall live images</strong> on (the default on phones; you can turn it off in Settings), the app requests card images from Scryfall, which receives the card names being shown, including cards in your hand, and your IP address. Downloaded images then work offline. The browser game always loads card images from Scryfall; its mana symbols and card back come from the site itself.</p>
     <p>When you import a deck from Archidekt or Moxfield in the browser game, the request goes through the game's own address on Vercel, which fetches the deck link you entered.</p>
 
     <h2>This website and the browser game</h2>

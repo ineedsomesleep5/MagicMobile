@@ -85,6 +85,9 @@ struct OnDeviceRootView: View {
     // Quick Match, Ranked and the profile (Ranked/).
     @ObservedObject private var profileRecord = PlayerRecordStore.shared
     @StateObject private var matchmaker = RankedMatchmaker(service: nil)
+    /// The freeze log's launch question and its answer (docs/FREEZE_LOG.md).
+    @State private var freezePrompt: FreezeIncident?
+    @State private var freezeResult: String?
     @StateObject private var challenges = FriendChallengeCoordinator(service: nil)
     /// The friend a challenge is waiting on, and its mode.
     @State private var challengeTarget: (name: String, mode: PlayMode)?
@@ -619,8 +622,39 @@ struct OnDeviceRootView: View {
             if phase == .background { resume.enteredBackground() }
             if phase == .active { resume.enteredForeground(); GameAudio.shared.resume() }
             account.setForeground(phase == .active)
+            MainThreadWatchdog.shared.setPaused(phase != .active)
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
+        // Freeze log (docs/FREEZE_LOG.md): what the game is, the ranked search's steps, and last session's freeze.
+        .onChange(of: activeMatch, initial: true) { _, match in
+            session.freezeMode = match.map { "\($0.mode.rawValue)\($0.opponents.contains { $0.isAI } ? " vs AI" : " vs people")" }
+                ?? (setup.usingMultiplayer ? "table" : "custom")
+        }
+        .onChange(of: matchmaker.phase) { _, phase in
+            switch phase {
+            case .idle: FreezeLog.shared.note("Ranked search: idle")
+            case .searching: FreezeLog.shared.note("Ranked search: looking for a player")
+            case .matched: FreezeLog.shared.note("Ranked search: matched with a player")
+            }
+        }
+        .task(id: account.phase == .ready) {
+            guard account.phase == .ready, !activeGame, freezePrompt == nil,
+                  ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] == nil else { return }
+            freezePrompt = FreezeLog.shared.unsent
+        }
+        .tavernConfirmation(active: true, title: "The last game froze",
+                            message: "Send the report? It holds the game's state and your recent actions, not your account or decks.",
+                            isPresented: Binding(get: { freezePrompt != nil && !activeGame }, set: { if !$0 { freezePrompt = nil } }),
+                            actions: [TavernDialogAction(title: "Send") {
+                                guard let incident = freezePrompt else { return }
+                                freezePrompt = nil
+                                Task { await sendFreezeReport(incident) }
+                            }],
+                            cancelTitle: "Not now",
+                            onCancel: { if let incident = freezePrompt { FreezeLog.shared.dismiss(incident.id) }; freezePrompt = nil })
+        .tavernConfirmation(active: true, title: freezeResult ?? "", message: nil,
+                            isPresented: Binding(get: { freezeResult != nil }, set: { if !$0 { freezeResult = nil } }),
+                            actions: [], cancelTitle: "OK", onCancel: { freezeResult = nil })
         #if DEBUG
         // Development fixtures (SocialFixtures): open the profile or the friends sheet at launch.
         .task {
@@ -1055,6 +1089,7 @@ struct OnDeviceRootView: View {
         .onChange(of: stopForOwnSpells) { _, _ in session.setSmartPass(.load()) }
         .onChange(of: stopForThreats) { _, _ in session.setSmartPass(.load()) }
         .environment(\.gameConcede, GameConcedeHandler(concede: concede))
+        .environment(\.gameFreezeReport, GameFreezeReportHandler(report: reportFreezeNow))
         .environment(\.emoteCenter, emotes)
         // Messages from friends inside a game too: the game menu's Messages button, and a banner for a new one.
         .environment(\.friendMessages, account.phase == .ready && account.username != nil && account.messagesAvailable
@@ -2322,6 +2357,22 @@ struct OnDeviceRootView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
+    }
+
+    /// Sends one freeze incident with the phone's crash and hang summaries (docs/FREEZE_LOG.md), only when the player chose to.
+    private func sendFreezeReport(_ incident: FreezeIncident) async {
+        let sections = [FreezeLog.text(incident), OnDeviceSystemReports.section(OnDeviceSystemReports.load(directory: OnDeviceDiagnostics.defaultDirectory))]
+        let sent = await account.sendDiagnostic(kind: incident.kind, report: sections.compactMap { $0 }.joined(separator: "\n\n"))
+        if sent { FreezeLog.shared.markSent(incident.id) }
+        freezeResult = sent ? String(localized: "Report sent. Thank you.") : String(localized: "Couldn't send the report. It will ask again next time.")
+    }
+
+    /// The game menu's Report a freeze: record this moment with the game around it, then send it.
+    private func reportFreezeNow() {
+        session.refreshFreezeContext()
+        let id = FreezeLog.shared.record(kind: "reported", extra: FreezeDevice.summary(foreground: scenePhase == .active))
+        guard let incident = FreezeLog.shared.incidents.first(where: { $0.id == id }) else { return }
+        Task { await sendFreezeReport(incident) }
     }
 
     private func startAI() {

@@ -275,6 +275,13 @@ final class OnDeviceSession: ObservableObject {
     lazy var presentationHold: BoardPresentationHold = .shared
     /// Full control (long-press Pass, or the controls menu): smart pass stops at every priority until this turn ends.
     @Published private(set) var fullControlTurn: Int64?
+    /// What the root view calls this game (quick, ranked vs AI, a table), for the freeze log (docs/FREEZE_LOG.md).
+    var freezeMode = "game"
+    /// Uptime of the game's last change and of the answer waiting on the engine; one record per stall.
+    private var lastGameChangeAt = ProcessInfo.processInfo.systemUptime
+    private var answerSentAt: TimeInterval?
+    private var stallRecorded = false
+    private var stallWatch: Task<Void, Never>?
     /// A local log line was added since the last snapshot: the next poll republishes even if the game didn't change.
     private var logChanged = false
 
@@ -298,6 +305,9 @@ final class OnDeviceSession: ObservableObject {
         self.table = table; lastActionAt = nil
         autoPassStatus = ""; checkpoint = nil; isOverForSeat = false
         closeEndpoint = close; automaticPolling = autoPoll; epoch = UUID()
+        lastGameChangeAt = ProcessInfo.processInfo.systemUptime; answerSentAt = nil; stallRecorded = false
+        FreezeLog.shared.note("Game started: \(freezeMode)\(table == nil ? "" : ", at a table")")
+        startStallWatch()
         refreshSequence = 0; appliedRefreshSequence = 0; isClosing = false
         messageLog = OnDeviceMessageLog()
         tableRounds = TableRounds()
@@ -379,6 +389,7 @@ final class OnDeviceSession: ObservableObject {
         }
         messageLog = nextLog
         poll = next
+        if !unchanged { gameChanged() }
         pollExchange = exchange
         if let saved = next.checkpoint, saved != checkpoint { checkpoint = saved }
         let over = GameResumePolicy.isOver(next)
@@ -404,7 +415,10 @@ final class OnDeviceSession: ObservableObject {
         // Assigned only on a change: a published property announces every assignment, even an equal one.
         if status != nextStatus { status = nextStatus }
         let nextError = next.raw["failure"]?["message"]?.string
-        if errorMessage != nextError { errorMessage = nextError }
+        if errorMessage != nextError {
+            errorMessage = nextError
+            if let nextError { FreezeLog.shared.note("Engine failure: \(nextError)") }
+        }
         if errorMessage != nil { stopAutoPass(reason: OnDeviceYieldPolicy.StopReason.interrupted.message) }
         if isAutoPassing {
             if let context = yieldContext {
@@ -897,6 +911,8 @@ final class OnDeviceSession: ObservableObject {
             chosenAbility = nil
         }
         pending = Submission(prompt: prompt, answer: answer, requestID: UUID(), label: label)
+        answerSentAt = ProcessInfo.processInfo.systemUptime; stallRecorded = false
+        FreezeLog.shared.note("Answer: \(label) (\(command.type))")
         pendingActionID = actionID; pendingCardID = command.cardInstanceId ?? command.sourceInstanceId
         try await performPendingResponse()
         // Delivered: the standing instructions went with it, and what was remembered is counted for the forget controls.
@@ -971,6 +987,7 @@ final class OnDeviceSession: ObservableObject {
             responding = false
             if epoch == token {
                 errorMessage = error.localizedDescription
+                FreezeLog.shared.note("Answer failed: \(error.localizedDescription)")
                 // An engine rejection is certain. A transport timeout or busy RPC is not:
                 // retain the exact request ID and answer for a safe user-triggered retry.
                 // A rejected follow-up poll cannot retract an acknowledged answer.
@@ -1070,10 +1087,18 @@ final class OnDeviceSession: ObservableObject {
         messageLog = OnDeviceMessageLog()
         tableRounds = TableRounds()
         self.closeEndpoint = nil; pending = nil; pendingActionID = nil; pendingCardID = nil; errorMessage = nil; status = "Ready"
+        stallWatch?.cancel(); stallWatch = nil; answerSentAt = nil
+        FreezeLog.shared.note("Game closed")
+        FreezeLog.shared.setContext(FreezeLog.noGame)
     }
 
     func setForeground(_ value: Bool) {
-        if isForeground != value { visibilityEpoch = UUID() }
+        if isForeground != value {
+            visibilityEpoch = UUID()
+            FreezeLog.shared.note(value ? "Back in the foreground" : "To the background")
+            // Time in the background is not a stall.
+            if value { lastGameChangeAt = ProcessInfo.processInfo.systemUptime; stallRecorded = false }
+        }
         if !value { stopAutoPass(); smartPassTask?.cancel(); smartPassTask = nil }
         isForeground = value
         if value { beginPolling() }
@@ -1083,6 +1108,60 @@ final class OnDeviceSession: ObservableObject {
                 status = "Paused while this app is in the background"
             }
         }
+    }
+
+    // MARK: Freeze log (docs/FREEZE_LOG.md)
+
+    private func gameChanged() {
+        lastGameChangeAt = ProcessInfo.processInfo.systemUptime; stallRecorded = false
+        if let snapshot {
+            let prompt = poll?.prompt == nil ? "nothing for you" : (snapshot.promptEnvelopeV2?.responseKind ?? "a prompt for you")
+            FreezeLog.shared.note("Turn \(snapshot.turn) \(snapshot.step ?? snapshot.phase), \(snapshot.isViewer(snapshot.activePlayerId) ? "yours" : "theirs"), \(prompt)")
+        } else if let phase = poll?.phase {
+            FreezeLog.shared.note("Game \(phase)")
+        }
+        updateFreezeContext(now: lastGameChangeAt)
+    }
+
+    private func startStallWatch() {
+        stallWatch?.cancel()
+        stallWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                self?.checkForStall()
+            }
+        }
+    }
+
+    /// Every 5 s while a game is on: a stall by FreezeRules is recorded once until the game moves again.
+    func checkForStall(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard isForeground, !isClosing, client != nil else { return }
+        updateFreezeContext(now: now)
+        let kind = FreezeRules.stall(
+            inGame: snapshot != nil, over: isOverForSeat || snapshot?.isCompleted == true,
+            waitingOnYou: poll?.prompt != nil && pending == nil,
+            answerPendingSeconds: pending == nil ? nil : answerSentAt.map { now - $0 },
+            quietSeconds: now - lastGameChangeAt, withPeople: table != nil)
+        guard let kind, !stallRecorded else { return }
+        stallRecorded = true
+        FreezeLog.shared.record(kind: kind, extra: FreezeDevice.summary(foreground: isForeground))
+    }
+
+    /// Brings the freeze log's picture of the game up to date (a manual report).
+    func refreshFreezeContext() { updateFreezeContext(now: ProcessInfo.processInfo.systemUptime) }
+
+    /// The game as a freeze report describes it, kept current so the watchdog can read it while the main thread is stuck.
+    private func updateFreezeContext(now: TimeInterval) {
+        var lines = ["Game: \(freezeMode)\(table == nil ? "" : " (a table)") · status \(status)"]
+        if let snapshot {
+            let prompt = snapshot.promptEnvelopeV2.map { "\($0.responseKind): \($0.message.prefix(160))" } ?? "none shown"
+            lines.append("Turn \(snapshot.turn)\(snapshot.round.map { " (round \($0))" } ?? "") · \(snapshot.step ?? snapshot.phase) · \(snapshot.isViewer(snapshot.activePlayerId) ? "your turn" : "their turn") · revision \(snapshot.bridgeRevision.map(String.init) ?? "?")")
+            lines.append("Waiting on you: \(poll?.prompt != nil ? "yes" : "no") · prompt \(prompt)")
+        }
+        lines.append("Answer pending: \(pending.map { "\($0.label), \(Int(now - (answerSentAt ?? now))) s" } ?? "none") · working \(isWorking) · auto-pass \(isAutoPassing)\(autoPassStatus.isEmpty ? "" : " (\(autoPassStatus))") · smart pass \(smartPass == nil ? "off" : "on") · idle polls \(idlePolls)")
+        lines.append(String(format: "Game unchanged for %.0f s", now - lastGameChangeAt))
+        if let errorMessage { lines.append("Error: \(errorMessage.prefix(300))") }
+        FreezeLog.shared.setContext(lines.joined(separator: "\n"))
     }
 
     private func beginPolling() {
