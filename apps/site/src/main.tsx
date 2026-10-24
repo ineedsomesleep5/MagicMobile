@@ -302,8 +302,8 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 36 keeps your decks in sync: sign in and the decks you build show up on every phone signed in
-                  to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
+                  Android build 37 keeps a record when a game freezes and asks before sending it, so freezes can be fixed. Your
+                  decks stay in sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
               </details>
