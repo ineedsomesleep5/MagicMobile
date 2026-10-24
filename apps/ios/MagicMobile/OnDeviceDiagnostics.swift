@@ -1,8 +1,8 @@
 import Foundation
 import Combine
 
-/// Latest local engine failure only, plus the app's own crash and hang summaries from MetricKit.
-/// No snapshots, action payloads, networking, or automatic sharing.
+/// Latest local engine failure only, plus the app's own crash and hang summaries from MetricKit and its freeze log
+/// (docs/FREEZE_LOG.md). No snapshots or automatic sharing: a report leaves the phone only when the player sends it.
 @MainActor
 final class OnDeviceDiagnostics: ObservableObject {
     static let maxBytes = 65_536
@@ -17,6 +17,8 @@ final class OnDeviceDiagnostics: ObservableObject {
     private var captureGeneration = 0
     private var clearing = false
     private var systemReportsObserver: AnyCancellable?
+    private var freezeObserver: AnyCancellable?
+    private let freezeLog: FreezeLog
     private var file: URL { directory.appendingPathComponent("latest-engine-failure.txt") }
 
     nonisolated static var defaultDirectory: URL {
@@ -26,6 +28,8 @@ final class OnDeviceDiagnostics: ObservableObject {
 
     init(directory: URL? = nil) {
         self.directory = directory ?? Self.defaultDirectory
+        // The app's freeze log lives in the default folder; another folder (tests, UI tests) gets its own.
+        freezeLog = self.directory.standardizedFileURL == Self.defaultDirectory.standardizedFileURL ? .shared : FreezeLog(directory: self.directory)
         do {
             if FileManager.default.fileExists(atPath: file.path) {
                 let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -47,10 +51,13 @@ final class OnDeviceDiagnostics: ObservableObject {
                     self.publish()
                 }
             }
+        freezeObserver = NotificationCenter.default.publisher(for: FreezeLog.didChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.publish() } }
     }
 
     private func publish() {
-        let parts = [engineReport, systemReport].compactMap { $0 }
+        let parts = [engineReport, FreezeLog.section(freezeLog.incidents), systemReport].compactMap { $0 }
         report = parts.isEmpty ? nil : parts.joined(separator: "\n\n")
         // Crash and hang summaries always describe an earlier session.
         if engineReport == nil { isHistorical = systemReport != nil }
@@ -114,6 +121,7 @@ final class OnDeviceDiagnostics: ObservableObject {
         engineReport = nil; persistedReport = nil
         try OnDeviceSystemReports.clear(directory: directory)
         systemReport = nil
+        freezeLog.clear()
         errorMessage = nil; isHistorical = false
         publish()
     }

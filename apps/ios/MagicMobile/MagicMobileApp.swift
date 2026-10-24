@@ -78,6 +78,8 @@ final class MagicMobileAppDelegate: NSObject, UIApplicationDelegate {
             _ = NativeAssetDownloads.shared
             // Local crash and hang summaries for the report sheet; nothing is uploaded.
             OnDeviceCrashReporter.shared.start()
+            // The freeze log's watchdog (docs/FREEZE_LOG.md): a stuck main thread is saved before the phone ends the app.
+            MainThreadWatchdog.shared.start()
             artworkConsentObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated {
                     if !MagicMobilePreferences.current.bool(forKey: NativeArtworkPreference.key) {

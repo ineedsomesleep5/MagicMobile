@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "about": "FreezeRules.stall (docs/FREEZE_LOG.md): when a game that still responds has stopped moving. Inputs are seconds.",
+  "cases": [
+    { "name": "no game", "input": { "inGame": false, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false }, "expect": null },
+    { "name": "game over", "input": { "inGame": true, "over": true, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false }, "expect": null },
+    { "name": "your prompt, any length", "input": { "inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false }, "expect": null },
+    { "name": "answer just sent", "input": { "inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": 19.9, "quietSeconds": 19.9, "withPeople": false }, "expect": null },
+    { "name": "answer never accepted", "input": { "inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": 20, "quietSeconds": 20, "withPeople": false }, "expect": "answer-not-accepted" },
+    { "name": "answer pending beats quiet", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": 25, "quietSeconds": 400, "withPeople": false }, "expect": "answer-not-accepted" },
+    { "name": "long AI turn", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 119, "withPeople": false }, "expect": null },
+    { "name": "engine quiet, solo", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 120, "withPeople": false }, "expect": "engine-quiet" },
+    { "name": "a person thinking", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 179, "withPeople": true }, "expect": null },
+    { "name": "table quiet", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 180, "withPeople": true }, "expect": "engine-quiet" }
+  ]
+}
