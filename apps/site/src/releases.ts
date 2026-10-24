@@ -17,6 +17,10 @@ export const releases = {
     url: "https://testflight.apple.com/join/2mSHE8rZ",
     status: `Build ${iosTestFlightBuild} is available now for Internal and External TestFlight testers, on iPhone and iPad.`,
   },
+  // The browser game is linked from here but stays unlisted: the game itself carries noindex.
+  web: {
+    url: "https://magicmobile-web.vercel.app",
+  },
 };
 
 // Obtainium installs MagicMobile from its GitHub releases and offers each new build.

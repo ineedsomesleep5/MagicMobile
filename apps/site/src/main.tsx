@@ -1,467 +1,355 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  AppleLogo,
-  AndroidLogo,
-  ArrowUpRight,
-  ArrowRight,
-  Plus,
-} from "@phosphor-icons/react";
 import "@fontsource-variable/source-serif-4/opsz.css";
-import "@fontsource/cormorant-sc/latin-700.css";
 import "./style.css";
-import { cards } from "./cards";
 import { obtainium, releases } from "./releases";
+import { startHall } from "./hall";
+import { startBarDie } from "./barDie";
 
 declare global {
   interface Window {
-    ScrollCraft?: {
-      mount: (root: HTMLElement) => unknown;
-      instances: unknown[];
-    };
+    ScrollCraft?: { mount: (root: HTMLElement) => unknown; instances: unknown[] };
   }
 }
-const CardScene = lazy(() => import("./CardScene"));
-const android = releases.android.url;
-const ios = releases.ios.url;
 
-/** The four-point sparkle from the MagicMobile mark, for labels and rules. */
-function Sparkle() {
+type Platform = "ios" | "android" | "web";
+// The visitor's own screen comes first and in orange, in the bar and at the close. iPadOS reports a Mac with touch.
+const ua = navigator.userAgent;
+const mine: Platform =
+  /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "ios" : /Android/.test(ua) ? "android" : "web";
+const order: Platform[] = [mine, ...(["ios", "android", "web"] as Platform[]).filter((p) => p !== mine)];
+const screens: Record<Platform, { short: string; long: string; url: string }> = {
+  ios: { short: "iPhone", long: "iPhone and iPad", url: releases.ios.url },
+  android: { short: "Android", long: "Android", url: releases.android.url },
+  web: { short: "Browser", long: "Browser", url: releases.web.url },
+};
+
+/** A screen's pill: your own goes straight to it; the others go to their row under Get MagicMobile. */
+function ScreenPill({ p, long }: { p: Platform; long?: boolean }) {
+  const own = p === mine;
   return (
-    <svg className="sparkle" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M12 0c.9 6.2 4.6 10.4 12 12-7.4 1.6-11.1 5.8-12 12-.9-6.2-4.6-10.4-12-12C7.4 10.4 11.1 6.2 12 0z" />
-    </svg>
+    <a className={`pill ${own ? "pill--primary mine" : "pill--glass"}`} href={own ? screens[p].url : `#get-${p}`}>
+      {long ? screens[p].long : screens[p].short}
+    </a>
   );
 }
 
+type Exhibit = {
+  id: string; ci: string; art: string; word: string; title: string; points: string[]; credit: string;
+  card?: { src: string; alt: string }; artAlt: string;
+};
+const exhibits: Exhibit[] = [
+  {
+    id: "quick", ci: "BGRUW", art: "ur-dragon", word: "Play.", title: "Quick Match",
+    points: ["One AI opponent, matched to your deck's bracket.", "The AI plays on your own device.", "100-card Commander."],
+    credit: "The Ur-Dragon · art by Jaime Jones", artAlt: "The Ur-Dragon over a storm of dragons",
+    card: { src: "ur-dragon", alt: "The Ur-Dragon card" },
+  },
+  {
+    id: "ranked", ci: "BRW", art: "edgar-markov", word: "Climb.", title: "Ranked",
+    points: ["Four divisions in every tier below Mythic.", "A new season every month.", "Below Mythic, a loss never drops your tier."],
+    credit: "Edgar Markov · art by Volkan Baǵa", artAlt: "Edgar Markov on his throne",
+  },
+  {
+    id: "studio", ci: "BUW", art: "yshtola", word: "Build.", title: "Deck Studio",
+    points: ["Import from Archidekt, or paste any list.", "Choose the art for every card on your phone.", "Every deck gets a bracket from its list."],
+    credit: "Y'shtola, Night's Blessed · art by Magali Villeneuve", artAlt: "Y'shtola casting under a night sky",
+    card: { src: "yshtola", alt: "Y'shtola, Night's Blessed card" },
+  },
+  {
+    id: "table", ci: "BGUW", art: "atraxa", word: "Host.", title: "Custom table",
+    points: ["Up to four players.", "Against the AI, or at an online table with friends.", "Invite friends with a link."],
+    credit: "Atraxa, Praetors' Voice · art by Victor Adame Minguez", artAlt: "Atraxa with wings spread",
+    card: { src: "atraxa", alt: "Atraxa, Praetors' Voice card" },
+  },
+  {
+    id: "friends", ci: "R", art: "krenko", word: "Challenge.", title: "Friends",
+    points: ["Find players by name.", "Messages and challenges.", "See who is online and who is hosting."],
+    credit: "Krenko, Mob Boss · art by Lie Setiawan", artAlt: "Krenko and his goblin mob",
+    card: { src: "krenko", alt: "Krenko, Mob Boss card" },
+  },
+  {
+    id: "hearth", ci: "GRU", art: "miirym", word: "Classic.", title: "Hearth",
+    points: ["The classic tavern table.", "Hourglass, mana rail and table sockets.", "On iPhone and Android, switch to it in Options."],
+    credit: "Miirym, Sentinel Wyrm · art by Kekai Kotaki", artAlt: "Miirym, a spectral dragon in a hoard",
+    card: { src: "miirym", alt: "Miirym, Sentinel Wyrm card" },
+  },
+  {
+    id: "learn", ci: "W", art: "giada", word: "Learn.", title: "How to play",
+    points: ["A guided first game against the AI, on your phone.", "The turn, combat and the stack, step by step."],
+    credit: "Giada, Font of Hope · art by Kai Carpenter", artAlt: "Giada, an angel in golden light",
+    card: { src: "giada", alt: "Giada, Font of Hope card" },
+  },
+];
+const TIERS = ["bronze", "silver", "gold", "platinum", "diamond", "mythic"];
+
 function App() {
-  const [platform, setPlatform] = useState<"android" | "ios">("android");
   useEffect(() => {
-    const boot = () => {
-      if (matchMedia("(max-width: 650px)").matches) {
-        document.getElementById("cards")?.setAttribute("data-sc-span", "1.5");
-        document.getElementById("the-app")?.setAttribute("data-sc-span", "2.2");
-      }
-      if (window.ScrollCraft && !window.ScrollCraft.instances.length)
-        window.ScrollCraft.mount(document.body);
-    };
-    boot();
-    window.addEventListener("load", boot, { once: true });
-    return () => window.removeEventListener("load", boot);
+    if (window.ScrollCraft && !window.ScrollCraft.instances.length) window.ScrollCraft.mount(document.body);
+    const stopHall = startHall();
+    const stopDie = startBarDie();
+    return () => { stopHall(); stopDie(); };
   }, []);
+
+  const rows: Record<Platform, ReactNode> = {
+    ios: (
+      <article className="row" id="get-ios" key="ios">
+        <div className="row__what">
+          <strong>iPhone and iPad</strong>
+          <span>TestFlight · Version {releases.ios.version} · Build {releases.ios.build} · iOS 17+</span>
+        </div>
+        <a className={`pill ${mine === "ios" ? "pill--primary" : "pill--glass"}`} href={releases.ios.url}>Join TestFlight</a>
+      </article>
+    ),
+    android: (
+      <article className="row" id="get-android" key="android">
+        <div className="row__what">
+          <strong>Android</strong>
+          <span>
+            APK · Version {releases.android.version} · Build {releases.android.build} · Android 8+, ARM64 ·{" "}
+            <a href={releases.android.notes}>Release notes</a>
+          </span>
+        </div>
+        <a className={`pill ${mine === "android" ? "pill--primary" : "pill--glass"}`} href={releases.android.url}>Download APK</a>
+        <details className="updates">
+          <summary>Get every update with Obtainium</summary>
+          <ol>
+            <li>
+              <a className="pill pill--glass" href={obtainium.download}>Download Obtainium</a>
+              <br />A free, open-source app updater. Open the file and allow the install.
+            </li>
+            <li>
+              <a className="pill pill--glass" href={obtainium.addApp}>Add MagicMobile to Obtainium</a>
+              <br />
+              Opens Obtainium with MagicMobile filled in. Tap Add, then Install. If nothing opens, choose Add App in
+              Obtainium and paste {obtainium.source}.
+            </li>
+            <li>Done. Obtainium shows each new build; tap Update. Your decks and settings stay.</li>
+          </ol>
+        </details>
+      </article>
+    ),
+    web: (
+      <article className="row" id="get-web" key="web">
+        <div className="row__what">
+          <strong>Browser</strong>
+          <span>Desktop · A current Chrome, Edge or Firefox · About 44 MB the first time</span>
+        </div>
+        <a className={`pill ${mine === "web" ? "pill--primary" : "pill--glass"}`} href={releases.web.url}>Play in the browser</a>
+      </article>
+    ),
+  };
+
   return (
     <>
-      <a className="skip" href="#main">
-        Skip to content
-      </a>
-      <header className="masthead">
-        <a className="brand" href="#cards" aria-label="MagicMobile home">
-          <img src="/tavern/mark-96.webp" alt="" width="40" height="40" />
-          <span>MagicMobile</span>
-        </a>
-        <a className="header-download plaque plaque-thin" href="#download">
-          Get the game <ArrowUpRight size={16} />
-        </a>
+      <a className="skip" href="#main">Skip to content</a>
+      <div className="sc-grain" aria-hidden="true" />
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+        <defs>
+          <linearGradient id="dieFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#ffb24a" /><stop offset="0.5" stopColor="#f47a1c" /><stop offset="1" stopColor="#a8360a" />
+          </linearGradient>
+        </defs>
+      </svg>
+
+      <header className="bar">
+        <div className="bar__in">
+          <a className="brand" href="#main" aria-label="MagicMobile, back to the top">
+            <img src="/site/mark.png" width="96" height="96" alt="" />
+            <b>MagicMobile</b>
+          </a>
+          <div className="die-slot" aria-hidden="true" />
+          <nav className="screens" aria-label="Get MagicMobile">
+            {order.map((p) => <ScreenPill key={p} p={p} />)}
+          </nav>
+        </div>
       </header>
-      <nav className="destination-dock" aria-label="Page destinations">
-        <a href="#cards">The cards</a>
-        <a href="#the-app">The app</a>
-        <a className="dock-download" href="#download">
-          Download <ArrowUpRight size={14} />
-        </a>
+      <div className="die" aria-hidden="true">
+        <canvas />
+        <svg viewBox="0 0 100 100">
+          <polygon className="face" points="50,2 92,26 92,74 50,98 8,74 8,26" />
+          <polyline className="edge" points="50,22 78,68 22,68 50,22" />
+          <polyline className="edge" points="8,26 50,22 92,26" /><line className="edge" x1="50" y1="2" x2="50" y2="22" />
+          <polyline className="edge" points="92,26 78,68 92,74" /><line className="edge" x1="78" y1="68" x2="50" y2="98" />
+          <polyline className="edge" points="8,26 22,68 8,74" /><line className="edge" x1="22" y1="68" x2="50" y2="98" />
+          <text x="50" y="52">20</text>
+        </svg>
+      </div>
+
+      <nav className="index away" aria-label="Ways to play">
+        <ol className="index__list">
+          {exhibits.map((ex, i) => (
+            <li key={ex.id}>
+              <button className="medal" data-go={i} aria-current={i === 0 ? "true" : "false"}>
+                <img src={`/site/art/${ex.art}.webp`} alt="" /><span className="sr">{ex.title}</span>
+              </button>
+            </li>
+          ))}
+          <li>
+            <button className="medal medal--play" data-go="play">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" /></svg><span className="sr">Get MagicMobile</span>
+            </button>
+          </li>
+        </ol>
+        <div className="index__pips" aria-hidden="true">
+          {(["W", "U", "B", "R", "G"] as const).map((c) => (
+            <i key={c} style={{ color: `var(--mana-${c.toLowerCase()})` }} data-c={c} />
+          ))}
+        </div>
       </nav>
+
       <main id="main">
-        <section
-          id="cards"
-          className="opening"
-          data-sc-act="pin"
-          data-sc-span="1.8"
-        >
-          <div data-sc-stage className="opening-stage">
-            <div className="embers" aria-hidden="true">
-              {Array.from({ length: 10 }, (_, i) => (
-                <i key={i} />
+        <section className="cut hero" data-sc-act="flow" data-sc-drift="#0c0d11">
+          <div className="cut__bg"><img src="/site/art/ur-dragon.webp" width="1252" height="914" alt="The Ur-Dragon over a storm of dragons" /></div>
+          <div className="cut__shade" />
+          <img className="hero__card" src="/site/cards/ur-dragon.webp" width="520" height="727" alt="The Ur-Dragon card" />
+          <div className="cut__copy">
+            <h1 className="word">Commander.</h1>
+            <p className="fact">100-card games against the AI or your friends. On iPhone, Android and in the browser.</p>
+          </div>
+        </section>
+
+        <section className="cut cut--shot cut--draw" data-sc-act="flow" data-sc-drift="#120c09">
+          <div className="cut__in">
+            <figure className="hand" data-sc-reveal="up">
+              <img src="/site/shots/draw.webp" width="1206" height="900" loading="lazy"
+                alt="The Opening Hand screen: eight cards fanned, Mulligan to 6 cards?, and the Mulligan and Keep buttons" />
+            </figure>
+            <div className="cut__text" data-sc-in><h2 className="word">Draw.</h2><p className="fact">Mulligan or keep, the way Arena asks.</p></div>
+          </div>
+        </section>
+
+        <section className="cut cut--shot cut--attack" data-sc-act="flow" data-sc-drift="#140d08">
+          <div className="cut__in">
+            <figure className="screen" data-sc-reveal="up">
+              <picture>
+                <source media="(max-width: 860px)" srcSet="/site/shots/attack-phone.webp" width="1080" height="839" />
+                <img src="/site/shots/attack.webp" width="2200" height="886" loading="lazy"
+                  alt="The Arena board in landscape: Serra Angels and Silvercoat Lions on the battlefield, the hand below, Next to combat" />
+              </picture>
+            </figure>
+            <div className="cut__text" data-sc-in><h2 className="word">Attack.</h2><p className="fact">The Arena board, held either way.</p></div>
+          </div>
+        </section>
+
+        <section className="hall" data-sc-act="pin" data-sc-span="9" aria-label="Ways to play">
+          <div data-sc-stage className="hall__stage">
+            <div className="room" aria-hidden="true">
+              <div className="room__ambient" /><div className="room__glow" /><div className="room__floor" />
+            </div>
+            <div className="rail"><div className="rail__in">
+              {exhibits.map((ex) => (
+                <article key={ex.id} className={`ex${ex.id === "ranked" ? " ex--ranked" : ""}`} id={`ex-${ex.id}`}
+                  data-ci={ex.ci} data-art={`/site/art/${ex.art}.webp`}>
+                  <figure className="ex__plate"><img src={`/site/art/${ex.art}.webp`} width="1252" height="914" alt={ex.artAlt} loading="lazy" /></figure>
+                  <p className="ex__word" aria-hidden="true">{ex.word}</p>
+                  {ex.card && <img className="ex__card" src={`/site/cards/${ex.card.src}.webp`} width="520" height="727" alt={ex.card.alt} loading="lazy" />}
+                  {ex.id === "ranked" && (
+                    <div className="badge" aria-hidden="true">
+                      {TIERS.map((t, i) => (
+                        <img key={t} src={`/site/ranks/${t}.webp`} alt="" className={[i === 0 ? "on" : "", t === "mythic" ? "badge__mythic" : ""].join(" ").trim() || undefined} />
+                      ))}
+                    </div>
+                  )}
+                  <div className="ex__label glass">
+                    <h3>{ex.title}</h3>
+                    {ex.id === "ranked" && (
+                      <ul className="tiers" aria-label="Tiers">
+                        {TIERS.map((t, i) => <li key={t} className={i === 0 ? "on" : undefined}>{t[0].toUpperCase() + t.slice(1)}</li>)}
+                      </ul>
+                    )}
+                    <ul>{ex.points.map((pt) => <li key={pt}>{pt}</li>)}</ul>
+                    <p className="ex__credit">{ex.credit}</p>
+                  </div>
+                </article>
               ))}
-            </div>
-            <div className="hero-type" data-sc-parallax="0.6">
-              <h1>
-                Make your
-                <br />
-                <span>next move.</span>
-              </h1>
-            </div>
-            <div className="hand-stage">
-              <Suspense
-                fallback={
-                  <img
-                    className="loading-card"
-                    src="/black-lotus.webp"
-                    alt="Black Lotus collectible card"
-                    width="672"
-                    height="936"
-                  />
-                }
-              >
-                <CardScene />
-              </Suspense>
-            </div>
-            <div className="hero-bottom">
-              <p>
-                Commander. Your decks.
-                <br />A whole game in your pocket.
-              </p>
-              <div className="hero-downloads">
-                <a className="plaque" href={ios}>
-                  <AppleLogo weight="fill" size={22} />
-                  <span>iPhone</span>
-                  <ArrowUpRight size={16} />
-                </a>
-                <a className="plaque" href={android}>
-                  <AndroidLogo size={22} />
-                  <span>Android</span>
-                  <ArrowUpRight size={16} />
-                </a>
-              </div>
-            </div>
+            </div></div>
           </div>
         </section>
-        <section className="invitation" data-sc-act="flow">
-          <div className="invitation-inner" data-sc-in data-sc-stagger="65">
-            <p className="eyebrow">
-              <Sparkle />
-              A new deck. A wild idea. One more game.
-            </p>
-            <h2>
-              Good games begin
-              <br />
-              with <span>your next idea.</span>
-            </h2>
+
+        {/* The peak: the stage holds while the bar's die leaves the bar and rolls above the caption. */}
+        <section className="roll" data-sc-act="pin" data-sc-span="3.2" data-roll aria-label="Who goes first">
+          <div data-sc-stage className="roll__stage">
+            <h2 className="roll__cap" data-from="-1" data-to="0.36">Who goes first?</h2>
+            <p className="roll__cap" data-from="0.36" data-to="0.7">Highest roll starts.</p>
+            <p className="roll__cap roll__cap--won" data-from="0.7" data-to="2">You go first.</p>
           </div>
         </section>
-        <section
-          id="the-app"
-          className="app-reveal"
-          data-sc-act="pin"
-          data-sc-span="2.8"
-        >
-          <div data-sc-stage className="app-reveal-stage">
-            <div className="reveal-title" data-sc-cue="0 0.42 0 0.15">
-              <h2>
-                From your hand.
-                <br />
-                <span>To your phone.</span>
-              </h2>
-            </div>
-            <div className="deal-table" aria-hidden="true">
-              {[-2, -1, 0, 1, 2].map((n) => (
-                <img
-                  key={n}
-                  className={`dealt-card dealt-card-${n + 2}`}
-                  src={cards[n + 3].image}
-                  width="1060"
-                  height="1484"
-                  alt=""
-                />
-              ))}
-            </div>
-            <div className="reveal-phone-wrap">
-              <div
-                className="reveal-phone"
-                data-sc-reveal="up"
-                data-sc-reveal-at="0.22 0.57"
-              >
-                <img
-                  src="/menu-landscape.webp"
-                  alt="Actual iOS main menu in landscape: Play Commander, Decks and Friends beside the chosen Commander deck"
-                  width="1300"
-                  height="598"
-                />
-              </div>
-            </div>
-            <div className="reveal-caption" data-sc-cue="0.5 1 0.05 0.03">
-              <h3>
-                Your deck.
-                <br />
-                Your way.
-              </h3>
-              <p>
-                Search cards. Import a list.
-                <br />
-                Build something worth playing.
-              </p>
-              <span>Actual iOS app preview</span>
-            </div>
+
+        <section className="cut close" id="play" data-sc-act="flow" data-sc-drift="#0c0d11">
+          <div className="cut__bg"><img src="/site/art/giada.webp" width="1252" height="914" alt="Giada, an angel in golden light" loading="lazy" /></div>
+          <div className="cut__copy">
+            <h2 className="word">Your turn.</h2>
+            <div className="go">{order.map((p) => <ScreenPill key={p} p={p} long />)}</div>
           </div>
         </section>
-        <section className="gameplay" data-sc-act="flow">
-          <div className="gameplay-copy" data-sc-in data-sc-stagger="60">
-            <p className="section-label eyebrow">
-              <Sparkle />
-              The next decision is yours.
-            </p>
-            <h2>
-              Less setup.
-              <br />
-              <span>More magic.</span>
-            </h2>
-            <p>
-              Take your Commander ideas to the table. Play against AI, with the
-              rules handled by the XMage engine.
-            </p>
-            <div className="capability-ledger">
-              <div>
-                <span>Build</span>
-                <p>Deck imports, card search, and room to experiment.</p>
-              </div>
-              <div>
-                <span>Play</span>
+
+        <section className="get" id="download" data-sc-act="flow">
+          <div className="get__in">
+            <h2>Get MagicMobile</h2>
+            <div className="rows glass">{order.map((p) => rows[p])}</div>
+
+            <div className="faq">
+              <details>
+                <summary>Installing on Android</summary>
                 <p>
-                  Commander against AI, or 2–4 people at one table. iPhone,
-                  iPad and Android players host or join the same table with a
-                  code, and Apple-only groups can also play through Game Center.
+                  Easiest: install Obtainium, then add MagicMobile in it (the steps under Android above). It installs the
+                  newest build and tells you when another one is out. Or open the APK link on your phone and open the
+                  downloaded file; if asked, allow your browser to install this app. You can turn that permission off after
+                  installation. If an install ever fails, check that the phone has about 1 GB free.
                 </p>
-              </div>
-              <div>
-                <span>Climb</span>
+              </details>
+              <details>
+                <summary>What to expect from the alpha</summary>
                 <p>
-                  Ranked 1v1 from Bronze to Mythic in monthly seasons, Quick
-                  Match at your deck’s bracket, challenges with friends, and a
-                  profile other players can open: your rank history, favorite
-                  commanders and recent games.
+                  Android build 36 keeps your decks in sync: sign in and the decks you build show up on every phone signed in
+                  to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
+                  build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
-              </div>
+              </details>
+              <details>
+                <summary>What’s new on iPhone and iPad?</summary>
+                <p>
+                  Build 59 keeps your decks in sync: sign in and the decks you build show up on every phone signed in to the
+                  same profile. Arena stays the default board. It runs on iPhone and iPad. Apple has approved this build for
+                  Internal and External TestFlight.
+                </p>
+              </details>
+              <details>
+                <summary>Playing in the browser</summary>
+                <p>
+                  MagicMobile also plays in a desktop browser: a current Chrome, Edge or Firefox. The first visit downloads the
+                  game engine, about 44 MB, and keeps it for next time. Signed in with the same Google account, your profile and
+                  decks are the same as on your phone.
+                </p>
+              </details>
             </div>
-          </div>
-          <figure className="gameplay-image">
-            <div className="gameplay-ground" aria-hidden="true">
-              PLAY.
-            </div>
-            <div className="gameplay-phone" data-sc-parallax="-1.1">
-              <img
-                src="/board-portrait.webp"
-                alt="iOS Commander battlefield development preview on the walnut table, not a live match"
-                width="660"
-                height="1434"
-                loading="lazy"
-              />
-            </div>
-            <figcaption>
-              iOS development preview. Not a live-match capture.
-            </figcaption>
-          </figure>
-          <figure className="table-shot">
-            <div className="table-frame">
-              <img
-                src="/board-landscape.webp"
-                alt="iOS landscape battlefield development preview: the leather table, a hand of cards and the brass pass button, not a live match"
-                width="1400"
-                height="644"
-                loading="lazy"
-              />
-            </div>
-            <figcaption>
-              Landscape table. iOS development preview, not a live-match
-              capture.
-            </figcaption>
-          </figure>
-        </section>
-        <section id="download" className="download" data-sc-act="flow">
-          <div className="download-heading" data-sc-in data-sc-stagger="60">
-            <h2>Your turn.</h2>
-            <p>Pick your phone. Take the game with you.</p>
-          </div>
-          <div className="download-desk">
-            <div
-              className="platform-picker"
-              role="group"
-              aria-label="Choose phone platform"
-            >
-              <button
-                aria-pressed={platform === "android"}
-                onClick={() => setPlatform("android")}
-              >
-                <AndroidLogo size={28} />
-                Android
-                <ArrowRight size={22} />
-              </button>
-              <button
-                aria-pressed={platform === "ios"}
-                onClick={() => setPlatform("ios")}
-              >
-                <AppleLogo weight="fill" size={28} />
-                iPhone
-                <ArrowRight size={22} />
-              </button>
-            </div>
-            <div className="platform-detail" aria-live="polite">
-              <div className="release-version">
-                <strong>Version {releases[platform].version}</strong>
-                <span>Build {releases[platform].build}</span>
-                {platform === "android" && (
-                  <a href={releases.android.notes}>Release notes ↗</a>
-                )}
-              </div>
-              <div className="platform-detail-heading">
-                <span>
-                  {platform === "android" ? "Android alpha" : "iPhone & iPad beta"}
-                </span>
-                <span>
-                  {platform === "android" ? "Android APK" : "Apple TestFlight"}
-                </span>
-              </div>
+
+            <div className="support glass" id="support">
+              <h3>Help cover server costs.</h3>
               <p>
-                {platform === "android"
-                  ? "Your next game is one download away."
-                  : "Play against AI or meet other players through Game Center."}
+                MagicMobile is free, with no ads and nothing to buy in the app. Online tables, friends and ranked games run on
+                servers that cost money every month. If you enjoy the game, a small tip helps keep them running.
               </p>
-              <a
-                className="download-action plaque plaque-ember"
-                href={platform === "android" ? android : ios}
-              >
-                {platform === "android"
-                  ? "Download Android"
-                  : "Join TestFlight"}
-                <ArrowUpRight size={26} />
-              </a>
-              {platform === "android" && (
-                <div className="update-steps">
-                  <strong>Get every update automatically</strong>
-                  <ol>
-                    <li>
-                      <a className="plaque plaque-thin" href={obtainium.download}>
-                        Download Obtainium ↓
-                      </a>
-                      <span>
-                        A free, open-source app updater. Open the file and
-                        allow the install.
-                      </span>
-                    </li>
-                    <li>
-                      <a className="plaque plaque-thin" href={obtainium.addApp}>
-                        Add MagicMobile to Obtainium ↗
-                      </a>
-                      <span>
-                        Opens Obtainium with MagicMobile filled in. Tap Add,
-                        then Install. If nothing opens, choose Add App in
-                        Obtainium and paste {obtainium.source}.
-                      </span>
-                    </li>
-                    <li>
-                      <span>
-                        Done. Obtainium shows each new build; tap Update.
-                        Your decks and settings stay.
-                      </span>
-                    </li>
-                  </ol>
-                </div>
-              )}
-              <small>
-                {platform === "android"
-                  ? "Android 8+ · ARM64. Hosted on GitHub. No account needed."
-                  : `iPhone and iPad, iOS 17+. ${releases.ios.status} Install TestFlight, then accept the invitation.`}
-              </small>
+              {/* The support page holds the one donation link; the apps open it too. */}
+              <a className="pill pill--glass" href="/support/">Support MagicMobile</a>
+              <small>Tips are optional and unlock nothing in the game.</small>
             </div>
+
+            <footer className="foot">
+              <nav aria-label="More">
+                <a className="brand" href="#main"><img src="/site/mark.png" width="96" height="96" alt="" /><b>MagicMobile</b></a>
+                <a href="https://github.com/ineedsomesleep5/MagicMobile">GitHub</a>
+                <a href="/support/">Support</a>
+                <a href="/privacy/">Privacy</a>
+              </nav>
+              <p>
+                MagicMobile is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by
+                Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
+                Card images and art from <a href="https://scryfall.com">Scryfall</a>; each artist is credited beside their art.
+              </p>
+            </footer>
           </div>
-          <div className="faq">
-            <details>
-              <summary>
-                Installing on Android
-                <Plus size={20} />
-              </summary>
-              <p>
-                Easiest: install Obtainium, then add MagicMobile in it (the
-                steps under the Android download). It installs the newest
-                build and tells you when another one is out. Or open the APK
-                link on your phone and open the downloaded file; if asked,
-                allow your browser to install this app. You can turn that
-                permission off after installation. If an install ever fails,
-                check that the phone has about 1 GB free.
-              </p>
-            </details>
-            <details>
-              <summary>
-                What to expect from the alpha
-                <Plus size={20} />
-              </summary>
-              <p>
-                Android build 36 keeps your decks in sync: sign in and the
-                decks you build show up on every phone signed in to the same
-                profile. Arena stays the default board, with Hearth in Options.
-                It keeps the lighter engine from build 31. Android is an early
-                alpha; physical-phone acceptance is still pending.
-              </p>
-            </details>
-            <details>
-              <summary>
-                What’s new on iPhone and iPad?
-                <Plus size={20} />
-              </summary>
-              <p>
-                Build 59 keeps your decks in sync: sign in and the decks you
-                build show up on every phone signed in to the same profile.
-                Arena stays the default board. It runs on iPhone and iPad. Apple
-                has approved this build for Internal and External TestFlight.
-              </p>
-            </details>
-            <details>
-              <summary>
-                Playing in the browser
-                <Plus size={20} />
-              </summary>
-              <p>
-                Not available yet. This website is your home for the phone
-                downloads. Browser play is something we can explore next.
-              </p>
-            </details>
-          </div>
-          <div id="support" className="support-card">
-            <p className="eyebrow">
-              <Sparkle />
-              Keep the tavern lit
-            </p>
-            <h3>Help cover server costs.</h3>
-            <p>
-              MagicMobile is free, with no ads and nothing to buy in the app.
-              Online tables, friends and ranked games run on servers that cost
-              money every month. If you enjoy the game, a small tip helps keep
-              them running.
-            </p>
-            {/* The support page holds the one donation link; the apps open it too. */}
-            <a className="plaque plaque-ember" href="/support/">
-              Support MagicMobile
-              <ArrowUpRight size={20} />
-            </a>
-            <small>
-              Tips are optional and unlock nothing in the game. Unofficial fan
-              project, not affiliated with Wizards of the Coast.
-            </small>
-          </div>
-          <footer>
-            <a className="footer-brand" href="#cards">
-              <img src="/tavern/mark-96.webp" alt="" width="44" height="44" />
-              MagicMobile
-              <ArrowUpRight size={24} />
-            </a>
-            <a href="https://github.com/ineedsomesleep5/MagicMobile">
-              Follow the project
-              <ArrowUpRight size={16} />
-            </a>
-            <a href="/support/">
-              Support the project
-              <ArrowUpRight size={16} />
-            </a>
-            <a href="/privacy/">
-              Privacy
-              <ArrowUpRight size={16} />
-            </a>
-            <p>
-              Independent fan project. Not affiliated with Wizards of the Coast.
-              Magic: The Gathering and card artwork belong to their respective
-              owners. Black Lotus art by Chris Rahn, via{" "}
-              <a href="https://scryfall.com/card/vma/4/black-lotus">Scryfall</a>
-              . Showcase card only; not Commander legal.
-            </p>
-          </footer>
         </section>
       </main>
     </>

@@ -1,64 +1,66 @@
-# MagicMobile: The opening hand
+# MagicMobile: Hall and Cut
 
-> 2026-10-02: the choreography below still applies, but the materials changed to the app's Walnut & Ember brand (walnut, leather, brass, parchment, ember; Source Serif 4). Where this brief says charcoal, silver or compressed sans, read [DESIGN.md](../../../DESIGN.md).
+Supersedes "The opening hand" (Walnut & Ember, September–October 2026), which stays in FINGERPRINTS.md.
 
-Self-authored implementation decisions under the user's delegated website request. User feedback supersedes the rejected first design. No invented user answers.
+## Evidence (Caleb)
 
-## Evidence and creative authority
+- 2026-10-23: "we have ios android and webapp ... now that we changed our style we need to plan on updating our website
+  big time." Decisions: the browser game is linked but stays unlisted; Arena, like the apps; no cross-play claim.
+- 2026-10-23: use Nate Herk's scroll-craft; "it doesn't have to follow the current scroll animation the website has if
+  you find a better one."
+- 2026-10-23: "if you are going to have images on the website make sure the cards load all of them"; "make sure it
+  looks exactly how it's supposed in game."
+- Three directions were mocked (The Hall: gallery; Your Turn: live surface on the Arena board; Cut to Play: cutlist with
+  the D20 in the bar). 2026-10-24: "I didn't like the table one I wanted the hall and the cut one and combo of that
+  one", with "the real 3d model we use" for the dice; then "I like the one you made. Let's update our website to that
+  one."
+- 2026-10-24 review of the mock: the Draw and Attack screens "do not look good" (tilted, cropped, under the word) and the
+  walk "doesn't scroll smoothly ... shifts side to side". Both fixed before the build (DESIGN.md, `src/hall.ts`).
 
-User: "That website doesn’t look nice. I want it to be a high motion designed website meant for both mobile and desktop and use this skill https://github.com/nateherkai/scroll-craft"
+## The eight topics
 
-Earlier: interactive floating 3D Magic card, app showcase, Android GitHub or Drive download, iOS TestFlight, deploy on Vercel. Both real destinations are verified in PRODUCT.md. No web game or multiplayer claims.
+1. Vibe: Arena at night. Dark glass, gold hairlines, one orange action, commander art as the light source.
+2. Journey: see the game (a hand, a board), learn what you can play, pick your screen.
+3. Energy: hard cuts open, a slow walk, one held peak, an abrupt full-bleed close, then calm downloads.
+4. Feeling: pulse (cuts), recognition (the real hand and board), curiosity and pride (the hall, the badge climbing),
+   suspense into release (the roll), decision (your turn).
+5. Signature: **the bar rolls the D20.** The app's own die sits in the nav bar and turns as you scroll; at the peak it
+   leaves the bar, plays a recorded throw under your scroll, lands on 20 and glows.
+6. Range: playful-cinematic for a game, never premium-minimal.
+7. One world: one dark Arena room; the hall is its gallery.
+8. Assets: real only (ASSETS.md). No generation.
 
-## Eight brief topics
+## Feeling curve
 
-1. Vibe: high motion, immersive, dimensional, game-first. Authored direction: charcoal, warm white, ember orange, bold compressed sans typography. The first restrained serif/forest design was rejected.
-2. Journey: real collectible card encounter; a quiet invitation to build; cards deal into an app window; actual app capabilities; phone choice and downloads. Sequence authored from the requested features.
-3. Energy: immediate dimensional opening, brief quiet, one major transformation, then deliberate resolution.
-4. Feeling: curiosity from the floating hand; anticipation from one quiet line; delight as the scattered hand gathers into the app; confidence from actual screenshots; readiness from clear download choices.
-5. Signature: the opening hand. Scroll rotates a stack of sleeved cards into a fanned hand, then the app reveal gathers the cards into a phone-shaped frame. Pointer moves the perspective, never required on touch.
-6. Range: cinematic gaming launch, substantially beyond the rejected premium-minimal composition. Not a generic feature-card grid.
-7. Structure: distinct scenes, not an expensive continuous world flight. This is an authored implementation choice; an optional direction question is available while work proceeds.
-8. Assets: existing app icon, verified iOS screenshots, Scryfall Black Lotus, original generated sleeve. Reuse authentic assets; no paid video generation.
+- Pulse: *Commander.*, *Draw.*, *Attack.*, a screen each.
+- Curiosity: the walk past seven commanders, the room taking each one's colours.
+- Pride: the Ranked badge climbs Bronze to Mythic while it holds the middle.
+- Suspense into release (the peak): the die leaves the bar, tumbles, lands on 20. "You go first."
+- Decision: *Your turn.* with the three screens.
 
-## Feeling curve (before the score)
-
-- Curiosity: a large dimensional hand in front of bold typography, immediate download access.
-- Anticipation: a spare short sentence about making a deck, against a calmer ground.
-- Delight: the fanned cards close inward and reveal the app in their place. This is the peak.
-- Confidence: actual app screens and factual capability descriptions, not a simulated working game.
-- Readiness: the motion settles into two clear download paths.
-
-Peak: "The cards gathered into my phone, and the actual app was inside." Most scroll room belongs to that transformation.
-
-Tell someone: "It's the site where you deal a hand of Magic cards into the app as you move down the page."
-
-Authored silence is a short, readable natural-flow bridge, never a blank pinned viewport.
-
-## Grammar and fingerprint
-
-Custom grammar: **Opening hand**. Navigation is a compact floating destination dock (Cards / The app / Download), not a chapter counter. The opening is a dimensional collectible, the peak turns the collection into an app window, and the end holds an explicit phone choice. Ban generic screenshot-tab feature grids, scrub films, simulated live gameplay, and long empty holds.
-
-This is not filmic one-shot (jump navigation and hard scene cuts), chaptered editorial (media-led, no folio), live surface (not a running game), continuous world (distinct scenes), typographic poster (cards are essential), gallery (the collection transforms rather than remaining an index), split stage (no binary comparison), or cutlist (the peak intentionally pins).
-
-Registry is initially empty. Against rejected v1, all six structural dimensions change except the high-level download intent: dock navigation, layered hand hero, five-beat variable scroll shape, staged app-window peak, resolved platform desk, and deal-to-app signature.
+Peak sentence: "The die in the menu bar rolled a 20 and the site said I go first."
 
 ## Score
 
 | Beat | Device | Span | Purpose |
 |---|---|---|---|
-| Encounter | parallax + real 3D card fan | 1.8 screens desktop, 1.5 phone | Independent card, backdrop, type depth |
-| Build an idea | flow + kinetic entry | short natural flow | Quiet before the peak |
-| Deal into the app | pin + bespoke gather + reveal | 2.8 screens desktop, 2.2 phone | The unique transformation |
-| Make the next play | lateral composition + flow | natural flow | Real UI proof without scroll tax |
-| Choose a phone | stable flow + useful platform control | natural flow | An ending with actual downloads |
+| Commander | flow, full-bleed art | 1 screen | The game in one word |
+| Draw, Attack | flow, reveal | short | The real hand and board |
+| The Hall | pin + bespoke rail (soft stops, parallax, regrade, badge climb) | 9 screens | What you can play |
+| The roll | pin + the bar's D20 (Three.js, recorded throw) | 3.2 screens | The peak |
+| Your turn | flow, full-bleed art | 1 screen | The choice |
+| Get MagicMobile | flow | natural | Builds, install help, FAQ, support |
 
-Four device families: parallax, kinetic, pin, reveal, plus flow. No films, no paid generation.
+## Fingerprint
 
-## Layer contract
+Grammar: cutlist into gallery. Nav: a loud full-width bar with the three screens at the wordmark's weight, plus the
+hall's medallion index while the hall has the screen. Hero: one hard cut, a commander and one word. Act shape: three
+short cuts, one long sideways pin, one held peak, a full-bleed close, natural flow. Close: the three screens on art,
+then rows. Signature: the bar's D20. Against "The opening hand" it changes grammar, nav, hero, act shape, close and
+signature (6 of 6).
 
-Far: oversized typographic ground, smallest movement. Mid: dark table plane and restrained contact shadow. Focal: seven modeled cards with real front/sleeve textures, independently placed and rotated. Near: edge cards cross the central card silhouette without covering essential copy. Type/controls: semantic and readable in every opening state. Phone: copy above a smaller complete hand; shorter scroll; no hover dependency. Reduced motion: stable hand and app panels in normal flow, all download content reachable.
+## Verification
 
-## Verification plan
-
-Production build, actual desktop/390px/360px opening-mid-exit frames, reduced motion, pointer and keyboard, WebGL fallback, scroll-state/overflow/console checks, real download hrefs. Use CUA for browser interactions per host policy; adapt the supplied shoot protocol to that approved browser mechanism. Physical phone behavior remains separately pending. Preserve failed runs; new evidence must supersede the rejected first design.
+Production build; desktop 1440 × 900 and phone 390 × 844 frames at every beat (headless Chrome with SwiftShader for
+WebGL); no console errors, failed requests or sideways overflow; the walk measured monotonic step by step; reduced
+motion; the flat die without WebGL; real download links. Not covered: a physical phone.

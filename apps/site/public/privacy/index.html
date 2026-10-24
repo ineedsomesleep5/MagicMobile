@@ -3,67 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1b120b">
+  <meta name="theme-color" content="#08090c">
   <title>MagicMobile privacy</title>
   <meta name="description" content="What MagicMobile stores, what it sends, and how to delete your profile.">
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
-    /* Walnut & Ember, as on the download site (see ../../DESIGN.md). */
-    :root { --canvas: #1b120b; --leather: #29140b; --brass: #dba34d; --ink: #f3e6c8; --soft: #cfb994; --accent: #ff8058; }
+    /* Arena, as on the download site (see ../../DESIGN.md): dark glass, gold hairline, serif titles over sans text. */
+    :root { color-scheme: dark; --canvas: #0c0d11; --ink: #f2ebdb; --soft: #c2b8a6; --gold: #fad685; --hair: rgba(232, 190, 112, 0.4);
+      --serif: "Iowan Old Style", "Source Serif 4", Georgia, serif; --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: linear-gradient(#110a05c7, #110a05c7), url("/tavern/walnut.webp") 0 0 / 340px, var(--canvas);
-      color: var(--ink); font: 17px/1.6 ui-serif, "New York", Georgia, "Times New Roman", serif; }
-    main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
-    h1 { font-size: 36px; line-height: 1.2; margin: 0 0 8px; font-weight: 800; }
-    h2 { font-size: 21px; margin: 34px 0 8px; padding-top: 18px; border-top: 1px solid #dba34d57; color: var(--brass); }
+    body { margin: 0; background: radial-gradient(70% 40% at 50% 0%, #2a1a10, transparent 70%), var(--canvas); color: var(--ink); font: 17px/1.6 var(--sans); }
+    main { max-width: 720px; margin: 0 auto; padding: 32px max(16px, env(safe-area-inset-right, 0px)) 64px max(16px, env(safe-area-inset-left, 0px)); }
+    .back { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font: 700 18px/1 var(--serif); }
+    .back img { width: 32px; height: 32px; }
+    h1 { font: 800 40px/1.1 var(--serif); margin: 28px 0 8px; letter-spacing: -0.01em; }
+    h2 { font: 700 22px/1.25 var(--serif); margin: 34px 0 8px; padding-top: 18px; border-top: 1px solid var(--hair); }
     p, li { color: var(--soft); }
     strong { color: var(--ink); }
-    a { color: var(--accent); }
-    a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    a { color: var(--gold); }
+    a:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; border-radius: 4px; }
     ul { padding-left: 20px; }
-    .updated { margin: 0 0 24px; }
-    .card { background: var(--leather); border-radius: 14px; padding: 4px 18px; }
+    .updated { margin: 0 0 24px; font-size: 15px; }
   </style>
 </head>
 <body>
   <main>
-    <a href="/">← MagicMobile</a>
+    <a class="back" href="/"><img src="/site/mark.png" alt="" width="96" height="96">MagicMobile</a>
     <h1>Privacy</h1>
-    <p class="updated">Last updated October 15, 2026. Applies to the MagicMobile apps for iPhone and Android and this website.</p>
+    <p class="updated">Last updated October 24, 2026. Applies to the MagicMobile apps for iPhone and Android, the browser game and this website.</p>
 
-    <p>MagicMobile is an independent, non-commercial fan project. There are no ads, no analytics and no tracking in the apps or on this site, and nothing is sold or shared for advertising.</p>
+    <p>MagicMobile is an independent, non-commercial fan project. There are no ads, no analytics and no tracking in the apps, the browser game or on this site, and nothing is sold or shared for advertising.</p>
 
-    <h2>On your phone only</h2>
-    <p>Your decks, game settings, a saved game you can resume, downloaded card art, and the app's own crash and engine reports stay on your device. Games against the AI run entirely on your phone. Crash reports are only shared if you choose to send one from the app.</p>
+    <h2>On your device</h2>
+    <p>Your decks, game settings, a saved game you can resume, downloaded card art, and the app's own crash and engine reports are kept on your device. Games against the AI run entirely on your device, in the browser too. Crash reports are only shared if you choose to send one from the app.</p>
+    <p>The browser game keeps the same kind of things in your browser's storage for this site: your decks and settings, your profile's sign-in session, and finished games waiting to upload. It also keeps the game engine in the browser's cache so it only downloads once. Clearing this site's data in your browser removes them.</p>
 
     <h2>Profiles and friends</h2>
-    <p>If you open <strong>Friends</strong>, the app creates an anonymous account (no email, no password) and stores, on MagicMobile's database hosted by Supabase in the United States:</p>
+    <p>On a phone, opening <strong>Friends</strong> creates an anonymous account (no email, no password); the browser game creates one when you first use it. MagicMobile's database, hosted by Supabase in the United States, then stores:</p>
     <ul>
       <li>a random account ID and the <strong>player name</strong> you choose;</li>
-      <li>your friends and friend requests, and players you block;</li>
-      <li>when you were last online, your phone type (iPhone or Android), and the code of a table you are hosting while it has open seats. Only your accepted friends can see these;</li>
-      <li>reports you send about another player, including the reported chat message.</li>
+      <li>your friends and friend requests, players you block, and messages with your friends;</li>
+      <li>when you were last online, your phone type (iPhone or Android; the browser game sends none), and the code of a table you are hosting while it has open seats. Only your accepted friends can see these;</li>
+      <li>reports you send about another player, including the reported message.</li>
     </ul>
 
+    <h2>Your decks on every device</h2>
+    <p>Once you have a profile, your saved decks are also stored with it, so they show up on every phone and browser signed in to the same profile: each deck's name, commander, card list, chosen printings and where it was imported from. A deck you delete is emptied on the server and removed from your other devices.</p>
+
     <h2>Signing in with Apple or Google</h2>
-    <p>Signing in is optional. It links your profile to your Apple or Google account so it follows you to another phone. Supabase stores the account identifier and the email address Apple or Google shares with us (Apple may give a private relay address instead). It is used only to sign you in, is shown only to you, and is never shared with other players.</p>
+    <p>Signing in is optional. It links your profile to your Apple or Google account so it follows you to another phone or browser (the browser game offers Google). Supabase stores the account identifier and the email address Apple or Google shares with us (Apple may give a private relay address instead). It is used only to sign you in, is shown only to you, and is never shared with other players.</p>
 
     <h2>Your profile and game history</h2>
-    <p>Once you choose a player name, the app also stores:</p>
+    <p>Once you choose a player name, MagicMobile also stores:</p>
     <ul>
       <li>your <strong>finished games</strong>: when you played, the mode, the result, your deck's name, commanders and colors, your opponents' names and commanders, the number of turns and how long it took. The latest 500 games are kept;</li>
       <li>your <strong>ranked standing</strong>: rank, points, wins and losses this season and past seasons, and the result of each ranked game, including ranked games against the AI, so the server can keep score fairly;</li>
       <li>your title and favorite commander, if you pick them.</li>
     </ul>
     <p>Your profile and game history are public by default so other players can find you. You can make them friends-only or private on your <strong>Profile</strong>, under <strong>Who can see your profile</strong>. Players you block can't see them either way.</p>
-    <p>You can delete all of this at any time: <strong>Friends → Delete my profile</strong> removes your account, profile, game history and ranked standing. Reports you sent are kept without your account attached so abuse can still be reviewed.</p>
+    <p>You can delete all of this at any time: <strong>Friends → Delete my profile</strong> removes your account, profile, decks, game history and ranked standing. Reports you sent are kept without your account attached so abuse can still be reviewed.</p>
 
     <h2>Online tables and chat</h2>
-    <p>Cross-play tables pass game moves and chat messages between players' phones through a relay on Cloudflare. The relay keeps a table's roster and undelivered messages only while the table is open and deletes them when everyone leaves or after 30 idle minutes. Chat is not stored on a server unless someone reports a message. Game Center tables use Apple's Game Center.</p>
+    <p>Online tables pass game moves and chat messages between players' devices through a relay on Cloudflare. The relay keeps a table's roster and undelivered messages only while the table is open and deletes them when everyone leaves or after 30 idle minutes. Chat is not stored on a server unless someone reports a message. Game Center tables use Apple's Game Center.</p>
 
-    <h2>Card images</h2>
-    <p>With <strong>Scryfall live images</strong> on (the default; you can turn it off in Settings), the app requests card images from Scryfall, which receives the card names being shown, including cards in your hand, and your IP address. Downloaded images then work offline.</p>
+    <h2>Card images and deck imports</h2>
+    <p>With <strong>Scryfall live images</strong> on (the default on phones; you can turn it off in Settings), the app requests card images from Scryfall, which receives the card names being shown, including cards in your hand, and your IP address. Downloaded images then work offline. The browser game always loads card images and mana symbols from Scryfall.</p>
+    <p>When you import a deck from Archidekt or Moxfield in the browser game, the request goes through the game's own address on Vercel, which fetches the deck link you entered.</p>
+
+    <h2>This website and the browser game</h2>
+    <p>Both are hosted on Vercel, which receives your requests, including your IP address, in order to serve them. On networks that block Supabase, the browser game reaches MagicMobile's database through its own address on Vercel, which passes the requests on.</p>
 
     <h2>Children</h2>
     <p>MagicMobile is not directed at children under 13 and does not knowingly collect their information.</p>
@@ -71,7 +80,7 @@
     <h2>Questions</h2>
     <p>Open an issue on the <a href="https://github.com/ineedsomesleep5/MagicMobile/issues">project's GitHub page</a>. If this policy changes, the date above changes with it.</p>
 
-    <p>Magic: The Gathering and card artwork belong to their respective owners. MagicMobile is not affiliated with Wizards of the Coast.</p>
+    <p>MagicMobile is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
   </main>
 </body>
 </html>
