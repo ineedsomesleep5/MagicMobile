@@ -1,0 +1,10 @@
+game,game_seed,budget,skill_a,skill_b,deck_a,deck_b,first,winner,winner_skill,turns,seconds,end,depth_a,mistake_a,depth_b,mistake_b,mistakes_a,mistakes_b
+2,1944913604495741383,phone,3,3,first-flight,ai-tormod-the-desecrator-core,A,A,3,17,37.4,ended,,,,,3,2
+1,6265474218377122535,phone,3,3,ai-tormod-the-desecrator-core,first-flight,B,B,3,17,47.3,ended,,,,,1,2
+0,4649550217548721753,phone,3,3,ai-tormod-the-desecrator-core,first-flight,A,A,3,19,57.1,ended,,,,,5,2
+6,4395169936604734225,phone,3,3,grave-danger,ai-kynaios-and-tiro-of-meletis-exhibition,A,A,3,15,25.0,ended,,,,,4,3
+4,7870523781997807417,phone,3,3,ai-kynaios-and-tiro-of-meletis-exhibition,grave-danger,A,B,3,14,58.7,ended,,,,,0,0
+3,4071775400151312833,phone,3,3,first-flight,ai-tormod-the-desecrator-core,B,B,3,17,125.8,ended,,,,,2,7
+8,7838478948631162377,phone,3,3,ai-kynaios-and-tiro-of-meletis-exhibition,first-flight,A,B,3,20,184.4,ended,,,,,3,4
+9,6331988307182301861,phone,3,3,ai-kynaios-and-tiro-of-meletis-exhibition,first-flight,B,B,3,23,166.3,ended,,,,,6,6
+5,8420571759405365117,phone,3,3,ai-kynaios-and-tiro-of-meletis-exhibition,grave-danger,B,A,3,21,263.0,ended,,,,,4,5
