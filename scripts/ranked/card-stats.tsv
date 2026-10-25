@@ -1,16 +1,20 @@
 name	power	toughness
 Abomination of Llanowar	*	*
+Academy Manufactor	1	3
 Accursed Marauder	2	1
+Aftermath Analyst	1	3
 Agitator Ant	2	2
 Ajani's Comrade	2	2
 Ajani's Pridemate	2	2
 Ajani's Sunstriker	2	2
 Ajani, Nacatl Pariah	1	2
 Akoum Hellkite	4	4
+Akroan Horse	0	4
 Alexios, Deimos of Kosmos	4	4
 Allosaurus Shepherd	1	1
 Alseid of Life's Bounty	1	1
 Ancient Brass Dragon	7	6
+Ancient Bronze Dragon	7	7
 Ancient Copper Dragon	6	5
 Ancient Gold Dragon	7	10
 Ancient Silver Dragon	8	8
@@ -19,6 +23,7 @@ Angler Turtle	5	7
 Angrath's Marauders	4	4
 Anowon, the Ruin Sage	4	3
 Apex Altisaur	10	10
+Apex Devastator	10	10
 Arahbo, the First Fang	2	2
 Arbor Elf	1	1
 Archfiend of Depravity	5	4
@@ -29,17 +34,21 @@ Archon of Emeria	2	3
 Archon of Redemption	3	4
 Astral Dragon	4	4
 Atarka, World Render	6	4
+Atsushi, the Blazing Sky	4	4
 Atzocan Seer	2	3
+Aurelia, the Law Above	4	4
 Aurelia, the Warleader	3	4
 Avacyn's Pilgrim	1	1
 Avacyn, Angel of Hope	8	8
 Avacyn, Angel of Horror	8	8
 Aven Gagglemaster	4	3
 Aven Mindcensor	2	1
+Baeloth Barrityl, Entertainer	2	5
 Balefire Dragon	6	6
 Baron Bertram Graywater	3	4
 Battle Cry Goblin	2	2
 Battle Squadron	*	*
+Bazaar Trader	1	1
 Beast Whisperer	2	3
 Beetleback Chief	2	2
 Birds of Paradise	0	1
@@ -55,18 +64,23 @@ Bonehoard Dracosaur	5	5
 Bonescythe Sliver	2	2
 Boromir, Warden of the Tower	3	3
 Bothersome Quasit	3	2
+Braids, Arisen Nightmare	3	3
 Braids, Conjurer Adept	2	2
 Brash Taunter	1	1
 Brimaz, King of Oreskos	3	4
+Bringer of the Last Gift	6	6
 Bronzebeak Foragers	3	4
 Brood Sliver	3	3
 Burnished Hart	2	2
 Butcher of Malakir	5	4
+Cankerbloom	3	2
+Canopy Gargantuan	7	7
 Canopy Tactician	3	3
 Captivating Vampire	2	2
 Carrion Feeder	1	1
 Cartographer's Hawk	2	1
 Cathar Commando	3	1
+Caustic Caterpillar	1	1
 Cemetery Reaper	2	2
 Champion of Dusk	4	4
 Champion of Lambholt	1	1
@@ -74,6 +88,7 @@ Champion of the Perished	1	1
 Champions of the Perfect	6	6
 Charismatic Conqueror	2	2
 Circle of Dreams Druid	2	1
+Circle of the Land Druid	1	1
 Citanul Hierophants	3	2
 Cleaver Skaab	2	4
 Cloudblazer	2	2
@@ -83,6 +98,7 @@ Combustible Gearhulk	6	6
 Conspicuous Snoop	2	2
 Cordial Vampire	1	1
 Court Cleric	1	1
+Coveted Falcon	1	4
 Craterhoof Behemoth	5	5
 Crossway Troublemakers	5	5
 Cruel Celebrant	1	2
@@ -99,9 +115,11 @@ Diluvian Primordial	5	5
 Dionus, Elvish Archdruid	3	3
 Diregraf Captain	2	2
 Diregraf Colossus	2	2
+Displaced Dinosaurs	7	7
 Draconic Disciple	2	2
 Dragon Mage	5	5
 Dragonborn Champion	5	3
+Dragonhawk, Fate's Tempest	5	5
 Dragonkin Berserker	2	2
 Dragonlord Dromoka	5	7
 Dragonlord's Servant	1	3
@@ -113,6 +131,7 @@ Drana, Liberator of Malakir	2	3
 Drannith Magistrate	1	3
 Dream Pillager	4	4
 Drumhunter	2	2
+Dryad Sophisticate	2	1
 Dryad of the Ilysian Grove	2	4
 Dwynen's Elite	2	2
 Dwynen, Gilt-Leaf Daen	3	4
@@ -144,10 +163,15 @@ Eternal Witness	2	1
 Ethersworn Canonist	2	2
 Ezuri, Renegade Leader	2	2
 Faerie Formation	5	4
+Fanatic of Rhonas	1	4
 Fanatical Firebrand	1	1
+Fangren Marauder	5	5
 Farhaven Elf	1	1
+Fauna Shaman	2	2
+Firespitter Whelp	2	2
 Flameblast Dragon	5	5
 Fleshbag Marauder	3	1
+Flumph	0	4
 Foe-Razer Regent	4	5
 Forerunner of the Legion	2	2
 Frenzied Goblin	1	1
@@ -173,6 +197,7 @@ Gishath, Sun's Avatar	7	6
 Giver of Runes	1	2
 Gleaming Overseer	1	4
 Gluntch, the Bestower	0	5
+Goblin Cadets	2	1
 Goblin Chieftain	2	2
 Goblin Chirurgeon	0	2
 Goblin Instigator	1	1
@@ -190,10 +215,16 @@ Goblin Trashmaster	3	3
 Goblin Warchief	2	2
 Goblin Wardriver	2	2
 Goldmane Griffin	3	2
+Goldnight Castigator	4	9
 Goldnight Commander	2	2
 Goldspan Dragon	4	4
+Goldvein Hydra	0	0
+Golgari Grave-Troll	0	0
+Goreclaw, Terror of Qal Sisma	4	3
 Goring Ceratops	3	3
 Grand Abolisher	2	2
+Grave Researcher	3	3
+Gravebreaker Lamia	4	4
 Gravecrawler	2	1
 Gravedigger	2	2
 Gravespawn Sovereign	3	3
@@ -201,6 +232,8 @@ Gray Merchant of Asphodel	2	4
 Great Oak Guardian	4	5
 Grenzo, Havoc Raiser	2	2
 Greymond, Avacyn's Stalwart	3	4
+Grid Monitor	4	6
+Grim Haruspex	3	2
 Grim Servant	3	2
 Guttersnipe	2	2
 Hanged Executioner	1	1
@@ -209,17 +242,21 @@ Harbinger of the Hunt	5	3
 Harmonic Sliver	1	1
 Hatchery Sliver	2	2
 Havengul Lich	4	4
+Haywire Mite	1	1
 Headless Rider	3	1
 Heart Sliver	1	1
 Heartwood Storyteller	2	3
+Hellkite Charger	5	5
 Hellkite Courser	6	5
 Hellkite Tyrant	6	5
+Hermit Druid	1	1
 Hexing Squelcher	2	2
 Hibernation Sliver	2	2
 High Perfect Morcant	4	4
 Hoard-Smelter Dragon	5	5
 Hobgoblin Bandit Lord	2	3
 Homing Sliver	2	2
+Honest Rutstein	3	2
 Hope of Ghirapur	1	1
 Hordewing Skaab	3	3
 Hornet Nest	0	2
@@ -233,24 +270,31 @@ Imperial Recruiter	1	1
 Imperious Perfect	2	2
 Indulgent Aristocrat	1	1
 Indulgent Tormentor	5	3
+Insidious Fungus	1	2
 Inspired Sphinx	5	5
+Iroh, Tea Master	2	2
 Isperia, Supreme Judge	6	4
 Isshin, Two Heavens as One	3	4
 Itzquinth, Firstborn of Gishath	2	3
 Jade Mage	2	1
+Jaheira, Friend of the Forest	2	3
+Jarad, Golgari Lich Lord	2	2
 Jaspera Sentinel	1	2
 Jazal Goldmane	4	4
 Joined Researchers	2	2
 Joraga Warcaller	1	1
 Josu Vess, Lich Knight	4	5
 Jubilant Skybonder	2	2
+Junji, the Midnight Sky	5	5
 Kaalia of the Vast	2	2
 Kaalia, Zenith Seeker	3	3
 Kaervek the Merciless	5	4
 Kami of the Crescent Moon	1	3
 Kangee's Lieutenant	1	1
 Kangee, Sky Warden	3	3
+Karador, Ghost Chieftain	3	4
 Kardur, Doomscourge	4	3
+Karmic Guide	2	2
 Kazuul, Tyrant of the Cliffs	5	4
 Keeper of Fables	4	5
 Kiki-Jiki, Mirror Breaker	2	2
@@ -277,6 +321,7 @@ Legion Lieutenant	2	2
 Legion Warboss	2	2
 Lena, Selfless Champion	3	3
 Leonin Warleader	4	4
+Leyline Tyrant	4	4
 Liesa, Forgotten Archangel	4	5
 Liliana the Repentant	2	2
 Liliana's Devotee	2	3
@@ -284,6 +329,7 @@ Liliana's Standard Bearer	3	1
 Llanowar Elves	1	1
 Llanowar Tribe	3	3
 Loaming Shaman	3	2
+Loran of the Third Path	2	1
 Lord of the Accursed	2	3
 Lord of the Undead	2	2
 Lord of the Void	7	7
@@ -292,6 +338,7 @@ Lotleth Giant	6	5
 Loyal Apprentice	2	1
 Loyal Guardian	4	4
 Loyal Subordinate	3	1
+Lozhan, Dragons' Legacy	4	2
 Lys Alana Huntmaster	3	3
 Magmatic Force	7	7
 Magus of the Moon	2	2
@@ -305,18 +352,22 @@ Marisi, Breaker of the Coil	5	4
 Markov Baron	2	2
 Marvin, Murderous Mimic	2	2
 Marwyn, the Nurturer	1	1
+Massacre Wurm	6	5
 Master of Ceremonies	3	4
 Master of Cruelties	1	4
 Master of Dark Rites	1	1
 Mavren Fein, Dusk Apostle	2	2
 Mentor of the Meek	2	2
+Meren of Clan Nel Toth	3	4
 Miara, Thorn of the Glade	1	2
 Midnight Reaper	3	2
 Miirym, Sentinel Wyrm	6	6
 Mikaeus, the Unhallowed	5	5
+Minion of the Mighty	0	1
 Mire Triton	2	1
 Mirri, Weatherlight Duelist	3	2
 Mogg War Marshal	1	1
+Morbid Opportunist	1	3
 Morcant's Loyalist	3	2
 Mordant Dragon	5	5
 Morophon, the Boundless	6	6
@@ -326,34 +377,49 @@ Muscle Sliver	1	1
 Muxus, Goblin Grandee	4	4
 Myrel, Shield of Argive	3	4
 Necrotic Sliver	2	2
+Nelly Borca, Impulsive Accuser	2	4
 Noble Benefactor	2	2
+Nogi, Draco-Zealot	3	3
 Noxious Ghoul	3	3
 Nullmage Shepherd	2	4
+Nyx Weaver	2	3
+Nyxbloom Ancient	5	5
 Ocelot Pride	1	1
+Ohran Frostfang	2	6
 Old Gnawbone	7	7
+Old Stickfingers	*	*
 Ornithopter	0	2
 Ornithopter of Paradise	0	2
 Otepec Huntmaster	1	2
 Overseer of the Damned	5	5
 Palani's Hatcher	5	3
 Pantlaza, Sun-Favored	4	4
+Parapet Thrasher	4	3
 Pashalik Mons	2	2
 Patron of the Vein	4	4
+Perplexing Chimera	3	3
+Phelddagrif	4	4
 Phoenix Chick	1	1
 Phyrexian Revoker	2	1
 Phyrexian Walker	0	3
 Pilgrim's Eye	1	1
 Plague Belcher	5	4
+Plaguecrafter	3	2
 Poison-Tip Archer	2	3
 Polyraptor	5	5
 Poppet Stitcher	2	3
+Pramikon, Sky Rampart	1	5
 Predatory Sliver	1	1
+Priest of Fell Rites	2	2
 Priest of Titania	1	1
+Primal Witchstalker	2	1
 Professional Face-Breaker	2	3
+Psychosis Crawler	0	0
 Purphoros, God of the Forge	6	5
 Qala, Ajani's Pridemate	3	3
 Qasali Pridemage	2	2
 Quartzwood Crasher	6	6
+Questing Phelddagrif	4	4
 Quick Sliver	1	1
 Ragavan, Nimble Pilferer	2	1
 Rakdos, Patron of Chaos	6	6
@@ -363,16 +429,19 @@ Ramos, Dragon Engine	4	4
 Rampaging Brontodon	7	7
 Ranging Raptors	2	3
 Rapacious Dragon	3	3
+Ravenous Chupacabra	2	2
 Ravenous Rotbelly	4	5
 Razaketh, the Foulblooded	8	8
 Realmwalker	2	3
 Reassembling Skeleton	1	1
+Reckless Barbarian	2	2
 Reclamation Sage	2	1
 Regal Behemoth	5	5
 Regal Caracal	3	3
 Regisaur Alpha	4	4
 Relentless Dead	2	2
 Remorseful Cleric	2	1
+Reveillark	4	3
 Reya Dawnbringer	4	6
 Rhys the Exiled	3	2
 Rionya, Fire Dancer	3	4
@@ -389,11 +458,14 @@ Rundvelt Hordemaster	1	1
 Rune-Scarred Demon	6	6
 Runehorn Hellkite	5	5
 Runic Armasaur	2	5
+Rust Elemental	4	4
 Ruthless Winnower	4	4
+Saffi Eriksdotter	2	2
 Sakura-Tribe Elder	1	1
 Sanctum Seeker	3	4
 Sangromancer	3	3
 Sarkhan, Soul Aflame	2	4
+Satyr Wayfinder	1	1
 Savage Ventmaw	4	4
 Scaled Nurturer	0	2
 Scalelord Reckoner	4	4
@@ -403,6 +475,7 @@ Scion of Draco	4	4
 Scion of the Ur-Dragon	4	4
 Scourge of Nel Toth	6	6
 Scourge of Valkas	4	4
+Scourge of the Throne	5	5
 Scythe Specter	4	4
 Scytheclaw Raptor	4	3
 Searslicer Goblin	2	1
@@ -418,18 +491,24 @@ Sepulchral Primordial	5	4
 Serra's Emissary	7	7
 Shaman of the Pack	3	2
 Sharding Sphinx	4	4
+Sheoldred, Whispering One	6	6
 Shepherd of Rot	1	1
 Shifting Sliver	2	2
+Shivan Devastator	0	0
+Shriekmaw	3	2
 Sidisi, Undead Vizier	4	6
 Siege-Gang Commander	2	2
 Signal Pest	0	1
 Silumgar, the Drifting Death	3	7
 Simian Spirit Guide	2	2
 Sinew Sliver	1	1
+Six	2	4
 Skemfar Shadowsage	2	5
 Skirk Prospector	1	1
 Skrelv, Defector Mite	1	1
+Skull Prophet	3	1
 Skycat Sovereign	1	1
+Skyline Despot	5	5
 Skyscanner	1	1
 Sliver Gravemother	6	6
 Sliver Hivelord	5	5
@@ -439,27 +518,41 @@ Sliver Queen	7	7
 Sokrates, Athenian Teacher	0	4
 Solemn Simulacrum	2	2
 Soltari Foot Soldier	1	1
+Soltari Trooper	1	1
 Soltari Visionary	2	2
+Soul Warden	1	1
 Soulless Jailer	0	4
 Sovereign Okinec Ahau	3	4
 Spark Double	0	0
 Spark Reaper	2	3
 Sphinx of Enlightenment	5	5
+Spirit en-Dal	2	1
 Spirit of the Labyrinth	3	1
 Spiteful Sliver	2	2
+Splinterfright	*	*
+Spore Frog	1	1
 Sporemound	3	3
 Squee, Dubious Monarch	2	2
+Steel Golem	3	4
 Steel Hellkite	5	5
 Steel-Plume Marshal	3	3
+Stiltzkin, Moogle Merchant	1	2
+Stinkweed Imp	1	2
 Stitcher's Supplier	1	1
 Stormfist Crusader	2	2
 Striking Sliver	1	1
 Stromkirk Captain	2	2
+Sun Titan	6	6
 Sunfrill Imitator	3	3
+Surrak and Goreclaw	6	5
+Suture Priest	1	1
 Synapse Sliver	3	3
 Syphon Sliver	2	2
+Syr Konrad, the Grim	5	4
 Tectonic Giant	3	4
+Teething Wurmlet	1	1
 Temple Altisaur	3	4
+Terror of Mount Velus	5	5
 Terror of the Peaks	5	4
 Thalia, Guardian of Thraben	2	1
 Thalia, Heretic Cathar	3	2
@@ -467,6 +560,7 @@ The Council of Four	0	8
 The First Sliver	7	7
 The Scarab God	5	5
 The Second Doctor	2	4
+The Tarrasque	10	10
 The Ur-Dragon	10	10
 Thermo-Alchemist	0	3
 Thrakkus the Butcher	3	4
@@ -474,24 +568,29 @@ Thrashing Brontodon	3	4
 Thunderbreak Regent	4	4
 Thunderclap Wyvern	2	3
 Thunderfoot Baloth	5	5
+Thundermane Dragon	4	4
 Thundermaw Hellkite	5	5
 Tiamat	7	7
 Tidal Barracuda	3	4
 Tide Skimmer	2	3
 Timberwatch Elf	1	2
+Tireless Provisioner	3	2
 Titan Hunter	4	5
 Tomb Tyrant	3	3
 Topiary Stomper	4	4
 Tormod, the Desecrator	4	2
 Toski, Bearer of Secrets	1	1
 Treasure Nabber	3	2
+Triskaidekaphile	1	3
 Trostani Discordant	1	4
 Trumpeting Carnosaur	7	6
+Twilight Diviner	3	3
 Twilight Prophet	2	4
 Twinflame Tyrant	3	5
 Two-Headed Hellkite	5	5
 Two-Headed Sliver	1	1
 Tyrant's Familiar	5	5
+Umbral Collar Zealot	3	2
 Unbreathing Horde	0	0
 Undead Augur	2	2
 Undead Butler	1	2
@@ -503,6 +602,7 @@ Vampire Nighthawk	2	3
 Vampire Socialite	2	2
 Vampire of the Dire Moon	1	1
 Vaultborn Tyrant	6	6
+Vedalken Plotter	1	1
 Vela the Night-Clad	4	4
 Vengeful Ancestor	3	4
 Vengeful Bloodwitch	1	1
@@ -512,6 +612,7 @@ Verdant Force	7	7
 Verdant Sun's Avatar	5	5
 Verix Bladewing	4	4
 Veteran Explorer	1	1
+Vigor	6	6
 Vile Entomber	2	2
 Vilis, Broker of Blood	8	8
 Virulent Sliver	1	1
@@ -527,9 +628,11 @@ Warren Instigator	1	1
 Warren Soultrader	3	3
 Wayward Swordtooth	5	5
 Welcoming Vampire	2	3
+Wight of the Reliquary	2	2
 Wild Nacatl	1	1
 Wildfire Devils	4	2
 Wilhelt, the Rotcleaver	3	3
+Windborn Muse	2	3
 Windreader Sphinx	3	7
 Winota, Joiner of Forces	4	4
 Wirewood Channeler	2	2
@@ -537,12 +640,17 @@ Witch Enchanter	2	2
 Withered Wretch	2	2
 Wolverine Riders	4	4
 Wood Elves	1	1
+World Shaper	3	3
 Wrathful Raptors	5	5
 Wrathful Red Dragon	5	5
 Xyris, the Writhing Storm	3	5
 Yahenni, Undying Partisan	2	2
+Yes Man, Personal Securitron	2	2
 Zacama, Primal Calamity	9	9
+Zedruu the Greathearted	2	4
 Zetalpa, Primal Dawn	4	8
 Zhur-Taa Ancient	7	5
 Zombie Master	2	3
+Zopandrel, Hunger Dominus	4	6
 Zul Ashur, Lich Lord	2	2
+Zulaport Cutthroat	1	1

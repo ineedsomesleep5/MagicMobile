@@ -33,9 +33,17 @@ COMMANDERS = [
     ("winota-joiner-of-forces", "Winota, Joiner of Forces", "RW", {4: "Joined Forces"}, "Boros humans"),
     ("the-first-sliver", "The First Sliver", "WUBRG", {4: "First Hive"}, "Five-color slivers"),
     ("miirym-sentinel-wyrm", "Miirym, Sentinel Wyrm", "GUR", {4: "Wyrm Hoard"}, "Temur dragons"),
-    ("marisi-breaker-of-the-coil", "Marisi, Breaker of the Coil", "RGW", {1: "Coil Brawl"}, "Naya goad"),
+    ("marisi-breaker-of-the-coil", "Marisi, Breaker of the Coil", "RGW", {1: "Coil Brawl", 2: "Coil Riot"}, "Naya goad"),
     ("kynaios-and-tiro-of-meletis", "Kynaios and Tiro of Meletis", "RGWU", {1: "Island Feast"}, "Four-color group hug"),
     ("tormod-the-desecrator", "Tormod, the Desecrator", "B", {2: "Desecrated Crypt"}, "Mono-black graveyard"),
+    # Added 2026-10-25 for about five decks per rank (docs/DECK_POWER.md).
+    ("tiamat", "Tiamat", "WUBRG", {2: "Chromatic Brood"}, "Five-color dragons"),
+    ("lathliss-dragon-queen", "Lathliss, Dragon Queen", "R", {2: "Queen's Clutch"}, "Mono-red dragons"),
+    ("old-gnawbone", "Old Gnawbone", "G", {2: "Gnawbone's Hoard"}, "Mono-green stompy"),
+    ("phelddagrif", "Phelddagrif", "GWU", {2: "Hippo Diplomacy"}, "Bant group hug"),
+    ("zedruu-the-greathearted", "Zedruu the Greathearted", "RWU", {2: "Generous Gifts"}, "Jeskai donate"),
+    ("karador-ghost-chieftain", "Karador, Ghost Chieftain", "WBG", {2: "Ghost Council"}, "Abzan graveyard"),
+    ("meren-of-clan-nel-toth", "Meren of Clan Nel Toth", "BG", {2: "Nel Toth Rites"}, "Golgari graveyard"),
 ]
 VARIANTS = {1: "exhibition", 2: "core", 3: "upgraded", 4: "optimized"}
 BASICS = {"W": "Plains", "U": "Island", "B": "Swamp", "R": "Mountain", "G": "Forest"}
@@ -171,7 +179,7 @@ def main():
     repo = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     decks, catalogue = build(repo, COMMANDERS, offline)
     out = {"schemaVersion": 1,
-           "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders) and 2026-10-24 (the rest), limited to this XMage catalogue",
+           "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders), 2026-10-24 and 2026-10-25 (the rest), limited to this XMage catalogue",
            "catalogueHash": catalogue["catalogueHash"], "decks": decks}
     target = repo / "apps/ios/MagicMobile/Resources/ai-decks.json"
     target.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")

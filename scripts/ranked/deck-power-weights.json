@@ -246,6 +246,53 @@
     "graveyard",
     "Zombie"
    ]
+  },
+  "Tiamat": {
+   "strength": 0.8,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Lathliss, Dragon Queen": {
+   "strength": 0.7,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Old Gnawbone": {
+   "strength": 0.7,
+   "theme": [
+    "Treasure",
+    "power 5"
+   ]
+  },
+  "Phelddagrif": {
+   "strength": 0.2,
+   "theme": [
+    "Hippo",
+    "each opponent",
+    "target opponent"
+   ]
+  },
+  "Zedruu the Greathearted": {
+   "strength": 0.25,
+   "theme": [
+    "gain control",
+    "owner"
+   ]
+  },
+  "Karador, Ghost Chieftain": {
+   "strength": 0.5,
+   "theme": [
+    "graveyard"
+   ]
+  },
+  "Meren of Clan Nel Toth": {
+   "strength": 0.55,
+   "theme": [
+    "graveyard",
+    "dies"
+   ]
   }
  },
  "defaultCommander": {
@@ -257,7 +304,7 @@
    "max": 0.6
   }
  },
- "commanderNote": "Strengths are judgment: the first eleven were set with C3/C4's games in view; the seven added 2026-10-24 are priors from community standing, not yet measured.",
+ "commanderNote": "Strengths are judgment: the first eleven were set with C3/C4's games in view; those added 2026-10-24 and 2026-10-25 are priors from community standing. Measured games outweigh them.",
  "scale": {
   "pointLogOdds": 0.27,
   "referencePower": 6.0,

@@ -46,6 +46,28 @@
    "games": 48
   },
   {
+   "id": "ai-tiamat-core",
+   "bracket": 2,
+   "power": 8.2,
+   "powerRange": [
+    4.3,
+    10.0
+   ],
+   "formulaPower": 7.78,
+   "games": 0
+  },
+  {
+   "id": "ai-lathliss-dragon-queen-core",
+   "bracket": 2,
+   "power": 8.1,
+   "powerRange": [
+    4.2,
+    10.0
+   ],
+   "formulaPower": 7.68,
+   "games": 0
+  },
+  {
    "id": "ai-krenko-mob-boss-optimized",
    "bracket": 4,
    "power": 7.9,
@@ -101,6 +123,17 @@
    "games": 48
   },
   {
+   "id": "ai-old-gnawbone-core",
+   "bracket": 2,
+   "power": 7.6,
+   "powerRange": [
+    3.7,
+    10.0
+   ],
+   "formulaPower": 7.24,
+   "games": 0
+  },
+  {
    "id": "ai-edgar-markov-upgraded",
    "bracket": 3,
    "power": 7.5,
@@ -143,6 +176,17 @@
    ],
    "formulaPower": 5.97,
    "games": 36
+  },
+  {
+   "id": "ai-meren-of-clan-nel-toth-core",
+   "bracket": 2,
+   "power": 6.9,
+   "powerRange": [
+    3.1,
+    10.0
+   ],
+   "formulaPower": 6.66,
+   "games": 0
   },
   {
    "id": "ai-krenko-mob-boss-exhibition",
@@ -255,6 +299,28 @@
    "games": 48
   },
   {
+   "id": "ai-karador-ghost-chieftain-core",
+   "bracket": 2,
+   "power": 5.6,
+   "powerRange": [
+    1.8,
+    9.5
+   ],
+   "formulaPower": 5.5,
+   "games": 0
+  },
+  {
+   "id": "ai-marisi-breaker-of-the-coil-core",
+   "bracket": 2,
+   "power": 5.5,
+   "powerRange": [
+    1.7,
+    9.4
+   ],
+   "formulaPower": 5.41,
+   "games": 0
+  },
+  {
    "id": "grave-danger",
    "bracket": 2,
    "power": 5.3,
@@ -286,6 +352,28 @@
    ],
    "formulaPower": 5.69,
    "games": 648
+  },
+  {
+   "id": "ai-phelddagrif-core",
+   "bracket": 2,
+   "power": 4.9,
+   "powerRange": [
+    1.1,
+    8.8
+   ],
+   "formulaPower": 4.85,
+   "games": 0
+  },
+  {
+   "id": "ai-zedruu-the-greathearted-core",
+   "bracket": 2,
+   "power": 4.8,
+   "powerRange": [
+    1.0,
+    8.7
+   ],
+   "formulaPower": 4.77,
+   "games": 0
   },
   {
    "id": "ai-wilhelt-the-rotcleaver-core",
