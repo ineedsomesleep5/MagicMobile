@@ -251,8 +251,10 @@ or Optimized deck has been measured yet.
 ## Calibration
 
 - Done: the formula against 2,986 earlier games (above).
-- The first cloud request (2026-10-24) never started a session; no games ran.
-- Queued with Caleb's go-ahead (2026-10-24), one cloud session, skill 3 against 3, phone budget, every AI deck
+- The first cloud request (2026-10-24) never started a session (sessions can't be started from Remote Control); no
+  games ran.
+- Approved by Caleb (2026-10-24), brief in `docs/cloud/power-gauntlet.md`, one cloud session, skill 3 against 3,
+  phone budget, every AI deck
   against three reference precons (First Flight, Token Triumph, Grave Danger), via `ai_calibration.py run --against`:
   - **Batch A, 624 games** (16 per reference): the six decks whose Power looked off (Ur-Dragon, Edgar, Krenko,
     Lathril and Wilhelt Optimized, Gishath Exhibition) and the seven new decks.
