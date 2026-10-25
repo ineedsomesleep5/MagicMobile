@@ -292,8 +292,10 @@ enum class ArenaHandPosture {
 
     companion object {
         fun resolve(situation: Situation): ArenaHandPosture = when {
-            situation.spectating || situation.dragging || situation.boardDecision -> RESTING
+            situation.spectating || situation.boardDecision -> RESTING
+            // A card carried out of the spread hand keeps the row under the finger (ArenaBoardModel.swift).
             situation.spread -> SPREAD
+            situation.dragging -> RESTING
             situation.opened -> RAISED
             else -> RESTING
         }

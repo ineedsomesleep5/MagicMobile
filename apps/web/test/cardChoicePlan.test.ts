@@ -75,10 +75,22 @@ describe("card choice plan", () => {
     const p = plan(first, order);
     for (let count = 0; count < 14; count++) {
       const current = snapshot(`Select a card to discard (selected ${count} of 14, min 14)`, count + 1, hand, { chosen: order.slice(0, count) });
+      expect(p.expectsMorePrompts).toBe(true);
       expect(p.next(current, false)?.targetIds).toEqual([order[count]]);
       expect(p.next(current, false)).toBeUndefined();
       expect(p.stopped).toBe(false);
     }
+    expect(p.expectsMorePrompts).toBe(false);
+  });
+
+  it("owes a Done below its maximum, and nothing after it", () => {
+    const first = snapshot("Choose (selected 0 of 6, min 2)", 1, ids, { chosen: [] });
+    const p = plan(first, [ids[0], ids[1]]);
+    expect(p.next(first, false)?.targetIds).toEqual([ids[0]]);
+    expect(p.next(snapshot("Choose (selected 1 of 6, min 2)", 2, ids, { chosen: [ids[0]] }), false)?.targetIds).toEqual([ids[1]]);
+    expect(p.expectsMorePrompts).toBe(true);
+    expect(p.next(snapshot("Choose (selected 2 of 6, min 2)", 3, ids, { chosen: [ids[0], ids[1]], done: true }), false)?.confirmed).toBe(false);
+    expect(p.expectsMorePrompts).toBe(false);
   });
 
   it("needs the player when a pending answer clears with the same prompt; stops on a changed context", () => {

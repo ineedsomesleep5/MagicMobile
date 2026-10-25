@@ -119,6 +119,15 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-25 (Claude, hand and discard): two ways a gesture or a multi-card answer died partway. (1) The Arena hand's
+  posture rule rested the hand whenever a card was dragged, so a card carried out of the *spread* hand collapsed the row
+  under the finger and the carry never landed. A spread hand now stays spread while its card is carried (a raised one
+  still tucks). (2) A drafted multi-card choice is sent one native answer at a time; the board ended the plan after 5 s
+  with no prompt, and cancelled at once when the pending answer cleared before the poll showing the next prompt, so a
+  slow engine handed a discard of seven back after a few cards. **Rule:** `CardChoicePlan.expectsMorePrompts` says
+  whether answers are still owed (then wait 30 s, not 5), and an unchanged prompt gets 2 s before the plan stops; real
+  rejections still stop it through the command failure. Never change layout or posture under a live gesture.
+  Where: `ArenaBoardModel` handPosture (all three), `CardChoicePlan`, the boards' card-choice drivers.
 - 2026-10-19 (Claude, audio): AVAudioPlayer takes up to ~50 ms to start the first time, and making a player per
   play cost ~40 ms, so a card slam and its colour layer (since retired) started as a smeared flam. **Rule:** sounds meant to land
   together go through `GameAudio.playTogether` (one `play(atTime:)` on the device clock, set `lead` ahead), players are

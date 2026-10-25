@@ -386,10 +386,12 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
       const current = session.state.snapshot;
       if (!plan || !current) return;
       const busy = session.state.working || session.state.pendingActionID !== undefined;
-      // No prompt after its last answer: the choice is over once that holds for 5 s.
+      // No prompt after its last answer: the choice is over once that holds for 5 s, or 30 s while a selection still owes
+      // answers (a slow engine between prompts is not the end of the choice).
       if (!current.promptEnvelopeV2 && !busy && plan.lastPrompt !== undefined) {
         const last = plan.lastPrompt;
-        done = window.setTimeout(() => { if (cardPlan.current?.lastPrompt === last && !session.state.snapshot?.promptEnvelopeV2) { cardPlan.current = undefined; setChoosing(false); } }, 5000);
+        done = window.setTimeout(() => { if (cardPlan.current?.lastPrompt === last && !session.state.snapshot?.promptEnvelopeV2) { cardPlan.current = undefined; setChoosing(false); } },
+          plan.expectsMorePrompts ? 30000 : 5000);
         return;
       }
       const command = plan.next(current, busy);

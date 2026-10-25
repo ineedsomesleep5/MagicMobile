@@ -392,8 +392,11 @@ enum ArenaHandPosture: Equatable {
     }
 
     static func resolve(_ situation: Situation) -> ArenaHandPosture {
-        if situation.spectating || situation.dragging || situation.boardDecision { return .resting }
+        if situation.spectating || situation.boardDecision { return .resting }
+        // A card carried out of the spread hand keeps the row under the finger: collapsing it mid-drag cancelled the carry
+        // (Caleb, 2026-10-25). A raised hand still tucks away while its card is carried.
         if situation.spread { return .spread }
+        if situation.dragging { return .resting }
         return situation.opened ? .raised : .resting
     }
 }

@@ -273,8 +273,10 @@ fun NativeGameView(
         if (snap.promptEnvelopeV2 == null && currentPending == null && plan.lastPrompt != null) {
             if (cardChoiceCompletionJob == null) {
                 val lastPrompt = plan.lastPrompt
+                // Done after a quiet spell; a selection that still owes answers waits longer for the engine's next prompt.
+                val quiet = if (plan.expectsMorePrompts) 30_000L else 5_000L
                 cardChoiceCompletionJob = scope.launch {
-                    delay(5000)
+                    delay(quiet)
                     if (committedCardChoice?.lastPrompt == lastPrompt && currentSnapshot.promptEnvelopeV2 == null && currentPending == null) committedCardChoice = null
                     cardChoiceCompletionJob = null
                 }
@@ -574,8 +576,17 @@ fun NativeGameView(
                 reviewCardChoiceAfterPending = false
                 isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(board) != null
                 isPromptDetailOpen = boardDetailChoiceKey(board) != null
-            } else if (old != null && committedCardChoice?.submittedPromptIsUnchanged(board) == true) cancelCommittedCardChoice()
-            else advanceCommittedCardChoice()
+            } else if (old != null && committedCardChoice?.submittedPromptIsUnchanged(board) == true) {
+                // The answer cleared before the poll that shows the next prompt: give that poll a moment (NativeGameView.swift).
+                val lastPrompt = committedCardChoice?.lastPrompt
+                cardChoiceCompletionJob?.cancel()
+                cardChoiceCompletionJob = scope.launch {
+                    delay(2_000)
+                    cardChoiceCompletionJob = null
+                    if (currentPending == null && committedCardChoice?.lastPrompt == lastPrompt &&
+                        committedCardChoice?.submittedPromptIsUnchanged(currentSnapshot) == true) cancelCommittedCardChoice()
+                }
+            } else advanceCommittedCardChoice()
         }
     }
     OnChange(isLogOpen) { _, open -> GameAudio.play(if (open) GameSound.PAGE_FLIP else GameSound.UI_CLOSE) }
