@@ -50,7 +50,7 @@
    "bracket": 2,
    "power": 8.2,
    "powerRange": [
-    4.3,
+    4.4,
     10.0
    ],
    "formulaPower": 7.78,
@@ -61,7 +61,7 @@
    "bracket": 2,
    "power": 8.1,
    "powerRange": [
-    4.2,
+    4.3,
     10.0
    ],
    "formulaPower": 7.68,
@@ -105,7 +105,7 @@
    "bracket": 1,
    "power": 7.8,
    "powerRange": [
-    5.8,
+    5.9,
     9.7
    ],
    "formulaPower": 7.72,
@@ -127,7 +127,7 @@
    "bracket": 2,
    "power": 7.6,
    "powerRange": [
-    3.7,
+    3.8,
     10.0
    ],
    "formulaPower": 7.24,
@@ -180,7 +180,7 @@
   {
    "id": "ai-meren-of-clan-nel-toth-core",
    "bracket": 2,
-   "power": 6.9,
+   "power": 7.0,
    "powerRange": [
     3.1,
     10.0
@@ -451,17 +451,6 @@
    ],
    "formulaPower": 4.29,
    "games": 46
-  },
-  {
-   "id": "ai-the-first-sliver-optimized",
-   "bracket": 4,
-   "power": 2.2,
-   "powerRange": [
-    1.0,
-    4.5
-   ],
-   "formulaPower": 6.54,
-   "games": 47
   }
  ]
 }

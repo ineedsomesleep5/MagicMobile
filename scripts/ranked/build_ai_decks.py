@@ -31,7 +31,8 @@ COMMANDERS = [
     # gentler ones for Bronze (plans the AI plays weakly with one opponent).
     ("kaalia-of-the-vast", "Kaalia of the Vast", "RWB", {4: "Vast Host"}, "Mardu angels, demons and dragons"),
     ("winota-joiner-of-forces", "Winota, Joiner of Forces", "RW", {4: "Joined Forces"}, "Boros humans"),
-    ("the-first-sliver", "The First Sliver", "WUBRG", {4: "First Hive"}, "Five-color slivers"),
+    # The First Sliver (added 2026-10-24) was dropped 2026-10-25: the weakest deck at skill 3, without mistakes and at
+    # skill 5 (docs/cloud/reports/power-2.md).
     ("miirym-sentinel-wyrm", "Miirym, Sentinel Wyrm", "GUR", {4: "Wyrm Hoard"}, "Temur dragons"),
     ("marisi-breaker-of-the-coil", "Marisi, Breaker of the Coil", "RGW", {1: "Coil Brawl", 2: "Coil Riot"}, "Naya goad"),
     ("kynaios-and-tiro-of-meletis", "Kynaios and Tiro of Meletis", "RGWU", {1: "Island Feast"}, "Four-color group hug"),

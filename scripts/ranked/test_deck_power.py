@@ -23,7 +23,7 @@ class FormulaTests(unittest.TestCase):
 
     def test_every_ai_deck_rates_between_1_and_10(self):
         rated = dp.rate_all(CONFIG)
-        self.assertEqual(len(rated), 41)
+        self.assertEqual(len(rated), 40)
         for deck in rated:
             self.assertTrue(1 <= deck['power'] <= 10, deck['id'])
             self.assertTrue(all(0 <= v <= 1 for v in deck['parts'].values()), deck['id'])
@@ -43,7 +43,7 @@ class FormulaTests(unittest.TestCase):
 class RatingTests(unittest.TestCase):
     def test_ratings_cover_every_deck_and_anchor_the_references(self):
         rated = dp.rate(CONFIG)
-        self.assertEqual(len(rated), 41)
+        self.assertEqual(len(rated), 40)
         refs = [r['power'] for r in rated if r['id'] in CONFIG['scale']['referenceDecks']]
         self.assertAlmostEqual(sum(refs) / len(refs), CONFIG['scale']['referencePower'], delta=0.1)
         for r in rated:
