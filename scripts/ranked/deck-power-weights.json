@@ -293,6 +293,38 @@
     "graveyard",
     "dies"
    ]
+  },
+  "Kumena, Tyrant of Orazca": {
+   "strength": 0.5,
+   "theme": [
+    "Merfolk"
+   ]
+  },
+  "Hakbal of the Surging Soul": {
+   "strength": 0.5,
+   "theme": [
+    "Merfolk",
+    "explore"
+   ]
+  },
+  "Marrow-Gnawer": {
+   "strength": 0.4,
+   "theme": [
+    "Rat"
+   ]
+  },
+  "Arahbo, Roar of the World": {
+   "strength": 0.5,
+   "theme": [
+    "Cat"
+   ]
+  },
+  "Syr Gwyn, Hero of Ashvale": {
+   "strength": 0.45,
+   "theme": [
+    "Knight",
+    "Equipment"
+   ]
   }
  },
  "defaultCommander": {

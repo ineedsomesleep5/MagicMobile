@@ -24,6 +24,17 @@
    "games": 48
   },
   {
+   "id": "ai-kaalia-of-the-vast-core",
+   "bracket": 2,
+   "power": 8.9,
+   "powerRange": [
+    5.1,
+    10.0
+   ],
+   "formulaPower": 8.36,
+   "games": 0
+  },
+  {
    "id": "ai-the-ur-dragon-core",
    "bracket": 2,
    "power": 8.3,
@@ -77,6 +88,17 @@
    ],
    "formulaPower": 7.44,
    "games": 689
+  },
+  {
+   "id": "ai-miirym-sentinel-wyrm-core",
+   "bracket": 2,
+   "power": 7.9,
+   "powerRange": [
+    4.0,
+    10.0
+   ],
+   "formulaPower": 7.47,
+   "games": 0
   },
   {
    "id": "ai-gishath-suns-avatar-exhibition",
@@ -143,6 +165,17 @@
    ],
    "formulaPower": 7.24,
    "games": 48
+  },
+  {
+   "id": "ai-meren-of-clan-nel-toth-exhibition",
+   "bracket": 1,
+   "power": 7.4,
+   "powerRange": [
+    3.6,
+    10.0
+   ],
+   "formulaPower": 7.07,
+   "games": 0
   },
   {
    "id": "ai-gishath-suns-avatar-upgraded",
@@ -233,6 +266,28 @@
    "games": 35
   },
   {
+   "id": "ai-arahbo-roar-of-the-world-core",
+   "bracket": 2,
+   "power": 6.3,
+   "powerRange": [
+    2.4,
+    10.0
+   ],
+   "formulaPower": 6.05,
+   "games": 0
+  },
+  {
+   "id": "ai-syr-gwyn-hero-of-ashvale-core",
+   "bracket": 2,
+   "power": 6.2,
+   "powerRange": [
+    2.3,
+    10.0
+   ],
+   "formulaPower": 5.97,
+   "games": 0
+  },
+  {
    "id": "draconic-destruction",
    "bracket": 2,
    "power": 6.1,
@@ -277,6 +332,17 @@
    "games": 48
   },
   {
+   "id": "ai-kumena-tyrant-of-orazca-core",
+   "bracket": 2,
+   "power": 5.9,
+   "powerRange": [
+    2.1,
+    9.8
+   ],
+   "formulaPower": 5.76,
+   "games": 0
+  },
+  {
    "id": "ai-winota-joiner-of-forces-optimized",
    "bracket": 4,
    "power": 5.8,
@@ -308,6 +374,17 @@
    ],
    "formulaPower": 6.66,
    "games": 48
+  },
+  {
+   "id": "ai-hakbal-of-the-surging-soul-core",
+   "bracket": 2,
+   "power": 5.4,
+   "powerRange": [
+    1.5,
+    9.2
+   ],
+   "formulaPower": 5.3,
+   "games": 0
   },
   {
    "id": "ai-wilhelt-the-rotcleaver-upgraded",
@@ -418,6 +495,17 @@
    ],
    "formulaPower": 3.93,
    "games": 96
+  },
+  {
+   "id": "ai-marrow-gnawer-core",
+   "bracket": 2,
+   "power": 3.6,
+   "powerRange": [
+    1.0,
+    7.4
+   ],
+   "formulaPower": 3.72,
+   "games": 0
   },
   {
    "id": "ai-karador-ghost-chieftain-core",

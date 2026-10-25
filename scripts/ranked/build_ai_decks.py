@@ -29,11 +29,11 @@ COMMANDERS = [
      {2: "Rotting Dead", 3: "Zombie Tide", 4: "Necropolis"}, "Dimir zombies"),
     # Added 2026-10-24 to widen the Power range (docs/DECK_POWER.md): stronger decks for Diamond and Mythic,
     # gentler ones for Bronze (plans the AI plays weakly with one opponent).
-    ("kaalia-of-the-vast", "Kaalia of the Vast", "RWB", {4: "Vast Host"}, "Mardu angels, demons and dragons"),
+    ("kaalia-of-the-vast", "Kaalia of the Vast", "RWB", {2: "Vast Court", 4: "Vast Host"}, "Mardu angels, demons and dragons"),
     ("winota-joiner-of-forces", "Winota, Joiner of Forces", "RW", {4: "Joined Forces"}, "Boros humans"),
     # The First Sliver (added 2026-10-24) was dropped 2026-10-25: the weakest deck at skill 3, without mistakes and at
     # skill 5 (docs/cloud/reports/power-2.md).
-    ("miirym-sentinel-wyrm", "Miirym, Sentinel Wyrm", "GUR", {4: "Wyrm Hoard"}, "Temur dragons"),
+    ("miirym-sentinel-wyrm", "Miirym, Sentinel Wyrm", "GUR", {2: "Wyrm Nest", 4: "Wyrm Hoard"}, "Temur dragons"),
     ("marisi-breaker-of-the-coil", "Marisi, Breaker of the Coil", "RGW", {1: "Coil Brawl", 2: "Coil Riot"}, "Naya goad"),
     ("kynaios-and-tiro-of-meletis", "Kynaios and Tiro of Meletis", "RGWU", {1: "Island Feast"}, "Four-color group hug"),
     ("tormod-the-desecrator", "Tormod, the Desecrator", "B", {2: "Desecrated Crypt"}, "Mono-black graveyard"),
@@ -44,7 +44,13 @@ COMMANDERS = [
     ("phelddagrif", "Phelddagrif", "GWU", {2: "Hippo Diplomacy"}, "Bant group hug"),
     ("zedruu-the-greathearted", "Zedruu the Greathearted", "RWU", {2: "Generous Gifts"}, "Jeskai donate"),
     ("karador-ghost-chieftain", "Karador, Ghost Chieftain", "WBG", {2: "Ghost Council"}, "Abzan graveyard"),
-    ("meren-of-clan-nel-toth", "Meren of Clan Nel Toth", "BG", {2: "Nel Toth Rites"}, "Golgari graveyard"),
+    ("meren-of-clan-nel-toth", "Meren of Clan Nel Toth", "BG", {1: "Nel Toth Wake", 2: "Nel Toth Rites"}, "Golgari graveyard"),
+    # Added 2026-10-25 for Silver (Power 4-5): ground tribal decks with little evasion (docs/DECK_POWER.md).
+    ("kumena-tyrant-of-orazca", "Kumena, Tyrant of Orazca", "GU", {2: "Orazca Tide"}, "Simic merfolk"),
+    ("hakbal-of-the-surging-soul", "Hakbal of the Surging Soul", "GU", {2: "Surging Soul"}, "Simic merfolk explore"),
+    ("marrow-gnawer", "Marrow-Gnawer", "B", {2: "Rat Pack"}, "Mono-black rats"),
+    ("arahbo-roar-of-the-world", "Arahbo, Roar of the World", "GW", {2: "Pride of Arahbo"}, "Selesnya cats"),
+    ("syr-gwyn-hero-of-ashvale", "Syr Gwyn, Hero of Ashvale", "RWB", {2: "Ashvale Knights"}, "Mardu knights and equipment"),
 ]
 VARIANTS = {1: "exhibition", 2: "core", 3: "upgraded", 4: "optimized"}
 BASICS = {"W": "Plains", "U": "Island", "B": "Swamp", "R": "Mountain", "G": "Forest"}

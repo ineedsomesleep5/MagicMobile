@@ -570,12 +570,12 @@
   {
    "bracket": 1,
    "poolBracket": 1,
-   "count": 5
+   "count": 6
   },
   {
    "bracket": 2,
    "poolBracket": 2,
-   "count": 20
+   "count": 27
   },
   {
    "bracket": 3,
@@ -595,7 +595,7 @@
   {
    "bracket": 0,
    "poolBracket": 1,
-   "count": 5
+   "count": 6
   }
  ],
  "colors": [
