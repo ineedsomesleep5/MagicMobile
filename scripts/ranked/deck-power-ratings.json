@@ -17,7 +17,7 @@
    "bracket": 2,
    "power": 9.9,
    "powerRange": [
-    7.8,
+    7.7,
     10.0
    ],
    "formulaPower": 7.68,
@@ -26,13 +26,13 @@
   {
    "id": "ai-kaalia-of-the-vast-core",
    "bracket": 2,
-   "power": 8.9,
+   "power": 8.4,
    "powerRange": [
-    5.1,
+    6.5,
     10.0
    ],
    "formulaPower": 8.36,
-   "games": 0
+   "games": 48
   },
   {
    "id": "ai-the-ur-dragon-core",
@@ -90,23 +90,12 @@
    "games": 689
   },
   {
-   "id": "ai-miirym-sentinel-wyrm-core",
-   "bracket": 2,
-   "power": 7.9,
-   "powerRange": [
-    4.0,
-    10.0
-   ],
-   "formulaPower": 7.47,
-   "games": 0
-  },
-  {
    "id": "ai-gishath-suns-avatar-exhibition",
    "bracket": 1,
-   "power": 7.8,
+   "power": 7.7,
    "powerRange": [
-    5.9,
-    9.7
+    5.8,
+    9.6
    ],
    "formulaPower": 7.72,
    "games": 48
@@ -127,7 +116,7 @@
    "bracket": 3,
    "power": 7.5,
    "powerRange": [
-    5.4,
+    5.3,
     9.6
    ],
    "formulaPower": 6.61,
@@ -150,7 +139,7 @@
    "power": 7.4,
    "powerRange": [
     5.3,
-    9.5
+    9.4
    ],
    "formulaPower": 8.13,
    "games": 36
@@ -165,17 +154,6 @@
    ],
    "formulaPower": 7.24,
    "games": 48
-  },
-  {
-   "id": "ai-meren-of-clan-nel-toth-exhibition",
-   "bracket": 1,
-   "power": 7.4,
-   "powerRange": [
-    3.6,
-    10.0
-   ],
-   "formulaPower": 7.07,
-   "games": 0
   },
   {
    "id": "ai-gishath-suns-avatar-upgraded",
@@ -204,11 +182,33 @@
    "bracket": 3,
    "power": 7.0,
    "powerRange": [
-    4.9,
+    4.8,
     9.1
    ],
    "formulaPower": 5.97,
    "games": 36
+  },
+  {
+   "id": "ai-hakbal-of-the-surging-soul-core",
+   "bracket": 2,
+   "power": 6.8,
+   "powerRange": [
+    4.9,
+    8.7
+   ],
+   "formulaPower": 5.3,
+   "games": 48
+  },
+  {
+   "id": "first-flight",
+   "bracket": 2,
+   "power": 6.7,
+   "powerRange": [
+    6.2,
+    7.1
+   ],
+   "formulaPower": 5.84,
+   "games": 1368
   },
   {
    "id": "ai-krenko-mob-boss-exhibition",
@@ -220,17 +220,6 @@
    ],
    "formulaPower": 6.04,
    "games": 36
-  },
-  {
-   "id": "first-flight",
-   "bracket": 2,
-   "power": 6.6,
-   "powerRange": [
-    6.2,
-    7.1
-   ],
-   "formulaPower": 5.84,
-   "games": 1240
   },
   {
    "id": "ai-lathril-blade-of-the-elves-exhibition",
@@ -266,26 +255,15 @@
    "games": 35
   },
   {
-   "id": "ai-arahbo-roar-of-the-world-core",
-   "bracket": 2,
-   "power": 6.3,
-   "powerRange": [
-    2.4,
-    10.0
-   ],
-   "formulaPower": 6.05,
-   "games": 0
-  },
-  {
-   "id": "ai-syr-gwyn-hero-of-ashvale-core",
+   "id": "ai-miirym-sentinel-wyrm-core",
    "bracket": 2,
    "power": 6.2,
    "powerRange": [
-    2.3,
-    10.0
+    4.3,
+    8.1
    ],
-   "formulaPower": 5.97,
-   "games": 0
+   "formulaPower": 7.47,
+   "games": 48
   },
   {
    "id": "draconic-destruction",
@@ -293,7 +271,7 @@
    "power": 6.1,
    "powerRange": [
     5.4,
-    6.8
+    6.7
    ],
    "formulaPower": 6.4,
    "games": 536
@@ -307,7 +285,7 @@
     6.3
    ],
    "formulaPower": 4.87,
-   "games": 1082
+   "games": 1210
   },
   {
    "id": "ai-gishath-suns-avatar-optimized",
@@ -332,23 +310,12 @@
    "games": 48
   },
   {
-   "id": "ai-kumena-tyrant-of-orazca-core",
-   "bracket": 2,
-   "power": 5.9,
-   "powerRange": [
-    2.1,
-    9.8
-   ],
-   "formulaPower": 5.76,
-   "games": 0
-  },
-  {
    "id": "ai-winota-joiner-of-forces-optimized",
    "bracket": 4,
    "power": 5.8,
    "powerRange": [
     3.9,
-    7.7
+    7.6
    ],
    "formulaPower": 6.79,
    "games": 48
@@ -362,7 +329,7 @@
     5.9
    ],
    "formulaPower": 5.26,
-   "games": 1347
+   "games": 1475
   },
   {
    "id": "ai-meren-of-clan-nel-toth-core",
@@ -376,17 +343,6 @@
    "games": 48
   },
   {
-   "id": "ai-hakbal-of-the-surging-soul-core",
-   "bracket": 2,
-   "power": 5.4,
-   "powerRange": [
-    1.5,
-    9.2
-   ],
-   "formulaPower": 5.3,
-   "games": 0
-  },
-  {
    "id": "ai-wilhelt-the-rotcleaver-upgraded",
    "bracket": 3,
    "power": 5.3,
@@ -396,6 +352,17 @@
    ],
    "formulaPower": 5.64,
    "games": 36
+  },
+  {
+   "id": "ai-arahbo-roar-of-the-world-core",
+   "bracket": 2,
+   "power": 5.3,
+   "powerRange": [
+    3.4,
+    7.2
+   ],
+   "formulaPower": 6.05,
+   "games": 48
   },
   {
    "id": "ai-lathril-blade-of-the-elves-core",
@@ -409,6 +376,17 @@
    "games": 648
   },
   {
+   "id": "ai-syr-gwyn-hero-of-ashvale-core",
+   "bracket": 2,
+   "power": 5.1,
+   "powerRange": [
+    3.2,
+    6.9
+   ],
+   "formulaPower": 5.97,
+   "games": 48
+  },
+  {
    "id": "ai-phelddagrif-core",
    "bracket": 2,
    "power": 4.9,
@@ -418,6 +396,17 @@
    ],
    "formulaPower": 4.85,
    "games": 44
+  },
+  {
+   "id": "ai-meren-of-clan-nel-toth-exhibition",
+   "bracket": 1,
+   "power": 4.9,
+   "powerRange": [
+    2.9,
+    6.8
+   ],
+   "formulaPower": 7.07,
+   "games": 48
   },
   {
    "id": "ai-wilhelt-the-rotcleaver-core",
@@ -457,7 +446,7 @@
    "bracket": 1,
    "power": 3.7,
    "powerRange": [
-    2.2,
+    2.3,
     5.2
    ],
    "formulaPower": 3.98,
@@ -497,15 +486,15 @@
    "games": 96
   },
   {
-   "id": "ai-marrow-gnawer-core",
+   "id": "ai-kumena-tyrant-of-orazca-core",
    "bracket": 2,
-   "power": 3.6,
+   "power": 3.5,
    "powerRange": [
-    1.0,
-    7.4
+    1.5,
+    5.5
    ],
-   "formulaPower": 3.72,
-   "games": 0
+   "formulaPower": 5.76,
+   "games": 48
   },
   {
    "id": "ai-karador-ghost-chieftain-core",
@@ -519,9 +508,20 @@
    "games": 48
   },
   {
+   "id": "ai-marrow-gnawer-core",
+   "bracket": 2,
+   "power": 3.4,
+   "powerRange": [
+    1.5,
+    5.4
+   ],
+   "formulaPower": 3.72,
+   "games": 48
+  },
+  {
    "id": "ai-kynaios-and-tiro-of-meletis-exhibition",
    "bracket": 1,
-   "power": 1.2,
+   "power": 1.3,
    "powerRange": [
     1.0,
     3.0
