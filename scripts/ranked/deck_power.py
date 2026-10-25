@@ -6,8 +6,10 @@ between the norms in deck-power-weights.json, and the weighted mix maps to 1-10.
 catalogue (types, oracle text, mana value, Scryfall role tags); creature power and toughness, which the
 catalogue lacks, come from card-stats.tsv (pinned XMage's Utils/mtg-cards-data.txt, see `stats`).
 
-  table   Markdown table of every AI deck's parts and Power (--json for the numbers)
-  check   Power against AI-vs-AI results (docs/cloud/*-results CSVs): a Bradley-Terry strength per deck
+  rate    each deck's Power from its own games, the formula filling in (--write saves deck-power-ratings.json)
+  ladder  the decks each Ranked division and Quick Match level would bring at those ratings
+  table   Markdown table of every AI deck's formula parts and formula Power (--json for the numbers)
+  check   formula Power against AI-vs-AI results (docs/cloud/*-results CSVs): a Bradley-Terry strength per deck
   fit     search the weights for the best match to those results (--write saves them)
   stats   refresh card-stats.tsv from an XMage checkout's mtg-cards-data.txt
 """
@@ -19,6 +21,7 @@ REPO = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 WEIGHTS = HERE / 'deck-power-weights.json'
 STATS = HERE / 'card-stats.tsv'
+RATINGS = HERE / 'deck-power-ratings.json'
 RESOURCES = REPO / 'apps/ios/MagicMobile/Resources'
 RESULTS = [REPO / 'docs/cloud/c3-results', REPO / 'docs/cloud/c4-results', REPO / 'docs/cloud/power-results']
 PARTS = ('speed', 'mana', 'interaction', 'consistency', 'threats', 'synergy', 'commander', 'combos', 'resilience')
@@ -377,6 +380,58 @@ def fit(config: dict, rounds: int, seed: int) -> dict:
     return best
 
 
+def rate(config: dict) -> list[dict]:
+    """Each deck's Power from its own games, with the formula as the starting estimate.
+
+    The formula's line (slope_fit) turns its 1-10 into an expected strength; that estimate counts with the formula's
+    out-of-sample error (`scale.formulaErrorLogOdds`), each deck's games with their own standard error, and the two are
+    combined by precision. A deck without games keeps the formula's estimate and its full error. Power is then
+    `scale.referencePower` plus the strength above the reference decks' average, in units of `scale.pointLogOdds`."""
+    scale = config['scale']
+    rated = rate_all(config)
+    observed = bradley_terry(read_games())
+    slope, intercept = slope_fit(rated, observed)
+    prior = scale['formulaErrorLogOdds'] ** -2
+    for r in rated:
+        estimate, precision = slope * r['power'] + intercept, prior
+        if r['id'] in observed['strength']:
+            measured = observed['se'][r['id']] ** -2
+            estimate = (estimate * prior + observed['strength'][r['id']] * measured) / (prior + measured)
+            precision += measured
+        r['strength'], r['strengthSE'], r['games'] = estimate, precision ** -0.5, observed['games'].get(r['id'], 0)
+    references = [r['strength'] for r in rated if r['id'] in scale['referenceDecks']]
+    anchor = sum(references) / len(references)
+    to_power = lambda s: max(1.0, min(10.0, scale['referencePower'] + (s - anchor) / scale['pointLogOdds']))
+    for r in rated:
+        r['formulaPower'] = r.pop('power')
+        r['power'] = round(to_power(r['strength']), 1)
+        r['powerRange'] = [round(to_power(r['strength'] + z * 1.96 * r['strengthSE']), 1) for z in (-1, 1)]
+    return sorted(rated, key=lambda r: -r['power'])
+
+
+def ladder(rated: list[dict], config: dict) -> str:
+    """Which decks each Ranked division and Quick Match level would bring: the nearest few allowed decks to the target."""
+    few = config['ladder']['closest']
+    lines = ['| Tier | Division | Target | Max bracket | Nearest allowed decks (Power) | Gap |', '|---|---|---|---|---|---|']
+    for tier in config['ladder']['tiers']:
+        low, high = tier['power']
+        for step, division in enumerate(('IV', 'III', 'II', 'I')):
+            target = low + (high - low) * (step + 0.5) / 4
+            allowed = sorted((r for r in rated if r['bracket'] <= tier['maxBracket']), key=lambda r: abs(r['power'] - target))
+            near = allowed[:few]
+            gap = abs(near[0]['power'] - target)
+            lines.append(f"| {tier['name']} | {division} | {target:.2f} | {tier['maxBracket']} | " +
+                         ', '.join(f"{r['id'].removeprefix('ai-')} {r['power']:.1f}" for r in near) +
+                         f" | {'**' + format(gap, '.1f') + '**' if gap > 0.5 else format(gap, '.1f')} |")
+    lines += ['', '| Quick Match | Power band | Decks in the band |', '|---|---|---|']
+    for level in config['ladder']['quickMatch']:
+        low, high = level['power']
+        inside = [r for r in rated if low <= r['power'] <= high]
+        lines.append(f"| {level['name']} | {low}–{high} | {len(inside)}: " +
+                     ', '.join(r['id'].removeprefix('ai-') for r in inside) + ' |')
+    return '\n'.join(lines)
+
+
 def table(rated: list[dict], observed: dict | None) -> str:
     head = '| Deck | Bracket | Power | ' + ' | '.join(p.capitalize() for p in PARTS) + ' | Observed |'
     lines = [head, '|' + '---|' * (len(PARTS) + 4)]
@@ -422,6 +477,9 @@ def main():
     t = sub.add_parser('table')
     t.add_argument('--json', action='store_true', help='every deck with counts, parts and Power')
     sub.add_parser('check')
+    r = sub.add_parser('rate')
+    r.add_argument('--write', action='store_true', help=f'save the ratings to {RATINGS.name}')
+    sub.add_parser('ladder')
     f = sub.add_parser('fit')
     f.add_argument('--rounds', type=int, default=4000)
     f.add_argument('--seed', type=int, default=1)
@@ -441,6 +499,19 @@ def main():
             print(table(rated, bradley_terry(games) if games else None))
     elif args.command == 'check':
         check(config)
+    elif args.command == 'rate':
+        rated = rate(config)
+        print('| Deck | Bracket | Power (95% CI) | Formula | Games |\n|---|---|---|---|---|')
+        for d in rated:
+            print(f"| {d['id']} | {d['bracket']} | **{d['power']:.1f}** ({d['powerRange'][0]:.1f}–{d['powerRange'][1]:.1f}) | "
+                  f"{d['formulaPower']:.1f} | {d['games']} |")
+        if args.write:
+            keep = ('id', 'bracket', 'power', 'powerRange', 'formulaPower', 'games')
+            RATINGS.write_text(json.dumps({'schemaVersion': 1, 'scale': config['scale'],
+                                           'decks': [{k: d[k] for k in keep} for d in rated]}, indent=1) + '\n')
+            print(f'\nwrote {RATINGS.relative_to(REPO)}')
+    elif args.command == 'ladder':
+        print(ladder(rate(config), config))
     elif args.command == 'fit':
         weights = fit(config, args.rounds, args.seed)
         print(json.dumps(weights, indent=1))

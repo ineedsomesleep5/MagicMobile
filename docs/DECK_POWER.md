@@ -1,7 +1,7 @@
 # Deck Power
 
-Design agreed with Caleb on 2026-10-24. Formula v1 exists as a script (below); no app picks decks by Power yet. The
-calibration gauntlet is queued in a cloud session.
+Design agreed with Caleb on 2026-10-24. Since 2026-10-25 every AI deck is rated by its own games (below); no app picks
+decks by Power yet, and the numbers wait for Caleb's approval.
 
 Power is a hidden 1–10 rating of how strongly an **AI deck** plays, beyond its bracket. Players never see it. It
 decides which deck the AI brings: in Ranked it climbs with your rank; in Quick Match you choose Easy, Medium or Hard.
@@ -66,6 +66,116 @@ discounts big cards by the deck's enablers:
 - reanimation: Reanimate, Animate Dead, Entomb and self-mill feeding them;
 - cost reduction: reducers, convoke, affinity, delve, improvise;
 - bursts of mana: rituals, Cabal Coffers.
+
+## Power v2: rated by games (2026-10-25)
+
+The gauntlet (docs/cloud/reports/power-1.md, 1,236 games) showed that card counts cannot rate these decks on their
+own: refit on all 33 decks, the formula's leave-one-out error is 0.53 log-odds against 0.58 for calling every deck
+average. Higher brackets do not play stronger in the AI's hands (Edgar Core 69% against the references, Edgar
+Optimized 48%; only Krenko's Optimized deck keeps up), and Game Changers and combos fit to zero weight. So Power now
+comes from each deck's games:
+
+- `python3 scripts/ranked/deck_power.py rate` combines each deck's measured strength (Bradley-Terry over every game in
+  `docs/cloud/c3-results`, `c4-results` and `power-results`) with the formula's estimate, weighted by precision: the
+  formula counts like about 15–20 games, so decks with hundreds of games are rated by them and a new deck starts from
+  the formula with a wide range. `--write` saves `scripts/ranked/deck-power-ratings.json`, the data the apps would ship.
+- **Scale:** the reference precons (First Flight, Token Triumph, Grave Danger) average 6.0, and one Power point is
+  0.27 log-odds, so a deck beats one a point below it 57% of the time, and a Mythic deck (8.5) beats a Bronze deck
+  (3.5) about 79% of the time. The scale is in `scale` in the weights file.
+- **Formula weights refit** on 33 decks (`weights`): mana 0.34, commander 0.31, threats 0.17, interaction 0.13, the
+  rest about 0. The formula only matters for decks without games.
+- Skill-3 games with the AI's deliberate mistakes off (docs/cloud/reports/power-2.md, batch C) barely changed these
+  decks' results, so the ratings are not an artefact of the mistakes; skill 5 (batch D) is still running and is kept
+  out of the ratings (`docs/cloud/skill-results/`).
+
+| Deck | Bracket | Power (95% CI) | Formula | Games |
+|---|---|---|---|---|
+| ai-kaalia-of-the-vast-optimized | 4 | **8.4** (6.5–10.0) | 8.2 | 48 |
+| ai-the-ur-dragon-core | 2 | **8.3** (7.6–9.0) | 7.8 | 537 |
+| ai-miirym-sentinel-wyrm-optimized | 4 | **8.2** (6.3–10.0) | 7.6 | 48 |
+| ai-krenko-mob-boss-optimized | 4 | **7.9** (6.0–9.9) | 6.0 | 47 |
+| ai-gishath-suns-avatar-core | 2 | **7.9** (7.3–8.5) | 7.4 | 689 |
+| ai-edgar-markov-core | 2 | **7.9** (7.4–8.5) | 6.9 | 692 |
+| ai-gishath-suns-avatar-exhibition | 1 | **7.8** (5.8–9.7) | 7.7 | 48 |
+| ai-the-ur-dragon-optimized | 4 | **7.6** (5.7–9.5) | 8.0 | 48 |
+| ai-edgar-markov-upgraded | 3 | **7.5** (5.4–9.6) | 6.6 | 36 |
+| ai-the-ur-dragon-upgraded | 3 | **7.4** (5.3–9.5) | 8.1 | 36 |
+| ai-gishath-suns-avatar-upgraded | 3 | **7.2** (5.1–9.3) | 7.6 | 36 |
+| ai-krenko-mob-boss-upgraded | 3 | **7.0** (4.9–9.1) | 6.0 | 36 |
+| ai-krenko-mob-boss-exhibition | 1 | **6.7** (4.6–8.8) | 6.0 | 36 |
+| first-flight | 2 | **6.6** (6.1–7.0) | 5.8 | 1017 |
+| ai-lathril-blade-of-the-elves-exhibition | 1 | **6.6** (4.5–8.7) | 5.9 | 36 |
+| ai-krenko-mob-boss-core | 2 | **6.4** (5.6–7.3) | 5.9 | 300 |
+| ai-lathril-blade-of-the-elves-upgraded | 3 | **6.4** (4.3–8.5) | 5.5 | 35 |
+| token-triumph | 2 | **6.1** (5.6–6.6) | 4.9 | 861 |
+| draconic-destruction | 2 | **6.1** (5.4–6.7) | 6.4 | 536 |
+| ai-gishath-suns-avatar-optimized | 4 | **5.9** (3.8–8.0) | 7.3 | 36 |
+| ai-edgar-markov-optimized | 4 | **5.9** (4.0–7.8) | 6.3 | 48 |
+| ai-winota-joiner-of-forces-optimized | 4 | **5.8** (3.9–7.7) | 6.8 | 48 |
+| grave-danger | 2 | **5.3** (4.9–5.8) | 5.3 | 1124 |
+| ai-wilhelt-the-rotcleaver-upgraded | 3 | **5.3** (3.2–7.4) | 5.6 | 36 |
+| ai-lathril-blade-of-the-elves-core | 2 | **5.2** (4.6–5.8) | 5.7 | 648 |
+| ai-wilhelt-the-rotcleaver-core | 2 | **4.4** (3.8–4.9) | 5.0 | 726 |
+| chaos-incarnate | 2 | **3.8** (3.0–4.6) | 4.6 | 359 |
+| ai-lathril-blade-of-the-elves-optimized | 4 | **3.8** (1.9–5.8) | 5.2 | 48 |
+| ai-wilhelt-the-rotcleaver-optimized | 4 | **3.6** (1.6–5.6) | 6.0 | 48 |
+| ai-marisi-breaker-of-the-coil-exhibition | 1 | **3.5** (1.5–5.4) | 4.0 | 48 |
+| ai-tormod-the-desecrator-core | 2 | **3.2** (1.2–5.2) | 3.9 | 48 |
+| ai-kynaios-and-tiro-of-meletis-exhibition | 1 | **2.4** (1.0–4.5) | 4.3 | 46 |
+| ai-the-first-sliver-optimized | 4 | **2.2** (1.0–4.5) | 6.5 | 47 |
+
+Ranges are 95% intervals. Decks with 36–48 games are known to about ±2 points; the precons and Core decks to ±0.5.
+
+### The ladder at these ratings
+
+`deck_power.py ladder`: for each division's target (the tier's band split in four), the three nearest decks the tier's
+bracket allows. Every division now has decks within 0.5 of its target.
+
+| Tier | Division | Target | Max bracket | Nearest allowed decks (Power) | Gap |
+|---|---|---|---|---|---|
+| Bronze | IV | 3.12 | 2 | tormod-the-desecrator-core 3.2, marisi-breaker-of-the-coil-exhibition 3.5, chaos-incarnate 3.8 | 0.1 |
+| Bronze | III | 3.38 | 2 | marisi-breaker-of-the-coil-exhibition 3.5, tormod-the-desecrator-core 3.2, chaos-incarnate 3.8 | 0.1 |
+| Bronze | II | 3.62 | 2 | marisi-breaker-of-the-coil-exhibition 3.5, chaos-incarnate 3.8, tormod-the-desecrator-core 3.2 | 0.1 |
+| Bronze | I | 3.88 | 2 | chaos-incarnate 3.8, marisi-breaker-of-the-coil-exhibition 3.5, wilhelt-the-rotcleaver-core 4.4 | 0.1 |
+| Silver | IV | 4.12 | 2 | wilhelt-the-rotcleaver-core 4.4, chaos-incarnate 3.8, marisi-breaker-of-the-coil-exhibition 3.5 | 0.3 |
+| Silver | III | 4.38 | 2 | wilhelt-the-rotcleaver-core 4.4, chaos-incarnate 3.8, lathril-blade-of-the-elves-core 5.2 | 0.0 |
+| Silver | II | 4.62 | 2 | wilhelt-the-rotcleaver-core 4.4, lathril-blade-of-the-elves-core 5.2, grave-danger 5.3 | 0.2 |
+| Silver | I | 4.88 | 2 | lathril-blade-of-the-elves-core 5.2, grave-danger 5.3, wilhelt-the-rotcleaver-core 4.4 | 0.3 |
+| Gold | IV | 5.12 | 3 | lathril-blade-of-the-elves-core 5.2, grave-danger 5.3, wilhelt-the-rotcleaver-upgraded 5.3 | 0.1 |
+| Gold | III | 5.38 | 3 | grave-danger 5.3, wilhelt-the-rotcleaver-upgraded 5.3, lathril-blade-of-the-elves-core 5.2 | 0.1 |
+| Gold | II | 5.62 | 3 | grave-danger 5.3, wilhelt-the-rotcleaver-upgraded 5.3, lathril-blade-of-the-elves-core 5.2 | 0.3 |
+| Gold | I | 5.88 | 3 | token-triumph 6.1, draconic-destruction 6.1, krenko-mob-boss-core 6.4 | 0.2 |
+| Platinum | IV | 6.12 | 3 | token-triumph 6.1, draconic-destruction 6.1, krenko-mob-boss-core 6.4 | 0.0 |
+| Platinum | III | 6.38 | 3 | krenko-mob-boss-core 6.4, lathril-blade-of-the-elves-upgraded 6.4, first-flight 6.6 | 0.0 |
+| Platinum | II | 6.62 | 3 | first-flight 6.6, lathril-blade-of-the-elves-exhibition 6.6, krenko-mob-boss-exhibition 6.7 | 0.0 |
+| Platinum | I | 6.88 | 3 | krenko-mob-boss-upgraded 7.0, krenko-mob-boss-exhibition 6.7, first-flight 6.6 | 0.1 |
+| Diamond | IV | 7.12 | 4 | gishath-suns-avatar-upgraded 7.2, krenko-mob-boss-upgraded 7.0, the-ur-dragon-upgraded 7.4 | 0.1 |
+| Diamond | III | 7.38 | 4 | the-ur-dragon-upgraded 7.4, edgar-markov-upgraded 7.5, gishath-suns-avatar-upgraded 7.2 | 0.0 |
+| Diamond | II | 7.62 | 4 | the-ur-dragon-optimized 7.6, edgar-markov-upgraded 7.5, gishath-suns-avatar-exhibition 7.8 | 0.0 |
+| Diamond | I | 7.88 | 4 | krenko-mob-boss-optimized 7.9, gishath-suns-avatar-core 7.9, edgar-markov-core 7.9 | 0.0 |
+| Mythic | IV | 8.12 | 4 | miirym-sentinel-wyrm-optimized 8.2, the-ur-dragon-core 8.3, krenko-mob-boss-optimized 7.9 | 0.1 |
+| Mythic | III | 8.38 | 4 | kaalia-of-the-vast-optimized 8.4, the-ur-dragon-core 8.3, miirym-sentinel-wyrm-optimized 8.2 | 0.0 |
+| Mythic | II | 8.62 | 4 | kaalia-of-the-vast-optimized 8.4, the-ur-dragon-core 8.3, miirym-sentinel-wyrm-optimized 8.2 | 0.2 |
+| Mythic | I | 8.88 | 4 | kaalia-of-the-vast-optimized 8.4, the-ur-dragon-core 8.3, miirym-sentinel-wyrm-optimized 8.2 | 0.5 |
+
+| Quick Match | Power band | Decks in the band |
+|---|---|---|
+| Easy | 3–4 | 5: chaos-incarnate, lathril-blade-of-the-elves-optimized, wilhelt-the-rotcleaver-optimized, marisi-breaker-of-the-coil-exhibition, tormod-the-desecrator-core |
+| Medium | 5–6 | 6: gishath-suns-avatar-optimized, edgar-markov-optimized, winota-joiner-of-forces-optimized, grave-danger, wilhelt-the-rotcleaver-upgraded, lathril-blade-of-the-elves-core |
+| Hard | 7–8 | 9: krenko-mob-boss-optimized, gishath-suns-avatar-core, edgar-markov-core, gishath-suns-avatar-exhibition, the-ur-dragon-optimized, edgar-markov-upgraded, the-ur-dragon-upgraded, gishath-suns-avatar-upgraded, krenko-mob-boss-upgraded |
+
+### Decisions for Caleb
+
+1. **Approve these ratings and the scale** (one point = 57%, references at 6).
+2. **Bronze:** the design keeps Bronze on the gentlest precons. By Power, Bronze's 3–4 is Tormod 3.2, Marisi 3.5 and
+   Chaos Incarnate 3.8; Grave Danger (5.3) and Token Triumph (6.1) play like Gold. Recommendation: let Power pick for
+   Bronze too (bracket ≤ 2), dropping the precons-only rule.
+3. **Drop The First Sliver** (bracket 4, plays like 2.2), unless skill 5 shows the AI can play it: Ranked would never
+   pick it, and a player choosing it as an Optimized deck would get the weakest deck in the pool. Lathril and Wilhelt
+   Optimized (3.8, 3.6) are in the same spot: Ranked never reaches them (the tiers that want 3–4 allow bracket 2
+   at most), so only Quick Match Easy would use them.
+4. **Optional top-up** (about 100 games each for the decks Mythic and Bronze lean on: Kaalia, Miirym, Krenko
+   Optimized, Tormod, Marisi, Kynaios and Tiro) would narrow their ±2 to about ±1. Not needed to ship.
 
 ## Formula v1 (2026-10-24)
 
@@ -215,7 +325,7 @@ the measured strength with its 95% interval, where games exist.
 | ai-marisi-breaker-of-the-coil-exhibition | 1 | **4.0** | 0.84 | 0.42 | 0.45 | 0.47 | 0.33 | 0.00 | 0.35 | 0.00 | 0.62 |  |
 | chaos-incarnate | 2 | **4.0** | 0.37 | 0.49 | 0.72 | 0.54 | 0.37 | 0.00 | 0.30 | 0.00 | 0.12 | -0.58 ±0.24 |
 
-## Ladder coverage (provisional, formula only)
+## Ladder coverage (formula only, superseded by Power v2)
 
 | Tier | Target | Allowed brackets | Decks in reach today |
 |---|---|---|---|
@@ -250,17 +360,13 @@ or Optimized deck has been measured yet.
 
 ## Calibration
 
-- Done: the formula against 2,986 earlier games (above).
-- The first cloud request (2026-10-24) never started a session (sessions can't be started from Remote Control); no
-  games ran.
-- Approved by Caleb (2026-10-24), brief in `docs/cloud/power-gauntlet.md`, one cloud session, skill 3 against 3,
-  phone budget, every AI deck
-  against three reference precons (First Flight, Token Triumph, Grave Danger), via `ai_calibration.py run --against`:
-  - **Batch A, 624 games** (16 per reference): the six decks whose Power looked off (Ur-Dragon, Edgar, Krenko,
-    Lathril and Wilhelt Optimized, Gishath Exhibition) and the seven new decks.
-  - **Batch B, 612 games** (12 per reference): the other 17 AI decks, which also checks the current engine against the
-    older games.
-  Results go to `docs/cloud/power-results/` and `docs/cloud/reports/power-1.md` on `claude/deck-power-design`.
+- The formula against 2,986 earlier games (C3, C4).
+- **Gauntlet, 2026-10-25:** 1,236 games, every AI deck against First Flight, Token Triumph and Grave Danger at skill 3
+  (brief `docs/cloud/power-gauntlet.md`, report `docs/cloud/reports/power-1.md`, data `docs/cloud/power-results/`).
+- **Skill test:** nine decks at skill 3 without mistakes (batch C, 324 games, done) and at skill 5 (batch D, running);
+  brief `docs/cloud/power-skill-test.md`, report `docs/cloud/reports/power-2.md`, data `docs/cloud/skill-results/`
+  (kept out of the ratings).
+- Rerun `deck_power.py rate --write` after any new games in `power-results/`.
 
 ## Build order (when approved)
 

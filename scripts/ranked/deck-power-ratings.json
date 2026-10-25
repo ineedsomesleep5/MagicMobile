@@ -1,0 +1,379 @@
+{
+ "schemaVersion": 1,
+ "scale": {
+  "pointLogOdds": 0.27,
+  "referencePower": 6.0,
+  "referenceDecks": [
+   "first-flight",
+   "token-triumph",
+   "grave-danger"
+  ],
+  "formulaErrorLogOdds": 0.53,
+  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them."
+ },
+ "decks": [
+  {
+   "id": "ai-kaalia-of-the-vast-optimized",
+   "bracket": 4,
+   "power": 8.4,
+   "powerRange": [
+    6.5,
+    10.0
+   ],
+   "formulaPower": 8.19,
+   "games": 48
+  },
+  {
+   "id": "ai-the-ur-dragon-core",
+   "bracket": 2,
+   "power": 8.3,
+   "powerRange": [
+    7.6,
+    9.0
+   ],
+   "formulaPower": 7.84,
+   "games": 537
+  },
+  {
+   "id": "ai-miirym-sentinel-wyrm-optimized",
+   "bracket": 4,
+   "power": 8.2,
+   "powerRange": [
+    6.3,
+    10.0
+   ],
+   "formulaPower": 7.56,
+   "games": 48
+  },
+  {
+   "id": "ai-krenko-mob-boss-optimized",
+   "bracket": 4,
+   "power": 7.9,
+   "powerRange": [
+    6.0,
+    9.9
+   ],
+   "formulaPower": 6.03,
+   "games": 47
+  },
+  {
+   "id": "ai-gishath-suns-avatar-core",
+   "bracket": 2,
+   "power": 7.9,
+   "powerRange": [
+    7.3,
+    8.5
+   ],
+   "formulaPower": 7.44,
+   "games": 689
+  },
+  {
+   "id": "ai-edgar-markov-core",
+   "bracket": 2,
+   "power": 7.9,
+   "powerRange": [
+    7.4,
+    8.5
+   ],
+   "formulaPower": 6.94,
+   "games": 692
+  },
+  {
+   "id": "ai-gishath-suns-avatar-exhibition",
+   "bracket": 1,
+   "power": 7.8,
+   "powerRange": [
+    5.8,
+    9.7
+   ],
+   "formulaPower": 7.72,
+   "games": 48
+  },
+  {
+   "id": "ai-the-ur-dragon-optimized",
+   "bracket": 4,
+   "power": 7.6,
+   "powerRange": [
+    5.7,
+    9.5
+   ],
+   "formulaPower": 8.04,
+   "games": 48
+  },
+  {
+   "id": "ai-edgar-markov-upgraded",
+   "bracket": 3,
+   "power": 7.5,
+   "powerRange": [
+    5.4,
+    9.6
+   ],
+   "formulaPower": 6.61,
+   "games": 36
+  },
+  {
+   "id": "ai-the-ur-dragon-upgraded",
+   "bracket": 3,
+   "power": 7.4,
+   "powerRange": [
+    5.3,
+    9.5
+   ],
+   "formulaPower": 8.13,
+   "games": 36
+  },
+  {
+   "id": "ai-gishath-suns-avatar-upgraded",
+   "bracket": 3,
+   "power": 7.2,
+   "powerRange": [
+    5.1,
+    9.3
+   ],
+   "formulaPower": 7.6,
+   "games": 36
+  },
+  {
+   "id": "ai-krenko-mob-boss-upgraded",
+   "bracket": 3,
+   "power": 7.0,
+   "powerRange": [
+    4.9,
+    9.1
+   ],
+   "formulaPower": 5.97,
+   "games": 36
+  },
+  {
+   "id": "ai-krenko-mob-boss-exhibition",
+   "bracket": 1,
+   "power": 6.7,
+   "powerRange": [
+    4.6,
+    8.8
+   ],
+   "formulaPower": 6.04,
+   "games": 36
+  },
+  {
+   "id": "first-flight",
+   "bracket": 2,
+   "power": 6.6,
+   "powerRange": [
+    6.1,
+    7.0
+   ],
+   "formulaPower": 5.84,
+   "games": 1017
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-exhibition",
+   "bracket": 1,
+   "power": 6.6,
+   "powerRange": [
+    4.5,
+    8.7
+   ],
+   "formulaPower": 5.87,
+   "games": 36
+  },
+  {
+   "id": "ai-krenko-mob-boss-core",
+   "bracket": 2,
+   "power": 6.4,
+   "powerRange": [
+    5.6,
+    7.3
+   ],
+   "formulaPower": 5.93,
+   "games": 300
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-upgraded",
+   "bracket": 3,
+   "power": 6.4,
+   "powerRange": [
+    4.3,
+    8.5
+   ],
+   "formulaPower": 5.46,
+   "games": 35
+  },
+  {
+   "id": "token-triumph",
+   "bracket": 2,
+   "power": 6.1,
+   "powerRange": [
+    5.6,
+    6.6
+   ],
+   "formulaPower": 4.87,
+   "games": 861
+  },
+  {
+   "id": "draconic-destruction",
+   "bracket": 2,
+   "power": 6.1,
+   "powerRange": [
+    5.4,
+    6.7
+   ],
+   "formulaPower": 6.4,
+   "games": 536
+  },
+  {
+   "id": "ai-gishath-suns-avatar-optimized",
+   "bracket": 4,
+   "power": 5.9,
+   "powerRange": [
+    3.8,
+    8.0
+   ],
+   "formulaPower": 7.34,
+   "games": 36
+  },
+  {
+   "id": "ai-edgar-markov-optimized",
+   "bracket": 4,
+   "power": 5.9,
+   "powerRange": [
+    4.0,
+    7.8
+   ],
+   "formulaPower": 6.31,
+   "games": 48
+  },
+  {
+   "id": "ai-winota-joiner-of-forces-optimized",
+   "bracket": 4,
+   "power": 5.8,
+   "powerRange": [
+    3.9,
+    7.7
+   ],
+   "formulaPower": 6.79,
+   "games": 48
+  },
+  {
+   "id": "grave-danger",
+   "bracket": 2,
+   "power": 5.3,
+   "powerRange": [
+    4.9,
+    5.8
+   ],
+   "formulaPower": 5.26,
+   "games": 1124
+  },
+  {
+   "id": "ai-wilhelt-the-rotcleaver-upgraded",
+   "bracket": 3,
+   "power": 5.3,
+   "powerRange": [
+    3.2,
+    7.4
+   ],
+   "formulaPower": 5.64,
+   "games": 36
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-core",
+   "bracket": 2,
+   "power": 5.2,
+   "powerRange": [
+    4.6,
+    5.8
+   ],
+   "formulaPower": 5.69,
+   "games": 648
+  },
+  {
+   "id": "ai-wilhelt-the-rotcleaver-core",
+   "bracket": 2,
+   "power": 4.4,
+   "powerRange": [
+    3.8,
+    4.9
+   ],
+   "formulaPower": 5.01,
+   "games": 726
+  },
+  {
+   "id": "chaos-incarnate",
+   "bracket": 2,
+   "power": 3.8,
+   "powerRange": [
+    3.0,
+    4.6
+   ],
+   "formulaPower": 4.58,
+   "games": 359
+  },
+  {
+   "id": "ai-lathril-blade-of-the-elves-optimized",
+   "bracket": 4,
+   "power": 3.8,
+   "powerRange": [
+    1.9,
+    5.8
+   ],
+   "formulaPower": 5.15,
+   "games": 48
+  },
+  {
+   "id": "ai-wilhelt-the-rotcleaver-optimized",
+   "bracket": 4,
+   "power": 3.6,
+   "powerRange": [
+    1.6,
+    5.6
+   ],
+   "formulaPower": 5.99,
+   "games": 48
+  },
+  {
+   "id": "ai-marisi-breaker-of-the-coil-exhibition",
+   "bracket": 1,
+   "power": 3.5,
+   "powerRange": [
+    1.5,
+    5.4
+   ],
+   "formulaPower": 3.98,
+   "games": 48
+  },
+  {
+   "id": "ai-tormod-the-desecrator-core",
+   "bracket": 2,
+   "power": 3.2,
+   "powerRange": [
+    1.2,
+    5.2
+   ],
+   "formulaPower": 3.93,
+   "games": 48
+  },
+  {
+   "id": "ai-kynaios-and-tiro-of-meletis-exhibition",
+   "bracket": 1,
+   "power": 2.4,
+   "powerRange": [
+    1.0,
+    4.5
+   ],
+   "formulaPower": 4.29,
+   "games": 46
+  },
+  {
+   "id": "ai-the-first-sliver-optimized",
+   "bracket": 4,
+   "power": 2.2,
+   "powerRange": [
+    1.0,
+    4.5
+   ],
+   "formulaPower": 6.54,
+   "games": 47
+  }
+ ]
+}

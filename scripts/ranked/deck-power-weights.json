@@ -2,15 +2,15 @@
  "schemaVersion": 1,
  "about": "Deck Power (docs/DECK_POWER.md): each part scores 0-1 between its norms, the weighted mix maps to 1-10. scripts/ranked/deck_power.py reads this file; retune here, not in code.",
  "weights": {
-  "speed": 0.12,
-  "mana": 0.22,
-  "interaction": 0.07,
-  "consistency": 0.07,
-  "threats": 0.23,
-  "synergy": 0.03,
-  "commander": 0.14,
-  "combos": 0.1,
-  "resilience": 0.02
+  "speed": 0.02,
+  "mana": 0.34,
+  "interaction": 0.13,
+  "consistency": 0.03,
+  "threats": 0.17,
+  "synergy": 0.0,
+  "commander": 0.31,
+  "combos": 0.0,
+  "resilience": 0.0
  },
  "norms": {
   "speed": {
@@ -257,5 +257,95 @@
    "max": 0.6
   }
  },
- "commanderNote": "Strengths are judgment: the first eleven were set with C3/C4's games in view; the seven added 2026-10-24 are priors from community standing, not yet measured."
+ "commanderNote": "Strengths are judgment: the first eleven were set with C3/C4's games in view; the seven added 2026-10-24 are priors from community standing, not yet measured.",
+ "scale": {
+  "pointLogOdds": 0.27,
+  "referencePower": 6.0,
+  "referenceDecks": [
+   "first-flight",
+   "token-triumph",
+   "grave-danger"
+  ],
+  "formulaErrorLogOdds": 0.53,
+  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them."
+ },
+ "ladder": {
+  "closest": 3,
+  "tiers": [
+   {
+    "name": "Bronze",
+    "power": [
+     3,
+     4
+    ],
+    "maxBracket": 2
+   },
+   {
+    "name": "Silver",
+    "power": [
+     4,
+     5
+    ],
+    "maxBracket": 2
+   },
+   {
+    "name": "Gold",
+    "power": [
+     5,
+     6
+    ],
+    "maxBracket": 3
+   },
+   {
+    "name": "Platinum",
+    "power": [
+     6,
+     7
+    ],
+    "maxBracket": 3
+   },
+   {
+    "name": "Diamond",
+    "power": [
+     7,
+     8
+    ],
+    "maxBracket": 4
+   },
+   {
+    "name": "Mythic",
+    "power": [
+     8,
+     9
+    ],
+    "maxBracket": 4
+   }
+  ],
+  "quickMatch": [
+   {
+    "name": "Easy",
+    "power": [
+     3,
+     4
+    ],
+    "skill": 2
+   },
+   {
+    "name": "Medium",
+    "power": [
+     5,
+     6
+    ],
+    "skill": 3
+   },
+   {
+    "name": "Hard",
+    "power": [
+     7,
+     8
+    ],
+    "skill": 5
+   }
+  ]
+ }
 }

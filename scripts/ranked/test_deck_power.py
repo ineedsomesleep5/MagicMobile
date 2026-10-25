@@ -40,6 +40,23 @@ class FormulaTests(unittest.TestCase):
         self.assertLess(c['effectiveManaValue'], c['manaValue'])
 
 
+class RatingTests(unittest.TestCase):
+    def test_ratings_cover_every_deck_and_anchor_the_references(self):
+        rated = dp.rate(CONFIG)
+        self.assertEqual(len(rated), 33)
+        refs = [r['power'] for r in rated if r['id'] in CONFIG['scale']['referenceDecks']]
+        self.assertAlmostEqual(sum(refs) / len(refs), CONFIG['scale']['referencePower'], delta=0.1)
+        for r in rated:
+            low, high = r['powerRange']
+            self.assertTrue(1 <= low <= r['power'] <= high <= 10, r['id'])
+
+    def test_games_narrow_the_range(self):
+        rated = {r['id']: r for r in dp.rate(CONFIG)}
+        many, few = rated['grave-danger'], rated['ai-tormod-the-desecrator-core']
+        self.assertGreater(many['games'], 10 * few['games'])
+        self.assertLess(many['powerRange'][1] - many['powerRange'][0], few['powerRange'][1] - few['powerRange'][0])
+
+
 class StrengthTests(unittest.TestCase):
     def test_bradley_terry_recovers_order_and_first_player(self):
         rng = random.Random(3)
