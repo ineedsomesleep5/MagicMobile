@@ -13,14 +13,14 @@
  },
  "decks": [
   {
-   "id": "ai-kaalia-of-the-vast-optimized",
-   "bracket": 4,
-   "power": 8.4,
+   "id": "ai-lathliss-dragon-queen-core",
+   "bracket": 2,
+   "power": 9.9,
    "powerRange": [
-    6.5,
+    7.8,
     10.0
    ],
-   "formulaPower": 8.19,
+   "formulaPower": 7.68,
    "games": 48
   },
   {
@@ -35,48 +35,37 @@
    "games": 537
   },
   {
+   "id": "ai-kaalia-of-the-vast-optimized",
+   "bracket": 4,
+   "power": 8.2,
+   "powerRange": [
+    6.8,
+    9.7
+   ],
+   "formulaPower": 8.19,
+   "games": 96
+  },
+  {
    "id": "ai-miirym-sentinel-wyrm-optimized",
    "bracket": 4,
-   "power": 8.2,
-   "powerRange": [
-    6.3,
-    10.0
-   ],
-   "formulaPower": 7.56,
-   "games": 48
-  },
-  {
-   "id": "ai-tiamat-core",
-   "bracket": 2,
-   "power": 8.2,
-   "powerRange": [
-    4.4,
-    10.0
-   ],
-   "formulaPower": 7.78,
-   "games": 0
-  },
-  {
-   "id": "ai-lathliss-dragon-queen-core",
-   "bracket": 2,
    "power": 8.1,
    "powerRange": [
-    4.3,
-    10.0
+    6.7,
+    9.6
    ],
-   "formulaPower": 7.68,
-   "games": 0
+   "formulaPower": 7.56,
+   "games": 96
   },
   {
-   "id": "ai-krenko-mob-boss-optimized",
-   "bracket": 4,
-   "power": 7.9,
+   "id": "ai-edgar-markov-core",
+   "bracket": 2,
+   "power": 8.0,
    "powerRange": [
-    6.0,
-    9.9
+    7.4,
+    8.6
    ],
-   "formulaPower": 6.03,
-   "games": 47
+   "formulaPower": 6.94,
+   "games": 692
   },
   {
    "id": "ai-gishath-suns-avatar-core",
@@ -88,17 +77,6 @@
    ],
    "formulaPower": 7.44,
    "games": 689
-  },
-  {
-   "id": "ai-edgar-markov-core",
-   "bracket": 2,
-   "power": 7.9,
-   "powerRange": [
-    7.4,
-    8.5
-   ],
-   "formulaPower": 6.94,
-   "games": 692
   },
   {
    "id": "ai-gishath-suns-avatar-exhibition",
@@ -123,17 +101,6 @@
    "games": 48
   },
   {
-   "id": "ai-old-gnawbone-core",
-   "bracket": 2,
-   "power": 7.6,
-   "powerRange": [
-    3.8,
-    10.0
-   ],
-   "formulaPower": 7.24,
-   "games": 0
-  },
-  {
    "id": "ai-edgar-markov-upgraded",
    "bracket": 3,
    "power": 7.5,
@@ -143,6 +110,17 @@
    ],
    "formulaPower": 6.61,
    "games": 36
+  },
+  {
+   "id": "ai-tiamat-core",
+   "bracket": 2,
+   "power": 7.5,
+   "powerRange": [
+    5.6,
+    9.4
+   ],
+   "formulaPower": 7.78,
+   "games": 48
   },
   {
    "id": "ai-the-ur-dragon-upgraded",
@@ -156,6 +134,17 @@
    "games": 36
   },
   {
+   "id": "ai-old-gnawbone-core",
+   "bracket": 2,
+   "power": 7.4,
+   "powerRange": [
+    5.5,
+    9.3
+   ],
+   "formulaPower": 7.24,
+   "games": 48
+  },
+  {
    "id": "ai-gishath-suns-avatar-upgraded",
    "bracket": 3,
    "power": 7.2,
@@ -167,6 +156,17 @@
    "games": 36
   },
   {
+   "id": "ai-krenko-mob-boss-optimized",
+   "bracket": 4,
+   "power": 7.1,
+   "powerRange": [
+    5.6,
+    8.5
+   ],
+   "formulaPower": 6.03,
+   "games": 95
+  },
+  {
    "id": "ai-krenko-mob-boss-upgraded",
    "bracket": 3,
    "power": 7.0,
@@ -176,17 +176,6 @@
    ],
    "formulaPower": 5.97,
    "games": 36
-  },
-  {
-   "id": "ai-meren-of-clan-nel-toth-core",
-   "bracket": 2,
-   "power": 7.0,
-   "powerRange": [
-    3.1,
-    10.0
-   ],
-   "formulaPower": 6.66,
-   "games": 0
   },
   {
    "id": "ai-krenko-mob-boss-exhibition",
@@ -204,11 +193,11 @@
    "bracket": 2,
    "power": 6.6,
    "powerRange": [
-    6.1,
-    7.0
+    6.2,
+    7.1
    ],
    "formulaPower": 5.84,
-   "games": 1017
+   "games": 1240
   },
   {
    "id": "ai-lathril-blade-of-the-elves-exhibition",
@@ -244,26 +233,26 @@
    "games": 35
   },
   {
-   "id": "token-triumph",
-   "bracket": 2,
-   "power": 6.1,
-   "powerRange": [
-    5.6,
-    6.6
-   ],
-   "formulaPower": 4.87,
-   "games": 861
-  },
-  {
    "id": "draconic-destruction",
    "bracket": 2,
    "power": 6.1,
    "powerRange": [
     5.4,
-    6.7
+    6.8
    ],
    "formulaPower": 6.4,
    "games": 536
+  },
+  {
+   "id": "token-triumph",
+   "bracket": 2,
+   "power": 5.9,
+   "powerRange": [
+    5.4,
+    6.3
+   ],
+   "formulaPower": 4.87,
+   "games": 1082
   },
   {
    "id": "ai-gishath-suns-avatar-optimized",
@@ -299,37 +288,26 @@
    "games": 48
   },
   {
-   "id": "ai-karador-ghost-chieftain-core",
-   "bracket": 2,
-   "power": 5.6,
-   "powerRange": [
-    1.8,
-    9.5
-   ],
-   "formulaPower": 5.5,
-   "games": 0
-  },
-  {
-   "id": "ai-marisi-breaker-of-the-coil-core",
+   "id": "grave-danger",
    "bracket": 2,
    "power": 5.5,
    "powerRange": [
-    1.7,
-    9.4
-   ],
-   "formulaPower": 5.41,
-   "games": 0
-  },
-  {
-   "id": "grave-danger",
-   "bracket": 2,
-   "power": 5.3,
-   "powerRange": [
-    4.9,
-    5.8
+    5.1,
+    5.9
    ],
    "formulaPower": 5.26,
-   "games": 1124
+   "games": 1347
+  },
+  {
+   "id": "ai-meren-of-clan-nel-toth-core",
+   "bracket": 2,
+   "power": 5.5,
+   "powerRange": [
+    3.6,
+    7.4
+   ],
+   "formulaPower": 6.66,
+   "games": 48
   },
   {
    "id": "ai-wilhelt-the-rotcleaver-upgraded",
@@ -358,22 +336,11 @@
    "bracket": 2,
    "power": 4.9,
    "powerRange": [
-    1.1,
-    8.8
+    3.0,
+    6.9
    ],
    "formulaPower": 4.85,
-   "games": 0
-  },
-  {
-   "id": "ai-zedruu-the-greathearted-core",
-   "bracket": 2,
-   "power": 4.8,
-   "powerRange": [
-    1.0,
-    8.7
-   ],
-   "formulaPower": 4.77,
-   "games": 0
+   "games": 44
   },
   {
    "id": "ai-wilhelt-the-rotcleaver-core",
@@ -392,7 +359,7 @@
    "power": 3.8,
    "powerRange": [
     3.0,
-    4.6
+    4.7
    ],
    "formulaPower": 4.58,
    "games": 359
@@ -409,6 +376,17 @@
    "games": 48
   },
   {
+   "id": "ai-marisi-breaker-of-the-coil-exhibition",
+   "bracket": 1,
+   "power": 3.7,
+   "powerRange": [
+    2.2,
+    5.2
+   ],
+   "formulaPower": 3.98,
+   "games": 96
+  },
+  {
    "id": "ai-wilhelt-the-rotcleaver-optimized",
    "bracket": 4,
    "power": 3.6,
@@ -420,37 +398,59 @@
    "games": 48
   },
   {
-   "id": "ai-marisi-breaker-of-the-coil-exhibition",
-   "bracket": 1,
-   "power": 3.5,
+   "id": "ai-marisi-breaker-of-the-coil-core",
+   "bracket": 2,
+   "power": 3.6,
    "powerRange": [
-    1.5,
-    5.4
+    1.7,
+    5.6
    ],
-   "formulaPower": 3.98,
+   "formulaPower": 5.41,
    "games": 48
   },
   {
    "id": "ai-tormod-the-desecrator-core",
    "bracket": 2,
-   "power": 3.2,
+   "power": 3.6,
    "powerRange": [
-    1.2,
-    5.2
+    2.1,
+    5.0
    ],
    "formulaPower": 3.93,
+   "games": 96
+  },
+  {
+   "id": "ai-karador-ghost-chieftain-core",
+   "bracket": 2,
+   "power": 3.4,
+   "powerRange": [
+    1.4,
+    5.4
+   ],
+   "formulaPower": 5.5,
    "games": 48
   },
   {
    "id": "ai-kynaios-and-tiro-of-meletis-exhibition",
    "bracket": 1,
-   "power": 2.4,
+   "power": 1.2,
    "powerRange": [
     1.0,
-    4.5
+    3.0
    ],
    "formulaPower": 4.29,
-   "games": 46
+   "games": 94
+  },
+  {
+   "id": "ai-zedruu-the-greathearted-core",
+   "bracket": 2,
+   "power": 1.0,
+   "powerRange": [
+    1.0,
+    3.7
+   ],
+   "formulaPower": 4.77,
+   "games": 47
   }
  ]
 }
