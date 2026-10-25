@@ -1,0 +1,3 @@
+game,game_seed,budget,skill_a,skill_b,deck_a,deck_b,first,winner,winner_skill,turns,seconds,end,depth_a,mistake_a,depth_b,mistake_b,mistakes_a,mistakes_b
+2,2908973674751501469,phone,3,3,first-flight,ai-miirym-sentinel-wyrm-core,A,A,3,17,19.6,ended,,,,,2,2
+0,7028843130589402007,phone,3,3,ai-miirym-sentinel-wyrm-core,first-flight,A,B,3,18,30.4,ended,,,,,2,4
