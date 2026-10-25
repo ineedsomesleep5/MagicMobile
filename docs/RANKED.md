@@ -89,11 +89,13 @@ against 4 is 53% (45–60%), not yet a measurable step (docs/cloud/reports/c4.md
 `apps/ios/MagicMobile/Resources/ai-decks.json`, built by `scripts/ranked/build_ai_decks.py` from EDHREC's
 average decks per bracket (fetched 2026-10-04), limited to this XMage catalogue and swapped down so each
 deck's list check is at most its bracket. Six commanders the XMage AI plays well (proactive creature
-decks): Krenko, Gishath, Lathril (brackets 1–4), Edgar Markov, The Ur-Dragon, Wilhelt (2–4). With the five
-precons (Core) that is 26 AI decks. Players may pick the bracket decks too ("Included · Bracket N").
+decks): Krenko, Gishath, Lathril (brackets 1–4), Edgar Markov, The Ur-Dragon, Wilhelt (2–4). On 2026-10-24
+seven more widened the Power range (docs/DECK_POWER.md), one bracket each: Kaalia of the Vast, Winota, The
+First Sliver, Miirym (4), Marisi, Kynaios and Tiro (1), Tormod (2). With the five precons (Core) that is 33 AI
+decks. Players may pick the bracket decks too ("Included · Bracket N").
 
-All 26 passed XMage's Commander deck validation on the desktop JVM engine, and all resolve through the
-iOS app's resolver (`AIDeckPoolTests`).
+The first 26 passed XMage's Commander deck validation on the desktop JVM engine, and all resolve through the
+iOS app's resolver (`AIDeckPoolTests`). The seven new decks are validated by their calibration games.
 
 ### Calibration (desktop JVM, AI vs AI, 2026-10-04)
 

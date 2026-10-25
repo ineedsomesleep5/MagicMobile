@@ -130,7 +130,7 @@ final class RankedParityTests: XCTestCase {
 final class AIDeckPoolTests: XCTestCase {
     func testEveryAIDeckIsALegalHundredAtItsBracket() throws {
         let resolver = try OnDeviceDeckResolver.bundled()
-        XCTAssertEqual(AIDeckPool.bracketDecks.count, 21)
+        XCTAssertEqual(AIDeckPool.bracketDecks.count, 28)
         for deck in AIDeckPool.all {
             XCTAssertEqual(deck.deckList.totalCards, 100, deck.id)
             XCTAssertEqual(deck.deckList.commander?.cardName, deck.commander, deck.id)

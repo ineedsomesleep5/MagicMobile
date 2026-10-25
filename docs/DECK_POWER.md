@@ -1,7 +1,7 @@
 # Deck Power
 
-Design agreed with Caleb on 2026-10-24. Formula v1 exists as a script (below); no app picks decks by Power yet, and the
-first targeted calibration games are running in a cloud session.
+Design agreed with Caleb on 2026-10-24. Formula v1 exists as a script (below); no app picks decks by Power yet. The
+calibration gauntlet is queued in a cloud session.
 
 Power is a hidden 1–10 rating of how strongly an **AI deck** plays, beyond its bracket. Players never see it. It
 decides which deck the AI brings: in Ranked it climbs with your rank; in Quick Match you choose Easy, Medium or Hard.
@@ -174,19 +174,26 @@ cannot see. Measured games have to finish the job (proposal 1 below).
 
 ## Every AI deck (formula v1)
 
-Parts are 0–1; Observed is the measured strength with its 95% interval, where games exist.
+33 decks: the 5 precons, the first 21 AI decks, and 7 added on 2026-10-24 to widen the range (Kaalia, Winota, The
+First Sliver and Miirym at bracket 4; Marisi and Kynaios and Tiro at bracket 1; Tormod at bracket 2; built by
+`scripts/ranked/build_ai_decks.py` from EDHREC's average decks, the first 21 unchanged). Parts are 0–1; Observed is
+the measured strength with its 95% interval, where games exist.
 
 | Deck | Bracket | Power | Speed | Mana | Interaction | Consistency | Threats | Synergy | Commander | Combos | Resilience | Observed |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ai-kaalia-of-the-vast-optimized | 4 | **7.9** | 0.67 | 0.89 | 0.57 | 0.49 | 0.83 | 0.40 | 0.85 | 0.83 | 1.00 |  |
 | ai-the-ur-dragon-optimized | 4 | **7.8** | 0.53 | 0.88 | 0.30 | 0.80 | 0.83 | 0.62 | 0.90 | 0.83 | 0.75 |  |
 | ai-the-ur-dragon-upgraded | 3 | **7.5** | 0.37 | 0.85 | 0.38 | 0.80 | 0.86 | 0.74 | 0.90 | 0.50 | 0.62 |  |
 | ai-gishath-suns-avatar-optimized | 4 | **7.1** | 0.43 | 0.85 | 0.28 | 0.95 | 0.74 | 0.69 | 0.70 | 0.50 | 0.88 |  |
+| ai-miirym-sentinel-wyrm-optimized | 4 | **7.0** | 0.49 | 0.84 | 0.57 | 0.56 | 0.71 | 0.49 | 0.75 | 0.67 | 0.25 |  |
 | ai-the-ur-dragon-core | 2 | **7.0** | 0.41 | 0.76 | 0.30 | 0.78 | 0.89 | 0.85 | 0.90 | 0.00 | 0.62 | +0.54 ±0.19 |
 | ai-gishath-suns-avatar-exhibition | 1 | **6.9** | 0.42 | 0.89 | 0.42 | 0.91 | 0.80 | 0.81 | 0.70 | 0.00 | 0.50 |  |
 | ai-gishath-suns-avatar-upgraded | 3 | **6.9** | 0.32 | 0.84 | 0.47 | 0.95 | 0.78 | 0.72 | 0.70 | 0.17 | 0.62 |  |
 | ai-edgar-markov-upgraded | 3 | **6.8** | 0.89 | 0.59 | 0.35 | 0.43 | 0.49 | 0.70 | 0.85 | 1.00 | 0.25 |  |
+| ai-the-first-sliver-optimized | 4 | **6.8** | 0.92 | 0.73 | 0.12 | 0.72 | 0.41 | 0.72 | 0.85 | 0.83 | 0.62 |  |
 | ai-gishath-suns-avatar-core | 2 | **6.7** | 0.38 | 0.85 | 0.33 | 0.98 | 0.76 | 0.74 | 0.70 | 0.00 | 0.50 | +0.46 ±0.17 |
 | ai-edgar-markov-optimized | 4 | **6.6** | 0.84 | 0.54 | 0.25 | 0.56 | 0.45 | 0.64 | 0.85 | 1.00 | 0.25 |  |
+| ai-winota-joiner-of-forces-optimized | 4 | **6.3** | 1.00 | 0.61 | 0.42 | 0.22 | 0.51 | 0.28 | 0.90 | 0.33 | 1.00 |  |
 | ai-wilhelt-the-rotcleaver-optimized | 4 | **6.1** | 0.93 | 0.68 | 0.72 | 0.52 | 0.37 | 0.63 | 0.50 | 0.67 | 0.25 |  |
 | ai-edgar-markov-core | 2 | **6.0** | 0.80 | 0.66 | 0.47 | 0.30 | 0.49 | 0.80 | 0.85 | 0.00 | 0.12 | +0.47 ±0.17 |
 | ai-lathril-blade-of-the-elves-optimized | 4 | **5.7** | 0.80 | 0.51 | 0.17 | 0.68 | 0.35 | 0.63 | 0.55 | 0.67 | 0.62 |  |
@@ -203,22 +210,29 @@ Parts are 0–1; Observed is the measured strength with its 95% interval, where 
 | ai-wilhelt-the-rotcleaver-core | 2 | **4.7** | 0.72 | 0.51 | 0.35 | 0.20 | 0.36 | 1.00 | 0.50 | 0.00 | 0.25 | -0.50 ±0.16 |
 | grave-danger | 2 | **4.6** | 0.37 | 0.47 | 0.57 | 0.24 | 0.41 | 0.86 | 0.50 | 0.00 | 0.25 | -0.22 ±0.16 |
 | token-triumph | 2 | **4.4** | 0.54 | 0.55 | 0.30 | 0.53 | 0.31 | 0.20 | 0.40 | 0.00 | 0.25 | -0.02 ±0.20 |
+| ai-tormod-the-desecrator-core | 2 | **4.4** | 1.00 | 0.28 | 0.33 | 0.48 | 0.32 | 1.00 | 0.35 | 0.00 | 0.00 |  |
+| ai-kynaios-and-tiro-of-meletis-exhibition | 1 | **4.3** | 0.79 | 0.74 | 0.33 | 1.00 | 0.17 | 0.37 | 0.20 | 0.00 | 0.12 |  |
+| ai-marisi-breaker-of-the-coil-exhibition | 1 | **4.0** | 0.84 | 0.42 | 0.45 | 0.47 | 0.33 | 0.00 | 0.35 | 0.00 | 0.62 |  |
 | chaos-incarnate | 2 | **4.0** | 0.37 | 0.49 | 0.72 | 0.54 | 0.37 | 0.00 | 0.30 | 0.00 | 0.12 | -0.58 ±0.24 |
 
 ## Ladder coverage (provisional, formula only)
 
 | Tier | Target | Allowed brackets | Decks in reach today |
 |---|---|---|---|
-| Bronze | 3–4 | ≤ 2 | Chaos Incarnate 4.0 only: **thin** |
-| Silver | 4–5 | ≤ 2 | Token Triumph 4.4, Grave Danger 4.6, Wilhelt Core 4.7 |
+| Bronze | 3–4 | ≤ 2 | Chaos Incarnate 4.0, Marisi 4.0 (new); Kynaios and Tiro 4.3, Tormod 4.4 (new) just above: **thin** |
+| Silver | 4–5 | ≤ 2 | Token Triumph 4.4, Grave Danger 4.6, Wilhelt Core 4.7, plus the three new gentle decks |
 | Gold | 5–6 | ≤ 3 | many (Krenko, Lathril, First Flight, Draconic, Wilhelt Upgraded, Edgar Core) |
 | Platinum | 6–7 | ≤ 3 | Edgar Core and Upgraded, Gishath Core/Exhibition/Upgraded, Ur-Dragon Core |
-| Diamond | 7–8 | ≤ 4 | Ur-Dragon Core/Upgraded/Optimized, Gishath Optimized: **one commander, mostly** |
-| Mythic | 8–9 | ≤ 4 | **none** (strongest is Ur-Dragon Optimized, 7.8) |
+| Diamond | 7–8 | ≤ 4 | Ur-Dragon Core/Upgraded/Optimized, Gishath Optimized, Miirym 7.0 and Kaalia 7.9 (new) |
+| Mythic | 8–9 | ≤ 4 | **none by formula** (Kaalia 7.9, Ur-Dragon Optimized 7.8) |
+
+The formula compresses the top: no EDHREC average deck maxes most parts at once, so even the new bracket-4 decks rate
+6.3–7.9. Whether they play at Mythic strength is for the games to show; if the ladder keeps the formula's numbers, its
+targets need to move down to the range the pool covers (proposal 3).
 
 Brackets and Power disagree inside commanders: Gishath Exhibition (bracket 1) rates 6.9 and Krenko Optimized
 (bracket 4) 5.6, because the commander's archetype matters more to the AI than the upgrades. No Exhibition, Upgraded
-or Optimized deck has been measured yet; the cloud batches below are the first.
+or Optimized deck has been measured yet.
 
 ## Proposals (for Caleb, after the cloud numbers)
 
@@ -226,24 +240,25 @@ or Optimized deck has been measured yet; the cloud batches below are the first.
    proportion to how many games it has (precision-weighted: the formula counts like about 20–25 games). Decks with
    hundreds of games are rated by their games; a new deck starts from the formula. This is what fixes Edgar, Lathril
    and Wilhelt, and it makes the full gauntlet worth running.
-2. **Fill the ends of the ladder** (decks for `build_ai_decks.py`, proactive creature plans the AI plays well):
-   Mythic (bracket 4, Power 8–9): Kaalia of the Vast (cheats evasive Angels, Demons and Dragons into play on attack),
-   Winota, Joiner of Forces, The First Sliver (cascade slivers), Najeela, the Blade-Blossom (extra combats).
-   Bronze (Power 3–4, bracket 1–2): gentler Exhibition decks with slow mana and few evasive threats; or, cheaper,
-   lower Bronze's target to the precons' 4.0–4.5. Diamond also needs a second commander besides The Ur-Dragon.
+2. **Fill the ends of the ladder.** Done as a first step (Caleb, 2026-10-24): seven decks added, chosen from 17
+   EDHREC candidates rated by the formula: proactive creature decks the AI should play well for the top (Kaalia,
+   Winota, The First Sliver, Miirym), and plans the AI plays weakly with one opponent for the bottom (Marisi's goad,
+   Kynaios and Tiro's group hug, Tormod's graveyard). The gauntlet decides whether they stay. They already join the
+   bracket pools the apps pick from today (bracket 4 for the top four), so each needs its games before a release.
 3. **Ladder targets follow the scale.** The formula's range today is 4.0–7.8; once proposal 1 rates decks by games,
    set the tier targets on that scale (one Power point ≈ 59% against a deck one point lower).
 
 ## Calibration
 
 - Done: the formula against 2,986 earlier games (above).
-- Running: cloud session `power-calib-1`, skill 3 against 3, phone budget, against three reference precons
-  (First Flight, Token Triumph, Grave Danger): batch 1, 192 games on Ur-Dragon Optimized, Gishath Exhibition,
-  Krenko Optimized and Edgar Optimized; then batch 2, 96 games on Lathril and Wilhelt Optimized. Results go to
-  `docs/cloud/power-results/` and `docs/cloud/reports/power-1.md` on `claude/deck-power-design`.
-  `ai_calibration.py run --against` plays each target deck against the references only.
-- Not started: the full gauntlet (every AI deck against the three references, about 780 games). It needs Caleb's
-  go-ahead.
+- The first cloud request (2026-10-24) never started a session; no games ran.
+- Queued with Caleb's go-ahead (2026-10-24), one cloud session, skill 3 against 3, phone budget, every AI deck
+  against three reference precons (First Flight, Token Triumph, Grave Danger), via `ai_calibration.py run --against`:
+  - **Batch A, 624 games** (16 per reference): the six decks whose Power looked off (Ur-Dragon, Edgar, Krenko,
+    Lathril and Wilhelt Optimized, Gishath Exhibition) and the seven new decks.
+  - **Batch B, 612 games** (12 per reference): the other 17 AI decks, which also checks the current engine against the
+    older games.
+  Results go to `docs/cloud/power-results/` and `docs/cloud/reports/power-1.md` on `claude/deck-power-design`.
 
 ## Build order (when approved)
 

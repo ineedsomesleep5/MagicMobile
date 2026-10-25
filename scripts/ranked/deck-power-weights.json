@@ -200,6 +200,52 @@
     "goad",
     "attacks? each combat"
    ]
+  },
+  "Kaalia of the Vast": {
+   "strength": 0.85,
+   "theme": [
+    "Angel",
+    "Demon",
+    "Dragon"
+   ]
+  },
+  "Winota, Joiner of Forces": {
+   "strength": 0.9,
+   "theme": [
+    "Human"
+   ]
+  },
+  "The First Sliver": {
+   "strength": 0.85,
+   "theme": [
+    "Sliver"
+   ]
+  },
+  "Miirym, Sentinel Wyrm": {
+   "strength": 0.75,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Marisi, Breaker of the Coil": {
+   "strength": 0.35,
+   "theme": [
+    "goad"
+   ]
+  },
+  "Kynaios and Tiro of Meletis": {
+   "strength": 0.2,
+   "theme": [
+    "each player",
+    "each opponent"
+   ]
+  },
+  "Tormod, the Desecrator": {
+   "strength": 0.35,
+   "theme": [
+    "graveyard",
+    "Zombie"
+   ]
   }
  },
  "defaultCommander": {
@@ -210,5 +256,6 @@
    "perCard": 0.1,
    "max": 0.6
   }
- }
+ },
+ "commanderNote": "Strengths are judgment: the first eleven were set with C3/C4's games in view; the seven added 2026-10-24 are priors from community standing, not yet measured."
 }

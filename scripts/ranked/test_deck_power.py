@@ -23,7 +23,7 @@ class FormulaTests(unittest.TestCase):
 
     def test_every_ai_deck_rates_between_1_and_10(self):
         rated = dp.rate_all(CONFIG)
-        self.assertEqual(len(rated), 26)
+        self.assertEqual(len(rated), 33)
         for deck in rated:
             self.assertTrue(1 <= deck['power'] <= 10, deck['id'])
             self.assertTrue(all(0 <= v <= 1 for v in deck['parts'].values()), deck['id'])
