@@ -41,6 +41,9 @@ export interface PlayModel {
   quickResolvedBracket: number;
   quickSkill: number;
   setQuickSkill: (value: number) => void;
+  /** "easy", "medium" or "hard" (the AI's deck by Power, its skill set with it), or "advanced" (the controls below). */
+  quickLevel: string;
+  setQuickLevel: (value: string) => void;
   startingPlayer: "roll" | "choose";
   setStartingPlayer: (value: "roll" | "choose") => void;
   rank: RankState;
@@ -256,8 +259,15 @@ function Primary({ model, friendWay }: { model: PlayModel; friendWay: FriendWay 
   return <PlayButton size={20} id="play.start" onClick={model.openCustom}>Set Up Table</PlayButton>;
 }
 
-/** Quick Match: the opponent's bracket as five gems, the opponent's deck on one row, then skill and who goes first. */
+const QUICK_LEVELS: [string, string][] = [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"], ["advanced", "Advanced"]];
+
+/**
+ * Quick Match: Easy, Medium or Hard, then who goes first. Advanced adds the opponent's bracket as five gems, the
+ * opponent's deck on one row and the AI's skill.
+ */
 function QuickOptions({ model }: { model: PlayModel }) {
+  const advanced = model.quickLevel === "advanced";
+  const level = QUICK_LEVELS.find(([value]) => value === model.quickLevel)?.[1] ?? "Medium";
   const brackets = CommanderBracket.all.filter((b) => b !== CommanderBracket.cedh);
   const chosen = brackets.find((b) => b === model.quickBracket);
   const matched = model.deckBracket !== undefined ? `Match my deck · B${Math.min(4, model.deckBracket)}` : "Match my deck";
@@ -271,11 +281,23 @@ function QuickOptions({ model }: { model: PlayModel }) {
   const roll = model.startingPlayer === "roll";
   return (
     <>
-      <Caps text={chosen !== undefined ? `Opponent · ${CommanderBracket.name(chosen)}` : "Opponent · Match my deck"} size={9.5} className="mhead" />
-      <div className="mbracketgems">{gem("Match", 0, matched)}{brackets.map((b) => gem(String(b), b, CommanderBracket.name(b)))}</div>
-      <OpponentDeckRow model={model} />
+      <Caps text={`Opponent · ${level}`} size={9.5} className="mhead" />
+      <div className="mbracketgems">
+        {QUICK_LEVELS.map(([value, name]) => (
+          <button key={value} type="button" className={`mbracketgem level ${model.quickLevel === value ? "on" : ""}`} aria-label={name}
+            aria-pressed={model.quickLevel === value} data-id={`quick.level.${value}`}
+            onClick={() => { gameAudio.play("ui-tap"); model.setQuickLevel(value); }}>{name}</button>
+        ))}
+      </div>
+      {advanced && (
+        <>
+          <Caps text={chosen !== undefined ? `Bracket · ${CommanderBracket.name(chosen)}` : "Bracket · Match my deck"} size={9.5} className="mhead" />
+          <div className="mbracketgems">{gem("Match", 0, matched)}{brackets.map((b) => gem(String(b), b, CommanderBracket.name(b)))}</div>
+          <OpponentDeckRow model={model} />
+        </>
+      )}
       <div className="mquickrow">
-        <Stepper title="AI skill" value={model.quickSkill} min={1} max={10} onChange={model.setQuickSkill} compact id="quick.skill" />
+        {advanced && <Stepper title="AI skill" value={model.quickSkill} min={1} max={10} onChange={model.setQuickSkill} compact id="quick.skill" />}
         <button type="button" className={`mroll ${roll ? "on" : ""}`} data-id="quick.startingPlayer" aria-label="Who goes first"
           title={roll ? "Everyone rolls a D20" : "Choose at the table"} onClick={() => { gameAudio.play("ui-tap"); model.setStartingPlayer(roll ? "choose" : "roll"); }}>
           <Emblem name="dice" size={15} lit={roll} /><span>{roll ? "D20" : "Pick"}</span>

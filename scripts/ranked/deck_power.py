@@ -409,14 +409,34 @@ def rate(config: dict) -> list[dict]:
     return sorted(rated, key=lambda r: -r['power'])
 
 
+def ship_power(rated: list[dict], config: dict):
+    """The apps' copy: a `power` block in ai-decks.json (bundled on iOS, Android and web), read by AIDeckPool.
+
+    Ranked aims each division at its tier's band (IV low, I high; Mythic the middle of its band) and allows the tier's
+    bracket or lower; Quick Match's levels set a Power and an AI skill. Every app picks among the `closest` decks."""
+    path = RESOURCES / 'ai-decks.json'
+    data = json.loads(path.read_text())
+    lad = config['ladder']
+    data['power'] = {
+        'source': 'scripts/ranked/deck_power.py rate --write (docs/DECK_POWER.md)',
+        'closest': lad['closest'],
+        'rankedTiers': [t['power'] for t in lad['tiers']],
+        'quickMatch': {q['name'].lower(): {'power': sum(q['power']) / 2, 'skill': q['skill']} for q in lad['quickMatch']},
+        'decks': {d['id']: d['power'] for d in sorted(rated, key=lambda d: d['id'])},
+    }
+    path.write_text(json.dumps(data, indent=1, ensure_ascii=False) + '\n')
+    print(f'wrote the power block of {path.relative_to(REPO)}')
+
+
 def ladder(rated: list[dict], config: dict) -> str:
     """Which decks each Ranked division and Quick Match level would bring: the nearest few allowed decks to the target."""
     few = config['ladder']['closest']
     lines = ['| Tier | Division | Target | Max bracket | Nearest allowed decks (Power) | Gap |', '|---|---|---|---|---|---|']
     for tier in config['ladder']['tiers']:
         low, high = tier['power']
-        for step, division in enumerate(('IV', 'III', 'II', 'I')):
-            target = low + (high - low) * (step + 0.5) / 4
+        divisions = ('IV', 'III', 'II', 'I') if tier['name'] != 'Mythic' else ('',)
+        for step, division in enumerate(divisions):
+            target = low + (high - low) * (step + 0.5) / len(divisions)
             allowed = sorted((r for r in rated if r['bracket'] <= tier['maxBracket']), key=lambda r: abs(r['power'] - target))
             near = allowed[:few]
             gap = abs(near[0]['power'] - target)
@@ -510,6 +530,7 @@ def main():
             RATINGS.write_text(json.dumps({'schemaVersion': 1, 'scale': config['scale'],
                                            'decks': [{k: d[k] for k in keep} for d in rated]}, indent=1) + '\n')
             print(f'\nwrote {RATINGS.relative_to(REPO)}')
+            ship_power(rated, config)
     elif args.command == 'ladder':
         print(ladder(rate(config), config))
     elif args.command == 'fit':

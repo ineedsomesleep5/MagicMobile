@@ -38,20 +38,20 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 - Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 
-| Tier | Opponent decks | Your deck up to | AI skill |
+| Tier | AI deck Power (by division IV → I) | AI deck and your deck up to | AI skill |
 |---|---|---|---|
-| Bronze | The three gentlest official precons (Core): Chaos Incarnate, Grave Danger, Token Triumph | 2 | 1 |
-| Silver | 2 | 2 | 2 |
-| Gold | 2–3 | 3 | 3 |
-| Platinum | 3 | 3 | 4 |
-| Diamond | 3–4 | 4 | 5 |
-| Mythic | 4 | 4 | 6 |
+| Bronze | 3–4 | 2 | 1 |
+| Silver | 4–5 | 2 | 2 |
+| Gold | 5–6 | 3 | 3 |
+| Platinum | 6–7 | 3 | 4 |
+| Diamond | 7–8 | 4 | 5 |
+| Mythic | 8.5 | 4 | 6 |
 
-In tiers with two opponent brackets, divisions IV–III face the lower one and II–I the upper.
-
-Bronze's three precons come from C3's equal-skill round-robin of all five (2026-10-15, 200 games, docs/cloud/reports/c3.md):
-Chaos Incarnate 36%, Grave Danger 45%, Token Triumph 50%, First Flight 56%, Draconic Destruction 62%. Going first won 65%
-of those games, a bigger effect than any deck.
+Since 2026-10-25 (docs/DECK_POWER.md) the AI brings the deck whose hidden Power is nearest the division's target, at
+random among the three nearest, from the tier's bracket or lower, never your commander and not one you faced recently.
+Each deck's Power comes from its own AI-vs-AI games (`scripts/ranked/deck_power.py rate`), shipped as the `power` block
+of `ai-decks.json`. A deck without a Power falls back to the old rule: the tier's opponent bracket (Bronze the three
+gentlest precons).
 
 Why this curve (2026-10-11): the XMage AI searches `max(4, skill)` moves deep and thinks `skill × 3` s,
 so skills 1–4 differ only in thinking time and depth grows from Diamond. Ranked never asks for Bracket 1:
@@ -77,9 +77,9 @@ against 4 is 53% (45–60%), not yet a measurable step (docs/cloud/reports/c4.md
 
 ## Play modes
 
-- **Quick Match**: one AI. Defaults to an AI deck at your deck's bracket (a precon when that is Core or
-  below) and skill 3; the player can set the
-  opponent's bracket, pick the exact deck and set the skill (1–10). No rank change.
+- **Quick Match**: one AI. Easy (an AI deck near Power 3.5, skill 2), Medium (5.5, skill 3, the default) or Hard
+  (7.5, skill 5). Advanced keeps the old controls: the opponent's bracket (by default your deck's, a precon at Core
+  or below), the exact deck and the skill (1–10). No rank change.
 - **Ranked**: searches the queue for a person within one tier and one bracket for 40 s, then an AI from your
   tier's pool takes the seat ("Play the AI now" skips the wait). Leaving a ranked game early is a loss.
 - **Custom Table**: the existing setup (up to three AIs, or an online table). Recorded in the profile only.
@@ -91,8 +91,8 @@ average decks per bracket (fetched 2026-10-04), limited to this XMage catalogue 
 deck's list check is at most its bracket. Six commanders the XMage AI plays well (proactive creature
 decks): Krenko, Gishath, Lathril (brackets 1–4), Edgar Markov, The Ur-Dragon, Wilhelt (2–4). On 2026-10-24
 seven more widened the Power range (docs/DECK_POWER.md), one bracket each: Kaalia of the Vast, Winota, The
-First Sliver, Miirym (4), Marisi, Kynaios and Tiro (1), Tormod (2). With the five precons (Core) that is 33 AI
-decks. Players may pick the bracket decks too ("Included · Bracket N").
+First Sliver, Miirym (4), Marisi, Kynaios and Tiro (1), Tormod (2). On 2026-10-25 eight more for about five decks per rank: Tiamat, Lathliss, Old Gnawbone, Phelddagrif, Zedruu,
+Karador, Meren and Marisi (2). With the five precons (Core) that is 41 AI decks. Players may pick the bracket decks too ("Included · Bracket N").
 
 The first 26 passed XMage's Commander deck validation on the desktop JVM engine, and all resolve through the
 iOS app's resolver (`AIDeckPoolTests`). The seven new decks are validated by their calibration games.

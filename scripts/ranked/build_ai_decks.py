@@ -182,6 +182,8 @@ def main():
            "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders), 2026-10-24 and 2026-10-25 (the rest), limited to this XMage catalogue",
            "catalogueHash": catalogue["catalogueHash"], "decks": decks}
     target = repo / "apps/ios/MagicMobile/Resources/ai-decks.json"
+    if target.exists() and "power" in (previous := json.loads(target.read_text())):
+        out["power"] = previous["power"]  # deck_power.py rate --write owns it
     target.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {target.relative_to(repo)}: {len(decks)} decks")
 

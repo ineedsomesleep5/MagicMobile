@@ -20,6 +20,38 @@ final class RankedParityTests: XCTestCase {
         return RankPosition(tier: tier, division: try XCTUnwrap(row["division"] as? Int), pips: try XCTUnwrap(row["pips"] as? Int))
     }
 
+    /// power-cases.json: Deck Power picking (RankedParityTest.kt, aiDeckPool.test.ts).
+    func testPowerPicksAsTheCasesSay() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("../android/core/src/test/resources/parity/power-cases.json").standardizedFileURL
+        let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let closest = try XCTUnwrap(cases["closest"] as? Int)
+        let decks = try XCTUnwrap(cases["decks"] as? [[String: Any]]).map { row in
+            AIDeck(id: row["id"] as? String ?? "", name: "", subtitle: "", colors: "", commander: row["commander"] as? String ?? "",
+                   bracket: CommanderBracket(clamping: row["bracket"] as? Int ?? 2), deckList: DeckList(name: "", commander: nil, entries: []),
+                   power: row["power"] as? Double)
+        }
+        for item in try XCTUnwrap(cases["picks"] as? [[String: Any]]) {
+            let roll = try XCTUnwrap(item["roll"] as? Int)
+            let pick = AIDeckPool.pick(targetPower: try XCTUnwrap(item["target"] as? Double), maxBracket: item["maxBracket"] as? Int,
+                                       avoidingCommander: item["avoid"] as? String, recent: item["recent"] as? [String] ?? [],
+                                       in: decks, closest: closest) { _ in roll }
+            XCTAssertEqual(pick?.id, item["expect"] as? String, item["name"] as? String ?? "")
+        }
+        let tiers = try XCTUnwrap(cases["rankedTiers"] as? [[Double]])
+        for item in try XCTUnwrap(cases["targets"] as? [[String: Any]]) {
+            XCTAssertEqual(AIDeckPool.rankedTarget(tier: try XCTUnwrap(item["tier"] as? Int), division: try XCTUnwrap(item["division"] as? Int),
+                                                   tiers: tiers), try XCTUnwrap(item["expect"] as? Double), accuracy: 1e-9, "\(item)")
+        }
+    }
+
+    func testEveryAIDeckShipsAPower() throws {
+        let power = try XCTUnwrap(AIDeckPool.power, "ai-decks.json power block")
+        for deck in AIDeckPool.all { XCTAssertGreaterThanOrEqual(deck.power ?? 0, 1, deck.id) }
+        XCTAssertEqual(power.rankedTiers.count, 6)
+        XCTAssertEqual(Set(power.quickMatch.keys), ["easy", "medium", "hard"])
+    }
+
     func testLadder() throws {
         XCTAssertEqual(root["pipsPerDivision"] as? Int, RankPosition.pipsPerDivision)
         for item in try rows("ladder") {

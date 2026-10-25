@@ -368,10 +368,23 @@ or Optimized deck has been measured yet.
   (kept out of the ratings).
 - Rerun `deck_power.py rate --write` after any new games in `power-results/`.
 
-## Build order (when approved)
+## Built (2026-10-25, branch `claude/deck-power-design`, not released)
 
-1. Formula and weights as shared data plus parity cases (one JSON every platform tests against, as deck sync does).
-2. Power for every AI deck, computed at data-prep time and shipped with `ai-decks.json` and the precons.
-3. `AIDeckPool.pick` on iOS, Android and web takes a target Power and keeps the bracket rule above.
-4. Ranked: target Power from the rank position. Quick Match: Easy / Medium / Hard with the Advanced toggle.
-5. Calibrate, retune the data, add AI decks where the ladder has gaps.
+Caleb: "do what is best and get … around 5 per rank".
+
+- **Data.** `deck_power.py rate --write` writes `scripts/ranked/deck-power-ratings.json` and the `power` block of
+  `apps/ios/MagicMobile/Resources/ai-decks.json` (each deck's Power, the tier bands, Quick Match's levels, `closest`);
+  `build_ai_decks.py` keeps that block when it rebuilds the decks. iOS, Android and web already bundle the file.
+- **Picking** (`AIDeckPool.pick(targetPower:)` on iOS, `AIDeckPool.pickByPower` on Android and web): decks with a
+  Power and a bracket at most the tier's (none for Quick Match), never your commander and not a recent deck while
+  others remain, then a random one of the three nearest the target. `parity/power-cases.json` holds the shared cases.
+- **Ranked:** each division aims at its tier's band (Bronze IV 3.1 … Diamond I 7.9, Mythic 8.5) with the tier's AI
+  skill. Bronze picks by Power too; the precons-only rule is only the fallback for a pool without Power data.
+- **Quick Match:** Easy (Power 3.5, skill 2), Medium (5.5, skill 3, the default) or Hard (7.5, skill 5) as pill gems;
+  Advanced shows today's bracket gems, deck row and skill stepper.
+- **Decks:** 41 AI decks. The eight added on 2026-10-25 (Tiamat, Lathliss, Old Gnawbone, Phelddagrif, Zedruu,
+  Karador, Meren, Marisi Core) are rated by the formula alone until `docs/cloud/power-new-decks.md` runs, and the
+  formula overrates gentle decks, so that run is needed before a release.
+
+Checks: web 316 tests; Android `RankedParityTest` and `RankedStandingTest` (22) and the app compile; iOS app and test
+bundle compile for the simulator (`RankedParityTests` not run: no simulator booted). No phone or UI check yet.

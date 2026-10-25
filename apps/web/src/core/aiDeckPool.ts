@@ -15,6 +15,8 @@ export interface AIDeck {
   colors: string;
   commander: string;
   bracket: CommanderBracket;
+  /** Hidden deck Power, 1-10 (ai-decks.json `power`, scripts/ranked/deck_power.py); undefined when unrated. */
+  power?: number;
   /** Commander first (section "commanders", as precons.json has it), then the main deck (section "deck"). */
   deckList: DeckList;
 }
@@ -24,11 +26,21 @@ export const playerDeckID = (deck: AIDeck) => `included:${deck.id}`;
 /** An official precon; ai-decks.json IDs all start with "ai-". */
 export const isPrecon = (deck: AIDeck) => !deck.id.startsWith("ai-");
 
+/** ai-decks.json's `power` block: each deck's Power, Ranked's tier bands and Quick Match's levels (docs/DECK_POWER.md). */
+export interface DeckPowerData {
+  closest: number;
+  /** Bronze to Mythic: each tier's [low, high] Power band. */
+  rankedTiers: [number, number][];
+  quickMatch: Record<string, { power: number; skill: number }>;
+  decks: Record<string, number>;
+}
+
 /** ai-decks.json (iOS Resources). */
 export interface AIDecksFile {
   schemaVersion: number;
   source?: string;
   catalogueHash?: string;
+  power?: DeckPowerData;
   decks: {
     id: string; name: string; subtitle: string; colors: string; commander: string; bracket: number; computedBracket?: number;
     entries: DeckEntry[];
@@ -56,6 +68,8 @@ export class AIDeckPool {
   readonly bracketDecks: AIDeck[];
   /** Every AI deck: the precons first (Core; their IDs are the precon IDs saved games already use). */
   readonly all: AIDeck[];
+  /** Power picking's settings, when the file has them. */
+  readonly power?: DeckPowerData;
 
   constructor(aiDecks: AIDecksFile, precons: PreconsFile) {
     this.bracketDecks = AIDeckPool.decode(aiDecks);
@@ -68,7 +82,44 @@ export class AIDeckPool {
         commander, bracket: CommanderBracket.core, deckList: { ...deck, entries: list },
       };
     });
-    this.all = [...preconDecks, ...this.bracketDecks];
+    this.power = aiDecks.power;
+    this.all = [...preconDecks, ...this.bracketDecks].map((deck) => ({ ...deck, power: aiDecks.power?.decks[deck.id] }));
+    this.bracketDecks = this.all.filter((deck) => !isPrecon(deck));
+  }
+
+  /**
+   * Ranked's target Power (docs/DECK_POWER.md): the tier's band split in four divisions, IV low to I high; Mythic
+   * (division 0) aims at the middle of its band. `tier` counts from Bronze (0).
+   */
+  static rankedTarget(tier: number, division: number, tiers: [number, number][]): number {
+    const [low, high] = tiers[Math.min(tiers.length - 1, Math.max(0, tier))];
+    if (division <= 0) return (low + high) / 2;
+    return low + (high - low) * (4 - Math.min(4, division) + 0.5) / 4;
+  }
+
+  /**
+   * An AI deck by Power: decks with a Power and a bracket at most `maxBracket` (none: any), never your commander and
+   * not a recent deck while others remain, then the `closest` nearest the target (ties by id), `roll` picking among
+   * them. Undefined when no deck qualifies. Checked against parity/power-cases.json.
+   */
+  pickByPower(options: {
+    target: number; maxBracket?: number; avoidingCommander?: string; recent: string[]; decks?: AIDeck[]; closest?: number;
+    roll?: (count: number) => number;
+  }): AIDeck | undefined {
+    const roll = options.roll ?? ((count: number) => Math.floor(Math.random() * count));
+    const { maxBracket, avoidingCommander: commander, target } = options;
+    let candidates = (options.decks ?? this.all)
+      .filter((deck) => deck.power !== undefined && deck.power !== null && (maxBracket === undefined || deck.bracket <= maxBracket));
+    if (commander !== undefined && candidates.some((deck) => deck.commander !== commander)) {
+      candidates = candidates.filter((deck) => deck.commander !== commander);
+    }
+    const fresh = candidates.filter((deck) => !options.recent.includes(deck.id));
+    if (fresh.length > 0) candidates = fresh;
+    const near = [...candidates]
+      .sort((a, b) => Math.abs(a.power! - target) - Math.abs(b.power! - target) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(0, options.closest ?? this.power?.closest ?? 3);
+    if (near.length === 0) return undefined;
+    return near[Math.min(near.length - 1, Math.max(0, Math.trunc(roll(near.length))))];
   }
 
   /** ai-decks.json to decks (AIDeckPool.decode): the commander entry becomes the commander, everything else the main deck. */

@@ -110,3 +110,35 @@ describe("AI deck pool", () => {
     expect(() => AIDeckPool.decode({ schemaVersion: 1 } as any)).toThrow();
   });
 });
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const powerCases: any = json(join(root, "apps/android/core/src/test/resources/parity/power-cases.json"));
+
+describe("Deck Power picking (parity/power-cases.json)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const decks: AIDeck[] = powerCases.decks.map((d: any) => ({
+    id: d.id, name: d.id, subtitle: "", colors: "", commander: d.commander, bracket: d.bracket, power: d.power ?? undefined,
+    deckList: { id: d.id, name: d.id, entries: [] },
+  }));
+
+  it("picks as the cases say", () => {
+    for (const item of powerCases.picks) {
+      const pick = pool.pickByPower({ target: item.target, maxBracket: item.maxBracket ?? undefined, avoidingCommander: item.avoid,
+        recent: item.recent ?? [], decks, closest: powerCases.closest, roll: () => item.roll });
+      expect(pick?.id, item.name).toBe(item.expect);
+    }
+  });
+
+  it("aims each division as the cases say", () => {
+    for (const item of powerCases.targets) {
+      expect(AIDeckPool.rankedTarget(item.tier, item.division, powerCases.rankedTiers), JSON.stringify(item)).toBeCloseTo(item.expect, 9);
+    }
+  });
+
+  it("ships a Power for every AI deck and precon", () => {
+    expect(pool.power, "ai-decks.json power block").toBeDefined();
+    for (const deck of pool.all) expect(deck.power, deck.id).toBeGreaterThanOrEqual(1);
+    expect(pool.power!.rankedTiers.length).toBe(6);
+    expect(Object.keys(pool.power!.quickMatch).sort()).toEqual(["easy", "hard", "medium"]);
+  });
+});

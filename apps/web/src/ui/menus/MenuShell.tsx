@@ -196,6 +196,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const [quickBracket, setQuickBracket] = useStored("mm.web.quick.bracket", () => readNumber("mm.web.quick.bracket", 0, 0, 4));
   const [quickDeckID, setQuickDeckID] = useStored("mm.web.quick.deck", () => read("mm.web.quick.deck", ""));
   const [quickSkill, setQuickSkill] = useStored("mm.web.quick.skill", () => readNumber("mm.web.quick.skill", 3, 1, 10));
+  // Easy, Medium or Hard pick the AI's deck by Power and set its skill; Advanced keeps the bracket, deck and skill controls.
+  const [quickLevel, setQuickLevel] = useStored("mm.web.quick.level", () => read("mm.web.quick.level", "medium"));
   const [starting, setStarting] = useStored<"roll" | "choose">("mm.web.solo.starting", () => (read("mm.web.solo.starting", "roll") === "choose" ? "choose" : "roll"));
   const [playerMode, setPlayerMode] = useStored<"ai" | "online">("mm.web.custom.players", () => (read("mm.web.custom.players", "ai") === "online" ? "online" : "ai"));
   /** How many people the table this browser hosts seats (RelayTablePanel's player count). */
@@ -290,6 +292,11 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
 
   const startQuick = () => {
     if (!deck || deckBracket === undefined) return;
+    const level = quickLevel === "advanced" ? undefined : pool.power?.quickMatch[quickLevel];
+    if (level) {
+      const opponent = pool.pickByPower({ target: level.power, avoidingCommander: deck.commander, recent: [...record.recentAIDecks] });
+      if (opponent) { begin("quick", [opponent], level.skill); return; }
+    }
     const opponentBracket = quickBracket === 0 ? Math.min(4, deckBracket) : quickBracket;
     const chosen = quickDeckID ? pool.deck(quickDeckID) : undefined;
     // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
@@ -316,8 +323,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const startRankedAI = () => {
     if (!deck || deckBracket === undefined) return;
     const tier = rank.position.tier;
-    const opponent = pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
-      preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
+    // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+    const target = pool.power && AIDeckPool.rankedTarget(RankTier.index(tier), rank.position.division, pool.power.rankedTiers);
+    const opponent = (target !== undefined
+      ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks] })
+      : undefined) ?? pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
+        preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
     if (!opponent) return;
     // Signed in, the server issues the game's ticket and seed so the result counts there too (startRankedAIGame).
     if (player.state.phase === "ready" && player.state.username) {
@@ -569,7 +580,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const playModel: PlayModel = {
     sections, selectedDeckID, selectDeck: setSelectedDeckID, deckBracket, mode, setMode, tab, setTab,
     quickBracket, setQuickBracket, quickDeckID, setQuickDeckID, quickPool: pool.pool(quickResolvedBracket), quickResolvedBracket,
-    quickSkill, setQuickSkill, startingPlayer: starting, setStartingPlayer: setStarting, rank, playerMode, setPlayerMode,
+    quickSkill, setQuickSkill, quickLevel, setQuickLevel, startingPlayer: starting, setStartingPlayer: setStarting, rank, playerMode, setPlayerMode,
     friendWays: player.state.username ? ["challenge", "host", "join"] : ["host", "join"], mayStart, status: error ?? engineStatus, recent,
     close: () => setPlayPanel(false), explainBracket: () => setPanel("bracket"),
     startQuick, findRanked, openCustom: () => { setPlayPanel(false); setCustom(true); },

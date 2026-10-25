@@ -9,6 +9,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -257,16 +258,65 @@ object RankLadder {
 // MARK: - AI decks (AIDeckPool.swift)
 
 data class AIDeck(val id: String, val name: String, val subtitle: String, val colors: String, val commander: String,
-                  val bracket: CommanderBracket, val deck: Deck) {
+                  val bracket: CommanderBracket, val deck: Deck,
+                  /** Hidden deck Power, 1-10 (ai-decks.json `power`, scripts/ranked/deck_power.py); null when unrated. */
+                  val power: Double? = null) {
     /** The setup screen's deck ID when a player picks one of these decks for themselves. */
     val playerDeckID: String get() = "included:$id"
     /** An official precon; ai-decks.json IDs all start with "ai-". */
     val isPrecon: Boolean get() = !id.startsWith("ai-")
 }
 
+/** A Quick Match level: the AI deck's target Power and the AI's skill. */
+data class QuickLevel(val power: Double, val skill: Int)
+
+/** ai-decks.json's `power` block (DeckPowerData in AIDeckPool.swift): each deck's Power, Ranked's bands, Quick Match's levels. */
+data class DeckPowerData(val closest: Int, val rankedTiers: List<Pair<Double, Double>>, val quickMatch: Map<String, QuickLevel>,
+                         val decks: Map<String, Double>)
+
 object AIDeckPool {
-    /** ai-decks.json (scripts/ranked/build_ai_decks.py). */
-    fun parse(text: String): List<AIDeck> = Json.parseToJsonElement(text).jsonObject["decks"]!!.jsonArray.map { item ->
+    /** The `power` block of ai-decks.json, or null when the file has none. */
+    fun parsePower(text: String): DeckPowerData? {
+        val block = Json.parseToJsonElement(text).jsonObject["power"]?.jsonObject ?: return null
+        return DeckPowerData(block["closest"]!!.jsonPrimitive.int,
+            block["rankedTiers"]!!.jsonArray.map { val band = it.jsonArray; band[0].jsonPrimitive.double to band[1].jsonPrimitive.double },
+            block["quickMatch"]!!.jsonObject.mapValues { (_, v) -> QuickLevel(v.jsonObject["power"]!!.jsonPrimitive.double, v.jsonObject["skill"]!!.jsonPrimitive.int) },
+            block["decks"]!!.jsonObject.mapValues { (_, v) -> v.jsonPrimitive.double })
+    }
+
+    /**
+     * Ranked's target Power (docs/DECK_POWER.md): the tier's band split in four divisions, IV low to I high; Mythic
+     * (division 0) aims at the middle of its band.
+     */
+    fun rankedTarget(tier: Int, division: Int, tiers: List<Pair<Double, Double>>): Double {
+        val (low, high) = tiers[tier.coerceIn(0, tiers.size - 1)]
+        if (division <= 0) return (low + high) / 2
+        return low + (high - low) * (4 - minOf(4, division) + 0.5) / 4
+    }
+
+    /**
+     * An AI deck by Power (pickByPower in AIDeckPool.swift): decks with a Power and a bracket at most `maxBracket` (null:
+     * any), never your commander and not a recent deck while others remain, then the `closest` nearest the target (ties
+     * by id), `roll` picking among them. Null when no deck qualifies. Checked against parity/power-cases.json.
+     */
+    fun pickByPower(target: Double, maxBracket: Int?, avoidingCommander: String?, recent: List<String>, decks: List<AIDeck>,
+                    closest: Int = 3, roll: (Int) -> Int = { (0 until it).random() }): AIDeck? {
+        var candidates = decks.filter { it.power != null && (maxBracket == null || it.bracket.level <= maxBracket) }
+        if (avoidingCommander != null && candidates.any { it.commander != avoidingCommander }) candidates = candidates.filter { it.commander != avoidingCommander }
+        val fresh = candidates.filter { it.id !in recent }
+        if (fresh.isNotEmpty()) candidates = fresh
+        val near = candidates.sortedWith(compareBy<AIDeck>({ kotlin.math.abs(it.power!! - target) }, { it.id })).take(closest)
+        if (near.isEmpty()) return null
+        return near[roll(near.size).coerceIn(0, near.size - 1)]
+    }
+
+    /** ai-decks.json (scripts/ranked/build_ai_decks.py), each deck with its Power from the file's `power` block. */
+    fun parse(text: String): List<AIDeck> {
+        val power = parsePower(text)?.decks ?: emptyMap()
+        return parseDecks(text).map { it.copy(power = power[it.id]) }
+    }
+
+    private fun parseDecks(text: String): List<AIDeck> = Json.parseToJsonElement(text).jsonObject["decks"]!!.jsonArray.map { item ->
         val row = item.jsonObject
         fun s(key: String) = row[key]!!.jsonPrimitive.content
         AIDeck(s("id"), s("name"), s("subtitle"), s("colors"), s("commander"), CommanderBracket.clamping(row["bracket"]!!.jsonPrimitive.int),

@@ -129,6 +129,9 @@ class ArenaPlayPanelModel(
     val setQuickDeckID: (String) -> Unit,
     val quickSkill: Int,
     val setQuickSkill: (Int) -> Unit,
+    /** "easy", "medium" or "hard" (the AI's deck by Power, its skill set with it), or "advanced" (the controls below). */
+    val quickLevel: String,
+    val setQuickLevel: (String) -> Unit,
     val startingPlayer: String,
     val setStartingPlayer: (String) -> Unit,
     val aiPool: List<AIDeck>,
@@ -439,25 +442,49 @@ private fun BladeModes(model: ArenaPlayPanelModel, compact: Boolean) {
 
 // MARK: Options
 
+private val quickLevels = listOf("easy" to "Easy", "medium" to "Medium", "hard" to "Hard", "advanced" to "Advanced")
+
 /**
- * Quick Match's choices fit the blade without scrolling: the opponent's bracket as five gems with the chosen one named in the
- * heading, the opponent's deck on one line, then skill and who goes first.
+ * Quick Match: Easy, Medium or Hard, then who goes first. Advanced adds the opponent's bracket as five gems, the opponent's
+ * deck on one line and the AI's skill.
  */
 @Composable
 private fun ColumnScope.QuickOptions(model: ArenaPlayPanelModel) {
-    val brackets = CommanderBracket.entries.filter { it != CommanderBracket.CEDH }
-    val chosen = brackets.firstOrNull { it.level == model.quickBracket }
-    val matched = ArenaPlayRules.matchedLabel(model.deckBracket)
-    // The opponent's bracket, named plainly: the chosen gem's bracket, or "Match my deck" (the judge, 2026-10-22).
-    ArenaCaps(chosen?.let { "Opponent · ${it.label}" } ?: "Opponent · Match my deck", 9.5f, Modifier.padding(top = 6.dp))
+    val advanced = model.quickLevel == "advanced"
+    ArenaCaps("Opponent · ${quickLevels.firstOrNull { it.first == model.quickLevel }?.second ?: "Medium"}", 9.5f, Modifier.padding(top = 6.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        BracketGem(model, "Match", 0, matched, Modifier.weight(1f))
-        brackets.forEach { BracketGem(model, "${it.level}", it.level, it.label, Modifier.weight(1f)) }
+        quickLevels.forEach { (value, name) -> LevelGem(model, value, name, Modifier.weight(1f)) }
     }
-    OpponentDeckRow(model)
+    if (advanced) {
+        val brackets = CommanderBracket.entries.filter { it != CommanderBracket.CEDH }
+        val chosen = brackets.firstOrNull { it.level == model.quickBracket }
+        val matched = ArenaPlayRules.matchedLabel(model.deckBracket)
+        ArenaCaps(chosen?.let { "Bracket · ${it.label}" } ?: "Bracket · Match my deck", 9.5f, Modifier.padding(top = 6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            BracketGem(model, "Match", 0, matched, Modifier.weight(1f))
+            brackets.forEach { BracketGem(model, "${it.level}", it.level, it.label, Modifier.weight(1f)) }
+        }
+        OpponentDeckRow(model)
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        ArenaStepper("AI skill", model.quickSkill, 1..10, model.setQuickSkill, Modifier.weight(1f), identifier = "quick.skill", compact = true)
+        if (advanced) ArenaStepper("AI skill", model.quickSkill, 1..10, model.setQuickSkill, Modifier.weight(1f), identifier = "quick.skill", compact = true)
+        else Spacer(Modifier.weight(1f))
         RollToggle(model)
+    }
+}
+
+/** Easy, Medium, Hard or Advanced as a pill gem, gold when chosen (the bracket gems' look, wide enough for the word). */
+@Composable
+private fun LevelGem(model: ArenaPlayPanelModel, value: String, name: String, modifier: Modifier) {
+    val on = model.quickLevel == value
+    val shape = RoundedCornerShape(18.dp)
+    BrandPressable({ GameAudio.play(GameSound.UI_TAP); model.setQuickLevel(value) }, modifier.defaultMinSize(minHeight = 44.dp).testTag("quick.level.$value")
+        .semantics { contentDescription = name; selected = on }) {
+        Box(Modifier.fillMaxWidth().height(36.dp).glow(if (on) ArenaMenuStyle.gold.copy(alpha = 0.5f) else Color.Transparent, 5.dp, 18.dp)
+            .background(if (on) ArenaMenuStyle.goldFill else Brush.verticalGradient(List(2) { Color.Black.copy(alpha = 0.45f) }), shape)
+            .border(if (on) 1.4.dp else 0.9.dp, if (on) ArenaMenuStyle.metal else ArenaGlass.hairline, shape), contentAlignment = Alignment.Center) {
+            FitText(name, ArenaMenuStyle.font(11f, SfWeight.bold), color = if (on) ArenaMenuStyle.inkOnGold else ArenaMenuStyle.text, minimumScale = 0.7f)
+        }
     }
 }
 
