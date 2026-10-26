@@ -109,6 +109,8 @@ fun ArenaHandFan(
     var spreadScroll by remember { mutableStateOf(0f) }
     /** A touch on the spread row: where it began, the swipe then, and whether it is swiping. */
     var spreadTouch by remember { mutableStateOf<Triple<BoardPoint, Float, Boolean>?>(null) }
+    /** Where a hold began: pulled up off the hand, the held card is carried like a drag (ArenaHandFan.swift). */
+    var holdStart by remember { mutableStateOf<BoardPoint?>(null) }
     var known by remember { mutableStateOf<Set<String>?>(null) }
     /** Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan. */
     val arrivals = remember { mutableStateMapOf<String, Int>() }
@@ -205,15 +207,6 @@ fun ArenaHandFan(
             else -> { setLiftedCardID(card.id); GameAudio.play(GameSound.CARD_PICKUP); GameHaptics.selection(view) }
         }
     }
-    /** A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand. */
-    fun held(point: BoardPoint) {
-        val card = card(point) ?: return
-        if (selection.inspectedCard?.id == card.id) return
-        if (selection.inspectedCard == null) inspection?.begin { selection.inspectedCard = null }
-        selection.inspectedCard = card
-        GameHaptics.selection(view)
-    }
-    fun endHold() { if (inspection != null) inspection.end() else selection.inspectedCard = null }
     fun startCarry(card: ZoneCard, start: BoardPoint, offset: BoardPoint, finger: BoardPoint) {
         GameAudio.play(GameSound.CARD_PICKUP)
         carrySurface = liftedRect
@@ -234,6 +227,8 @@ fun ArenaHandFan(
         val touch = spreadTouch
         if (posture == ArenaHandPosture.SPREAD && touch != null) {
             val dx = point.x - touch.first.x; val dy = point.y - touch.first.y
+            // Decide nothing until the finger has moved: 0 >= 0 would lock the drag into a swipe (ArenaHandFan.swift).
+            if (!touch.third && hypot(dx, dy) < canvas.length(6f)) return
             if (touch.third || abs(dx) >= abs(dy) || dy > 0) {
                 spreadTouch = Triple(touch.first, touch.second, true)
                 val maxScroll = ArenaHandFanLayout.spread(all.size, layout.hand)?.maxScroll ?: 0f
@@ -279,6 +274,37 @@ fun ArenaHandFan(
                 lower()
             }
         }
+    }
+
+    /**
+     * A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand. Pulled up off
+     * the hand, the held card is picked up and carried (a press that paused before the drag never carried).
+     */
+    fun held(point: BoardPoint) {
+        dragging?.let { (id, start, _) ->
+            dragging = Triple(id, start, BoardPoint(point.x - start.x, point.y - start.y))
+            setOverPlayerDropZone(canvas.drops(point, start))
+            return
+        }
+        val start = holdStart ?: point.also { holdStart = it }
+        if (start.y - point.y >= canvas.length(36f)) {
+            card(start)?.let { held ->
+                if (inspection != null) inspection.end() else selection.inspectedCard = null
+                startCarry(held, start, BoardPoint(point.x - start.x, point.y - start.y), point)
+                return
+            }
+        }
+        val card = card(point) ?: return
+        if (selection.inspectedCard?.id == card.id) return
+        if (selection.inspectedCard == null) inspection?.begin { selection.inspectedCard = null }
+        selection.inspectedCard = card
+        GameHaptics.selection(view)
+    }
+    /** A hold that carried its card plays it where it lands, as a drag does; otherwise the magnifier closes. */
+    fun endHold(point: BoardPoint, cancelled: Boolean) {
+        holdStart = null
+        if (dragging != null) return panEnded(point, cancelled)
+        if (inspection != null) inspection.end() else selection.inspectedCard = null
     }
 
     // A card that joins the hand after the opening hand flies in from the deck. Several at once just slide in.
@@ -418,7 +444,7 @@ fun ArenaHandFan(
  * pan that starts once the finger moves before the hold, in any direction (ArenaHandTouch). Every report is in screen dp.
  */
 @Composable
-private fun ArenaHandTouch(rect: BoardRect, modifier: Modifier, tap: (BoardPoint) -> Unit, hold: (BoardPoint) -> Unit, holdEnded: () -> Unit,
+private fun ArenaHandTouch(rect: BoardRect, modifier: Modifier, tap: (BoardPoint) -> Unit, hold: (BoardPoint) -> Unit, holdEnded: (BoardPoint, Boolean) -> Unit,
                            pan: (BoardPoint) -> Unit, panEnded: (BoardPoint, Boolean) -> Unit, panStart: (BoardPoint) -> Unit) {
     val current by rememberUpdatedState(rect)
     val onTap by rememberUpdatedState(tap); val onHold by rememberUpdatedState(hold); val onHoldEnded by rememberUpdatedState(holdEnded)
@@ -460,14 +486,17 @@ private fun ArenaHandTouch(rect: BoardRect, modifier: Modifier, tap: (BoardPoint
                 }
                 null -> {
                     onHold(point(last))
+                    var cancelled = false
                     try {
                         while (true) {
-                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                            if (change == null) { cancelled = true; break }
+                            last = change.position
                             change.consume()
                             if (!change.pressed) break
                             onHold(point(change.position))
                         }
-                    } finally { onHoldEnded() }
+                    } finally { onHoldEnded(point(last), cancelled) }
                 }
                 else -> {}
             }
