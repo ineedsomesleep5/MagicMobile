@@ -433,8 +433,9 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     val mayStartSolo = validName && selectedDeck != null && selectedDeckBracket != null && setup.identity != null &&
         !setup.isBusy && !setup.needsLeave && matchPhase == io.magicmobile.android.game.RankedMatchmaker.Phase.Idle
 
+    /** `repick`: a ranked game's AI deck for the Power its server ticket names (ranked_ai_tuning). */
     fun startSolo(mode: io.magicmobile.android.game.PlayMode, deck: Deck, deckBracket: io.magicmobile.android.game.CommanderBracket,
-                  opponent: io.magicmobile.android.game.AIDeck, skill: Int) {
+                  opponent: io.magicmobile.android.game.AIDeck, skill: Int, repick: ((Double) -> io.magicmobile.android.game.AIDeck?)? = null) {
         try { playerDisplayName = OnDeviceSetupModel.playerName(playerDisplayName) }
         catch (error: EngineError) { setup.errorMessage = error.message; return }
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
@@ -445,12 +446,25 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         scope.launch {
             // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
             var seed: Long? = null
+            var foe = opponent
+            var aiSkill = skill
+            var mistakes: Int? = null
+            var resumeSettings = settings
             if (mode == io.magicmobile.android.game.PlayMode.RANKED) {
                 val ticket = vm.account.startRankedAIGame(deckBracket.level)
                 record.beginRankedAIGame(ticket?.id, seeded = ticket != null)
                 seed = ticket?.seed
+                // The server tunes the AI without an app build: its skill, mistakes and the deck's Power.
+                ticket?.ai?.let { tuned ->
+                    foe = repick?.invoke(tuned.power) ?: opponent
+                    aiSkill = tuned.skill; mistakes = tuned.mistakePercent
+                    resumeSettings = settings.copy(aiDeckIDs = listOf(foe.id), aiSkill = aiSkill)
+                    activeMatch = activeMatch?.copy(opponents = listOf(io.magicmobile.android.game.MatchOpponent(foe.name, foe.commander, true)),
+                        opponentBracket = foe.bracket.level, aiSkill = aiSkill, aiDeckID = foe.id)
+                }
             }
-            setup.startAI(playerDisplayName, deck, listOf(opponent.deck), skill, settings, deckID = selectedDeckID, seed = seed)
+            setup.startAI(playerDisplayName, deck, listOf(foe.deck), aiSkill, resumeSettings, deckID = selectedDeckID, seed = seed,
+                aiMistakePercent = mistakes)
             if (session.matchID == null) activeMatch = null
         }
     }
@@ -507,14 +521,16 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
         // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
         val power = setup.deckPower
-        val opponent = power?.let {
-            io.magicmobile.android.game.AIDeckPool.pickByPower(io.magicmobile.android.game.AIDeckPool.rankedTarget(position.tier.ordinal, position.division, it.rankedTiers),
-                position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest)
-        } ?: io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
+        val byPower = { target: Double -> power?.let {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(target, position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest)
+        } }
+        val opponent = power?.let { byPower(io.magicmobile.android.game.AIDeckPool.rankedTarget(position.tier.ordinal, position.division, it.rankedTiers)) }
+            ?: io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
             preconsOnly = position.tier.preconOpponentsOnly,
             onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
-        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
+        startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill, repick = byPower)
     }
 
     /** The host opens a two-seat relay table and shares its code; the guest joins. A table that never fills hands the seat to an AI. */

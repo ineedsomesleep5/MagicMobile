@@ -136,6 +136,9 @@ class RankedStandingTest {
         val id = "3f1c2a9e-7b1d-4c55-9a0e-1d2c3b4a5f60"
         assertEquals(RankedAITicket(id, -4_123_456_789_012_345_678L),
             RankedAITicket.parse("""{"id":"$id","seed":"-4123456789012345678","aiSkill":1}"""))
+        assertEquals(RankedAITicket(id, 7L, RankedAITuning(3, 8, 5.63)),
+            RankedAITicket.parse("""{"id":"$id","seed":"7","aiSkill":3,"aiMistakePercent":8,"aiPower":5.63}"""))
+        assertEquals(RankedAITicket(id, 7L), RankedAITicket.parse("""{"id":"$id","seed":"7","aiSkill":3,"aiMistakePercent":101,"aiPower":5.63}"""))
         assertNull(RankedAITicket.parse("""{"id":"$id","seed":4.5}"""))
         assertNull(RankedAITicket.parse("\"$id\""))
     }

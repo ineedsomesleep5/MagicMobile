@@ -92,14 +92,16 @@ const val RELAY_ADAPTER_VERSION = "ondevice-0.1/relay-1/rollstep-2/room-1/conced
 
 /** Port of OnDeviceAppConfiguration.aiGameSeats. */
 object OnDeviceAppConfiguration {
-    fun aiGameSeats(name: String, humanDeck: J, aiDecks: List<J>, aiSkill: Int): List<J> {
+    /** `aiMistakePercent`: a ranked game's deliberate-mistake chance from its server ticket; null keeps the skill's own. */
+    fun aiGameSeats(name: String, humanDeck: J, aiDecks: List<J>, aiSkill: Int, aiMistakePercent: Int? = null): List<J> {
         if (aiDecks.size !in 1..3) throw EngineError.InvalidMessage("Choose 1–3 AI opponents.")
         if (aiSkill !in 1..10) throw EngineError.InvalidMessage("Choose AI skill from 1–10.")
         return listOf<J>(JsonObject(mapOf("seatId" to JsonPrimitive("player1"), "name" to JsonPrimitive(name),
             "controller" to JsonPrimitive("human"), "deck" to humanDeck))) + aiDecks.mapIndexed { offset, deck ->
             val index = offset + 1
             JsonObject(mapOf("seatId" to JsonPrimitive("player${index + 1}"), "name" to JsonPrimitive("AI $index"),
-                "controller" to JsonPrimitive("ai"), "deck" to deck, "aiSkill" to JsonPrimitive(aiSkill)))
+                "controller" to JsonPrimitive("ai"), "deck" to deck, "aiSkill" to JsonPrimitive(aiSkill)) +
+                (aiMistakePercent?.let { mapOf("aiMistakePercent" to JsonPrimitive(it)) } ?: emptyMap()))
         }
     }
 }
@@ -288,7 +290,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
 
     /** `settings` are the setup choices kept with a checkpoint, so a resumed game can rebuild its menu state and Rematch. */
     suspend fun startAI(name: String, deck: Deck, aiDecks: List<Deck>, aiSkill: Int = 2, settings: GameResumeSettings? = null, deckID: String? = null,
-                        seed: Long? = null) {
+                        seed: Long? = null, aiMistakePercent: Int? = null) {
         val identity = identity ?: return
         if (isBusy || needsLeave) return
         isBusy = true; errorMessage = null; feedback = null; status = "Starting XMage"
@@ -300,7 +302,7 @@ class OnDeviceSetupModel(private val context: Context, val session: OnDeviceSess
             val resolvedDeck = resolve(deck)
             humanDeck = resolvedDeck
             val opponentDecks = aiDecks.map(::resolve)
-            val seats = OnDeviceAppConfiguration.aiGameSeats(playerName, resolvedDeck, opponentDecks, aiSkill)
+            val seats = OnDeviceAppConfiguration.aiGameSeats(playerName, resolvedDeck, opponentDecks, aiSkill, aiMistakePercent)
             val client = runtime.makeClient(identity)
             runtimeOpen = runtime.isOpen
             aiClient = client

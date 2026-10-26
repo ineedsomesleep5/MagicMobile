@@ -347,7 +347,9 @@ contradicting one.
   copy. After that, every question to the human throws "Mobile match stopped", XMage rolls back and asks again, and the
   game ends without the human. Phones run the same code; it showed up as 5 of 92 seeded JVM games in the web harness.
   **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
-  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor (not fixed in M1; engine follow-up).
+  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor. 2026-10-26: it ended Caleb's winning ranked
+  web game ("Too many errors", the AI won on life). Web fixed by a `web_sources.py` rewrite (branch
+  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI); phones still need `ccd1365a` in an engine release.
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
@@ -863,6 +865,11 @@ contradicting one.
   rules failed and the fallback showed a raw `{this}`, drawn as a symbol chip. `abilityRule` now takes `sourceName`.
 - Web board: pointer movement is in window pixels but browser rows scroll in board points, so a drag divides by the
   board's scale or it moves about twice as far.
+- Ranked AI difficulty is tuned on the server (`ranked_ai_tuning`, docs/DECK_POWER.md): the engine already took a
+  per-seat `aiMistakePercent` (and `aiSearchDepth`) override, so no engine change was needed, only apps that send the
+  ticket's value. The record check must accept both the ticket's chance and the skill's standard one, or wins from
+  apps released before the table settle `ai_settings`. Pick the opponent before opening a ticket: an unplayed ticket is
+  abandoned as a loss after 12 hours.
 - Seasons are quarterly from November 2026 (`mm_season_for`, applied live). Apps that still count months disagree from
   December 1, 2026 (they keep their own standing, as `adopting` refuses an older server season), so the iOS and
   Android releases with `RankLadder.season`'s quarterly rule must go out before then.

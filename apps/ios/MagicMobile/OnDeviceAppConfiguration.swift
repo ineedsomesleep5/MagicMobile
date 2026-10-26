@@ -10,14 +10,17 @@ enum OnDeviceAppConfiguration {
 
     static func aiGameSeats(name: String, humanDeck: MagicMobileOnDevice.JSONValue,
                             aiDecks: [MagicMobileOnDevice.JSONValue],
-                            aiSkill: Int) throws -> [MagicMobileOnDevice.JSONValue] {
+                            aiSkill: Int, aiMistakePercent: Int? = nil) throws -> [MagicMobileOnDevice.JSONValue] {
         guard (1...3).contains(aiDecks.count) else { throw EngineError.invalidMessage("Choose 1–3 AI opponents.") }
         guard (1...10).contains(aiSkill) else { throw EngineError.invalidMessage("Choose AI skill from 1–10.") }
         return [.object(["seatId": .string("player1"), "name": .string(name),
                          "controller": .string("human"), "deck": humanDeck])] + aiDecks.enumerated().map { offset, aiDeck in
             let index = offset + 1
-            return .object(["seatId": .string("player\(index + 1)"), "name": .string("AI \(index)"),
-                     "controller": .string("ai"), "deck": aiDeck, "aiSkill": .number(Double(aiSkill))])
+            var seat: [String: MagicMobileOnDevice.JSONValue] = ["seatId": .string("player\(index + 1)"), "name": .string("AI \(index)"),
+                                                                "controller": .string("ai"), "deck": aiDeck, "aiSkill": .number(Double(aiSkill))]
+            // A ranked game's deliberate-mistake chance from its server ticket; nil keeps the skill's own.
+            if let aiMistakePercent { seat["aiMistakePercent"] = .number(Double(aiMistakePercent)) }
+            return .object(seat)
         }
     }
 

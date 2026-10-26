@@ -630,14 +630,33 @@ data class PendingRankedResult(val ticket: String, val outcome: RankOutcome, val
                                val recordFile: String? = null)
 
 /** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
-data class RankedAITicket(val id: String, val seed: Long) {
+data class RankedAITicket(val id: String, val seed: Long, val ai: RankedAITuning? = null) {
     companion object {
-        /** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+        /**
+         * `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is
+         * text: JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
+         */
         fun parse(text: String): RankedAITicket? = runCatching {
             val value = kotlinx.serialization.json.Json.parseToJsonElement(text) as JsonObject
             val id = value["id"]!!.jsonPrimitive.also { require(it.isString) }.content
             val seed = value["seed"]!!.jsonPrimitive.also { require(it.isString) }.content.toLong()
-            RankedAITicket(java.util.UUID.fromString(id).toString(), seed)
+            RankedAITicket(java.util.UUID.fromString(id).toString(), seed, RankedAITuning.parse(value))
+        }.getOrNull()
+    }
+}
+
+/**
+ * The AI the server tuned for one ranked game (ranked_ai_tuning, mm_ranked_ai_start2): its skill, deliberate-mistake chance
+ * and the AI deck's Power target. Absent from servers before that tuning, when the tier's bundled values apply.
+ */
+data class RankedAITuning(val skill: Int, val mistakePercent: Int, val power: Double) {
+    companion object {
+        fun parse(value: JsonObject): RankedAITuning? = runCatching {
+            val skill = value["aiSkill"]!!.jsonPrimitive.content.toInt()
+            val mistakes = value["aiMistakePercent"]!!.jsonPrimitive.content.toInt()
+            val power = value["aiPower"]!!.jsonPrimitive.also { require(!it.isString) }.content.toDouble()
+            require(skill in 1..10 && mistakes in 0..100 && power.isFinite())
+            RankedAITuning(skill, mistakes, power)
         }.getOrNull()
     }
 }

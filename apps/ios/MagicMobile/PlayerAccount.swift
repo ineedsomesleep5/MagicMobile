@@ -329,10 +329,20 @@ final class PlayerAccount: ObservableObject {
         return try? await api.userID()
     }
 
-    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2).
+    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). `ai` is the
+    /// AI the server tuned for this game (ranked_ai_tuning); nil from servers before that tuning, when the tier's bundled
+    /// values apply.
     struct RankedAITicket: Equatable {
         let id: UUID
         let seed: Int64
+        var ai: RankedAITuning?
+    }
+
+    /// One ranked game's AI as the server tuned it: skill, deliberate-mistake chance and the AI deck's Power target.
+    struct RankedAITuning: Equatable {
+        let skill: Int
+        let mistakePercent: Int
+        let power: Double
     }
 
     /// Starts a ranked game against the AI on the server, so its result counts there. Nil offline or without a
@@ -352,12 +362,19 @@ final class PlayerAccount: ObservableObject {
         }
     }
 
-    /// `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53).
+    /// `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is
+    /// text: JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
     nonisolated static func rankedAITicket(_ data: Data) -> RankedAITicket? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
               let seed = (object["seed"] as? String).flatMap(Int64.init) else { return nil }
-        return RankedAITicket(id: id, seed: seed)
+        var ticket = RankedAITicket(id: id, seed: seed)
+        if let skill = object["aiSkill"] as? Int, (1...10).contains(skill),
+           let mistakes = object["aiMistakePercent"] as? Int, (0...100).contains(mistakes),
+           let power = object["aiPower"] as? Double, power.isFinite {
+            ticket.ai = RankedAITuning(skill: skill, mistakePercent: mistakes, power: power)
+        }
+        return ticket
     }
 
     /// Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the

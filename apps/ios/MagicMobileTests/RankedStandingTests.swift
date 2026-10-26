@@ -180,6 +180,10 @@ final class RankedStandingTests: XCTestCase {
         let id = UUID()
         XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"-4123456789012345678","aiSkill":1}"#.utf8)),
                        PlayerAccount.RankedAITicket(id: id, seed: -4_123_456_789_012_345_678))
+        XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"7","aiSkill":3,"aiMistakePercent":8,"aiPower":5.63}"#.utf8)),
+                       .init(id: id, seed: 7, ai: .init(skill: 3, mistakePercent: 8, power: 5.63)))
+        XCTAssertEqual(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":"7","aiSkill":3,"aiMistakePercent":101,"aiPower":5.63}"#.utf8)),
+                       .init(id: id, seed: 7))
         XCTAssertNil(PlayerAccount.rankedAITicket(Data(#"{"id":"\#(id.uuidString)","seed":4.5}"#.utf8)))
         XCTAssertNil(PlayerAccount.rankedAITicket(Data(#""\#(id.uuidString)""#.utf8)))
     }
