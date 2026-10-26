@@ -302,9 +302,9 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 38 matches AI opponents to your rank (and offers Easy, Medium and Hard in Quick Match), lets
-                  you drag cards out of the spread hand, and finishes multi-card choices with one Done. Your decks stay in sync
-                  across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
+                  Android build 39 lets you drag cards straight out of the spread hand, keeps big hands tidy and readable, and
+                  shows each trigger's full text when you order them. AI opponents match your rank, Quick Match offers Easy,
+                  Medium and Hard, and your decks stay in sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
               </details>
