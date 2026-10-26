@@ -240,6 +240,9 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   }, [menuTab, game, player.state.phase, player.state.username]);
   /** What the last Ranked game did to your rank, for the result's rank strip, and why a win didn't count once the server says. */
   const [rankChange, setRankChange] = useState<{ key: number; change: RankChange; note?: string }>();
+  /** Every game's key, never reused: a key seen again after the menu (the count began at 1 again) showed the earlier game's
+   *  rank on the result and skipped recording the new game, so its ranked result never went up (Caleb, 2026-10-26). */
+  const gameKey = useRef(0);
   const [error, setError] = useState<string>();
 
   useEffect(() => { if (!game) gameAudio.setScene("menu"); }, [game]);
@@ -279,14 +282,14 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
       let first = true;
       const open = (key: number) => {
         const table: SoloTable = new SoloTable(engine, setup, () => setGame(undefined),
-          gameMode === "ranked" ? () => startRankedAI() : () => open(key + 1));
+          gameMode === "ranked" ? () => startRankedAI() : () => open(++gameKey.current));
         const carried = first && ticket ? { id: ticket.id, seeded: true } : undefined;
         first = false;
         setGame({ table, key, mode: gameMode, deck, deckBracket, opponents, skill, ticket: carried });
         void table.start();
       };
       setPlayPanel(false); setCustom(false);
-      open((game?.key ?? 0) + 1);
+      open(++gameKey.current);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     }
