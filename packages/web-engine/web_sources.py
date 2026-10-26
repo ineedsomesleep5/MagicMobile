@@ -101,6 +101,30 @@ REWRITES = [
      '                answer=input.answers.poll(250,TimeUnit.MILLISECONDS);\n',
      '                answer=WebThreads.awaitAnswer(input.answers); // MOBILE_WEB: serves the page (Atomics.wait) until answered\n',
      1, 'human question: blocks in the host channel, serving requests, instead of a timed queue poll'),
+    # An AI simulation copies the live game, MobileHumanPlayer included, and a copy shares the live seat's input channel.
+    # When the copy ends (a player loses in it: CombatUtil.willItSurviveSimple, the AI choosing blocks), GameImpl.end
+    # aborts its players and the live human's channel closed: every later question threw "Mobile match stopped" until
+    # XMage ended the game (Caleb, 2026-10-26, about to win with his commander). Phones have the same bug; their fix
+    # is commit ccd1365a (branch claude/engine-copy-abort-channel), for their own engine release.
+    ('xmage/src/main/java/io/magicmobile/xmage/MobileHumanPlayer.java',
+     '    private transient Channel channel;\n',
+     '    private transient Channel channel;\n'
+     '    /** MOBILE_WEB: true for the live seat (constructed or restored), false for copies and proxies. */\n'
+     '    private transient boolean ownsChannel;\n',
+     1, 'ended copy: only the live seat owns its channel'),
+    ('xmage/src/main/java/io/magicmobile/xmage/MobileHumanPlayer.java',
+     '        channel=new Channel();\n',
+     '        channel=new Channel();ownsChannel=true; // MOBILE_WEB: the live seat\n',
+     1, 'ended copy: a constructed seat owns its channel'),
+    ('xmage/src/main/java/io/magicmobile/xmage/MobileHumanPlayer.java',
+     '        channel=new Channel(); // HumanPlayer.readObject',
+     '        channel=new Channel();ownsChannel=true; // MOBILE_WEB: a restored seat owns its channel. HumanPlayer.readObject',
+     1, 'ended copy: a restored seat owns its channel'),
+    ('xmage/src/main/java/io/magicmobile/xmage/MobileHumanPlayer.java',
+     '    @Override public void abort() { closeChannel();super.abort(); }\n',
+     '    // MOBILE_WEB: GameImpl.end aborts every player of the game that ended; a copy\'s end leaves the live seat answerable.\n'
+     '    @Override public void abort() { if(ownsChannel) closeChannel();super.abort(); }\n',
+     1, 'ended copy: abort closes the channel only on the live seat (Running.close still closes it)'),
     ('xmage/src/main/java/io/magicmobile/xmage/Checkpoints.java',
      '            if(available==null) available=selfTest();\n',
      '            if(available==null) available=false; // MOBILE_WEB: Java serialization traps the Wasm instance; no self-test\n',

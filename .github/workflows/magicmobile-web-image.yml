@@ -202,6 +202,11 @@ jobs:
           wasm-as --version
           bash packages/web-engine/build_web.sh sources
           bash packages/web-engine/build_web.sh jvm
+          # An ended game copy must leave the live human answerable (web_sources.py "ended copy").
+          cp=$(<packages/web-engine/build/web-jvm/runtime-classpath.txt)
+          mkdir -p packages/web-engine/build/checks
+          "$JAVA_HOME/bin/javac" -nowarn -cp "$cp" -d packages/web-engine/build/checks packages/web-engine/test/CopyAbortCheck.java
+          "$JAVA_HOME/bin/java" -Djava.awt.headless=true -cp "packages/web-engine/build/checks:$cp" CopyAbortCheck
           python3 packages/web-engine/export_precons.py --catalogue packages/ondevice-engine/build/generated/catalogue.jsonl \
             --swift apps/ios/MagicMobile/PreconCatalog.swift --output packages/web-engine/build/decks
           # Two games in the web threading mode on GraalVM's JVM, recording native-image reachability metadata
