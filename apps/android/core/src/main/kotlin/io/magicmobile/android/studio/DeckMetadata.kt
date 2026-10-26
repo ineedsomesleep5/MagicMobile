@@ -18,6 +18,32 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /** Resolves only reverse faces attested by the bundled, selected-printing aliases. */
 object NativeDeckCanonicalNames {
+    /**
+     * The names a deck's card is looked up by, in order (iOS NativeDeckCanonicalNames.candidates, parity/card-name-cases.json;
+     * Caleb, 2026-10-26: Archidekt links dropped cards that search then found). The exact name first, then plain letters for
+     * accents ("Troll of Khazad-dûm": XMage spells names without them), then the front of a two-part name ("Brazen Borrower //
+     * Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins.
+     */
+    fun candidates(raw: String): List<String> {
+        val name = raw.trim()
+        val found = LinkedHashSet<String>()
+        fun add(value: String) { if (value.isNotEmpty()) found += value }
+        add(name)
+        add(plainLetters(name))
+        val split = name.indexOf(" // ")
+        if (split > 0) {
+            val front = name.substring(0, split).trim()
+            add(front)
+            add(plainLetters(front))
+        }
+        return found.toList()
+    }
+
+    /** Accents off, Æ as Ae, a curly apostrophe straight. */
+    fun plainLetters(name: String): String =
+        java.text.Normalizer.normalize(name.replace("\u2019", "'").replace("Æ", "Ae").replace("æ", "ae"), java.text.Normalizer.Form.NFKD)
+            .replace(Regex("\\p{Mn}+"), "")
+
     fun reverseFaces(aliases: Map<String, String>, exactNames: Set<String>): Map<String, String> {
         val candidates = HashMap<String, MutableSet<String>>()
         for ((combined, front) in aliases) {
@@ -79,7 +105,9 @@ class NativeDeckMetadataCatalogue(private val catalogue: Catalogue) {
         reverseFaces = NativeDeckCanonicalNames.reverseFaces(aliases, names)
     }
 
-    fun card(name: String): CardInfo? = catalogue.find(name) ?: aliases[name]?.let(catalogue::find) ?: reverseFaces[name]?.let(catalogue::find)
+    fun card(name: String): CardInfo? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        catalogue.find(candidate) ?: aliases[candidate]?.let(catalogue::find) ?: reverseFaces[candidate]?.let(catalogue::find)
+    }
 
     /** All names this installed engine catalogue supports, without the search limit. */
     val artworkCardNames: List<String> get() = catalogue.cards.map { it.name }
@@ -215,7 +243,10 @@ class OnDeviceDeckResolver(private val index: PrintingIndex) {
     private val nameAliases: Map<String, String> = index.nameAliases.filterKeys { it !in index.names }
     private val reverseFaces: Map<String, String> = NativeDeckCanonicalNames.reverseFaces(nameAliases, index.names)
 
-    fun canonicalCardName(name: String): String? = if (name in index.names) name else nameAliases[name] ?: reverseFaces[name]
+    /** The catalogue's name for a card, tried by [NativeDeckCanonicalNames.candidates] (exact, plain letters, front face). */
+    fun canonicalCardName(name: String): String? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
+        if (candidate in index.names) candidate else nameAliases[candidate] ?: reverseFaces[candidate]
+    }
     fun containsCard(name: String): Boolean = canonicalCardName(name) != null
     /** Every reverse face and the front face it belongs to. */
     val reverseFaceFronts: Map<String, String> get() = reverseFaces

@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { commandersTaken, commanderTakenNotice, extraHandCards, glossaryEntries, handPosture } from "../src/core/arenaBoard";
+import { arenaStackTucked, commandersTaken, commanderTakenNotice, extraHandCards, glossaryEntries, handPosture } from "../src/core/arenaBoard";
 import type { GameSnapshot, LegalAction, PlayerGameState, ZoneCard } from "../src/core/models";
 import { splitLoyalty } from "../src/ui/arena/AbilityCard";
 import { affordableX, amountValues, choiceOptions, clampAmount, colorSymbol, lethalDamage, splitName, stepAmount } from "../src/ui/arena/Browsers";
@@ -80,5 +80,16 @@ describe("tile ability badges", () => {
     expect(abilityBadgePlan(icons.slice(0, 3), 66)).toMatchObject({ hiddenCount: 0 });
     expect(abilityBadgePlan(icons, 93)).toMatchObject({ size: 15, hiddenCount: 2 });
     expect(abilityBadgePlan([], 93)).toMatchObject({ hiddenCount: 0, visible: [] });
+  });
+});
+
+describe("the stack card steps aside (ArenaStackTuck)", () => {
+  it("tucks for the object the player tucked and while they pick on the table", () => {
+    expect(arenaStackTucked("a", undefined, undefined, false)).toBe(false);
+    expect(arenaStackTucked("a", "a", undefined, false)).toBe(true);
+    expect(arenaStackTucked("b", "a", undefined, false)).toBe(false);
+    expect(arenaStackTucked("b", undefined, undefined, true)).toBe(true);
+    expect(arenaStackTucked("b", undefined, "b", true)).toBe(false);
+    expect(arenaStackTucked("c", undefined, "b", true)).toBe(true);
   });
 });

@@ -432,6 +432,8 @@ data class MatchRecord(
     /** How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why. */
     val settlement: String? = null,
     val settlementCheck: String? = null,
+    /** How long the game ran, in seconds; null for games from before 2026-10-26. */
+    val durationSeconds: Int? = null,
 ) {
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
     /** Why a ranked win left the ladder alone, as the player reads it; null when it counted. */
@@ -676,14 +678,16 @@ data class PlayerRecordFile(
     /** Records one finished game; a ranked game moves the ladder. */
     fun recording(now: Long, mode: PlayMode, outcome: RankOutcome, opponents: List<MatchOpponent>, opponentBracket: Int?, aiSkill: Int?,
                   deckID: String, deckName: String, commander: String?, colors: List<String>, deckBracket: Int, turns: Int,
-                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null): Pair<PlayerRecordFile, RankChange?> {
+                  aiDeckID: String? = null, engineMatchID: String? = null, gameRecordFile: String? = null,
+                  durationSeconds: Int? = null): Pair<PlayerRecordFile, RankChange?> {
         var rank = RankLadder.rollover(rank, RankLadder.season(now))
         var change: RankChange? = null
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
         val match = MatchRecord(date = now, mode = mode, opponents = opponents, opponentBracket = opponentBracket, aiSkill = aiSkill,
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
             turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID,
-            rankedTicket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } })
+            rankedTicket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } },
+            durationSeconds = durationSeconds?.coerceIn(0, 86_400))
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
         val pending = if (ticket == null) pendingRankedResults

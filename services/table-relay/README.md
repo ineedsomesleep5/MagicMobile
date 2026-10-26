@@ -44,7 +44,7 @@ matching the Game Center lobby's rule that the first sorted peer hosts.
 
 While the table is still filling, the host may send `{"t":"remove","id":peer}` to turn a joiner
 away. That phone gets the `removed` error and its socket closes; the others get a roster without
-it (never `gone`, which ends a table), and the next phone to join takes the freed seat number.
+it (never `gone`, which the apps read as that player leaving), and the next phone to join takes the freed seat number.
 Once the table is full every phone has opened the match room, so the relay ignores `remove`, as it
 does one from any phone but the host. A removed phone cannot resume its seat.
 
@@ -53,7 +53,8 @@ Relay → phone:
 - `{"t":"welcome","you":id,"token":…,"code":…,"seats":n,"peers":[{"id","name","connected"}],"full":bool}`
 - `{"t":"roster","peers":[…],"full":bool}` whenever someone joins, drops or returns
 - `{"t":"msg","from":id,"d":"<packet JSON text>","p":{"id","i","n"}?}`; `p` marks one part of a split packet
-- `{"t":"gone","id":…}` a player left or did not return in time
+- `{"t":"gone","id":…}` a player left or did not return in time (once a game is on, the host concedes a guest's seat and
+  the others play on; the host gone ends the table: PROTOCOL.md, Players who leave)
 - `{"t":"error","error":code,"message":…}` then the socket closes (`no_table`, `table_full`,
   `host_missing`, `host_left`, `not_host`, `host_taken`, `resume_failed`, `removed`, `too_large`, `peer_backlog`)
 - `{"t":"pong"}` answers `{"t":"ping"}` without waking the table

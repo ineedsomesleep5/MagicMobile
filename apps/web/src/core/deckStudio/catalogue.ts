@@ -2,6 +2,7 @@
  * Deck Studio's card catalogue (NativeDeckMetadataCatalogue.swift): selected-printing metadata, not live Oracle updates,
  * Commander legality or mana production. scripts/prepare_data.py writes it as public/generated/catalogue.json.
  */
+import { cardNameCandidates } from "../deckResolver";
 import { EngineDisplayText } from "../displayText";
 
 /** NativeDeckMetadataCatalogue.Card. A missing field means unavailable; an empty colour list is known colorless. */
@@ -68,7 +69,11 @@ export class Catalogue {
 
   /** The exact name, a combined double-faced name, or an attested reverse face (`card(named:)`). */
   card(name: string): CatalogueCard | undefined {
-    return this.index.get(name) ?? this.lookup(this.aliases.get(name)) ?? this.lookup(this.reverse.get(name));
+    for (const candidate of cardNameCandidates(name)) {
+      const card = this.index.get(candidate) ?? this.lookup(this.aliases.get(candidate)) ?? this.lookup(this.reverse.get(candidate));
+      if (card) return card;
+    }
+    return undefined;
   }
 
   /** The catalogue's own name for a card, like DeckResolver.canonicalName. */

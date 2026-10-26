@@ -598,25 +598,49 @@ extension NativeGameView {
                 player.commanders?.contains { $0.name == top.displaySourceName || $0.name == top.displayName } == true
             }
             let revealing = arenaRevealID == top.id
-            ArenaStackCard(object: top, count: snapshot.xmage?.stack.count ?? objects.count, size: rect.size, commander: commander,
-                           fallbackSource: arenaSourceCard(top, snapshot: snapshot), lands: !arenaLandedStackIDs.contains(top.id),
-                           inspect: { inspectedCard = $0 }, openStack: { isTavernStackOpen = true })
-                // An opponent's spell is revealed first, larger and toward the middle, then settles onto the stack card
-                // (the reference's ~0.4 s grow, ~0.9 s hold, 0.3 s settle).
-                // Low enough that the larger card clears the opponent's piles above the stack card.
-                .scaleEffect(revealing ? 1.2 : 1)
-                .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.14 : 0)
-                .animation(.easeInOut(duration: 0.3), value: revealing)
-                .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["arena.stack": $0] }
-                .id(top.id)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
-                .position(x: rect.midX, y: rect.midY)
-                .onAppear {
-                    arenaBeginReveal(top, snapshot: snapshot)
-                    arenaLandedStackIDs.insert(top.id)
+            let count = snapshot.xmage?.stack.count ?? objects.count
+            let tucked = !revealing && ArenaStackTuck.isTucked(top: top.id, tuckedTop: arenaStackTuckedTop, peekTop: arenaStackPeekTop,
+                                                                picking: !GameBoardInteractionState.boardTargetableIds(for: snapshot).isEmpty)
+            if tucked {
+                // The slim tab at the table's edge brings the card back.
+                ArenaStackTab(tucked: true, count: count) {
+                    GameAudio.shared.play(.uiOpen)
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { arenaStackTuckedTop = nil; arenaStackPeekTop = top.id }
                 }
-                .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+                .position(x: canvas.screen.width - 22, y: rect.midY)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
                 .zIndex(30)
+            } else {
+                ArenaStackCard(object: top, count: count, size: rect.size, commander: commander,
+                               fallbackSource: arenaSourceCard(top, snapshot: snapshot), lands: !arenaLandedStackIDs.contains(top.id),
+                               inspect: { inspectedCard = $0 }, openStack: { isTavernStackOpen = true })
+                    // The eye at its lower left, under the tab that opens the whole stack, tucks it aside.
+                    .overlay(alignment: .bottomLeading) {
+                        if !revealing {
+                            ArenaStackTab(tucked: false, count: count) {
+                                GameAudio.shared.play(.uiClose)
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { arenaStackTuckedTop = top.id; arenaStackPeekTop = nil }
+                            }
+                            .offset(x: -43, y: -6)
+                        }
+                    }
+                    // An opponent's spell is revealed first, larger and toward the middle, then settles onto the stack card
+                    // (the reference's ~0.4 s grow, ~0.9 s hold, 0.3 s settle).
+                    // Low enough that the larger card clears the opponent's piles above the stack card.
+                    .scaleEffect(revealing ? 1.2 : 1)
+                    .offset(x: revealing ? -rect.width * 0.8 : 0, y: revealing ? rect.height * 0.14 : 0)
+                    .animation(.easeInOut(duration: 0.3), value: revealing)
+                    .anchorPreference(key: PortraitCardBoundsKey.self, value: .bounds) { ["arena.stack": $0] }
+                    .id(top.id)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    .position(x: rect.midX, y: rect.midY)
+                    .onAppear {
+                        arenaBeginReveal(top, snapshot: snapshot)
+                        arenaLandedStackIDs.insert(top.id)
+                    }
+                    .onChange(of: isTavernStackOpen) { _, open in GameAudio.shared.play(open ? .uiOpen : .uiClose) }
+                    .zIndex(30)
+            }
         }
     }
 

@@ -2180,18 +2180,17 @@ private struct TavernConfirmationModifier: ViewModifier {
                 .ignoresSafeArea()
                 .onTapGesture(perform: cancel)
                 .accessibilityHidden(true)
+            // The menus' glass and pills (they wear Arena's look; the Hearth board has its own menus).
             VStack(spacing: 14) {
-                Text(title.uppercased())
-                    .font(.system(size: 17, weight: .heavy, design: .serif))
-                    .tracking(1)
+                Text(title)
+                    .font(ArenaMenuStyle.title(19, .bold))
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.56), Color(red: 0.80, green: 0.56, blue: 0.22)],
-                                                    startPoint: .top, endPoint: .bottom))
-                    .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let message {
                     Text(message)
-                        .font(.system(size: 14, weight: .regular, design: .serif))
-                        .foregroundStyle(TavernPalette.parchment.opacity(0.9))
+                        .font(ArenaMenuStyle.font(14, .regular))
+                        .foregroundStyle(ArenaMenuStyle.text.opacity(0.8))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2201,16 +2200,16 @@ private struct TavernConfirmationModifier: ViewModifier {
                             isPresented = false
                             choice.action()
                         }
-                        .buttonStyle(TavernButtonStyle(kind: choice.destructive ? .danger : .primary, fullWidth: true))
+                        .buttonStyle(ArenaButtonStyle(kind: choice.destructive ? .danger : .primary, fullWidth: true))
                     }
                     Button(cancelTitle, action: cancel)
-                        .buttonStyle(TavernButtonStyle(kind: .secondary, fullWidth: true))
+                        .buttonStyle(ArenaButtonStyle(kind: .secondary, fullWidth: true))
                 }
+                .padding(.top, 2)
             }
             .padding(22)
-            .frame(maxWidth: 330)
-            .modifier(TavernPanelChrome(tavern: true, cornerRadius: 16))
-            .shadow(color: .black.opacity(0.6), radius: 18, y: 8)
+            .frame(maxWidth: 340)
+            .modifier(ArenaGlassPanel(cornerRadius: 18, opacity: 0.96))
             .padding(.horizontal, 24)
             .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)

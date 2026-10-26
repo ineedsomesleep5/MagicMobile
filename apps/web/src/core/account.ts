@@ -1164,6 +1164,7 @@ export class PlayerAccount {
       })),
     };
     if (match.turns > 0) params.p_turns = Math.min(1000, match.turns);
+    if (match.durationSeconds !== undefined && match.durationSeconds > 0) params.p_duration_seconds = Math.min(86_400, Math.round(match.durationSeconds));
     if (match.rankChange) params.p_rank_points = RankPosition.points(match.rankChange.after);
     try {
       await this.api.rpc("mm_record_game", params);

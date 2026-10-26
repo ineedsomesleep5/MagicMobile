@@ -360,6 +360,14 @@
   color: #f2ebdb; font: 800 15px/1 var(--sans); }
 .astack-tab b { color: #fad584; font-variant-numeric: tabular-nums; }
 .astack-tab i { font-style: normal; font-size: 11px; }
+/* the eye under the stack tab tucks the card aside; tucked, a slim tab at the table's edge brings it back (ArenaStackTuck) */
+.astack-tuck { color: #fad584; }
+.astack-tuck svg, .astack-show svg { width: 14px; height: 14px; fill: currentColor; }
+.astack-show { position: absolute; z-index: 346; right: 0; width: 30px; height: 84px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 5px; padding: 0; border-radius: 12px 4px 4px 12px; background: linear-gradient(#1a1c24, #0a0b0f);
+  box-shadow: inset 0 0 0 1px rgba(232,190,110,.65), -1px 2px 4px rgba(0,0,0,.5); color: #fad584; font: 800 13px/1 var(--sans); }
+.astack-show i { font-style: normal; font-size: 11px; display: grid; place-items: center; }
+.astack-show b { font-variant-numeric: tabular-nums; }
 /* a spell landing on the stack settles with a little overshoot in a bloom of its colour (ArenaStackCard) */
 .acard.landing .spin { animation: asettle .55s cubic-bezier(.3,1.5,.5,1); }
 .acard.landing .spin::before { content: ""; position: absolute; inset: -12%; border-radius: 1.4em; background: var(--bloom, #ffd27a); filter: blur(1.4em);

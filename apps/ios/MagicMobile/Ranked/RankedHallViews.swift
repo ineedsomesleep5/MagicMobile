@@ -322,6 +322,7 @@ struct RankedLeaderboardView: View {
     @State private var profile: ProfileTarget?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.joinFriendTable) private var joinFriendTable
     /// Compact height: the phone held sideways.
     @Environment(\.verticalSizeClass) private var verticalSize
 
@@ -390,6 +391,7 @@ struct RankedLeaderboardView: View {
         }
         .fullScreenCover(item: $profile) { target in
             PublicProfileView(account: account, username: target.name) { profile = nil }
+                .environment(\.joinFriendTable, joinFriendTable)
         }
     }
 

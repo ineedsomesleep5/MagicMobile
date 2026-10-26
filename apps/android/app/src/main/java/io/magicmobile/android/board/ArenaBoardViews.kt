@@ -822,6 +822,34 @@ fun ArenaCloseLabel(modifier: Modifier = Modifier) {
 // MARK: - The stack card
 
 /**
+ * The stack card's eye (iOS ArenaStackTab, ArenaStackTuck): at the card's lower left, under the tab that opens the whole
+ * stack, it tucks the card aside; tucked, a slim tab at the table's edge with the stack's count brings it back. A 44 dp
+ * target around the slim tab, the tab at its right edge (against the card, or the table's edge).
+ */
+@Composable
+fun ArenaStackTab(tucked: Boolean, count: Int, modifier: Modifier = Modifier, action: () -> Unit) {
+    val shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp, topEnd = if (tucked) 4.dp else 0.dp, bottomEnd = if (tucked) 4.dp else 0.dp)
+    Box(modifier.size(44.dp, if (tucked) 92.dp else 44.dp)
+        .clickable(onClick = action)
+        .semantics { contentDescription = if (tucked) "Show the stack, $count on it" else "Tuck the stack away" }
+        .testTag(if (tucked) "arena.stack.show" else "arena.stack.tuck"), contentAlignment = Alignment.CenterEnd) {
+        Column(Modifier.size(if (tucked) 30.dp else 26.dp, if (tucked) 84.dp else 40.dp)
+            .background(Brush.verticalGradient(listOf(io.magicmobile.android.menus.ArenaGlass.top.copy(alpha = 0.96f),
+                io.magicmobile.android.menus.ArenaGlass.bottom.copy(alpha = 0.96f))), shape)
+            .border(1.dp, io.magicmobile.android.menus.ArenaMenuStyle.gold.copy(alpha = 0.55f), shape),
+            verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+            val gold = io.magicmobile.android.menus.ArenaMenuStyle.gold
+            io.magicmobile.android.ui.SfImage(if (tucked) "eye.fill" else "eye.slash.fill", gold, 12.dp)
+            if (tucked) {
+                io.magicmobile.android.ui.SfImage("chevron.left", gold, 11.dp)
+                if (count > 1) Text("$count", color = gold, style = io.magicmobile.android.ui.sf(12f, io.magicmobile.android.ui.SfWeight.black,
+                    io.magicmobile.android.ui.SfDesign.SERIF))
+            }
+        }
+    }
+}
+
+/**
  * The top of the stack as a big card on the right (the reference's stack), with a tab on its left edge that opens the whole
  * stack and says how many objects it holds. It lands with a settle, a bloom of its colour, a shine and a few motes.
  */

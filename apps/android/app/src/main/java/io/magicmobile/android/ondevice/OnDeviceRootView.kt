@@ -279,6 +279,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // The freeze log (docs/FREEZE_LOG.md): the game menu's Report a freeze, and the launch question once answered.
     var confirmFreezeReport by remember { mutableStateOf(false) }
     var freezeOfferClosed by remember { mutableStateOf<String?>(null) }
+    // When this game's engine match began, for the game's length on the profile.
+    var gameStartedAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(session.matchID) { gameStartedAt = if (session.matchID != null) System.currentTimeMillis() else null }
+    // The launch question asks at most once in FreezeRules.ASK_INTERVAL_SECONDS (Unix seconds; -1 before it ever asked).
+    var freezeAskedAt by AppPreferences.double("magicmobile.freeze.askedAt", -1.0)
+    var freezeOfferAsked by remember { mutableStateOf<String?>(null) }
     var bannerError by remember { mutableStateOf<String?>(null) }
     /** The session error the player closed; a different error shows again. */
     var dismissedSessionError by remember { mutableStateOf<String?>(null) }
@@ -660,7 +666,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                    gameRecordFile: String? = null) {
         val colors = match.colors.ifEmpty { io.magicmobile.android.game.PlayerStats.colors(snapshot?.human?.zones?.command?.firstOrNull()?.card?.manaCost) }
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
-            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
+            match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile,
+            gameStartedAt?.let { ((System.currentTimeMillis() - it) / 1000).toInt() })
         rankChange = change
         rankNote = null
         val ranked = match.mode == io.magicmobile.android.game.PlayMode.RANKED
@@ -1250,7 +1257,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     MaterialTheme(colorScheme = darkColorScheme()) {
         CompositionLocalProvider(LocalBrandAmbientMotion provides !(showDecks || showAppearance || showUpdates || showDownloads || showHowToPlay || showGuidedWelcome
                 || showFriends || showBracketSheet || showOfflineArtPrompt),
-            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account) {
+            LocalNativeTurnControl provides turnControl, LocalPlayerAccount provides vm.account,
+            // A friend's profile can join their open table: every page over the menu closes first, then the table setup opens.
+            io.magicmobile.android.ranked.LocalJoinFriendTable provides { code: String ->
+                showFriends = false; lobby = null; chatProfile = null
+                scope.launch { delay(450); openJoinLink(code) }
+            }) {
             Box(Modifier.fillMaxSize().background(BrandTheme.canvas)) {
                 if (activeGame) {
                     CompositionLocalProvider(
@@ -1453,6 +1465,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             }
                         } else if (activeGame && !setup.canUseSession) {
                             Text(setup.liveStatus, color = TavernPalette.parchment, style = bannerText)
+                            // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                            val table = setup.multiplayer as? RelayTable
+                            table?.continueVote?.let { vote ->
+                                BannerButton(if (vote.voted) "Waiting for the others (${vote.voters.size}/${vote.needed})"
+                                    else io.magicmobile.android.game.TableLeaveRules.buttonTitle(vote),
+                                    io.magicmobile.android.ui.TavernButtonKind.PRIMARY, !vote.voted) { table.voteToContinue() }
+                            }
                         } else if (activeGame && session.snapshot == null) {
                             Text("Waiting for the first game update.", color = TavernPalette.parchment, style = bannerText)
                         }
@@ -1491,6 +1510,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 }
                 setup.resume.notice?.let { notice ->
                     ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { setup.resume.notice = null }
+                }
+                // A player left the table and the others play on (TableLeaveRules).
+                (setup.multiplayer as? RelayTable)?.let { table ->
+                    val notice = table.tableNotice
+                    if (activeGame && notice != null) ResumeNoticeBanner(notice, Modifier.align(Alignment.TopCenter)) { table.tableNotice = null }
                 }
             }
 
@@ -1566,7 +1590,15 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 }
             }
             // An Arena question on the main menu after a freeze in an earlier run; nothing is sent without Send.
-            val freezeOffer = FreezeLog.launchOffer?.takeIf { it.id != freezeOfferClosed }
+            val freezeOffer = FreezeLog.launchOffer?.takeIf { offer ->
+                offer.id != freezeOfferClosed && (offer.id == freezeOfferAsked ||
+                    io.magicmobile.android.game.FreezeRules.mayAsk(freezeAskedAt.takeIf { it >= 0 }?.let { System.currentTimeMillis() / 1000.0 - it }))
+            }
+            LaunchedEffect(freezeOffer?.id, menuIsFree, showOfflineArtPrompt) {
+                if (freezeOffer != null && menuIsFree && !showOfflineArtPrompt && freezeOfferAsked != freezeOffer.id) {
+                    freezeOfferAsked = freezeOffer.id; freezeAskedAt = System.currentTimeMillis() / 1000.0
+                }
+            }
             io.magicmobile.android.menus.ArenaPanel(freezeOffer != null && menuIsFree && !showOfflineArtPrompt,
                 { freezeOffer?.let { freezeOfferClosed = it.id; FreezeLog.decline(it) } }, maxWidth = 460.dp, fitsContent = true) {
                 io.magicmobile.android.menus.ArenaPromptPanel("The last game froze. Send the report?",
@@ -1583,6 +1615,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             if (confirmLeave) {
                 val message = when {
                     setup.multiplayer?.endpoint?.isHost == true -> "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                    setup.multiplayer?.endpoint != null -> "You leave the table and the others play on without you. You can't come back to this game."
                     else -> "This closes the current match. It cannot be resumed after leaving."
                 }
                 ConfirmationDialog("Leave this game?", message, listOf(ConfirmationAction("Leave game", destructive = true) { closeGame() })) { confirmLeave = false }

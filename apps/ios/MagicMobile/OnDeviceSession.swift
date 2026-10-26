@@ -1140,6 +1140,7 @@ final class OnDeviceSession: ObservableObject {
         let kind = FreezeRules.stall(
             inGame: snapshot != nil, over: isOverForSeat || snapshot?.isCompleted == true,
             waitingOnYou: poll?.prompt != nil && pending == nil,
+            waitingOnPerson: table != nil && snapshot?.waitingOnPersonID != nil,
             answerPendingSeconds: pending == nil ? nil : answerSentAt.map { now - $0 },
             quietSeconds: now - lastGameChangeAt, withPeople: table != nil)
         guard let kind, !stallRecorded else { return }

@@ -114,6 +114,14 @@ data class GameSnapshot(
         val player = players.firstOrNull { it.playerId == id } ?: return null
         return if (player.isHuman == false && !player.isOut) id else null
     }
+    /** Another person at the table holds the decision or priority: the game waits on them, not on the engine. */
+    val waitingOnPersonID: String? get() {
+        if (isCompleted) return null
+        val id = waitingOnPlayerId ?: priorityPlayerId ?: return null
+        if (isViewer(id)) return null
+        val player = players.firstOrNull { it.playerId == id } ?: return null
+        return if (player.isHuman == true && !player.isOut) id else null
+    }
     /** Opponents still in the game. */
     val remainingOpponents: List<PlayerGameState> get() = players.filter { !isViewer(it.playerId) && !it.isOut }
     val winnerDisplayNames: List<String> get() {

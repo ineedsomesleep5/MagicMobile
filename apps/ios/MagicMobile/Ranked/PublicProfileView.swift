@@ -5,6 +5,8 @@ import SwiftUI
 /// open their profiles in turn. Android's PublicProfileScreen matches it.
 struct PublicProfileView: View {
     @ObservedObject var account: PlayerAccount
+    /// Joins a friend's open table by its code (set at the root; nil hides the button).
+    @Environment(\.joinFriendTable) private var joinFriendTable
     let username: String
     /// Challenges a friend who is online to a Quick Match or a Ranked game (nil hides the button).
     var challenge: ((String, PlayMode) -> Void)? = nil
@@ -185,7 +187,15 @@ struct PublicProfileView: View {
             HStack(spacing: 10) {
                 switch profile.relation {
                 case "friend":
-                    if let challenge, profile.online == true { challengeMenu(profile, challenge) }
+                    // A friend hosting a table with a seat open: join it from here (Caleb, 2026-10-26).
+                    if let join = joinFriendTable, let code = account.friends.first(where: { $0.username == profile.username })?.joinableCode {
+                        Button { GameAudio.shared.play(.uiConfirm); join(code); close() } label: {
+                            Label(String(localized: "Join table"), systemImage: "arrow.right.circle.fill")
+                        }
+                        .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true))
+                        .accessibilityLabel(String(localized: "Join \(profile.username)'s table"))
+                        .accessibilityIdentifier("publicProfile.join")
+                    } else if let challenge, profile.online == true { challengeMenu(profile, challenge) }
                     if account.messagesAvailable {
                         Button { messageWith = profile.username } label: { Label(String(localized: "Message"), systemImage: "bubble.left.fill") }
                             .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
@@ -324,6 +334,18 @@ struct PublicProfileView: View {
         .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("publicProfile.history")
+    }
+}
+
+private struct JoinFriendTableKey: EnvironmentKey {
+    static let defaultValue: ((String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Joins a friend's open table by its code: the menus' join flow (OnDeviceRootView.openJoinLink).
+    var joinFriendTable: ((String) -> Void)? {
+        get { self[JoinFriendTableKey.self] }
+        set { self[JoinFriendTableKey.self] = newValue }
     }
 }
 

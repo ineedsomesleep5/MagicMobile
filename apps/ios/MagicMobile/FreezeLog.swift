@@ -5,14 +5,34 @@ enum FreezeRules {
     static let answerSeconds: TimeInterval = 20
     static let soloQuietSeconds: TimeInterval = 120
     static let tableQuietSeconds: TimeInterval = 180
+    /// A hang this long is a freeze worth asking about; shorter hitches stay in the log for the report sheet (Danny,
+    /// 2026-10-26: "The last game froze" at every launch after games that never froze).
+    static let askHangSeconds: TimeInterval = 8
+    /// The launch prompt asks at most once in this long.
+    static let askIntervalSeconds: TimeInterval = 3 * 86_400
 
-    /// "answer-not-accepted", "engine-quiet", or nil while the game is fine (or waiting on you).
-    static func stall(inGame: Bool, over: Bool, waitingOnYou: Bool, answerPendingSeconds: TimeInterval?,
+    /// "answer-not-accepted", "engine-quiet", or nil while the game is fine, waiting on you, or waiting on another person
+    /// at the table (someone thinking is not a freeze).
+    static func stall(inGame: Bool, over: Bool, waitingOnYou: Bool, waitingOnPerson: Bool = false, answerPendingSeconds: TimeInterval?,
                       quietSeconds: TimeInterval, withPeople: Bool) -> String? {
         guard inGame, !over else { return nil }
         if let pending = answerPendingSeconds, pending >= answerSeconds { return "answer-not-accepted" }
-        guard !waitingOnYou else { return nil }
+        guard !waitingOnYou, !waitingOnPerson else { return nil }
         return quietSeconds >= (withPeople ? tableQuietSeconds : soloQuietSeconds) ? "engine-quiet" : nil
+    }
+
+    /// Whether the launch prompt asks about an incident: a stall, or a hang of `askHangSeconds` or more.
+    static func worthAsking(kind: String, duration: TimeInterval?) -> Bool {
+        switch kind {
+        case "answer-not-accepted", "engine-quiet": return true
+        case "hang": return (duration ?? 0) >= askHangSeconds
+        default: return false
+        }
+    }
+
+    /// Whether the launch prompt may ask now, `secondsSinceAsked` after it last asked (nil: never).
+    static func mayAsk(secondsSinceAsked: TimeInterval?) -> Bool {
+        secondsSinceAsked.map { $0 < 0 || $0 >= askIntervalSeconds } ?? true
     }
 }
 
@@ -37,6 +57,8 @@ struct FreezeIncident: Codable, Equatable, Identifiable {
 final class FreezeLog: @unchecked Sendable {
     static let shared = FreezeLog(directory: OnDeviceDiagnostics.defaultDirectory)
     static let fileName = "freeze-log.json"
+    /// When the launch prompt last asked (Unix seconds, UserDefaults).
+    static let askedAtKey = "magicmobile.freeze.askedAt"
     static let didChange = Notification.Name("MagicMobile.FreezeLog.didChange")
     static let breadcrumbLimit = 80
     static let incidentLimit = 5
@@ -76,8 +98,10 @@ final class FreezeLog: @unchecked Sendable {
         return stored
     }
 
-    /// The newest in-game incident nobody has sent or set aside, for the launch prompt.
-    var unsent: FreezeIncident? { incidents.last { $0.inGame && !$0.sent && !$0.dismissed } }
+    /// The newest in-game incident worth asking about that nobody has sent or set aside, for the launch prompt.
+    var unsent: FreezeIncident? {
+        incidents.last { $0.inGame && !$0.sent && !$0.dismissed && FreezeRules.worthAsking(kind: $0.kind, duration: $0.duration) }
+    }
 
     /// Records an incident now (saved at once: a stuck app may be ended before it recovers) and returns its id.
     @discardableResult

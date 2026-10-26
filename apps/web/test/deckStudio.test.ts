@@ -369,3 +369,19 @@ describe("Deck Studio links", () => {
     expect(choosingCommander("Forest", marked)).toBe(marked);
   });
 });
+
+describe("card names from deck links (parity/card-name-cases.json)", () => {
+  it("looks a card up by its exact name, then plain letters, then the front of a two-part name", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { cardNameCandidates, DeckResolver } = await import("../src/core/deckResolver");
+    const root = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "apps/android/core/src/test/resources/parity/card-name-cases.json"), "utf8"));
+    for (const item of root.cases) expect(cardNameCandidates(item.name), item.name).toEqual(item.candidates);
+    // Against the real catalogue: an adventure card's full name and an accented name both find the engine's card.
+    const resolver = new DeckResolver(readFileSync(join(__dirname, "..", "public/generated/printings.tsv"), "utf8"));
+    expect(resolver.canonicalName("Brazen Borrower // Petty Theft")).toBe("Brazen Borrower");
+    expect(resolver.canonicalName("Troll of Khazad-dûm")).toBe("Troll of Khazad-dum");
+    expect(resolver.canonicalName("Fire // Ice")).toBe("Fire // Ice");
+    expect(resolver.canonicalName("Not A Real Card // Nope")).toBeUndefined();
+  });
+});

@@ -15,7 +15,9 @@ struct DeckStudioImportScreen: View {
     @State private var name = "Imported Commander Deck"
     @State private var text = ""
     @State private var link = ""
-    @State private var excludeSideboards = false
+    /// On by default: a link's maybeboard is left out rather than failing the whole import (10 of 60 popular Archidekt decks
+    /// have one; 2026-10-26).
+    @State private var excludeSideboards = true
     @State private var preview: OnDeviceDeckLinkImporter.Preview?
     @State private var sourceURL: String?
     @State private var error: String?
@@ -372,7 +374,8 @@ struct DeckStudioImportScreen: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(preview.deck.name).font(.title2.weight(.semibold))
                 Label("Parsed · syntax accepted", systemImage: "checkmark.circle")
-                Label(preview.unresolvedNames.isEmpty ? "Names resolved in the compiled catalogue" : "\(preview.unresolvedNames.count) unresolved names retained",
+                Label(preview.unresolvedNames.isEmpty ? "Every card found"
+                      : "\(preview.unresolvedNames.count) not in MagicMobile yet: \(preview.unresolvedNames.prefix(4).joined(separator: ", "))\(preview.unresolvedNames.count > 4 ? "…" : "")",
                       systemImage: preview.unresolvedNames.isEmpty ? "checkmark.circle" : "exclamationmark.triangle")
                 Text("\(DeckStudioDraftPresentation.gameCount(draft)) main + commander cards; \(preview.deck.totalCards) across all imported sections.")
                     .font(.caption).foregroundStyle(DeckStudioPalette.secondaryInk)
@@ -381,7 +384,7 @@ struct DeckStudioImportScreen: View {
                 DisclosureGroup("Review cards and sections") {
                     ForEach(draft.rows) { row in
                         HStack { Text("\(row.quantity)× \(row.cardName)"); Spacer(); Text(DeckStudioDraftPresentation.section(row)).font(.caption) }
-                        if preview.unresolvedNames.contains(row.cardName) { Text("Unresolved; retained in draft").font(.caption).foregroundStyle(DeckStudioPalette.warning) }
+                        if preview.unresolvedNames.contains(row.cardName) { Text("Not in MagicMobile yet; kept in the draft").font(.caption).foregroundStyle(DeckStudioPalette.warning) }
                     }
                 }
                 if !preview.annotations.isEmpty {

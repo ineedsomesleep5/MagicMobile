@@ -604,6 +604,7 @@ final class PlayerAccount: ObservableObject {
                 ["name": String(opponent.name.prefix(60)), "commander": opponent.commander.map { String($0.prefix(160)) } ?? NSNull(), "ai": opponent.isAI]
             }]
         if match.turns > 0 { params["p_turns"] = min(1000, match.turns) }
+        if let seconds = match.durationSeconds, seconds > 0 { params["p_duration_seconds"] = min(86_400, seconds) }
         if let change = match.rankChange { params["p_rank_points"] = change.after.points }
         do {
             _ = try await api.rpc("mm_record_game", params)

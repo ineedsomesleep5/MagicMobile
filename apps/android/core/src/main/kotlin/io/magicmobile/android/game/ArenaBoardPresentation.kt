@@ -304,6 +304,17 @@ object ArenaCornerText {
 }
 
 /** The Arena table's smaller readers. */
+/**
+ * The stack card can step aside (iOS ArenaStackTuck; Danny, 2026-10-26: sideways, the stack card covered what he wanted to
+ * tap). A tab on its left edge tucks it to the table's edge, a slim tab there brings it back, and it tucks itself while you
+ * pick something on the table. A tuck lasts for the spell or ability on top: the next one shows.
+ */
+object ArenaStackTuck {
+    /** [tuckedTop]: the top object the player tucked; [peekTop]: the one they brought back while picking. */
+    fun isTucked(top: String, tuckedTop: String?, peekTop: String?, picking: Boolean): Boolean =
+        peekTop != top && (tuckedTop == top || picking)
+}
+
 object ArenaTableRules {
     /** The library's top card when it is revealed; the design fixtures' "Hidden card" placeholders stay face down. */
     fun revealedTop(player: PlayerGameState): ZoneCard? = player.zones.library.firstOrNull()?.takeIf { it.card.name != "Hidden card" }

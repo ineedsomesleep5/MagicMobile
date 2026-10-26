@@ -34,8 +34,12 @@ struct OnDeviceDeckResolver {
     private let nameAliases: [String: String]
     private let reverseFaces: [String: String]
 
+    /// The catalogue's name for a card, tried by NativeDeckCanonicalNames.candidates (exact, plain letters, front face).
     func canonicalCardName(_ name: String) -> String? {
-        cards[name] != nil ? name : nameAliases[name] ?? reverseFaces[name]
+        for candidate in NativeDeckCanonicalNames.candidates(name) {
+            if let found = cards[candidate] != nil ? candidate : nameAliases[candidate] ?? reverseFaces[candidate] { return found }
+        }
+        return nil
     }
 
     func containsCard(name: String) -> Bool { canonicalCardName(name) != nil }

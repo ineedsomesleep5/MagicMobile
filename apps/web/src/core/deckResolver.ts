@@ -4,6 +4,31 @@
  */
 import { EngineError, type J } from "./json";
 
+/**
+ * The names a deck's card is looked up by, in order (NativeDeckCanonicalNames.candidates, parity/card-name-cases.json;
+ * Caleb, 2026-10-26: Archidekt links dropped cards that search then found). The exact name first, then plain letters for
+ * accents ("Troll of Khazad-dûm": XMage spells names without them), then the front of a two-part name ("Brazen Borrower //
+ * Petty Theft": adventure, omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins.
+ */
+export function cardNameCandidates(raw: string): string[] {
+  const name = raw.trim();
+  const found: string[] = [];
+  const add = (value: string) => { if (value && !found.includes(value)) found.push(value); };
+  add(name);
+  add(plainLetters(name));
+  const split = name.indexOf(" // ");
+  if (split > 0) {
+    const front = name.slice(0, split).trim();
+    add(front);
+    add(plainLetters(front));
+  }
+  return found;
+}
+
+/** Accents off, Æ as Ae, a curly apostrophe straight. */
+export const plainLetters = (name: string) =>
+  name.replace(/\u2019/g, "'").replace(/Æ/g, "Ae").replace(/æ/g, "ae").normalize("NFKD").replace(/\p{Mn}+/gu, "");
+
 export interface DeckEntry { name: string; quantity: number; section: string }
 export interface DeckList { id: string; name: string; subtitle?: string; colors?: string; entries: DeckEntry[] }
 export interface Printing { name: string; setCode: string; collectorNumber: string }
@@ -31,9 +56,14 @@ export class DeckResolver {
     if (this.cards.size === 0) throw EngineError.invalid("The card catalogue is empty.");
   }
 
+  /** The catalogue's name for a card, tried by cardNameCandidates (exact, plain letters, front face). */
   canonicalName(name: string): string | undefined {
-    if (this.cards.has(name)) return name;
-    return this.aliases.get(name);
+    for (const candidate of cardNameCandidates(name)) {
+      if (this.cards.has(candidate)) return candidate;
+      const alias = this.aliases.get(candidate);
+      if (alias !== undefined) return alias;
+    }
+    return undefined;
   }
 
   printing(name: string): Printing | undefined {

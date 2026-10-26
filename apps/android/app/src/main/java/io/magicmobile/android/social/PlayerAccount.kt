@@ -353,6 +353,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
                 "ai" to JsonPrimitive(opponent.isAI)))
         })
         if (match.turns > 0) params["p_turns"] = JsonPrimitive(minOf(1000, match.turns))
+        match.durationSeconds?.takeIf { it > 0 }?.let { params["p_duration_seconds"] = JsonPrimitive(minOf(86_400, it)) }
         match.rankChange?.let { params["p_rank_points"] = JsonPrimitive(it.after.points) }
         return try {
             api.rpc("mm_record_game", params)

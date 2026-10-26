@@ -173,6 +173,9 @@ struct NativeGameView: View {
     @State var arenaLastStackTop: XmageStackObject?
     /// Stack objects whose landing has played, so one plays once and not again when the object above it resolves.
     @State var arenaLandedStackIDs: Set<String> = []
+    /// The stack card stepped aside for this top object (ArenaStackTuck), or was brought back while picking.
+    @State var arenaStackTuckedTop: String?
+    @State var arenaStackPeekTop: String?
     @State var arenaLiftedCardID: String?
     @State var arenaAutoPay: ArenaAutoPayRun?
     @State var arenaNotice: String?
@@ -1098,7 +1101,9 @@ struct NativeGameView: View {
                 .background { Color.clear.statusBarHidden(isTavernBoard).accessibilityHidden(true).allowsHitTesting(false) }
                 .environment(\.inspectorBattlefield, snapshot.visibleBattlefield)
                 .overlay {
-                    if let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {
+                    // Only after the starting roll: the Arena board's roll is see-through, and the mulligan question can arrive
+                    // before the last die lands (Caleb, 2026-10-26: the opening hand showed behind a three-player roll).
+                    if !startingRollVisible, let choice = OpeningHandChoice(snapshot), let hand = snapshot.human?.zones.hand, !hand.isEmpty {
                         OpeningHandOverlay(choice: choice, cards: hand, pending: pendingActionId != nil,
                                            heading: snapshot.startingPlayerHeading, answer: runCommand)
                             .environment(\.tavernBoard, isTavernBoard)

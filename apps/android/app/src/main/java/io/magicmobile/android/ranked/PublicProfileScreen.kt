@@ -77,6 +77,9 @@ private sealed class Load {
     data class Failed(val message: String) : Load()
 }
 
+/** Joins a friend's open table by its code: the menus' join flow (OnDeviceRootView.openJoinLink); null hides the button. */
+val LocalJoinFriendTable = androidx.compose.runtime.staticCompositionLocalOf<((String) -> Unit)?> { null }
+
 /**
  * Another player's profile (or your own, as others see it): their rank and its history, record, commanders, colors and recent games
  * with the names of who they played (PublicProfileView.swift). Add friend, Challenge, Block and Report live here. Opponents' names
@@ -262,12 +265,17 @@ private fun Actions(profile: PublicProfile, account: PlayerAccount, scope: kotli
             io.magicmobile.android.social.FriendConversationScreen(account, name) { conversation = null }
         }
     }
+    // A friend hosting a table with a seat open: join it from here (Caleb, 2026-10-26).
+    val join = LocalJoinFriendTable.current
+    val joinCode = account.friends.firstOrNull { it.username == profile.username }?.joinableCode
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         when (profile.relation) {
-            "friend" -> if (challenge != null && profile.online == true || account.messagesAvailable) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            "friend" -> if (join != null && joinCode != null || challenge != null && profile.online == true || account.messagesAvailable) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (join != null && joinCode != null) ArenaPlaque("Join table", { join(joinCode); close() }, Modifier.testTag("publicProfile.join"),
+                    systemImage = "arrow.right.circle.fill")
                 if (account.messagesAvailable) ArenaPlaque("Message", { conversation = profile.username }, Modifier.testTag("publicProfile.message"),
                     kind = TavernButtonKind.SECONDARY, systemImage = "bubble.left.fill")
-                if (challenge != null && profile.online == true) {
+                if (!(join != null && joinCode != null) && challenge != null && profile.online == true) {
                 val mayRank = myRankStep?.let { FriendChallengeRules.mayRank(it, profile.rank?.position?.step) } ?: false
                 TavernMenu(Modifier.testTag("publicProfile.challenge"), TavernMenuEdge.BELOW, contentDescription = "Challenge ${profile.username}", label = {
                     TavernFacePlaque("Challenge")

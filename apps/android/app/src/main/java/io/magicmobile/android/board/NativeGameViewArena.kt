@@ -76,6 +76,7 @@ import io.magicmobile.android.game.ArenaScreens
 import io.magicmobile.android.game.PromptDisplayText
 import io.magicmobile.android.game.XmagePromptAbility
 import io.magicmobile.android.game.ArenaLanePlanner
+import io.magicmobile.android.game.ArenaStackTuck
 import io.magicmobile.android.game.ArenaTableRules
 import io.magicmobile.android.game.BoardFXDirector
 import io.magicmobile.android.game.BoardOpponentFocus
@@ -201,6 +202,9 @@ fun ArenaBoard(host: ArenaBoardHost) {
     var playerCardID by remember { mutableStateOf<String?>(null) }
     var revealID by remember { mutableStateOf<String?>(null) }
     var landedStackIDs by remember { mutableStateOf(setOf<String>()) }
+    // The stack card stepped aside for this top object (ArenaStackTuck), or was brought back while picking.
+    var stackTuckedTop by remember { mutableStateOf<String?>(null) }
+    var stackPeekTop by remember { mutableStateOf<String?>(null) }
     var showPhaseStops by remember { mutableStateOf(false) }
     var safeArea by remember { mutableStateOf(ArenaSafeArea()) }
     /** The trigger order chosen in the ability browser (ability ids, first to place first) and the prompt it last answered. */
@@ -580,13 +584,25 @@ fun ArenaBoard(host: ArenaBoardHost) {
                 }
                 val revealing = revealID == top.id
                 val reveal by animateFloatAsState(if (revealing) 1f else 0f, tween(300), label = "stackReveal")
-                Box(Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f).place(rect).graphicsLayer {
+                val count = snapshot.xmage?.stack?.size ?: snapshot.stackTopFirst.size
+                val tucked = !revealing && ArenaStackTuck.isTucked(top.id, stackTuckedTop, stackPeekTop, targetableIds.isNotEmpty())
+                if (tucked) {
+                    // The slim tab at the table's edge brings the card back.
+                    ArenaStackTab(true, count, Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f)
+                        .centerAt(canvas.screen.width - 22 - safeArea.trailing.value, rect.midY)) {
+                        GameAudio.play(GameSound.UI_OPEN); stackTuckedTop = null; stackPeekTop = top.id
+                    }
+                } else Box(Modifier.zIndex(30f).alpha(if (screenUp) 0f else 1f).place(rect).graphicsLayer {
                     val scale = 1 + 0.2f * reveal; scaleX = scale; scaleY = scale
                     translationX = -rect.width * 0.8f * reveal * density; translationY = rect.height * 0.14f * reveal * density
                 }.cardBounds("arena.stack")) {
-                    ArenaStackCard(top, snapshot.xmage?.stack?.size ?: snapshot.stackTopFirst.size, DpSize(rect.width.dp, rect.height.dp),
+                    ArenaStackCard(top, count, DpSize(rect.width.dp, rect.height.dp),
                         commander = ArenaTableRules.isCommanderSpell(top, snapshot), fallbackSource = ArenaTableRules.sourceCard(top, snapshot),
                         lands = top.id !in landedStackIDs || revealing, inspect = { host.selection.inspectedCard = it }, openStack = { host.setStackOpen(true) })
+                    // The eye at its lower left, under the tab that opens the whole stack, tucks it aside.
+                    if (!revealing) ArenaStackTab(false, count, Modifier.align(Alignment.BottomStart).offset(x = (-43).dp, y = (-6).dp)) {
+                        GameAudio.play(GameSound.UI_CLOSE); stackTuckedTop = top.id; stackPeekTop = null
+                    }
                 }
             }
 

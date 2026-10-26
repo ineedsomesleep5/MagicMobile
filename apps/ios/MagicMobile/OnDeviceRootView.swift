@@ -57,6 +57,8 @@ struct OnDeviceRootView: View {
     @State private var showImport = false
     @State private var studioFocus: DeckStudioPlaySelection.FixRequest?
     @State private var confirmLeave = false
+    /// When this game's engine match began, for the game's length on the profile.
+    @State private var gameStartedAt: Date?
     @StateObject private var emotes = EmoteCenter()
     @State private var showDiagnostics = false
     @State private var confirmDeleteReport = false
@@ -472,6 +474,19 @@ struct OnDeviceRootView: View {
             do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
             resume.notice = nil
         }
+        // A player left the table and the others play on (TableLeaveRules).
+        .overlay(alignment: .top) {
+            if activeGame, let notice = setup.multiplayer?.tableNotice {
+                GameResumeNoticeBanner(message: notice, symbol: "figure.walk.departure") { setup.multiplayer?.tableNotice = nil }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.24), value: setup.multiplayer?.tableNotice)
+        .task(id: setup.multiplayer?.tableNotice) {
+            guard setup.multiplayer?.tableNotice != nil else { return }
+            do { try await Task.sleep(for: .seconds(GameResumeText.noticeSeconds)) } catch { return }
+            setup.multiplayer?.tableNotice = nil
+        }
         .environment(\.nativeTurnControl, turnControl)
         .arenaPanel(isPresented: $showDiagnostics, fitsContent: true) { diagnosticSheet }
         .background {
@@ -484,10 +499,17 @@ struct OnDeviceRootView: View {
         } message: {
             Text(setup.multiplayer?.endpoint?.isHost == true
                  ? "You are hosting. Leaving ends this match for everyone; it cannot be resumed."
+                 : setup.multiplayer?.endpoint != nil
+                 ? "You leave the table and the others play on without you. You can't come back to this game."
                  : "This closes the current match. It cannot be resumed after leaving.")
         }
         // Every menu, sheet and overlay wears the Arena look (the game sets its own board's).
         .environment(\.arenaBoard, true)
+        // A friend's profile can join their open table: every page over the menu closes first, then the table setup opens.
+        .environment(\.joinFriendTable, { code in
+            showFriends = false; lobby = nil; chatProfile = nil
+            Task { try? await Task.sleep(for: .milliseconds(450)); openJoinLink(code) }
+        })
     }
 
     /// Decks is the Arena menus' Decks tab (Caleb, 2026-10-22; it was a spell book that opened on the table).
@@ -631,6 +653,8 @@ struct OnDeviceRootView: View {
         }
         .onAppear { if scenePhase == .active { account.setForeground(true) } }
         // Freeze log (docs/FREEZE_LOG.md): what the game is, the ranked search's steps, and last session's freeze.
+        // Each engine match's start, for the game's length on the profile.
+        .onChange(of: session.matchID) { _, id in gameStartedAt = id == nil ? nil : Date() }
         .onChange(of: activeMatch, initial: true) { _, match in
             session.freezeMode = match.map { "\($0.mode.rawValue)\($0.opponents.contains { $0.isAI } ? " vs AI" : " vs people")" }
                 ?? (setup.usingMultiplayer ? "table" : "custom")
@@ -645,7 +669,11 @@ struct OnDeviceRootView: View {
         .task(id: account.phase == .ready) {
             guard account.phase == .ready, !activeGame, freezePrompt == nil,
                   ProcessInfo.processInfo.environment["MAGICMOBILE_UI_TEST_PREFERENCES"] == nil else { return }
-            freezePrompt = FreezeLog.shared.unsent
+            let now = Date().timeIntervalSince1970
+            let asked = UserDefaults.standard.object(forKey: FreezeLog.askedAtKey) as? Double
+            guard FreezeRules.mayAsk(secondsSinceAsked: asked.map { now - $0 }), let incident = FreezeLog.shared.unsent else { return }
+            UserDefaults.standard.set(now, forKey: FreezeLog.askedAtKey)
+            freezePrompt = incident
         }
         .tavernConfirmation(active: true, title: "The last game froze",
                             message: "Send the report? It holds the game's state and your recent actions, not your account or decks.",
@@ -1864,7 +1892,8 @@ struct OnDeviceRootView: View {
         let colors = match.colors.isEmpty ? PlayerStats.colors(manaCost: snapshot?.human?.zones.command.first?.card.manaCost) : match.colors
         let change = profileRecord.record(mode: match.mode, outcome: outcome, opponents: match.opponents, opponentBracket: match.opponentBracket,
                                    aiSkill: match.aiSkill, deckID: match.deckID, deckName: match.deckName, commander: match.commander,
-                                   colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
+                                   colors: colors, deckBracket: match.deckBracket, turns: turns,
+                                   durationSeconds: gameStartedAt.map { Int(Date().timeIntervalSince($0)) }, aiDeckID: match.aiDeckID,
                                    engineMatchID: session.matchID, gameRecordFile: gameRecordFile)
         rankChange = change
         rankNote = nil
@@ -2364,6 +2393,14 @@ struct OnDeviceRootView: View {
                     }
                 } else if activeGame && !setup.canUseSession {
                     Text(setup.liveStatus)
+                    // Everyone still at the table may vote to go on without a player who is away (TableLeaveRules).
+                    if let vote = setup.multiplayer?.continueVote {
+                        Button(vote.voted ? String(localized: "Waiting for the others (\(vote.voters.count)/\(vote.needed))")
+                               : TableLeaveRules.buttonTitle(vote)) { setup.multiplayer?.voteToContinue() }
+                            .buttonStyle(ArenaButtonStyle(kind: .primary, compact: true))
+                            .disabled(vote.voted)
+                            .accessibilityIdentifier("ondevice.continueWithout")
+                    }
                 } else if activeGame && session.snapshot == nil {
                     Text("Waiting for the first game update.")
                 }

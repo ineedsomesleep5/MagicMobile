@@ -1145,7 +1145,8 @@ class OnDeviceSession(private val scope: CoroutineScope) {
                 if (!isForeground || isClosing) continue
                 val over = poll?.phase in setOf("ended", "failed", "closed") || snapshot?.isCompleted == true
                 val waitingOnYou = poll?.prompt?.submitted == false
-                stall.check(uptime(), true, over, waitingOnYou, table != null)?.let { kind -> FreezeLog.record(kind) }
+                val waitingOnPerson = table != null && snapshot?.waitingOnPersonID != null
+                stall.check(uptime(), true, over, waitingOnYou, table != null, waitingOnPerson)?.let { kind -> FreezeLog.record(kind) }
             }
         }
     }

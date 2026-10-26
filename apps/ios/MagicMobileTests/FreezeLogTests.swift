@@ -21,9 +21,22 @@ final class FreezeLogTests: XCTestCase {
             let input = try XCTUnwrap(item["input"] as? [String: Any])
             let result = FreezeRules.stall(
                 inGame: input["inGame"] as! Bool, over: input["over"] as! Bool, waitingOnYou: input["waitingOnYou"] as! Bool,
+                waitingOnPerson: input["waitingOnPerson"] as? Bool ?? false,
                 answerPendingSeconds: (input["answerPendingSeconds"] as? NSNumber)?.doubleValue,
                 quietSeconds: (input["quietSeconds"] as! NSNumber).doubleValue, withPeople: input["withPeople"] as! Bool)
             XCTAssertEqual(result, item["expect"] as? String, item["name"] as? String ?? "")
+        }
+        let asks = try XCTUnwrap(root["askCases"] as? [[String: Any]])
+        XCTAssertFalse(asks.isEmpty)
+        for item in asks {
+            XCTAssertEqual(FreezeRules.worthAsking(kind: item["kind"] as! String, duration: (item["duration"] as? NSNumber)?.doubleValue),
+                           item["expect"] as! Bool, item["name"] as? String ?? "")
+        }
+        let mayAsks = try XCTUnwrap(root["mayAskCases"] as? [[String: Any]])
+        XCTAssertFalse(mayAsks.isEmpty)
+        for item in mayAsks {
+            XCTAssertEqual(FreezeRules.mayAsk(secondsSinceAsked: (item["secondsSinceAsked"] as? NSNumber)?.doubleValue),
+                           item["expect"] as! Bool, item["name"] as? String ?? "")
         }
     }
 

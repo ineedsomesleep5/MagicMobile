@@ -40,8 +40,32 @@ enum BundledCatalogueData {
     }
 }
 
-/// Resolves only reverse faces attested by the bundled, selected-printing aliases.
+/// Resolves only reverse faces attested by the bundled, selected-printing aliases, and the names a card is looked up by.
 enum NativeDeckCanonicalNames {
+    /// The names a deck's card is looked up by, in order (parity/card-name-cases.json; Caleb, 2026-10-26: Archidekt links
+    /// dropped cards that search then found). The exact name first, then plain letters for accents ("Troll of Khazad-dûm":
+    /// XMage spells names without them), then the front of a two-part name ("Brazen Borrower // Petty Theft": adventure,
+    /// omen and prepare cards, whose full name only Archidekt sends). An exact split-card name wins by coming first.
+    static func candidates(_ raw: String) -> [String] {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var found: [String] = []
+        func add(_ value: String) { if !value.isEmpty, !found.contains(value) { found.append(value) } }
+        add(name)
+        add(plainLetters(name))
+        if let split = name.range(of: " // ") {
+            let front = name[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+            add(front)
+            add(plainLetters(front))
+        }
+        return found
+    }
+
+    /// Accents off, Æ as Ae, a curly apostrophe straight.
+    static func plainLetters(_ name: String) -> String {
+        let swapped = name.replacingOccurrences(of: "\u{2019}", with: "'").replacingOccurrences(of: "Æ", with: "Ae").replacingOccurrences(of: "æ", with: "ae")
+        return String(String.UnicodeScalarView(swapped.decomposedStringWithCompatibilityMapping.unicodeScalars
+            .filter { $0.properties.generalCategory != .nonspacingMark }))
+    }
 
     static func reverseFaces(_ aliases: [String: String], exactNames: Set<String>) -> [String: String] {
         var candidates: [String: Set<String>] = [:]
@@ -228,7 +252,12 @@ struct NativeDeckMetadataCatalogue {
     }
 
     func card(named name: String) -> Card? {
-        index[name] ?? aliases[name].flatMap { index[$0] } ?? reverseFaces[name].flatMap { index[$0] }
+        for candidate in NativeDeckCanonicalNames.candidates(name) {
+            if let card = index[candidate] ?? aliases[candidate].flatMap({ index[$0] }) ?? reverseFaces[candidate].flatMap({ index[$0] }) {
+                return card
+            }
+        }
+        return nil
     }
 
     /// The front face of a double-faced card, named by its reverse face; nil for any other name.

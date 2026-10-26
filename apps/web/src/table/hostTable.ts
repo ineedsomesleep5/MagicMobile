@@ -19,6 +19,7 @@ import type { GameSnapshot } from "../core/models";
 import { loadSmartPass } from "../core/smartPass";
 import { OnDeviceStartingPlayerChoice, OnDeviceStartingRoll, OnDeviceStartingRollProgress } from "../core/startingRoll";
 import { gameEmote, type GameEmote, TableChatText } from "../core/tableChat";
+import { NO_VOTE, type TableContinueVote, TableLeaveRules, votePacket } from "../core/tableLeave";
 import { TurnClock, TurnClockBoard, TurnClockWire } from "../core/turnClock";
 import { type RelayPeer, RelayTransport } from "../relay/relayTransport";
 import { storage } from "../ui/storage";
@@ -149,6 +150,12 @@ export class HostTable implements GameTable {
   private unsubscribeEngine?: () => void;
   private suspendedPeers = new Set<string>();
   private relayAway = new Set<string>();
+  /** Players who left for good: their seat was conceded and the game goes on without them (TableLeaveRules). */
+  private gone = new Set<string>();
+  /** When each paused player went away, and the seats that voted to go on without them. */
+  private awaySince = new Map<string, number>();
+  private continueVoters = new Map<string, Set<string>>();
+  private lastVotePacket = "";
   private presenceSequence = 0;
   private suspensionRevision = 0;
   private peerPresence = new Map<string, number>();
@@ -223,6 +230,8 @@ export class HostTable implements GameTable {
       onPacket: (text, peer) => { if (token === this.generation) this.packet(text, peer); },
       onDisconnect: (peer) => {
         if (token !== this.generation || peer === relay.localPeerID) return;
+        // Once the game is on, a guest who leaves is conceded and the others play on.
+        if (this.matchID) { this.retire(peer); return; }
         this.fail("A player left. This match cannot continue. Leave and start a new match.");
       },
       onError: (text) => { if (token === this.generation) this.fail(text); },
@@ -257,7 +266,7 @@ export class HostTable implements GameTable {
     // A dropped phone pauses the match like a backgrounded app, until it returns or the relay gives up on it. Before the
     // match starts, the repeating offer covers a brief drop.
     const lobby = this.lobby;
-    const away = new Set(peers.filter((p) => !p.connected && p.id !== lobby.localPeerID).map((p) => p.id));
+    const away = new Set(peers.filter((p) => !p.connected && p.id !== lobby.localPeerID && !this.gone.has(p.id)).map((p) => p.id));
     if ([...away].sort().join() !== [...this.relayAway].sort().join()) {
       this.relayAway = away;
       if (this.matchID) this.updateSuspension();
@@ -325,6 +334,7 @@ export class HostTable implements GameTable {
       return;
     }
     if (!sameUuid(str(fields.epoch), this.epoch)) throw EngineError.incompatibleBuild();
+    if (this.gone.has(peer)) throw EngineError.unboundPeer();
     switch (type) {
       case "request":
         if (!this.dispatcher) throw EngineError.unboundPeer();
@@ -369,8 +379,15 @@ export class HostTable implements GameTable {
       }
       case "end":
         if (!keysEqual(fields, ["type", "epoch"])) throw EngineError.invalid("Invalid match ending.");
-        this.fail("A player left. Start a new match to play again.");
+        if (this.matchID) this.retire(peer);
+        else this.fail("A player left. Start a new match to play again.");
         break;
+      case "continue": {
+        const seat = str(fields.seat);
+        if (!keysEqual(fields, ["type", "epoch", "seat"]) || seat === undefined) throw EngineError.unboundPeer();
+        this.castContinueVote(peer, seat);
+        break;
+      }
       case "reject":
         if (!keysEqual(fields, ["type", "epoch", "reason"]) || str(fields.reason) !== "aiSettings") throw EngineError.unboundPeer();
         this.tryBroadcast({ type: "reject", epoch: this.epoch, reason: "aiSettings" });
@@ -585,7 +602,7 @@ export class HostTable implements GameTable {
     if (!lobby || !this.epoch || revision <= this.announcedRevision) return;
     this.announcedRevision = revision;
     for (const peer of lobby.peerIDs) {
-      if (peer !== lobby.hostID && !this.relayAway.has(peer)) this.trySend({ type: "revision", epoch: this.epoch, revision }, peer);
+      if (peer !== lobby.hostID && !this.relayAway.has(peer) && !this.gone.has(peer)) this.trySend({ type: "revision", epoch: this.epoch, revision }, peer);
     }
   }
 
@@ -613,6 +630,7 @@ export class HostTable implements GameTable {
   }
 
   private async tickHostClock(token: number, matchID: string, client: EngineClient, seats: string[]) {
+    this.updateContinueVote(now());
     let changed = this.hostClock.setPaused(this.state.isSuspended || this.progress?.isComplete === false, now());
     const due = new Set(this.hostClock.expired(now()).map(([seat]) => seat));
     const prompts = new Map<string, EnginePrompt | undefined>();
@@ -655,7 +673,7 @@ export class HostTable implements GameTable {
     const lobby = this.lobby;
     if (!lobby || !this.epoch) return;
     const packet = TurnClockWire.packet(this.epoch, this.hostClock.paused, entries);
-    for (const peer of lobby.peerIDs) if (peer !== lobby.hostID && !this.relayAway.has(peer)) this.trySend(packet, peer);
+    for (const peer of lobby.peerIDs) if (peer !== lobby.hostID && !this.relayAway.has(peer) && !this.gone.has(peer)) this.trySend(packet, peer);
   }
 
   /** The tab was hidden or shown: the match pauses like a backgrounded phone (only once it runs; a hidden tab keeps the room). */
@@ -677,7 +695,7 @@ export class HostTable implements GameTable {
     this.suspensionRevision += 1;
     this.router?.setSuspended(paused, this.suspensionRevision);
     for (const peer of lobby.peerIDs) {
-      if (peer === lobby.hostID || !this.epoch) continue;
+      if (peer === lobby.hostID || !this.epoch || this.gone.has(peer)) continue;
       this.presenceSequence += 1;
       try { this.send({ type: "presence", epoch: this.epoch, sequence: this.presenceSequence, suspended: paused }, peer); } catch (error) {
         this.fail(message(error));
@@ -733,7 +751,85 @@ export class HostTable implements GameTable {
   private broadcast(value: J) {
     const lobby = this.lobby;
     if (!lobby) return;
-    for (const peer of lobby.peerIDs) if (peer !== lobby.localPeerID) this.send(value, peer);
+    for (const peer of lobby.peerIDs) if (peer !== lobby.localPeerID && !this.gone.has(peer)) this.send(value, peer);
+  }
+
+  // ---------------- players who leave (TableLeaveRules) ----------------
+
+  /** The host votes to go on without the player who is away. */
+  voteToContinue() {
+    const vote = this.state.continueVote; const lobby = this.lobby;
+    if (!vote || vote.voted || !lobby) return;
+    this.castContinueVote(lobby.hostID, vote.seatID);
+  }
+
+  clearTableNotice() { if (this.state.tableNotice) this.set({ tableNotice: undefined }); }
+
+  private seatOf(peer: string): string | undefined {
+    try { return this.lobby?.seatID(peer); } catch { return undefined; }
+  }
+
+  /** A guest left for good: concede the seat, tell everyone (the player too, should they come back), and play on. */
+  private retire(peer: string) {
+    const lobby = this.lobby; const epoch = this.epoch;
+    const seat = this.seatOf(peer);
+    if (!lobby || !epoch || peer === lobby.hostID || this.gone.has(peer) || seat === undefined) return;
+    const left: J = { type: "left", epoch, seat };
+    this.trySend(left, peer);
+    this.gone.add(peer);
+    this.suspendedPeers.delete(peer); this.relayAway.delete(peer); this.awaySince.delete(peer); this.continueVoters.delete(peer);
+    this.tryBroadcast(left);
+    // A seat that leaves during the starting roll rolls where it sat.
+    const progress = this.progress;
+    if (progress && progress.nextSeatID === seat) {
+      try { const index = progress.advance(seat, false); this.broadcast({ type: "rollAdvance", epoch, index }); this.updateRoll(); } catch { /* the roll times out */ }
+    }
+    const client = this.client; const matchID = this.matchID;
+    if (client && matchID) void client.concede(matchID, seat).catch(() => undefined);
+    this.set({ tableNotice: TableLeaveRules.leftNotice(this.nameOf(peer)),
+      ...(this.state.continueVote?.seatID === seat ? { continueVote: undefined } : {}) });
+    this.clockChanged = true;
+    if (this.matchID) this.updateSuspension();
+    this.updateContinueVote(now());
+  }
+
+  /** A vote from `peer` (the host included) to go on without the player in `seat`. */
+  private castContinueVote(peer: string, seat: string) {
+    const lobby = this.lobby;
+    if (!lobby) return;
+    const away = lobby.peerIDs.find((p) => this.seatOf(p) === seat);
+    const voter = this.seatOf(peer);
+    if (!away || away === peer || voter === undefined) return;
+    const voters = this.continueVoters.get(away) ?? new Set<string>();
+    voters.add(voter);
+    this.continueVoters.set(away, voters);
+    this.updateContinueVote(now());
+  }
+
+  /** Every clock tick and on each vote: who is away long enough to vote on, the tally, and the outcome. */
+  private updateContinueVote(at: number) {
+    const lobby = this.lobby; const epoch = this.epoch;
+    if (!lobby || !epoch || !this.matchID || this.state.stage !== "playing") return;
+    const paused = new Set([...this.suspendedPeers, ...this.relayAway].filter((p) => !this.gone.has(p) && p !== lobby.hostID));
+    for (const peer of paused) if (!this.awaySince.has(peer)) this.awaySince.set(peer, at);
+    for (const peer of [...this.awaySince.keys()]) if (!paused.has(peer)) { this.awaySince.delete(peer); this.continueVoters.delete(peer); }
+    const eligible = new Set(lobby.peerIDs.filter((p) => !this.gone.has(p) && !paused.has(p) && !this.suspendedPeers.has(p))
+      .map((p) => this.seatOf(p)).filter((s): s is string => s !== undefined));
+    const candidate = [...paused].filter((p) => at - (this.awaySince.get(p) ?? at) >= TableLeaveRules.VOTE_AFTER_SECONDS)
+      .sort((a, b) => (this.awaySince.get(a)! - this.awaySince.get(b)!) || (a < b ? -1 : 1))[0];
+    let vote: TableContinueVote | undefined;
+    const seat = candidate === undefined ? undefined : this.seatOf(candidate);
+    if (candidate !== undefined && seat !== undefined && eligible.size > 0) {
+      const yes = [...(this.continueVoters.get(candidate) ?? [])].filter((s) => eligible.has(s)).sort();
+      if (TableLeaveRules.passes(yes.length, eligible.size)) { this.retire(candidate); return; }
+      vote = { seatID: seat, name: this.nameOf(candidate), voters: yes, needed: eligible.size, voted: false };
+    }
+    const localSeat = this.seatOf(lobby.hostID);
+    const shown = vote ? { ...vote, voted: localSeat !== undefined && vote.voters.includes(localSeat) } : undefined;
+    if (JSON.stringify(shown) !== JSON.stringify(this.state.continueVote)) this.set({ continueVote: shown });
+    const packet = votePacket(vote ?? NO_VOTE, epoch);
+    const text = JSON.stringify(packet);
+    if (text !== this.lastVotePacket) { this.lastVotePacket = text; this.tryBroadcast(packet); }
   }
 
   private tryBroadcast(value: J) {
@@ -743,7 +839,7 @@ export class HostTable implements GameTable {
   private fail(status: string) {
     if (this.state.stage === "failed" || this.state.stage === "closed") return;
     this.teardown();
-    this.set({ stage: "failed", status, room: undefined, roll: undefined, waiting: [], turnClock: new TurnClockBoard() });
+    this.set({ stage: "failed", status, room: undefined, roll: undefined, waiting: [], turnClock: new TurnClockBoard(), continueVote: undefined });
   }
 
   private teardown() {
@@ -785,6 +881,7 @@ export class HostTable implements GameTable {
     this.progress = undefined; this.localReady = false; this.starting = false; this.matchID = undefined; this.client = undefined;
     this.transport = undefined; this.keepsRecords = false;
     this.suspendedPeers = new Set(); this.relayAway = new Set(); this.peerPresence = new Map(); this.presenceSequence = 0; this.suspensionRevision = 0;
+    this.gone = new Set(); this.awaySince = new Map(); this.continueVoters = new Map(); this.lastVotePacket = "";
     this.hostClock = new TurnClock(); this.clockReads = new Map(); this.clockChanged = false; this.clockOver = false; this.announcedRevision = -1;
     this.playerNames = new Map(); this.seed = undefined; this.aiSeats = [];
     this.set({ ...this.initial(), stage: "idle", status: "Match closed." });

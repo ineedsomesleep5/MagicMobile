@@ -1,16 +1,34 @@
 {
   "schemaVersion": 1,
-  "about": "FreezeRules.stall (docs/FREEZE_LOG.md): when a game that still responds has stopped moving. Inputs are seconds.",
+  "about": "FreezeRules.stall (docs/FREEZE_LOG.md): when a game that still responds has stopped moving. Inputs are seconds; waitingOnPerson is false when absent. askCases: FreezeRules.worthAsking (which incidents the launch prompt asks about) and mayAsk (at most once in 3 days).",
   "cases": [
-    { "name": "no game", "input": { "inGame": false, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false }, "expect": null },
-    { "name": "game over", "input": { "inGame": true, "over": true, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false }, "expect": null },
-    { "name": "your prompt, any length", "input": { "inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false }, "expect": null },
-    { "name": "answer just sent", "input": { "inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": 19.9, "quietSeconds": 19.9, "withPeople": false }, "expect": null },
-    { "name": "answer never accepted", "input": { "inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": 20, "quietSeconds": 20, "withPeople": false }, "expect": "answer-not-accepted" },
-    { "name": "answer pending beats quiet", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": 25, "quietSeconds": 400, "withPeople": false }, "expect": "answer-not-accepted" },
-    { "name": "long AI turn", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 119, "withPeople": false }, "expect": null },
-    { "name": "engine quiet, solo", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 120, "withPeople": false }, "expect": "engine-quiet" },
-    { "name": "a person thinking", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 179, "withPeople": true }, "expect": null },
-    { "name": "table quiet", "input": { "inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 180, "withPeople": true }, "expect": "engine-quiet" }
+    {"name": "no game", "input": {"inGame": false, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false}, "expect": null},
+    {"name": "game over", "input": {"inGame": true, "over": true, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false}, "expect": null},
+    {"name": "your prompt, any length", "input": {"inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": false}, "expect": null},
+    {"name": "answer just sent", "input": {"inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": 19.9, "quietSeconds": 19.9, "withPeople": false}, "expect": null},
+    {"name": "answer never accepted", "input": {"inGame": true, "over": false, "waitingOnYou": true, "answerPendingSeconds": 20, "quietSeconds": 20, "withPeople": false}, "expect": "answer-not-accepted"},
+    {"name": "answer pending beats quiet", "input": {"inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": 25, "quietSeconds": 400, "withPeople": false}, "expect": "answer-not-accepted"},
+    {"name": "long AI turn", "input": {"inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 119, "withPeople": false}, "expect": null},
+    {"name": "engine quiet, solo", "input": {"inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 120, "withPeople": false}, "expect": "engine-quiet"},
+    {"name": "a person thinking", "input": {"inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 179, "withPeople": true}, "expect": null},
+    {"name": "table quiet", "input": {"inGame": true, "over": false, "waitingOnYou": false, "answerPendingSeconds": null, "quietSeconds": 180, "withPeople": true}, "expect": "engine-quiet"},
+    {"name": "another person thinking, any length", "input": {"inGame": true, "over": false, "waitingOnYou": false, "waitingOnPerson": true, "answerPendingSeconds": null, "quietSeconds": 900, "withPeople": true}, "expect": null},
+    {"name": "an answer stuck while a person thinks", "input": {"inGame": true, "over": false, "waitingOnYou": false, "waitingOnPerson": true, "answerPendingSeconds": 20, "quietSeconds": 20, "withPeople": true}, "expect": "answer-not-accepted"},
+    {"name": "table waiting on the engine", "input": {"inGame": true, "over": false, "waitingOnYou": false, "waitingOnPerson": false, "answerPendingSeconds": null, "quietSeconds": 180, "withPeople": true}, "expect": "engine-quiet"}
+  ],
+  "askCases": [
+    {"name": "short hitch", "kind": "hang", "duration": 2.4, "expect": false},
+    {"name": "hang just under", "kind": "hang", "duration": 7.9, "expect": false},
+    {"name": "real hang", "kind": "hang", "duration": 8, "expect": true},
+    {"name": "hang never measured", "kind": "hang", "duration": null, "expect": false},
+    {"name": "answer never accepted", "kind": "answer-not-accepted", "duration": null, "expect": true},
+    {"name": "engine quiet", "kind": "engine-quiet", "duration": null, "expect": true},
+    {"name": "already reported", "kind": "reported", "duration": null, "expect": false}
+  ],
+  "mayAskCases": [
+    {"name": "never asked", "secondsSinceAsked": null, "expect": true},
+    {"name": "asked yesterday", "secondsSinceAsked": 86400, "expect": false},
+    {"name": "asked three days ago", "secondsSinceAsked": 259200, "expect": true},
+    {"name": "clock moved back", "secondsSinceAsked": -5, "expect": true}
   ]
 }

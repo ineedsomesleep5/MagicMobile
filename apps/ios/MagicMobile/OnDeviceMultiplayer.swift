@@ -630,6 +630,10 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         return (tableCode, min(3, seatsWanted - seatsTaken))
     }
     @Published private(set) var isFailed = false
+    /// The vote to go on without a player who is away (TableLeaveRules), as this phone shows it; nil while nobody is.
+    @Published private(set) var continueVote: TableContinueVote?
+    /// "Jed left the game.": a player left for good and the others play on. Cleared by the root once shown.
+    @Published var tableNotice: String?
     /// The online turn timer's clocks as this phone shows them. The host runs them (`TurnClock`)
     /// and sends each change to the guests in a `clock` packet.
     @Published private(set) var turnClock = TurnClockBoard() { didSet { syncClockFeed() } }
@@ -664,6 +668,12 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private var suspendedPeers: Set<String> = []
     /// Players whose relay connection dropped; they may still resume their seat.
     private var relayAwayPeers: Set<String> = []
+    /// Players who left for good: their seat was conceded and the game goes on without them (TableLeaveRules).
+    private var gonePeers: Set<String> = []
+    /// Host only: when each paused player went away, and the seats that voted to go on without them.
+    private var awaySince: [String: TimeInterval] = [:]
+    private var continueVoters: [String: Set<String>] = [:]
+    private var lastVotePacket: String?
     private var presenceSequence: Int64 = 0
     private var suspensionRevision: UInt64 = 0
     private var peerPresenceSequences: [String: Int64] = [:]
@@ -914,6 +924,11 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         }
         transport.onDisconnect = { [weak self] peer in
             guard let self, self.generation == token, !self.closing else { return }
+            // Once the game is on, a guest who leaves is conceded and the others play on; only the host's engine can't move.
+            if self.endpoint != nil, let lobby = self.lobby, peer != lobby.hostID {
+                self.playerLeft(peer)
+                return
+            }
             self.fail(self.isRelayTable && self.lobby?.hostID == peer ? "The host left this table."
                       : "A player disconnected. This match cannot reconnect or migrate hosts. Leave and start a new match.")
         }
@@ -1001,7 +1016,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             } else if let lobby = self.lobby {
                 // A dropped phone pauses the match like a backgrounded app, until it returns or the relay gives up on it.
                 // Before the match starts, the lobby's repeating offer already covers a brief drop.
-                let away = Set(peers.filter { !$0.connected && $0.id != lobby.localPeerID }.map(\.id))
+                let away = Set(peers.filter { !$0.connected && $0.id != lobby.localPeerID }.map(\.id)).subtracting(self.gonePeers)
                 if away != self.relayAwayPeers { self.relayAwayPeers = away; if self.endpoint != nil { self.updateSuspension() } }
             }
         }
@@ -1076,6 +1091,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             return
         }
         guard let epoch, value["epoch"]?.string == epoch.uuidString else { throw EngineError.incompatibleBuild }
+        guard !gonePeers.contains(peer) else { throw EngineError.unboundPeer }
         switch type {
         case "request":
             guard lobby.localPeerID == lobby.hostID, let hostDispatcher else { throw EngineError.unboundPeer }
@@ -1144,7 +1160,23 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             if let name = seatNames[seat] ?? playerNames[peer] { onChat?(name, text) }
         case "end":
             guard Set(fields.keys) == ["type", "epoch"] else { throw EngineError.invalidMessage("Invalid match ending.") }
-            fail(peer == lobby.hostID ? "The host ended this match." : "A player left. Start a new match to play again.")
+            if peer == lobby.hostID { fail("The host ended this match.") }
+            else if endpoint != nil { playerLeft(peer) }
+            else { fail("A player left. Start a new match to play again.") }
+        case "left":
+            guard Set(fields.keys) == ["type", "epoch", "seat"], peer == lobby.hostID, lobby.localPeerID != lobby.hostID,
+                  let seat = fields["seat"]?.string else { throw EngineError.unboundPeer }
+            if seat == endpoint?.seatID { fail(TableLeaveRules.leftBehindMessage); return }
+            guard let gone = lobby.peerIDs.first(where: { (try? lobby.seatID(for: $0)) == seat }) else { throw EngineError.unboundPeer }
+            markGone(gone)
+        case "vote":
+            guard peer == lobby.hostID, lobby.localPeerID != lobby.hostID else { throw EngineError.unboundPeer }
+            let vote = try TableContinueVote.parse(value, names: seatNames, localSeat: endpoint?.seatID)
+            continueVote = vote?.seatID == endpoint?.seatID ? nil : vote
+        case "continue":
+            guard Set(fields.keys) == ["type", "epoch", "seat"], lobby.localPeerID == lobby.hostID,
+                  let seat = fields["seat"]?.string else { throw EngineError.unboundPeer }
+            castContinueVote(from: peer, seat: seat)
         case "reject":
             guard Set(fields.keys) == ["type", "epoch", "reason"], fields["reason"]?.string == "aiSettings",
                   peer == lobby.hostID || lobby.localPeerID == lobby.hostID else { throw EngineError.unboundPeer }
@@ -1360,7 +1392,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
             suspensionRevision += 1
             let revision = suspensionRevision
             if let router { Task { await router.setSuspended(paused, revision: revision) } }
-            for peer in lobby.peerIDs where peer != lobby.hostID { sendPresence(paused, to: peer) }
+            for peer in lobby.peerIDs where peer != lobby.hostID && !gonePeers.contains(peer) { sendPresence(paused, to: peer) }
         }
     }
 
@@ -1370,7 +1402,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         guard generation == token, !failed, !closing, let lobby, let epoch, lobby.localPeerID == lobby.hostID else { return }
         clockDirty = true
         let notice = OnDeviceRevisionNotice.packet(epoch: epoch, revision: revision)
-        for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) {
+        for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) && !gonePeers.contains(peer) {
             try? send(notice, to: peer)
         }
     }
@@ -1391,6 +1423,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
 
     /// One second of the host's clock. False once the game is over.
     private func tickHostClock(engine: EngineClient, matchID: String, seats: [String], token: UUID) async -> Bool {
+        updateContinueVote(now: ProcessInfo.processInfo.systemUptime)
         var changed = hostClock.setPaused(isSuspended || rollProgress?.isComplete == false,
                                           now: ProcessInfo.processInfo.systemUptime)
         let due = Set(hostClock.expired(now: ProcessInfo.processInfo.systemUptime).map(\.seat))
@@ -1438,7 +1471,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         turnClock = .from(paused: hostClock.paused, entries: entries, now: now)
         guard let lobby, let epoch, lobby.localPeerID == lobby.hostID else { return }
         let packet = TurnClockWire.packet(epoch: epoch.uuidString, paused: hostClock.paused, entries: entries)
-        for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) {
+        for peer in lobby.peerIDs where peer != lobby.hostID && !relayAwayPeers.contains(peer) && !gonePeers.contains(peer) {
             try? send(packet, to: peer)
         }
     }
@@ -1455,6 +1488,97 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         do { try send(.object(["type": .string("presence"), "epoch": .string(epoch.uuidString),
                               "sequence": .integer(presenceSequence), "suspended": .bool(suspended)]), to: peer) }
         catch { fail(error.localizedDescription) }
+    }
+
+    // MARK: Players who leave (TableLeaveRules)
+
+    /// This phone votes to go on without the player who is away.
+    func voteToContinue() {
+        guard let vote = continueVote, !vote.voted, let lobby, let epoch, !failed, !closing else { return }
+        if lobby.localPeerID == lobby.hostID {
+            castContinueVote(from: lobby.hostID, seat: vote.seatID)
+        } else {
+            try? send(.object(["type": .string("continue"), "epoch": .string(epoch.uuidString), "seat": .string(vote.seatID)]), to: lobby.hostID)
+            continueVote = vote.with(voted: true)
+        }
+    }
+
+    /// A guest left for good (Leave, or the table gave up on their connection). The host concedes their seat and tells
+    /// the others; a guest waits for the host's word.
+    private func playerLeft(_ peer: String) {
+        guard let lobby, peer != lobby.localPeerID, !gonePeers.contains(peer) else { return }
+        if lobby.localPeerID == lobby.hostID { retire(peer) } else { markGone(peer) }
+    }
+
+    /// Host only: concede the seat, tell everyone (the player too, should they come back), and play on.
+    private func retire(_ peer: String) {
+        guard let lobby, let epoch, lobby.localPeerID == lobby.hostID, peer != lobby.hostID, !gonePeers.contains(peer),
+              let seat = try? lobby.seatID(for: peer) else { return }
+        let left: MagicMobileOnDevice.JSONValue = .object(["type": .string("left"), "epoch": .string(epoch.uuidString), "seat": .string(seat)])
+        try? send(left, to: peer)
+        markGone(peer)
+        try? broadcast(left)
+        // A seat that leaves during the starting roll rolls where it sat.
+        if var progress = rollProgress, progress.nextSeatID == seat, let index = try? progress.advance(seatID: seat, automated: false) {
+            try? shareRollAdvance(index: index)
+            rollProgress = progress
+            updateRollStatus()
+        }
+        if let engine = hostEngine, let matchID = nativeMatchID {
+            Task { try? await engine.concede(matchID: matchID, seatID: seat) }
+        }
+        clockDirty = true
+        updateContinueVote(now: ProcessInfo.processInfo.systemUptime)
+    }
+
+    /// Forget a player who left: nothing waits for them, and the table says so once.
+    private func markGone(_ peer: String) {
+        guard let lobby, !gonePeers.contains(peer) else { return }
+        gonePeers.insert(peer)
+        suspendedPeers.remove(peer); relayAwayPeers.remove(peer); awaySince[peer] = nil; continueVoters[peer] = nil
+        let name = (try? lobby.seatID(for: peer)).flatMap { seatNames[$0] } ?? playerNames[peer] ?? String(localized: "A player")
+        tableNotice = TableLeaveRules.leftNotice(name)
+        if continueVote.map({ (try? lobby.seatID(for: peer)) == $0.seatID }) == true { continueVote = nil }
+        if endpoint != nil { updateSuspension() }
+    }
+
+    /// Host only: a vote from `peer` (the host itself included) to go on without the player in `seat`.
+    private func castContinueVote(from peer: String, seat: String) {
+        guard let lobby, lobby.localPeerID == lobby.hostID,
+              let away = lobby.peerIDs.first(where: { (try? lobby.seatID(for: $0)) == seat }), away != peer,
+              let voter = try? lobby.seatID(for: peer) else { return }
+        continueVoters[away, default: []].insert(voter)
+        updateContinueVote(now: ProcessInfo.processInfo.systemUptime)
+    }
+
+    /// Host only, every clock tick and on each vote: who is away long enough to vote on, the tally, and the outcome.
+    private func updateContinueVote(now: TimeInterval) {
+        guard let lobby, let epoch, lobby.localPeerID == lobby.hostID, endpoint != nil, !failed, !closing else { return }
+        let paused = suspendedPeers.union(relayAwayPeers).subtracting(gonePeers).subtracting([lobby.hostID])
+        for peer in paused where awaySince[peer] == nil { awaySince[peer] = now }
+        for peer in awaySince.keys where !paused.contains(peer) { awaySince[peer] = nil; continueVoters[peer] = nil }
+        let voters = lobby.peerIDs.filter { !gonePeers.contains($0) && !paused.contains($0) && !suspendedPeers.contains($0) }
+        let eligible = Set(voters.compactMap { try? lobby.seatID(for: $0) })
+        let candidate = paused.filter { now - (awaySince[$0] ?? now) >= TableLeaveRules.voteAfterSeconds }
+            .min { (awaySince[$0] ?? now, $0) < (awaySince[$1] ?? now, $1) }
+        var vote: TableContinueVote?
+        if let candidate, !eligible.isEmpty, let seat = try? lobby.seatID(for: candidate) {
+            let yes = (continueVoters[candidate] ?? []).intersection(eligible)
+            if TableLeaveRules.passes(yes: yes.count, eligible: eligible.count) {
+                retire(candidate)
+                return
+            }
+            vote = TableContinueVote(seatID: seat, name: seatNames[seat] ?? playerNames[candidate] ?? String(localized: "A player"),
+                                     voters: yes.sorted(), needed: eligible.count, voted: false)
+        }
+        let localSeat = try? lobby.seatID(for: lobby.hostID)
+        continueVote = vote.map { $0.with(voted: localSeat.map($0.voters.contains) ?? false) }
+        let packet = (vote ?? TableContinueVote.none).packet(epoch: epoch.uuidString)
+        let text = (try? packet.encoded()).flatMap { String(data: $0, encoding: .utf8) }
+        if text != lastVotePacket {
+            lastVotePacket = text
+            try? broadcast(packet)
+        }
     }
 
     /// A failed native destroy/close retains both the endpoint and engine for retry.
@@ -1485,6 +1609,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""; tableSeats = []
         remote = nil; tableLink = nil; router = nil; hostDispatcher = nil; transport = nil; lobby = nil; epoch = nil; submission = nil; requestedAISeats = []
         suspendedPeers.removeAll(); relayAwayPeers.removeAll(); peerPresenceSequences.removeAll(); presenceSequence = 0
+        gonePeers.removeAll(); awaySince.removeAll(); continueVoters.removeAll(); lastVotePacket = nil; continueVote = nil; tableNotice = nil
         tableCode = nil; seatsTaken = 0; seatsWanted = 0; waitingSeats = []; isRelayTable = false; isHostingRelay = false; identity = gameCenterIdentity
         suspensionRevision = 0
         matchmakerController?.dismiss(animated: true); matchmakerController = nil
@@ -1495,6 +1620,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
     private func fail(_ message: String) {
         guard !failed else { return }
         failed = true; isFailed = true; isConnected = false; status = message; seatNames = [:]; room = nil; waitingSeats = []
+        continueVote = nil
         rollTimer?.cancel(); rollTimer = nil
         stopClock()
         startingRoll = nil; rollProgress = nil; hasRolled = false; rollStatus = ""; tableSeats = []
@@ -1517,7 +1643,7 @@ final class OnDeviceMultiplayer: NSObject, ObservableObject, GKMatchmakerViewCon
 
     private func broadcast(_ value: MagicMobileOnDevice.JSONValue) throws {
         guard let lobby else { return }
-        for peer in lobby.peerIDs where peer != lobby.localPeerID { try send(value, to: peer) }
+        for peer in lobby.peerIDs where peer != lobby.localPeerID && !gonePeers.contains(peer) { try send(value, to: peer) }
     }
 
     private static func settingsRejection(epoch: String) -> MagicMobileOnDevice.JSONValue {
