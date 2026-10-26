@@ -302,9 +302,9 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 40 fits phones with on-screen Back, Home and Recents buttons (messages, profiles and the board
-                  all clear them), carries the card you start a drag on, says why a ranked win didn't count, and adds season
-                  badges and a glow on cards with an ability you can use. AI opponents match your rank, and your decks stay in
+                  Android build 41 takes ranked difficulty from the server (Gold and Platinum got harder), counts every ranked
+                  win, fits phones with on-screen Back, Home and Recents buttons, carries the card you start a drag on, and adds
+                  season badges and a glow on cards with an ability you can use. AI opponents match your rank, and your decks stay in
                   sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
