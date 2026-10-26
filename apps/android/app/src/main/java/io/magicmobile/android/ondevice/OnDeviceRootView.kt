@@ -318,6 +318,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     var quickBracket by AppPreferences.int("magicmobile.quick.opponentBracket", 0)
     var quickDeckID by AppPreferences.string("magicmobile.quick.opponentDeck", "")
     var quickSkill by AppPreferences.int("magicmobile.quick.aiSkill", 3)
+    /** Easy, Medium or Hard pick the AI's deck by Power and set its skill; "advanced" keeps the bracket, deck and skill controls. */
+    var quickLevel by AppPreferences.string("magicmobile.quick.level", "medium")
     var activeMatch by remember { mutableStateOf<ActiveMatch?>(null) }
     // Who goes first in this AI game: Ranked always rolls, other games follow the player's choice.
     fun startingPlayerMode(): String = activeMatch?.mode?.startingPlayerMode(aiStartingPlayerMode) ?: aiStartingPlayerMode
@@ -486,6 +488,11 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startQuickMatch() {
         val deck = selectedDeck ?: return
         val bracket = selectedDeckBracket ?: return
+        val level = setup.deckPower?.quickMatch?.get(quickLevel)
+        if (level != null) {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(level.power, null, deck.commanderName, record.file.recentAIDecks, aiPool,
+                setup.deckPower?.closest ?: 3)?.let { return startSolo(io.magicmobile.android.game.PlayMode.QUICK, deck, bracket, it, level.skill) }
+        }
         val opponentBracket = if (quickBracket == 0) minOf(4, bracket.level) else quickBracket
         val opponent = quickDeckID.takeIf { it.isNotEmpty() }?.let { id -> aiPool.firstOrNull { it.id == id } }
             // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
@@ -496,7 +503,12 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun startRankedAI(deck: Deck, bracket: io.magicmobile.android.game.CommanderBracket) {
         val position = record.file.rank.position
-        val opponent = io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
+        // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        val power = setup.deckPower
+        val opponent = power?.let {
+            io.magicmobile.android.game.AIDeckPool.pickByPower(io.magicmobile.android.game.AIDeckPool.rankedTarget(position.tier.ordinal, position.division, it.rankedTiers),
+                position.tier.maxDeckBracket, deck.commanderName, record.file.recentAIDecks, aiPool, it.closest)
+        } ?: io.magicmobile.android.game.AIDeckPool.pick(position.opponentBracket, deck.commanderName, record.file.recentAIDecks, aiPool,
             preconsOnly = position.tier.preconOpponentsOnly,
             onlyPrecons = if (position.tier.preconOpponentsOnly) io.magicmobile.android.game.AIDeckPool.gentlestPrecons else null) ?: return
         startSolo(io.magicmobile.android.game.PlayMode.RANKED, deck, bracket, opponent, position.tier.aiSkill)
@@ -1138,7 +1150,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         mode = io.magicmobile.android.game.ArenaPlayMode.of(playModeRaw), setMode = { playModeRaw = it.raw },
         tab = playTab, setTab = { playTabRaw = it.raw },
         quickBracket = quickBracket, setQuickBracket = { quickBracket = it }, quickDeckID = quickDeckID, setQuickDeckID = { quickDeckID = it },
-        quickSkill = quickSkill, setQuickSkill = { quickSkill = it }, startingPlayer = aiStartingPlayerMode, setStartingPlayer = { aiStartingPlayerMode = it },
+        quickSkill = quickSkill, setQuickSkill = { quickSkill = it }, quickLevel = quickLevel, setQuickLevel = { quickLevel = it }, startingPlayer = aiStartingPlayerMode, setStartingPlayer = { aiStartingPlayerMode = it },
         aiPool = aiPool, rank = record.file.rank, canSearchPeople = vm.account.rankedQueue != null,
         search = matchPhase.takeIf { it != io.magicmobile.android.game.RankedMatchmaker.Phase.Idle }
             ?: if (io.magicmobile.android.ranked.SocialFixtures.openScreen == "queue") io.magicmobile.android.game.RankedMatchmaker.Phase.Searching(fixtureLaunch) else null,

@@ -380,6 +380,9 @@
 .mbracketgem::before { content: ""; position: absolute; width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,.45); box-shadow: inset 0 0 0 .9px var(--hair); z-index: -1; }
 .mbracketgem { z-index: 0; }
 .mbracketgem.match { font-size: 9.5px; }
+/* Quick Match's Easy / Medium / Hard / Advanced: the same gem as a pill, wide enough for the word. */
+.mbracketgem.level { font-size: 11px; }
+.mbracketgem.level::before { width: calc(100% - 4px); border-radius: 18px; }
 .mbracketgem.on { color: #1c0f08; }
 .mbracketgem.on::before { background: linear-gradient(#ffe08f, #cc8f38); box-shadow: inset 0 0 0 1.4px #fff2c7, 0 0 5px rgba(250,214,133,.5); }
 .mopponent { position: relative; }

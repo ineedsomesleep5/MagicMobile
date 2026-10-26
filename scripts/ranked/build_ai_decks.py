@@ -27,6 +27,30 @@ COMMANDERS = [
      {2: "Dragon Hoard", 3: "Dragonstorm", 4: "Elder Dragons"}, "Five-color dragons"),
     ("wilhelt-the-rotcleaver", "Wilhelt, the Rotcleaver", "UB",
      {2: "Rotting Dead", 3: "Zombie Tide", 4: "Necropolis"}, "Dimir zombies"),
+    # Added 2026-10-24 to widen the Power range (docs/DECK_POWER.md): stronger decks for Diamond and Mythic,
+    # gentler ones for Bronze (plans the AI plays weakly with one opponent).
+    ("kaalia-of-the-vast", "Kaalia of the Vast", "RWB", {2: "Vast Court", 4: "Vast Host"}, "Mardu angels, demons and dragons"),
+    ("winota-joiner-of-forces", "Winota, Joiner of Forces", "RW", {4: "Joined Forces"}, "Boros humans"),
+    # The First Sliver (added 2026-10-24) was dropped 2026-10-25: the weakest deck at skill 3, without mistakes and at
+    # skill 5 (docs/cloud/reports/power-2.md).
+    ("miirym-sentinel-wyrm", "Miirym, Sentinel Wyrm", "GUR", {2: "Wyrm Nest", 4: "Wyrm Hoard"}, "Temur dragons"),
+    ("marisi-breaker-of-the-coil", "Marisi, Breaker of the Coil", "RGW", {1: "Coil Brawl", 2: "Coil Riot"}, "Naya goad"),
+    ("kynaios-and-tiro-of-meletis", "Kynaios and Tiro of Meletis", "RGWU", {1: "Island Feast"}, "Four-color group hug"),
+    ("tormod-the-desecrator", "Tormod, the Desecrator", "B", {2: "Desecrated Crypt"}, "Mono-black graveyard"),
+    # Added 2026-10-25 for about five decks per rank (docs/DECK_POWER.md).
+    ("tiamat", "Tiamat", "WUBRG", {2: "Chromatic Brood"}, "Five-color dragons"),
+    ("lathliss-dragon-queen", "Lathliss, Dragon Queen", "R", {2: "Queen's Clutch"}, "Mono-red dragons"),
+    ("old-gnawbone", "Old Gnawbone", "G", {2: "Gnawbone's Hoard"}, "Mono-green stompy"),
+    ("phelddagrif", "Phelddagrif", "GWU", {2: "Hippo Diplomacy"}, "Bant group hug"),
+    ("zedruu-the-greathearted", "Zedruu the Greathearted", "RWU", {2: "Generous Gifts"}, "Jeskai donate"),
+    ("karador-ghost-chieftain", "Karador, Ghost Chieftain", "WBG", {2: "Ghost Council"}, "Abzan graveyard"),
+    ("meren-of-clan-nel-toth", "Meren of Clan Nel Toth", "BG", {1: "Nel Toth Wake", 2: "Nel Toth Rites"}, "Golgari graveyard"),
+    # Added 2026-10-25 for Silver (Power 4-5): ground tribal decks with little evasion (docs/DECK_POWER.md).
+    ("kumena-tyrant-of-orazca", "Kumena, Tyrant of Orazca", "GU", {2: "Orazca Tide"}, "Simic merfolk"),
+    ("hakbal-of-the-surging-soul", "Hakbal of the Surging Soul", "GU", {2: "Surging Soul"}, "Simic merfolk explore"),
+    ("marrow-gnawer", "Marrow-Gnawer", "B", {2: "Rat Pack"}, "Mono-black rats"),
+    ("arahbo-roar-of-the-world", "Arahbo, Roar of the World", "GW", {2: "Pride of Arahbo"}, "Selesnya cats"),
+    ("syr-gwyn-hero-of-ashvale", "Syr Gwyn, Hero of Ashvale", "RWB", {2: "Ashvale Knights"}, "Mardu knights and equipment"),
 ]
 VARIANTS = {1: "exhibition", 2: "core", 3: "upgraded", 4: "optimized"}
 BASICS = {"W": "Plains", "U": "Island", "B": "Swamp", "R": "Mountain", "G": "Forest"}
@@ -78,10 +102,8 @@ class Rules:
         return out
 
 
-def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    offline = "--offline" in sys.argv
-    repo = Path(args[0]) if args else Path(__file__).resolve().parents[2]
+def build(repo: Path, commanders, offline: bool):
+    """The decks for these commanders, one per listed bracket (main writes them; deck_power.py rates candidates)."""
     cache = repo / "scripts/ranked/.edhrec-cache"; cache.mkdir(exist_ok=True)
     catalogue = json.loads((repo / "apps/ios/MagicMobile/Resources/ondevice-catalogue.json").read_text())
     meta = catalogue["cardMetadata"]; known = {c["name"] for c in catalogue["cards"]}
@@ -95,7 +117,7 @@ def main():
         return front if front in known else None
 
     decks = []
-    for slug, commander, colors, names, subtitle in COMMANDERS:
+    for slug, commander, colors, names, subtitle in commanders:
         identity = set(colors)
         assert canonical(commander) == commander, f"commander missing: {commander}"
         pages = {b: fetch(cache, slug, VARIANTS[b], offline) for b in names}
@@ -155,10 +177,20 @@ def main():
                           "colors": colors, "commander": commander, "bracket": bracket,
                           "computedBracket": computed, "entries": entries})
             print(f"{name:20} B{bracket} (computed {computed})  dropped {len(dropped)}: {', '.join(dropped[:6])}")
+    return decks, catalogue
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    offline = "--offline" in sys.argv
+    repo = Path(args[0]) if args else Path(__file__).resolve().parents[2]
+    decks, catalogue = build(repo, COMMANDERS, offline)
     out = {"schemaVersion": 1,
-           "source": "EDHREC average decks by bracket, fetched 2026-10-04, limited to this XMage catalogue",
+           "source": "EDHREC average decks by bracket, fetched 2026-10-04 (first six commanders), 2026-10-24 and 2026-10-25 (the rest), limited to this XMage catalogue",
            "catalogueHash": catalogue["catalogueHash"], "decks": decks}
     target = repo / "apps/ios/MagicMobile/Resources/ai-decks.json"
+    if target.exists() and "power" in (previous := json.loads(target.read_text())):
+        out["power"] = previous["power"]  # deck_power.py rate --write owns it
     target.write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n")
     print(f"wrote {target.relative_to(repo)}: {len(decks)} decks")
 

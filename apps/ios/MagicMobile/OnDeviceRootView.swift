@@ -103,6 +103,8 @@ struct OnDeviceRootView: View {
     @AppStorage("magicmobile.quick.opponentBracket") private var quickBracket = 0
     @AppStorage("magicmobile.quick.opponentDeck") private var quickDeckID = ""
     @AppStorage("magicmobile.quick.aiSkill") private var quickSkill = 3
+    /// Easy, Medium or Hard pick the AI's deck by Power and set its skill; "advanced" keeps the bracket, deck and skill controls.
+    @AppStorage("magicmobile.quick.level") private var quickLevel = "medium"
     /// The game being played from Quick Match or Ranked, for its result.
     @State private var activeMatch: ActiveMatch?
     /// How the last ranked result moved the ladder (the result screen's rank strip).
@@ -1461,7 +1463,7 @@ struct OnDeviceRootView: View {
             sections: deckBoxSections, selectedDeckID: $selectedDeckID, deckName: selectedDeck?.name, deckBracket: selectedDeckBracket,
             mode: Binding(get: { ArenaPlayMode(rawValue: playModeRaw) ?? .quick }, set: { playModeRaw = $0.rawValue }),
             tab: $playTab,
-            quickBracket: $quickBracket, quickDeckID: $quickDeckID, quickSkill: $quickSkill, startingPlayer: $aiStartingPlayerMode,
+            quickBracket: $quickBracket, quickDeckID: $quickDeckID, quickSkill: $quickSkill, quickLevel: $quickLevel, startingPlayer: $aiStartingPlayerMode,
             rank: profileRecord.rank, canSearchPeople: account.rankedQueue != nil,
             search: matchmaker.isSearching ? matchmaker.phase : fixtureSearch,
             waitingFor: challenges.isWaiting ? challengeTarget?.name : nil,
@@ -1513,6 +1515,11 @@ struct OnDeviceRootView: View {
 
     private func startQuickMatch() {
         guard let deck = selectedDeck, let bracket = selectedDeckBracket else { return }
+        if let level = AIDeckPool.power?.quickMatch[quickLevel],
+           let opponent = AIDeckPool.pick(targetPower: level.power, maxBracket: nil, avoidingCommander: deck.commander?.cardName,
+                                          recent: profileRecord.recentAIDecks) {
+            return startSolo(mode: .quick, deck: deck, deckBracket: bracket, opponent: opponent, skill: level.skill)
+        }
         let opponentBracket = quickBracket == 0 ? min(4, bracket.rawValue) : quickBracket
         let chosen = quickDeckID.isEmpty ? nil : AIDeckPool.deck(id: quickDeckID)
         // "Match my deck" at Core or below meets a precon: the Core AI decks are tuned tribal lists.
@@ -1543,7 +1550,12 @@ struct OnDeviceRootView: View {
 
     private func startRankedAI(deck: DeckList, bracket: CommanderBracket) {
         let position = profileRecord.rank.position
-        guard let opponent = AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
+        // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        let byPower = AIDeckPool.power.flatMap { power in
+            AIDeckPool.pick(targetPower: AIDeckPool.rankedTarget(tier: position.tier.rawValue, division: position.division, tiers: power.rankedTiers),
+                            maxBracket: position.tier.maxDeckBracket, avoidingCommander: deck.commander?.cardName, recent: profileRecord.recentAIDecks)
+        }
+        guard let opponent = byPower ?? AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
                                              recent: profileRecord.recentAIDecks,
                                              preconsOnly: position.tier.preconOpponentsOnly,
                                              onlyPrecons: position.tier.preconOpponentsOnly ? AIDeckPool.gentlestPrecons : nil) else { return }

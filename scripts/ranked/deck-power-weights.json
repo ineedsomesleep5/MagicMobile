@@ -1,0 +1,430 @@
+{
+ "schemaVersion": 1,
+ "about": "Deck Power (docs/DECK_POWER.md): each part scores 0-1 between its norms, the weighted mix maps to 1-10. scripts/ranked/deck_power.py reads this file; retune here, not in code.",
+ "weights": {
+  "speed": 0.02,
+  "mana": 0.34,
+  "interaction": 0.13,
+  "consistency": 0.03,
+  "threats": 0.17,
+  "synergy": 0.0,
+  "commander": 0.31,
+  "combos": 0.0,
+  "resilience": 0.0
+ },
+ "norms": {
+  "speed": {
+   "effectiveManaValue": [
+    4.6,
+    2.6
+   ],
+   "cheapPlays": [
+    10,
+    30
+   ],
+   "mix": [
+    0.7,
+    0.3
+   ]
+  },
+  "mana": {
+   "ramp": [
+    4,
+    24
+   ],
+   "cheapRampFactor": 2,
+   "creatureRampFactor": 0.5,
+   "idealLands": 37,
+   "landsPerRamp": 0.15,
+   "landSpread": 6,
+   "tappedShare": [
+    0,
+    0.35
+   ],
+   "mix": [
+    0.7,
+    0.15,
+    0.15
+   ]
+  },
+  "interaction": {
+   "count": [
+    4,
+    24
+   ],
+   "instantBonus": 0.5,
+   "wipeFactor": 0.5
+  },
+  "consistency": {
+   "draw": [
+    4,
+    18
+   ],
+   "tutors": [
+    0,
+    10
+   ],
+   "mix": [
+    0.35,
+    0.65
+   ]
+  },
+  "threats": {
+   "evasive": [
+    0,
+    25
+   ],
+   "big": [
+    0,
+    16
+   ],
+   "bigPower": 5,
+   "finishers": [
+    0,
+    6
+   ],
+   "creatures": [
+    15,
+    38
+   ],
+   "mix": [
+    0.4,
+    0.25,
+    0.1,
+    0.25
+   ]
+  },
+  "synergy": {
+   "themeShare": [
+    0.2,
+    0.75
+   ]
+  },
+  "combos": {
+   "points": [
+    0,
+    6
+   ],
+   "comboPoints": 2,
+   "gameChangersFull": 3,
+   "gameChangerBeyond": 0.5
+  },
+  "resilience": {
+   "protection": [
+    0,
+    8
+   ],
+   "recursion": [
+    0,
+    10
+   ],
+   "mix": [
+    1,
+    0
+   ]
+  },
+  "cheats": {
+   "bigManaValue": 5,
+   "keep": 4,
+   "saturation": 10,
+   "maxShare": 0.6,
+   "commanderCopies": 3,
+   "selfDiscount": 2
+  }
+ },
+ "commanders": {
+  "The Ur-Dragon": {
+   "strength": 0.9,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Edgar Markov": {
+   "strength": 0.85,
+   "theme": [
+    "Vampire"
+   ]
+  },
+  "Krenko, Mob Boss": {
+   "strength": 0.75,
+   "theme": [
+    "Goblin"
+   ]
+  },
+  "Gishath, Sun's Avatar": {
+   "strength": 0.7,
+   "theme": [
+    "Dinosaur"
+   ]
+  },
+  "Lathril, Blade of the Elves": {
+   "strength": 0.55,
+   "theme": [
+    "Elf"
+   ]
+  },
+  "Wilhelt, the Rotcleaver": {
+   "strength": 0.5,
+   "theme": [
+    "Zombie"
+   ]
+  },
+  "Atarka, World Render": {
+   "strength": 0.6,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Isperia, Supreme Judge": {
+   "strength": 0.45,
+   "theme": [
+    "Flying"
+   ]
+  },
+  "Emmara, Soul of the Accord": {
+   "strength": 0.4,
+   "theme": [
+    "token",
+    "populate"
+   ]
+  },
+  "Gisa and Geralf": {
+   "strength": 0.5,
+   "theme": [
+    "Zombie"
+   ]
+  },
+  "Kardur, Doomscourge": {
+   "strength": 0.3,
+   "theme": [
+    "goad",
+    "attacks? each combat"
+   ]
+  },
+  "Kaalia of the Vast": {
+   "strength": 0.85,
+   "theme": [
+    "Angel",
+    "Demon",
+    "Dragon"
+   ]
+  },
+  "Winota, Joiner of Forces": {
+   "strength": 0.9,
+   "theme": [
+    "Human"
+   ]
+  },
+  "The First Sliver": {
+   "strength": 0.85,
+   "theme": [
+    "Sliver"
+   ]
+  },
+  "Miirym, Sentinel Wyrm": {
+   "strength": 0.75,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Marisi, Breaker of the Coil": {
+   "strength": 0.35,
+   "theme": [
+    "goad"
+   ]
+  },
+  "Kynaios and Tiro of Meletis": {
+   "strength": 0.2,
+   "theme": [
+    "each player",
+    "each opponent"
+   ]
+  },
+  "Tormod, the Desecrator": {
+   "strength": 0.35,
+   "theme": [
+    "graveyard",
+    "Zombie"
+   ]
+  },
+  "Tiamat": {
+   "strength": 0.8,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Lathliss, Dragon Queen": {
+   "strength": 0.7,
+   "theme": [
+    "Dragon"
+   ]
+  },
+  "Old Gnawbone": {
+   "strength": 0.7,
+   "theme": [
+    "Treasure",
+    "power 5"
+   ]
+  },
+  "Phelddagrif": {
+   "strength": 0.2,
+   "theme": [
+    "Hippo",
+    "each opponent",
+    "target opponent"
+   ]
+  },
+  "Zedruu the Greathearted": {
+   "strength": 0.25,
+   "theme": [
+    "gain control",
+    "owner"
+   ]
+  },
+  "Karador, Ghost Chieftain": {
+   "strength": 0.5,
+   "theme": [
+    "graveyard"
+   ]
+  },
+  "Meren of Clan Nel Toth": {
+   "strength": 0.55,
+   "theme": [
+    "graveyard",
+    "dies"
+   ]
+  },
+  "Kumena, Tyrant of Orazca": {
+   "strength": 0.5,
+   "theme": [
+    "Merfolk"
+   ]
+  },
+  "Hakbal of the Surging Soul": {
+   "strength": 0.5,
+   "theme": [
+    "Merfolk",
+    "explore"
+   ]
+  },
+  "Marrow-Gnawer": {
+   "strength": 0.4,
+   "theme": [
+    "Rat"
+   ]
+  },
+  "Arahbo, Roar of the World": {
+   "strength": 0.5,
+   "theme": [
+    "Cat"
+   ]
+  },
+  "Syr Gwyn, Hero of Ashvale": {
+   "strength": 0.45,
+   "theme": [
+    "Knight",
+    "Equipment"
+   ]
+  }
+ },
+ "defaultCommander": {
+  "strength": 0.5
+ },
+ "penalties": {
+  "multiplayerCards": {
+   "perCard": 0.1,
+   "max": 0.6
+  }
+ },
+ "commanderNote": "Strengths are judgment: the first eleven were set with C3/C4's games in view; those added 2026-10-24 and 2026-10-25 are priors from community standing. Measured games outweigh them.",
+ "scale": {
+  "pointLogOdds": 0.27,
+  "referencePower": 6.0,
+  "referenceDecks": [
+   "first-flight",
+   "token-triumph",
+   "grave-danger"
+  ],
+  "formulaErrorLogOdds": 0.53,
+  "about": "Power = referencePower + strength above the reference decks, in pointLogOdds per point (57% against a deck one point lower). formulaErrorLogOdds is the formula's leave-one-out error over 33 decks (2026-10-25); a deck's games outweigh it after about 15-20 of them."
+ },
+ "ladder": {
+  "closest": 3,
+  "tiers": [
+   {
+    "name": "Bronze",
+    "power": [
+     3,
+     4
+    ],
+    "maxBracket": 2
+   },
+   {
+    "name": "Silver",
+    "power": [
+     4,
+     5
+    ],
+    "maxBracket": 2
+   },
+   {
+    "name": "Gold",
+    "power": [
+     5,
+     6
+    ],
+    "maxBracket": 3
+   },
+   {
+    "name": "Platinum",
+    "power": [
+     6,
+     7
+    ],
+    "maxBracket": 3
+   },
+   {
+    "name": "Diamond",
+    "power": [
+     7,
+     8
+    ],
+    "maxBracket": 4
+   },
+   {
+    "name": "Mythic",
+    "power": [
+     8,
+     9
+    ],
+    "maxBracket": 4
+   }
+  ],
+  "quickMatch": [
+   {
+    "name": "Easy",
+    "power": [
+     3,
+     4
+    ],
+    "skill": 2
+   },
+   {
+    "name": "Medium",
+    "power": [
+     5,
+     6
+    ],
+    "skill": 3
+   },
+   {
+    "name": "Hard",
+    "power": [
+     7,
+     8
+    ],
+    "skill": 5
+   }
+  ]
+ }
+}
