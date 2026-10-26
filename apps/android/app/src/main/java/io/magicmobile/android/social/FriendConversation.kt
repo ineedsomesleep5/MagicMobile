@@ -1,5 +1,7 @@
 package io.magicmobile.android.social
 
+import io.magicmobile.android.ui.safeDrawingPaddingEverywhere
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,18 +11,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -164,7 +162,7 @@ fun FriendConversationScreen(account: PlayerAccount, username: String, close: ()
 
     Box(Modifier.fillMaxSize()) {
         BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
+        Column(Modifier.fillMaxSize().safeDrawingPaddingEverywhere()) {
             Row(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { TavernScreenHeader(username, close, "Messages") }
                 TavernMenu(Modifier.testTag("conversation.more"), TavernMenuEdge.BELOW, contentDescription = "More about $username", label = {
@@ -253,6 +251,7 @@ fun FriendConversationScreen(account: PlayerAccount, username: String, close: ()
     }
     if (showProfile) androidx.compose.ui.window.Dialog({ showProfile = false },
         androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+        io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
         PublicProfileScreen(account, username) { showProfile = false }
     }
     if (confirmBlock) ArenaConfirmation("Block $username?", "They're removed from your friends and this conversation closes. You can unblock them in Friends later.",
@@ -342,7 +341,7 @@ fun FriendMessagesHub(account: PlayerAccount, initial: String? = null, done: () 
     }
     Box(Modifier.fillMaxSize()) {
         BrandBackdrop(Modifier.fillMaxSize(), cards = false)
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Column(Modifier.fillMaxSize().safeDrawingPaddingEverywhere()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp).tavernTitleBar(), verticalAlignment = Alignment.CenterVertically) {
                 TavernPanelTitle("Messages", Modifier.weight(1f).semantics { heading() })
                 TavernSealButton(done, Modifier.testTag("messages.done"), contentDescription = "Done")

@@ -1513,6 +1513,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 // A player opened from the table chat: their public profile covers the chat.
                 chatProfile?.let { name ->
                     androidx.compose.ui.window.Dialog({ chatProfile = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                        io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                         io.magicmobile.android.ranked.PublicProfileScreen(vm.account, name, null, null) { chatProfile = null }
                     }
                 }
@@ -1529,6 +1530,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             messagesHub?.let { initial ->
                 androidx.compose.ui.window.Dialog({ messagesHub = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
                     decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                    io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                     BackHandler { messagesHub = null }
                     io.magicmobile.android.social.FriendMessagesHub(vm.account, initial.ifEmpty { null }) { messagesHub = null }
                 }

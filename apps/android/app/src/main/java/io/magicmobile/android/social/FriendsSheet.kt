@@ -229,12 +229,14 @@ fun FriendsSheet(account: PlayerAccount, join: (String) -> Unit, myRankStep: Int
 
     conversationWith?.let { name ->
         Dialog({ conversationWith = null }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+            io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
             androidx.activity.compose.BackHandler { conversationWith = null }
             FriendConversationScreen(account, name) { conversationWith = null }
         }
     }
     profileFor?.let { name ->
         Dialog({ profileFor = null }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+            io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
             PublicProfileScreen(account, name, challenge?.let { handler -> { friendName, mode -> account.friends.firstOrNull { it.username == friendName }?.let { handler(it, mode) } } },
                 myRankStep) { profileFor = null }
         }

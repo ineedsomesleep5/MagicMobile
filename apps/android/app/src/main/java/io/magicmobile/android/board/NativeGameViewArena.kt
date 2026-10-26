@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -511,7 +513,12 @@ fun ArenaBoard(host: ArenaBoardHost) {
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { registry?.boardOrigin = it.positionInRoot() }) {
+    // The board fills the screen, as on iPhone, except where Android's 3-button navigation bar must stay tappable (an Android
+    // tester, 2026-10-26: Next and the life medallion sat under Back/Home/Recents). Gesture navigation has no tappable bar.
+    BoxWithConstraints(Modifier.fillMaxSize()
+        .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.tappableElement
+            .only(androidx.compose.foundation.layout.WindowInsetsSides.Bottom + androidx.compose.foundation.layout.WindowInsetsSides.Horizontal))
+        .onGloballyPositioned { registry?.boardOrigin = it.positionInRoot() }) {
         val screen = BoardSize(maxWidth.value, maxHeight.value)
         val canvas = remember(screen) { ArenaCanvas(screen) }
         val layout = canvas.layout

@@ -872,3 +872,10 @@ contradicting one.
 - A Vite config file outside `apps/web` can't resolve `vite/internal` (plugin-react imports it); start scratch pages from
   a script, or keep the config inside `apps/web`.
 - Compose: inside a `Canvas` block a composable's own `size: Dp` parameter hides the canvas `size`; use `this.size`.
+- Android 3-button navigation (2026-10-26, a tester's Samsung): a Compose `Dialog(decorFitsSystemWindows = false)` window was
+  fitted between the system bars, drawn one status bar low, ran off the bottom, and got no insets at all (keyboard included),
+  so the message box sat under Back/Home/Recents. `EdgeToEdgeDialogWindow()` (ui/SafeInsets.kt) spans the window and lets it
+  take insets; the Arena board keeps clear of `WindowInsets.tappableElement` only, so gesture-nav phones stay full-bleed.
+  Test it with `adb shell cmd overlay enable com.android.internal.systemui.navbar.threebutton` on the emulator.
+- Hand fan (iOS + Android): a slide that sets off upward carries the card it began on; only a sideways start scrubs. Climbing
+  through the fan on a thin card used to scrub onto a neighbour and carry that instead.

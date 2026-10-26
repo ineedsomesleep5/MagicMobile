@@ -111,6 +111,8 @@ fun ArenaHandFan(
     var spreadTouch by remember { mutableStateOf<Triple<BoardPoint, Float, Boolean>?>(null) }
     /** Where a hold began: pulled up off the hand, the held card is carried like a drag (ArenaHandFan.swift). */
     var holdStart by remember { mutableStateOf<BoardPoint?>(null) }
+    /** A slide over the resting or popped hand: where it began, and whether it turned out to be a sideways scrub. */
+    var restTouch by remember { mutableStateOf<Pair<BoardPoint, Boolean>?>(null) }
     var known by remember { mutableStateOf<Set<String>?>(null) }
     /** Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan. */
     val arrivals = remember { mutableStateMapOf<String, Int>() }
@@ -242,6 +244,17 @@ fun ArenaHandFan(
             startCarry(card, touch.first, BoardPoint(dx, dy), point)
             return
         }
+        // A slide that sets off upward carries the card it began on (an Android tester, 2026-10-26: on a thin card the climb
+        // through the fan scrubbed onto a neighbour, which was then carried instead); one that sets off sideways scrubs.
+        restTouch?.let { (start, scrubbing) ->
+            if (scrubbing) return@let
+            val dx = point.x - start.x; val dy = point.y - start.y
+            if (hypot(dx, dy) < canvas.length(6f)) return
+            if (dy < 0 && abs(dy) > abs(dx)) {
+                restTouch = null
+                card(start)?.let { startCarry(it, start, BoardPoint(dx, dy), point); return }
+            } else restTouch = start to true
+        }
         if (point.y >= band.minY - canvas.length(12f)) {
             val card = scrubCard(point) ?: return
             if (liftedCardID == card.id) return
@@ -254,11 +267,15 @@ fun ArenaHandFan(
         startCarry(card, point, BoardPoint(0f, 0f), point)
         setOverPlayerDropZone(false)
     }
-    fun panStarted(point: BoardPoint) { spreadTouch = if (posture == ArenaHandPosture.SPREAD) Triple(point, spreadScroll, false) else null }
+    fun panStarted(point: BoardPoint) {
+        spreadTouch = if (posture == ArenaHandPosture.SPREAD) Triple(point, spreadScroll, false) else null
+        restTouch = if (posture == ArenaHandPosture.SPREAD) null else point to false
+    }
     /** A slide that never left the hand leaves its card popped up; a carried card plays if it lands on the table. */
     fun panEnded(point: BoardPoint, cancelled: Boolean) {
         carrySurface = null
         spreadTouch = null
+        restTouch = null
         val current = dragging ?: return
         val card = all.firstOrNull { it.id == current.first } ?: return
         val dropped = !cancelled && canvas.drops(point, current.second)

@@ -257,6 +257,7 @@ private fun Actions(profile: PublicProfile, account: PlayerAccount, scope: kotli
     conversation?.let { name ->
         androidx.compose.ui.window.Dialog({ conversation = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+            io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
             androidx.activity.compose.BackHandler { conversation = null }
             io.magicmobile.android.social.FriendConversationScreen(account, name) { conversation = null }
         }

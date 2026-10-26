@@ -256,6 +256,7 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
         }
         if (previewAsOthers) account.username?.let { username ->
             androidx.compose.ui.window.Dialog({ previewAsOthers = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+                io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
                 PublicProfileScreen(account, username, null, null) { previewAsOthers = false }
             }
         }
