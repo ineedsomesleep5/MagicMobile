@@ -60,6 +60,15 @@ enum NativeDeckCanonicalNames {
         return found
     }
 
+    /// Whether `candidate` is the front of the two-part `name` (as written or in plain letters). A double-faced card's
+    /// front never stands in for a different back: its aliases name the real one ("Front // Wrong" stays unknown).
+    static func isFront(_ candidate: String, of name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let split = trimmed.range(of: " // ") else { return false }
+        let front = trimmed[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+        return candidate == front || candidate == plainLetters(front)
+    }
+
     /// Accents off, Æ as Ae, a curly apostrophe straight.
     static func plainLetters(_ name: String) -> String {
         let swapped = name.replacingOccurrences(of: "\u{2019}", with: "'").replacingOccurrences(of: "Æ", with: "Ae").replacingOccurrences(of: "æ", with: "ae")
@@ -253,12 +262,15 @@ struct NativeDeckMetadataCatalogue {
 
     func card(named name: String) -> Card? {
         for candidate in NativeDeckCanonicalNames.candidates(name) {
-            if let card = index[candidate] ?? aliases[candidate].flatMap({ index[$0] }) ?? reverseFaces[candidate].flatMap({ index[$0] }) {
-                return card
-            }
+            guard let card = index[candidate] ?? aliases[candidate].flatMap({ index[$0] }) ?? reverseFaces[candidate].flatMap({ index[$0] }) else { continue }
+            if NativeDeckCanonicalNames.isFront(candidate, of: name), aliasedFronts.contains(card.name) { continue }
+            return card
         }
         return nil
     }
+
+    /// Front faces with an attested back (double-faced cards).
+    private var aliasedFronts: Set<String> { Set(aliases.values) }
 
     /// The front face of a double-faced card, named by its reverse face; nil for any other name.
     func frontFace(ofReverse name: String) -> String? { reverseFaces[name] }

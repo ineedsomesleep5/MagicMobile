@@ -39,6 +39,18 @@ object NativeDeckCanonicalNames {
         return found.toList()
     }
 
+    /**
+     * Whether [candidate] is the front of the two-part [name] (as written or in plain letters). A double-faced card's front
+     * never stands in for a different back: its aliases name the real one ("Front // Wrong" stays unknown).
+     */
+    fun isFront(candidate: String, name: String): Boolean {
+        val trimmed = name.trim()
+        val split = trimmed.indexOf(" // ")
+        if (split <= 0) return false
+        val front = trimmed.substring(0, split).trim()
+        return candidate == front || candidate == plainLetters(front)
+    }
+
     /** Accents off, Æ as Ae, a curly apostrophe straight. */
     fun plainLetters(name: String): String =
         java.text.Normalizer.normalize(name.replace("\u2019", "'").replace("Æ", "Ae").replace("æ", "ae"), java.text.Normalizer.Form.NFKD)
@@ -106,8 +118,11 @@ class NativeDeckMetadataCatalogue(private val catalogue: Catalogue) {
     }
 
     fun card(name: String): CardInfo? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
-        catalogue.find(candidate) ?: aliases[candidate]?.let(catalogue::find) ?: reverseFaces[candidate]?.let(catalogue::find)
+        (catalogue.find(candidate) ?: aliases[candidate]?.let(catalogue::find) ?: reverseFaces[candidate]?.let(catalogue::find))
+            ?.takeUnless { NativeDeckCanonicalNames.isFront(candidate, name) && it.name in aliasedFronts }
     }
+    /** Front faces with an attested back (double-faced cards). */
+    private val aliasedFronts: Set<String> by lazy { aliases.values.toSet() }
 
     /** All names this installed engine catalogue supports, without the search limit. */
     val artworkCardNames: List<String> get() = catalogue.cards.map { it.name }
@@ -245,8 +260,11 @@ class OnDeviceDeckResolver(private val index: PrintingIndex) {
 
     /** The catalogue's name for a card, tried by [NativeDeckCanonicalNames.candidates] (exact, plain letters, front face). */
     fun canonicalCardName(name: String): String? = NativeDeckCanonicalNames.candidates(name).firstNotNullOfOrNull { candidate ->
-        if (candidate in index.names) candidate else nameAliases[candidate] ?: reverseFaces[candidate]
+        // A double-faced card's front never stands in for a different back (NativeDeckCanonicalNames.isFront).
+        (if (candidate in index.names) candidate else nameAliases[candidate] ?: reverseFaces[candidate])
+            ?.takeUnless { NativeDeckCanonicalNames.isFront(candidate, name) && it in aliasedFronts }
     }
+    private val aliasedFronts: Set<String> = nameAliases.values.toSet()
     fun containsCard(name: String): Boolean = canonicalCardName(name) != null
     /** Every reverse face and the front face it belongs to. */
     val reverseFaceFronts: Map<String, String> get() = reverseFaces

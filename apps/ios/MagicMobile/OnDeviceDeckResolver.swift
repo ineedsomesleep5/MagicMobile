@@ -32,12 +32,17 @@ struct OnDeviceDeckResolver {
     let sourceRegistrySHA256: String
     private let cards: [String: Printing]
     private let nameAliases: [String: String]
+    /// Front faces with an attested back (double-faced cards).
+    private let aliasedFronts: Set<String>
     private let reverseFaces: [String: String]
 
     /// The catalogue's name for a card, tried by NativeDeckCanonicalNames.candidates (exact, plain letters, front face).
     func canonicalCardName(_ name: String) -> String? {
         for candidate in NativeDeckCanonicalNames.candidates(name) {
-            if let found = cards[candidate] != nil ? candidate : nameAliases[candidate] ?? reverseFaces[candidate] { return found }
+            guard let found = cards[candidate] != nil ? candidate : nameAliases[candidate] ?? reverseFaces[candidate] else { continue }
+            // A double-faced card's front never stands in for a different back (NativeDeckCanonicalNames.isFront).
+            if NativeDeckCanonicalNames.isFront(candidate, of: name), aliasedFronts.contains(found) { continue }
+            return found
         }
         return nil
     }
@@ -117,6 +122,7 @@ struct OnDeviceDeckResolver {
         sourceRegistrySHA256 = catalogue.sourceRegistrySHA256
         cards = index
         nameAliases = aliases.filter { index[$0.key] == nil }
+        aliasedFronts = Set(nameAliases.values)
         reverseFaces = NativeDeckCanonicalNames.reverseFaces(nameAliases, exactNames: Set(index.keys))
     }
 

@@ -2,7 +2,7 @@
  * Deck Studio's card catalogue (NativeDeckMetadataCatalogue.swift): selected-printing metadata, not live Oracle updates,
  * Commander legality or mana production. scripts/prepare_data.py writes it as public/generated/catalogue.json.
  */
-import { cardNameCandidates } from "../deckResolver";
+import { cardNameCandidates, isFrontOf } from "../deckResolver";
 import { EngineDisplayText } from "../displayText";
 
 /** NativeDeckMetadataCatalogue.Card. A missing field means unavailable; an empty colour list is known colorless. */
@@ -57,6 +57,8 @@ export class Catalogue {
   private readonly index = new Map<string, CatalogueCard>();
   private readonly aliases = new Map<string, string>();
   private readonly reverse: Map<string, string>;
+  /** Front faces with an attested back (double-faced cards). */
+  private fronts?: Set<string>;
 
   constructor(cards: CatalogueCard[], aliases: Record<string, string>, catalogueHash = "") {
     this.all = [...cards].sort(byName);
@@ -71,7 +73,10 @@ export class Catalogue {
   card(name: string): CatalogueCard | undefined {
     for (const candidate of cardNameCandidates(name)) {
       const card = this.index.get(candidate) ?? this.lookup(this.aliases.get(candidate)) ?? this.lookup(this.reverse.get(candidate));
-      if (card) return card;
+      if (!card) continue;
+      // A double-faced card's front never stands in for a different back (isFrontOf).
+      if (isFrontOf(candidate, name) && (this.fronts ??= new Set(this.aliases.values())).has(card.name)) continue;
+      return card;
     }
     return undefined;
   }

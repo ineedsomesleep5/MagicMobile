@@ -831,8 +831,10 @@ fun ArenaStackTab(tucked: Boolean, count: Int, modifier: Modifier = Modifier, ac
     val shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp, topEnd = if (tucked) 4.dp else 0.dp, bottomEnd = if (tucked) 4.dp else 0.dp)
     Box(modifier.size(44.dp, if (tucked) 92.dp else 44.dp)
         .clickable(onClick = action)
-        .semantics { contentDescription = if (tucked) "Show the stack, $count on it" else "Tuck the stack away" }
-        .testTag(if (tucked) "arena.stack.show" else "arena.stack.tuck"), contentAlignment = Alignment.CenterEnd) {
+        .semantics {
+            contentDescription = if (tucked) "Show the stack, $count on it" else "Tuck the stack away"
+            testTag = if (tucked) "arena.stack.show" else "arena.stack.tuck"
+        }, contentAlignment = Alignment.CenterEnd) {
         Column(Modifier.size(if (tucked) 30.dp else 26.dp, if (tucked) 84.dp else 40.dp)
             .background(Brush.verticalGradient(listOf(io.magicmobile.android.menus.ArenaGlass.top.copy(alpha = 0.96f),
                 io.magicmobile.android.menus.ArenaGlass.bottom.copy(alpha = 0.96f))), shape)

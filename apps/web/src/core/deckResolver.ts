@@ -25,6 +25,18 @@ export function cardNameCandidates(raw: string): string[] {
   return found;
 }
 
+/**
+ * Whether `candidate` is the front of the two-part `name` (as written or in plain letters). A double-faced card's front
+ * never stands in for a different back: its aliases name the real one ("Front // Wrong" stays unknown).
+ */
+export function isFrontOf(candidate: string, name: string): boolean {
+  const trimmed = name.trim();
+  const split = trimmed.indexOf(" // ");
+  if (split <= 0) return false;
+  const front = trimmed.slice(0, split).trim();
+  return candidate === front || candidate === plainLetters(front);
+}
+
 /** Accents off, Æ as Ae, a curly apostrophe straight. */
 export const plainLetters = (name: string) =>
   name.replace(/\u2019/g, "'").replace(/Æ/g, "Ae").replace(/æ/g, "ae").normalize("NFKD").replace(/\p{Mn}+/gu, "");
@@ -38,6 +50,9 @@ export class DeckResolver {
   readonly upstreamCommit: string;
   private readonly cards = new Map<string, Printing>();
   private readonly aliases = new Map<string, string>();
+  /** Front faces with an attested back (double-faced cards). */
+  private fronts?: Set<string>;
+  private get aliasedFronts(): Set<string> { return (this.fronts ??= new Set(this.aliases.values())); }
 
   /** `printings.tsv` from scripts/prepare_data.py: a `#` header, printings, then `=` alias rows. */
   constructor(tsv: string) {
@@ -59,9 +74,11 @@ export class DeckResolver {
   /** The catalogue's name for a card, tried by cardNameCandidates (exact, plain letters, front face). */
   canonicalName(name: string): string | undefined {
     for (const candidate of cardNameCandidates(name)) {
-      if (this.cards.has(candidate)) return candidate;
-      const alias = this.aliases.get(candidate);
-      if (alias !== undefined) return alias;
+      const found = this.cards.has(candidate) ? candidate : this.aliases.get(candidate);
+      if (found === undefined) continue;
+      // A double-faced card's front never stands in for a different back (isFrontOf).
+      if (isFrontOf(candidate, name) && this.aliasedFronts.has(found)) continue;
+      return found;
     }
     return undefined;
   }
