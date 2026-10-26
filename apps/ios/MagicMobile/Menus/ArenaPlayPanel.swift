@@ -79,6 +79,8 @@ struct ArenaPlayPanelModel {
     var quickBracket: Binding<Int>
     var quickDeckID: Binding<String>
     var quickSkill: Binding<Int>
+    /// "easy", "medium" or "hard" (the AI's deck by Power, its skill set with it), or "advanced" (the controls below).
+    var quickLevel: Binding<String>
     var startingPlayer: Binding<String>
     // Ranked
     var rank: RankState
@@ -535,27 +537,68 @@ struct ArenaPlayBlade: View {
         }
     }
 
-    /// Quick Match's choices fit the blade without scrolling (the judge, 2026-10-22): the opponent's bracket as five gems
-    /// with the chosen one named in the heading, the opponent's deck on one line, then skill and who goes first.
+    private static let quickLevels: [(value: String, name: String)] = [
+        ("easy", String(localized: "Easy")), ("medium", String(localized: "Medium")), ("hard", String(localized: "Hard")),
+        ("advanced", String(localized: "Advanced")),
+    ]
+
+    /// Quick Match (docs/DECK_POWER.md): Easy, Medium or Hard, then who goes first. Advanced adds the opponent's bracket
+    /// as five gems, the opponent's deck on one line and the AI's skill.
     @ViewBuilder private var quickOptions: some View {
-        let brackets = CommanderBracket.allCases.filter { $0 != .cedh }
-        let chosen = brackets.first { $0.rawValue == model.quickBracket.wrappedValue }
-        let matched = model.deckBracket.map { String(localized: "Match my deck · B\(min(4, $0.rawValue))") } ?? String(localized: "Match my deck")
-        // The opponent's bracket, named plainly: the chosen gem's bracket, or "Match my deck" (the judge, 2026-10-22).
-        ArenaCaps(text: chosen.map { String(localized: "Opponent · \($0.name)") } ?? String(localized: "Opponent · Match my deck"), size: 9.5)
-            .padding(.top, 6)
+        let advanced = model.quickLevel.wrappedValue == "advanced"
+        let level = Self.quickLevels.first { $0.value == model.quickLevel.wrappedValue }?.name ?? String(localized: "Medium")
+        ArenaCaps(text: String(localized: "Opponent · \(level)"), size: 9.5).padding(.top, 6)
         HStack(spacing: 4) {
-            bracketGem(String(localized: "Match"), value: 0, label: matched)
-            ForEach(brackets, id: \.rawValue) { bracket in
-                bracketGem("\(bracket.rawValue)", value: bracket.rawValue, label: bracket.name)
-            }
+            ForEach(Self.quickLevels, id: \.value) { item in levelGem(item.name, value: item.value) }
         }
-        opponentDeckRow
+        if advanced {
+            let brackets = CommanderBracket.allCases.filter { $0 != .cedh }
+            let chosen = brackets.first { $0.rawValue == model.quickBracket.wrappedValue }
+            let matched = model.deckBracket.map { String(localized: "Match my deck · B\(min(4, $0.rawValue))") } ?? String(localized: "Match my deck")
+            ArenaCaps(text: chosen.map { String(localized: "Bracket · \($0.name)") } ?? String(localized: "Bracket · Match my deck"), size: 9.5)
+                .padding(.top, 6)
+            HStack(spacing: 4) {
+                bracketGem(String(localized: "Match"), value: 0, label: matched)
+                ForEach(brackets, id: \.rawValue) { bracket in
+                    bracketGem("\(bracket.rawValue)", value: bracket.rawValue, label: bracket.name)
+                }
+            }
+            opponentDeckRow
+        }
         HStack(spacing: 8) {
-            ArenaStepper(title: String(localized: "AI skill"), value: model.quickSkill, range: 1...10, identifier: "quick.skill", compact: true)
-                .accessibilityHint(String(localized: "3 is a fair fight. Higher skill thinks longer."))
+            if advanced {
+                ArenaStepper(title: String(localized: "AI skill"), value: model.quickSkill, range: 1...10, identifier: "quick.skill", compact: true)
+                    .accessibilityHint(String(localized: "3 is a fair fight. Higher skill thinks longer."))
+            } else {
+                Spacer(minLength: 0)
+            }
             rollToggle
         }
+    }
+
+    /// Easy, Medium, Hard or Advanced as a pill gem, gold when chosen (the bracket gems' look, wide enough for the word).
+    private func levelGem(_ name: String, value: String) -> some View {
+        let on = model.quickLevel.wrappedValue == value
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        return Button {
+            GameAudio.shared.play(.uiTap)
+            model.quickLevel.wrappedValue = value
+        } label: {
+            Text(name)
+                .font(ArenaMenuStyle.font(11, .bold))
+                .foregroundStyle(on ? Color(red: 0.11, green: 0.06, blue: 0.03) : ArenaMenuStyle.text)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .background(shape.fill(on ? AnyShapeStyle(ArenaMenuStyle.goldFill) : AnyShapeStyle(Color.black.opacity(0.45))))
+                .overlay(shape.strokeBorder(on ? AnyShapeStyle(ArenaMenuStyle.metal) : AnyShapeStyle(ArenaGlass.hairline), lineWidth: on ? 1.4 : 0.9))
+                .shadow(color: on ? ArenaMenuStyle.gold.opacity(0.5) : .clear, radius: 5)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(BrandPressStyle())
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .accessibilityIdentifier("quick.level.\(value)")
     }
 
     /// The opponent's deck as one of the blade's rows (the judge, 2026-10-22: no form dropdown): a tap lists the

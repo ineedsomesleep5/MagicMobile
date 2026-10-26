@@ -30,7 +30,7 @@ describe("AI deck pool", () => {
     const resolver = new DeckResolver(readFileSync(join(generated, "printings.tsv"), "utf8"));
     const rules = new BracketRules(json(join(root, "apps/ios/MagicMobile/Resources/commander-brackets.json")));
     const basics = new Set(["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]);
-    expect(pool.bracketDecks.length).toBe(21);
+    expect(pool.bracketDecks.length).toBe(43);
     expect(pool.all.filter(isPrecon).length).toBe(5);
     const unresolved: string[] = [];
     for (const deck of pool.all) {
@@ -108,5 +108,37 @@ describe("AI deck pool", () => {
     expect(decks[0].deckList.entries).toEqual([{ name: "C", quantity: 1, section: "commanders" }, { name: "A", quantity: 2, section: "deck" }]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(() => AIDeckPool.decode({ schemaVersion: 1 } as any)).toThrow();
+  });
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const powerCases: any = json(join(root, "apps/android/core/src/test/resources/parity/power-cases.json"));
+
+describe("Deck Power picking (parity/power-cases.json)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const decks: AIDeck[] = powerCases.decks.map((d: any) => ({
+    id: d.id, name: d.id, subtitle: "", colors: "", commander: d.commander, bracket: d.bracket, power: d.power ?? undefined,
+    deckList: { id: d.id, name: d.id, entries: [] },
+  }));
+
+  it("picks as the cases say", () => {
+    for (const item of powerCases.picks) {
+      const pick = pool.pickByPower({ target: item.target, maxBracket: item.maxBracket ?? undefined, avoidingCommander: item.avoid,
+        recent: item.recent ?? [], decks, closest: powerCases.closest, roll: () => item.roll });
+      expect(pick?.id, item.name).toBe(item.expect);
+    }
+  });
+
+  it("aims each division as the cases say", () => {
+    for (const item of powerCases.targets) {
+      expect(AIDeckPool.rankedTarget(item.tier, item.division, powerCases.rankedTiers), JSON.stringify(item)).toBeCloseTo(item.expect, 9);
+    }
+  });
+
+  it("ships a Power for every AI deck and precon", () => {
+    expect(pool.power, "ai-decks.json power block").toBeDefined();
+    for (const deck of pool.all) expect(deck.power, deck.id).toBeGreaterThanOrEqual(1);
+    expect(pool.power!.rankedTiers.length).toBe(6);
+    expect(Object.keys(pool.power!.quickMatch).sort()).toEqual(["easy", "hard", "medium"]);
   });
 });

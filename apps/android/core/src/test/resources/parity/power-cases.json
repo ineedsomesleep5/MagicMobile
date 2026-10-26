@@ -1,0 +1,36 @@
+{
+ "comment": "Deck Power picking (docs/DECK_POWER.md). AIDeckPool.pick(targetPower:) on iOS, Android and web: decks with a Power and a bracket at most maxBracket (none: any), never your commander while others remain, not a recent deck while others remain, then the `closest` decks nearest the target (ties by id), and `roll` picks among them (clamped). Ranked targets: a tier's band split in four divisions (IV low, I high); Mythic aims at the middle of its band. RankedParityTests.swift, RankedParityTest.kt and aiDeckPool.test.ts check this file.",
+ "closest": 3,
+ "rankedTiers": [[3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9]],
+ "decks": [
+  {"id": "a1", "commander": "A", "bracket": 2, "power": 3.2},
+  {"id": "a2", "commander": "B", "bracket": 2, "power": 3.8},
+  {"id": "a3", "commander": "C", "bracket": 2, "power": 4.4},
+  {"id": "a4", "commander": "D", "bracket": 3, "power": 5.5},
+  {"id": "a5", "commander": "E", "bracket": 4, "power": 7.9},
+  {"id": "a6", "commander": "F", "bracket": 4, "power": 8.4},
+  {"id": "a7", "commander": "A", "bracket": 2, "power": 8.3},
+  {"id": "a8", "commander": "G", "bracket": 4, "power": 2.2},
+  {"id": "p1", "commander": "H", "bracket": 2, "power": null}
+ ],
+ "picks": [
+  {"name": "nearest, tie by id", "target": 3.5, "maxBracket": 2, "roll": 0, "expect": "a1"},
+  {"name": "third nearest", "target": 3.5, "maxBracket": 2, "roll": 2, "expect": "a3"},
+  {"name": "roll past the closest clamps", "target": 3.5, "maxBracket": 2, "roll": 9, "expect": "a3"},
+  {"name": "never your commander", "target": 3.5, "maxBracket": 2, "avoid": "A", "roll": 0, "expect": "a2"},
+  {"name": "your commander leaves two decks", "target": 3.5, "maxBracket": 2, "avoid": "A", "roll": 2, "expect": "a3"},
+  {"name": "skip recent decks", "target": 3.5, "maxBracket": 2, "recent": ["a1", "a2"], "roll": 0, "expect": "a3"},
+  {"name": "all recent: keep them", "target": 3.5, "maxBracket": 2, "recent": ["a1", "a2", "a3", "a7"], "roll": 0, "expect": "a1"},
+  {"name": "bracket 4 allowed", "target": 8.875, "maxBracket": 4, "roll": 2, "expect": "a5"},
+  {"name": "lower brackets only: the strongest allowed", "target": 8.875, "maxBracket": 3, "roll": 0, "expect": "a7"},
+  {"name": "no bracket limit (Quick Match)", "target": 2.0, "roll": 0, "expect": "a8"},
+  {"name": "decks without a Power are never picked", "target": 3.5, "maxBracket": 2, "roll": 1, "expect": "a2"}
+ ],
+ "targets": [
+  {"tier": 0, "division": 4, "expect": 3.125},
+  {"tier": 0, "division": 1, "expect": 3.875},
+  {"tier": 2, "division": 2, "expect": 5.625},
+  {"tier": 4, "division": 1, "expect": 7.875},
+  {"tier": 5, "division": 0, "expect": 8.5}
+ ]
+}

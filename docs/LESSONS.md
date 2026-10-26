@@ -119,6 +119,14 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
+  in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
+  skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against
+  precons but 45% overall (15% against The Ur-Dragon). The iOS catalogue has no power/toughness; creature stats come
+  from pinned XMage's `Utils/mtg-cards-data.txt`. And a weight fit on eleven decks overfits: leave-one-out error was
+  0.28 log-odds against 0.37 for "every deck is average". **Rule:** judge a deck rating with `deck_power.py check` (all
+  CSVs, Bradley-Terry with going-first and per-file seat terms) and leave-one-out, not one run's order; rate decks by
+  their own games where they have them. Where: `scripts/ranked/deck_power.py`, docs/DECK_POWER.md.
 - 2026-10-19 (Claude, audio): AVAudioPlayer takes up to ~50 ms to start the first time, and making a player per
   play cost ~40 ms, so a card slam and its colour layer (since retired) started as a smeared flam. **Rule:** sounds meant to land
   together go through `GameAudio.playTogether` (one `play(atTime:)` on the device clock, set `lead` ahead), players are

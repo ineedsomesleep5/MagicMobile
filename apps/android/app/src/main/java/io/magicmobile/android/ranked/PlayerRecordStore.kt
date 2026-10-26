@@ -150,6 +150,8 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     }
 }
 
-/** The AI deck pool on this phone: the precons (Core) plus ai-decks.json. */
-fun aiPool(precons: List<io.magicmobile.android.ondevice.PreconDeck>, bracketDecks: List<AIDeck>): List<AIDeck> =
-    precons.map { AIDeck(it.id, it.name, "", "", it.commander ?: "", io.magicmobile.android.game.CommanderBracket.CORE, it.deck) } + bracketDecks
+/** The AI deck pool on this phone: the precons (Core) plus ai-decks.json, each with its Power when rated. */
+fun aiPool(precons: List<io.magicmobile.android.ondevice.PreconDeck>, bracketDecks: List<AIDeck>,
+           power: io.magicmobile.android.game.DeckPowerData? = null): List<AIDeck> =
+    precons.map { AIDeck(it.id, it.name, "", "", it.commander ?: "", io.magicmobile.android.game.CommanderBracket.CORE, it.deck, power?.decks?.get(it.id)) } +
+        bracketDecks
