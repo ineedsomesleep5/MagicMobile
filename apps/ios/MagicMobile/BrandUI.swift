@@ -657,11 +657,6 @@ struct VersusIntroOverlay: View {
                         arch.strokeBorder(ArenaMenuStyle.metal, lineWidth: 2.5)
                     }
                 }
-                .overlay(alignment: .top) {
-                    if let tier = seat.tier {
-                        RankEmblem(tier: tier, size: width * 0.3).offset(y: -width * 0.13)
-                    }
-                }
                 .shadow(color: (seat.tier.map { $0 == .mythic ? $0.tint : $0.tint.opacity(0.55) } ?? ArenaMenuStyle.ember.opacity(0.4)),
                         radius: seat.tier == .mythic ? 26 : 18)
             ArenaNamePlate(title: seat.name, selected: true, width: width * 0.9)

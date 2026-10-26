@@ -70,7 +70,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.CardArtwork
 import io.magicmobile.android.game.RankTier
-import io.magicmobile.android.ranked.RankEmblem
 import io.magicmobile.android.ranked.shade
 import io.magicmobile.android.ranked.tint
 import kotlin.math.PI
@@ -445,7 +444,6 @@ fun VersusIntroOverlay(you: VersusSeat, opponents: List<VersusSeat>, finished: (
                     CommanderDeckPortrait(seat.commander, Modifier.requiredSize(w, w / 0.716f).glow(glow, if (tier == RankTier.MYTHIC) 26.dp else 18.dp, 12.dp)
                         .then(if (tier == null) Modifier else Modifier.border((3f + tier.ordinal * 0.6f).dp,
                             Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.9f), tier.tint, tier.shade, tier.tint)), RoundedCornerShape(12.dp))))
-                    if (tier != null) RankEmblem(tier, w * 0.3f, Modifier.offset(y = -w * 0.13f))
                 }
                 FitText(seat.name, sf(max(12f, w.value * 0.11f), SfWeight.heavy), Modifier.widthIn(max = w + 20.dp), color = BrandTheme.ink, minimumScale = 0.6f)
             }

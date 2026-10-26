@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { RankTier } from "../../core/rankLadder";
 import { TIER_SHADE, TIER_TINT } from "../../core/socialText";
 import { DeckArt } from "../menus/DeckBox";
-import { RankEmblem } from "../menus/TopBar";
 
 /** `tier`: the player's ranked tier; their commander's arch is framed in its metal (Caleb, 2026-10-26). None for the AI. */
 export interface VersusSeat { id: string; name: string; commander?: string; tier?: RankTier }
@@ -36,8 +35,8 @@ export function VersusIntro({ you, opponents, finished }: { you: VersusSeat; opp
 
 /**
  * A player as Arena shows them before a match: their commander in a tall gold arch, their name on a black plate. A
- * ranked tier frames the arch in its metal instead (a bright edge over its dark, thicker the higher the tier), sets its
- * emblem over the arch's crown and glows in its tint.
+ * ranked tier frames the arch in its metal instead (a bright edge over its dark, thicker the higher the tier) and glows in
+ * its tint. No emblem on the arch (Caleb, 2026-10-26: badges belong on the profile).
  */
 function Seat({ seat, tilt }: { seat: VersusSeat; tilt: number }) {
   const tier = seat.tier;
@@ -48,7 +47,6 @@ function Seat({ seat, tilt }: { seat: VersusSeat; tilt: number }) {
     <div className="vseat" style={{ transform: `rotate(${tilt}deg)` }}>
       <div className={`arch ${tier ? `tiered ${tier}` : ""}`} style={style}>
         <div className="archart"><DeckArt name={seat.commander} colors={[]} focus={0.3} /></div>
-        {tier && <span className="archemblem"><RankEmblem tier={tier} size={66} /></span>}
       </div>
       <span className="plate">{seat.name}</span>
     </div>
