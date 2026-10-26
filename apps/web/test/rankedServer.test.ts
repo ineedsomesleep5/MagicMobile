@@ -95,4 +95,11 @@ describe("ranked results for the server", () => {
     expect(soloConfiguration(setup, false)).not.toHaveProperty("seed");
     expect(EngineJson.encode({ a: EngineJson.integer(18446744073709551615n) })).toBe('{"a":18446744073709551615}');
   });
+
+  it("gives the AI seat the ticket's mistake chance, and none without one", () => {
+    const setup = { name: "Caleb", deck: {}, aiDecks: [{}], aiSkill: 3, startingPlayerMode: "roll" as const };
+    const ai = (config: ReturnType<typeof soloConfiguration>) => (config.seats as Record<string, unknown>[])[1];
+    expect(ai(soloConfiguration({ ...setup, aiMistakePercent: 8 }))).toMatchObject({ aiSkill: 3, aiMistakePercent: 8 });
+    expect(ai(soloConfiguration(setup))).not.toHaveProperty("aiMistakePercent");
+  });
 });

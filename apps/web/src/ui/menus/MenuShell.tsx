@@ -15,7 +15,7 @@ import type { DeckList, DeckResolver } from "../../core/deckResolver";
 import { type MatchRecord, type PlayMode, PlayerRecordStore, rankNote, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
-import type { FriendChallenge } from "../../core/account";
+import type { FriendChallenge, RankedAITicket } from "../../core/account";
 import { FriendChallengeRules } from "../../core/matchmaking";
 import { SupabaseLite } from "../../core/supabaseLite";
 import { GuestTable } from "../../table/guestTable";
@@ -267,7 +267,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
 
   // MARK: Starting and recording games
 
-  const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number, ticket?: { id: string; seed: bigint }) => {
+  const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number, ticket?: RankedAITicket) => {
     if (!deck || deckBracket === undefined) return;
     setError(undefined);
     try {
@@ -276,6 +276,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         aiDecks: opponents.map((o) => data.resolver.resolve(o.deckList)), aiSkill: skill,
         startingPlayerMode: startingPlayerMode(gameMode, starting) as "roll" | "choose",
         ...(ticket ? { seed: ticket.seed } : {}),
+        ...(ticket?.ai ? { aiMistakePercent: ticket.ai.mistakePercent } : {}),
       };
       // A rematch is a new game. A ranked one is the next match: a new ticket and seed from the server (startRankedAI), or
       // its result never reaches the ladder (Caleb, 2026-10-26: wins after New Game didn't move his rank).
@@ -328,16 +329,24 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const startRankedAI = () => {
     if (!deck || deckBracket === undefined) return;
     const tier = rank.position.tier;
-    // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
-    const target = pool.power && AIDeckPool.rankedTarget(RankTier.index(tier), rank.position.division, pool.power.rankedTiers);
-    const opponent = (target !== undefined
-      ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks] })
-      : undefined) ?? pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
-        preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
+    // The deck nearest the Power target from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated. The
+    // server's ticket sets the target, skill and mistakes (ranked_ai_tuning: tuned without a build); else the bundled bands.
+    const pickOpponent = (power?: number) => {
+      const target = power ?? (pool.power && AIDeckPool.rankedTarget(RankTier.index(tier), rank.position.division, pool.power.rankedTiers));
+      return (target !== undefined && pool.power
+        ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks] })
+        : undefined) ?? pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
+          preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
+    };
+    // Picked first, so no ticket is opened (and later abandoned as a loss) when there is no opponent to play.
+    const opponent = pickOpponent();
     if (!opponent) return;
     // Signed in, the server issues the game's ticket and seed so the result counts there too (startRankedAIGame).
     if (player.state.phase === "ready" && player.state.username) {
-      void account.startRankedAIGame(deckBracket).then((ticket) => begin("ranked", [opponent], RankTier.aiSkill(tier), ticket ?? undefined));
+      void account.startRankedAIGame(deckBracket).then((ticket) => {
+        const tuned = ticket?.ai ? pickOpponent(ticket.ai.power) ?? opponent : opponent;
+        begin("ranked", [tuned], ticket?.ai?.skill ?? RankTier.aiSkill(tier), ticket ?? undefined);
+      });
     } else begin("ranked", [opponent], RankTier.aiSkill(tier));
   };
 

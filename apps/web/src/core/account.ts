@@ -572,15 +572,27 @@ export const RankedLeaderboard = {
     board.me && !board.entries.some((e) => e.username === board.me!.username) ? board.me : undefined,
 } as const;
 
-/** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
-export interface RankedAITicket { id: string; seed: bigint }
+/**
+ * The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). `ai` is the AI the
+ * server tuned for this game (ranked_ai_tuning): its skill, deliberate-mistake chance and the AI deck's Power target.
+ * Absent from servers before that tuning, when the tier's bundled values apply.
+ */
+export interface RankedAITicket { id: string; seed: bigint; ai?: { skill: number; mistakePercent: number; power: number } }
 
-/** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+/**
+ * `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is text:
+ * JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
+ */
 export function rankedAITicket(json: J): RankedAITicket | undefined {
   const id = get(json, "id"), seed = get(json, "seed");
   if (!isUuid(id) || typeof seed !== "string" || !/^[+-]?\d+$/.test(seed)) return undefined;
   const value = BigInt(seed);
-  return value < -(2n ** 63n) || value >= 2n ** 63n ? undefined : { id, seed: value };
+  if (value < -(2n ** 63n) || value >= 2n ** 63n) return undefined;
+  const skill = get(json, "aiSkill"), mistakePercent = get(json, "aiMistakePercent"), power = get(json, "aiPower");
+  const tuned = Number.isInteger(skill) && (skill as number) >= 1 && (skill as number) <= 10
+    && Number.isInteger(mistakePercent) && (mistakePercent as number) >= 0 && (mistakePercent as number) <= 100
+    && typeof power === "number" && Number.isFinite(power);
+  return { id, seed: value, ...(tuned ? { ai: { skill: skill as number, mistakePercent: mistakePercent as number, power: power as number } } : {}) };
 }
 
 // MARK: Ranked queue and friend challenges (types only: the services are ported with their screens)

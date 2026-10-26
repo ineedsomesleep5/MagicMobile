@@ -50,6 +50,10 @@ try {
   await db.exec(await readFile(new URL('./ranked_leaderboard.sql', import.meta.url), 'utf8'));
   await db.exec(await migration('20261017180000_friend_messages.sql'));
   await db.exec(await readFile(new URL('./friend_messages.sql', import.meta.url), 'utf8'));
+  for (const name of ['20261026120000_ranked_ai_turns.sql', '20261026130000_ranked_ai_check.sql', '20261026200000_ranked_ai_tuning.sql']) {
+    await db.exec(await migration(name));
+  }
+  await db.exec(await readFile(new URL('./ranked_ai_tuning.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
@@ -60,6 +64,7 @@ try {
   console.log('PASS PGlite: ranked AI records (seeded tickets with the tier skill, a valid record counts, tampered/reseeded/unknown-build/easier-AI/wrong-winner/conceded/short/too-fast/missing records settle unverified, losses need none, older tickets unchanged, records kept, no direct access, anon refused)');
   console.log('PASS PGlite: ranked leaderboard (server standings order, current season with games only, public/friends-only/private and blocks respected both ways, friends scope, online flags, own row kept past the limit, limit cap, bad scope, anon refused)');
   console.log('PASS PGlite: friend messages (friends only, trimmed 1-500 chars, unread and read state, conversations newest first, pages, 20/minute limit, message reports, blocks hide both ways, no direct access, helpers internal, anon refused, account deletion)');
+  console.log('PASS PGlite: ranked AI tuning (server table per tier, Power rising through the divisions, mistakes from division IV to I, tickets carry and store them, records match the ticket or the skill standard, table internal)');
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
@@ -108,5 +113,6 @@ function gameRecords() {
     long: record({ turn: 60 }),
     broken: { ...valid, broken: 'unsupported value' },
     skill_two: record({ ai: { aiSkill: 2, aiSearchDepth: 3, aiMistakePercent: 15 } }),
+    tuned: record({ ai: { aiSkill: 1, aiSearchDepth: 2, aiMistakePercent: 12 } }),
   };
 }

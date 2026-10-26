@@ -244,6 +244,9 @@ describe("wire parsing", () => {
   it("parses the seeded ranked AI ticket", () => {
     const id = "0B105EE9-8D80-4E09-B177-6D85B6782C65";
     expect(rankedAITicket({ id, seed: "-4123456789012345678", aiSkill: 1 })).toEqual({ id, seed: -4123456789012345678n });
+    expect(rankedAITicket({ id, seed: "7", aiSkill: 3, aiMistakePercent: 8, aiPower: 5.63 }))
+      .toEqual({ id, seed: 7n, ai: { skill: 3, mistakePercent: 8, power: 5.63 } });
+    expect(rankedAITicket({ id, seed: "7", aiSkill: 3, aiMistakePercent: 101, aiPower: 5.63 })).toEqual({ id, seed: 7n });
     expect(rankedAITicket({ id, seed: 4.5 })).toBeUndefined();
     expect(rankedAITicket(id)).toBeUndefined();
     expect(rankedAITicket({ id, seed: "9223372036854775808" })).toBeUndefined();
