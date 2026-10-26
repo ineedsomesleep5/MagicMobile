@@ -870,6 +870,9 @@ contradicting one.
   ticket's value. The record check must accept both the ticket's chance and the skill's standard one, or wins from
   apps released before the table settle `ai_settings`. Pick the opponent before opening a ticket: an unplayed ticket is
   abandoned as a loss after 12 hours.
+- The daily cap of 12 ranked AI wins is gone (Caleb, 2026-10-26, after 254DADDY's 13th and 14th wins settled
+  `capped`); the record check carries the weight now. Still in place: 10 AI tickets an hour (spam) and three counted
+  human matches a day between the same pair (collusion).
 - Seasons are quarterly from November 2026 (`mm_season_for`, applied live). Apps that still count months disagree from
   December 1, 2026 (they keep their own standing, as `adopting` refuses an older server season), so the iOS and
   Android releases with `RankLadder.season`'s quarterly rule must go out before then.
