@@ -302,8 +302,9 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 37 keeps a record when a game freezes and asks before sending it, so freezes can be fixed. Your
-                  decks stay in sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
+                  Android build 38 matches AI opponents to your rank (and offers Easy, Medium and Hard in Quick Match), lets
+                  you drag cards out of the spread hand, and finishes multi-card choices with one Done. Your decks stay in sync
+                  across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
               </details>
