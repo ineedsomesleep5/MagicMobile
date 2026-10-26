@@ -859,3 +859,11 @@ contradicting one.
   unreadable record waits for the next sync on every platform.
 - Saving an image into the asset store posts `didStoreArtwork`, which empties every decoded image in memory. Live
   fetches save with `announce: false`, or a game's first hundred cards would flush the cache a hundred times.
+- XMage's AbilityPickerView labels keep `{this}`, while the card's rules name the card: matching the label against the
+  rules failed and the fallback showed a raw `{this}`, drawn as a symbol chip. `abilityRule` now takes `sourceName`.
+- Web board: pointer movement is in window pixels but browser rows scroll in board points, so a drag divides by the
+  board's scale or it moves about twice as far.
+- Seasons are quarterly from November 2026 (`mm_season_for`, applied live). Apps that still count months disagree from
+  December 1, 2026 (they keep their own standing, as `adopting` refuses an older server season), so the iOS and
+  Android releases with `RankLadder.season`'s quarterly rule must go out before then.
+
