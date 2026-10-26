@@ -15,7 +15,7 @@ import { arr, bool, get, int, isObject, isUuid, type J, type JObject, str } from
 import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
 import { ProfileGame, ProfileSummary } from "./profileSummary";
-import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonRecord, type ServerRankChange } from "./rankLadder";
+import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonBadge, type SeasonRecord, type ServerRankChange } from "./rankLadder";
 import { SupabaseLite, type LinkedIdentity } from "./supabaseLite";
 import { TableChatFilter, TableChatText, TableJoinLink } from "./tableChat";
 
@@ -213,6 +213,8 @@ export interface PublicProfile {
   rank?: PublicProfileRank;
   summary: ProfileSummary;
   games: ProfileGame[];
+  /** Finished seasons at their peak, newest first (mm_public_profile `seasons`). */
+  seasons: SeasonBadge[];
 }
 
 export const PublicProfile = {
@@ -229,7 +231,7 @@ export const PublicProfile = {
     const visibility = ProfileVisibility.parse(root.visibility) ?? "public";
     const relation = str(root.relation) ?? "none";
     if (root.restricted === true) {
-      return { username, restricted: true, visibility, relation, summary: ProfileSummary.fromGames([], now), games: [] };
+      return { username, restricted: true, visibility, relation, summary: ProfileSummary.fromGames([], now), games: [], seasons: [] };
     }
     let rank: PublicProfileRank | undefined;
     const r = root.rank;
@@ -276,11 +278,15 @@ export const PublicProfile = {
         opponents, ...(turns !== undefined ? { turns } : {}),
       }];
     });
+    const seasons = rows(root.seasons).flatMap((row): SeasonBadge[] => {
+      const season = str(row.season), peak = num(row.peakPoints);
+      return season === undefined || peak === undefined ? [] : [{ season, peak: RankPosition.fromPoints(peak), inProgress: false }];
+    });
     const online = bool(root.online), title = str(root.title), favoriteCommander = str(root.favoriteCommander);
     return {
       username, restricted: false, visibility, relation,
       ...(online !== undefined ? { online } : {}), ...(title !== undefined ? { title } : {}),
-      ...(favoriteCommander !== undefined ? { favoriteCommander } : {}), ...(rank ? { rank } : {}), summary, games,
+      ...(favoriteCommander !== undefined ? { favoriteCommander } : {}), ...(rank ? { rank } : {}), summary, games, seasons,
     };
   },
 } as const;

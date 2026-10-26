@@ -867,3 +867,8 @@ contradicting one.
   December 1, 2026 (they keep their own standing, as `adopting` refuses an older server season), so the iOS and
   Android releases with `RankLadder.season`'s quarterly rule must go out before then.
 
+- Season badges (2026-10-26): a test fixture's arithmetic was wrong (Nov 2027 is Season 6: Season 1 is October 2026, then
+  quarters 2–5 run Nov 2026 to Oct 2027). Check a parity case by hand before trusting the code that disagrees with it.
+- A Vite config file outside `apps/web` can't resolve `vite/internal` (plugin-react imports it); start scratch pages from
+  a script, or keep the config inside `apps/web`.
+- Compose: inside a `Canvas` block a composable's own `size: Dp` parameter hides the canvas `size`; use `this.size`.

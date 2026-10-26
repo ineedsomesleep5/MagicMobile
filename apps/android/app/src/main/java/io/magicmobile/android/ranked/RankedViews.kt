@@ -99,6 +99,10 @@ import io.magicmobile.android.game.RankPosition
 import io.magicmobile.android.game.RankState
 import io.magicmobile.android.game.RankTier
 import io.magicmobile.android.game.RankedMatchmaker
+import io.magicmobile.android.game.SeasonBadge
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import io.magicmobile.android.social.PlayerProfileCard
 import io.magicmobile.android.game.ArenaProfileRules
 import io.magicmobile.android.menus.ArenaButton
@@ -311,6 +315,71 @@ fun RankBadge(position: RankPosition, size: Dp = 96.dp, showsPips: Boolean = tru
 @Composable
 fun BracketTag(bracket: CommanderBracket, short: Boolean = false, leather: Boolean = true) {
     TavernTag(if (short) "B${bracket.level}" else bracket.title, Modifier.semantics { contentDescription = bracket.title }, leather = leather, accent = bracket.tint)
+}
+
+private val founderGlow = rgb(1.0, 0.8, 0.36).copy(alpha = 0.65f)
+
+/**
+ * A season's badge (Caleb, 2026-10-26): the emblem of the tier peaked at, on a ribbon naming the season. Season 1 wears
+ * a gold founder ribbon with a star; the season in play is dimmed under a dashed ring until it ends.
+ */
+@Composable
+fun SeasonBadgeView(badge: SeasonBadge, size: Dp = 64.dp) {
+    val name = RankLadder.seasonName(badge.season)
+    val label = when {
+        badge.inProgress -> "$name, in play: peak so far ${badge.peak.title}"
+        badge.founder -> "Season 1 founder, $name: peaked at ${badge.peak.title}"
+        else -> "$name: peaked at ${badge.peak.title}"
+    }
+    Column(Modifier.width(size * 1.55f).clearAndSetSemantics { contentDescription = label }.testTag("seasonBadge.${badge.season}"),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(size * 0.05f)) {
+        Box(Modifier.size(size).glow(if (badge.founder) founderGlow else Color.Transparent, size * 0.16f, size / 2)) {
+            RankEmblem(badge.tier, size, Modifier.alpha(if (badge.inProgress) 0.55f else 1f))
+            if (badge.inProgress) Canvas(Modifier.matchParentSize()) {
+                val line = 1.5.dp.toPx()
+                drawCircle(badge.tier.tint.copy(alpha = 0.8f), this.size.minDimension / 2 - line / 2,
+                    style = Stroke(line, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))))
+            }
+        }
+        SeasonRibbon(badge, size)
+        FitText(name, ArenaMenuStyle.font(max(9f, size.value * 0.15f), SfWeight.semibold), Modifier.alpha(0.75f),
+            color = ArenaMenuStyle.text, minimumScale = 0.7f)
+    }
+}
+
+@Composable
+private fun SeasonRibbon(badge: SeasonBadge, size: Dp) {
+    val number = badge.number
+    val text = when {
+        badge.inProgress -> "IN PLAY"
+        number == null -> badge.peak.tier.label.uppercase()
+        badge.founder -> "SEASON 1 ★"
+        else -> "SEASON $number"
+    }
+    val fill = if (badge.founder) Brush.verticalGradient(listOf(rgb(1.0, 0.9, 0.6), rgb(0.93, 0.72, 0.3), rgb(0.55, 0.36, 0.12)))
+        else Brush.verticalGradient(listOf(badge.tier.shade, Color.Black.copy(alpha = 0.85f)))
+    FitText(text, sf(max(8f, size.value * 0.14f), SfWeight.black, SfDesign.SERIF, tracking = 0.6f),
+        Modifier.background(fill, CircleShape)
+            .border(1.dp, if (badge.founder) Color.Black.copy(alpha = 0.3f) else badge.tier.tint.copy(alpha = 0.7f), CircleShape)
+            .padding(horizontal = size * 0.12f, vertical = size * 0.04f),
+        color = if (badge.founder) rgb(0.25, 0.12, 0.04) else Color.White, minimumScale = 0.7f)
+}
+
+/** A row of season badges, newest first, the best finished one pinned at the front. */
+@Composable
+fun SeasonBadgeShelf(badges: List<SeasonBadge>, size: Dp = 60.dp) {
+    val best = SeasonBadge.best(badges)
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp).testTag("seasonBadges"),
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+        if (best != null) {
+            Box {
+                SeasonBadgeView(best, size * 1.2f)
+                SfImage("pin.fill", ArenaMenuStyle.gold, 11.dp, Modifier.align(Alignment.TopEnd))
+            }
+            if (badges.size > 1) Box(Modifier.width(1.dp).height(size).background(TavernPalette.brass.copy(alpha = 0.35f)))
+        }
+        for (badge in badges) if (badge.season != best?.season) SeasonBadgeView(badge, size)
+    }
 }
 
 // MARK: - Page chrome

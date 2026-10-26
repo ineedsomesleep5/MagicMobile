@@ -69,6 +69,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.magicmobile.android.CardArtwork
+import io.magicmobile.android.game.RankTier
+import io.magicmobile.android.ranked.RankEmblem
+import io.magicmobile.android.ranked.shade
+import io.magicmobile.android.ranked.tint
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.max
@@ -399,8 +403,8 @@ fun VersusMedallion(size: Dp = 54.dp, modifier: Modifier = Modifier) {
     }
 }
 
-/** A seat in the versus reveal. */
-data class VersusSeat(val id: String, val name: String, val commander: String?)
+/** A seat in the versus reveal. `tier`: the player's ranked tier frames their commander in its metal (Caleb, 2026-10-26); null for the AI. */
+data class VersusSeat(val id: String, val name: String, val commander: String?, val tier: RankTier? = null)
 
 /**
  * The two sides meet before the first draw: commanders slide in, the medallion slams down
@@ -433,8 +437,16 @@ fun VersusIntroOverlay(you: VersusSeat, opponents: List<VersusSeat>, finished: (
         BrandBackdrop(cards = false)
         @Composable
         fun seat(seat: VersusSeat, w: Dp, tilt: Float) {
+            val tier = seat.tier
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CommanderDeckPortrait(seat.commander, Modifier.requiredSize(w, w / 0.716f).rotate(tilt).glow(BrandTheme.ember.copy(alpha = 0.35f), 18.dp, 12.dp))
+                Box(Modifier.rotate(tilt), contentAlignment = Alignment.TopCenter) {
+                    val glow = when (tier) { null -> BrandTheme.ember.copy(alpha = 0.35f); RankTier.MYTHIC -> tier.tint; else -> tier.tint.copy(alpha = 0.55f) }
+                    // The tier's metal: a bright edge over its dark, thicker the higher the tier.
+                    CommanderDeckPortrait(seat.commander, Modifier.requiredSize(w, w / 0.716f).glow(glow, if (tier == RankTier.MYTHIC) 26.dp else 18.dp, 12.dp)
+                        .then(if (tier == null) Modifier else Modifier.border((3f + tier.ordinal * 0.6f).dp,
+                            Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.9f), tier.tint, tier.shade, tier.tint)), RoundedCornerShape(12.dp))))
+                    if (tier != null) RankEmblem(tier, w * 0.3f, Modifier.offset(y = -w * 0.13f))
+                }
                 FitText(seat.name, sf(max(12f, w.value * 0.11f), SfWeight.heavy), Modifier.widthIn(max = w + 20.dp), color = BrandTheme.ink, minimumScale = 0.6f)
             }
         }

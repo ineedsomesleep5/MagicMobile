@@ -243,6 +243,12 @@ object RankLadder {
         } else "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
     }.getOrDefault(season)
 
+    /** Season numbers for badges: October 2026 is Season 1, the first quarter (November 2026) Season 2, and so on. */
+    fun seasonNumber(season: String): Int? = runCatching {
+        val months = java.time.temporal.ChronoUnit.MONTHS.between(FIRST_QUARTER, YearMonth.parse(season))
+        when { months >= 0 -> 2 + (months / 3).toInt(); months == -1L -> 1; else -> null }
+    }.getOrNull()
+
     /** A new month: last season goes into history and you drop one tier (Mythic to Diamond IV). */
     fun rollover(state: RankState, season: String): RankState {
         if (state.season == season) return state
@@ -269,6 +275,30 @@ object RankLadder {
         val position = RankPosition.ofPoints(maxOf(state.position.points + delta, floor))
         val next = state.copy(position = position, peak = maxOf(state.peak, position), wins = wins, losses = losses, draws = draws, winStreak = streak)
         return next to RankChange(outcome, state.position, position, bonuses)
+    }
+}
+
+/**
+ * A season's badge (Caleb, 2026-10-26): the tier the player peaked at that season. Season 1 (October 2026, the first)
+ * carries a founder ribbon. The season in play shows too, still being earned. RankLadder.swift.
+ */
+data class SeasonBadge(val season: String, val peak: RankPosition, val inProgress: Boolean = false) {
+    val tier: RankTier get() = peak.tier
+    val founder: Boolean get() = season == FOUNDING_SEASON
+    val number: Int? get() = RankLadder.seasonNumber(season)
+
+    companion object {
+        const val FOUNDING_SEASON = "2026-10"
+
+        /** Newest first: the season in play when ranked games were played in it, then each finished season at its peak. */
+        fun earned(rank: RankState): List<SeasonBadge> {
+            val current = if (rank.wins + rank.losses + rank.draws > 0) listOf(SeasonBadge(rank.season, rank.peak, inProgress = true)) else emptyList()
+            return current + rank.history.map { SeasonBadge(it.season, it.peak) }
+        }
+
+        /** The best finished badge: the highest peak, the newest of equals. */
+        fun best(badges: List<SeasonBadge>): SeasonBadge? =
+            badges.filter { !it.inProgress }.maxWithOrNull(compareBy<SeasonBadge>({ it.peak.points }, { it.season }))
     }
 }
 

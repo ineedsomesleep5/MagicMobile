@@ -407,12 +407,13 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
 
     fun makeVersusIntro(): Pair<VersusSeat, List<VersusSeat>> {
         val name = playerDisplayName.trim()
-        val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName)
+        val tier = record.file.rank.position.tier
+        val you = VersusSeat("you", name.ifEmpty { "You" }, selectedDeck?.commanderName, tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         val tableSeats = (setup.multiplayer as? RelayTable)?.tableSeats.orEmpty()
         if (setup.usingMultiplayer && tableSeats.any { it.isLocal } && tableSeats.any { !it.isLocal }) {
             val local = tableSeats.first { it.isLocal }
-            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander) to
+            return VersusSeat("you", local.name, local.commanders.firstOrNull() ?: you.commander, tier) to
                 tableSeats.filter { !it.isLocal }.take(3).map { VersusSeat(it.id, it.name, it.commanders.firstOrNull()) }
         }
         session.snapshot?.let { snapshot ->

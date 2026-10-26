@@ -191,6 +191,18 @@ export const RankLadder = {
     return parts[0] * 12 + parts[1] - 1 >= RankLadder.firstQuarter ? 3 : 1;
   },
 
+  /**
+   * The season's number on its badge: October 2026 is Season 1, the first quarter (November 2026) Season 2, and so on;
+   * undefined before October 2026 or for a malformed season (RankLadder.seasonNumber).
+   */
+  seasonNumber(season: string): number | undefined {
+    const parts = season.split("-").filter((piece) => piece.length > 0 && /^[+-]?\d+$/.test(piece)).map(Number);
+    if (parts.length !== 2) return undefined;
+    const index = parts[0] * 12 + parts[1] - 1;
+    if (index < RankLadder.firstQuarter) return index === RankLadder.firstQuarter - 1 ? 1 : undefined;
+    return 2 + Math.floor((index - RankLadder.firstQuarter) / 3);
+  },
+
   /** When a season ends (the next season starts, UTC); undefined for a malformed season. */
   seasonEnd(season: string): Date | undefined {
     const months = RankLadder.seasonMonths(season);
@@ -257,5 +269,33 @@ export const RankLadder = {
     next.position = RankPosition.fromPoints(Math.max(RankPosition.points(state.position) + delta, floor));
     next.peak = RankPosition.max(next.peak, next.position);
     return { state: next, change: { outcome, before: state.position, after: next.position, bonuses } };
+  },
+} as const;
+
+/**
+ * A season's badge (Caleb, 2026-10-26): the tier the player peaked at that season. Season 1 (October 2026, the first)
+ * carries a founder ribbon. The season in play shows too, still being earned (RankLadder.swift's SeasonBadge).
+ */
+export interface SeasonBadge { season: string; peak: RankPosition; inProgress: boolean }
+export const SeasonBadge = {
+  foundingSeason: "2026-10",
+  founder: (badge: SeasonBadge) => badge.season === SeasonBadge.foundingSeason,
+  number: (badge: SeasonBadge) => RankLadder.seasonNumber(badge.season),
+
+  /** Newest first: the season in play when ranked games were played in it, then each finished season at its peak. */
+  earned(rank: RankState): SeasonBadge[] {
+    const current: SeasonBadge[] = rank.wins + rank.losses + rank.draws > 0 ? [{ season: rank.season, peak: rank.peak, inProgress: true }] : [];
+    return [...current, ...rank.history.map((past) => ({ season: past.season, peak: past.peak, inProgress: false }))];
+  },
+
+  /** The best finished badge: the highest peak, the newest of equals. */
+  best(badges: readonly SeasonBadge[]): SeasonBadge | undefined {
+    let best: SeasonBadge | undefined;
+    for (const badge of badges) {
+      if (badge.inProgress) continue;
+      const delta = best === undefined ? 1 : RankPosition.compare(badge.peak, best.peak);
+      if (delta > 0 || (delta === 0 && best !== undefined && badge.season > best.season)) best = badge;
+    }
+    return best;
   },
 } as const;

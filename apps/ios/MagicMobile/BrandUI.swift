@@ -584,6 +584,8 @@ struct VersusIntroOverlay: View {
         let id: String
         let name: String
         let commander: String?
+        /// The player's ranked tier: their commander's arch is framed in its metal (Caleb, 2026-10-26). Nil for the AI.
+        var tier: RankTier? = nil
     }
 
     let you: Seat
@@ -645,8 +647,23 @@ struct VersusIntroOverlay: View {
             ArenaArt(name: seat.commander ?? "", colors: [], variant: .inspection)
                 .frame(width: width, height: width / 0.72)
                 .clipShape(arch)
-                .overlay(arch.strokeBorder(ArenaMenuStyle.metal, lineWidth: 2.5))
-                .shadow(color: ArenaMenuStyle.ember.opacity(0.4), radius: 18)
+                .overlay {
+                    if let tier = seat.tier {
+                        // The tier's metal: a bright edge over its dark, thicker the higher the tier.
+                        arch.strokeBorder(LinearGradient(colors: [.white.opacity(0.9), tier.tint, tier.shade, tier.tint],
+                                                         startPoint: .top, endPoint: .bottom),
+                                          lineWidth: 3 + CGFloat(tier.rawValue) * 0.6)
+                    } else {
+                        arch.strokeBorder(ArenaMenuStyle.metal, lineWidth: 2.5)
+                    }
+                }
+                .overlay(alignment: .top) {
+                    if let tier = seat.tier {
+                        RankEmblem(tier: tier, size: width * 0.3).offset(y: -width * 0.13)
+                    }
+                }
+                .shadow(color: (seat.tier.map { $0 == .mythic ? $0.tint : $0.tint.opacity(0.55) } ?? ArenaMenuStyle.ember.opacity(0.4)),
+                        radius: seat.tier == .mythic ? 26 : 18)
             ArenaNamePlate(title: seat.name, selected: true, width: width * 0.9)
         }
         .rotationEffect(.degrees(tilt * 0.4))

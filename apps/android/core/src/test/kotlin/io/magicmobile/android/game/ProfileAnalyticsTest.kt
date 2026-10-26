@@ -124,6 +124,16 @@ class ProfileAnalyticsTest {
         }
     }
 
+    /** mm_public_profile `seasons`: each finished season becomes a badge at its peak; rows missing a part are skipped. */
+    @Test fun publicProfileSeasons() {
+        val profile = PublicProfile.parse("""{"username":"Ana","seasons":[{"season":"2026-11","peakPoints":44,"finalPoints":40},
+            {"season":"2026-10","peakPoints":28,"finalPoints":20},{"season":"2026-09"}]}""")
+        assertEquals(listOf("2026-11", "2026-10"), profile.seasons.map { it.season })
+        assertEquals(listOf(RankTier.GOLD, RankTier.SILVER), profile.seasons.map { it.tier })
+        assertFalse(profile.seasons.any { it.inProgress })
+        assertEquals(listOf(false, true), profile.seasons.map { it.founder })
+    }
+
     @Test fun searchResults() {
         val block = root["searchResults"]!!.jsonObject
         val results = PlayerSearchResult.parse(block["json"]!!.toString())

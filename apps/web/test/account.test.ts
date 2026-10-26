@@ -166,6 +166,21 @@ describe("wire parsing", () => {
     expect(() => PublicProfile.parse({ restricted: true })).toThrow();
   });
 
+  it("reads a public profile's finished seasons as badges at their peak", () => {
+    const seasons: J[] = [
+      { season: "2026-11", peakPoints: 36, finalPoints: 33 }, { season: "2026-10", peakPoints: 28, finalPoints: 20 },
+      { season: "2026-09" }, { peakPoints: 4 },
+    ];
+    const p = PublicProfile.parse({ username: "Hans", seasons });
+    expect(p.seasons).toEqual([
+      { season: "2026-11", peak: RankPosition.fromPoints(36), inProgress: false },
+      { season: "2026-10", peak: RankPosition.fromPoints(28), inProgress: false },
+    ]);
+    expect(p.seasons.map((b) => b.peak.tier)).toEqual(["gold", "silver"]);
+    expect(PublicProfile.parse({ username: "Hans" }).seasons).toEqual([]);
+    expect(PublicProfile.parse({ username: "Hans", restricted: true, seasons }).seasons).toEqual([]);
+  });
+
   it("parses search results as profile-cases.json says", () => {
     const results = PlayerSearchResult.parse(profile.searchResults.json);
     const expected = profile.searchResults.expect;

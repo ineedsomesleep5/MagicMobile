@@ -646,12 +646,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   ];
 
   if (game) {
-    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined },
+    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined, tier: rank.position.tier },
       opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
     return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined}
       rankNote={rankChange?.key === game.key ? rankChange.note : undefined} />;
   }
-  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
+  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} tier={rank.position.tier} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
 
   const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : panel === "friends" ? "messages" : undefined;
   const covered = panel !== undefined;
@@ -733,13 +733,13 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
 }
 
 /** A table with people: its room until the game starts, then the board (App's guest view, now for hosts too). */
-function OnlineScreen({ game, name, resolver, leave, cancelWait }: {
-  game: OnlineGame; name: string; resolver: DeckResolver; leave: () => void; cancelWait: () => void;
+function OnlineScreen({ game, name, tier, resolver, leave, cancelWait }: {
+  game: OnlineGame; name: string; tier: RankTier; resolver: DeckResolver; leave: () => void; cancelWait: () => void;
 }) {
   const table = game.table;
   useSyncExternalStore((listener) => table.subscribe(listener), () => table.version);
   const stage = table.state.stage;
-  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} />;
+  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} versus={{ you: { id: "you", name, tier }, opponents: [] }} />;
   return <GuestRoom table={table} name={name} deck={game.deck.deckList} resolver={resolver} leave={leave} hosting={game.hosting}
     waitingFor={game.waitingFor} cancelWait={cancelWait} />;
 }

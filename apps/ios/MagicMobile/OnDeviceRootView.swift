@@ -149,8 +149,9 @@ struct OnDeviceRootView: View {
     /// Seats for the intro: the table's own players when known, else the chosen decks.
     private func makeVersusIntro() -> VersusIntro {
         let name = playerDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tier = profileRecord.rank.position.tier
         let you = VersusIntroOverlay.Seat(id: "you", name: name.isEmpty ? "You" : name,
-                                          commander: selectedDeck?.commander?.cardName)
+                                          commander: selectedDeck?.commander?.cardName, tier: tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         if setup.usingMultiplayer, let seats = setup.multiplayer?.tableSeats, seats.contains(where: \.isLocal) {
             let opponents = seats.filter { !$0.isLocal }.prefix(3).map {
@@ -159,7 +160,7 @@ struct OnDeviceRootView: View {
             if !opponents.isEmpty {
                 let local = seats.first(where: \.isLocal)
                 let tableYou = VersusIntroOverlay.Seat(id: "you", name: local?.name ?? you.name,
-                                                       commander: local?.commanders.first ?? you.commander)
+                                                       commander: local?.commanders.first ?? you.commander, tier: tier)
                 return VersusIntro(you: tableYou, opponents: Array(opponents))
             }
         }

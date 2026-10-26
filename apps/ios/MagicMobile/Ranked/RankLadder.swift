@@ -209,6 +209,15 @@ enum RankLadder {
         return "\(formatter.string(from: first)) – \(formatter.string(from: last))"
     }
 
+    /// Season numbers for badges: October 2026 is Season 1, the first quarter (November 2026) Season 2, and so on.
+    static func seasonNumber(_ season: String) -> Int? {
+        let parts = season.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        let index = parts[0] * 12 + parts[1] - 1
+        if index < firstQuarter { return index == firstQuarter - 1 ? 1 : nil }
+        return 2 + (index - firstQuarter) / 3
+    }
+
     private static func seasonStart(_ season: String) -> Date? {
         let parts = season.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
@@ -299,6 +308,32 @@ struct RankedStanding: Decodable, Equatable, Sendable {
     }
 
     static func parse(_ data: Data) throws -> RankedStanding { try JSONDecoder().decode(RankedStanding.self, from: data) }
+}
+
+/// A season's badge (Caleb, 2026-10-26): the tier the player peaked at that season. Season 1 (October 2026, the first)
+/// carries a founder ribbon. The season in play shows too, still being earned.
+struct SeasonBadge: Equatable, Identifiable, Sendable {
+    static let foundingSeason = "2026-10"
+
+    let season: String
+    let peak: RankPosition
+    var inProgress = false
+
+    var id: String { season }
+    var tier: RankTier { peak.tier }
+    var founder: Bool { season == Self.foundingSeason }
+    var number: Int? { RankLadder.seasonNumber(season) }
+
+    /// Newest first: the season in play when ranked games were played in it, then each finished season at its peak.
+    static func earned(rank: RankState) -> [SeasonBadge] {
+        let current = rank.wins + rank.losses + rank.draws > 0 ? [SeasonBadge(season: rank.season, peak: rank.peak, inProgress: true)] : []
+        return current + rank.history.map { SeasonBadge(season: $0.season, peak: $0.peak) }
+    }
+
+    /// The best finished badge: the highest peak, the newest of equals.
+    static func best(_ badges: [SeasonBadge]) -> SeasonBadge? {
+        badges.filter { !$0.inProgress }.max { ($0.peak.points, $0.season) < ($1.peak.points, $1.season) }
+    }
 }
 
 /// The server's word on a ranked AI result (mm_ranked_ai_settle), for the result screen and the game history.

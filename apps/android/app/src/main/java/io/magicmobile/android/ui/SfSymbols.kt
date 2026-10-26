@@ -265,6 +265,9 @@ object SfSymbols {
         "ticket.fill" -> Icons.Filled.ConfirmationNumber
         "seal.fill" -> Icons.Filled.Verified
         "figure.fencing" -> Icons.Filled.SportsKabaddi
+        // Season badges (ranked/RankedViews.kt).
+        "rosette" -> Icons.Filled.WorkspacePremium
+        "pin.fill" -> Icons.Filled.PushPin
         // The Arena menus (menus/): the top bar's tabs and utilities, the Play panel and the home page's rail.
         "house.fill" -> Icons.Filled.Home
         "person.fill" -> Icons.Filled.Person

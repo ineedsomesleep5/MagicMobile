@@ -898,6 +898,18 @@ img.bprinted.facedown { filter: brightness(.62); }
 .aversus .arch { width: 220px; height: 306px; border-radius: 110px 110px 12px 12px; overflow: hidden; border: 3px solid var(--agold);
   box-shadow: 0 0 36px rgba(255,120,31,.4), inset 0 0 0 1px rgba(0,0,0,.6); background: #140a05; }
 .aversus .vside.several .arch { width: 136px; height: 189px; border-radius: 68px 68px 10px 10px; }
+.aversus .arch { position: relative; }
+.aversus .archart { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+/* A ranked seat (Caleb, 2026-10-26): the arch framed in the tier's metal, white over its tint, shade and tint again, thicker
+   the higher the tier (--rim); its emblem over the crown; the glow in its tint, stronger for Mythic. */
+.aversus .arch.tiered { overflow: visible; border: none; box-shadow: 0 0 36px rgba(var(--tint),.55), inset 0 0 0 1px rgba(0,0,0,.6); }
+.aversus .arch.tiered.mythic { box-shadow: 0 0 52px rgb(var(--tint)), inset 0 0 0 1px rgba(0,0,0,.6); }
+.aversus .arch.tiered::before { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: var(--rim); pointer-events: none;
+  background: linear-gradient(rgba(255,255,255,.9), rgb(var(--tint)), rgb(var(--shade)), rgb(var(--tint)));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.aversus .archemblem { position: absolute; z-index: 2; left: 50%; top: -29px; transform: translateX(-50%); filter: drop-shadow(0 2px 4px rgba(0,0,0,.7)); }
+.aversus .vside.several .archemblem { top: -18px; }
+.aversus .vside.several .archemblem .mrankemblem { width: 41px; height: 41px; }
 .aversus .plate { margin-top: -10px; position: relative; max-width: 200px; padding: 7px 16px; border-radius: 6px; background: rgba(8,8,10,.94);
   border: 1px solid var(--ahair); font: 700 17px/1.1 var(--serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .aversus .vside.several .plate { max-width: 130px; font-size: 13px; }

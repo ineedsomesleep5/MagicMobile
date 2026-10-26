@@ -231,6 +231,8 @@ struct PublicProfile: Equatable, Sendable {
     var rank: Rank?
     var summary: ProfileSummary
     var games: [ProfileGame]
+    /// Finished seasons at their peak, newest first (mm_public_profile `seasons`).
+    var seasons: [SeasonBadge] = []
 
     var isSelf: Bool { relation == "self" }
     var isFriend: Bool { relation == "friend" }
@@ -289,9 +291,14 @@ struct PublicProfile: Equatable, Sendable {
                                commanders: row["commanders"] as? [String] ?? [], colors: row["colors"] as? [String] ?? [],
                                opponents: opponents, turns: int(row["turns"]))
         }
+        let seasons: [SeasonBadge] = (root["seasons"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let season = row["season"] as? String, let peak = int(row["peakPoints"]) else { return nil }
+            return SeasonBadge(season: season, peak: RankPosition(points: peak))
+        }
         return PublicProfile(username: username, restricted: false, visibility: visibility, relation: relation,
                              online: root["online"] as? Bool, title: root["title"] as? String,
-                             favoriteCommander: root["favoriteCommander"] as? String, rank: rank, summary: summary, games: games)
+                             favoriteCommander: root["favoriteCommander"] as? String, rank: rank, summary: summary, games: games,
+                             seasons: seasons)
     }
 
     /// "2026-10-05" as Monday 00:00 UTC.

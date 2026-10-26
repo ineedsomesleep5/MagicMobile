@@ -204,3 +204,22 @@
 @media (prefers-reduced-motion: reduce) {
   .mprofileringseg { animation: none; }
 }
+
+/* Season badges (SeasonBadges.tsx; iOS SeasonBadgeView / SeasonBadgeShelf): the peak tier's emblem over a ribbon naming the
+   season, Season 1 in gold with a soft gold glow, the season in play dimmed under a dashed ring. The best finished badge
+   leads the shelf, a little larger, pinned, then a hairline and the rest newest first. */
+.mseasonshelf { display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
+.mseasonshelf::-webkit-scrollbar { display: none; }
+.mseasonshelfrule { flex: none; width: 1px; align-self: center; background: var(--hair); opacity: .6; }
+.mseasonbadge { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; gap: calc(var(--size) * .05); }
+.mseasonbadgeemblem { position: relative; display: block; border-radius: 50%; }
+.mseasonbadge.inplay .mseasonbadgeemblem .mrankemblem { opacity: .55; }
+.mseasonbadge.inplay .mseasonbadgeemblem::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1.5px dashed rgba(var(--tint),.8); }
+.mseasonbadge.founder .mseasonbadgeemblem .mrankemblem { filter: drop-shadow(0 0 calc(var(--size) * .16) rgba(255,204,92,.65)); }
+.mseasonribbon { max-width: 100%; box-sizing: border-box; padding: calc(var(--size) * .04) calc(var(--size) * .12); border-radius: 999px;
+  font: 900 max(8px, calc(var(--size) * .14))/1.1 var(--serif); letter-spacing: .6px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: linear-gradient(rgb(var(--shade)), rgba(0,0,0,.85)); box-shadow: inset 0 0 0 1px rgba(var(--tint),.7); }
+.mseasonbadge.founder .mseasonribbon { color: rgb(64,31,10); background: linear-gradient(rgb(255,230,153), rgb(237,184,77), rgb(140,92,31));
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
+.mseasonbadge > small { max-width: 100%; font: 600 max(9px, calc(var(--size) * .15))/1.15 var(--sans); opacity: .75; text-align: center; text-wrap: balance; }
+.mseasonpin { position: absolute; top: 0; right: 4px; width: 13px; height: 13px; fill: var(--gold); filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); }

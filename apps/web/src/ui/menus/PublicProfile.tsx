@@ -18,6 +18,7 @@ import { relationTag, TIER_TINT } from "../../core/socialText";
 import { ManaSymbol } from "../arena/Symbols";
 import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
+import { SeasonBadgeShelf } from "./SeasonBadges";
 import { Medallion, MoreMenu, SocialEmpty, SocialGlyph, SocialNotice, SocialQuestion, SocialTag, SocialWaiting, useAccountState } from "./FriendsPanel";
 import { Btn, PanelHeader } from "./kit";
 import { RankBadge } from "./PlayPanel";
@@ -233,6 +234,13 @@ function RankCard({ profile }: { profile: Profile }) {
       {profile.summary.rankPoints.length === 0
         ? <EmptyNote text="No ranked games to chart yet." glyph="chart" />
         : <RankHistoryChart points={profile.summary.rankPoints} />}
+      {profile.seasons.length > 0 && (
+        <>
+          <i className="mprofilerule" />
+          <SectionTitle text="Season badges" />
+          <SeasonBadgeShelf badges={profile.seasons} size={52} />
+        </>
+      )}
     </Card>
   );
 }

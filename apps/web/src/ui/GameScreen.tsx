@@ -165,7 +165,8 @@ function phaseIndex(step: string | undefined): number | undefined {
 /**
  * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game, and `rankNote`
  * why the server left a win off the ladder. `versus`: the
- * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game).
+ * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game); its
+ * `you.tier` frames your seat in every intro, a table's own seats included.
  */
 export function GameScreen({ table, rankChange, rankNote, versus }: {
   table: GameTable; rankChange?: RankChange; rankNote?: string; versus?: { you: VersusSeat; opponents: VersusSeat[] };
@@ -283,13 +284,14 @@ export function GameScreen({ table, rankChange, rankNote, versus }: {
     if (!versusShown) return undefined;
     const seats = table.state.tableSeats;
     const local = seats.find((seat) => seat.isLocal);
+    const tier = versus?.you.tier;
     if (local && seats.length > 1) {
-      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander },
+      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander, tier },
         opponents: seats.filter((seat) => !seat.isLocal).slice(0, 3).map((seat) => ({ id: seat.id, name: seat.name, commander: seat.commanders[0] })) };
     }
     if (versus && versus.opponents.length > 0) return { you: versus.you, opponents: versus.opponents.slice(0, 3) };
     if (snapshot && me && opponents.length > 0) {
-      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me) },
+      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me), tier },
         opponents: opponents.slice(0, 3).map((p) => ({ id: p.playerId, name: p.displayName ?? "Opponent", commander: commanderName(p) })) };
     }
     return undefined;

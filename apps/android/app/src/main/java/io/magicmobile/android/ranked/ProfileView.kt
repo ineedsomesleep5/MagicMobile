@@ -63,7 +63,9 @@ import io.magicmobile.android.game.ProfileSummary
 import io.magicmobile.android.game.ProfileVisibility
 import io.magicmobile.android.game.RankLadder
 import io.magicmobile.android.game.RankOutcome
+import io.magicmobile.android.game.RankState
 import io.magicmobile.android.game.RankTier
+import io.magicmobile.android.game.SeasonBadge
 import io.magicmobile.android.menus.ArenaArt
 import io.magicmobile.android.menus.ArenaButton
 import io.magicmobile.android.menus.ArenaButtonKind
@@ -150,6 +152,7 @@ fun PlayerProfileScreen(store: PlayerRecordStore, account: PlayerAccount, player
     @Composable
     fun ColumnScope.playerStory() {
         SeasonCard(store, summary)
+        SeasonBadgesCard(store.file.rank)
         if (stats.decks.size > 1) ChipRow(Modifier.trailingFade().testTag("profile.filter.decks")) {
             ProfileChip("All decks", deckFilter == null, "profile.filter.deck.all", { deckFilter = null; showAll = false }, detail = "${file.matches.size}")
             for (deck in stats.decks.take(8)) ProfileChip(deck.label, deckFilter == deck.id, "profile.filter.deck.${deck.id}", { deckFilter = deck.id; showAll = false }, detail = "${deck.games}")
@@ -417,6 +420,16 @@ internal fun Modifier.trailingFade(): Modifier = this
         drawContent()
         drawRect(Brush.horizontalGradient(0.9f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
     }
+
+/** The badge each season earned at its peak, the season in play still being earned (Caleb, 2026-10-26). */
+@Composable
+private fun SeasonBadgesCard(rank: RankState) {
+    val badges = SeasonBadge.earned(rank)
+    Column(Modifier.leatherCard().testTag("profile.seasonBadges"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ProfileSectionTitle("Season badges")
+        if (badges.isEmpty()) ProfileEmptyNote("Play ranked to earn this season's badge.", "rosette") else SeasonBadgeShelf(badges)
+    }
+}
 
 @Composable
 private fun SeasonCard(store: PlayerRecordStore, summary: ProfileSummary) {
