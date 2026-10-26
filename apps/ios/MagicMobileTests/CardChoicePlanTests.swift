@@ -127,10 +127,25 @@ final class CardChoicePlanTests: XCTestCase {
         for count in 0..<14 {
             let current = try snapshot(message: "Select a card to discard (selected \(count) of 14, min 14)",
                                        revision: count + 1, candidates: hand, chosen: Array(order.prefix(count)))
+            XCTAssertTrue(plan.expectsMorePrompts, "a quiet engine between prompts is not the end of the choice")
             XCTAssertEqual(plan.next(in: current, pending: false)?.targetIds, [order[count]], "card \(count + 1) in the chosen order")
             XCTAssertNil(plan.next(in: current, pending: false), "never answers the same prompt twice")
             XCTAssertFalse(plan.stopped)
         }
+        XCTAssertFalse(plan.expectsMorePrompts, "the fourteenth card ends it (min == max: no Done)")
+    }
+
+    /// A choice below its maximum owes a Done after its last card (Caleb, 2026-10-25: one Done finishes it).
+    func testFewerThanMaximumStillOwesDone() throws {
+        let first = try snapshot(message: "Choose (selected 0 of 6, min 2)", revision: 1, candidates: ids, chosen: [])
+        var plan = CardChoicePlan(snapshot: first, prompt: try XCTUnwrap(first.promptEnvelopeV2), selected: [ids[0], ids[1]])
+        XCTAssertEqual(plan.next(in: first, pending: false)?.targetIds, [ids[0]])
+        let second = try snapshot(message: "Choose (selected 1 of 6, min 2)", revision: 2, candidates: ids, chosen: [ids[0]])
+        XCTAssertEqual(plan.next(in: second, pending: false)?.targetIds, [ids[1]])
+        XCTAssertTrue(plan.expectsMorePrompts)
+        let complete = try snapshot(message: "Choose (selected 2 of 6, min 2)", revision: 3, candidates: ids, chosen: [ids[0], ids[1]], done: true)
+        XCTAssertEqual(plan.next(in: complete, pending: false)?.confirmed, false)
+        XCTAssertFalse(plan.expectsMorePrompts)
     }
 
     func testPendingClearWithUnchangedPromptRequiresManualReview() throws {

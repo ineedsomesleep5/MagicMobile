@@ -146,11 +146,15 @@ export function liveState(card: ZoneCard, battlefield: ZoneCard[]): string[] {
   return details.filter((d) => { const key = d.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
 }
 
-/** ArenaHandPosture.resolve: the hand rests for any decision on the board, while dragging and while spectating. */
+/**
+ * ArenaHandPosture.resolve: the hand rests for any decision on the board and while spectating; a raised hand rests while
+ * its card is dragged, a spread one stays spread so the row stays under the finger.
+ */
 export type HandPosture = "raised" | "resting" | "spread";
 export function handPosture(s: { opened?: boolean; spread?: boolean; boardDecision?: boolean; dragging?: boolean; spectating?: boolean }): HandPosture {
-  if (s.spectating || s.dragging || s.boardDecision) return "resting";
+  if (s.spectating || s.boardDecision) return "resting";
   if (s.spread) return "spread";
+  if (s.dragging) return "resting";
   return s.opened ? "raised" : "resting";
 }
 

@@ -119,6 +119,15 @@ contradicting one.
 
 ## Gameplay
 
+- 2026-10-25 (Claude, hand and discard): two ways a gesture or a multi-card answer died partway. (1) The Arena hand's
+  posture rule rested the hand whenever a card was dragged, so a card carried out of the *spread* hand collapsed the row
+  under the finger and the carry never landed. A spread hand now stays spread while its card is carried (a raised one
+  still tucks). (2) A drafted multi-card choice is sent one native answer at a time; the board ended the plan after 5 s
+  with no prompt, and cancelled at once when the pending answer cleared before the poll showing the next prompt, so a
+  slow engine handed a discard of seven back after a few cards. **Rule:** `CardChoicePlan.expectsMorePrompts` says
+  whether answers are still owed (then wait 30 s, not 5), and an unchanged prompt gets 2 s before the plan stops; real
+  rejections still stop it through the command failure. Never change layout or posture under a live gesture.
+  Where: `ArenaBoardModel` handPosture (all three), `CardChoicePlan`, the boards' card-choice drivers.
 - 2026-10-24 (Claude, deck Power): C3's precon round robin is not the only deck-strength data. Every calibration CSV
   in `docs/cloud/c3-results` and `c4-results` schedules both deck assignments per pair, so together they are 2,986
   skill-balanced games on the eleven Core decks, and they reorder the precons: Draconic Destruction wins 62% against

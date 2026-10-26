@@ -70,6 +70,12 @@ export class CardChoicePlan {
 
   cancel() { this.stopped = true; }
 
+  /** True while a selection still owes the engine answers: cards not yet chosen, or a Done to send (CardChoicePlan.swift). */
+  get expectsMorePrompts(): boolean {
+    if (this.stopped || this.kind !== "selection" || this.doneSent) return false;
+    return !(this.expectedChosen !== undefined && sameSet(this.expectedChosen, this.selected) && this.selected.length === this.maximumSelection);
+  }
+
   /** A cleared pending answer with the same prompt has not authorized another reply. */
   submittedPromptIsUnchanged(snapshot: GameSnapshot): boolean {
     const prompt = snapshot.promptEnvelopeV2;

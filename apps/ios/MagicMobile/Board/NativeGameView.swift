@@ -240,8 +240,10 @@ struct NativeGameView: View {
         if snapshot.promptEnvelopeV2 == nil && pendingActionId == nil && plan.lastPrompt != nil {
             if cardChoiceCompletionTask == nil {
                 let lastPrompt = plan.lastPrompt
+                // Done after a quiet spell; a selection that still owes answers waits longer for the engine's next prompt.
+                let quiet: Duration = plan.expectsMorePrompts ? .seconds(30) : .seconds(5)
                 cardChoiceCompletionTask = Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(5))
+                    try? await Task.sleep(for: quiet)
                     guard !Task.isCancelled else { return }
                     if committedCardChoice?.lastPrompt == lastPrompt,
                        self.snapshot?.promptEnvelopeV2 == nil, pendingActionId == nil {
@@ -288,7 +290,19 @@ struct NativeGameView: View {
             isCardChoiceOpen = PortraitInteractionPolicy.cardChoiceKey(snapshot) != nil
             isPromptDetailOpen = boardDetailChoiceKey(snapshot) != nil
         } else if oldValue != nil, committedCardChoice?.submittedPromptIsUnchanged(in: snapshot) == true {
-            cancelCommittedCardChoice()
+            // The answer cleared before the poll that shows the next prompt: give that poll a moment before handing the
+            // choice back (an engine rejection arrives as a command failure and stops the plan at once).
+            cardChoiceCompletionTask?.cancel()
+            let lastPrompt = committedCardChoice?.lastPrompt
+            cardChoiceCompletionTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                cardChoiceCompletionTask = nil
+                if pendingActionId == nil, committedCardChoice?.lastPrompt == lastPrompt,
+                   committedCardChoice?.submittedPromptIsUnchanged(in: snapshot) == true {
+                    cancelCommittedCardChoice()
+                }
+            }
         } else {
             advanceCommittedCardChoice()
         }
