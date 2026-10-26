@@ -31,8 +31,9 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
 - Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
-  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A loss never takes you out of your tier
-  (Mythic can fall back to Diamond, never below Diamond IV).
+  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A crushing loss against the AI (it still
+  had 30 of its 40 life, read from the game record) costs 2 (Caleb, 2026-10-26). A loss never takes you out of your
+  tier (Mythic can fall back to Diamond, never below Diamond IV).
 - Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
   gone (two-pip wins replace it). Draws change nothing and end the streak.
 - Seasons (UTC): October 2026 was a month; from November 2026 each season is three months, named by its first
@@ -193,8 +194,8 @@ could publish any rank. Now the server is the referee, using the existing databa
 - **Against the AI** (the phone runs the game, so the server can only bound it): `mm_ranked_ai_start` hands out a
   ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A seeded win is judged by its game
   record's turns, not the clock (Caleb, 2026-10-26: fast decks win in a minute); only an older unseeded ticket keeps a
-  two-minute floor. At most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a
-  loss. The answer carries `settlement`, the server's `change` and, for an unverified win, `check`: the apps show the
+  two-minute floor. There is no daily cap on AI wins (removed 2026-10-26), and a ticket not answered within twelve
+  hours becomes a loss. The ticket also carries the AI's tuning (`ranked_ai_tuning`, docs/DECK_POWER.md). The answer carries `settlement`, the server's `change` and, for an unverified win, `check`: the apps show the
   reason on the result screen and in Recent games instead of a win quietly adding nothing.
 - `mm_ranked_standing` returns the caller's standing (settling anything stale first) plus `unsettled`, the matches
   they reported that the other side hasn't yet. `mm_ranked_seed` lets a player with no server standing bring their
@@ -203,7 +204,7 @@ could publish any rank. Now the server is the referee, using the existing databa
   ticket (queued and retried, `PlayerRecordStore.pendingRankedResults`), then adopts the server's standing
   (`RankedStanding`, `PlayerRecordStore.adopt` / `PlayerRecordFile.adopting`). While a result is still on its way
   the phone keeps its own number, so a pip never flickers away. Without a profile name, ranked stays on the phone.
-- **Limits:** a modified app can still claim AI wins within the caps, and two colluding accounts can trade wins
+- **Limits:** a modified app can still claim AI wins it forges a record for, or withhold a crushing loss's record, and two colluding accounts can trade wins
   within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
 - Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
   functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
