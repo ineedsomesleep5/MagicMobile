@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -312,8 +313,14 @@ fun ArenaFocusedArt(art: ArenaHomeArt, modifier: Modifier = Modifier) {
 
 /** A card's art, filling its frame; the deck's colours as light through glass until the art is on the phone. */
 @Composable
-fun ArenaArt(name: String, colors: List<String> = emptyList(), modifier: Modifier = Modifier) {
-    CardArtwork(name, modifier.clipToBounds().clearAndSetSemantics { }, artOnly = true) { ArenaColorGlass(colors, Modifier.fillMaxSize()) }
+fun ArenaArt(name: String, colors: List<String> = emptyList(), modifier: Modifier = Modifier, focus: Float = 0.5f) {
+    // In a frame wider than the art, `focus` picks which band shows: 0 the top, 0.5 the middle (ArenaArt.swift).
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.clipToBounds().clearAndSetSemantics { }) {
+        val artHeight = maxOf(maxHeight, maxWidth * 0.73f)
+        CardArtwork(name, Modifier.requiredSize(maxWidth, artHeight).offset(y = (artHeight - maxHeight) * (0.5f - focus)), artOnly = true) {
+            ArenaColorGlass(colors, Modifier.fillMaxSize())
+        }
+    }
 }
 
 // MARK: - Progress

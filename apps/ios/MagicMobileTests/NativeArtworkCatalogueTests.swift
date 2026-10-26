@@ -61,10 +61,12 @@ final class NativeArtworkCatalogueTests: XCTestCase {
         let query = try XCTUnwrap(URLComponents(url: XCTUnwrap(requests.first?.url), resolvingAgainstBaseURL: false)?.queryItems)
         XCTAssertEqual(query.first { $0.name == "q" }?.value, "!\"Cat Beast\" t:token")
         XCTAssertEqual(query.first { $0.name == "page" }?.value, "1")
-        let wrong = try await NativeArtworkCatalogue.searchToken(name: "Cat Beast Token", typeLine: "Creature — Cat Beast",
+        // Rules worded differently (XMage's text, or an ability granted in play) still find the one Cat Beast with this
+        // type, colors and P/T: the tile draws its picture, the engine still says what it does (Caleb, 2026-10-26).
+        let reworded = try await NativeArtworkCatalogue.searchToken(name: "Cat Beast Token", typeLine: "Creature — Cat Beast",
             oracleText: "Flying", power: "3", toughness: "2", colors: ["G"], quality: .standard,
             transport: fixture, budget: DeckStudioScryfallBudget())
-        XCTAssertNil(wrong)
+        XCTAssertEqual(reworded?.0.id, TokenSearchFixture.tokenID)
         let ambiguous = TokenSearchFixture(ambiguous: true)
         let unknown = try await NativeArtworkCatalogue.searchToken(name: "Cat Beast Token", typeLine: "Creature — Cat Beast",
             oracleText: "", power: "4", toughness: "4", colors: ["G"], quality: .standard,

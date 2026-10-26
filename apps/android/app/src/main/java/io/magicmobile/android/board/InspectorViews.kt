@@ -1,5 +1,9 @@
 package io.magicmobile.android.board
 
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.testTag
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -103,6 +107,9 @@ val LocalPrintedCardLookup = compositionLocalOf<(String) -> PrintedCard?> { { nu
 /** Short notes for rules players often read differently than the engine applies them. */
 object CardRulesReminder {
     fun text(card: ZoneCard): String? {
+        if (card.card.faceDown == true) {
+            return "Face down: only you can see it. A card exiled face down is played through the card that exiled it: for Hideaway, use that card's own ability once its condition is met."
+        }
         val rules = (card.card.oracleText ?: "").lowercase()
         if (rules.contains("triggers an additional time")) {
             return "Only triggered abilities (“when”, “whenever”, “at”) happen again. Effects that say “instead”, like Chatterfang’s extra Squirrels, are not triggers and are not doubled."
@@ -159,11 +166,27 @@ fun Modifier.inspectionFoil(): Modifier = this.then(Modifier.composed {
 @Composable
 fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
     val battlefield = LocalInspectorBattlefield.current
+    // Tabs (Caleb, 2026-10-26): the held card with what it is attached to (first) and what it carries; tap one, or slide
+    // the holding finger onto it, to read that card. One card, no strip.
+    val held = card
+    val tabs = run {
+        val parent = held.attachedToInstanceId?.let { id -> battlefield.firstOrNull { it.instanceId == id } }
+        listOfNotNull(parent) + held + battlefield.filter { it.attachedToInstanceId == held.instanceId && it.instanceId != held.instanceId }
+    }
+    var focusID by remember(held.instanceId) { mutableStateOf<String?>(null) }
+    val tabFrames = remember(held.instanceId) { androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
+    @Suppress("NAME_SHADOWING") val card = tabs.firstOrNull { it.instanceId == focusID } ?: held
+    val finger = LocalHoldCardInspection.current?.finger
+    LaunchedEffect(finger) {
+        val at = finger ?: return@LaunchedEffect
+        tabFrames.entries.firstOrNull { it.value.inflate(16f).contains(at) }?.key?.let { if (it != card.instanceId) focusID = it }
+    }
     var artMissing by remember(card.instanceId) { mutableStateOf(false) }
     val attachments = battlefield.filter { it.attachedToInstanceId == card.instanceId && it.instanceId != card.instanceId }
     val attachedTo = card.attachedToInstanceId?.let { parent -> battlefield.firstOrNull { it.instanceId == parent } }
     val liveState = remember(card, attachedTo) {
         val details = mutableListOf<String>()
+        if (card.card.faceDown == true) details += "Face down"
         if (card.card.isToken == true) details += if (card.card.copySourceArtworkName == null) "Token" else "Token copy"
         if (card.card.typeLine.isNotEmpty()) details += card.card.typeLine
         if (card.visibleXmageIcons.any { it.iconType == "COMMANDER" }) details += "Commander"
@@ -184,7 +207,7 @@ fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
     val rules = card.card.oracleText?.trim() ?: ""
     val rulesVisible = showsRules && rules.isNotEmpty()
     val reminder = CardRulesReminder.text(card)
-    val hasFooter = rulesVisible || liveState.isNotEmpty() || attachments.isNotEmpty() || reminder != null
+    val hasFooter = tabs.size > 1 || rulesVisible || liveState.isNotEmpty() || attachments.isNotEmpty() || reminder != null
     val shape = RoundedCornerShape(10.dp)
     // A double-faced card's other face, and whether it is turned up. A held card turns over by itself after a moment
     // (a finger holding it can't tap); an opened one turns with its flip button.
@@ -219,6 +242,9 @@ fun CardInspector(card: ZoneCard, modifier: Modifier = Modifier) {
     @Composable
     fun footer(scale: Float) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy((8 * scale).dp)) {
+            if (tabs.size > 1) CompositionLocalProvider(LocalCardArtPlaceholderShown provides null) {
+                InspectorTabStrip(tabs, held.instanceId, card.instanceId, { id, rect -> tabFrames[id] = rect }) { focusID = it }
+            }
             if (liveState.isNotEmpty()) InspectorStateChips(liveState, scale)
             if (rulesVisible) GameRulesText(rules, cardName = card.card.name, isHidden = !NativeCardArtworkPolicy.permitsLookup(card),
                 symbolSize = (16 * scale).dp, style = sf(17f * scale), color = MagicPalette.parchment)
@@ -318,6 +344,24 @@ private fun InspectorStateChips(items: List<String>, scale: Float = 1f) {
             else FitText(item, sf(15f * scale, SfWeight.bold), Modifier.background(MagicPalette.iron.copy(alpha = 0.9f), CircleShape)
                 .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.55f), CircleShape).padding(horizontal = (8 * scale).dp, vertical = (3 * scale).dp),
                 color = MagicPalette.parchment, minimumScale = 0.7f)
+        }
+    }
+}
+
+/** The inspected card and the cards fastened to it as tabs: tap one, or slide the holding finger onto it (CardInspector.swift). */
+@Composable
+private fun InspectorTabStrip(cards: List<ZoneCard>, held: String, selected: String,
+                              frame: (String, androidx.compose.ui.geometry.Rect) -> Unit, choose: (String) -> Unit) {
+    Row(Modifier.padding(vertical = 4.dp).semantics { testTag = "inspector.tabs" }, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (tab in cards) {
+            val on = tab.instanceId == selected
+            Box(Modifier.onGloballyPositioned { frame(tab.instanceId, it.boundsInRoot()) }
+                .graphicsLayer { val s = if (on) 1.08f else 1f; scaleX = s; scaleY = s; alpha = if (on) 1f else 0.75f }
+                .clickable { choose(tab.instanceId) }
+                .semantics { contentDescription = if (tab.instanceId == held) tab.card.name else "${tab.card.name}, attached"; testTag = "inspector.tab.${tab.instanceId}" }) {
+                CardTile(tab, false, zoneName = "Inspector tab", width = 34.dp, height = (34 * io.magicmobile.android.game.BattlefieldLayoutMetrics.magicCardHeightToWidth).dp, ignoreTappedRotation = true)
+                Box(Modifier.matchParentSize().border(if (on) 2.dp else 1.dp, if (on) MagicPalette.antiqueGold else Color.White.copy(alpha = 0.25f), RoundedCornerShape(6.dp)))
+            }
         }
     }
 }

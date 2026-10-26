@@ -13,12 +13,15 @@
  *                  "opponentBracket": 2, "aiSkill": 1, "deckID": "token-triumph", "deckName": "Token Triumph",
  *                  "commander": "Emmara, Soul of the Accord", "colors": ["G", "W"], "deckBracket": 2,
  *                  "outcome": "win", "turns": 9, "rankChange": {"outcome", "before", "after", "bonuses"},
- *                  "season": "2026-10", "engineMatchID": "…"} ],
+ *                  "season": "2026-10", "engineMatchID": "…", "rankedTicket": "…", "settlement": "unverified",
+ *                  "settlementCheck": "too_short"} ],
  *     "title": "firstWin", "favoriteCommander": "Krenko, Mob Boss", "recentAIDecks": ["ai-edgar-markov-core"] }
  *
  * Optional fields are left out when absent. Positions use the tier names of parity/ranked-cases.json.
  */
-import { type RankChange, RankLadder, type RankOutcome, RankPosition, RankState, RankTier } from "./rankLadder";
+import {
+  type RankBonus, type RankChange, RankLadder, type RankOutcome, RankPosition, RankSettlement, RankState, RankTier, type ServerRankChange,
+} from "./rankLadder";
 
 /** Where the record lives: `storage` from ui/storage.ts in the app, a Map-backed object in tests. */
 export interface KeyValueStore { get(key: string): string | undefined | null; set(key: string, value: string): void }
@@ -47,13 +50,21 @@ export interface MatchRecord {
   deckBracket: number;
   outcome: RankOutcome;
   turns: number;
+  /** The browser's count at once; the server's once it answers (PlayerRecordStore.settleRanked). */
   rankChange?: RankChange;
   season?: string;
   /** The engine's id for the game, when it kept a detailed record. */
   engineMatchID?: string;
+  /** A ranked AI game's server ticket, so the server's answer finds this game. */
+  rankedTicket?: string;
+  /** How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why. */
+  settlement?: string;
+  settlementCheck?: string;
 }
 
 export const vsHuman = (match: MatchRecord) => match.opponents.some((opponent) => !opponent.isAI);
+/** Why a ranked win left the ladder alone, as the player reads it; undefined when it counted (MatchRecord.rankNote). */
+export const rankNote = (match: MatchRecord) => RankSettlement.note(match.settlement, match.settlementCheck, match.deckBracket);
 
 const WUBRG = ["W", "U", "B", "R", "G"];
 
@@ -178,6 +189,8 @@ export interface FinishedGame {
   mode: PlayMode; outcome: RankOutcome; opponents: MatchOpponent[]; opponentBracket?: number; aiSkill?: number;
   deckID: string; deckName: string; commander?: string; colors: string[]; deckBracket: number; turns: number;
   aiDeckID?: string; engineMatchID?: string;
+  /** The server's ticket for a ranked game against the AI. */
+  rankedTicket?: string;
 }
 
 /**
@@ -196,6 +209,8 @@ export class PlayerRecordStore {
   /** The last AI decks faced, so the next pick is a different one. */
   private _recentAIDecks: string[];
   private _pending: PendingRanked[];
+  /** Records the browser's storage refused (full or blocked), held for this page so the result still goes with one. */
+  private readonly heldRecords = new Map<string, string>();
 
   constructor(private readonly store: KeyValueStore, private readonly now: () => number = Date.now, private readonly key = PlayerRecordStore.key) {
     const season = RankLadder.season(now());
@@ -238,7 +253,8 @@ export class PlayerRecordStore {
     let recordFile: string | undefined;
     if (gameRecord !== undefined) {
       recordFile = `${this.key}.game.${result.ticket}`;
-      try { this.store.set(recordFile, JSON.stringify(gameRecord)); } catch { recordFile = undefined; }
+      const text = JSON.stringify(gameRecord);
+      try { this.store.set(recordFile, text); } catch { this.heldRecords.set(recordFile, text); }
     }
     this._pending = [...this._pending.filter((p) => p.ticket !== result.ticket), { ...result, ...(recordFile ? { recordFile } : {}) }];
     this.save();
@@ -246,15 +262,39 @@ export class PlayerRecordStore {
 
   /** The kept game record for a pending result. */
   gameRecord(name: string): unknown {
-    try { const raw = this.store.get(name); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; }
+    try { const raw = this.heldRecords.get(name) ?? this.store.get(name); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; }
   }
 
   /** The server answered for this ticket (or never will): its record is dropped. */
   resolvePendingRanked(ticket: string): void {
     const done = this._pending.find((p) => p.ticket === ticket);
     if (!done) return;
-    if (done.recordFile) { try { this.store.set(done.recordFile, ""); } catch { /* storage blocked */ } }
+    if (done.recordFile) {
+      this.heldRecords.delete(done.recordFile);
+      try { this.store.set(done.recordFile, ""); } catch { /* storage blocked */ }
+    }
     this._pending = this._pending.filter((p) => p.ticket !== ticket);
+    this.save();
+  }
+
+  /** The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the browser's. */
+  settleRanked(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined): void {
+    const index = this._matches.findIndex((m) => m.rankedTicket === ticket);
+    if (index < 0) return;
+    const match: MatchRecord = { ...this._matches[index] };
+    delete match.settlement; delete match.settlementCheck;
+    if (settlement !== undefined) match.settlement = settlement;
+    if (check !== undefined) match.settlementCheck = check;
+    if (change) {
+      match.rankChange = {
+        outcome: match.outcome, before: RankPosition.fromPoints(change.pointsBefore), after: RankPosition.fromPoints(change.pointsAfter),
+        bonuses: (change.bonuses ?? []).filter((b): b is RankBonus => b === "streak" || b === "underdog"),
+      };
+    } else if (RankSettlement.held(settlement) && match.rankChange) {
+      match.rankChange = { ...match.rankChange, after: match.rankChange.before, bonuses: [] };
+    }
+    if (JSON.stringify(match) === JSON.stringify(this._matches[index])) return;
+    this._matches = this._matches.map((m, i) => (i === index ? match : m));
     this.save();
   }
 
@@ -285,6 +325,7 @@ export class PlayerRecordStore {
       ...(change ? { rankChange: change } : {}),
       ...(game.mode === "ranked" ? { season: this._rank.season } : {}),
       ...(game.engineMatchID !== undefined ? { engineMatchID: game.engineMatchID } : {}),
+      ...(game.mode === "ranked" && game.rankedTicket !== undefined && game.opponents.every((o) => o.isAI) ? { rankedTicket: game.rankedTicket } : {}),
     };
     this._matches = [match, ...this._matches].slice(0, PlayerRecordStore.maxMatches);
     const aiDeckID = game.aiDeckID;

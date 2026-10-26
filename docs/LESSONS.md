@@ -846,3 +846,16 @@ contradicting one.
   only on the player's Send; read sent reports with `select created_at, platform, build, kind, report from
   diagnostic_reports order by created_at desc`. A hang's frames are binary offsets (MetricKit); symbolicate them with
   the build's dSYM. The main-thread watchdog pauses when the scene leaves `.active`, or a suspended app reads as a hang.
+
+## Ranked AI wins: judge by turns, show why a win didn't count (2026-10-26)
+
+- Two of Caleb's wins (turns 11 and 13) settled `too_soon` under the old four-minute clock, and the apps never said so:
+  the server's `settlement` was decoded and dropped. Now `mm_ranked_ai_record_check` bounds by turn and bracket, the
+  settle answer carries `change` and `check`, and the apps store both on the match (`settleRanked`).
+- PL/pgSQL reads an `IF` condition up to the first `THEN`, so `if x < case when … then 3 else 5 end then` is a syntax
+  error ("at end of input"). Compute the CASE into a variable first.
+- iOS game records were written with `.completeFileProtection`: a ranked sync while the phone was locked read nothing
+  and sent the win as `no_record` (unverified for good). Records are now readable after first unlock, and a kept but
+  unreadable record waits for the next sync on every platform.
+- Saving an image into the asset store posts `didStoreArtwork`, which empties every decoded image in memory. Live
+  fetches save with `announce: false`, or a game's first hundred cards would flush the cache a hundred times.

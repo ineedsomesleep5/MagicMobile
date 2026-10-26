@@ -13,7 +13,7 @@ import {
   displayToughness, type GameCommand, type GameSnapshot, isCreatureCard, isOut, isUuid, type LegalAction, pileNumber, type PlayerGameState, promptKind,
   type PromptEnvelopeV2, type XmagePromptAbility, type XmagePromptPile, type XmageStackObject, type ZoneCard,
 } from "../../core/models";
-import { cardImageURL } from "../cardArt";
+import { CARD_BACK_URL, cardImageURL, permitsArtName } from "../cardArt";
 import { AbilityCard, isStackAbility } from "./AbilityCard";
 import { Portrait } from "./avatars";
 import { type CardReader, readProps } from "./inspectGesture";
@@ -208,9 +208,10 @@ export const lethalDamage = (toughness: number, damage: number, deathtouch: bool
 
 const read = (inspect: Inspect | undefined, name: string | undefined, card?: ZoneCard) => readProps(inspect, name ? { name, card } : undefined);
 
-/** The printed card, at a width in board points. */
+/** The printed card, at a width in board points: a hidden card is its back, your own face-down card its face dimmed. */
 function Printed({ name, card, width, inspect, className = "" }: { name: string; card?: ZoneCard; width: number; inspect?: Inspect; className?: string }) {
-  return <img className={`bprinted ${className}`} src={cardImageURL(name, "normal")} alt={name} crossOrigin="anonymous" draggable={false}
+  return <img className={`bprinted ${card?.card.faceDown === true ? "facedown" : ""} ${className}`} src={permitsArtName(name) ? cardImageURL(name, "normal") : CARD_BACK_URL}
+    alt={name} crossOrigin="anonymous" draggable={false}
     style={{ width, height: width * 1.397 }} {...read(inspect, name, card)} />;
 }
 

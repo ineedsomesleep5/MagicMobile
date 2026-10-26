@@ -641,7 +641,8 @@ struct VersusIntroOverlay: View {
         let arch = UnevenRoundedRectangle(topLeadingRadius: width / 2, bottomLeadingRadius: 10, bottomTrailingRadius: 10,
                                           topTrailingRadius: width / 2, style: .continuous)
         return VStack(spacing: -10) {
-            ArenaArt(name: seat.commander ?? "", colors: [])
+            // The sharper image: the arch draws the art far larger than a board card.
+            ArenaArt(name: seat.commander ?? "", colors: [], variant: .inspection)
                 .frame(width: width, height: width / 0.72)
                 .clipShape(arch)
                 .overlay(arch.strokeBorder(ArenaMenuStyle.metal, lineWidth: 2.5))

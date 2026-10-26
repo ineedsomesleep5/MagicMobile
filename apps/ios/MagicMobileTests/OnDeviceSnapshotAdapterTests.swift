@@ -525,6 +525,43 @@ final class OnDeviceSnapshotAdapterTests: XCTestCase {
     /// A revealed top card (Conspicuous Snoop, Future Sight, Courser of Kruphix) arrives as the player's `topCard`:
     /// it is the library's one visible card, and a cast offered for it resolves (it used to be dropped as unknown).
     /// The helper emblems' day or night and storm count, and a designation, reach the snapshot too.
+    /// A face-down card its owner may look at (Hideaway's exile, a morph) shows as the real card from CardView's
+    /// `secondCardFace`, marked face down; without that face it stays a hidden placeholder (Android OnDeviceFaceDownTest).
+    func testOwnFaceDownCardShowsItsRealFace() throws {
+        func handCard(_ edit: (inout [String: MagicMobileOnDevice.JSONValue], MagicMobileOnDevice.JSONValue) -> Void) throws -> CardIdentity {
+            let original = try fixture("2p-priority")
+            var raw = try XCTUnwrap(original.raw.object)
+            var root = try XCTUnwrap(original.snapshot?.object)
+            var view = try XCTUnwrap(root["gameView"]?.object)
+            var hand = try XCTUnwrap(view["myHand"]?.object)
+            let key = try XCTUnwrap(hand.keys.sorted().first)
+            let real = try XCTUnwrap(hand[key])
+            var card = try XCTUnwrap(real.object)
+            edit(&card, real)
+            hand[key] = .object(card); view["myHand"] = .object(hand)
+            root["gameView"] = .object(view); raw["snapshot"] = .object(root)
+            let snapshot = try OnDeviceSnapshotAdapter.snapshot(MatchPoll(.object(raw)), expectedSeatID: original.seatID)
+            let id = try XCTUnwrap(real["id"]?.string)
+            return try XCTUnwrap(snapshot.players.flatMap(\.zones.hand).first { $0.instanceId == id }).card
+        }
+        var realName = ""
+        let own = try handCard { card, real in
+            realName = real["name"]?.string ?? ""
+            card["name"] = .string("Face Down: \(realName)"); card["displayName"] = .string("Face Down: \(realName)")
+            card["faceDown"] = .bool(true); card["hideInfo"] = .bool(false); card["secondCardFace"] = real
+        }
+        XCTAssertEqual(own.name, realName)
+        XCTAssertEqual(own.faceDown, true)
+        XCTAssertFalse(own.typeLine.isEmpty)
+        let theirs = try handCard { card, _ in
+            card["name"] = .string("Morph"); card["displayName"] = .string("Morph")
+            card["faceDown"] = .bool(true); card["hideInfo"] = .bool(false); card["secondCardFace"] = .null
+        }
+        XCTAssertEqual(theirs.name, "Face-down card")
+        XCTAssertNil(theirs.faceDown)
+        XCTAssertEqual(theirs.typeLine, "")
+    }
+
     func testRevealedTopCardIsVisibleAndCastableWithTableHints() throws {
         let original = try fixture("2p-priority")
         var raw = try XCTUnwrap(original.raw.object)

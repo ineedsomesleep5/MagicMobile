@@ -67,6 +67,7 @@ struct CardTile: View {
             .brightness(card.tapped == true && !ignoreTappedRotation ? -0.12 : 0)
             .frame(width: width, height: height)
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay { if card.card.faceDown == true { FaceDownMark(width: width) } }
 
             XmageCardIconStrip(icons: ignoreTappedRotation ? [] : card.visibleXmageIcons, cardWidth: width)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -297,6 +298,27 @@ struct CardCounterBadgeStrip: View {
         if label == "LOY" { return MagicPalette.arcaneBlue }
         if label == "SHD" { return MagicPalette.antiqueGold }
         return MagicPalette.leather
+    }
+}
+
+/// Your own face-down card (exiled by Hideaway or Foretell, a morph, a manifest): its real face, dimmed, with a closed
+/// eye, as only you see it.
+struct FaceDownMark: View {
+    let width: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.38))
+            Image(systemName: "eye.slash.fill")
+                .font(.system(size: max(width * 0.13, 8), weight: .bold))
+                .foregroundStyle(MagicPalette.parchment)
+                .padding(max(width * 0.04, 3))
+                .background(MagicPalette.iron.opacity(0.85), in: Capsule())
+                .overlay(Capsule().stroke(MagicPalette.antiqueGold.opacity(0.5), lineWidth: 0.7))
+                .padding(.top, max(width * 0.05, 3))
+        }
+        .allowsHitTesting(false)
+        .accessibilityLabel(String(localized: "Face down: only you can see it"))
     }
 }
 

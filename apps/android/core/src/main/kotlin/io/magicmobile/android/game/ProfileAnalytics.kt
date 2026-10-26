@@ -36,6 +36,10 @@ data class ProfileOpponent(val name: String, val commander: String?, val isAI: B
 data class ProfileGame(
     val id: String, val date: Long, val mode: PlayMode, val outcome: RankOutcome, val deckName: String, val commanders: List<String>,
     val colors: List<String>, val opponents: List<ProfileOpponent>, val turns: Int?, val rankDelta: Int? = null, val engineMatchID: String? = null,
+    /** A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only). */
+    val rankLine: String? = null,
+    /** Why a ranked win left the ladder alone (own games only). */
+    val rankNote: String? = null,
 ) {
     val commander: String? get() = commanders.firstOrNull()
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
@@ -43,7 +47,8 @@ data class ProfileGame(
     companion object {
         fun of(match: MatchRecord) = ProfileGame(match.id, match.date, match.mode, match.outcome, match.deckName,
             listOfNotNull(match.commander), match.colors, match.opponents.map { ProfileOpponent(it.name, it.commander, it.isAI) },
-            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID)
+            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID,
+            match.rankChange?.let(RankSettlement::line), match.rankNote)
     }
 }
 

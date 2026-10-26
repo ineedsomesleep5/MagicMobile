@@ -177,6 +177,7 @@ struct AIWaitFallbackControls: View {
 
 struct GameRematchTitleKey: EnvironmentKey { static let defaultValue: String? = nil }
 struct GameRankChangeKey: EnvironmentKey { static let defaultValue: RankChange? = nil }
+struct GameRankNoteKey: EnvironmentKey { static let defaultValue: String? = nil }
 
 /// On-device games concede through the engine. Hosted games keep XMage's own "concede" action.
 struct GameConcedeHandler {
@@ -212,6 +213,12 @@ extension EnvironmentValues {
         get { self[GameRankChangeKey.self] }
         set { self[GameRankChangeKey.self] = newValue }
     }
+
+    /// Why a ranked win left the ladder alone (the server's answer), under the rank on the result screen.
+    var gameRankNote: String? {
+        get { self[GameRankNoteKey.self] }
+        set { self[GameRankNoteKey.self] = newValue }
+    }
 }
 
 extension EnvironmentValues {
@@ -229,6 +236,7 @@ struct GameCompletionOverlay: View {
     let quitGame: () -> Void
     @Environment(\.gameRematchTitle) private var rematchTitle
     @Environment(\.gameRankChange) private var rankChange
+    @Environment(\.gameRankNote) private var rankNote
 
     private var title: String {
         guard let winners = snapshot.winnerPlayerIds, !winners.isEmpty else { return "Game Over" }
@@ -256,7 +264,7 @@ struct GameCompletionOverlay: View {
 
     @ViewBuilder var body: some View {
         if arena {
-            ArenaGameResultView(snapshot: snapshot, stats: stats, rankChange: rankChange, rematchTitle: rematchTitle,
+            ArenaGameResultView(snapshot: snapshot, stats: stats, rankChange: rankChange, rankNote: rankNote, rematchTitle: rematchTitle,
                                 newGame: newGame, quitGame: quitGame)
         } else {
             tavernResult
@@ -314,6 +322,11 @@ struct GameCompletionOverlay: View {
                         .environment(\.tavernBoard, true)
                         .opacity(revealed || reduceMotion ? 1 : 0)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.45).delay(0.5), value: revealed)
+                }
+                if let rankNote {
+                    Text(rankNote).font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("board.result.rankNote")
                 }
 
                 HStack(spacing: 10) {

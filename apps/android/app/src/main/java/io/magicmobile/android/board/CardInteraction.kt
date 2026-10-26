@@ -26,7 +26,11 @@ import io.magicmobile.android.game.BoardRect
  */
 class HoldCardInspection {
     var isActive by mutableStateOf(false); private set
+    /** Where the holding finger is now (root coordinates, px), so it can slide onto the inspector's tabs. */
+    var finger by mutableStateOf<Offset?>(null); private set
     private var dismiss: (() -> Unit)? = null
+
+    fun track(point: Offset) { if (isActive) finger = point }
 
     fun begin(dismiss: () -> Unit) {
         end()
@@ -39,6 +43,7 @@ class HoldCardInspection {
         val completion = dismiss
         dismiss = null
         isActive = false
+        finger = null
         completion?.invoke()
     }
 }
@@ -52,7 +57,20 @@ fun Modifier.onCardInteraction(tap: () -> Unit, inspect: () -> Unit, release: ()
     val currentInspect by rememberUpdatedState(inspect)
     val currentRelease by rememberUpdatedState(release)
     if (!enabled) return@composed this
-    this.pointerInput(Unit) {
+    var coordinates by androidx.compose.runtime.remember { mutableStateOf<LayoutCoordinates?>(null) }
+    this.onGloballyPositioned { coordinates = it }
+        // Watches without consuming: once a hold is inspecting, the finger's travel goes to the inspector's tabs.
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    val at = event.changes.firstOrNull()?.position ?: continue
+                    val layout = coordinates
+                    if (inspection?.isActive == true && layout != null && layout.isAttached) inspection.track(layout.localToRoot(at))
+                }
+            }
+        }
+        .pointerInput(Unit) {
         detectTapGestures(
             onTap = { currentTap() },
             onLongPress = {

@@ -123,6 +123,7 @@ export function extraHandCards(player: PlayerGameState, actions: LegalAction[]):
 /** The inspector's live-state notes for a card (CardInspector.liveState): its type, then what is true of it now. */
 export function liveState(card: ZoneCard, battlefield: ZoneCard[]): string[] {
   const details: string[] = [];
+  if (card.card.faceDown === true) details.push("Face down");
   if (card.card.isToken === true) details.push(card.card.copySourceArtworkName === undefined ? "Token" : "Token copy");
   if (card.card.typeLine) details.push(card.card.typeLine);
   if ((card.cardIcons ?? []).some((i) => i.iconType === "COMMANDER")) details.push("Commander");
@@ -144,6 +145,14 @@ export function liveState(card: ZoneCard, battlefield: ZoneCard[]): string[] {
   for (const [name, count] of Object.entries(card.counters ?? {})) if (count > 0) details.push(`${name} ×${count}`);
   const seen = new Set<string>();
   return details.filter((d) => { const key = d.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
+}
+
+/** CardRulesReminder.text: a short note for a rule players often read differently than the engine applies it. */
+export function rulesReminder(card: ZoneCard): string | undefined {
+  if (card.card.faceDown === true) {
+    return "Face down: only you can see it. A card exiled face down is played through the card that exiled it: for Hideaway, use that card's own ability once its condition is met.";
+  }
+  return undefined;
 }
 
 /**

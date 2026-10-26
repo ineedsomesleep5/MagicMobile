@@ -552,7 +552,7 @@ struct ProfileGameCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                if let onOpenDetail { onOpenDetail() } else { withAnimation(.easeOut(duration: 0.18)) { expanded.toggle() } }
+                withAnimation(.easeOut(duration: 0.18)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 12) {
                     art
@@ -568,9 +568,12 @@ struct ProfileGameCard: View {
                     Spacer(minLength: 4)
                     VStack(alignment: .trailing, spacing: 4) {
                         stamp
-                        if let delta = game.rankDelta, delta != 0 {
-                            Text(delta > 0 ? "+\(delta)" : "\(delta)").font(ArenaMenuStyle.font(12, .heavy)).monospacedDigit()
-                                .foregroundStyle(delta > 0 ? Color(red: 0.6, green: 0.95, blue: 0.55) : Color(red: 1, green: 0.55, blue: 0.45))
+                        if game.rankNote != nil {
+                            Text(String(localized: "Not ranked")).font(ArenaMenuStyle.font(11, .heavy)).opacity(0.6)
+                        } else if let delta = game.rankDelta, game.mode == .ranked {
+                            Text(delta > 0 ? "+\(delta)" : delta == 0 ? "±0" : "\(delta)").font(ArenaMenuStyle.font(12, .heavy)).monospacedDigit()
+                                .foregroundStyle(delta > 0 ? Color(red: 0.6, green: 0.95, blue: 0.55)
+                                                 : delta == 0 ? TavernPalette.parchment.opacity(0.7) : Color(red: 1, green: 0.55, blue: 0.45))
                         } else if detailed {
                             Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 12, weight: .bold)).foregroundStyle(BrandTheme.ember)
                         }
@@ -584,9 +587,9 @@ struct ProfileGameCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(label)
-            .accessibilityHint(detailed ? String(localized: "Opens the match dashboard") : (expanded ? String(localized: "Hides the details") : String(localized: "Shows the details")))
+            .accessibilityHint(expanded ? String(localized: "Hides the details") : String(localized: "Shows the details"))
             .accessibilityIdentifier(identifier)
-            if expanded && !detailed { details.transition(.opacity) }
+            if expanded { details.transition(.opacity) }
         }
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.32)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(TavernPalette.brass.opacity(0.45), lineWidth: 1))
@@ -594,7 +597,7 @@ struct ProfileGameCard: View {
 
     private var label: String {
         let deck = game.deckName.isEmpty ? (game.commander ?? "") : game.deckName
-        let delta = game.rankDelta.map { $0 == 0 ? "" : ", \($0 > 0 ? "+" : "")\($0) pips" } ?? ""
+        let delta = game.rankNote.map { ", \($0)" } ?? game.rankDelta.map { $0 == 0 ? "" : ", \($0 > 0 ? "+" : "")\($0) pips" } ?? ""
         return "\(resultName) against \(opponentText), \(deck), \(modeText), \(game.date.formatted(date: .abbreviated, time: .omitted))\(delta)"
     }
 
@@ -663,6 +666,17 @@ struct ProfileGameCard: View {
             .font(ArenaMenuStyle.font(11, .regular)).opacity(0.7)
             if game.opponents.isEmpty {
                 Text(String(localized: "Opponents weren't recorded for this game.")).font(ArenaMenuStyle.font(11, .regular)).italic().opacity(0.55)
+            }
+            if let rankLine = game.rankLine {
+                Label(rankLine, systemImage: "trophy.fill").font(ArenaMenuStyle.font(12, .semibold)).foregroundStyle(ArenaMenuStyle.gold)
+            }
+            if let rankNote = game.rankNote {
+                Text(rankNote).font(ArenaMenuStyle.font(12, .semibold)).opacity(0.75)
+            }
+            if let onOpenDetail {
+                Button(String(localized: "Game review"), systemImage: "chart.line.uptrend.xyaxis", action: onOpenDetail)
+                    .buttonStyle(ArenaButtonStyle(kind: .secondary, compact: true))
+                    .accessibilityIdentifier(identifier.replacingOccurrences(of: ".expand", with: ".review"))
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 12)

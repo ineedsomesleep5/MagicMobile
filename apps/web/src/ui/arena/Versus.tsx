@@ -34,7 +34,7 @@ export function VersusIntro({ you, opponents, finished }: { you: VersusSeat; opp
 function Seat({ seat, tilt }: { seat: VersusSeat; tilt: number }) {
   return (
     <div className="vseat" style={{ transform: `rotate(${tilt}deg)` }}>
-      <div className="arch"><DeckArt name={seat.commander} colors={[]} /></div>
+      <div className="arch"><DeckArt name={seat.commander} colors={[]} focus={0.3} /></div>
       <span className="plate">{seat.name}</span>
     </div>
   );

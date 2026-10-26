@@ -2906,6 +2906,8 @@ struct ArenaGameResultView: View {
     let snapshot: GameSnapshot
     var stats: GameStats?
     var rankChange: RankChange?
+    /// Why a ranked win left the ladder alone, once the server says so.
+    var rankNote: String?
     var rematchTitle: String?
     let newGame: () -> Void
     let quitGame: () -> Void
@@ -3042,6 +3044,11 @@ struct ArenaGameResultView: View {
                     }
                 }
                 .accessibilityElement(children: .combine)
+            }
+            if let rankNote {
+                Text(rankNote).font(ArenaMenuStyle.font(13, .semibold)).foregroundStyle(ArenaGlass.text.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("board.result.rankNote")
             }
             if let stats, stats.turns > 0 {
                 HStack(spacing: landscape ? 22 : 28) {

@@ -118,6 +118,34 @@ export const RankChange = {
     if (after.pips !== before.pips) return after.pips > before.pips ? "pipUp" : "pipDown";
     return "none";
   },
+  /** A game's move on the ladder in words (ProfileGame.rankLine): "Gold II: 3 → 5 pips", or "Gold II → Gold I" across a title and in Mythic. */
+  line(change: RankChange): string {
+    const before = RankPosition.title(change.before), after = RankPosition.title(change.after);
+    return before === after && change.after.tier !== "mythic" ? `${after}: ${change.before.pips} → ${change.after.pips} pips` : `${before} → ${after}`;
+  },
+} as const;
+
+/** The server's move on the ladder for a ranked AI result (RankedStanding.Change). */
+export interface ServerRankChange { pointsBefore: number; pointsAfter: number; bonuses?: string[] }
+
+/** The server's word on a ranked AI result (iOS RankSettlement), for the result screen and the game history. */
+export const RankSettlement = {
+  /** A win the server held back from the ladder. */
+  held: (settlement: string | undefined) => ["too_soon", "capped", "unverified"].includes(settlement ?? ""),
+  /** Why a ranked win left the ladder alone, as the player reads it; undefined when it counted. */
+  note(settlement: string | undefined, check: string | undefined, deckBracket: number): string | undefined {
+    switch (settlement) {
+      case "too_soon": return "Not ranked: the game ended too quickly";
+      case "capped": return "Not ranked: 12 ranked wins a day";
+      case "unverified":
+        switch (check) {
+          case "too_short": return `Not ranked: wins before turn ${deckBracket >= 5 ? 3 : 5} don't count`;
+          case "too_fast": return "Not ranked: the game ended too quickly";
+          default: return "Not ranked: this win couldn't be checked";
+        }
+      default: return undefined;
+    }
+  },
 } as const;
 
 export interface SeasonRecord { season: string; final: RankPosition; peak: RankPosition; wins: number; losses: number }

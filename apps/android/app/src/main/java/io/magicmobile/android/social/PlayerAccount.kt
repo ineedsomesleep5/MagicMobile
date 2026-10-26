@@ -221,6 +221,8 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
         if (phase != Phase.READY || username == null) return
         fun parse(text: String) = runCatching { io.magicmobile.android.game.RankedStanding.parse(Json.parseToJsonElement(text) as JsonObject) }.getOrNull()
         for (pending in record.file.pendingRankedResults) {
+            // A record kept on this phone but unreadable for now waits for the next sync rather than going without it.
+            if (pending.seeded && pending.recordFile?.let { record.gameRecordIsKept(it) && record.gameRecord(it) == null } == true) continue
             try {
                 val text = if (pending.seeded) {
                     // The game record backs the result; without one a win settles as unverified.
@@ -232,7 +234,7 @@ class PlayerAccount(context: Context, private val scope: CoroutineScope) {
                     api.rpc("mm_ranked_ai_result", mapOf("p_game" to JsonPrimitive(pending.ticket), "p_result" to JsonPrimitive(pending.outcome.raw)))
                 }
                 record.resolvePendingRankedResult(pending.ticket)
-                parse(text)?.let(record::adopt)
+                parse(text)?.let { standing -> record.settleRanked(pending.ticket, standing); record.adopt(standing) }
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {

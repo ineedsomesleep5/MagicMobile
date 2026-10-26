@@ -41,15 +41,19 @@ export function ColorGlass({ colors }: { colors: string[] }) {
   return <div className="mcolorglass"><i style={{ background: `linear-gradient(135deg, ${palette.join(", ")})` }} /></div>;
 }
 
-/** A commander's art filling its frame (Scryfall's art crop), the deck's colours until it loads. */
-export function DeckArt({ name, colors }: { name?: string; colors: string[] }) {
+/**
+ * A commander's art filling its frame (Scryfall's art crop, its sharpest art-only image), the deck's colours until it
+ * loads. In a frame wider than the art, `focus` picks which band shows: 0 the top, 0.5 the middle, 1 the bottom (faces
+ * usually sit in the upper third).
+ */
+export function DeckArt({ name, colors, focus }: { name?: string; colors: string[]; focus?: number }) {
   const [state, setState] = useState<"loading" | "ready" | "failed">(name ? "loading" : "failed");
   return (
     <div className="mdeckart">
       {state !== "ready" && <ColorGlass colors={colors} />}
       {name && state !== "failed" && (
         <img src={cardImageURL(name, "art_crop")} alt="" crossOrigin="anonymous" draggable={false} loading="lazy"
-          style={{ opacity: state === "ready" ? 1 : 0 }} onLoad={() => setState("ready")} onError={() => setState("failed")} />
+          style={{ opacity: state === "ready" ? 1 : 0, ...(focus !== undefined ? { objectPosition: `50% ${focus * 100}%` } : {}) }} onLoad={() => setState("ready")} onError={() => setState("failed")} />
       )}
     </div>
   );

@@ -46,6 +46,10 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
     var rankDelta: Int? = nil
     /// The engine's id for the game, to find its detailed record (own games only).
     var engineMatchID: String? = nil
+    /// A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only).
+    var rankLine: String? = nil
+    /// Why a ranked win left the ladder alone (own games only).
+    var rankNote: String? = nil
 
     var commander: String? { commanders.first }
     var vsHuman: Bool { opponents.contains { !$0.isAI } }
@@ -62,6 +66,16 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
                   commanders: match.commander.map { [$0] } ?? [], colors: match.colors,
                   opponents: match.opponents.map { Opponent(name: $0.name, commander: $0.commander, isAI: $0.isAI) },
                   turns: match.turns > 0 ? match.turns : nil, rankDelta: match.rankChange?.pipDelta, engineMatchID: match.engineMatchID)
+        rankLine = match.rankChange.map(Self.rankLine)
+        rankNote = match.rankNote
+    }
+
+    static func rankLine(_ change: RankChange) -> String {
+        let before = change.before, after = change.after
+        if before.title == after.title, after.tier != .mythic {
+            return String(localized: "\(after.title): \(before.pips) → \(after.pips) pips")
+        }
+        return String(localized: "\(before.title) → \(after.title)")
     }
 }
 

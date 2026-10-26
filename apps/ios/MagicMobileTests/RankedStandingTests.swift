@@ -35,6 +35,27 @@ final class RankedStandingTests: XCTestCase {
         XCTAssertEqual(value.settlement, "counted")
     }
 
+    func testTheServersAnswerReplacesThePhonesGuessOnThatGame() throws {
+        let store = PlayerRecordStore(directory: directory(), now: { self.october })
+        let ticket = UUID()
+        store.beginRankedAIGame(ticket: ticket, seeded: true)
+        play(store, .win)
+        XCTAssertEqual(store.matches.first?.rankedTicket, ticket)
+        // Counted: the server's own move on the ladder.
+        let counted = try RankedStanding.parse(Data(#"{"seeded": true, "unsettled": 0, "season": "2026-10", "points": 6, "peakPoints": 6, "wins": 1, "losses": 0, "draws": 0, "winStreak": 1, "settlement": "counted", "change": {"pointsBefore": 4, "pointsAfter": 6, "bonuses": ["underdog"]}, "check": null}"#.utf8))
+        store.settleRanked(ticket: ticket, settlement: counted.settlement, check: counted.check, change: counted.change)
+        XCTAssertEqual(store.matches.first?.rankChange?.after, RankPosition(points: 6))
+        XCTAssertEqual(store.matches.first?.rankChange?.bonuses, [.underdog])
+        XCTAssertNil(store.matches.first?.rankNote)
+        // Held back: no move, and why.
+        store.settleRanked(ticket: ticket, settlement: "unverified", check: "too_short", change: nil)
+        XCTAssertEqual(store.matches.first?.rankChange?.pipDelta, 0)
+        XCTAssertEqual(store.matches.first?.rankNote, "Not ranked: wins before turn 5 don't count")
+        XCTAssertEqual(RankSettlement.note("unverified", check: "too_short", deckBracket: 5), "Not ranked: wins before turn 3 don't count")
+        XCTAssertEqual(RankSettlement.note("capped", check: nil, deckBracket: 2), "Not ranked: 12 ranked wins a day")
+        XCTAssertNil(RankSettlement.note("counted", check: nil, deckBracket: 2))
+    }
+
     func testAdoptsTheServerStanding() throws {
         let store = PlayerRecordStore(directory: directory(), now: { self.october })
         play(store, .win)

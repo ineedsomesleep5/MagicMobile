@@ -105,19 +105,62 @@ private struct HowToPlayChooser: View {
                       primary: Bool = false, choose: @escaping () -> Void) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return Button(action: choose) {
+            if verticalSizeClass == .compact { sideways(title: title, icon: icon, art: art, colors: colors, action: action, primary: primary) }
+            else { upright(title: title, icon: icon, art: art, colors: colors, action: action, primary: primary) }
+        }
+        .buttonStyle(.plain)
+        .background(shape.fill(Color.black.opacity(0.45)))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
+        .contentShape(Rectangle())
+        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityIdentifier("howToPlay.tutorial.\(id)")
+    }
+
+    private func emblem(_ icon: String) -> some View {
+        ArenaEmblem(symbol: icon, size: 16, lit: true)
+            .frame(width: 34, height: 34)
+            .background(Circle().fill(Color.black.opacity(0.7)))
+            .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
+            .padding(10)
+    }
+
+    /// Upright, Arena's way (Caleb, 2026-10-26: the thin strips showed shoulders, not faces, under a gap): the art fills
+    /// the tile, sharp and framed on its upper part, with the title and plaque on a shade along its foot.
+    private func upright(title: String, icon: String, art: String, colors: [String], action: String, primary: Bool) -> some View {
+        ZStack(alignment: .bottom) {
+            ArenaArt(name: art, colors: colors, variant: .inspection, focus: 0.3)
+                .scaleEffect(1.06)
+            LinearGradient(colors: [.clear, .black.opacity(0.55), .black.opacity(0.88)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 96)
+            HStack(alignment: .bottom, spacing: 10) {
+                Text(title)
+                    .font(ArenaMenuStyle.font(19, .bold))
+                    .foregroundStyle(ArenaMenuStyle.text)
+                    .shadow(color: .black, radius: 3, y: 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                HowToPlayPlaque(text: action, icon: "chevron.right", primary: primary)
+            }
+            .padding(14)
+        }
+        .frame(height: 158)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .overlay(alignment: .topLeading) { emblem(icon) }
+        .multilineTextAlignment(.leading)
+    }
+
+    private func sideways(title: String, icon: String, art: String, colors: [String], action: String, primary: Bool) -> some View {
+        Group {
             VStack(alignment: .leading, spacing: 0) {
                 // Cropped in from every edge, so a printing's frame never shows along the art's border.
-                ArenaArt(name: art, colors: colors)
-                    .frame(height: verticalSizeClass == .compact ? 104 : 78)
+                ArenaArt(name: art, colors: colors, variant: .inspection, focus: 0.3)
+                    .frame(height: 104)
                     .scaleEffect(1.14)
                     .clipped()
-                    .overlay(alignment: .topLeading) {
-                        ArenaEmblem(symbol: icon, size: 16, lit: true)
-                            .frame(width: 34, height: 34)
-                            .background(Circle().fill(Color.black.opacity(0.7)))
-                            .overlay(Circle().strokeBorder(ArenaGlass.hairline, lineWidth: 0.9))
-                            .padding(10)
-                    }
+                    .overlay(alignment: .topLeading) { emblem(icon) }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
                         .font(ArenaMenuStyle.font(19, .bold))
@@ -134,15 +177,7 @@ private struct HowToPlayChooser: View {
             }
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(shape.fill(Color.black.opacity(0.45)))
-            .clipShape(shape)
-            .overlay(shape.strokeBorder(ArenaGlass.hairline, lineWidth: 1))
-            .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title). \(subtitle)")
-        .accessibilityIdentifier("howToPlay.tutorial.\(id)")
     }
 }
 

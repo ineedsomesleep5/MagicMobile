@@ -368,7 +368,9 @@ final class PlayerAccount: ObservableObject {
             do {
                 let data: Data
                 if pending.seeded == true {
-                    // The game record backs the result; without one a win settles as unverified.
+                    // The game record backs the result; without one a win settles as unverified. A record kept on this phone
+                    // but unreadable for now (the phone is locked) waits for the next sync rather than going without it.
+                    if let file = pending.recordFile, record.gameRecordIsKept(named: file), record.gameRecord(named: file) == nil { continue }
                     let record = pending.recordFile.flatMap(record.gameRecord(named:)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
                     data = try await api.rpc("mm_ranked_ai_result2", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue,
                                                                      "p_record": record ?? NSNull()])
@@ -376,7 +378,10 @@ final class PlayerAccount: ObservableObject {
                     data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
                 }
                 record.resolvePendingRankedResult(pending.ticket)
-                if let standing = try? RankedStanding.parse(data) { record.adopt(standing) }
+                if let standing = try? RankedStanding.parse(data) {
+                    record.settleRanked(ticket: pending.ticket, settlement: standing.settlement, check: standing.check, change: standing.change)
+                    record.adopt(standing)
+                }
             } catch {
                 // A ticket the server doesn't know never will be; anything else waits for the next sync.
                 if SupabaseLite.code(of: error) == "not_found" { record.resolvePendingRankedResult(pending.ticket) }

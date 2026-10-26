@@ -259,10 +259,41 @@ struct RankedStanding: Decodable, Equatable, Sendable {
     let draws: Int
     let winStreak: Int
     let history: [Season]?
-    /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned.
+    /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned.
     let settlement: String?
+    /// The server's move on the ladder for that result (null when it didn't count, or was already settled).
+    let change: Change?
+    /// Why a win settled unverified: too_short, too_fast, no_record, …
+    let check: String?
+
+    /// Optional throughout: an answer shaped otherwise must not cost the whole standing.
+    struct Change: Decodable, Equatable, Sendable {
+        let pointsBefore: Int?
+        let pointsAfter: Int?
+        let bonuses: [String]?
+    }
 
     static func parse(_ data: Data) throws -> RankedStanding { try JSONDecoder().decode(RankedStanding.self, from: data) }
+}
+
+/// The server's word on a ranked AI result (mm_ranked_ai_settle), for the result screen and the game history.
+enum RankSettlement {
+    /// A win the server held back from the ladder.
+    static func held(_ settlement: String?) -> Bool { ["too_soon", "capped", "unverified"].contains(settlement ?? "") }
+
+    static func note(_ settlement: String?, check: String?, deckBracket: Int) -> String? {
+        switch settlement {
+        case "too_soon": String(localized: "Not ranked: the game ended too quickly")
+        case "capped": String(localized: "Not ranked: 12 ranked wins a day")
+        case "unverified":
+            switch check {
+            case "too_short": String(localized: "Not ranked: wins before turn \(deckBracket >= 5 ? 3 : 5) don't count")
+            case "too_fast": String(localized: "Not ranked: the game ended too quickly")
+            default: String(localized: "Not ranked: this win couldn't be checked")
+            }
+        default: nil
+        }
+    }
 }
 
 extension RankPosition {

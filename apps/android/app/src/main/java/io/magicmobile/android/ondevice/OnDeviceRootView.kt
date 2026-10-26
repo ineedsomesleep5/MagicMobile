@@ -324,6 +324,8 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     // Who goes first in this AI game: Ranked always rolls, other games follow the player's choice.
     fun startingPlayerMode(): String = activeMatch?.mode?.startingPlayerMode(aiStartingPlayerMode) ?: aiStartingPlayerMode
     var rankChange by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
+    /** Why the last ranked win left the ladder alone, once the server answers. */
+    var rankNote by remember { mutableStateOf<String?>(null) }
     var ceremony by remember { mutableStateOf<io.magicmobile.android.game.RankChange?>(null) }
     var showBracketSheet by remember { mutableStateOf(false) }
     var bracketRevision by remember { mutableIntStateOf(0) }
@@ -436,7 +438,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         catch (error: EngineError) { setup.errorMessage = error.message; return }
         activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, deckBracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level, skill, opponent.id)
-        rankChange = null
+        rankChange = null; rankNote = null
         if (mode == io.magicmobile.android.game.PlayMode.RANKED) record.beginRankedAIGame(null)
         val settings = GameResumeSettings(selectedDeckID, listOf(opponent.id), skill, mode.startingPlayerMode(aiStartingPlayerMode), mode.raw, deckBracket.level)
         scope.launch {
@@ -470,7 +472,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.CASUAL, GuidedGameSetup.PLAYER_DECK_ID, deck.name, deck.commanderName, colors,
             core.level, listOf(io.magicmobile.android.game.MatchOpponent(opponent.name, opponent.commander, true)), opponent.bracket.level,
             GuidedGameSetup.AI_SKILL, opponent.id)
-        rankChange = null
+        rankChange = null; rankNote = null
         val settings = GameResumeSettings(GuidedGameSetup.PLAYER_DECK_ID, listOf(opponent.id), GuidedGameSetup.AI_SKILL, aiStartingPlayerMode,
             io.magicmobile.android.game.PlayMode.CASUAL.raw, core.level)
         scope.launch {
@@ -519,7 +521,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val matchID = ticket.matchId ?: return startRankedAI(deck, bracket)
         activeMatch = ActiveMatch(io.magicmobile.android.game.PlayMode.RANKED, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
             listOf(io.magicmobile.android.game.MatchOpponent(ticket.opponent ?: "Challenger", null, false)), null, null, null, matchID)
-        rankChange = null
+        rankChange = null; rankNote = null
         if (ticket.isHost) {
             setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
             (setup.multiplayer as? RelayTable)?.tableCode?.let { matchmaker.shareTable(matchID, it) }
@@ -588,7 +590,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             delay(450)  // after the friends sheet closes
             activeMatch = ActiveMatch(mode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
                 listOf(io.magicmobile.android.game.MatchOpponent(friend, null, false)), null, null, null, privateTable = true)
-            rankChange = null
+            rankChange = null; rankNote = null
             challengeTarget = friend to mode
             setup.hostOnline(playerDisplayName, deck, 2, emptyList(), 2)
             val code = (setup.multiplayer as? RelayTable)?.tableCode
@@ -626,7 +628,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                 val code = accepted.tableCode ?: throw io.magicmobile.android.social.SupabaseLite.Failure("challenge_closed")
                 activeMatch = ActiveMatch(challenge.playMode, selectedDeckID, deck.name, deck.commanderName, selectedDeckColors, bracket.level,
                     listOf(io.magicmobile.android.game.MatchOpponent(friend, null, false)), null, null, null, accepted.matchId, privateTable = true)
-                rankChange = null
+                rankChange = null; rankNote = null
                 setup.joinOnline(code, playerDisplayName, deck)
                 watchPersonTable(friend)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -643,11 +645,17 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
         val change = record.record(match.mode, outcome, match.opponents, match.opponentBracket, match.aiSkill, match.deckID, match.deckName,
             match.commander, colors, match.deckBracket, turns, match.aiDeckID, session.matchID, gameRecordFile)
         rankChange = change
+        rankNote = null
+        val ranked = match.mode == io.magicmobile.android.game.PlayMode.RANKED
+        val recordedID = if (ranked) record.file.matches.firstOrNull()?.id else null
         scope.launch {
             match.rankedMatchID?.let { id -> matchmaker.report(id, outcome) }
             // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
             // then upload the game so its rank history point is the standing after it.
-            if (match.mode == io.magicmobile.android.game.PlayMode.RANKED) vm.account.afterRefresh?.invoke()
+            if (ranked) vm.account.afterRefresh?.invoke()
+            // The server's word replaces the phone's guess on the result screen still showing this game.
+            val settled = recordedID?.let { id -> record.file.matches.firstOrNull { it.id == id } }
+            if (settled != null && rankChange == change) { rankChange = settled.rankChange; rankNote = settled.rankNote }
         }
         if (change != null && change.isMilestone) scope.launch { delay(1500); if (rankChange == change) ceremony = change }
     }
@@ -692,7 +700,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             if (setup.leave()) {
                 if (guidedGame) endGuidedTips()
                 selection.selectedCard = null; selection.inspectedCard = null
-                activeMatch = null; rankChange = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
+                activeMatch = null; rankChange = null; rankNote = null; ceremony = null; matchmaker.finish(); rankedConnectJob?.cancel()
             }
         }
     }
@@ -703,7 +711,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
     fun startAI() {
         val deck = selectedDeck ?: return
         if (aiPrecons.size != opponentCount) return
-        activeMatch = null; rankChange = null
+        activeMatch = null; rankChange = null; rankNote = null
         val opponentDecks = aiPrecons.map { it.deck }
         val settings = GameResumeSettings(selectedDeckID, aiIDs.take(opponentCount.coerceIn(1, 3)), aiSkill, aiStartingPlayerMode)
         scope.launch {
@@ -728,7 +736,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                     saved.deckBracket ?: 2, foes.map { io.magicmobile.android.game.MatchOpponent(it.name, it.commander, true) },
                     foes.firstOrNull()?.bracket?.level, saved.aiSkill, foes.firstOrNull()?.id)
             }
-            rankChange = null
+            rankChange = null; rankNote = null
             if (mode == null && ids.size == saved.aiDeckIDs.size && ids.size in 1..3) {
                 opponentCount = ids.size
                 ids.getOrNull(0)?.let { aiPreconID = it }; ids.getOrNull(1)?.let { aiPrecon2ID = it }; ids.getOrNull(2)?.let { aiPrecon3ID = it }
@@ -750,7 +758,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
             if (!setup.close()) return@launch
             if (guided) return@launch startGuidedGame()
             selection.selectedCard = null; selection.inspectedCard = null
-            activeMatch = null; rankChange = null
+            activeMatch = null; rankChange = null; rankNote = null
             // Quick Match deals a new opponent; Ranked looks for the next match.
             when (mode) {
                 io.magicmobile.android.game.PlayMode.QUICK -> startQuickMatch()
@@ -1237,6 +1245,7 @@ fun OnDeviceRoot(vm: OnDeviceViewModel) {
                             else -> "Rematch"
                         },
                         io.magicmobile.android.board.LocalGameRankChange provides rankChange,
+                        io.magicmobile.android.board.LocalGameRankNote provides rankNote,
                         LocalGameConcede provides GameConcedeHandler { concede() },
                         LocalFreezeReport provides { confirmFreezeReport = true },
                         LocalEmoteCenter provides vm.emotes,

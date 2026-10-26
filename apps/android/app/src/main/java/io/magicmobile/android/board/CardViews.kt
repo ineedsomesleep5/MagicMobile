@@ -134,6 +134,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
             .semantics { contentDescription = card.accessibilityLabel(zoneName, selected, legal, pending) }) {
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp))) {
                 CardArtworkOrPlaceholder(card, width, height, tokenCopyTagTrailingReserve = tokenCopyTagTrailingReserve)
+                if (card.card.faceDown == true) FaceDownMark(width)
             }
             Box(Modifier.fillMaxSize().border(0.8.dp, Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp)))
         }
@@ -146,6 +147,7 @@ fun CardTile(card: ZoneCard, selected: Boolean, modifier: Modifier = Modifier, p
         .semantics { contentDescription = card.accessibilityLabel(zoneName, selected, legal, pending) }) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)).colorAdjust(if (tapped) 0.3f else 1f, if (tapped) -0.12f else 0f)) {
             CardArtworkOrPlaceholder(card, width, height, tokenCopyTagTrailingReserve = tokenCopyTagTrailingReserve)
+            if (card.card.faceDown == true) FaceDownMark(width)
         }
         if (!ignoreTappedRotation) {
             XmageCardIconStrip(card.visibleXmageIcons, width, Modifier.align(Alignment.CenterStart).padding(start = 2.dp))
@@ -873,4 +875,16 @@ fun tavernFrameDrawable(kind: io.magicmobile.android.game.TavernFrameKind): Int 
     io.magicmobile.android.game.TavernFrameKind.ENCHANTMENT -> R.drawable.tavern_frame_enchantment
     io.magicmobile.android.game.TavernFrameKind.LAND -> R.drawable.tavern_frame_land
     io.magicmobile.android.game.TavernFrameKind.SPELL -> R.drawable.tavern_frame_spell
+}
+
+/** Your own face-down card (exiled by Hideaway or Foretell, a morph, a manifest): its real face, dimmed, with a closed eye, as only you see it. */
+@Composable
+fun FaceDownMark(width: Dp) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)).semantics { contentDescription = "Face down: only you can see it" },
+        contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.padding(top = maxOf(width * 0.05f, 3.dp)).background(MagicPalette.iron.copy(alpha = 0.85f), CircleShape)
+            .border(0.7.dp, MagicPalette.antiqueGold.copy(alpha = 0.5f), CircleShape).padding(maxOf(width * 0.04f, 3.dp))) {
+            SfImage("eye.slash.fill", MagicPalette.parchment, maxOf(width * 0.13f, 8.dp))
+        }
+    }
 }

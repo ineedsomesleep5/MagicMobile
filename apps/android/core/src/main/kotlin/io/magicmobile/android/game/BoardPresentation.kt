@@ -8,7 +8,7 @@ package io.magicmobile.android.game
  */
 object NativeCardArtworkPolicy {
     fun permitsLookup(card: ZoneCard): Boolean =
-        permitsLookup(card.card.name) && (card.cardIcons ?: emptyList()).none { it.iconType.uppercase() == "OTHER_FACEDOWN" }
+        permitsLookup(card.card.name) && (card.card.faceDown == true || (card.cardIcons ?: emptyList()).none { it.iconType.uppercase() == "OTHER_FACEDOWN" })
     fun permitsLookup(name: String): Boolean = OnDeviceSnapshotAdapter.permitsSourceName(name)
 }
 

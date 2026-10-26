@@ -190,8 +190,11 @@ could publish any rank. Now the server is the referee, using the existing databa
   Disagreements change nothing. A lone report settles after an hour (the side that never reported left: a loss). The
   same two players count at most three matches a day (win trading with spare accounts).
 - **Against the AI** (the phone runs the game, so the server can only bound it): `mm_ranked_ai_start` hands out a
-  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A win needs four minutes since the
-  ticket, at most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a loss.
+  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A seeded win is judged by its game
+  record's turns, not the clock (Caleb, 2026-10-26: fast decks win in a minute); only an older unseeded ticket keeps a
+  two-minute floor. At most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a
+  loss. The answer carries `settlement`, the server's `change` and, for an unverified win, `check`: the apps show the
+  reason on the result screen and in Recent games instead of a win quietly adding nothing.
 - `mm_ranked_standing` returns the caller's standing (settling anything stale first) plus `unsettled`, the matches
   they reported that the other side hasn't yet. `mm_ranked_seed` lets a player with no server standing bring their
   phone's earlier progress once, capped at Gold IV. Standings published before the migration carried over as they were.
@@ -223,7 +226,8 @@ could publish any rank. Now the server is the referee, using the existing databa
   `ranked_engine_builds`, one human and one AI seat, an AI skill no more than one tier below the ticket's with the
   engine's depth and mistake chance for that skill (`mm_ai_engine_depth` / `mm_ai_engine_mistakes`, keep them in step
   with `AIDifficulty.java`), an end where the human alone won and the AI lost, increasing turn marks, the entry
-  grammar with no concede, at least four turns and five seconds a turn since the ticket. A failed check settles the win
+  grammar with no concede, a final turn of 5 or later (3 for a bracket 5 deck: XMage counts each player's turn, so a
+  win inside the first two rounds is suspect) and four seconds a turn since the ticket. A failed check settles the win
   as `unverified` (no rank change, `ranked_ai_games.record_check` says why). Every win's record is kept in
   `ranked_ai_records` for review and can be replayed with `scripts/dev/replay_record.sh`.
 - **Release step:** every release whose engine records games registers its engine build before it goes out, or its

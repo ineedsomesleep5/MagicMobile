@@ -162,10 +162,13 @@ function phaseIndex(step: string | undefined): number | undefined {
 }
 
 /**
- * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game. `versus`: the
+ * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game, and `rankNote`
+ * why the server left a win off the ladder. `versus`: the
  * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game).
  */
-export function GameScreen({ table, rankChange, versus }: { table: GameTable; rankChange?: RankChange; versus?: { you: VersusSeat; opponents: VersusSeat[] } }) {
+export function GameScreen({ table, rankChange, rankNote, versus }: {
+  table: GameTable; rankChange?: RankChange; rankNote?: string; versus?: { you: VersusSeat; opponents: VersusSeat[] };
+}) {
   useTable(table);
   const session = table.session;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
@@ -1484,7 +1487,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
 
         {reading && snapshot && (
           <Inspector card={reading.card} name={reading.name} battlefield={snapshot.players.flatMap((p) => p.zones.battlefield)} height={geo.height}
-            close={() => setReading(undefined)} />
+            holding={reading.held} close={() => setReading(undefined)} />
         )}
         {stackOpen && snapshot && (
           <div onClick={stop}>
@@ -1565,7 +1568,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         {(finished || table.state.stage === "failed") && (
           // The result, Arena's (ArenaGameResultView): the word on its flare, then your medallion, rank, numbers and the ways on.
           <GameResult snapshot={snapshot} me={me} finished={finished} stoppedTitle={table.solo ? "Game stopped" : "Table closed"}
-            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange}
+            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange} rankNote={rankNote}
             rematch={table.rematch ? () => table.rematch?.() : undefined} leave={() => table.leave()} />
         )}
 

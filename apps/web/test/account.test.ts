@@ -309,6 +309,28 @@ describe("the server's ranked standing", () => {
     expect(resolved).toEqual(["T1", "T2"]);
     expect(adopted).toEqual([5, 5]);
   });
+
+  it("reads how a sent result settled, and hands it to the record before the standing", async () => {
+    const answer = { seeded: true, unsettled: 0, season: "2026-10", points: 4, peakPoints: 4, wins: 1, losses: 0, draws: 0, winStreak: 1 };
+    expect(standing({ points: 4 }).change).toBeUndefined();
+    const held = RankedStanding.parse({ ...answer, settlement: "unverified", change: null, check: "too_short" });
+    expect([held.settlement, held.check, held.change]).toEqual(["unverified", "too_short", undefined]);
+    const counted = RankedStanding.parse({ ...answer, settlement: "counted", change: { pointsBefore: 4, pointsAfter: 6, bonuses: ["underdog"] }, check: null });
+    expect(counted.change).toEqual({ pointsBefore: 4, pointsAfter: 6, bonuses: ["underdog"] });
+    const h = harness(profileServer({
+      mm_ranked_ai_result2: () => ok({ ...answer, settlement: "unverified", change: null, check: "too_short" }),
+      mm_ranked_standing: () => ok(answer),
+    }));
+    await h.account.start();
+    const heard: string[] = [];
+    await h.account.syncRank({
+      rank: played(), pendingRankedResults: [{ ticket: "T1", outcome: "win", date: OCTOBER, seeded: true }], resolvePendingRankedResult: () => {},
+      gameRecord: () => undefined,
+      settleRanked: (ticket, settlement, check, change) => { heard.push(`${ticket} ${settlement} ${check} ${change === undefined}`); },
+      adopt: (s) => { heard.push(`adopt ${s.points}`); },
+    });
+    expect(heard).toEqual(["T1 unverified too_short true", "adopt 4", "adopt 4"]);
+  });
 });
 
 describe("PlayerAccount", () => {

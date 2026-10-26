@@ -6,7 +6,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { abilityBadgePlan, displayPower, displayToughness, isCreatureCard, visibleXmageIcons, XmageIcons, type ZoneCard } from "../../core/models";
 import { paintTile, TILE, tileKey } from "../../board/tileArt";
-import { cardImageURL, manaSymbols, useCardArtURL } from "../cardArt";
+import { cardImageURL, manaSymbols, permitsArtLookup, permitsArtName, useCardArtURL, usePacedImage } from "../cardArt";
 import { AbilityCard } from "./AbilityCard";
 import { type CardReader, readProps } from "./inspectGesture";
 import { LEAN, type Place } from "./layout";
@@ -27,6 +27,18 @@ const SICK = (
   </svg>
 );
 
+/**
+ * Your own face-down card (exiled by Hideaway or Foretell, a morph, a manifest): its real face, dimmed, with a closed eye
+ * at the top, as only you see it (FaceDownMark).
+ */
+export const FaceDownMark = () => (
+  <span className="fdown" role="img" aria-label="Face down: only you can see it">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.3 3.7 3.7 2.3l18 18-1.4 1.4-3.4-3.4A10.6 10.6 0 0 1 12 19.5C6.9 19.5 3 15.8 1.5 12a11.8 11.8 0 0 1 3.9-5zM12 4.5c5.1 0 9 3.7 10.5 7.5a11.7 11.7 0 0 1-3 4.4L16 12.9A4 4 0 0 0 11.1 8L8.6 5.4A11 11 0 0 1 12 4.5zM8.1 9.5a4 4 0 0 0 6.4 4.9z" />
+    </svg>
+  </span>
+);
+
 export function Tile({ card }: { card: ZoneCard }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const key = tileKey(card);
@@ -42,6 +54,7 @@ export function Tile({ card }: { card: ZoneCard }) {
       <div className="tedge" />
       {/* A new look gets a new canvas, so a slow paint of the old one can never draw over it. */}
       <canvas key={key} ref={ref} width={TILE.width} height={TILE.height} />
+      {card.card.faceDown === true && <FaceDownMark />}
       {card.tapped && !card.isAttacking && TAPMARK}
       {card.summoningSickness && isCreatureCard(card) && SICK}
     </div>
@@ -83,7 +96,9 @@ export function PlainTile({ card, width = 66 }: { card: ZoneCard; width?: number
   const shield = !creature && (battle || /planeswalker/i.test(card.card.typeLine))
     ? Object.entries(card.counters ?? {}).find(([k]) => k.toLowerCase().includes(shieldName))?.[1] : undefined;
   const chips = Object.entries(card.counters ?? {}).filter(([k, n]) => n > 0 && !(shield !== undefined && k.toLowerCase().includes(shieldName)));
-  const art = useCardArtURL(card.card, "art_crop");
+  const found = useCardArtURL(card.card, "art_crop");
+  const art = permitsArtLookup(card) ? found : null;
+  const loaded = usePacedImage(art, "art_crop");
   const badges = abilityBadgePlan(visibleXmageIcons(card), width);
   const [failed, setFailed] = useState(false);
   return (
@@ -91,9 +106,10 @@ export function PlainTile({ card, width = 66 }: { card: ZoneCard; width?: number
       <div className="pface">
         {!token && <div className="pname">{card.card.name}</div>}
         <div className="part">
-          {failed || art === null ? <span className="pfallback">{card.card.name}</span>
-            : art && <img key={art} src={art} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
+          {failed || art === null || loaded === false ? <span className="pfallback">{card.card.name}</span>
+            : art && loaded && <img key={art} src={art} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
         </div>
+        {card.card.faceDown === true && <FaceDownMark />}
       </div>
       {card.tapped && !card.isAttacking && TAPMARK}
       {card.summoningSickness && isCreatureCard(card) && SICK}
@@ -124,12 +140,14 @@ export function PlainTile({ card, width = 66 }: { card: ZoneCard; width?: number
 
 export function Face({ name, cost, showCost }: { name: string; cost?: string; showCost: boolean }) {
   const [failed, setFailed] = useState(false);
+  const url = permitsArtName(name) ? cardImageURL(name, "normal") : null;
+  const loaded = usePacedImage(url, "normal");
   const symbols = showCost ? manaSymbols(cost) : [];
   return (
     <>
       <div className="face">
-        {failed ? <div className="fallback">{name}</div>
-          : <img src={cardImageURL(name, "normal")} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
+        {failed || !url || loaded === false ? <div className="fallback">{name}</div>
+          : loaded && <img src={url} alt="" crossOrigin="anonymous" draggable={false} onError={() => setFailed(true)} />}
       </div>
       {symbols.length > 0 && (
         <div className="mcost">{symbols.map((symbol, index) => symbol === "//"

@@ -15,7 +15,7 @@ import { arr, bool, get, int, isObject, isUuid, type J, type JObject, str } from
 import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
 import { ProfileGame, ProfileSummary } from "./profileSummary";
-import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonRecord } from "./rankLadder";
+import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonRecord, type ServerRankChange } from "./rankLadder";
 import { SupabaseLite, type LinkedIdentity } from "./supabaseLite";
 import { TableChatFilter, TableChatText, TableJoinLink } from "./tableChat";
 
@@ -404,8 +404,12 @@ export interface RankedStanding {
   draws: number;
   winStreak: number;
   history?: RankedSeason[];
-  /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned. */
+  /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned. */
   settlement?: string;
+  /** The server's move on the ladder for that result (absent when it didn't count, or was already settled). */
+  change?: ServerRankChange;
+  /** Why a win settled unverified: too_short, too_fast, no_record, … */
+  check?: string;
 }
 
 export const RankedStanding = {
@@ -416,10 +420,17 @@ export const RankedStanding = {
       peakPoints: required(get(row, "peakPoints"), int), wins: required(get(row, "wins"), int), losses: required(get(row, "losses"), int),
     }));
     const settlement = optional(get(json, "settlement"), str);
+    const check = optional(get(json, "check"), str);
+    // A change without its points (an older server's) is left out rather than losing the standing with it.
+    const moved = get(json, "change");
+    const pointsBefore = int(get(moved, "pointsBefore")), pointsAfter = int(get(moved, "pointsAfter")), bonuses = strings(get(moved, "bonuses"));
+    const change: ServerRankChange | undefined = pointsBefore !== undefined && pointsAfter !== undefined
+      ? { pointsBefore, pointsAfter, ...(bonuses ? { bonuses } : {}) } : undefined;
     return {
       seeded: required(get(json, "seeded"), bool), unsettled: n("unsettled"), season: required(get(json, "season"), str), points: n("points"),
       peakPoints: n("peakPoints"), wins: n("wins"), losses: n("losses"), draws: n("draws"), winStreak: n("winStreak"),
       ...(history ? { history } : {}), ...(settlement !== undefined ? { settlement } : {}),
+      ...(change ? { change } : {}), ...(check !== undefined ? { check } : {}),
     };
   },
 } as const;
@@ -479,6 +490,8 @@ export interface RankedRecord {
   /** The server answered for this ticket (or never will). */
   resolvePendingRankedResult(ticket: string): void;
   gameRecord(name: string): J | undefined;
+  /** The server's word on a sent result: how it counted and its own move on the ladder (PlayerRecordStore.settleRanked). */
+  settleRanked?(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined): void;
   /** Takes the server's standing (see adoptStanding). */
   adopt(standing: RankedStanding): void;
 }
@@ -965,7 +978,10 @@ export class PlayerAccount {
         record.resolvePendingRankedResult(pending.ticket);
         let standing: RankedStanding | undefined;
         try { standing = RankedStanding.parse(data); } catch { /* an older server answers without the standing */ }
-        if (standing) record.adopt(standing);
+        if (standing) {
+          record.settleRanked?.(pending.ticket, standing.settlement, standing.check, standing.change);
+          record.adopt(standing);
+        }
       } catch (error) {
         // A ticket the server doesn't know never will be; anything else waits for the next sync.
         if (code(error) === "not_found") record.resolvePendingRankedResult(pending.ticket);

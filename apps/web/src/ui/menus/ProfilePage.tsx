@@ -8,7 +8,8 @@
  * chosen in a glass panel. Charts are inline SVG.
  *
  * The account sign-in and privacy cards come from the shell (`account`). Left out: the saved-history settings and the
- * match dashboard (the web keeps no detailed game records), so a game card opens its details in place.
+ * match dashboard (the web keeps no detailed game records), so a game card opens its details in place and has no Game
+ * review button.
  */
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Achievement, colorName, type MatchRecord, playerStats, type PlayerRecordStore } from "../../core/playerRecord";
@@ -20,7 +21,7 @@ import { RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { ManaSymbol } from "../arena/Symbols";
 import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
-import { Btn, Caps, MenuPanel, PanelHeader, Pill, Segmented } from "./kit";
+import { Btn, Caps, Emblem, MenuPanel, PanelHeader, Pill, Segmented } from "./kit";
 import { RankBadge } from "./PlayPanel";
 import { RankEmblem } from "./TopBar";
 import "./profile.css";
@@ -669,7 +670,7 @@ function GameCard({ game }: { game: ProfileGame }) {
   const opponents = ProfileGame.opponentText(game);
   const delta = game.rankDelta;
   const label = `${ProfileGame.resultName(game)} against ${opponents}, ${game.deckName === "" ? (commander ?? "") : game.deckName}, ${mode}, ${mediumDate.format(game.date)}`
-    + (delta === undefined || delta === 0 ? "" : `, ${delta > 0 ? "+" : ""}${delta} pips`);
+    + (game.rankNote !== undefined ? `, ${game.rankNote}` : delta === undefined || delta === 0 ? "" : `, ${delta > 0 ? "+" : ""}${delta} pips`);
   return (
     <div className={`mprofilegame ${expanded ? "open" : ""}`}>
       <button type="button" className="mprofilegamehead" aria-expanded={expanded} aria-label={label} data-id={`profile.game.${game.id}`}
@@ -682,7 +683,8 @@ function GameCard({ game }: { game: ProfileGame }) {
         </span>
         <span className="mprofilegameend">
           <i className={`mprofilestamp ${game.outcome}`}>{ProfileGame.resultLetter(game)}</i>
-          {delta !== undefined && delta !== 0 && <em className={delta > 0 ? "up" : "down"}>{delta > 0 ? `+${delta}` : delta}</em>}
+          {game.rankNote !== undefined ? <em className="held">Not ranked</em>
+            : delta !== undefined && game.mode === "ranked" && <em className={delta > 0 ? "up" : delta < 0 ? "down" : "even"}>{delta > 0 ? `+${delta}` : delta === 0 ? "±0" : delta}</em>}
         </span>
       </button>
       {expanded && (
@@ -696,6 +698,8 @@ function GameCard({ game }: { game: ProfileGame }) {
           ))}
           <p>{game.turns !== undefined && <span>{game.turns} turns</span>}<span>{fullDate.format(game.date)}</span></p>
           {game.opponents.length === 0 && <p className="mprofilenoopponents">Opponents weren't recorded for this game.</p>}
+          {game.rankLine && <p className="mprofilerankline"><Emblem name="ranked" size={13} lit />{game.rankLine}</p>}
+          {game.rankNote && <p className="mprofileranknote">{game.rankNote}</p>}
         </div>
       )}
     </div>

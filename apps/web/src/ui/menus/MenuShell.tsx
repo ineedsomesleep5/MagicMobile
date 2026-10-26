@@ -12,7 +12,7 @@ import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
 import { DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import { DeckSync, supabaseDeckSync, SyncState } from "../../core/deckStudio/sync";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
-import { type MatchRecord, type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
+import { type MatchRecord, type PlayMode, PlayerRecordStore, rankNote, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
 import type { FriendChallenge } from "../../core/account";
@@ -238,8 +238,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     void account.myGames().then((games) => { if (live && games) setRemoteGames(games); });
     return () => { live = false; };
   }, [menuTab, game, player.state.phase, player.state.username]);
-  /** What the last Ranked game did to your rank, for the result's rank strip. */
-  const [rankChange, setRankChange] = useState<{ key: number; change: RankChange }>();
+  /** What the last Ranked game did to your rank, for the result's rank strip, and why a win didn't count once the server says. */
+  const [rankChange, setRankChange] = useState<{ key: number; change: RankChange; note?: string }>();
   const [error, setError] = useState<string>();
 
   useEffect(() => { if (!game) gameAudio.setScene("menu"); }, [game]);
@@ -518,13 +518,21 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         mode: game.mode, outcome, opponents: game.opponents.map((o) => ({ name: o.name, commander: o.commander, isAI: true })),
         opponentBracket: game.opponents[0]?.bracket, aiSkill: game.skill, deckID: game.deck.id, deckName: game.deck.name, commander: game.deck.commander,
         colors: [...game.deck.colors], deckBracket: game.deckBracket, turns: snapshot.turn, aiDeckID: game.opponents[0]?.id,
+        ...(game.ticket ? { rankedTicket: game.ticket.id } : {}),
       });
       if (change) setRankChange({ key: game.key, change });
+      const recordedID = game.ticket ? record.matches[0]?.id : undefined;
       sample.current?.finish(snapshot.turn);
       // A ranked ticket's result waits with the game's record until the server settles it; then everything goes up.
       void (async () => {
         if (game.ticket) record.addPendingRanked({ ticket: game.ticket.id, outcome, date: Date.now(), seeded: game.ticket.seeded }, await game.table.gameRecord());
         await server.afterGame();
+        // The server's word replaces the browser's guess on the result screen still showing this game.
+        const settled = recordedID !== undefined ? record.matches.find((m) => m.id === recordedID) : undefined;
+        if (settled?.rankChange) {
+          const settledChange = settled.rankChange, note = rankNote(settled);
+          setRankChange((current) => (current?.key === game.key ? { key: game.key, change: settledChange, ...(note ? { note } : {}) } : current));
+        }
         setRecordVersion((v) => v + 1);
       })();
       setRecordVersion((v) => v + 1);
@@ -640,7 +648,8 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   if (game) {
     const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined },
       opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
-    return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
+    return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined}
+      rankNote={rankChange?.key === game.key ? rankChange.note : undefined} />;
   }
   if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
 

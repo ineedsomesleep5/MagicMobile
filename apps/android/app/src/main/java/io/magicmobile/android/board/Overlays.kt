@@ -122,6 +122,8 @@ val LocalGameConcede = compositionLocalOf<GameConcedeHandler?> { null }
 val LocalGameRematchTitle = compositionLocalOf<String?> { null }
 /** A ranked game's effect on the ladder, shown on the result screen. */
 val LocalGameRankChange = compositionLocalOf<io.magicmobile.android.game.RankChange?> { null }
+/** Why a ranked win left the ladder alone (the server's answer), under the rank on the result screen. */
+val LocalGameRankNote = compositionLocalOf<String?> { null }
 
 enum class GameMenuConfirmation(val title: String, val message: String) {
     START_NEW("Start a new game?", "MagicMobile will ask XMage to clean up the current game, then open setup."),
@@ -275,7 +277,7 @@ fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame:
     val rematchTitle = LocalGameRematchTitle.current
     // The Arena board shows Arena's own result (ArenaGameResultView); this card is the Hearth board's.
     if (io.magicmobile.android.menus.LocalArenaBoard.current) {
-        ArenaGameResultView(snapshot, stats, LocalGameRankChange.current, rematchTitle, newGame, quitGame)
+        ArenaGameResultView(snapshot, stats, LocalGameRankChange.current, rematchTitle, newGame, quitGame, LocalGameRankNote.current)
         return
     }
     val view = LocalView.current
@@ -317,6 +319,7 @@ fun GameCompletionOverlay(snapshot: GameSnapshot, newGame: () -> Unit, quitGame:
             LocalGameRankChange.current?.let { change ->
                 Box(Modifier.graphicsLayer { alpha = summaryAlpha }) { io.magicmobile.android.ranked.RankProgressPanel(change) }
             }
+            LocalGameRankNote.current?.let { Text(it, color = Color.White.copy(alpha = 0.75f), style = SfText.caption(SfWeight.semibold), textAlign = TextAlign.Center) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CompactActionButton(newGame, Modifier.semantics { contentDescription = "board.result.rematch" }, isPrimary = true) { CompactActionText(rematchTitle ?: "New Game", true) }
                 CompactActionButton(quitGame) { CompactActionText("Main Menu") }

@@ -380,8 +380,38 @@ data class MatchRecord(
     val rankChange: RankChange? = null, val season: String? = null,
     /** The engine's id for the game: finds its detailed record (Deck Studio's saved game history). Earlier games have none. */
     val engineMatchID: String? = null,
+    /** A ranked AI game's server ticket, so the server's answer finds this game. */
+    val rankedTicket: String? = null,
+    /** How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why. */
+    val settlement: String? = null,
+    val settlementCheck: String? = null,
 ) {
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
+    /** Why a ranked win left the ladder alone, as the player reads it; null when it counted. */
+    val rankNote: String? get() = RankSettlement.note(settlement, settlementCheck, deckBracket)
+}
+
+/** The server's word on a ranked AI result (mm_ranked_ai_settle; RankSettlement in RankLadder.swift). */
+object RankSettlement {
+    /** A win the server held back from the ladder. */
+    fun held(settlement: String?): Boolean = settlement in setOf("too_soon", "capped", "unverified")
+
+    fun note(settlement: String?, check: String?, deckBracket: Int): String? = when (settlement) {
+        "too_soon" -> "Not ranked: the game ended too quickly"
+        "capped" -> "Not ranked: 12 ranked wins a day"
+        "unverified" -> when (check) {
+            "too_short" -> "Not ranked: wins before turn ${if (deckBracket >= 5) 3 else 5} don't count"
+            "too_fast" -> "Not ranked: the game ended too quickly"
+            else -> "Not ranked: this win couldn't be checked"
+        }
+        else -> null
+    }
+
+    /** "Gold II: 3 → 5 pips" within a division, "Gold II → Gold I" across one (ProfileGame.rankLine on iOS). */
+    fun line(change: RankChange): String =
+        if (change.before.title == change.after.title && change.after.tier != RankTier.MYTHIC)
+            "${change.after.title}: ${change.before.pips} → ${change.after.pips} pips"
+        else "${change.before.title} → ${change.after.title}"
 }
 
 data class StatsLine(val id: String, val label: String, val detail: String?, val games: Int, val wins: Int) {
@@ -483,10 +513,15 @@ data class RankedStanding(
     val unsettled: Int,
     val season: String, val points: Int, val peakPoints: Int, val wins: Int, val losses: Int, val draws: Int, val winStreak: Int,
     val history: List<Season> = emptyList(),
-    /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned. */
+    /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned. */
     val settlement: String? = null,
+    /** The server's move on the ladder for that result (null when it didn't count, or was already settled). */
+    val change: Change? = null,
+    /** Why a win settled unverified: too_short, too_fast, no_record, … */
+    val check: String? = null,
 ) {
     data class Season(val season: String, val finalPoints: Int, val peakPoints: Int, val wins: Int, val losses: Int)
+    data class Change(val pointsBefore: Int, val pointsAfter: Int, val bonuses: List<String>)
 
     companion object {
         fun parse(value: JsonObject): RankedStanding {
@@ -498,7 +533,12 @@ data class RankedStanding(
                     (row as? JsonObject)?.let { Season(it["season"]?.jsonPrimitive?.content ?: return@let null, i(it, "finalPoints"),
                         i(it, "peakPoints"), i(it, "wins"), i(it, "losses")) }
                 },
-                value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content)
+                value["settlement"]?.jsonPrimitive?.takeIf { it.isString }?.content,
+                (value["change"] as? JsonObject)?.takeIf { it["pointsBefore"] != null && it["pointsAfter"] != null }?.let { c ->
+                    Change(i(c, "pointsBefore"), i(c, "pointsAfter"),
+                        (c["bonuses"] as? JsonArray).orEmpty().mapNotNull { b -> b.jsonPrimitive.takeIf { it.isString }?.content })
+                },
+                value["check"]?.jsonPrimitive?.takeIf { it.isString }?.content)
         }
     }
 }
@@ -576,7 +616,8 @@ data class PlayerRecordFile(
         if (mode == PlayMode.RANKED) { val (next, c) = RankLadder.apply(outcome, rank, deckBracket); rank = next; change = c }
         val match = MatchRecord(date = now, mode = mode, opponents = opponents, opponentBracket = opponentBracket, aiSkill = aiSkill,
             deckID = deckID, deckName = deckName, commander = commander, colors = colors, deckBracket = deckBracket, outcome = outcome,
-            turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID)
+            turns = turns, rankChange = change, season = if (mode == PlayMode.RANKED) rank.season else null, engineMatchID = engineMatchID,
+            rankedTicket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } })
         val recent = if (aiDeckID == null) recentAIDecks else (listOf(aiDeckID) + recentAIDecks.filter { it != aiDeckID }).take(4)
         val ticket = rankedTicket.takeIf { mode == PlayMode.RANKED && opponents.all { it.isAI } }
         val pending = if (ticket == null) pendingRankedResults
@@ -584,6 +625,22 @@ data class PlayerRecordFile(
         return copy(rank = rank, matches = (listOf(match) + matches).take(MAX_MATCHES), recentAIDecks = recent,
             rankedTicket = if (ticket == null) rankedTicket else null, rankedTicketSeeded = ticket == null && rankedTicketSeeded,
             pendingRankedResults = pending) to change
+    }
+
+    /** The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the phone's. */
+    fun settlingRanked(ticket: String, settlement: String?, check: String?, change: RankedStanding.Change?): PlayerRecordFile {
+        val index = matches.indexOfFirst { it.rankedTicket == ticket }
+        if (index < 0) return this
+        val match = matches[index]
+        val local = match.rankChange
+        val rankChange = when {
+            change != null -> RankChange(match.outcome, RankPosition.ofPoints(change.pointsBefore), RankPosition.ofPoints(change.pointsAfter),
+                change.bonuses.mapNotNull { raw -> RankBonus.entries.firstOrNull { it.raw == raw } })
+            RankSettlement.held(settlement) && local != null -> RankChange(local.outcome, local.before, local.before, emptyList())
+            else -> local
+        }
+        val settled = match.copy(settlement = settlement, settlementCheck = check, rankChange = rankChange)
+        return if (settled == match) this else copy(matches = matches.toMutableList().also { it[index] = settled })
     }
 
     /**

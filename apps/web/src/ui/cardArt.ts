@@ -6,7 +6,8 @@
 import { createElement, useEffect, useState } from "react";
 import type { DeckResolver } from "../core/deckResolver";
 import { tokenArtworkName } from "../core/gameStats";
-import type { CardIdentity, TokenArtworkIdentity } from "../core/models";
+import type { CardIdentity, TokenArtworkIdentity, ZoneCard } from "../core/models";
+import { permitsSourceName } from "../core/snapshotAdapter";
 import { matchTokenArtwork, safeTokenSearchName, type TokenArtwork, tokenImage, tokenSearchQuery, tokensFromSearch } from "../core/tokenArt";
 
 export type ArtVersion = "normal" | "large" | "art_crop";
@@ -82,12 +83,21 @@ export async function tokenArtURL(identity: TokenArtworkIdentity, version: ArtVe
 }
 
 /**
+ * NativeCardArtworkPolicy.permitsLookup: never a placeholder's name ("Face-down card", CardView's "Face Down: …"), nor a
+ * card the engine marks face down, except your own face-down card, which shows its real face.
+ */
+export const permitsArtName = (name: string) => permitsSourceName(name) && !/^face[ -]down:/i.test(name.trim());
+export const permitsArtLookup = (card: ZoneCard) =>
+  permitsArtName(card.card.name) && (card.card.faceDown === true || !(card.cardIcons ?? []).some((i) => i.iconType.toUpperCase() === "OTHER_FACEDOWN"));
+
+/**
  * The picture for a card on the table: a copy's source card, a token's matched printing, else the card by name. A token
  * resolves after a search, so this is undefined until then and null when there is none.
  */
 export function useCardArtURL(card: CardIdentity, version: ArtVersion): string | null | undefined {
   const token = card.isToken === true && !card.copySourceArtworkName ? card.tokenArtwork : undefined;
-  const plain = token ? undefined : cardImageURL(card.copySourceArtworkName ?? card.name, version);
+  const named = card.copySourceArtworkName ?? card.name;
+  const plain = token || !permitsArtName(named) ? undefined : cardImageURL(named, version);
   const key = token ? JSON.stringify(token) + version : "";
   const [resolved, setResolved] = useState<{ key: string; url: string | null }>();
   useEffect(() => {
@@ -98,6 +108,7 @@ export function useCardArtURL(card: CardIdentity, version: ArtVersion): string |
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   if (plain) return plain;
+  if (!token) return null;
   return resolved?.key === key ? resolved.url : undefined;
 }
 
@@ -134,9 +145,26 @@ export const manaSymbols = (cost: string | undefined): string[] => {
   return symbols;
 };
 
-/** A card's picture as an image, nothing while a token's printing is found or when there is none. */
+/**
+ * Whether a picture has come through the paced loader (loadCardImage): undefined while it waits its turn, then true, or
+ * false when Scryfall has none. An `<img>` given the address only after this is true takes it from the browser's cache,
+ * so a board's first render never bursts past Scryfall's ten requests a second.
+ */
+export function usePacedImage(url: string | null | undefined, version: ArtVersion): boolean | undefined {
+  const [done, setDone] = useState<{ url: string; ok: boolean }>();
+  useEffect(() => {
+    if (!url) return;
+    let live = true;
+    void loadCardImage("", version, url).then((image) => { if (live) setDone({ url, ok: image !== undefined }); });
+    return () => { live = false; };
+  }, [url, version]);
+  return url && done?.url === url ? done.ok : undefined;
+}
+
+/** A card's picture as an image, nothing while it waits its turn (usePacedImage), while a token's printing is found or when there is none. */
 export function CardArt({ card, version, onMissing }: { card: CardIdentity; version: ArtVersion; onMissing?: () => void }) {
   const url = useCardArtURL(card, version);
-  useEffect(() => { if (url === null) onMissing?.(); }, [url, onMissing]);
-  return url ? createElement("img", { key: url, src: url, alt: "", crossOrigin: "anonymous", draggable: false, onError: onMissing }) : null;
+  const loaded = usePacedImage(url, version);
+  useEffect(() => { if (url === null || loaded === false) onMissing?.(); }, [url, loaded, onMissing]);
+  return url && loaded ? createElement("img", { key: url, src: url, alt: "", crossOrigin: "anonymous", draggable: false, onError: onMissing }) : null;
 }

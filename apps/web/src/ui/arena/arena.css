@@ -55,6 +55,12 @@
 .acard .tile .tedge { position: absolute; left: 3.7%; right: 3.7%; top: 92%; height: 10.8%; border-radius: 0 0 .9em .9em;
   background: linear-gradient(#7a5426, #3a2410 60%, #20140a); box-shadow: 0 .15em .25em rgba(0,0,0,.5); }
 .acard .tile .tapmark { position: absolute; left: 50%; top: 22%; width: 49%; transform: translateX(-50%); opacity: .72; filter: drop-shadow(0 0 .25em rgba(0,0,0,.7)); }
+/* your own face-down card: its real face dimmed, a closed eye at the top (FaceDownMark); the card is 15em wide */
+.acard .fdown, .ainspector .fdown { position: absolute; inset: 0; z-index: 1; border-radius: inherit; background: rgba(0,0,0,.38); pointer-events: none;
+  display: flex; justify-content: center; align-items: flex-start; }
+.acard .tile .fdown { inset: 3% 4% 6%; border-radius: 1.4em; }
+.acard .fdown svg, .ainspector .fdown svg { width: 1.95em; min-width: 8px; height: auto; box-sizing: content-box; margin-top: .75em; padding: .6em; border-radius: 999px;
+  fill: #f2e6c8; background: rgba(43,42,46,.85); box-shadow: 0 0 0 .1em rgba(219,163,76,.5); }
 .acard .tile .sick, .acard .plain .sick { position: absolute; right: 4%; top: 4%; width: 22%; min-width: 13px; z-index: 2; filter: drop-shadow(0 0 .15em rgba(0,0,0,.6)); }
 /* Card Frames off (the default): the reference game's battlefield card (CardTile.plainFace on iOS). The card is 15em wide. */
 .acard .plain { position: absolute; inset: 0; filter: var(--dim,) var(--glow,) var(--hover,); transition: filter .3s; }
@@ -390,6 +396,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .bcard .aplaque { position: relative; width: 100%; min-width: 0; height: 34px; font-size: 14px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
 /* The commander browser: a commander away from the command zone dims, with where it is; casts and tax under each. */
 .bcommander.away img.bprinted { filter: saturate(.4) brightness(.55); }
+img.bprinted.facedown { filter: brightness(.62); }
 .bcommander .bwhere { font: 800 10px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #fad584; text-align: center; }
 .bcommander .btax { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; font: 600 13px/1.3 var(--sans); color: rgba(243,234,216,.85); text-align: center; }
 .bcommander .btax .msym { width: 1.15em; height: 1.15em; vertical-align: -.2em; }
@@ -574,6 +581,15 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .ainspector .note { padding: 12px 14px; display: grid; gap: 4px; font: 500 13px/1.35 var(--serif); }
 .ainspector .note .label { font: 900 10px/1 var(--serif); letter-spacing: .12em; color: #e2b867; margin-bottom: 2px; }
 .ainspector .note p { margin: 0; } .ainspector .note p b { color: #fad685; }
+/* the held card and what is fastened to it, as tabs over the notes (InspectorTabStrip); the one shown is outlined in gold */
+.ainspector .itabs { display: flex; gap: 8px; padding: 4px 2px; }
+.ainspector .itab { position: relative; flex: none; width: 34px; height: 47px; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: #0d0a08;
+  cursor: pointer; opacity: .75; transition: transform .15s ease-out, opacity .15s ease-out, box-shadow .15s ease-out; }
+.ainspector .itab::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; border: 1px solid rgba(255,255,255,.25); pointer-events: none; }
+.ainspector .itab.on { opacity: 1; transform: scale(1.08); box-shadow: 0 0 6px rgba(219,163,76,.6); }
+.ainspector .itab.on::after { border: 2px solid #dba34c; }
+.ainspector .itab img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ainspector .itab .fdown { font-size: 2.27px; }
 /* trigger order: a gold rim and its number on each picked trigger (ArenaCountBadge, 34) */
 .bpick.numbered { transform: scale(1.04); filter: drop-shadow(0 0 8px rgba(255,190,77,.9)); }
 .bpick.numbered > :first-child { box-shadow: 0 0 0 3px #ffd166; border-radius: .75em; }
@@ -793,6 +809,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .aresult .resultmed.won::before { content: ""; position: absolute; inset: -7.5%; border-radius: 50%; background: rgba(255,120,40,.7); filter: blur(10px); }
 .aresult .resultmed.lost .bmed { filter: saturate(.15); }
 .aresult .details > p { margin: 0; max-width: 480px; text-align: center; font: 500 14px/1.3 var(--sans); color: rgba(242,235,219,.8); }
+.aresult .details > p.rnote { font: 600 13px/1.3 var(--sans); }
 .aresult .figures { display: flex; gap: 22px; }
 .aresult .figure { display: grid; justify-items: center; gap: 2px; }
 .aresult .figure b { font: 700 24px/1 var(--serif); color: var(--atext); font-variant-numeric: tabular-nums; }

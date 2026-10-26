@@ -193,6 +193,7 @@ object SfSymbols {
         "flag.checkered" -> Icons.Filled.SportsScore
         "eye" -> Icons.Outlined.Visibility
         "eye.fill" -> Icons.Filled.Visibility
+        "eye.slash.fill" -> Icons.Filled.VisibilityOff
         "eye.trianglebadge.exclamationmark" -> Icons.Outlined.RemoveRedEye
         "ellipsis" -> Icons.Filled.MoreHoriz
         "ellipsis.circle" -> Icons.Outlined.Pending

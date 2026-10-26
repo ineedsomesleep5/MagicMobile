@@ -337,16 +337,27 @@ struct ArenaFocusedArt: View {
 }
 
 /// A card's art, filling its frame; the deck's colours as light through glass until the art is on the phone.
+/// `variant: .inspection` is the sharper image, for art drawn larger than a board card. In a frame wider than the art,
+/// `focus` picks which band shows: 0 the top, 0.5 the middle, 1 the bottom (faces usually sit in the upper third).
 struct ArenaArt: View {
     let name: String
     var colors: [String] = []
+    var variant: CardImageCacheVariant = .board
+    var focus: CGFloat = 0.5
+
+    /// A card's art window, height over width.
+    private static let artAspect: CGFloat = 0.73
 
     var body: some View {
         GeometryReader { proxy in
-            NativeCardArtworkView(name: name, variant: .board, contentMode: .fill, artOnly: true) { _, _ in
+            let size = proxy.size
+            let artHeight = max(size.height, size.width * Self.artAspect)
+            NativeCardArtworkView(name: name, variant: variant, contentMode: .fill, artOnly: true) { _, _ in
                 ArenaColorGlass(colors: colors)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
+            .frame(width: size.width, height: artHeight)
+            .offset(y: -(artHeight - size.height) * focus)
+            .frame(width: size.width, height: size.height, alignment: .top)
             .clipped()
         }
         .accessibilityHidden(true)

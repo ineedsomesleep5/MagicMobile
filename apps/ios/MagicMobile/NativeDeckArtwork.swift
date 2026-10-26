@@ -76,9 +76,10 @@ actor NativeDeckArtwork {
                 return try await imageData(name: tokenSourceName, variant: variant, allowNetwork: allowNetwork, art: art)
             }
             let quality: NativeArtworkQuality = variant == .inspection ? .high : (variant == .board ? .standard : .compact)
+            // A differently worded but unambiguous token counts online too (searchToken finds it the same way).
             let stored = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
                                                       power: tokenPower, toughness: tokenToughness, colors: tokenColors,
-                                                      offlineFallback: !allowNetwork)
+                                                      offlineFallback: true)
             if let stored, (!allowNetwork || quality.accepts(stored)) { return stored }
             guard allowNetwork, let tokenOracleText, let tokenColors, !tokenTypeLine.isEmpty,
                   !name.isEmpty, Set(tokenColors).isSubset(of: ["W", "U", "B", "R", "G"]),
@@ -92,7 +93,7 @@ actor NativeDeckArtwork {
             // can both observe a cache miss and issue duplicate catalogue searches.
             if let upgraded = await assetStore.tokenImage(name: name, typeLine: tokenTypeLine, oracleText: tokenOracleText,
                                                           power: tokenPower, toughness: tokenToughness, colors: tokenColors,
-                                                          quality: quality) { return upgraded }
+                                                          quality: quality, offlineFallback: true) { return upgraded }
             guard ProcessInfo.processInfo.systemUptime >= tokenRetryAfter[key, default: 0] else { return stored }
             do {
                 guard let (token, url) = try await tokenLookup(name, tokenTypeLine, tokenOracleText,
@@ -103,6 +104,8 @@ actor NativeDeckArtwork {
                 // Recheck the exact visible identity even for an injected provider.
                 guard NativeAssetStore.matchTokenArtwork([token], name: name, typeLine: tokenTypeLine,
                                                          oracleText: tokenOracleText, power: tokenPower,
+                                                         toughness: tokenToughness, colors: tokenColors) != nil ||
+                      NativeAssetStore.looseTokenArtwork([token], name: name, typeLine: tokenTypeLine, power: tokenPower,
                                                          toughness: tokenToughness, colors: tokenColors) != nil else { return stored }
                 let data = try await downloadImage(name: token.name, quality: quality, imageURL: url)
                 guard let data else { return stored }
@@ -132,7 +135,14 @@ actor NativeDeckArtwork {
         }
         do {
             let original = try await nameRequest(name, variant: variant)
-            return try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) ?? downloaded
+            guard let fetched = try await imageData(request: original, variant: variant, allowNetwork: allowNetwork) else { return downloaded }
+            // Kept with the downloads, so a card seen once never needs Scryfall again (the URL cache holds a few hundred).
+            // Never beside a download: the quality the player chose there stays theirs.
+            if allowNetwork, downloaded == nil, variant != .compact {
+                try? await assetStore.save(fetched, key: NativeAssetStore.cardKey(name), quality: variant == .inspection ? .high : .standard,
+                                           announce: false)
+            }
+            return fetched
         }
         catch is CancellationError { throw CancellationError() }
         catch { if let downloaded { return downloaded }; throw error }

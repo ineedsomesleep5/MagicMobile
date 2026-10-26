@@ -5,7 +5,7 @@
  * drop-shadow that traces the frame's alpha (the frame-outline glow, apps/web/src/ui/arena/arena.css).
  */
 import { displayPower, displayToughness, isCreatureCard, type ZoneCard } from "../core/models";
-import { loadCardImage, tokenArtURL } from "../ui/cardArt";
+import { loadCardImage, permitsArtLookup, tokenArtURL } from "../ui/cardArt";
 
 export type FrameKind = "creature" | "token" | "artifact" | "enchantment" | "land" | "spell";
 export const TILE = { width: 330, height: 356 } as const;
@@ -45,7 +45,7 @@ const tavernImage = (name: string) => {
 export const tileKey = (card: ZoneCard) => {
   const counters = Object.entries(card.counters ?? {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}${n}`).join(",");
   return [card.card.name, frameKind(card), displayPower(card) ?? "", displayToughness(card) ?? "", card.damage ?? 0, counters,
-    card.card.isToken ? card.card.tokenArtwork?.name ?? "" : ""].join("|");
+    card.card.isToken ? card.card.tokenArtwork?.name ?? "" : "", permitsArtLookup(card) ? "" : "hidden"].join("|");
 };
 
 const fitText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size: number) => {
@@ -133,7 +133,7 @@ export const paintTile = (canvas: HTMLCanvasElement, card: ZoneCard, onUpdate: (
   // A token's picture is the printing that matches it (tokenArtURL); a copy shows its source card.
   const token = card.card.isToken === true && !card.card.copySourceArtworkName ? card.card.tokenArtwork : undefined;
   const url = token ? tokenArtURL(token, "art_crop") : Promise.resolve(undefined);
-  if (card.card.name !== "Face-down card") {
+  if (permitsArtLookup(card)) {
     void url.then((found) => (token && !found ? undefined : loadCardImage(artName, "art_crop", found)))
       .then((image) => { if (image) { art = image; draw(); } });
   }

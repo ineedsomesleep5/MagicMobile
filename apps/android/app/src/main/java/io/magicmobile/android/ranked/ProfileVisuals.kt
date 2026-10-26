@@ -480,11 +480,12 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
         RankOutcome.WIN -> Triple("W", "Won", rgb(0.25, 0.5, 0.2)); RankOutcome.LOSS -> Triple("L", "Lost", MagicPalette.oxblood); RankOutcome.DRAW -> Triple("D", "Drawn", rgb(0.35, 0.35, 0.35))
     }
     val deck = game.deckName.ifEmpty { game.commander ?: "" }
-    val delta = game.rankDelta?.takeIf { it != 0 }
-    val label = "$resultName against $opponentText, $deck, $modeText, ${formatShortDate(game.date)}" + (delta?.let { ", ${if (it > 0) "+" else ""}$it pips" } ?: "")
+    val delta = game.rankDelta?.takeIf { game.mode == PlayMode.RANKED }
+    val label = "$resultName against $opponentText, $deck, $modeText, ${formatShortDate(game.date)}" +
+        (game.rankNote?.let { ", $it" } ?: delta?.takeIf { it != 0 }?.let { ", ${if (it > 0) "+" else ""}$it pips" } ?: "")
     Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.32f), RoundedCornerShape(12.dp)).border(1.dp, TavernPalette.brass.copy(alpha = 0.45f), RoundedCornerShape(12.dp))) {
         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 76.dp).clip(RoundedCornerShape(12.dp))
-            .clickable { if (onOpenDetail != null) onOpenDetail() else expanded = !expanded }
+            .clickable { expanded = !expanded }
             .padding(10.dp).semantics(mergeDescendants = true) { contentDescription = label; role = Role.Button }.testTag(tag),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(58.dp).clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(MagicPalette.iron, MagicPalette.leather)))
@@ -504,12 +505,14 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
                 Box(Modifier.size(34.dp).background(color, CircleShape).border(1.2.dp, TavernPalette.brass.copy(alpha = 0.8f), CircleShape), contentAlignment = Alignment.Center) {
                     Text(letter, color = Color.White, style = ArenaMenuStyle.font(17f, SfWeight.black))
                 }
-                if (delta != null) Text(if (delta > 0) "+$delta" else "$delta", color = if (delta > 0) rgb(0.6, 0.95, 0.55) else rgb(1.0, 0.55, 0.45),
+                if (game.rankNote != null) Text("Not ranked", Modifier.alpha(0.6f), color = parchment, style = ArenaMenuStyle.font(11f, SfWeight.heavy))
+                else if (delta != null) Text(if (delta > 0) "+$delta" else if (delta == 0) "±0" else "$delta",
+                    color = if (delta > 0) rgb(0.6, 0.95, 0.55) else if (delta == 0) parchment.copy(alpha = 0.7f) else rgb(1.0, 0.55, 0.45),
                     style = ArenaMenuStyle.font(12f, SfWeight.heavy).copy(fontFeatureSettings = "tnum"))
                 else if (detailed) SfImage("chart.bar.fill", BrandTheme.ember, 12.dp)
             }
         }
-        if (expanded && !detailed) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (expanded) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(TavernPalette.brass.copy(alpha = 0.35f)))
             for (opponent in game.opponents) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 opponent.commander?.let { commander ->
@@ -532,6 +535,14 @@ fun ProfileGameCard(game: ProfileGame, tag: String, openPlayer: ((String) -> Uni
             }
             if (game.opponents.isEmpty()) Text("Opponents weren't recorded for this game.", Modifier.alpha(0.55f), color = parchment,
                 style = ArenaMenuStyle.font(11f, SfWeight.regular).copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic))
+            game.rankLine?.let { Text(it, color = io.magicmobile.android.menus.ArenaMenuStyle.gold, style = ArenaMenuStyle.font(12f, SfWeight.semibold)) }
+            game.rankNote?.let { Text(it, Modifier.alpha(0.75f), color = parchment, style = ArenaMenuStyle.font(12f, SfWeight.semibold)) }
+            onOpenDetail?.let { open ->
+                io.magicmobile.android.menus.ArenaButton(open, kind = io.magicmobile.android.menus.ArenaButtonKind.SECONDARY, compact = true,
+                    identifier = tag.replace(".expand", ".review")) {
+                    Text("Game review", color = parchment, style = ArenaMenuStyle.font(13f, SfWeight.semibold))
+                }
+            }
         }
     }
 }
