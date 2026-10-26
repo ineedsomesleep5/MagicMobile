@@ -723,6 +723,8 @@ struct CardIdentity: Decodable, Hashable {
     var copySourceArtworkName: String? = nil
     /// Public token template for image lookup; never replaces live CardView state.
     var tokenArtwork: TokenArtworkIdentity? = nil
+    /// Your own face-down card: the real card shown, dimmed and marked face down. Nil for anyone else's.
+    var faceDown: Bool? = nil
 }
 
 struct TokenArtworkIdentity: Decodable, Hashable {

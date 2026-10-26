@@ -102,9 +102,12 @@ struct NativeArtworkCatalogue {
         var catalogue = Self()
         // Incomplete candidates cannot establish unique identity.
         guard try await catalogue.acceptTokenSearch(query: "!\"\(name)\" t:token", pages: 3, transport: transport, budget: budget) else { return nil }
+        // XMage words some token rules differently from Scryfall: then one token with the same name, type, colors and P/T.
         guard let match = NativeAssetStore.matchTokenArtwork(catalogue.allTokens, name: name, typeLine: typeLine,
                                                                oracleText: oracleText, power: power, toughness: toughness,
-                                                               colors: colors) else { return nil }
+                                                               colors: colors)
+                ?? NativeAssetStore.looseTokenArtwork(catalogue.allTokens, name: name, typeLine: typeLine,
+                                                      power: power, toughness: toughness, colors: colors) else { return nil }
         if let url = catalogue.imageURL(id: match.id, size: quality.imageSizeString, face: match.face) { return (match, url) }
         let equivalent = catalogue.allTokens.first {
             NativeAssetStore.sameTokenIdentity($0, match) &&

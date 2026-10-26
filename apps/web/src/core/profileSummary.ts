@@ -4,7 +4,7 @@
  * browser's games. Checked by test/profileSummary.test.ts against parity/profile-cases.json, as iOS and Android are.
  * Dates are milliseconds since 1970. The public-profile and player-search parts wait for accounts on the web.
  */
-import type { MatchOpponent, MatchRecord, PlayMode } from "./playerRecord";
+import { type MatchOpponent, type MatchRecord, type PlayMode, rankNote } from "./playerRecord";
 import { RankChange, type RankOutcome, RankPosition } from "./rankLadder";
 
 /** One finished game as a profile shows it. */
@@ -21,16 +21,22 @@ export interface ProfileGame {
   turns?: number;
   /** Pips a ranked game moved. */
   rankDelta?: number;
+  /** A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only). */
+  rankLine?: string;
+  /** Why a ranked win left the ladder alone (own games only). */
+  rankNote?: string;
 }
 
 export const ProfileGame = {
   from(match: MatchRecord): ProfileGame {
+    const note = rankNote(match);
     return {
       id: match.id, date: match.date, mode: match.mode, outcome: match.outcome, deckName: match.deckName,
       commanders: match.commander !== undefined ? [match.commander] : [], colors: match.colors,
       opponents: match.opponents.map((o) => ({ name: o.name, ...(o.commander !== undefined ? { commander: o.commander } : {}), isAI: o.isAI })),
       ...(match.turns > 0 ? { turns: match.turns } : {}),
-      ...(match.rankChange ? { rankDelta: RankChange.pipDelta(match.rankChange) } : {}),
+      ...(match.rankChange ? { rankDelta: RankChange.pipDelta(match.rankChange), rankLine: RankChange.line(match.rankChange) } : {}),
+      ...(note !== undefined ? { rankNote: note } : {}),
     };
   },
   commander: (game: ProfileGame) => game.commanders[0],

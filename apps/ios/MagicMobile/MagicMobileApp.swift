@@ -507,7 +507,7 @@ private struct VersusFixtureScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            VersusIntroOverlay(you: .init(id: "you", name: "Caleb", commander: "Emmara, Soul of the Accord"),
+            VersusIntroOverlay(you: .init(id: "you", name: "Caleb", commander: "Emmara, Soul of the Accord", tier: .gold),
                                opponents: [.init(id: "ai", name: "Grave Danger", commander: "Gisa and Geralf")]) {
                 run += 1
             }

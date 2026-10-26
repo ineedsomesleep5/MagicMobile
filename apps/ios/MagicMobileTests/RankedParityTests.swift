@@ -88,6 +88,29 @@ final class RankedParityTests: XCTestCase {
         }
     }
 
+    /// Season badges (Caleb, 2026-10-26): numbering from October 2026, the season in play first, the best finished peak.
+    func testSeasonBadges() throws {
+        for item in try rows("seasonNumbers") {
+            XCTAssertEqual(RankLadder.seasonNumber(try XCTUnwrap(item["season"] as? String)), item["number"] as? Int)
+        }
+        let cases = try XCTUnwrap(root["seasonBadges"] as? [String: Any])
+        let rank = try XCTUnwrap(cases["rank"] as? [String: Any])
+        var state = RankState.fresh(season: try XCTUnwrap(rank["season"] as? String))
+        state.peak = RankPosition(points: try XCTUnwrap(rank["peakPoints"] as? Int))
+        if rank["played"] as? Bool == true { state.wins = 1 }
+        state.history = try XCTUnwrap(rank["history"] as? [[String: Any]]).map {
+            let peak = RankPosition(points: $0["peakPoints"] as? Int ?? 0)
+            return SeasonRecord(season: $0["season"] as? String ?? "", final: peak, peak: peak, wins: 1, losses: 0)
+        }
+        let badges = SeasonBadge.earned(rank: state)
+        let expect = try XCTUnwrap(cases["expect"] as? [[String: Any]])
+        XCTAssertEqual(badges.map(\.season), expect.map { $0["season"] as? String ?? "" })
+        XCTAssertEqual(badges.map { String(describing: $0.tier) }, expect.map { $0["tier"] as? String ?? "" })
+        XCTAssertEqual(badges.map(\.inProgress), expect.map { $0["inProgress"] as? Bool ?? false })
+        XCTAssertEqual(badges.map(\.founder), expect.map { $0["founder"] as? Bool ?? false })
+        XCTAssertEqual(SeasonBadge.best(badges)?.season, cases["best"] as? String)
+    }
+
     func testSeasons() throws {
         for item in try rows("seasons") {
             let date = Date(timeIntervalSince1970: Double(try XCTUnwrap(item["millis"] as? Int)) / 1000)
@@ -231,7 +254,7 @@ final class PlayerRecordStoreTests: XCTestCase {
         // A new month: the season rolls over before the next result counts.
         now = Date(timeIntervalSince1970: 1_797_292_800) // December 2026
         _ = play(store, .ranked, .loss)
-        XCTAssertEqual(store.rank.season, "2026-12")
+        XCTAssertEqual(store.rank.season, "2026-11") // quarterly from November 2026
         XCTAssertEqual(store.rank.history.first?.season, "2026-10")
         XCTAssertEqual(store.rank.losses, 1)
         XCTAssertEqual(store.rank.wins, 0)

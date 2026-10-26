@@ -165,31 +165,65 @@ struct RankState: Codable, Equatable, Sendable {
 }
 
 enum RankLadder {
-    /// Seasons are calendar months in UTC: "2026-10".
+    /// The first quarterly season (Caleb, 2026-10-26): October 2026 was a month; from November 2026 a season is three
+    /// months, named by its first: "2026-11" runs November to January. Server: mm_season_for.
+    static let firstQuarter = 2026 * 12 + 10
+
+    /// The season holding a date, in UTC: "2026-10", then "2026-11", "2027-02", …
     static func season(for date: Date) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let parts = calendar.dateComponents([.year, .month], from: date)
-        return String(format: "%04d-%02d", parts.year ?? 2026, parts.month ?? 1)
+        var index = (parts.year ?? 2026) * 12 + (parts.month ?? 1) - 1
+        if index >= firstQuarter { index = firstQuarter + (index - firstQuarter) / 3 * 3 }
+        return String(format: "%04d-%02d", index / 12, index % 12 + 1)
     }
 
-    /// When a season ends (the next month starts, UTC).
+    /// How many months a season lasts.
+    static func seasonMonths(_ season: String) -> Int? {
+        let parts = season.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return parts[0] * 12 + parts[1] - 1 >= firstQuarter ? 3 : 1
+    }
+
+    /// When a season ends (the next season starts, UTC).
     static func seasonEnd(_ season: String) -> Date? {
+        let parts = season.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2, let months = seasonMonths(season) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
+        return start.flatMap { calendar.date(byAdding: .month, value: months, to: $0) }
+    }
+
+    /// "October 2026", or a quarter's span: "Nov 2026 – Jan 2027".
+    static func seasonName(_ season: String) -> String {
+        guard let end = seasonEnd(season), let last = Calendar(identifier: .gregorian).date(byAdding: .day, value: -1, to: end) else { return season }
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        guard seasonMonths(season) == 3, let first = seasonStart(season) else {
+            formatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
+            return formatter.string(from: last)
+        }
+        formatter.setLocalizedDateFormatFromTemplate("MMM yyyy")
+        return "\(formatter.string(from: first)) – \(formatter.string(from: last))"
+    }
+
+    /// Season numbers for badges: October 2026 is Season 1, the first quarter (November 2026) Season 2, and so on.
+    static func seasonNumber(_ season: String) -> Int? {
+        let parts = season.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        let index = parts[0] * 12 + parts[1] - 1
+        if index < firstQuarter { return index == firstQuarter - 1 ? 1 : nil }
+        return 2 + (index - firstQuarter) / 3
+    }
+
+    private static func seasonStart(_ season: String) -> Date? {
         let parts = season.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
-        return start.flatMap { calendar.date(byAdding: .month, value: 1, to: $0) }
-    }
-
-    /// "October 2026"
-    static func seasonName(_ season: String) -> String {
-        guard let end = seasonEnd(season), let start = Calendar(identifier: .gregorian).date(byAdding: .day, value: -1, to: end) else { return season }
-        let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
-        return formatter.string(from: start)
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
     }
 
     /// A new month: last season goes into history and everyone drops one tier (Mythic to Diamond IV),
@@ -259,10 +293,67 @@ struct RankedStanding: Decodable, Equatable, Sendable {
     let draws: Int
     let winStreak: Int
     let history: [Season]?
-    /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned.
+    /// How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned.
     let settlement: String?
+    /// The server's move on the ladder for that result (null when it didn't count, or was already settled).
+    let change: Change?
+    /// Why a win settled unverified: too_short, too_fast, no_record, …
+    let check: String?
+
+    /// Optional throughout: an answer shaped otherwise must not cost the whole standing.
+    struct Change: Decodable, Equatable, Sendable {
+        let pointsBefore: Int?
+        let pointsAfter: Int?
+        let bonuses: [String]?
+    }
 
     static func parse(_ data: Data) throws -> RankedStanding { try JSONDecoder().decode(RankedStanding.self, from: data) }
+}
+
+/// A season's badge (Caleb, 2026-10-26): the tier the player peaked at that season. Season 1 (October 2026, the first)
+/// carries a founder ribbon. The season in play shows too, still being earned.
+struct SeasonBadge: Equatable, Identifiable, Sendable {
+    static let foundingSeason = "2026-10"
+
+    let season: String
+    let peak: RankPosition
+    var inProgress = false
+
+    var id: String { season }
+    var tier: RankTier { peak.tier }
+    var founder: Bool { season == Self.foundingSeason }
+    var number: Int? { RankLadder.seasonNumber(season) }
+
+    /// Newest first: the season in play when ranked games were played in it, then each finished season at its peak.
+    static func earned(rank: RankState) -> [SeasonBadge] {
+        let current = rank.wins + rank.losses + rank.draws > 0 ? [SeasonBadge(season: rank.season, peak: rank.peak, inProgress: true)] : []
+        return current + rank.history.map { SeasonBadge(season: $0.season, peak: $0.peak) }
+    }
+
+    /// The best finished badge: the highest peak, the newest of equals.
+    static func best(_ badges: [SeasonBadge]) -> SeasonBadge? {
+        badges.filter { !$0.inProgress }.max { ($0.peak.points, $0.season) < ($1.peak.points, $1.season) }
+    }
+}
+
+/// The server's word on a ranked AI result (mm_ranked_ai_settle), for the result screen and the game history.
+enum RankSettlement {
+    /// A win the server held back from the ladder.
+    static func held(_ settlement: String?) -> Bool { ["too_soon", "capped", "unverified"].contains(settlement ?? "") }
+
+    static func note(_ settlement: String?, check: String?, deckBracket: Int) -> String? {
+        switch settlement {
+        case "too_soon": String(localized: "Not ranked: the game ended too quickly")
+        case "capped": String(localized: "Not ranked: 12 ranked wins a day")
+        case "unverified":
+            switch check {
+            case "too_short": String(localized: "Not ranked: wins before turn \(deckBracket >= 5 ? 3 : 5) don't count")
+            case "too_fast": String(localized: "Not ranked: the game ended too quickly")
+            default: String(localized: "Not ranked: this win couldn't be checked")
+            }
+        default: nil
+        }
+    }
 }
 
 extension RankPosition {

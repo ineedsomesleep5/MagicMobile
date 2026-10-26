@@ -1,14 +1,15 @@
 /**
  * The player's own profile as Arena's (iOS Ranked/ProfileView.swift PlayerProfileView in its sideways "wide" layout,
  * with Ranked/ProfileVisuals.swift's pictures): the player's column scrolling on the left (the name with the chosen
- * title, the season rank and the progression tiles, then the rank history with past seasons, the deck filter, the
+ * title, the season rank and the progression tiles, then the rank history with past seasons, the season badges, the deck filter, the
  * record as a ring with its tiles and streaks, games over time, the most played commanders as art, color identity, the
  * trophy shelf and the recent games), the shown commander as full-height hero art on the right with the Title and
  * Portrait pills at its foot, and Arena's Overview / Customization strip along the bottom. Title and portrait are
  * chosen in a glass panel. Charts are inline SVG.
  *
  * The account sign-in and privacy cards come from the shell (`account`). Left out: the saved-history settings and the
- * match dashboard (the web keeps no detailed game records), so a game card opens its details in place.
+ * match dashboard (the web keeps no detailed game records), so a game card opens its details in place and has no Game
+ * review button.
  */
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Achievement, colorName, type MatchRecord, playerStats, type PlayerRecordStore } from "../../core/playerRecord";
@@ -16,12 +17,13 @@ import { mergeMatches } from "../../core/remoteGames";
 import {
   percent, portraitChoices, ProfileGame, type ProfileRankPoint, type ProfileShare, ProfileSummary, type ProfileWeek, rankChartRange,
 } from "../../core/profileSummary";
-import { RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
+import { RankLadder, RankPosition, RankTier, SeasonBadge } from "../../core/rankLadder";
 import { ManaSymbol } from "../arena/Symbols";
 import { gameAudio } from "../audio";
 import { DeckArt } from "./DeckBox";
-import { Btn, Caps, MenuPanel, PanelHeader, Pill, Segmented } from "./kit";
+import { Btn, Caps, Emblem, MenuPanel, PanelHeader, Pill, Segmented } from "./kit";
 import { RankBadge } from "./PlayPanel";
+import { SeasonBadgeShelf } from "./SeasonBadges";
 import { RankEmblem } from "./TopBar";
 import "./profile.css";
 
@@ -71,6 +73,7 @@ const PROFILE_GLYPH: Record<string, { d: string; evenOdd?: boolean }> = {
   sparkles: { d: "M10 3c.6 4 2.5 6 6.5 6.5C12.5 10 10.6 12 10 16c-.6-4-2.5-6-6.5-6.5C7.5 9 9.4 7 10 3zm8 10c.3 2 1.2 2.9 3.2 3.2-2 .3-2.9 1.2-3.2 3.2-.3-2-1.2-2.9-3.2-3.2 2-.3 2.9-1.2 3.2-3.2z" },
   sparkle: { d: "M12 2c.8 5.5 3 9.2 10 10-7 .8-9.2 4.5-10 10-.8-5.5-3-9.2-10-10 7-.8 9.2-4.5 10-10z" },
   filter: { d: "M3 6h18v2H3zm3 5h12v2H6zm3 5h6v2H9z" },
+  rosette: { d: rounds([[12, 9, 6.5]]) + "M7.6 14.2 5 21l3.3-1.2L10.4 22l1.3-6.6a7.6 7.6 0 0 1-4.1-1.2zm8.8 0a7.6 7.6 0 0 1-4.1 1.2l1.3 6.6 2.1-2.2L19 21z" },
 };
 
 /** Achievement.systemImage. */
@@ -161,6 +164,7 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
   );
 
   const rank = record.rank;
+  const badges = SeasonBadge.earned(rank);
   const identity = (
     <div className="mprofileidentity">
       <Caps text={`${RankLadder.seasonName(rank.season)} · Season rank`} />
@@ -209,6 +213,10 @@ export function ProfilePage({ record, remote = [], playerName, deckCommanders, o
             ))}
           </>
         )}
+      </Card>
+      <Card id="profile.seasonBadges">
+        <SectionTitle text="Season badges" />
+        {badges.length === 0 ? <EmptyNote text="Play ranked to earn this season's badge." glyph="rosette" /> : <SeasonBadgeShelf badges={badges} />}
       </Card>
       {stats.decks.length > 1 && (
         <div className="mprofilechips" data-id="profile.filter.decks">
@@ -669,7 +677,7 @@ function GameCard({ game }: { game: ProfileGame }) {
   const opponents = ProfileGame.opponentText(game);
   const delta = game.rankDelta;
   const label = `${ProfileGame.resultName(game)} against ${opponents}, ${game.deckName === "" ? (commander ?? "") : game.deckName}, ${mode}, ${mediumDate.format(game.date)}`
-    + (delta === undefined || delta === 0 ? "" : `, ${delta > 0 ? "+" : ""}${delta} pips`);
+    + (game.rankNote !== undefined ? `, ${game.rankNote}` : delta === undefined || delta === 0 ? "" : `, ${delta > 0 ? "+" : ""}${delta} pips`);
   return (
     <div className={`mprofilegame ${expanded ? "open" : ""}`}>
       <button type="button" className="mprofilegamehead" aria-expanded={expanded} aria-label={label} data-id={`profile.game.${game.id}`}
@@ -682,7 +690,8 @@ function GameCard({ game }: { game: ProfileGame }) {
         </span>
         <span className="mprofilegameend">
           <i className={`mprofilestamp ${game.outcome}`}>{ProfileGame.resultLetter(game)}</i>
-          {delta !== undefined && delta !== 0 && <em className={delta > 0 ? "up" : "down"}>{delta > 0 ? `+${delta}` : delta}</em>}
+          {game.rankNote !== undefined ? <em className="held">Not ranked</em>
+            : delta !== undefined && game.mode === "ranked" && <em className={delta > 0 ? "up" : delta < 0 ? "down" : "even"}>{delta > 0 ? `+${delta}` : delta === 0 ? "±0" : delta}</em>}
         </span>
       </button>
       {expanded && (
@@ -696,6 +705,8 @@ function GameCard({ game }: { game: ProfileGame }) {
           ))}
           <p>{game.turns !== undefined && <span>{game.turns} turns</span>}<span>{fullDate.format(game.date)}</span></p>
           {game.opponents.length === 0 && <p className="mprofilenoopponents">Opponents weren't recorded for this game.</p>}
+          {game.rankLine && <p className="mprofilerankline"><Emblem name="ranked" size={13} lit />{game.rankLine}</p>}
+          {game.rankNote && <p className="mprofileranknote">{game.rankNote}</p>}
         </div>
       )}
     </div>

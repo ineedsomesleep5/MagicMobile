@@ -329,10 +329,20 @@ final class PlayerAccount: ObservableObject {
         return try? await api.userID()
     }
 
-    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2).
+    /// The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). `ai` is the
+    /// AI the server tuned for this game (ranked_ai_tuning); nil from servers before that tuning, when the tier's bundled
+    /// values apply.
     struct RankedAITicket: Equatable {
         let id: UUID
         let seed: Int64
+        var ai: RankedAITuning?
+    }
+
+    /// One ranked game's AI as the server tuned it: skill, deliberate-mistake chance and the AI deck's Power target.
+    struct RankedAITuning: Equatable {
+        let skill: Int
+        let mistakePercent: Int
+        let power: Double
     }
 
     /// Starts a ranked game against the AI on the server, so its result counts there. Nil offline or without a
@@ -352,12 +362,19 @@ final class PlayerAccount: ObservableObject {
         }
     }
 
-    /// `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53).
+    /// `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is
+    /// text: JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
     nonisolated static func rankedAITicket(_ data: Data) -> RankedAITicket? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let id = (object["id"] as? String).flatMap(UUID.init(uuidString:)),
               let seed = (object["seed"] as? String).flatMap(Int64.init) else { return nil }
-        return RankedAITicket(id: id, seed: seed)
+        var ticket = RankedAITicket(id: id, seed: seed)
+        if let skill = object["aiSkill"] as? Int, (1...10).contains(skill),
+           let mistakes = object["aiMistakePercent"] as? Int, (0...100).contains(mistakes),
+           let power = object["aiPower"] as? Double, power.isFinite {
+            ticket.ai = RankedAITuning(skill: skill, mistakePercent: mistakes, power: power)
+        }
+        return ticket
     }
 
     /// Sends finished ranked AI games, then takes the server's standing (seeding it once from this phone when the
@@ -368,7 +385,9 @@ final class PlayerAccount: ObservableObject {
             do {
                 let data: Data
                 if pending.seeded == true {
-                    // The game record backs the result; without one a win settles as unverified.
+                    // The game record backs the result; without one a win settles as unverified. A record kept on this phone
+                    // but unreadable for now (the phone is locked) waits for the next sync rather than going without it.
+                    if let file = pending.recordFile, record.gameRecordIsKept(named: file), record.gameRecord(named: file) == nil { continue }
                     let record = pending.recordFile.flatMap(record.gameRecord(named:)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
                     data = try await api.rpc("mm_ranked_ai_result2", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue,
                                                                      "p_record": record ?? NSNull()])
@@ -376,7 +395,11 @@ final class PlayerAccount: ObservableObject {
                     data = try await api.rpc("mm_ranked_ai_result", ["p_game": pending.ticket.uuidString, "p_result": pending.outcome.rawValue])
                 }
                 record.resolvePendingRankedResult(pending.ticket)
-                if let standing = try? RankedStanding.parse(data) { record.adopt(standing) }
+                if let standing = try? RankedStanding.parse(data) {
+                    record.settleRanked(ticket: pending.ticket, settlement: standing.settlement, check: standing.check, change: standing.change,
+                                        points: standing.points)
+                    record.adopt(standing)
+                }
             } catch {
                 // A ticket the server doesn't know never will be; anything else waits for the next sync.
                 if SupabaseLite.code(of: error) == "not_found" { record.resolvePendingRankedResult(pending.ticket) }

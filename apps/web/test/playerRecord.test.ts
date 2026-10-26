@@ -39,10 +39,10 @@ describe("player record", () => {
     expect(store.matches[0].season).toBe("2026-10");
     expect(store.matches[1].season).toBeUndefined();
     expect(store.recentAIDecks).toEqual(["ai-edgar-markov-core"]);
-    // A new month: the season rolls over before the next result counts.
+    // A new season (quarterly from November 2026, so December is in "2026-11"): it rolls over before the next result counts.
     now = DECEMBER;
     play(store, "ranked", "loss");
-    expect(store.rank.season).toBe("2026-12");
+    expect(store.rank.season).toBe("2026-11");
     expect(store.rank.history[0]?.season).toBe("2026-10");
     expect(store.rank.losses).toBe(1);
     expect(store.rank.wins).toBe(0);
@@ -54,9 +54,9 @@ describe("player record", () => {
     const store = new PlayerRecordStore(backing, () => now);
     play(store, "ranked", "win");
     now = DECEMBER;
-    expect(new PlayerRecordStore(backing, () => now).rank.season).toBe("2026-12");
+    expect(new PlayerRecordStore(backing, () => now).rank.season).toBe("2026-11");
     store.refreshSeason();
-    expect(store.rank.season).toBe("2026-12");
+    expect(store.rank.season).toBe("2026-11");
     expect(store.rank.history.map((s) => s.season)).toEqual(["2026-10"]);
   });
 

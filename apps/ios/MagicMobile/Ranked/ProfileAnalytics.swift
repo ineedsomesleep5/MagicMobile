@@ -46,6 +46,10 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
     var rankDelta: Int? = nil
     /// The engine's id for the game, to find its detailed record (own games only).
     var engineMatchID: String? = nil
+    /// A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only).
+    var rankLine: String? = nil
+    /// Why a ranked win left the ladder alone (own games only).
+    var rankNote: String? = nil
 
     var commander: String? { commanders.first }
     var vsHuman: Bool { opponents.contains { !$0.isAI } }
@@ -62,6 +66,16 @@ struct ProfileGame: Identifiable, Equatable, Sendable {
                   commanders: match.commander.map { [$0] } ?? [], colors: match.colors,
                   opponents: match.opponents.map { Opponent(name: $0.name, commander: $0.commander, isAI: $0.isAI) },
                   turns: match.turns > 0 ? match.turns : nil, rankDelta: match.rankChange?.pipDelta, engineMatchID: match.engineMatchID)
+        rankLine = match.rankChange.map(Self.rankLine)
+        rankNote = match.rankNote
+    }
+
+    static func rankLine(_ change: RankChange) -> String {
+        let before = change.before, after = change.after
+        if before.title == after.title, after.tier != .mythic {
+            return String(localized: "\(after.title): \(before.pips) → \(after.pips) pips")
+        }
+        return String(localized: "\(before.title) → \(after.title)")
     }
 }
 
@@ -217,6 +231,8 @@ struct PublicProfile: Equatable, Sendable {
     var rank: Rank?
     var summary: ProfileSummary
     var games: [ProfileGame]
+    /// Finished seasons at their peak, newest first (mm_public_profile `seasons`).
+    var seasons: [SeasonBadge] = []
 
     var isSelf: Bool { relation == "self" }
     var isFriend: Bool { relation == "friend" }
@@ -275,9 +291,14 @@ struct PublicProfile: Equatable, Sendable {
                                commanders: row["commanders"] as? [String] ?? [], colors: row["colors"] as? [String] ?? [],
                                opponents: opponents, turns: int(row["turns"]))
         }
+        let seasons: [SeasonBadge] = (root["seasons"] as? [[String: Any]] ?? []).compactMap { row in
+            guard let season = row["season"] as? String, let peak = int(row["peakPoints"]) else { return nil }
+            return SeasonBadge(season: season, peak: RankPosition(points: peak))
+        }
         return PublicProfile(username: username, restricted: false, visibility: visibility, relation: relation,
                              online: root["online"] as? Bool, title: root["title"] as? String,
-                             favoriteCommander: root["favoriteCommander"] as? String, rank: rank, summary: summary, games: games)
+                             favoriteCommander: root["favoriteCommander"] as? String, rank: rank, summary: summary, games: games,
+                             seasons: seasons)
     }
 
     /// "2026-10-05" as Monday 00:00 UTC.

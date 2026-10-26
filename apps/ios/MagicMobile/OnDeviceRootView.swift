@@ -109,6 +109,8 @@ struct OnDeviceRootView: View {
     @State private var activeMatch: ActiveMatch?
     /// How the last ranked result moved the ladder (the result screen's rank strip).
     @State private var rankChange: RankChange?
+    /// Why the last ranked win left the ladder alone, once the server answers.
+    @State private var rankNote: String?
     /// A division or tier change waiting for its full-screen moment.
     @State private var ceremony: RankChange?
     @State private var showBracketSheet = false
@@ -147,8 +149,9 @@ struct OnDeviceRootView: View {
     /// Seats for the intro: the table's own players when known, else the chosen decks.
     private func makeVersusIntro() -> VersusIntro {
         let name = playerDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tier = profileRecord.rank.position.tier
         let you = VersusIntroOverlay.Seat(id: "you", name: name.isEmpty ? "You" : name,
-                                          commander: selectedDeck?.commander?.cardName)
+                                          commander: selectedDeck?.commander?.cardName, tier: tier)
         // A table knows everyone's commander before its first snapshot shows the command zones.
         if setup.usingMultiplayer, let seats = setup.multiplayer?.tableSeats, seats.contains(where: \.isLocal) {
             let opponents = seats.filter { !$0.isLocal }.prefix(3).map {
@@ -157,7 +160,7 @@ struct OnDeviceRootView: View {
             if !opponents.isEmpty {
                 let local = seats.first(where: \.isLocal)
                 let tableYou = VersusIntroOverlay.Seat(id: "you", name: local?.name ?? you.name,
-                                                       commander: local?.commanders.first ?? you.commander)
+                                                       commander: local?.commanders.first ?? you.commander, tier: tier)
                 return VersusIntro(you: tableYou, opponents: Array(opponents))
             }
         }
@@ -233,7 +236,7 @@ struct OnDeviceRootView: View {
         guidedTip = nil
         if !guidedGame { applyResumeSetup(record.setup) }
         activeMatch = resumedMatch(record.setup, deckName: record.playerDeckName)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         showSetup = false
         skipNextVersusIntro = true
         Task {
@@ -1080,6 +1083,7 @@ struct OnDeviceRootView: View {
                      : activeMatch?.mode == .quick ? String(localized: "Play Again")
                      : activeMatch?.mode == .ranked ? String(localized: "Next Match") : "Rematch")
         .environment(\.gameRankChange, rankChange)
+        .environment(\.gameRankNote, rankNote)
         .environment(\.boardAnswerActions, BoardAnswerActions(
             supported: session.supportedAnswerActions, rememberedAnswers: session.rememberedAnswers,
             rememberedTriggerOrders: session.rememberedTriggerOrders,
@@ -1186,7 +1190,7 @@ struct OnDeviceRootView: View {
             guard await setup.close() else { return }
             if guided { return startGuidedGame() }
             selectedCard = nil; inspectedCard = nil; zone = nil
-            activeMatch = nil; rankChange = nil
+            activeMatch = nil; rankChange = nil; rankNote = nil
             // Quick Match deals a new opponent; Ranked looks for the next match.
             switch mode {
             case .quick: startQuickMatch()
@@ -1551,15 +1555,20 @@ struct OnDeviceRootView: View {
     private func startRankedAI(deck: DeckList, bracket: CommanderBracket) {
         let position = profileRecord.rank.position
         // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
+        // The server's ticket can name the Power instead (ranked_ai_tuning), when the game starts.
+        let recent = profileRecord.recentAIDecks
+        let pickByPower = { (target: Double) -> AIDeck? in
+            AIDeckPool.power == nil ? nil : AIDeckPool.pick(targetPower: target, maxBracket: position.tier.maxDeckBracket,
+                                                            avoidingCommander: deck.commander?.cardName, recent: recent)
+        }
         let byPower = AIDeckPool.power.flatMap { power in
-            AIDeckPool.pick(targetPower: AIDeckPool.rankedTarget(tier: position.tier.rawValue, division: position.division, tiers: power.rankedTiers),
-                            maxBracket: position.tier.maxDeckBracket, avoidingCommander: deck.commander?.cardName, recent: profileRecord.recentAIDecks)
+            pickByPower(AIDeckPool.rankedTarget(tier: position.tier.rawValue, division: position.division, tiers: power.rankedTiers))
         }
         guard let opponent = byPower ?? AIDeckPool.pick(bracket: position.opponentBracket, avoidingCommander: deck.commander?.cardName,
                                              recent: profileRecord.recentAIDecks,
                                              preconsOnly: position.tier.preconOpponentsOnly,
                                              onlyPrecons: position.tier.preconOpponentsOnly ? AIDeckPool.gentlestPrecons : nil) else { return }
-        startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill)
+        startSolo(mode: .ranked, deck: deck, deckBracket: bracket, opponent: opponent, skill: position.tier.aiSkill, repick: pickByPower)
     }
 
     /// The host opens a two-seat relay table and shares its code; the guest joins it. Both ready up
@@ -1570,7 +1579,7 @@ struct OnDeviceRootView: View {
                                   colors: selectedDeckColors, deckBracket: bracket.rawValue,
                                   opponents: [.init(name: ticket.opponent ?? String(localized: "Challenger"), commander: nil, isAI: false)],
                                   opponentBracket: nil, aiSkill: nil, aiDeckID: nil, rankedMatchID: matchID)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         diagnostics.beginAttempt()
         if ticket.isHost {
             await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: 2, aiDecks: [], aiSkill: 2)
@@ -1633,7 +1642,7 @@ struct OnDeviceRootView: View {
                                       colors: selectedDeckColors, deckBracket: bracket.rawValue,
                                       opponents: [.init(name: friend, commander: nil, isAI: false)],
                                       opponentBracket: nil, aiSkill: nil, aiDeckID: nil, privateTable: true)
-            rankChange = nil
+            rankChange = nil; rankNote = nil
             challengeTarget = (friend, mode)
             diagnostics.beginAttempt()
             await setup.hostRelay(name: playerDisplayName, deck: deck, playerCount: 2, aiDecks: [], aiSkill: 2)
@@ -1675,7 +1684,7 @@ struct OnDeviceRootView: View {
                                           opponents: [.init(name: friend, commander: nil, isAI: false)],
                                           opponentBracket: nil, aiSkill: nil, aiDeckID: nil, rankedMatchID: accepted.matchId,
                                           privateTable: true)
-                rankChange = nil
+                rankChange = nil; rankNote = nil
                 diagnostics.beginAttempt()
                 setup.joinRelay(code: code, name: playerDisplayName, deck: deck)
                 watchPersonTable(friend)
@@ -1719,7 +1728,7 @@ struct OnDeviceRootView: View {
                                   deckBracket: CommanderBracket.core.rawValue,
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: GuidedGameSetup.aiSkill, aiDeckID: opponent.id)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         Task {
             await setup.startAI(name: name, deck: precon.deckList, aiDecks: [opponent.deckList], aiSkill: GuidedGameSetup.aiSkill,
                                 deckID: GuidedGameSetup.playerDeckID, aiDeckIDs: [opponent.id],
@@ -1772,7 +1781,9 @@ struct OnDeviceRootView: View {
         }
     }
 
-    private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int) {
+    /// `repick`: a ranked game's AI deck for the Power its server ticket names (ranked_ai_tuning).
+    private func startSolo(mode: PlayMode, deck: DeckList, deckBracket: CommanderBracket, opponent: AIDeck, skill: Int,
+                           repick: ((Double) -> AIDeck?)? = nil) {
         diagnostics.beginAttempt()
         do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
         catch { setup.errorMessage = error.localizedDescription; return }
@@ -1780,20 +1791,31 @@ struct OnDeviceRootView: View {
                                   colors: selectedDeckColors, deckBracket: deckBracket.rawValue,
                                   opponents: [.init(name: opponent.name, commander: opponent.commander, isAI: true)],
                                   opponentBracket: opponent.bracket.rawValue, aiSkill: skill, aiDeckID: opponent.id)
-        rankChange = nil
+        rankChange = nil; rankNote = nil
         if mode == .ranked { profileRecord.beginRankedAIGame(ticket: nil) }
         Task {
             // The server's ticket for a ranked game, so its result counts there too; its seed deals this game.
             var seed: Int64?
+            var foe = opponent, aiSkill = skill
+            var mistakes: Int?
             if mode == .ranked {
                 let ticket = await account.startRankedAIGame(deckBracket: deckBracket.rawValue)
                 profileRecord.beginRankedAIGame(ticket: ticket?.id, seeded: ticket != nil)
                 seed = ticket?.seed
+                // The server tunes the AI without an app build: its skill, mistakes and the deck's Power.
+                if let tuned = ticket?.ai {
+                    foe = repick?(tuned.power) ?? opponent
+                    aiSkill = tuned.skill; mistakes = tuned.mistakePercent
+                    activeMatch = ActiveMatch(mode: mode, deckID: selectedDeckID, deckName: deck.name, commander: deck.commander?.cardName,
+                                              colors: selectedDeckColors, deckBracket: deckBracket.rawValue,
+                                              opponents: [.init(name: foe.name, commander: foe.commander, isAI: true)],
+                                              opponentBracket: foe.bracket.rawValue, aiSkill: aiSkill, aiDeckID: foe.id)
+                }
             }
-            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [opponent.deckList], aiSkill: skill,
-                                deckID: selectedDeckID, aiDeckIDs: [opponent.id],
+            await setup.startAI(name: playerDisplayName, deck: deck, aiDecks: [foe.deckList], aiSkill: aiSkill,
+                                deckID: selectedDeckID, aiDeckIDs: [foe.id],
                                 startingPlayerMode: mode.startingPlayerMode(preference: aiStartingPlayerMode),
-                                mode: mode, deckBracket: deckBracket.rawValue, seed: seed)
+                                mode: mode, deckBracket: deckBracket.rawValue, seed: seed, aiMistakePercent: mistakes)
             if session.matchID == nil { activeMatch = nil }
         }
     }
@@ -1845,12 +1867,19 @@ struct OnDeviceRootView: View {
                                    colors: colors, deckBracket: match.deckBracket, turns: turns, aiDeckID: match.aiDeckID,
                                    engineMatchID: session.matchID, gameRecordFile: gameRecordFile)
         rankChange = change
+        rankNote = nil
         let rankedMatchID = match.rankedMatchID, ranked = match.mode == .ranked
+        let recordedID = ranked ? profileRecord.matches.first?.id : nil
         Task { [account] in
             if let rankedMatchID { await matchmaker.report(match: rankedMatchID, outcome: outcome) }
             // The server keeps score: send the result and take its standing (the phone's own count shows meanwhile),
             // then upload the game so its rank history point is the standing after it.
             if ranked { await account.afterRefresh?() }
+            // The server's word replaces the phone's guess on the result screen still showing this game.
+            if let recordedID, rankChange == change, let settled = profileRecord.matches.first(where: { $0.id == recordedID }) {
+                rankChange = settled.rankChange
+                rankNote = settled.rankNote
+            }
         }
         if let change, [.divisionUp, .divisionDown, .tierUp, .tierDown].contains(change.kind) {
             // After the result screen's own reveal.
@@ -2390,7 +2419,7 @@ struct OnDeviceRootView: View {
     private func startAI() {
         diagnostics.beginAttempt()
         guard let deck = selectedDeck, aiPrecons.count == opponentCount else { return }
-        activeMatch = nil; rankChange = nil
+        activeMatch = nil; rankChange = nil; rankNote = nil
         let opponentDecks = aiPrecons.map(\.deckList)
         Task {
             do { playerDisplayName = try OnDeviceSetupModel.playerName(playerDisplayName) }
@@ -2605,7 +2634,7 @@ private final class OnDeviceSetupModel: ObservableObject {
 
     func startAI(name: String, deck: DeckList, aiDecks: [DeckList], aiSkill: Int = 2,
                  deckID: String, aiDeckIDs: [String], startingPlayerMode: String,
-                 mode: PlayMode? = nil, deckBracket: Int? = nil, seed: Int64? = nil) async {
+                 mode: PlayMode? = nil, deckBracket: Int? = nil, seed: Int64? = nil, aiMistakePercent: Int? = nil) async {
         guard !isBusy, !needsLeave, let resolver, let identity else { return }
         isBusy = true; errorMessage = nil; feedback = nil; status = "Starting XMage"
         defer { isBusy = false }
@@ -2614,7 +2643,7 @@ private final class OnDeviceSetupModel: ObservableObject {
             let humanDeck = try resolver.resolve(deck)
             let opponentDecks = try aiDecks.map { try resolver.resolve($0) }
             let seats = try OnDeviceAppConfiguration.aiGameSeats(name: name, humanDeck: humanDeck,
-                aiDecks: opponentDecks, aiSkill: aiSkill)
+                aiDecks: opponentDecks, aiSkill: aiSkill, aiMistakePercent: aiMistakePercent)
             let client = try await runtime.makeClient(identity: identity)
             aiClient = client
             // A ranked game's server seed, on engines that keep a game record (docs/PROTOCOL.md "Game record").

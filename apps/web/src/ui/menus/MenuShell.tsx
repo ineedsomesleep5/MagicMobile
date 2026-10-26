@@ -12,10 +12,10 @@ import { draftFromDeck, DraftPresentation } from "../../core/deckStudio/draft";
 import { DeckLibrary, DeckLibraryRecord } from "../../core/deckStudio/library";
 import { DeckSync, supabaseDeckSync, SyncState } from "../../core/deckStudio/sync";
 import type { DeckList, DeckResolver } from "../../core/deckResolver";
-import { type MatchRecord, type PlayMode, PlayerRecordStore, startingPlayerMode } from "../../core/playerRecord";
+import { type MatchRecord, type PlayMode, PlayerRecordStore, rankNote, startingPlayerMode } from "../../core/playerRecord";
 import { type RankChange, RankLadder, RankPosition, RankTier } from "../../core/rankLadder";
 import { type LocalEngine, localEngine } from "../../engine/localEngine";
-import type { FriendChallenge } from "../../core/account";
+import type { FriendChallenge, RankedAITicket } from "../../core/account";
 import { FriendChallengeRules } from "../../core/matchmaking";
 import { SupabaseLite } from "../../core/supabaseLite";
 import { GuestTable } from "../../table/guestTable";
@@ -238,8 +238,11 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
     void account.myGames().then((games) => { if (live && games) setRemoteGames(games); });
     return () => { live = false; };
   }, [menuTab, game, player.state.phase, player.state.username]);
-  /** What the last Ranked game did to your rank, for the result's rank strip. */
-  const [rankChange, setRankChange] = useState<{ key: number; change: RankChange }>();
+  /** What the last Ranked game did to your rank, for the result's rank strip, and why a win didn't count once the server says. */
+  const [rankChange, setRankChange] = useState<{ key: number; change: RankChange; note?: string }>();
+  /** Every game's key, never reused: a key seen again after the menu (the count began at 1 again) showed the earlier game's
+   *  rank on the result and skipped recording the new game, so its ranked result never went up (Caleb, 2026-10-26). */
+  const gameKey = useRef(0);
   const [error, setError] = useState<string>();
 
   useEffect(() => { if (!game) gameAudio.setScene("menu"); }, [game]);
@@ -264,7 +267,7 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
 
   // MARK: Starting and recording games
 
-  const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number, ticket?: { id: string; seed: bigint }) => {
+  const begin = (gameMode: PlayMode, opponents: AIDeck[], skill: number, ticket?: RankedAITicket) => {
     if (!deck || deckBracket === undefined) return;
     setError(undefined);
     try {
@@ -273,18 +276,21 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         aiDecks: opponents.map((o) => data.resolver.resolve(o.deckList)), aiSkill: skill,
         startingPlayerMode: startingPlayerMode(gameMode, starting) as "roll" | "choose",
         ...(ticket ? { seed: ticket.seed } : {}),
+        ...(ticket?.ai ? { aiMistakePercent: ticket.ai.mistakePercent } : {}),
       };
-      // A rematch is a new game: a ranked one draws a new ticket through Find Match, so only the first carries this one.
+      // A rematch is a new game. A ranked one is the next match: a new ticket and seed from the server (startRankedAI), or
+      // its result never reaches the ladder (Caleb, 2026-10-26: wins after New Game didn't move his rank).
       let first = true;
       const open = (key: number) => {
-        const table: SoloTable = new SoloTable(engine, setup, () => setGame(undefined), () => open(key + 1));
+        const table: SoloTable = new SoloTable(engine, setup, () => setGame(undefined),
+          gameMode === "ranked" ? () => startRankedAI() : () => open(++gameKey.current));
         const carried = first && ticket ? { id: ticket.id, seeded: true } : undefined;
         first = false;
         setGame({ table, key, mode: gameMode, deck, deckBracket, opponents, skill, ticket: carried });
         void table.start();
       };
       setPlayPanel(false); setCustom(false);
-      open((game?.key ?? 0) + 1);
+      open(++gameKey.current);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     }
@@ -323,16 +329,24 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   const startRankedAI = () => {
     if (!deck || deckBracket === undefined) return;
     const tier = rank.position.tier;
-    // The deck nearest the division's Power from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated.
-    const target = pool.power && AIDeckPool.rankedTarget(RankTier.index(tier), rank.position.division, pool.power.rankedTiers);
-    const opponent = (target !== undefined
-      ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks] })
-      : undefined) ?? pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
-        preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
+    // The deck nearest the Power target from the tier's bracket or lower (docs/DECK_POWER.md); by bracket if unrated. The
+    // server's ticket sets the target, skill and mistakes (ranked_ai_tuning: tuned without a build); else the bundled bands.
+    const pickOpponent = (power?: number) => {
+      const target = power ?? (pool.power && AIDeckPool.rankedTarget(RankTier.index(tier), rank.position.division, pool.power.rankedTiers));
+      return (target !== undefined && pool.power
+        ? pool.pickByPower({ target, maxBracket: RankTier.maxDeckBracket(tier), avoidingCommander: deck.commander, recent: [...record.recentAIDecks] })
+        : undefined) ?? pool.pick({ bracket: RankPosition.opponentBracket(rank.position), avoidingCommander: deck.commander, recent: [...record.recentAIDecks],
+          preconsOnly: RankTier.preconOpponentsOnly(tier), onlyPrecons: RankTier.preconOpponentsOnly(tier) ? AIDeckPool.gentlestPrecons : undefined });
+    };
+    // Picked first, so no ticket is opened (and later abandoned as a loss) when there is no opponent to play.
+    const opponent = pickOpponent();
     if (!opponent) return;
     // Signed in, the server issues the game's ticket and seed so the result counts there too (startRankedAIGame).
     if (player.state.phase === "ready" && player.state.username) {
-      void account.startRankedAIGame(deckBracket).then((ticket) => begin("ranked", [opponent], RankTier.aiSkill(tier), ticket ?? undefined));
+      void account.startRankedAIGame(deckBracket).then((ticket) => {
+        const tuned = ticket?.ai ? pickOpponent(ticket.ai.power) ?? opponent : opponent;
+        begin("ranked", [tuned], ticket?.ai?.skill ?? RankTier.aiSkill(tier), ticket ?? undefined);
+      });
     } else begin("ranked", [opponent], RankTier.aiSkill(tier));
   };
 
@@ -518,13 +532,21 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         mode: game.mode, outcome, opponents: game.opponents.map((o) => ({ name: o.name, commander: o.commander, isAI: true })),
         opponentBracket: game.opponents[0]?.bracket, aiSkill: game.skill, deckID: game.deck.id, deckName: game.deck.name, commander: game.deck.commander,
         colors: [...game.deck.colors], deckBracket: game.deckBracket, turns: snapshot.turn, aiDeckID: game.opponents[0]?.id,
+        ...(game.ticket ? { rankedTicket: game.ticket.id } : {}),
       });
       if (change) setRankChange({ key: game.key, change });
+      const recordedID = game.ticket ? record.matches[0]?.id : undefined;
       sample.current?.finish(snapshot.turn);
       // A ranked ticket's result waits with the game's record until the server settles it; then everything goes up.
       void (async () => {
         if (game.ticket) record.addPendingRanked({ ticket: game.ticket.id, outcome, date: Date.now(), seeded: game.ticket.seeded }, await game.table.gameRecord());
         await server.afterGame();
+        // The server's word replaces the browser's guess on the result screen still showing this game.
+        const settled = recordedID !== undefined ? record.matches.find((m) => m.id === recordedID) : undefined;
+        if (settled?.rankChange) {
+          const settledChange = settled.rankChange, note = rankNote(settled);
+          setRankChange((current) => (current?.key === game.key ? { key: game.key, change: settledChange, ...(note ? { note } : {}) } : current));
+        }
         setRecordVersion((v) => v + 1);
       })();
       setRecordVersion((v) => v + 1);
@@ -638,11 +660,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
   ];
 
   if (game) {
-    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined },
+    const versus = { you: { id: "you", name: player.state.username ?? (name.trim() || "You"), commander: game.deck.commander || undefined, tier: rank.position.tier },
       opponents: game.opponents.map((deck, index) => ({ id: `ai-${index}`, name: deck.name, commander: deck.commander || undefined })) };
-    return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined} />;
+    return <GameScreen key={game.key} table={game.table} versus={versus} rankChange={rankChange?.key === game.key ? rankChange.change : undefined}
+      rankNote={rankChange?.key === game.key ? rankChange.note : undefined} />;
   }
-  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
+  if (online) return <OnlineScreen key={online.key} game={online} name={playerName()} tier={rank.position.tier} resolver={data.resolver} leave={() => leaveOnline(online)} cancelWait={() => challenges.cancelOutgoing()} />;
 
   const lit = panel === "settings" ? "settings" : panel === "updates" ? "updates" : panel === "friends" ? "messages" : undefined;
   const covered = panel !== undefined;
@@ -724,13 +747,13 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
 }
 
 /** A table with people: its room until the game starts, then the board (App's guest view, now for hosts too). */
-function OnlineScreen({ game, name, resolver, leave, cancelWait }: {
-  game: OnlineGame; name: string; resolver: DeckResolver; leave: () => void; cancelWait: () => void;
+function OnlineScreen({ game, name, tier, resolver, leave, cancelWait }: {
+  game: OnlineGame; name: string; tier: RankTier; resolver: DeckResolver; leave: () => void; cancelWait: () => void;
 }) {
   const table = game.table;
   useSyncExternalStore((listener) => table.subscribe(listener), () => table.version);
   const stage = table.state.stage;
-  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} />;
+  if (stage === "playing" || stage === "starting" || (stage === "failed" && table.session)) return <GameScreen table={table} versus={{ you: { id: "you", name, tier }, opponents: [] }} />;
   return <GuestRoom table={table} name={name} deck={game.deck.deckList} resolver={resolver} leave={leave} hosting={game.hosting}
     waitingFor={game.waitingFor} cancelWait={cancelWait} />;
 }

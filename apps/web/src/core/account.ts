@@ -15,7 +15,7 @@ import { arr, bool, get, int, isObject, isUuid, type J, type JObject, str } from
 import { parseMyGames } from "./remoteGames";
 import { Achievement, type KeyValueStore, type MatchRecord, type PlayerRecordStore, type PlayMode } from "./playerRecord";
 import { ProfileGame, ProfileSummary } from "./profileSummary";
-import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonRecord } from "./rankLadder";
+import { RankLadder, type RankOutcome, RankPosition, type RankState, type SeasonBadge, type SeasonRecord, type ServerRankChange } from "./rankLadder";
 import { SupabaseLite, type LinkedIdentity } from "./supabaseLite";
 import { TableChatFilter, TableChatText, TableJoinLink } from "./tableChat";
 
@@ -213,6 +213,8 @@ export interface PublicProfile {
   rank?: PublicProfileRank;
   summary: ProfileSummary;
   games: ProfileGame[];
+  /** Finished seasons at their peak, newest first (mm_public_profile `seasons`). */
+  seasons: SeasonBadge[];
 }
 
 export const PublicProfile = {
@@ -229,7 +231,7 @@ export const PublicProfile = {
     const visibility = ProfileVisibility.parse(root.visibility) ?? "public";
     const relation = str(root.relation) ?? "none";
     if (root.restricted === true) {
-      return { username, restricted: true, visibility, relation, summary: ProfileSummary.fromGames([], now), games: [] };
+      return { username, restricted: true, visibility, relation, summary: ProfileSummary.fromGames([], now), games: [], seasons: [] };
     }
     let rank: PublicProfileRank | undefined;
     const r = root.rank;
@@ -276,11 +278,15 @@ export const PublicProfile = {
         opponents, ...(turns !== undefined ? { turns } : {}),
       }];
     });
+    const seasons = rows(root.seasons).flatMap((row): SeasonBadge[] => {
+      const season = str(row.season), peak = num(row.peakPoints);
+      return season === undefined || peak === undefined ? [] : [{ season, peak: RankPosition.fromPoints(peak), inProgress: false }];
+    });
     const online = bool(root.online), title = str(root.title), favoriteCommander = str(root.favoriteCommander);
     return {
       username, restricted: false, visibility, relation,
       ...(online !== undefined ? { online } : {}), ...(title !== undefined ? { title } : {}),
-      ...(favoriteCommander !== undefined ? { favoriteCommander } : {}), ...(rank ? { rank } : {}), summary, games,
+      ...(favoriteCommander !== undefined ? { favoriteCommander } : {}), ...(rank ? { rank } : {}), summary, games, seasons,
     };
   },
 } as const;
@@ -404,8 +410,12 @@ export interface RankedStanding {
   draws: number;
   winStreak: number;
   history?: RankedSeason[];
-  /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped or abandoned. */
+  /** How the result just sent counted (mm_ranked_ai_result): counted, too_soon, capped, unverified or abandoned. */
   settlement?: string;
+  /** The server's move on the ladder for that result (absent when it didn't count, or was already settled). */
+  change?: ServerRankChange;
+  /** Why a win settled unverified: too_short, too_fast, no_record, … */
+  check?: string;
 }
 
 export const RankedStanding = {
@@ -416,10 +426,17 @@ export const RankedStanding = {
       peakPoints: required(get(row, "peakPoints"), int), wins: required(get(row, "wins"), int), losses: required(get(row, "losses"), int),
     }));
     const settlement = optional(get(json, "settlement"), str);
+    const check = optional(get(json, "check"), str);
+    // A change without its points (an older server's) is left out rather than losing the standing with it.
+    const moved = get(json, "change");
+    const pointsBefore = int(get(moved, "pointsBefore")), pointsAfter = int(get(moved, "pointsAfter")), bonuses = strings(get(moved, "bonuses"));
+    const change: ServerRankChange | undefined = pointsBefore !== undefined && pointsAfter !== undefined
+      ? { pointsBefore, pointsAfter, ...(bonuses ? { bonuses } : {}) } : undefined;
     return {
       seeded: required(get(json, "seeded"), bool), unsettled: n("unsettled"), season: required(get(json, "season"), str), points: n("points"),
       peakPoints: n("peakPoints"), wins: n("wins"), losses: n("losses"), draws: n("draws"), winStreak: n("winStreak"),
       ...(history ? { history } : {}), ...(settlement !== undefined ? { settlement } : {}),
+      ...(change ? { change } : {}), ...(check !== undefined ? { check } : {}),
     };
   },
 } as const;
@@ -479,6 +496,8 @@ export interface RankedRecord {
   /** The server answered for this ticket (or never will). */
   resolvePendingRankedResult(ticket: string): void;
   gameRecord(name: string): J | undefined;
+  /** The server's word on a sent result: how it counted and its own move on the ladder (PlayerRecordStore.settleRanked). */
+  settleRanked?(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined, points?: number): void;
   /** Takes the server's standing (see adoptStanding). */
   adopt(standing: RankedStanding): void;
 }
@@ -553,15 +572,27 @@ export const RankedLeaderboard = {
     board.me && !board.entries.some((e) => e.username === board.me!.username) ? board.me : undefined,
 } as const;
 
-/** The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). */
-export interface RankedAITicket { id: string; seed: bigint }
+/**
+ * The server's ticket for a ranked AI game and the seed the engine plays it with (mm_ranked_ai_start2). `ai` is the AI the
+ * server tuned for this game (ranked_ai_tuning): its skill, deliberate-mistake chance and the AI deck's Power target.
+ * Absent from servers before that tuning, when the tier's bundled values apply.
+ */
+export interface RankedAITicket { id: string; seed: bigint; ai?: { skill: number; mistakePercent: number; power: number } }
 
-/** `{"id": uuid, "seed": "<64-bit decimal>"}` (the seed is text: JSON numbers lose precision past 2^53). */
+/**
+ * `{"id": uuid, "seed": "<64-bit decimal>", "aiSkill": 3, "aiMistakePercent": 8, "aiPower": 5.63}` (the seed is text:
+ * JSON numbers lose precision past 2^53). The AI fields count only together and in the engine's ranges.
+ */
 export function rankedAITicket(json: J): RankedAITicket | undefined {
   const id = get(json, "id"), seed = get(json, "seed");
   if (!isUuid(id) || typeof seed !== "string" || !/^[+-]?\d+$/.test(seed)) return undefined;
   const value = BigInt(seed);
-  return value < -(2n ** 63n) || value >= 2n ** 63n ? undefined : { id, seed: value };
+  if (value < -(2n ** 63n) || value >= 2n ** 63n) return undefined;
+  const skill = get(json, "aiSkill"), mistakePercent = get(json, "aiMistakePercent"), power = get(json, "aiPower");
+  const tuned = Number.isInteger(skill) && (skill as number) >= 1 && (skill as number) <= 10
+    && Number.isInteger(mistakePercent) && (mistakePercent as number) >= 0 && (mistakePercent as number) <= 100
+    && typeof power === "number" && Number.isFinite(power);
+  return { id, seed: value, ...(tuned ? { ai: { skill: skill as number, mistakePercent: mistakePercent as number, power: power as number } } : {}) };
 }
 
 // MARK: Ranked queue and friend challenges (types only: the services are ported with their screens)
@@ -965,7 +996,10 @@ export class PlayerAccount {
         record.resolvePendingRankedResult(pending.ticket);
         let standing: RankedStanding | undefined;
         try { standing = RankedStanding.parse(data); } catch { /* an older server answers without the standing */ }
-        if (standing) record.adopt(standing);
+        if (standing) {
+          record.settleRanked?.(pending.ticket, standing.settlement, standing.check, standing.change, standing.points);
+          record.adopt(standing);
+        }
       } catch (error) {
         // A ticket the server doesn't know never will be; anything else waits for the next sync.
         if (code(error) === "not_found") record.resolvePendingRankedResult(pending.ticket);

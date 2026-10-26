@@ -45,7 +45,7 @@ class OnDevicePromptAdapterTest {
         for (case in (root["cases"] as kotlinx.serialization.json.JsonArray).map { it as kotlinx.serialization.json.JsonObject }) {
             val prim = { key: String -> (case[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content }
             val rules = (case["rules"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content }
-            assertEquals(prim("name"), prim("expect"), EngineDisplayText.abilityRule(prim("label")!!, rules))
+            assertEquals(prim("name"), prim("expect"), EngineDisplayText.abilityRule(prim("label")!!, rules, prim("sourceName")))
         }
     }
 }

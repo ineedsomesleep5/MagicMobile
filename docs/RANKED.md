@@ -1,7 +1,7 @@
 # Brackets, Quick Match, Ranked and profiles
 
 Caleb asked for this on 2026-10-04: Commander brackets for decks, a Quick Match against an AI at your
-deck's bracket, a 1v1 ranked ladder from Bronze to Mythic with monthly seasons (wins and losses both
+deck's bracket, a 1v1 ranked ladder from Bronze to Mythic with quarterly seasons (wins and losses both
 count, AI wins count, you can rank down), a full player profile, rank-up and rank-down animations, and
 better AI decks. iOS and Android match each other; `apps/android/core/src/test/resources/parity/ranked-cases.json`
 checks the shared rules on both.
@@ -31,11 +31,13 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
 
 - Bronze, Silver, Gold, Platinum, Diamond in divisions IV–I, then Mythic. Four pips win a division.
 - Ladder option B (Caleb, 2026-10-15; docs/cloud/ladder-options.md): a win earns 2 pips in Bronze, Silver and Gold
-  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A loss never takes you out of your tier
-  (Mythic can fall back to Diamond, never below Diamond IV).
+  and 1 from Platinum; a loss costs nothing in Bronze and 1 pip elsewhere. A crushing loss against the AI (it still
+  had 30 of its 40 life, read from the game record) costs 2 (Caleb, 2026-10-26). A loss never takes you out of your
+  tier (Mythic can fall back to Diamond, never below Diamond IV).
 - Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
   gone (two-pip wins replace it). Draws change nothing and end the streak.
-- Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
+- Seasons (UTC): October 2026 was a month; from November 2026 each season is three months, named by its first
+  ("2026-11" runs November to January; `mm_season_for`, `RankLadder.season`). A new season records the last one and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 
 | Tier | AI deck Power (by division IV → I) | AI deck and your deck up to | AI skill |
@@ -183,15 +185,18 @@ test accounts were made on the live project. A live two-phone ranked match has n
 could publish any rank. Now the server is the referee, using the existing database (no new server, no game simulation):
 
 - `ranked_standings` is the source of truth (points = step × 4 + pips, Mythic past 80), with the same ladder rules
-  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, monthly rollover into `ranked_season_history`.
+  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, season rollover into `ranked_season_history`.
   `ranked_results` records every change and why. `ranked_profiles` stays the public card; the server writes its
   rank fields and `mm_ranked_publish` now only sets the title and favourite commander (older builds keep working).
 - **Person vs person:** `mm_ranked_report` settles a match when both sides agree (win/loss or draw/draw).
   Disagreements change nothing. A lone report settles after an hour (the side that never reported left: a loss). The
   same two players count at most three matches a day (win trading with spare accounts).
 - **Against the AI** (the phone runs the game, so the server can only bound it): `mm_ranked_ai_start` hands out a
-  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A win needs four minutes since the
-  ticket, at most twelve AI wins count per UTC day, and a ticket not answered within twelve hours becomes a loss.
+  ticket (at most ten an hour) and `mm_ranked_ai_result` takes one result for it. A seeded win is judged by its game
+  record's turns, not the clock (Caleb, 2026-10-26: fast decks win in a minute); only an older unseeded ticket keeps a
+  two-minute floor. There is no daily cap on AI wins (removed 2026-10-26), and a ticket not answered within twelve
+  hours becomes a loss. The ticket also carries the AI's tuning (`ranked_ai_tuning`, docs/DECK_POWER.md). The answer carries `settlement`, the server's `change` and, for an unverified win, `check`: the apps show the
+  reason on the result screen and in Recent games instead of a win quietly adding nothing.
 - `mm_ranked_standing` returns the caller's standing (settling anything stale first) plus `unsettled`, the matches
   they reported that the other side hasn't yet. `mm_ranked_seed` lets a player with no server standing bring their
   phone's earlier progress once, capped at Gold IV. Standings published before the migration carried over as they were.
@@ -199,7 +204,7 @@ could publish any rank. Now the server is the referee, using the existing databa
   ticket (queued and retried, `PlayerRecordStore.pendingRankedResults`), then adopts the server's standing
   (`RankedStanding`, `PlayerRecordStore.adopt` / `PlayerRecordFile.adopting`). While a result is still on its way
   the phone keeps its own number, so a pip never flickers away. Without a profile name, ranked stays on the phone.
-- **Limits:** a modified app can still claim AI wins within the caps, and two colluding accounts can trade wins
+- **Limits:** a modified app can still claim AI wins it forges a record for, or withhold a crushing loss's record, and two colluding accounts can trade wins
   within the pair cap. The host phone runs online games and so holds hidden information (PROTOCOL.md).
 - Tests: `supabase/tests/ranked_referee.sql` (run by `verify-ranked.mjs` after the older suites, which test the
   functions as they were before this migration), `RankedStandingTests.swift`, `RankedStandingTest.kt`.
@@ -223,7 +228,8 @@ could publish any rank. Now the server is the referee, using the existing databa
   `ranked_engine_builds`, one human and one AI seat, an AI skill no more than one tier below the ticket's with the
   engine's depth and mistake chance for that skill (`mm_ai_engine_depth` / `mm_ai_engine_mistakes`, keep them in step
   with `AIDifficulty.java`), an end where the human alone won and the AI lost, increasing turn marks, the entry
-  grammar with no concede, at least four turns and five seconds a turn since the ticket. A failed check settles the win
+  grammar with no concede, a final turn of 5 or later (3 for a bracket 5 deck: XMage counts each player's turn, so a
+  win inside the first two rounds is suspect) and four seconds a turn since the ticket. A failed check settles the win
   as `unverified` (no rank change, `ranked_ai_games.record_check` says why). Every win's record is kept in
   `ranked_ai_records` for review and can be replayed with `scripts/dev/replay_record.sh`.
 - **Release step:** every release whose engine records games registers its engine build before it goes out, or its

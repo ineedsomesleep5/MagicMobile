@@ -302,9 +302,10 @@ function App() {
               <details>
                 <summary>What to expect from the alpha</summary>
                 <p>
-                  Android build 39 lets you drag cards straight out of the spread hand, keeps big hands tidy and readable, and
-                  shows each trigger's full text when you order them. AI opponents match your rank, Quick Match offers Easy,
-                  Medium and Hard, and your decks stay in sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
+                  Android build 41 takes ranked difficulty from the server (Gold and Platinum got harder), counts every ranked
+                  win, fits phones with on-screen Back, Home and Recents buttons, carries the card you start a drag on, and adds
+                  season badges and a glow on cards with an ability you can use. AI opponents match your rank, and your decks stay in
+                  sync across every phone signed in to the same profile. Arena stays the default board, with Hearth in Options. It keeps the lighter engine from
                   build 31. Android is an early alpha; physical-phone acceptance is still pending.
                 </p>
               </details>

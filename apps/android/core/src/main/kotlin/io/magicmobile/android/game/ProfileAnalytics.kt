@@ -36,6 +36,10 @@ data class ProfileOpponent(val name: String, val commander: String?, val isAI: B
 data class ProfileGame(
     val id: String, val date: Long, val mode: PlayMode, val outcome: RankOutcome, val deckName: String, val commanders: List<String>,
     val colors: List<String>, val opponents: List<ProfileOpponent>, val turns: Int?, val rankDelta: Int? = null, val engineMatchID: String? = null,
+    /** A ranked game's move on the ladder, "Gold II: 3 → 5 pips" (own games only). */
+    val rankLine: String? = null,
+    /** Why a ranked win left the ladder alone (own games only). */
+    val rankNote: String? = null,
 ) {
     val commander: String? get() = commanders.firstOrNull()
     val vsHuman: Boolean get() = opponents.any { !it.isAI }
@@ -43,7 +47,8 @@ data class ProfileGame(
     companion object {
         fun of(match: MatchRecord) = ProfileGame(match.id, match.date, match.mode, match.outcome, match.deckName,
             listOfNotNull(match.commander), match.colors, match.opponents.map { ProfileOpponent(it.name, it.commander, it.isAI) },
-            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID)
+            match.turns.takeIf { it > 0 }, match.rankChange?.pipDelta, match.engineMatchID,
+            match.rankChange?.let(RankSettlement::line), match.rankNote)
     }
 }
 
@@ -121,6 +126,8 @@ data class ProfileSummary(
 data class PublicProfile(
     val username: String, val restricted: Boolean, val visibility: ProfileVisibility, val relation: String, val online: Boolean?,
     val title: String?, val favoriteCommander: String?, val rank: Rank?, val summary: ProfileSummary, val games: List<ProfileGame>,
+    /** Finished seasons at their peak, newest first (mm_public_profile `seasons`). */
+    val seasons: List<SeasonBadge> = emptyList(),
 ) {
     data class Rank(val season: String, val step: Int, val pips: Int, val peakStep: Int, val wins: Int, val losses: Int) {
         /** This season's place, or null when it is from an earlier season. */
@@ -172,8 +179,12 @@ data class PublicProfile(
                     row["opponents"].rows().mapNotNull { o -> o["name"].text()?.let { ProfileOpponent(it, o["commander"].text(), o["ai"].flag() ?: true, o["hidden"].flag() ?: false) } },
                     row["turns"].number())
             }
+            val seasons = root["seasons"].rows().mapNotNull { row ->
+                val season = row["season"].text(); val peak = row["peakPoints"].number()
+                if (season == null || peak == null) null else SeasonBadge(season, RankPosition.ofPoints(peak))
+            }
             return PublicProfile(username, false, visibility, relation, root["online"].flag(), root["title"].text(), root["favoriteCommander"].text(),
-                rank, summary, games)
+                rank, summary, games, seasons)
         }
 
         /** PostgREST timestamps: "2026-10-05T12:30:00+00:00", with or without fractions. */

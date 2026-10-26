@@ -332,7 +332,7 @@ struct NativeDeckCardImage: View {
 enum NativeCardArtworkPolicy {
     static func permitsLookup(card: ZoneCard) -> Bool {
         permitsLookup(name: card.card.name) &&
-            !(card.cardIcons ?? []).contains { $0.iconType.uppercased() == "OTHER_FACEDOWN" }
+            (card.card.faceDown == true || !(card.cardIcons ?? []).contains { $0.iconType.uppercased() == "OTHER_FACEDOWN" })
     }
 
     static func permitsLookup(name: String) -> Bool {

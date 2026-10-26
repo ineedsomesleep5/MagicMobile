@@ -37,6 +37,7 @@
 /* the hand's mana cost: a black capsule of flat symbols above the card's top-right corner (HandManaCost) */
 .acard .mcost { position: absolute; right: .35em; top: -2.75em; display: flex; gap: .12em; align-items: center; padding: .28em .38em; border-radius: 2em;
   background: rgba(0,0,0,.88); pointer-events: none; z-index: 2; }
+.acard.nocost .mcost { display: none; }
 .acard .mcost .msym { width: 2.15em; height: 2.15em; }
 .acard .mcost i { font: 700 1.2em/1 var(--serif); color: #fff; font-style: normal; }
 /* flat mana symbols (Scryfall's, as iOS ManaSymbolView) and their stand-in disc */
@@ -55,6 +56,12 @@
 .acard .tile .tedge { position: absolute; left: 3.7%; right: 3.7%; top: 92%; height: 10.8%; border-radius: 0 0 .9em .9em;
   background: linear-gradient(#7a5426, #3a2410 60%, #20140a); box-shadow: 0 .15em .25em rgba(0,0,0,.5); }
 .acard .tile .tapmark { position: absolute; left: 50%; top: 22%; width: 49%; transform: translateX(-50%); opacity: .72; filter: drop-shadow(0 0 .25em rgba(0,0,0,.7)); }
+/* your own face-down card: its real face dimmed, a closed eye at the top (FaceDownMark); the card is 15em wide */
+.acard .fdown, .ainspector .fdown { position: absolute; inset: 0; z-index: 1; border-radius: inherit; background: rgba(0,0,0,.38); pointer-events: none;
+  display: flex; justify-content: center; align-items: flex-start; }
+.acard .tile .fdown { inset: 3% 4% 6%; border-radius: 1.4em; }
+.acard .fdown svg, .ainspector .fdown svg { width: 1.95em; min-width: 8px; height: auto; box-sizing: content-box; margin-top: .75em; padding: .6em; border-radius: 999px;
+  fill: #f2e6c8; background: rgba(43,42,46,.85); box-shadow: 0 0 0 .1em rgba(219,163,76,.5); }
 .acard .tile .sick, .acard .plain .sick { position: absolute; right: 4%; top: 4%; width: 22%; min-width: 13px; z-index: 2; filter: drop-shadow(0 0 .15em rgba(0,0,0,.6)); }
 /* Card Frames off (the default): the reference game's battlefield card (CardTile.plainFace on iOS). The card is 15em wide. */
 .acard .plain { position: absolute; inset: 0; filter: var(--dim,) var(--glow,) var(--hover,); transition: filter .3s; }
@@ -62,7 +69,7 @@
    held press (Caleb, 2026-10-23). */
 .acard .spin { transition: transform .34s cubic-bezier(.2,.75,.25,1), transform-origin .34s cubic-bezier(.2,.75,.25,1), translate .16s ease-out; }
 .acard[data-view=tile]:hover .spin, .acard[data-view=face]:not([data-hand]):hover .spin { translate: 0 -.35em; }
-.acard[data-view=tile]:hover:not(.playable):not(.targetable):not(.can-act):not(.payable):not(.atk):not(.blk) {
+.acard[data-view=tile]:hover:not(.playable):not(.ability):not(.targetable):not(.can-act):not(.payable):not(.atk):not(.blk) {
   --hover: drop-shadow(0 0 .12em rgba(255,236,190,.75)) drop-shadow(0 0 .4em rgba(255,214,140,.35)); }
 .apile:not(:disabled):hover .ptop, .atoplib:hover { translate: 0 -2px; }
 .acard .plain .pface { position: absolute; inset: 0; border-radius: 1.05em; overflow: hidden; background: #121214;
@@ -97,6 +104,10 @@
 /* glows follow the tavern frame's own outline: drop-shadow traces the painted frame's alpha, never a box (frame-outline glow) */
 .acard.tapped:not(.atk) { --dim: grayscale(.75) brightness(.62); }
 .acard.playable { --glow: drop-shadow(0 0 .16em #9ff4ff) drop-shadow(0 0 .55em rgba(80,220,255,.9)); }
+/* a permanent with a non-mana ability you can use now: yellow #ffe03a at 0.95 (ArenaOutlineGlow.Tone.ability, Caleb
+   2026-10-26); lands softer */
+.acard.ability { --glow: drop-shadow(0 0 .16em #ffe03a) drop-shadow(0 0 .55em rgba(255,224,58,.95)); }
+.acard.landish.ability { --glow: drop-shadow(0 0 .14em rgba(255,224,58,.75)) drop-shadow(0 0 .45em rgba(255,224,58,.6)); }
 .acard.mana { --glow: drop-shadow(0 0 .12em rgba(159,244,255,.7)) drop-shadow(0 0 .4em rgba(80,220,255,.45)); }
 .acard.targetable { --glow: drop-shadow(0 0 .2em #c6f8ff) drop-shadow(0 0 .7em rgba(90,225,255,.95)); }
 .acard.can-act { --glow: drop-shadow(0 0 .18em #fff4dc) drop-shadow(0 0 .6em rgba(255,215,150,.85)); }
@@ -168,7 +179,18 @@
 .acount { --s: 17px; display: inline-grid; place-items: center; box-sizing: border-box; min-width: calc(var(--s) + 3px); height: var(--s);
   padding: 0 max(5px, calc(var(--s) * .18)); border-radius: 999px; font: 700 max(11px, calc(var(--s) * .5))/1 var(--sans); color: #fff;
   font-variant-numeric: tabular-nums; background: rgba(18,18,20,.94); box-shadow: inset 0 0 0 1px rgba(250,214,133,.7), 0 1px 2px rgba(0,0,0,.6); }
-.amed.ready { box-shadow: 0 0 0 2px #7ff0ff, 0 0 14px 5px rgba(80,220,255,.7); }
+/* TavernCommanderReadyGlow: while you can cast from your command zone (or graveyard, exile, library) a green-gold ring
+   breathes round your medallion under a gold crown; 1.42 of the portrait (0.9 of the medallion), 0.9 s each way */
+.amed .aready { position: absolute; left: 50%; top: 50%; z-index: -1; width: calc(var(--d) * 1.28); height: calc(var(--d) * 1.28); translate: -50% -50%; pointer-events: none; }
+.amed .aready::before { content: ""; position: absolute; inset: 0; border-radius: 50%; padding: calc(var(--d) * .081);
+  background: conic-gradient(#73ff8c, #ffdb73, #4de680, #ffdb73, #73ff8c);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  filter: blur(calc(var(--d) * .063)); animation: areadybreathe .9s ease-in-out infinite alternate; }
+.amed .aready b { position: absolute; left: 50%; top: 50%; translate: -50% calc(-50% - var(--d) * .76); font: 400 calc(var(--d) * .3)/1 var(--serif);
+  background: linear-gradient(#fff2b3, #f2b340); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 calc(var(--d) * .09) rgba(128,255,140,.9)); }
+@keyframes areadybreathe { from { opacity: .45; transform: scale(.96); } to { opacity: 1; transform: scale(1.02); } }
+@media (prefers-reduced-motion: reduce) { .amed .aready::before { animation: none; opacity: .9; } }
 /* floating mana the reference's way (ArenaFloatingMana): plain symbols in a dark capsule by your portrait, a count on
    each colour past one; a colour you can spend while paying wears an ember ring and takes a click */
 .afloat { position: absolute; z-index: 412; height: 28px; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; padding: 0 5px;
@@ -285,6 +307,8 @@
 .alog li.event > svg { width: 12px; height: 12px; flex: none; margin: 3px 3px 0; fill: currentColor; }
 .alog li.event > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .alog .text { white-space: pre-line; overflow-wrap: anywhere; }
+/* Rules notes keep their lines (a live hint such as "Lands you control: 6" sits on its own line). */
+.ainspector .note.rules { white-space: pre-line; }
 .alog .text .player { color: #73dbd1; font-weight: 700; }
 .alog .text .card { color: #ffd675; font-style: italic; }
 .alog .text .bold { font-weight: 700; }
@@ -364,6 +388,27 @@
 .abrowse .bbody { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: var(--atop, 50px) 24px 12px; }
 .abrowse .bcontent { flex: 1; min-height: 0; width: 100%; display: flex; align-items: safe center; justify-content: safe center; gap: 16px; overflow-x: auto; overflow-y: hidden; padding: 14px 24px; }
 .abrowse .bcontent.column { flex-direction: column; overflow: hidden auto; gap: 10px; }
+/* The sideways row (HScroller, iOS's ScrollView(.horizontal)): the body's full width, centred when it fits; past an edge
+   with more cards the row fades out under a glass arrow. A vertical wheel, a drag or a trackpad swipe moves it. */
+.hscroll { position: relative; flex: 1; min-height: 0; width: calc(100% + 48px); margin: 0 -24px; display: flex; }
+/* beside the source card the row stops short of it, so its fade and arrow never sit on the card */
+.bbody.sourced .hscroll { width: calc(100% + 24px); margin-right: 0; }
+.hstrack { flex: 1; min-width: 0; display: flex; align-items: safe center; overflow-x: auto; overflow-y: hidden; padding: 18px 28px; scrollbar-width: none;
+  --fl: 0px; --fr: 0px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 var(--fl), #000 calc(100% - var(--fr)), transparent); }
+.hstrack::-webkit-scrollbar { display: none; }
+.hstrack.dragging { cursor: grabbing; }
+.hstrack.dragging * { cursor: grabbing; }
+.hscroll.before .hstrack { --fl: 64px; }
+.hscroll.after .hstrack { --fr: 64px; }
+.hsrow { flex: none; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+.hsarrow { position: absolute; top: 50%; z-index: 2; width: 40px; height: 40px; margin-top: -20px; border-radius: 50%; display: grid; place-items: center; padding: 0 0 3px;
+  font: 700 28px/1 var(--serif); color: #f2ebdb; background: rgba(12,12,16,.78); box-shadow: inset 0 0 0 1px rgba(245,204,117,.8), 0 3px 10px rgba(0,0,0,.6);
+  transition: background .15s ease, transform .15s ease; }
+.hsarrow.prev { left: 10px; } .hsarrow.next { right: 10px; }
+.hsarrow:hover { background: rgba(40,36,30,.9); transform: scale(1.06); }
+.bnomatch { margin: 0; font: 500 13px/1.3 var(--sans); color: rgba(242,235,219,.8); text-align: center; }
+.bnomatch button { background: none; padding: 0; font: inherit; color: var(--agold); text-decoration: underline; }
 .abrowse .bfoot { flex: none; display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
 .abrowse .bfoot .aplaque { position: relative; min-width: 140px; height: 40px; padding: 0 22px; font-size: 15px; }
 .abrowse .bfoot .aplaque.primary { min-width: 170px; height: 42px; font-size: 16px; }
@@ -390,6 +435,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .bcard .aplaque { position: relative; width: 100%; min-width: 0; height: 34px; font-size: 14px; padding: 0 8px; white-space: nowrap; overflow: hidden; }
 /* The commander browser: a commander away from the command zone dims, with where it is; casts and tax under each. */
 .bcommander.away img.bprinted { filter: saturate(.4) brightness(.55); }
+img.bprinted.facedown { filter: brightness(.62); }
 .bcommander .bwhere { font: 800 10px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: #fad584; text-align: center; }
 .bcommander .btax { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 12px; font: 600 13px/1.3 var(--sans); color: rgba(243,234,216,.85); text-align: center; }
 .bcommander .btax .msym { width: 1.15em; height: 1.15em; vertical-align: -.2em; }
@@ -574,6 +620,15 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .ainspector .note { padding: 12px 14px; display: grid; gap: 4px; font: 500 13px/1.35 var(--serif); }
 .ainspector .note .label { font: 900 10px/1 var(--serif); letter-spacing: .12em; color: #e2b867; margin-bottom: 2px; }
 .ainspector .note p { margin: 0; } .ainspector .note p b { color: #fad685; }
+/* the held card and what is fastened to it, as tabs over the notes (InspectorTabStrip); the one shown is outlined in gold */
+.ainspector .itabs { display: flex; gap: 8px; padding: 4px 2px; }
+.ainspector .itab { position: relative; flex: none; width: 34px; height: 47px; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: #0d0a08;
+  cursor: pointer; opacity: .75; transition: transform .15s ease-out, opacity .15s ease-out, box-shadow .15s ease-out; }
+.ainspector .itab::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; border: 1px solid rgba(255,255,255,.25); pointer-events: none; }
+.ainspector .itab.on { opacity: 1; transform: scale(1.08); box-shadow: 0 0 6px rgba(219,163,76,.6); }
+.ainspector .itab.on::after { border: 2px solid #dba34c; }
+.ainspector .itab img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ainspector .itab .fdown { font-size: 2.27px; }
 /* trigger order: a gold rim and its number on each picked trigger (ArenaCountBadge, 34) */
 .bpick.numbered { transform: scale(1.04); filter: drop-shadow(0 0 8px rgba(255,190,77,.9)); }
 .bpick.numbered > :first-child { box-shadow: 0 0 0 3px #ffd166; border-radius: .75em; }
@@ -647,6 +702,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .astatus .shield { position: absolute; left: 4%; top: 4%; width: 30%; height: 30%; fill: #f3e6c8; filter: drop-shadow(0 0 1.5px #000); }
 .astatus .count { position: absolute; right: -12%; bottom: -10%; width: 50%; height: 50%; min-width: 12px; min-height: 12px; border-radius: 50%; display: grid; place-items: center;
   background: url(/tavern/coin.webp) center/100%; color: #401f0a; font: 900 8px/1 var(--serif); }
+.aglance { position: absolute; z-index: 466; display: flex; gap: 6px; transform: translateY(-50%); pointer-events: none; }
 .aorbit { position: absolute; transform: translate(-50%, -50%); z-index: 466; pointer-events: none; }
 .aorbit.more { display: grid; place-items: center; border-radius: 50%; background: url(/tavern/coin.webp) center/100%; color: #401f0a; font: 900 9px/1 var(--serif); }
 
@@ -793,6 +849,7 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .aresult .resultmed.won::before { content: ""; position: absolute; inset: -7.5%; border-radius: 50%; background: rgba(255,120,40,.7); filter: blur(10px); }
 .aresult .resultmed.lost .bmed { filter: saturate(.15); }
 .aresult .details > p { margin: 0; max-width: 480px; text-align: center; font: 500 14px/1.3 var(--sans); color: rgba(242,235,219,.8); }
+.aresult .details > p.rnote { font: 600 13px/1.3 var(--sans); }
 .aresult .figures { display: flex; gap: 22px; }
 .aresult .figure { display: grid; justify-items: center; gap: 2px; }
 .aresult .figure b { font: 700 24px/1 var(--serif); color: var(--atext); font-variant-numeric: tabular-nums; }
@@ -843,6 +900,15 @@ img.bprinted { display: block; flex: none; border-radius: 4.75%/3.4%; box-shadow
 .aversus .arch { width: 220px; height: 306px; border-radius: 110px 110px 12px 12px; overflow: hidden; border: 3px solid var(--agold);
   box-shadow: 0 0 36px rgba(255,120,31,.4), inset 0 0 0 1px rgba(0,0,0,.6); background: #140a05; }
 .aversus .vside.several .arch { width: 136px; height: 189px; border-radius: 68px 68px 10px 10px; }
+.aversus .arch { position: relative; }
+.aversus .archart { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+/* A ranked seat (Caleb, 2026-10-26): the arch framed in the tier's metal, white over its tint, shade and tint again, thicker
+   the higher the tier (--rim); the glow in its tint, stronger for Mythic. No emblem on the arch. */
+.aversus .arch.tiered { overflow: visible; border: none; box-shadow: 0 0 36px rgba(var(--tint),.55), inset 0 0 0 1px rgba(0,0,0,.6); }
+.aversus .arch.tiered.mythic { box-shadow: 0 0 52px rgb(var(--tint)), inset 0 0 0 1px rgba(0,0,0,.6); }
+.aversus .arch.tiered::before { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: var(--rim); pointer-events: none;
+  background: linear-gradient(rgba(255,255,255,.9), rgb(var(--tint)), rgb(var(--shade)), rgb(var(--tint)));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
 .aversus .plate { margin-top: -10px; position: relative; max-width: 200px; padding: 7px 16px; border-radius: 6px; background: rgba(8,8,10,.94);
   border: 1px solid var(--ahair); font: 700 17px/1.1 var(--serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .aversus .vside.several .plate { max-width: 130px; font-size: 13px; }

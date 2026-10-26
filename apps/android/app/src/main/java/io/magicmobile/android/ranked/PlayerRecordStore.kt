@@ -94,6 +94,15 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
     fun gameRecord(name: String): ByteArray? =
         if ('/' in name) null else runCatching { File(gameRecordsDir, name).readBytes() }.getOrNull()
 
+    /** Whether the named record is still on the phone (readable or not). */
+    fun gameRecordIsKept(name: String): Boolean = '/' !in name && File(gameRecordsDir, name).exists()
+
+    /** The server's answer for a ranked AI game (PlayerRecordFile.settlingRanked). */
+    fun settleRanked(ticket: String, standing: io.magicmobile.android.game.RankedStanding) {
+        val next = file.settlingRanked(ticket, standing.settlement, standing.check, standing.change, standing.points)
+        if (next != file) { file = next; save() }
+    }
+
     /** The server answered for this ticket (or never will). */
     fun resolvePendingRankedResult(ticket: String) {
         if (file.pendingRankedResults.none { it.ticket == ticket }) return

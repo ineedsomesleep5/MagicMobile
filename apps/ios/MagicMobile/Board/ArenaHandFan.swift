@@ -35,6 +35,8 @@ struct ArenaHandFan: View {
     @State private var spreadScroll: CGFloat = 0
     /// A touch on the spread row: where it began and the swipe then; sideways it swipes the row, up it carries the card.
     @State private var spreadTouch: (start: CGPoint, scroll: CGFloat, swiping: Bool)?
+    /// A slide over the resting or popped hand: where it began, and whether it turned out to be a sideways scrub.
+    @State private var restTouch: (start: CGPoint, scrubbing: Bool)?
     /// Where a hold began: pulled up off the hand, the held card is carried like a drag.
     @State private var holdStart: CGPoint?
     @State private var known: Set<String>?
@@ -391,6 +393,25 @@ struct ArenaHandFan: View {
                                                   legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
             return
         }
+        // A slide that sets off upward carries the card it began on (an Android tester, 2026-10-26: on a thin card the climb
+        // through the fan scrubbed onto a neighbour, which was then carried instead); one that sets off sideways scrubs.
+        if let touch = restTouch, !touch.scrubbing {
+            let dx = point.x - touch.start.x, dy = point.y - touch.start.y
+            if hypot(dx, dy) < canvas.length(6) { return }
+            if dy < 0, abs(dy) > abs(dx), let card = card(at: touch.start) {
+                restTouch = nil
+                GameAudio.shared.play(.cardPickup)
+                carrySurface = liftedFrame
+                liftedCardID = nil
+                inspectedCard = nil
+                dragging = (card.id, touch.start, CGSize(width: dx, height: dy))
+                isOverPlayerDropZone = canvas.drops(at: point, from: touch.start)
+                interactionState.mode = .draggingCard(cardId: card.instanceId,
+                                                      legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
+                return
+            }
+            restTouch = (touch.start, true)
+        }
         if point.y >= band.minY - canvas.length(12) {
             guard let card = scrubCard(at: point), liftedCardID != card.id else { return }
             liftedCardID = card.id
@@ -413,12 +434,14 @@ struct ArenaHandFan: View {
     /// carries.
     private func panStarted(at point: CGPoint) {
         spreadTouch = posture == .spread ? (point, spreadScroll, false) : nil
+        restTouch = posture == .spread ? nil : (point, false)
     }
 
     /// A slide that never left the hand leaves its card popped up; a carried card plays if it lands on the table.
     private func panEnded(at point: CGPoint, cancelled: Bool) {
         carrySurface = nil
         spreadTouch = nil
+        restTouch = nil
         guard let current = dragging, let card = (cards + extraCards).first(where: { $0.id == current.id }) else { return }
         let dropped = !cancelled && canvas.drops(at: point, from: current.start)
         dragging = nil

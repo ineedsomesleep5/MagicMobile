@@ -20,13 +20,15 @@ const FLARE: Record<Outcome, string> = { victory: "255,133,36", defeat: "117,148
 
 export interface ResultNumbers { turns: number; combatDamage: number; creaturesDestroyed: number }
 
-export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, numbers, rankChange, rematch, leave }: {
+export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, numbers, rankChange, rankNote, rematch, leave }: {
   snapshot?: GameSnapshot; me?: PlayerGameState; finished: boolean;
   /** A table that ended without a result: its word ("Game stopped") and why. */
   stoppedTitle: string; stoppedLine?: string;
   numbers: ResultNumbers;
   /** How a ranked game moved you (RankProgressPanel). */
   rankChange?: RankChange;
+  /** Why a ranked win left the ladder alone, once the server says so. */
+  rankNote?: string;
   rematch?: () => void; leave: () => void;
 }) {
   const winners = snapshot?.winnerPlayerIds ?? [];
@@ -61,6 +63,7 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
               )}
               {!finished && stoppedLine && <p>{stoppedLine}</p>}
               {rankChange && <RankProgress change={rankChange} />}
+              {rankNote && <p className="rnote" data-id="board.result.rankNote">{rankNote}</p>}
               {finished && numbers.turns > 0 && (
                 <div className="figures">
                   <Figure value={numbers.turns} label="Turns" />
@@ -70,7 +73,7 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
               )}
               <div className="ways">
                 <button type="button" className="aplaque secondary" onClick={leave}>Main Menu</button>
-                {rematch && <button type="button" className="aplaque primary" data-id="board.result.rematch" onClick={rematch}>New Game</button>}
+                {rematch && <button type="button" className="aplaque primary" data-id="board.result.rematch" onClick={rematch}>{rankChange ? "Next Match" : "New Game"}</button>}
               </div>
             </div>
           )}
@@ -104,6 +107,8 @@ export function RankProgress({ change }: { change: RankChange }) {
   const to = RankPosition.points(change.after);
   const [points, setPoints] = useState<number>();
   useEffect(() => {
+    // The server's count may replace the browser's while this shows: start again from its own before.
+    setPoints(undefined);
     if (from === to) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setPoints(to); return; }
     const step = to > from ? 1 : -1;

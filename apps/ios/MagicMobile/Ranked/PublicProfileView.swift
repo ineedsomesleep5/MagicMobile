@@ -260,6 +260,11 @@ struct PublicProfileView: View {
             } else {
                 RankHistoryChart(points: profile.summary.rankPoints)
             }
+            if !profile.seasons.isEmpty {
+                Divider().overlay(TavernPalette.brass.opacity(0.4))
+                ProfileSectionTitle(text: String(localized: "Season badges"))
+                SeasonBadgeShelf(badges: profile.seasons, size: 52)
+            }
         }
         .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)

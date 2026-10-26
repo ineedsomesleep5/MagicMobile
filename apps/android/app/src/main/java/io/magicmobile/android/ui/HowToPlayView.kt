@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
@@ -176,13 +177,29 @@ private fun HowToPlayChooser(choose: (HowToPlayTutorial) -> Unit, playGuided: ((
 private fun Book(id: String, title: String, subtitle: String, icon: String, art: String, colors: List<String>, action: String, wide: Boolean,
                  modifier: Modifier, primary: Boolean = false, choose: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
-    Column(modifier.glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).clip(shape).background(Color.Black.copy(alpha = 0.45f))
+    val frame = modifier.glow(Color.Black.copy(alpha = 0.5f), 8.dp, 12.dp).clip(shape).background(Color.Black.copy(alpha = 0.45f))
         .border(1.dp, ArenaGlass.hairline, shape)
         .clickable(role = Role.Button) { choose() }
-        .semantics(mergeDescendants = true) { contentDescription = "$title. $subtitle" }.testTag("howToPlay.tutorial.$id")) {
-        Box(Modifier.fillMaxWidth().height(if (wide) 104.dp else 78.dp).clip(RoundedCornerShape(0.dp))) {
+        .semantics(mergeDescendants = true) { contentDescription = "$title. $subtitle" }.testTag("howToPlay.tutorial.$id")
+    if (!wide) {
+        // Upright, Arena's way (Caleb, 2026-10-26: the thin strips showed shoulders, not faces, under a gap): the art fills
+        // the tile, framed on its upper part, with the title and plaque on a shade along its foot.
+        Box(frame.fillMaxWidth().height(158.dp), contentAlignment = Alignment.BottomCenter) {
+            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.06f; scaleY = 1.06f }, focus = 0.3f)
+            Box(Modifier.fillMaxWidth().height(96.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.88f)))))
+            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(title, Modifier.weight(1f), color = ArenaMenuStyle.text, style = ArenaMenuStyle.font(19f, SfWeight.bold).copy(shadow = Shadow(Color.Black, blurRadius = 6f)))
+                Plaque(action, icon = "chevron.right", primary = primary)
+            }
+            Box(Modifier.align(Alignment.TopStart).padding(10.dp).size(34.dp).background(Color.Black.copy(alpha = 0.7f), CircleShape).border(0.9.dp, ArenaGlass.hairline, CircleShape),
+                contentAlignment = Alignment.Center) { ArenaEmblem(icon, 16.dp, lit = true) }
+        }
+        return
+    }
+    Column(frame) {
+        Box(Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(0.dp))) {
             // Cropped in from every edge, so a printing's frame never shows along the art's border.
-            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.14f; scaleY = 1.14f })
+            ArenaArt(art, colors, Modifier.fillMaxSize().graphicsLayer { scaleX = 1.14f; scaleY = 1.14f }, focus = 0.3f)
             Box(Modifier.padding(10.dp).size(34.dp).background(Color.Black.copy(alpha = 0.7f), CircleShape).border(0.9.dp, ArenaGlass.hairline, CircleShape),
                 contentAlignment = Alignment.Center) { ArenaEmblem(icon, 16.dp, lit = true) }
         }

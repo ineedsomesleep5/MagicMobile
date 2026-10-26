@@ -233,13 +233,18 @@ object OnDeviceSnapshotAdapter {
         val id = value["id"].string
         if (!isUuid(id)) throw EngineError.InvalidMessage("Card view has no engine UUID")
         // Do not consult original, source images, or a catalogue to undo an upstream redaction.
-        val hidden = value["hideInfo"].bool == true
-        val name = if (hidden) "Face-down card" else value["displayName"].string ?: value["name"].string ?: "Card details unavailable"
-        fun strings(key: String) = if (hidden) emptyList() else (value[key].array ?: emptyList()).mapNotNull { it.string }
+        // A face-down card its owner may look at carries the real card as `secondCardFace` (CardView: "Face Down: <name>");
+        // anyone else gets the face-down placeholder.
+        val faceDown = value["faceDown"].bool == true
+        val ownFace = if (faceDown && value["hideInfo"].bool != true) value["secondCardFace"]?.takeIf { it["name"].string != null } else null
+        val hidden = value["hideInfo"].bool == true || (faceDown && ownFace == null)
+        val face = ownFace ?: value
+        val name = if (hidden) "Face-down card" else face["displayName"].string ?: face["name"].string ?: "Card details unavailable"
+        fun strings(key: String) = if (hidden) emptyList() else (face[key].array ?: emptyList()).mapNotNull { it.string }
         var typeLine = (strings("superTypes") + strings("cardTypes")).joinToString(" ") { capitalizedWords(it) }
         val subs = strings("subTypes")
         if (subs.isNotEmpty()) typeLine += " — " + subs.joinToString(" ") { capitalizedWords(it) }
-        val rules = if (hidden) "" else (value["rules"].array ?: emptyList()).mapNotNull { it.string }.joinToString("\n")
+        val rules = if (hidden) "" else (face["rules"].array ?: emptyList()).mapNotNull { it.string }.joinToString("\n")
         val tokenIdentityVisible = !hidden && value["faceDown"].bool != true
         val isToken = value["isToken"].bool == true
         val hasTokenColors = tokenIdentityVisible && isToken && colorNames.all { value["color"][it.first].bool != null }
@@ -263,7 +268,8 @@ object OnDeviceSnapshotAdapter {
         } else JsonNull
         val result = linkedMapOf<String, J>("instanceId" to s(id!!), "card" to jsonObject(
             "name" to s(name), "typeLine" to s(typeLine), "oracleText" to s(rules),
-            "manaCost" to (printedManaCost(value)?.let(::s) ?: JsonNull),
+            "manaCost" to ((ownFace?.let(::printedManaCost) ?: printedManaCost(value))?.let(::s) ?: JsonNull),
+            "faceDown" to (if (ownFace != null) b(true) else JsonNull),
             "isToken" to (if (tokenIdentityVisible) value["isToken"].bool?.let(::b) ?: JsonNull else JsonNull),
             "tokenColors" to tokenColors, "copySourceArtworkName" to sourceArt, "tokenArtwork" to baseArt))
         for (key in listOf("tapped", "summoningSickness", "damage", "phasedIn")) value[key]?.let { result[key] = it }

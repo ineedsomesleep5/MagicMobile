@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RankChange, RankLadder, RankPosition, RankState, RankTier } from "../src/core/rankLadder";
+import { RankChange, RankLadder, RankPosition, RankState, RankTier, SeasonBadge } from "../src/core/rankLadder";
 
 const root = join(__dirname, "..", "..", "..");
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,8 +47,11 @@ describe("rank ladder", () => {
     for (const item of cases.seasons) expect(RankLadder.season(item.millis)).toBe(item.season);
     for (const item of cases.seasonEnds) expect(RankLadder.seasonEnd(item.season)?.getTime()).toBe(item.millis);
     expect(RankLadder.seasonEnd("2026")).toBeUndefined();
-    expect(RankLadder.seasonEnd("2026-12")?.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+    expect(RankLadder.seasonEnd("2026-09")?.toISOString()).toBe("2026-10-01T00:00:00.000Z");
     expect(RankLadder.seasonName("2026-10", "en-US")).toBe("October 2026");
+    // Quarterly from November 2026: a season is named by its first month and spans three.
+    expect(RankLadder.seasonName("2026-11", "en-US")).toBe("Nov 2026 – Jan 2027");
+    expect(RankLadder.season(Date.UTC(2026, 11, 15))).toBe("2026-11");
     expect(RankLadder.seasonName("junk", "en-US")).toBe("junk");
     for (const item of cases.rollover) {
       const state = { ...RankState.fresh(item.season), position: position(item.position), peak: position(item.peak), wins: item.wins, losses: item.losses };
@@ -67,6 +70,26 @@ describe("rank ladder", () => {
         expect(next.peak, item.name).toEqual(next.position);
       }
     }
+  });
+
+  it("numbers seasons and earns their badges as ranked-cases.json says", () => {
+    for (const item of cases.seasonNumbers) expect(RankLadder.seasonNumber(item.season), item.season).toBe(item.number ?? undefined);
+    expect(RankLadder.seasonNumber("junk")).toBeUndefined();
+    const { rank, expect: expected, best } = cases.seasonBadges;
+    const peak = RankPosition.fromPoints(rank.peakPoints);
+    const state: RankState = {
+      ...RankState.fresh(rank.season), peak, wins: rank.played ? 1 : 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      history: rank.history.map((row: any) => ({ season: row.season, final: RankPosition.fromPoints(row.peakPoints), peak: RankPosition.fromPoints(row.peakPoints), wins: 1, losses: 0 })),
+    };
+    const badges = SeasonBadge.earned(state);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(badges.map((b) => ({ season: b.season, tier: b.peak.tier, inProgress: b.inProgress, founder: SeasonBadge.founder(b) }))).toEqual(expected.map((e: any) =>
+      ({ season: e.season, tier: e.tier, inProgress: e.inProgress, founder: e.founder })));
+    expect(SeasonBadge.best(badges)?.season).toBe(best);
+    // Nothing played this season: no badge in play; nothing finished: no best.
+    expect(SeasonBadge.earned({ ...state, wins: 0 }).map((b) => b.season)).toEqual(["2026-10", "2026-09"]);
+    expect(SeasonBadge.best(SeasonBadge.earned({ ...state, history: [] }))).toBeUndefined();
   });
 
   it("keeps at most 24 past seasons, newest first", () => {

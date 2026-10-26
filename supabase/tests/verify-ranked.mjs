@@ -50,6 +50,14 @@ try {
   await db.exec(await readFile(new URL('./ranked_leaderboard.sql', import.meta.url), 'utf8'));
   await db.exec(await migration('20261017180000_friend_messages.sql'));
   await db.exec(await readFile(new URL('./friend_messages.sql', import.meta.url), 'utf8'));
+  for (const name of ['20261026120000_ranked_ai_turns.sql', '20261026130000_ranked_ai_check.sql', '20261026200000_ranked_ai_tuning.sql']) {
+    await db.exec(await migration(name));
+  }
+  await db.exec(await readFile(new URL('./ranked_ai_tuning.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261026210000_ranked_ai_no_cap.sql'));
+  await db.exec(await readFile(new URL('./ranked_ai_no_cap.sql', import.meta.url), 'utf8'));
+  await db.exec(await migration('20261026220000_ranked_crushing_loss.sql'));
+  await db.exec(await readFile(new URL('./ranked_crushing_loss.sql', import.meta.url), 'utf8'));
   console.log('PASS PGlite: ranked queue pairing (rank, bracket, protocol, blocks), host/guest table hand-off, late cancel, reports');
   console.log('PASS PGlite: ranked cards for friends and profile cards, blocked players hidden, no direct table access, account deletion');
   console.log('PASS PGlite: friend challenges (friends only, same-tier ranked with season rollover, replace, accept/decline/expiry, ranked reports, blocks, no direct access)');
@@ -60,6 +68,9 @@ try {
   console.log('PASS PGlite: ranked AI records (seeded tickets with the tier skill, a valid record counts, tampered/reseeded/unknown-build/easier-AI/wrong-winner/conceded/short/too-fast/missing records settle unverified, losses need none, older tickets unchanged, records kept, no direct access, anon refused)');
   console.log('PASS PGlite: ranked leaderboard (server standings order, current season with games only, public/friends-only/private and blocks respected both ways, friends scope, online flags, own row kept past the limit, limit cap, bad scope, anon refused)');
   console.log('PASS PGlite: friend messages (friends only, trimmed 1-500 chars, unread and read state, conversations newest first, pages, 20/minute limit, message reports, blocks hide both ways, no direct access, helpers internal, anon refused, account deletion)');
+  console.log('PASS PGlite: ranked AI tuning (server table per tier, Power rising through the divisions, mistakes from division IV to I, tickets carry and store them, records match the ticket or the skill standard, table internal)');
+  console.log('PASS PGlite: no daily cap on ranked AI wins (a thirteenth win in a day counts)');
+  console.log('PASS PGlite: crushing losses (the AI kept 30+ life: two pips, its life kept; a close loss or no record: one; Bronze still free)');
   console.log('Scope: single-process PostgreSQL; auth.uid is a test stub; no live writes, no concurrent-session proof.');
 } catch (error) {
   console.error('FAIL', error.message, error.detail ?? '', error.where ?? '', error.hint ?? '', error.position ?? '', error.routine ?? '');
@@ -80,7 +91,8 @@ function head(setup, entries, end) {
 function gameRecords() {
   const build = 'sha256:' + 'ab'.repeat(32);
   const record = ({ seed = '-4123456789012345678', engineBuild = build, ai = { aiSkill: 1, aiSearchDepth: 2, aiMistakePercent: 15 },
-                    winners = ['me'], turn = 6, extra = [] } = {}) => {
+                    winners = ['me'], turn = 6, extra = [],
+                    seats = [{ seatId: 'me', life: 31, lost: false, left: false }, { seatId: 'ai1', life: 0, lost: true, left: false }] } = {}) => {
     const setup = JSON.stringify({ engine: { protocol: 1, upstream: 'dac400b', catalogueHash: 'c', engineBuild }, seed,
       players: ['u0', 'u1'], seats: [{ seatId: 'me', name: 'Me', controller: 'human', deck: { commander: 'x' } },
                                      { seatId: 'ai1', name: 'AI', controller: 'ai', deck: { commander: 'y' }, ...ai }] });
@@ -91,8 +103,7 @@ function gameRecords() {
       entries.push(t % 2 ? '0h b0' : '1Q 0', '1A Forest/0 P', '1Q 1', '0h u' + t);
     }
     entries.push(...extra);
-    const end = JSON.stringify({ state: 'ended', turn, winners, entries: entries.length, digest: '1a4f4c0a', engineErrors: 0,
-      seats: [{ seatId: 'me', life: 31, lost: false, left: false }, { seatId: 'ai1', life: 0, lost: true, left: false }] });
+    const end = JSON.stringify({ state: 'ended', turn, winners, entries: entries.length, digest: '1a4f4c0a', engineErrors: 0, seats });
     return { format: 'magicmobile-game-record', version: 1, setup, entries, marks, end, head: head(setup, entries, end) };
   };
   const valid = record();
@@ -108,5 +119,8 @@ function gameRecords() {
     long: record({ turn: 60 }),
     broken: { ...valid, broken: 'unsupported value' },
     skill_two: record({ ai: { aiSkill: 2, aiSearchDepth: 3, aiMistakePercent: 15 } }),
+    tuned: record({ ai: { aiSkill: 1, aiSearchDepth: 2, aiMistakePercent: 12 } }),
+    crushed: record({ winners: ['ai1'], seats: [{ seatId: 'me', life: 0, lost: true, left: false }, { seatId: 'ai1', life: 34, lost: false, left: false }] }),
+    close_loss: record({ winners: ['ai1'], seats: [{ seatId: 'me', life: 0, lost: true, left: false }, { seatId: 'ai1', life: 8, lost: false, left: false }] }),
   };
 }

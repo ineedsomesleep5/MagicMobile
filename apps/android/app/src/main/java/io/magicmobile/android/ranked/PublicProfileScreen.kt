@@ -183,6 +183,11 @@ private fun ColumnScope.Content(profile: PublicProfile, account: PlayerAccount, 
         }
         ProfileSectionTitle("Rank history")
         if (summary.rankPoints.isEmpty()) ProfileEmptyNote("No ranked games to chart yet.", "chart.bar.fill") else RankHistoryChart(summary.rankPoints)
+        if (profile.seasons.isNotEmpty()) {
+            Box(Modifier.fillMaxWidth().size(1.dp).background(TavernPalette.brass.copy(alpha = 0.4f)))
+            ProfileSectionTitle("Season badges")
+            SeasonBadgeShelf(profile.seasons, 52.dp)
+        }
     }
     Column(Modifier.leatherCard().testTag("publicProfile.stats"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         ProfileSectionTitle("Record", "${summary.games} games")
@@ -252,6 +257,7 @@ private fun Actions(profile: PublicProfile, account: PlayerAccount, scope: kotli
     conversation?.let { name ->
         androidx.compose.ui.window.Dialog({ conversation = null }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false, dismissOnBackPress = false)) {
+            io.magicmobile.android.ui.EdgeToEdgeDialogWindow()
             androidx.activity.compose.BackHandler { conversation = null }
             io.magicmobile.android.social.FriendConversationScreen(account, name) { conversation = null }
         }

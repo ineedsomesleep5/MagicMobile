@@ -904,7 +904,8 @@ final class OnDevicePromptAdapterTests: XCTestCase {
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
             let rule = EngineDisplayText.abilityRule(label: try XCTUnwrap(item["label"] as? String),
-                                                     sourceRules: try XCTUnwrap(item["rules"] as? [String]))
+                                                     sourceRules: try XCTUnwrap(item["rules"] as? [String]),
+                                                     sourceName: item["sourceName"] as? String)
             XCTAssertEqual(rule, item["expect"] as? String, item["name"] as? String ?? "")
         }
     }

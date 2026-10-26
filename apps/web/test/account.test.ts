@@ -166,6 +166,21 @@ describe("wire parsing", () => {
     expect(() => PublicProfile.parse({ restricted: true })).toThrow();
   });
 
+  it("reads a public profile's finished seasons as badges at their peak", () => {
+    const seasons: J[] = [
+      { season: "2026-11", peakPoints: 36, finalPoints: 33 }, { season: "2026-10", peakPoints: 28, finalPoints: 20 },
+      { season: "2026-09" }, { peakPoints: 4 },
+    ];
+    const p = PublicProfile.parse({ username: "Hans", seasons });
+    expect(p.seasons).toEqual([
+      { season: "2026-11", peak: RankPosition.fromPoints(36), inProgress: false },
+      { season: "2026-10", peak: RankPosition.fromPoints(28), inProgress: false },
+    ]);
+    expect(p.seasons.map((b) => b.peak.tier)).toEqual(["gold", "silver"]);
+    expect(PublicProfile.parse({ username: "Hans" }).seasons).toEqual([]);
+    expect(PublicProfile.parse({ username: "Hans", restricted: true, seasons }).seasons).toEqual([]);
+  });
+
   it("parses search results as profile-cases.json says", () => {
     const results = PlayerSearchResult.parse(profile.searchResults.json);
     const expected = profile.searchResults.expect;
@@ -229,6 +244,9 @@ describe("wire parsing", () => {
   it("parses the seeded ranked AI ticket", () => {
     const id = "0B105EE9-8D80-4E09-B177-6D85B6782C65";
     expect(rankedAITicket({ id, seed: "-4123456789012345678", aiSkill: 1 })).toEqual({ id, seed: -4123456789012345678n });
+    expect(rankedAITicket({ id, seed: "7", aiSkill: 3, aiMistakePercent: 8, aiPower: 5.63 }))
+      .toEqual({ id, seed: 7n, ai: { skill: 3, mistakePercent: 8, power: 5.63 } });
+    expect(rankedAITicket({ id, seed: "7", aiSkill: 3, aiMistakePercent: 101, aiPower: 5.63 })).toEqual({ id, seed: 7n });
     expect(rankedAITicket({ id, seed: 4.5 })).toBeUndefined();
     expect(rankedAITicket(id)).toBeUndefined();
     expect(rankedAITicket({ id, seed: "9223372036854775808" })).toBeUndefined();
@@ -308,6 +326,28 @@ describe("the server's ranked standing", () => {
     expect(h.rpcCalls("mm_ranked_ai_result")[0].body).toEqual({ p_game: "T2", p_result: "loss" });
     expect(resolved).toEqual(["T1", "T2"]);
     expect(adopted).toEqual([5, 5]);
+  });
+
+  it("reads how a sent result settled, and hands it to the record before the standing", async () => {
+    const answer = { seeded: true, unsettled: 0, season: "2026-10", points: 4, peakPoints: 4, wins: 1, losses: 0, draws: 0, winStreak: 1 };
+    expect(standing({ points: 4 }).change).toBeUndefined();
+    const held = RankedStanding.parse({ ...answer, settlement: "unverified", change: null, check: "too_short" });
+    expect([held.settlement, held.check, held.change]).toEqual(["unverified", "too_short", undefined]);
+    const counted = RankedStanding.parse({ ...answer, settlement: "counted", change: { pointsBefore: 4, pointsAfter: 6, bonuses: ["underdog"] }, check: null });
+    expect(counted.change).toEqual({ pointsBefore: 4, pointsAfter: 6, bonuses: ["underdog"] });
+    const h = harness(profileServer({
+      mm_ranked_ai_result2: () => ok({ ...answer, settlement: "unverified", change: null, check: "too_short" }),
+      mm_ranked_standing: () => ok(answer),
+    }));
+    await h.account.start();
+    const heard: string[] = [];
+    await h.account.syncRank({
+      rank: played(), pendingRankedResults: [{ ticket: "T1", outcome: "win", date: OCTOBER, seeded: true }], resolvePendingRankedResult: () => {},
+      gameRecord: () => undefined,
+      settleRanked: (ticket, settlement, check, change) => { heard.push(`${ticket} ${settlement} ${check} ${change === undefined}`); },
+      adopt: (s) => { heard.push(`adopt ${s.points}`); },
+    });
+    expect(heard).toEqual(["T1 unverified too_short true", "adopt 4", "adopt 4"]);
   });
 });
 

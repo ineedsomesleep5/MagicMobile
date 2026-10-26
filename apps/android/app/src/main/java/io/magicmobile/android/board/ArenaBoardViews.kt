@@ -176,6 +176,8 @@ val LocalCardFrames = compositionLocalOf { true }
 
 /** A mana payment is open on the Arena board: the permanents that can pay glow orange instead of cyan. */
 val LocalArenaPaying = compositionLocalOf { false }
+/** The battlefield tile being drawn has a non-mana ability to use now (ArenaBattlefieldCard sets it for its own frame). */
+val LocalArenaAbility = compositionLocalOf { false }
 
 /**
  * The table's camera, so lanes and piles lying on it lean the way the rendered table does: the plate's pitch (landscape 22°,
@@ -210,6 +212,8 @@ object ArenaPalette {
 /** The web board's colours (playable #7ff0ff, target #c6f8ff, selected #ffe08f, attacking #ff5a2e, blocking #ffd38a). */
 val ArenaGlowTone.color: Color get() = when (this) {
     ArenaGlowTone.PLAYABLE -> rgb(0.5, 0.94, 1.0)
+    // A permanent with an ability you can use now (Caleb, 2026-10-26: not the same white as a card to cast).
+    ArenaGlowTone.ABILITY -> rgb(1.0, 0.88, 0.23)
     ArenaGlowTone.TARGET -> rgb(0.78, 0.97, 1.0)
     ArenaGlowTone.PAYABLE -> rgb(1.0, 0.62, 0.3)
     ArenaGlowTone.SELECTED -> rgb(1.0, 0.88, 0.56)

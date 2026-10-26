@@ -465,6 +465,8 @@ data class CardIdentity(
     val tokenColors: List<String>? = null,
     val copySourceArtworkName: String? = null,
     val tokenArtwork: TokenArtworkIdentity? = null,
+    /** Your own face-down card: the real card shown, dimmed and marked face down. Null for anyone else's. */
+    val faceDown: Boolean? = null,
 ) {
     val isLand: Boolean get() = typeLine.contains("land", ignoreCase = true)
     val isCreature: Boolean get() = typeLine.contains("creature", ignoreCase = true)

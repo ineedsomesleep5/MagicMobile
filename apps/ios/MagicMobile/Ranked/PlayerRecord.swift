@@ -37,11 +37,20 @@ struct MatchRecord: Codable, Equatable, Identifiable, Sendable {
     let deckBracket: Int
     let outcome: RankOutcome
     let turns: Int
-    let rankChange: RankChange?
+    /// The phone's count at once; the server's once it answers (PlayerRecordStore.settleRanked).
+    var rankChange: RankChange?
     let season: String?
     /// The engine's id for the game: it finds the detailed record (Deck Studio's saved game history), when
     /// the player chose to keep one. Games from earlier builds have none.
     var engineMatchID: String? = nil
+    /// A ranked AI game's server ticket, so the server's answer finds this game.
+    var rankedTicket: UUID? = nil
+    /// How the server counted it (counted, too_soon, capped, unverified) and, for an unverified win, why.
+    var settlement: String? = nil
+    var settlementCheck: String? = nil
+
+    /// Why a ranked win left the ladder alone, as the player reads it; nil when it counted.
+    var rankNote: String? { RankSettlement.note(settlement, check: settlementCheck, deckBracket: deckBracket) }
 
     var vsHuman: Bool { opponents.contains { !$0.isAI } }
 }
@@ -313,10 +322,11 @@ final class PlayerRecordStore: ObservableObject {
             rank = result.state
             change = result.change
         }
-        let match = MatchRecord(date: now(), mode: mode, opponents: opponents, opponentBracket: opponentBracket, aiSkill: aiSkill,
+        var match = MatchRecord(date: now(), mode: mode, opponents: opponents, opponentBracket: opponentBracket, aiSkill: aiSkill,
                                 deckID: deckID, deckName: deckName, commander: commander, colors: colors, deckBracket: deckBracket,
                                 outcome: outcome, turns: turns, rankChange: change, season: mode == .ranked ? rank.season : nil,
                                 engineMatchID: engineMatchID)
+        if mode == .ranked, opponents.allSatisfy(\.isAI) { match.rankedTicket = rankedTicket }
         matches.insert(match, at: 0)
         if matches.count > Self.maxMatches { matches.removeLast(matches.count - Self.maxMatches) }
         if let aiDeckID { recentAIDecks = Array(([aiDeckID] + recentAIDecks.filter { $0 != aiDeckID }).prefix(4)) }
@@ -355,7 +365,8 @@ final class PlayerRecordStore: ObservableObject {
             var values = URLResourceValues(); values.isExcludedFromBackup = true
             try? folder.setResourceValues(values)
             #if os(iOS)
-            let options: Data.WritingOptions = [.atomic, .completeFileProtection]
+            // Readable after the first unlock: a ranked result can sync with its record while the phone is locked.
+            let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
             #else
             let options: Data.WritingOptions = [.atomic] // file protection is iOS-only (the macOS test package)
             #endif
@@ -376,6 +387,31 @@ final class PlayerRecordStore: ObservableObject {
     func gameRecord(named name: String) -> Data? {
         guard let gameRecordsURL, !name.contains("/") else { return nil }
         return try? Data(contentsOf: gameRecordsURL.appendingPathComponent(name))
+    }
+
+    /// Whether the named record is still on the phone (readable or not).
+    func gameRecordIsKept(named name: String) -> Bool {
+        guard let gameRecordsURL, !name.contains("/") else { return false }
+        return FileManager.default.fileExists(atPath: gameRecordsURL.appendingPathComponent(name).path)
+    }
+
+    /// The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the phone's.
+    /// `points`: the server's standing now, so a win it held back shows where the player really stands.
+    func settleRanked(ticket: UUID, settlement: String?, check: String?, change: RankedStanding.Change?, points: Int? = nil) {
+        guard let index = matches.firstIndex(where: { $0.rankedTicket == ticket }) else { return }
+        var match = matches[index]
+        match.settlement = settlement
+        match.settlementCheck = check
+        if let before = change?.pointsBefore, let after = change?.pointsAfter {
+            match.rankChange = RankChange(outcome: match.outcome, before: RankPosition(points: before), after: RankPosition(points: after),
+                                          bonuses: (change?.bonuses ?? []).compactMap(RankChange.Bonus.init(rawValue:)))
+        } else if RankSettlement.held(settlement), let local = match.rankChange {
+            let stands = points.map { RankPosition(points: $0) } ?? local.before
+            match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [])
+        }
+        guard match != matches[index] else { return }
+        matches[index] = match
+        save()
     }
 
     /// The server answered for this ticket (or never will).

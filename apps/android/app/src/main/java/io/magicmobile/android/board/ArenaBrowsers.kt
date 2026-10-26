@@ -810,7 +810,8 @@ fun ArenaPileBrowser(title: String, detail: String?, piles: List<XmagePromptPile
  * top over your medallion, your rank, the game's numbers and the two ways on. View Battlefield lifts it all.
  */
 @Composable
-fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: RankChange?, rematchTitle: String?, newGame: () -> Unit, quitGame: () -> Unit) {
+fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: RankChange?, rematchTitle: String?, newGame: () -> Unit, quitGame: () -> Unit,
+                        rankNote: String? = null) {
     val reduce = BoardMotion.reduceMotion
     val view = LocalView.current
     val safe = LocalArenaSafeArea.current
@@ -876,6 +877,9 @@ fun ArenaGameResultView(snapshot: GameSnapshot, stats: GameStats?, rankChange: R
                             }
                         }
                     }
+                    // Why a ranked win left the ladder alone, once the server says so.
+                    rankNote?.let { Text(it, Modifier.semantics { testTag = "board.result.rankNote" }, color = ArenaGlass.text.copy(alpha = 0.8f),
+                        style = ArenaMenuStyle.font(13f, SfWeight.semibold), textAlign = TextAlign.Center) }
                     if (stats != null && stats.turns > 0) Row(horizontalArrangement = Arrangement.spacedBy(if (landscape) 22.dp else 28.dp)) {
                         for ((value, label) in listOf("${stats.turns}" to "Turns", "${stats.combatDamage}" to "Damage", "${stats.creaturesDestroyed}" to "Destroyed")) {
                             Column(Modifier.semantics(mergeDescendants = true) { }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {

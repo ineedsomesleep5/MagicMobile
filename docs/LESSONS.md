@@ -347,7 +347,9 @@ contradicting one.
   copy. After that, every question to the human throws "Mobile match stopped", XMage rolls back and asks again, and the
   game ends without the human. Phones run the same code; it showed up as 5 of 92 seeded JVM games in the web harness.
   **Rule:** copies must never close the live seat's channel; look for `GameImpl.end` → `abort` on a copy when a human
-  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor (not fixed in M1; engine follow-up).
+  suddenly can't answer. Where: `MobileHumanPlayer.abort`/copy constructor. 2026-10-26: it ended Caleb's winning ranked
+  web game ("Too many errors", the AI won on life). Web fixed by a `web_sources.py` rewrite (branch
+  `claude/web-engine-copy-abort`, `test/CopyAbortCheck.java` in CI); phones still need `ccd1365a` in an engine release.
 
 - 2026-10-18 (Claude, release C out-of-memory): interrupting an AI search, upstream's only stop signal
   (`FutureTask.cancel(true)` at the timeout), does not stop code that never checks the flag. `SimulatedPlayer2.triggerAbility`
@@ -846,3 +848,48 @@ contradicting one.
   only on the player's Send; read sent reports with `select created_at, platform, build, kind, report from
   diagnostic_reports order by created_at desc`. A hang's frames are binary offsets (MetricKit); symbolicate them with
   the build's dSYM. The main-thread watchdog pauses when the scene leaves `.active`, or a suspended app reads as a hang.
+
+## Ranked AI wins: judge by turns, show why a win didn't count (2026-10-26)
+
+- Two of Caleb's wins (turns 11 and 13) settled `too_soon` under the old four-minute clock, and the apps never said so:
+  the server's `settlement` was decoded and dropped. Now `mm_ranked_ai_record_check` bounds by turn and bracket, the
+  settle answer carries `change` and `check`, and the apps store both on the match (`settleRanked`).
+- PL/pgSQL reads an `IF` condition up to the first `THEN`, so `if x < case when … then 3 else 5 end then` is a syntax
+  error ("at end of input"). Compute the CASE into a variable first.
+- iOS game records were written with `.completeFileProtection`: a ranked sync while the phone was locked read nothing
+  and sent the win as `no_record` (unverified for good). Records are now readable after first unlock, and a kept but
+  unreadable record waits for the next sync on every platform.
+- Saving an image into the asset store posts `didStoreArtwork`, which empties every decoded image in memory. Live
+  fetches save with `announce: false`, or a game's first hundred cards would flush the cache a hundred times.
+- XMage's AbilityPickerView labels keep `{this}`, while the card's rules name the card: matching the label against the
+  rules failed and the fallback showed a raw `{this}`, drawn as a symbol chip. `abilityRule` now takes `sourceName`.
+- Web board: pointer movement is in window pixels but browser rows scroll in board points, so a drag divides by the
+  board's scale or it moves about twice as far.
+- Ranked AI difficulty is tuned on the server (`ranked_ai_tuning`, docs/DECK_POWER.md): the engine already took a
+  per-seat `aiMistakePercent` (and `aiSearchDepth`) override, so no engine change was needed, only apps that send the
+  ticket's value. The record check must accept both the ticket's chance and the skill's standard one, or wins from
+  apps released before the table settle `ai_settings`. Pick the opponent before opening a ticket: an unplayed ticket is
+  abandoned as a loss after 12 hours.
+- The daily cap of 12 ranked AI wins is gone (Caleb, 2026-10-26, after 254DADDY's 13th and 14th wins settled
+  `capped`); the record check carries the weight now. Still in place: 10 AI tickets an hour (spam) and three counted
+  human matches a day between the same pair (collusion).
+- Seasons are quarterly from November 2026 (`mm_season_for`, applied live). Apps that still count months disagree from
+  December 1, 2026 (they keep their own standing, as `adopting` refuses an older server season), so the iOS and
+  Android releases with `RankLadder.season`'s quarterly rule must go out before then.
+
+- Season badges (2026-10-26): a test fixture's arithmetic was wrong (Nov 2027 is Season 6: Season 1 is October 2026, then
+  quarters 2–5 run Nov 2026 to Oct 2027). Check a parity case by hand before trusting the code that disagrees with it.
+- A Vite config file outside `apps/web` can't resolve `vite/internal` (plugin-react imports it); start scratch pages from
+  a script, or keep the config inside `apps/web`.
+- Compose: inside a `Canvas` block a composable's own `size: Dp` parameter hides the canvas `size`; use `this.size`.
+- Android 3-button navigation (2026-10-26, a tester's Samsung): a Compose `Dialog(decorFitsSystemWindows = false)` window was
+  fitted between the system bars, drawn one status bar low, ran off the bottom, and got no insets at all (keyboard included),
+  so the message box sat under Back/Home/Recents. `EdgeToEdgeDialogWindow()` (ui/SafeInsets.kt) spans the window and lets it
+  take insets; the Arena board keeps clear of `WindowInsets.tappableElement` only, so gesture-nav phones stay full-bleed.
+  Test it with `adb shell cmd overlay enable com.android.internal.systemui.navbar.threebutton` on the emulator.
+- Hand fan (iOS + Android): a slide that sets off upward carries the card it began on; only a sideways start scrubs. Climbing
+  through the fan on a thin card used to scrub onto a neighbour and carry that instead.
+- Web ranked (2026-10-26): wins never counted. The web engine's records name `web-1:sha256:…`, which
+  `ranked_engine_builds`' check refused, so no web build was listed (every web win: `unverified`, engine_build); and New
+  Game after a ranked game reused the setup, so it ran with no ticket and the same seed. A web engine release must list
+  its build (migration web_engine_builds), and a ranked rematch is `startRankedAI()`, a new ticket.

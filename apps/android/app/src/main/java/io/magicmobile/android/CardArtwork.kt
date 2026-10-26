@@ -180,10 +180,11 @@ object Artwork {
             val stored=tokens(context).values
             // As on iOS: a Standard image, else online a lookup for one, else any downloaded
             // quality (Compact downloads count), and offline a differently worded equivalent.
+            // A differently worded but unambiguous token counts online too, as fetchToken finds it.
             val matched=selectEquivalentToken(stored,identity){hasDownload(context,"token:${it.id}",ArtworkQuality.STANDARD)}
                 ?: (if(online)fetchToken(context,identity) else null)
                 ?: selectEquivalentToken(stored,identity){hasTokenDownload(context,it.id)}
-                ?: if(!online)looseEquivalentToken(stored,identity){hasTokenDownload(context,it.id)} else null
+                ?: looseEquivalentToken(stored,identity){hasTokenDownload(context,it.id)}
             "token:"+(matched?.id ?: return@withContext null)
         }
         var cached=memory.get(lookup)
@@ -265,7 +266,9 @@ object Artwork {
                 if(!more)break
             }
             if(more){checkedTokens[identity]=now;return@withLock null} // Truncated search cannot prove a safe match.
+            // XMage words some token rules differently from Scryfall: then one token with the same name, type, colors and P/T.
             val record=selectEquivalentToken(candidates,identity){it.images["normal"]!=null}
+                ?: looseEquivalentToken(candidates,identity){it.images["normal"]!=null}
                 ?: run{checkedTokens[identity]=now;return@withLock null}
             coroutineContext.ensureActive();check(enabled(context)){"Online artwork is disabled."}
             val image=ArtworkTransport.bytes(context,URL(record.images.getValue("normal")),MAX_BYTES,ALLOWED_TYPES)
@@ -377,7 +380,7 @@ internal fun selectEquivalentToken(records:Collection<ArtworkRecord>,identity:Ar
     records.asSequence().filter{it.token?.normalized()==identity.normalized() && usable(it)}.minByOrNull{it.id}
 
 /**
- * Offline only (NativeAssetStore.looseTokenArtwork): a download whose rules are worded
+ * NativeAssetStore.looseTokenArtwork: a download whose rules are worded
  * differently still shows when name, type and colors agree, printed P/T agrees where both are
  * known, and every such download is one token. Otherwise unresolved.
  */

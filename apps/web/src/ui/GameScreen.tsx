@@ -41,6 +41,7 @@ import { GameStats } from "../core/gameStats";
 import { BoardFXOverlay, FXBoundary, type FXAnchors } from "./arena/BoardFX";
 import { fxNow, useBoardFX } from "./arena/useBoardFX";
 import { usePacedSnapshot } from "./arena/usePacedSnapshot";
+import { castableZones, glowClasses } from "./arena/glow";
 import { type CardReader, readProps } from "./arena/inspectGesture";
 import { GAME_SPEED_KEY, GAME_SPEED_TITLES, GAME_SPEEDS, type GameSpeed, loadGameSpeed, MAX_PACE_LAG, TABLE_PACE_LAG } from "../core/gameSpeed";
 import { ArenaPile } from "./arena/ArenaPile";
@@ -162,10 +163,14 @@ function phaseIndex(step: string | undefined): number | undefined {
 }
 
 /**
- * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game. `versus`: the
- * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game).
+ * `rankChange`: how a ranked game moved you, shown on the result once the menu shell has recorded the game, and `rankNote`
+ * why the server left a win off the ladder. `versus`: the
+ * chosen decks for the versus intro, when the table itself doesn't know its seats' commanders (a solo game); its
+ * `you.tier` frames your seat in every intro, a table's own seats included.
  */
-export function GameScreen({ table, rankChange, versus }: { table: GameTable; rankChange?: RankChange; versus?: { you: VersusSeat; opponents: VersusSeat[] } }) {
+export function GameScreen({ table, rankChange, rankNote, versus }: {
+  table: GameTable; rankChange?: RankChange; rankNote?: string; versus?: { you: VersusSeat; opponents: VersusSeat[] };
+}) {
   useTable(table);
   const session = table.session;
   // While a combo loop repeats, the board shows its quiet copy without the prompts the repeats answer.
@@ -279,13 +284,14 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
     if (!versusShown) return undefined;
     const seats = table.state.tableSeats;
     const local = seats.find((seat) => seat.isLocal);
+    const tier = versus?.you.tier;
     if (local && seats.length > 1) {
-      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander },
+      return { you: { id: local.id, name: local.name, commander: local.commanders[0] ?? versus?.you.commander, tier },
         opponents: seats.filter((seat) => !seat.isLocal).slice(0, 3).map((seat) => ({ id: seat.id, name: seat.name, commander: seat.commanders[0] })) };
     }
     if (versus && versus.opponents.length > 0) return { you: versus.you, opponents: versus.opponents.slice(0, 3) };
     if (snapshot && me && opponents.length > 0) {
-      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me) },
+      return { you: { id: me.playerId, name: me.displayName ?? "You", commander: commanderName(me), tier },
         opponents: opponents.slice(0, 3).map((p) => ({ id: p.playerId, name: p.displayName ?? "Opponent", commander: commanderName(p) })) };
     }
     return undefined;
@@ -616,21 +622,9 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
   const shownPop = !covered && !carrying && !mulligan && popped !== undefined && fanIDs.includes(popped) ? popped : undefined;
   const cards = new Map<string, ArenaCardProps>();
   const add = (props: ArenaCardProps) => { if (!cards.has(props.id)) cards.set(props.id, props); };
-  const classFor = (card: ZoneCard, onBattlefield: boolean) => {
-    const list: string[] = [];
-    if (onBattlefield && card.tapped) list.push("tapped");
-    if (onBattlefield && card.isAttacking) list.push("atk");
-    if (onBattlefield && (card.blocking?.length ?? 0) > 0) list.push("blk");
-    if (targetIDs.has(card.instanceId)) list.push(combatSelect ? "can-act" : "targetable");
-    else if (!pending && snapshot && envelope) {
-      const actions = actionsFor(snapshot, card.instanceId);
-      if (paying) { if (actions.some((a) => a.type === "make_mana")) list.push("payable"); }
-      else if (actions.some((a) => a.type !== "make_mana")) list.push("playable");
-    }
-    // Lands you could use glow softer, so a full mana row doesn't shout (ArenaOutlineGlow strength 0.65).
-    if (onBattlefield && /\bland\b/i.test(card.card.typeLine)) list.push("landish");
-    return list.join(" ");
-  };
+  const classFor = (card: ZoneCard, onBattlefield: boolean) => glowClasses(card, snapshot?.legalActions ?? [], {
+    onBattlefield, targetable: targetIDs.has(card.instanceId), combatSelect, answering: !pending && snapshot !== undefined && envelope !== undefined, paying,
+  }).join(" ");
   const clickAt = (place: Place) => (id: string) => clickCard(id, place);
   if (snapshot && me) {
     battlefieldPlaces(me.zones.battlefield, "me", undefined, geo, frames).forEach((place, id) => {
@@ -646,6 +640,8 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         add({ id: `backs-${opponent.playerId}-${i}`, place, view: "back" }));
     });
     const handPlace = mulligan ? mulliganPlaces(handIDs, geo) : handPlaces(fanIDs, handUp, shownPop, geo, handRoom);
+    // Past eight cards the fan is crowded: the cost shows only on the popped card (ArenaHandFan.crowded).
+    const crowded = !mulligan && me.zones.hand.length + extraHand.length > 8;
     [...me.zones.hand, ...(mulligan ? [] : extraHand)].forEach((card) => {
       const home = handPlace.get(card.instanceId)!;
       const arrival = arrivals.get(card.instanceId);
@@ -657,7 +653,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         : arrival === 1 ? { ...home, x: ARENA.draw.x, y: Y(ARENA.draw.y), r: 0, s: (ARENA.draw.w * geo.grow) / home.w, z: 950 } : home;
       add({ id: card.instanceId, place, view: "face", card, owner: "me", inHand: true,
         extraZone: extra ? actionsFor(snapshot, card.instanceId).find((a) => a.sourceZone)?.sourceZone ?? (me.zones.graveyard.includes(card) ? "graveyard" : "exile") : undefined,
-        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""}`,
+        classes: `${classFor(card, false)} ${carrying && carry?.id === card.instanceId ? "carried" : ""} ${arrival !== undefined ? `arrive-${arrival}` : ""} ${mulligan ? "opening" : ""} ${crowded && card.instanceId !== shownPop ? "nocost" : ""}`,
         onClick: mulligan ? () => reader.open({ name: card.card.name, card }, false) : clickHand, onPress: mulligan ? undefined : pressHand, reader });
     });
     // Only the top of the stack stands on the table (ArenaStackCard); the tab opens the rest.
@@ -869,6 +865,9 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
       : { x: opponents.length > 1 ? 150 + (650 * (index + 0.5)) / opponents.length : spot.x, y: T(spot.y) };
     const d = spot.d * geo.grow;
     const ready = mine && commandActions.length > 0;
+    // ArenaHeroMedallion.commanderReady: a breathing green-gold ring and a crown while you can cast from your command
+    // zone, graveyard, exile or library (castableZones).
+    const glowing = mine && !pending && snapshot !== undefined && castableZones(player, snapshot).size > 0;
     const targetable = targetIDs.has(player.playerId) && !pending;
     const seat = seatOf(player);
     const clock = rope && rope.seat === seat ? rope : undefined;
@@ -876,9 +875,9 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
     const circumference = Math.PI * 2 * 46;
     return (
       <div key={player.playerId}>
-        <button type="button" className={`amed ${targetable ? (combat === "attackers" ? "targetable attack" : "targetable") : ready ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
+        <button type="button" className={`amed ${targetable ? (combat === "attackers" ? "targetable attack" : "targetable") : glowing ? "ready" : ""} ${isOut(player) ? "out" : ""} ${snapshot?.activePlayerId === player.playerId ? "active" : ""}`}
           style={{ left: at.x, top: at.y, ["--d" as string]: `${d}px` }}
-          aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : ""}`}
+          aria-label={`${mine ? "You" : player.displayName ?? "Opponent"}, ${player.life} life${ready ? ", your commander can be cast" : glowing ? ", you can play from a zone" : ""}`}
           onClick={(event) => {
             event.stopPropagation();
             // A player target with several picks opens its panel (arenaSubmitPlayerTarget); one pick answers here.
@@ -888,6 +887,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
             else if (ready) setCommanderView(player.playerId);
             else setPlayerCard(playerCard === player.playerId ? undefined : player.playerId);
           }}>
+          {glowing && !targetable && <i className="aready" aria-hidden="true"><b>♛</b></i>}
           <div className="av"><Portrait player={player} viewer={mine} /></div>
           <span className={`hp ${isOut(player) ? "out" : ""}`}>{isOut(player) ? "Out" : Math.max(0, player.life)}</span>
           {clock && (
@@ -901,6 +901,17 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         {!mine && opponents.length > 1 && (
           <div className="aname under" style={{ left: at.x, top: at.y + d / 2 + 4 }}>{player.displayName}{isOut(player) ? " (left)" : ""}</div>
         )}
+        {/* Your poison and the worst commander damage you took, at a glance by your medallion (TavernStatusGlance). */}
+        {mine && (() => {
+          const pressing = statusBadges(player, snapshot ?? undefined);
+          const worst = pressing.filter((b) => b.icon === "commander").sort((a, b) => (b.count ?? 0) - (a.count ?? 0))[0];
+          const shown = [...pressing.filter((b) => b.icon === "poison"), ...(worst ? [worst] : [])];
+          return shown.length > 0 && (
+            <div className="aglance" style={{ left: at.x + d / 2 - 4, top: at.y + d / 2 - 6 }} aria-hidden="true">
+              {shown.map((badge) => <StatusBadge key={badge.id} badge={badge} size={22} />)}
+            </div>
+          );
+        })()}
         {/* Commander damage, poison, the monarch… curve round the opponent's medallion, toward the table (TavernEffectOrbitBadges). */}
         {!mine && (() => {
           const radius = d / 2 + 14 * geo.grow;
@@ -1303,8 +1314,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
           if (!player) return null;
           const mine = player.playerId === viewer;
           const name = mine ? "You" : player.displayName ?? "Opponent";
-          const plays = mine && !pending ? (snapshot.legalActions ?? []).filter((a) => (a.type === "cast_spell" || a.type === "play_land") && a.playerId === player.playerId) : [];
-          const lit = (cards: ZoneCard[]) => cards.some((c) => plays.some((a) => a.cardInstanceId === c.instanceId || a.sourceInstanceId === c.instanceId));
+          const lit: ReadonlySet<string> = mine && !pending ? castableZones(player, snapshot) : new Set();
           const zones = player.zones;
           const label = (zoneTitle: string) => (mine ? zoneTitle : `${player.displayName ?? "Opponent"} · ${zoneTitle}`);
           const icons = [
@@ -1331,7 +1341,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
                 ))}</div>
               )}
               <div className="zonegrid">{icons.map((icon) => {
-                const on = mine && (icon.key === "command" ? commandActions.length > 0 : icon.key !== "hand" && lit(icon.cards));
+                const on = lit.has(icon.key);
                 return (
                   <button key={icon.key} type="button" className={on ? "lit" : ""} aria-label={on ? `${icon.name}, ${icon.count}, you can play from it` : `${icon.name}, ${icon.count}`}
                     onClick={() => {
@@ -1484,7 +1494,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
 
         {reading && snapshot && (
           <Inspector card={reading.card} name={reading.name} battlefield={snapshot.players.flatMap((p) => p.zones.battlefield)} height={geo.height}
-            close={() => setReading(undefined)} />
+            holding={reading.held} close={() => setReading(undefined)} />
         )}
         {stackOpen && snapshot && (
           <div onClick={stop}>
@@ -1565,7 +1575,7 @@ export function GameScreen({ table, rankChange, versus }: { table: GameTable; ra
         {(finished || table.state.stage === "failed") && (
           // The result, Arena's (ArenaGameResultView): the word on its flare, then your medallion, rank, numbers and the ways on.
           <GameResult snapshot={snapshot} me={me} finished={finished} stoppedTitle={table.solo ? "Game stopped" : "Table closed"}
-            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange}
+            stoppedLine={table.state.status} numbers={stats.current} rankChange={rankChange} rankNote={rankNote}
             rematch={table.rematch ? () => table.rematch?.() : undefined} leave={() => table.leave()} />
         )}
 

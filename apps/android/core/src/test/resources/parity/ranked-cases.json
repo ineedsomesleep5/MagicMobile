@@ -340,30 +340,8 @@
    "history": []
   }
  ],
- "seasons": [
-  {
-   "millis": 1793491199000,
-   "season": "2026-10"
-  },
-  {
-   "millis": 1793491200000,
-   "season": "2026-11"
-  },
-  {
-   "millis": 1800014400000,
-   "season": "2027-01"
-  }
- ],
- "seasonEnds": [
-  {
-   "season": "2026-10",
-   "millis": 1793491200000
-  },
-  {
-   "season": "2026-12",
-   "millis": 1798761600000
-  }
- ],
+ "seasons": [{"millis": 1793491199000, "season": "2026-10"}, {"millis": 1793491200000, "season": "2026-11"}, {"millis": 1800014400000, "season": "2026-11"}, {"millis": 1801440000000, "season": "2027-02"}, {"millis": 1809043200000, "season": "2027-02"}, {"millis": 1809129600000, "season": "2027-05"}],
+ "seasonEnds": [{"season": "2026-10", "millis": 1793491200000}, {"season": "2026-11", "millis": 1801440000000}, {"season": "2027-05", "millis": 1817078400000}],
  "brackets": [
   {
    "name": "a plain list is Core",
@@ -630,5 +608,14 @@
    "manaCost": "{X}{C}",
    "colors": []
   }
- ]
+ ],
+ "seasonNumbers": [{"season": "2026-09", "number": null}, {"season": "2026-10", "number": 1}, {"season": "2026-11", "number": 2},
+                   {"season": "2027-02", "number": 3}, {"season": "2027-11", "number": 6}],
+ "seasonBadges": {"comment": "SeasonBadge.earned: the season in play (when played) first, then each finished season at its peak; best: the highest finished peak, newest of equals.",
+   "rank": {"season": "2026-11", "peakPoints": 10, "played": true,
+            "history": [{"season": "2026-10", "peakPoints": 28}, {"season": "2026-09", "peakPoints": 28}]},
+   "expect": [{"season": "2026-11", "tier": "bronze", "inProgress": true, "founder": false},
+              {"season": "2026-10", "tier": "silver", "inProgress": false, "founder": true},
+              {"season": "2026-09", "tier": "silver", "inProgress": false, "founder": false}],
+   "best": "2026-10"}
 }

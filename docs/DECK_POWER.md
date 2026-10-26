@@ -380,6 +380,16 @@ Caleb: "do what is best and get … around 5 per rank".
   others remain, then a random one of the three nearest the target. `parity/power-cases.json` holds the shared cases.
 - **Ranked:** each division aims at its tier's band (Bronze IV 3.1 … Diamond I 7.9, Mythic 8.5) with the tier's AI
   skill. Bronze picks by Power too; the precons-only rule is only the fallback for a pool without Power data.
+- **Tuned on the server (2026-10-26):** `ranked_ai_tuning` (Supabase) holds each tier's Power band and the AI's mistake
+  chance from division IV to I. The ranked ticket (`mm_ranked_ai_start2`) carries the game's `aiSkill`,
+  `aiMistakePercent` and `aiPower`; apps that read it pick the AI deck by that Power and send `aiMistakePercent` to the
+  engine (an existing per-seat override, no engine change). Bundled bands are the fallback for older apps and offline
+  play. Retune with one row update, no build:
+  `update public.ranked_ai_tuning set power_low=…, power_high=…, mistakes_division_iv=…, mistakes_division_i=…, updated_at=now() where tier=2;`
+  First tuning: Gold 5.5–6.5 (was 5–6), mistakes 8% at Gold IV down to 5% at Gold I (was 10%), after Gold players won
+  59–72% against skills 1–3. Second tuning, same day (a player climbed Gold in hours): Gold 6–7 with mistakes 5% at
+  Gold IV down to 2% at Gold I, Platinum 7–8 (was 6–7), Diamond 7.5–8.5 (was 7–8). Review after about 50 games. Web reads the ticket now; iOS and Android from their next
+  build (iOS 62 and Android 40 keep the bundled values, which the record check still accepts).
 - **Quick Match:** Easy (Power 3.5, skill 2), Medium (5.5, skill 3, the default) or Hard (7.5, skill 5) as pill gems;
   Advanced shows today's bracket gems, deck row and skill stepper.
 - **Decks:** 41 AI decks. The eight added on 2026-10-25 (Tiamat, Lathliss, Old Gnawbone, Phelddagrif, Zedruu,

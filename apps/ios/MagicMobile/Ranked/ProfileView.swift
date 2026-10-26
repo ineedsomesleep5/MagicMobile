@@ -130,6 +130,7 @@ struct PlayerProfileView: View {
     /// charts, trophies, games, then the account and who can see it all.
     @ViewBuilder private func playerStory(_ summary: ProfileSummary, scoped: [MatchRecord]) -> some View {
         seasonCard(summary)
+        seasonBadgesCard
         if record.stats.decks.count > 1 { deckFilterRow }
         recordCard(summary, scoped: scoped)
         weeksCard(summary)
@@ -488,6 +489,22 @@ struct PlayerProfileView: View {
         .modifier(TavernLeatherCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("profile.season")
+    }
+
+    /// The badge each season earned at its peak, the season in play still being earned (Caleb, 2026-10-26).
+    private var seasonBadgesCard: some View {
+        let badges = SeasonBadge.earned(rank: record.rank)
+        return VStack(alignment: .leading, spacing: 12) {
+            ProfileSectionTitle(text: String(localized: "Season badges"))
+            if badges.isEmpty {
+                ProfileEmptyNote(text: String(localized: "Play ranked to earn this season's badge."), systemImage: "rosette")
+            } else {
+                SeasonBadgeShelf(badges: badges)
+            }
+        }
+        .modifier(TavernLeatherCard())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("profile.seasonBadges")
     }
 
     // MARK: Filters

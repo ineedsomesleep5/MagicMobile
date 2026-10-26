@@ -90,6 +90,30 @@ class RankedParityTest {
         }
     }
 
+    /** Season badges (Caleb, 2026-10-26): numbering from October 2026, the season in play first, the best finished peak. */
+    @Test fun seasonBadges() {
+        for (item in rows("seasonNumbers")) {
+            val number = item["number"]!!.jsonPrimitive.takeIf { it !is JsonNull }?.int
+            assertEquals(str(item, "season"), number, RankLadder.seasonNumber(str(item, "season")))
+        }
+        val cases = root["seasonBadges"]!!.jsonObject
+        val rank = cases["rank"]!!.jsonObject
+        val peak = RankPosition.ofPoints(int(rank, "peakPoints"))
+        val state = RankState.fresh(str(rank, "season")).copy(peak = peak,
+            wins = if (rank["played"]?.jsonPrimitive?.content == "true") 1 else 0,
+            history = rank["history"]!!.jsonArray.map { it.jsonObject }.map {
+                val seasonPeak = RankPosition.ofPoints(int(it, "peakPoints"))
+                SeasonRecord(str(it, "season"), seasonPeak, seasonPeak, 1, 0)
+            })
+        val badges = SeasonBadge.earned(state)
+        val expect = cases["expect"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(expect.map { str(it, "season") }, badges.map { it.season })
+        assertEquals(expect.map { str(it, "tier") }, badges.map { it.tier.key })
+        assertEquals(expect.map { str(it, "inProgress") == "true" }, badges.map { it.inProgress })
+        assertEquals(expect.map { str(it, "founder") == "true" }, badges.map { it.founder })
+        assertEquals(str(cases, "best"), SeasonBadge.best(badges)?.season)
+    }
+
     @Test fun brackets() {
         assertEquals("the February 2026 list", 53, rules.gameChangers.size)
         for (item in rows("brackets")) {
@@ -168,7 +192,7 @@ class RankedParityTest {
         assertEquals(null, play(october, PlayMode.QUICK, RankOutcome.WIN))
         assertEquals(RankPosition.make(RankTier.BRONZE, 4, 2), play(october, PlayMode.RANKED, RankOutcome.WIN)!!.after)
         play(december, PlayMode.RANKED, RankOutcome.LOSS)
-        assertEquals("2026-12", file.rank.season)
+        assertEquals("2026-11", file.rank.season) // quarterly from November 2026
         assertEquals("2026-10", file.rank.history.first().season)
         assertEquals(listOf("ai-edgar-markov-core"), file.recentAIDecks)
         // Round trip through the saved file.
