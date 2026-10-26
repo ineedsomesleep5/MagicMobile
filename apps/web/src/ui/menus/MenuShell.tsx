@@ -274,10 +274,12 @@ export function MenuShell({ data, initialJoinCode = "" }: { data: MenuData; init
         startingPlayerMode: startingPlayerMode(gameMode, starting) as "roll" | "choose",
         ...(ticket ? { seed: ticket.seed } : {}),
       };
-      // A rematch is a new game: a ranked one draws a new ticket through Find Match, so only the first carries this one.
+      // A rematch is a new game. A ranked one is the next match: a new ticket and seed from the server (startRankedAI), or
+      // its result never reaches the ladder (Caleb, 2026-10-26: wins after New Game didn't move his rank).
       let first = true;
       const open = (key: number) => {
-        const table: SoloTable = new SoloTable(engine, setup, () => setGame(undefined), () => open(key + 1));
+        const table: SoloTable = new SoloTable(engine, setup, () => setGame(undefined),
+          gameMode === "ranked" ? () => startRankedAI() : () => open(key + 1));
         const carried = first && ticket ? { id: ticket.id, seeded: true } : undefined;
         first = false;
         setGame({ table, key, mode: gameMode, deck, deckBracket, opponents, skill, ticket: carried });

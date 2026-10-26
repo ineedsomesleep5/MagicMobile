@@ -879,3 +879,7 @@ contradicting one.
   Test it with `adb shell cmd overlay enable com.android.internal.systemui.navbar.threebutton` on the emulator.
 - Hand fan (iOS + Android): a slide that sets off upward carries the card it began on; only a sideways start scrubs. Climbing
   through the fan on a thin card used to scrub onto a neighbour and carry that instead.
+- Web ranked (2026-10-26): wins never counted. The web engine's records name `web-1:sha256:…`, which
+  `ranked_engine_builds`' check refused, so no web build was listed (every web win: `unverified`, engine_build); and New
+  Game after a ranked game reused the setup, so it ran with no ticket and the same seed. A web engine release must list
+  its build (migration web_engine_builds), and a ranked rematch is `startRankedAI()`, a new ticket.

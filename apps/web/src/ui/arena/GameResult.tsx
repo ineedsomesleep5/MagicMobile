@@ -73,7 +73,7 @@ export function GameResult({ snapshot, me, finished, stoppedTitle, stoppedLine, 
               )}
               <div className="ways">
                 <button type="button" className="aplaque secondary" onClick={leave}>Main Menu</button>
-                {rematch && <button type="button" className="aplaque primary" data-id="board.result.rematch" onClick={rematch}>New Game</button>}
+                {rematch && <button type="button" className="aplaque primary" data-id="board.result.rematch" onClick={rematch}>{rankChange ? "Next Match" : "New Game"}</button>}
               </div>
             </div>
           )}
