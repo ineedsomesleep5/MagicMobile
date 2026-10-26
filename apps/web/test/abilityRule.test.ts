@@ -9,7 +9,7 @@ const cases = JSON.parse(readFileSync(join(__dirname, "..", "..", "android/core/
 describe("ability rule", () => {
   it("shows the full rule as the cases say", () => {
     for (const item of cases.cases) {
-      expect(EngineDisplayText.abilityRule(item.label, item.rules) ?? null, item.name).toBe(item.expect);
+      expect(EngineDisplayText.abilityRule(item.label, item.rules, item.sourceName) ?? null, item.name).toBe(item.expect);
     }
   });
 });

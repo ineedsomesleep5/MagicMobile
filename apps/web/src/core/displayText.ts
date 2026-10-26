@@ -76,8 +76,10 @@ const triggerLine = /^(?:[^—\n]{1,40}—\s*)?(?:When|Whenever|At)\b/;
 
 export const EngineDisplayText = {
   /** The full rule a trigger or ability choice shows (abilityRule in OnDevicePromptAdapter.swift; parity/ability-rule-cases.json). */
-  abilityRule(label: string, sourceRules: string[]): string | undefined {
-    const fragment = EngineDisplayText.text(label.replace(pickerNumber, ""));
+  abilityRule(label: string, sourceRules: string[], sourceName?: string): string | undefined {
+    // The source's name stands in for the label's {this}, so its line is found and no raw "{this}" is drawn as a symbol.
+    const raw = EngineDisplayText.text(label.replace(pickerNumber, ""));
+    const fragment = sourceName ? raw.replace(/\{this\}/gi, () => sourceName) : raw;
     const lines = sourceRules.flatMap((rule) => EngineDisplayText.text(rule).split("\n")).filter((line) => line.length > 0);
     if (fragment.length > 0) {
       const lower = fragment.toLowerCase();

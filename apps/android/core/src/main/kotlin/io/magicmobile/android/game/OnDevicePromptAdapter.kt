@@ -174,7 +174,7 @@ object OnDevicePromptAdapter {
                     if (row["sourceCard"] == null) row["sourceUnavailableReason"] = s("Source details unavailable")
                     val card = item["sourceCard"]
                     val rules = if (card == null || card["hideInfo"].bool == true) emptyList() else card["rules"].array?.mapNotNull { it.string } ?: emptyList()
-                    EngineDisplayText.abilityRule(label!!, rules)?.let { row["rulesText"] = s(it) }
+                    EngineDisplayText.abilityRule(label!!, rules, row["sourceName"].string)?.let { row["rulesText"] = s(it) }
                     JsonObject(row)
                 })
                 if (prompt.responseTypes.contains("boolean") && prompt.payload["required"].bool == false) {
@@ -516,8 +516,9 @@ object EngineDisplayText {
     private val triggerLine = Regex("^(?:[^—\\n]{1,40}—\\s*)?(?:When|Whenever|At)\\b")
 
     /** The full rule a trigger or ability choice shows (abilityRule in OnDevicePromptAdapter.swift; parity/ability-rule-cases.json). */
-    fun abilityRule(label: String, sourceRules: List<String>): String? {
-        val fragment = text(label.replace(pickerNumber, ""))
+    fun abilityRule(label: String, sourceRules: List<String>, sourceName: String? = null): String? {
+        // The source's name stands in for the label's {this}, so its line is found and no raw "{this}" is drawn as a symbol.
+        val fragment = text(label.replace(pickerNumber, "")).let { if (sourceName.isNullOrEmpty()) it else it.replace("{this}", sourceName, ignoreCase = true) }
         val lines = sourceRules.flatMap { text(it).split("\n") }.filter { it.isNotEmpty() }
         if (fragment.isNotEmpty()) {
             val holding = lines.filter { it.contains(fragment, ignoreCase = true) }

@@ -15,6 +15,7 @@ import {
 } from "../../core/models";
 import { CARD_BACK_URL, cardImageURL, permitsArtName } from "../cardArt";
 import { AbilityCard, isStackAbility } from "./AbilityCard";
+import { HScroller } from "./HScroller";
 import { Portrait } from "./avatars";
 import { type CardReader, readProps } from "./inspectGesture";
 import { CountBadge, ManaSymbol, RulesText } from "./Symbols";
@@ -268,19 +269,28 @@ function Veil({ back, onDismiss, children }: { back: string; onDismiss?: () => v
 
 interface Subjected { object?: XmageStackObject; card?: ZoneCard }
 
-/** The frame every browser shares (ArenaBrowserFrame): title and line, content, answers, the source card on the right. */
-export function Frame({ title, detail, heading, subject, snapshot, k, inspect, footer, column, back = "Back to the choice", onDismiss, children }: {
+/**
+ * The frame every browser shares (ArenaBrowserFrame): title and line, content, answers, the source card on the right.
+ * The cards stand in one sideways row (HScroller) unless `column`; `above` and `below` sit outside it (a search field,
+ * a list of non-card targets), so the row is only cards.
+ */
+export function Frame({ title, detail, heading, subject, snapshot, k, inspect, footer, column, above, below, back = "Back to the choice", onDismiss, children }: {
   title: string; detail?: string; subject?: Subjected; snapshot: GameSnapshot; k: number; inspect?: Inspect; footer?: React.ReactNode;
   /** A header of the browser's own in place of the title and detail lines. */
   heading?: React.ReactNode;
-  column?: boolean; back?: string; onDismiss?: () => void; children: React.ReactNode;
+  column?: boolean; above?: React.ReactNode; below?: React.ReactNode; back?: string; onDismiss?: () => void;
+  /** The cards, or a function sizing them from the row's height (HScroller). */
+  children: React.ReactNode | ((rowHeight: number | undefined) => React.ReactNode);
 }) {
   const shows = subject !== undefined && (subject.object !== undefined || subject.card !== undefined);
   return (
     <Veil back={back} onDismiss={onDismiss}>
-      <div className="bbody" data-veil="" style={shows ? { paddingRight: 124 * k + 40 } : undefined}>
+      <div className={`bbody ${shows ? "sourced" : ""}`} data-veil="" style={shows ? { paddingRight: 124 * k + 40 } : undefined}>
         <header data-veil="">{heading ?? <><h2><RulesText text={title} /></h2>{detail && <p><RulesText text={detail} /></p>}</>}</header>
-        <div className={`bcontent ${column ? "column" : ""}`} data-veil="">{children}</div>
+        {above}
+        {column ? <div className="bcontent column" data-veil="">{typeof children === "function" ? children(undefined) : children}</div>
+          : <HScroller>{children}</HScroller>}
+        {below}
         {footer && <div className="bfoot">{footer}</div>}
       </div>
       {shows && <div className="bsource"><Subject {...subject} snapshot={snapshot} width={124 * k} inspect={inspect} /></div>}
@@ -414,6 +424,15 @@ function ModeBrowser({ snapshot, envelope, send, sendAction, pending, height, in
 }
 
 /**
+ * The ability browser's card height in board points: as tall as its row allows, keeping the row's padding and a picked
+ * card's lift (between 150 and 340); until the row is measured, half the board as on iOS (ArenaAbilityBrowser.cardSize).
+ */
+export function abilityCardHeight(rowHeight: number | undefined, boardHeight: number): number {
+  if (rowHeight === undefined) return Math.min(boardHeight * 0.5, 280);
+  return Math.max(150, Math.min(340, (rowHeight - 36) / 1.04));
+}
+
+/**
  * Abilities and triggers as the reference's ability cards in a row (ArenaAbilityBrowser). Choosing an ability: a click
  * picks it. Ordering triggers: clicks number them in the order they resolve (1 resolves first); Done (from all but one
  * numbered) or Auto Order hands the whole order to the board, which answers XMage's one-at-a-time questions itself.
@@ -425,7 +444,6 @@ function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height,
   const abilities = envelope.abilities!;
   const { title, line } = ordering ? { title: "Order your triggers", line: "Tap them in the order they resolve: 1 resolves first." }
     : heading(envelope, "Choose an ability");
-  const width = Math.min(height * 0.5, 280) * 0.72;
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const ready = picked.length >= abilities.length - 1;
   const footer = ordering ? (
@@ -440,13 +458,13 @@ function AbilityBrowser({ snapshot, envelope, send, sendAction, pending, height,
   ) : plaques(promptAnswers(snapshot, "choose_ability"), sendAction, pending);
   return (
     <Frame title={title} detail={line} snapshot={snapshot} k={height / 440} inspect={inspect} footer={footer}>
-      {abilities.map((ability) => {
+      {(row) => abilities.map((ability) => {
         const number = picked.indexOf(ability.id) + 1;
         return (
           <button key={ability.id} type="button" className={`bpick ${number > 0 ? "numbered" : ""}`} disabled={pending}
             {...read(inspect, ability.sourceCard?.card.name ?? ability.sourceName, ability.sourceCard)}
             onClick={() => (ordering ? toggle(ability.id) : send({ type: "choose_ability", abilityId: ability.id }, ability.label))}>
-            <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={width} />
+            <AbilityCard source={ability.sourceCard} name={ability.sourceName} text={ability.rulesText ?? ability.label} width={abilityCardHeight(row, height) * 0.72} />
             {number > 0 && <CountBadge count={number} size={34} label={`Resolves ${number}`} />}
           </button>
         );
@@ -475,13 +493,13 @@ function ChoiceBrowser({ snapshot, envelope, send, sendAction, pending, height, 
   return (
     <Frame title={title ?? "Make a choice"} detail={detail} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440}
       inspect={inspect} column={!asCards && !asSymbols}
+      above={options.length > 12 && !asCards && (
+        <input className="bsearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search choices" aria-label="Search choices" />
+      )}
       footer={<>
         {options.some((o) => o.rememberID) && <RememberToggle on={remember} set={setRemember} title="Remember my choice for this game" />}
         {plaques(promptAnswers(snapshot, "resolve_choice"), sendAction, pending)}
       </>}>
-      {options.length > 12 && !asCards && (
-        <input className="bsearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search choices" aria-label="Search choices" />
-      )}
       {asCards ? shown.map((option) => (
         <button key={option.id} type="button" className="bpick" disabled={pending} aria-label={clean(option.label)} {...read(inspect, option.card?.card.name, option.card)}
           onClick={() => pick(option)}>
@@ -765,6 +783,18 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
   })();
   return (
     <Frame title={title} detail={instruction} subject={{ object: snapshot.xmage?.stack[0] }} snapshot={snapshot} k={height / 440} inspect={inspect}
+      above={cards.length > 6 && <input className="bsearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, type or rules text" aria-label="Search cards" />}
+      below={<>
+        {cards.length > 0 && shown.length === 0 && query && (
+          <p className="bnomatch">No cards match your search. <button type="button" onClick={() => setSearch("")}>Clear search</button></p>
+        )}
+        {targets.length > 0 && (
+          <div className="bgrid">{targets.map((target) => (
+            <button key={target.id} type="button" className={`btile ${selectedID === target.id ? "picked" : ""}`} disabled={pending} aria-pressed={selectedID === target.id}
+              onClick={() => toggle(target.id)}>{EngineDisplayText.label(target.label)}</button>
+          ))}</div>
+        )}
+      </>}
       footer={<>
         {draftKind === "selection" && bounds && !zones && bounds[1] >= selectableIDs.length && draft.length < selectableIDs.length && selectableIDs.length > 1 && (
           <button type="button" className="aplaque secondary" onClick={() => setDraft(selectableIDs)}>Select all</button>
@@ -779,17 +809,7 @@ function CardChoice({ snapshot, envelope, send, sendAction, pending, height, ins
           {draftKind || selected ? "Done" : targets.length === 0 ? "Choose a card" : "Choose one"}{count && <small>{count.toUpperCase()}</small>}
         </button>
       </>}>
-      {cards.length > 6 && <input className="bsearch" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, type or rules text" aria-label="Search cards" />}
       {wells ?? ordered.map((c) => card(c, width))}
-      {cards.length > 0 && shown.length === 0 && query && (
-        <p className="bnomatch">No cards match your search. <button type="button" onClick={() => setSearch("")}>Clear search</button></p>
-      )}
-      {targets.length > 0 && (
-        <div className="bgrid">{targets.map((target) => (
-          <button key={target.id} type="button" className={`btile ${selectedID === target.id ? "picked" : ""}`} disabled={pending} aria-pressed={selectedID === target.id}
-            onClick={() => toggle(target.id)}>{EngineDisplayText.label(target.label)}</button>
-        ))}</div>
-      )}
     </Frame>
   );
 }

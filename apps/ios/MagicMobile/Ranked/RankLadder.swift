@@ -165,31 +165,56 @@ struct RankState: Codable, Equatable, Sendable {
 }
 
 enum RankLadder {
-    /// Seasons are calendar months in UTC: "2026-10".
+    /// The first quarterly season (Caleb, 2026-10-26): October 2026 was a month; from November 2026 a season is three
+    /// months, named by its first: "2026-11" runs November to January. Server: mm_season_for.
+    static let firstQuarter = 2026 * 12 + 10
+
+    /// The season holding a date, in UTC: "2026-10", then "2026-11", "2027-02", …
     static func season(for date: Date) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let parts = calendar.dateComponents([.year, .month], from: date)
-        return String(format: "%04d-%02d", parts.year ?? 2026, parts.month ?? 1)
+        var index = (parts.year ?? 2026) * 12 + (parts.month ?? 1) - 1
+        if index >= firstQuarter { index = firstQuarter + (index - firstQuarter) / 3 * 3 }
+        return String(format: "%04d-%02d", index / 12, index % 12 + 1)
     }
 
-    /// When a season ends (the next month starts, UTC).
+    /// How many months a season lasts.
+    static func seasonMonths(_ season: String) -> Int? {
+        let parts = season.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return parts[0] * 12 + parts[1] - 1 >= firstQuarter ? 3 : 1
+    }
+
+    /// When a season ends (the next season starts, UTC).
     static func seasonEnd(_ season: String) -> Date? {
+        let parts = season.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2, let months = seasonMonths(season) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
+        return start.flatMap { calendar.date(byAdding: .month, value: months, to: $0) }
+    }
+
+    /// "October 2026", or a quarter's span: "Nov 2026 – Jan 2027".
+    static func seasonName(_ season: String) -> String {
+        guard let end = seasonEnd(season), let last = Calendar(identifier: .gregorian).date(byAdding: .day, value: -1, to: end) else { return season }
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        guard seasonMonths(season) == 3, let first = seasonStart(season) else {
+            formatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
+            return formatter.string(from: last)
+        }
+        formatter.setLocalizedDateFormatFromTemplate("MMM yyyy")
+        return "\(formatter.string(from: first)) – \(formatter.string(from: last))"
+    }
+
+    private static func seasonStart(_ season: String) -> Date? {
         let parts = season.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
-        return start.flatMap { calendar.date(byAdding: .month, value: 1, to: $0) }
-    }
-
-    /// "October 2026"
-    static func seasonName(_ season: String) -> String {
-        guard let end = seasonEnd(season), let start = Calendar(identifier: .gregorian).date(byAdding: .day, value: -1, to: end) else { return season }
-        let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
-        return formatter.string(from: start)
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1))
     }
 
     /// A new month: last season goes into history and everyone drops one tier (Mythic to Diamond IV),

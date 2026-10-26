@@ -298,6 +298,11 @@ fun BattlefieldRow(
     val arranged = arrangement.rows(renderedGroups, flipped, rows == 2)
     val manaUndoAction = legalActions.firstOrNull { it.type == "undo_mana" }
 
+    /** An activated ability other than mana that the engine offers for this permanent now. */
+    fun hasAbility(card: ZoneCard): Boolean = !card.isPhasedOut && legalActions.any {
+        it.type == "activate_ability" && (it.sourceInstanceId == card.instanceId || it.cardInstanceId == card.instanceId)
+    }
+
     fun legalAction(card: ZoneCard): LegalAction? {
         if (card.isPhasedOut) return null
         if (allowsManaUndo && manaPaymentActive && card.tapped == true && manaUndoAction != null &&
@@ -340,7 +345,7 @@ fun BattlefieldRow(
                     GameHaptics.impact(haptics)
                 }, release = { if (selection.inspectedCard?.id == card.id) selection.inspectedCard = null }),
             selected = selection.selectedCard?.id == card.id || BattlefieldTokenStack.isChosen(card, chosenIds), legal = action != null,
-            targetable = targetable || combatHighlighted)
+            targetable = targetable || combatHighlighted, ability = hasAbility(card))
         // Chosen in a multi-card prompt: an ember seal, so it reads apart from the cards still to choose from.
         if (BattlefieldTokenStack.isChosen(card, chosenIds)) {
             Box(Modifier.align(Alignment.TopEnd).offset(3.dp, (-3).dp).size(maxOf(18f, renderedCardWidth * 0.22f).dp)
@@ -408,7 +413,7 @@ fun BattlefieldRow(
                 }
             }
             ArenaBattlefieldCard(card, title, renderedCardWidth.dp, renderedCardHeight.dp, selected = false, legal = legal,
-                targetable = targetable || combatHighlighted)
+                targetable = targetable || combatHighlighted, ability = group.cards.any(::hasAbility))
             if (group.count > peeks + 1) Text("×${group.count}", Modifier.align(Alignment.BottomStart).padding(3.dp)
                 .background(MagicPalette.iron.copy(alpha = 0.94f), CircleShape)
                 .border(1.dp, MagicPalette.antiqueGold.copy(alpha = 0.58f), CircleShape)

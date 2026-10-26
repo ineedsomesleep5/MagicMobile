@@ -213,17 +213,34 @@ data class RankState(
 }
 
 object RankLadder {
-    /** Seasons are calendar months in UTC: "2026-10". */
-    fun season(millis: Long): String = YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC)).toString()
+    /**
+     * The first quarterly season (Caleb, 2026-10-26): October 2026 was a month; from November 2026 a season is three months,
+     * named by its first: "2026-11" runs November to January. RankLadder.swift; server mm_season_for.
+     */
+    val FIRST_QUARTER: YearMonth = YearMonth.of(2026, 11)
+
+    /** The season holding a time, in UTC: "2026-10", then "2026-11", "2027-02", … */
+    fun season(millis: Long): String {
+        val month = YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC))
+        if (month < FIRST_QUARTER) return month.toString()
+        val months = java.time.temporal.ChronoUnit.MONTHS.between(FIRST_QUARTER, month)
+        return FIRST_QUARTER.plusMonths(months / 3 * 3).toString()
+    }
+
+    /** How many months a season lasts. */
+    fun seasonMonths(season: String): Long? = runCatching { if (YearMonth.parse(season) < FIRST_QUARTER) 1L else 3L }.getOrNull()
 
     fun seasonEnd(season: String): Long? = runCatching {
-        YearMonth.parse(season).plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        YearMonth.parse(season).plusMonths(seasonMonths(season)!!).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     }.getOrNull()
 
-    /** "October 2026" */
+    /** "October 2026", or a quarter's span: "Nov 2026 – Jan 2027". */
     fun seasonName(season: String): String = runCatching {
         val month = YearMonth.parse(season)
-        "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
+        if (seasonMonths(season) == 3L) {
+            val last = month.plusMonths(2)
+            "${month.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${month.year} – ${last.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${last.year}"
+        } else "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
     }.getOrDefault(season)
 
     /** A new month: last season goes into history and you drop one tier (Mythic to Diamond IV). */

@@ -169,25 +169,47 @@ export const RankState = {
 const DAY = 86_400_000;
 
 export const RankLadder = {
-  /** Seasons are calendar months in UTC: "2026-10". */
+  /**
+   * The first quarterly season (Caleb, 2026-10-26), as year * 12 + month index: October 2026 was a month; from November
+   * 2026 a season is three months, named by its first ("2026-11" runs November to January). RankLadder.swift; mm_season_for.
+   */
+  firstQuarter: 2026 * 12 + 10,
+
+  /** The season holding a date, in UTC: "2026-10", then "2026-11", "2027-02", … */
   season(date: Date | number): string {
     const value = new Date(date);
-    return `${String(value.getUTCFullYear()).padStart(4, "0")}-${String(value.getUTCMonth() + 1).padStart(2, "0")}`;
+    let index = value.getUTCFullYear() * 12 + value.getUTCMonth();
+    if (index >= RankLadder.firstQuarter) index = RankLadder.firstQuarter + Math.floor((index - RankLadder.firstQuarter) / 3) * 3;
+    return `${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`;
   },
 
-  /** When a season ends (the next month starts, UTC); undefined for a malformed season. */
-  seasonEnd(season: string): Date | undefined {
+  /** How many months a season lasts; undefined for a malformed season. */
+  seasonMonths(season: string): number | undefined {
     // Swift: split on "-" (empty pieces dropped), keep the pieces that read as integers, expect exactly two.
     const parts = season.split("-").filter((piece) => piece.length > 0 && /^[+-]?\d+$/.test(piece)).map(Number);
     if (parts.length !== 2) return undefined;
-    return new Date(Date.UTC(parts[0], parts[1], 1));
+    return parts[0] * 12 + parts[1] - 1 >= RankLadder.firstQuarter ? 3 : 1;
   },
 
-  /** "October 2026" (in `locale`, the browser's by default). */
+  /** When a season ends (the next season starts, UTC); undefined for a malformed season. */
+  seasonEnd(season: string): Date | undefined {
+    const months = RankLadder.seasonMonths(season);
+    if (months === undefined) return undefined;
+    const [year, month] = season.split("-").filter((piece) => piece.length > 0).map(Number);
+    return new Date(Date.UTC(year, month - 1 + months, 1));
+  },
+
+  /** "October 2026", or a quarter's span: "Nov 2026 – Jan 2027" (in `locale`, the browser's by default). */
   seasonName(season: string, locale?: string): string {
     const end = RankLadder.seasonEnd(season);
     if (end === undefined) return season;
-    return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(end.getTime() - DAY));
+    const last = new Date(end.getTime() - DAY);
+    if (RankLadder.seasonMonths(season) !== 3) {
+      return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(last);
+    }
+    const short = new Intl.DateTimeFormat(locale, { month: "short", year: "numeric", timeZone: "UTC" });
+    const [year, month] = season.split("-").map(Number);
+    return `${short.format(new Date(Date.UTC(year, month - 1, 1)))} – ${short.format(last)}`;
   },
 
   /**

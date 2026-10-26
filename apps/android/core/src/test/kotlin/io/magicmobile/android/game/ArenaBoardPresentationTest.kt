@@ -29,6 +29,9 @@ class ArenaBoardPresentationTest {
         assertEquals(ArenaGlowTone.TARGET, ArenaCardLook.glow(bear, false, true, true, false)?.first)
         assertEquals(ArenaGlowTone.PAYABLE, ArenaCardLook.glow(bear, false, true, false, true)?.first)
         assertEquals(ArenaGlowTone.PLAYABLE to 0.85f, ArenaCardLook.glow(bear, false, true, false, false))
+        assertEquals("a usable ability glows yellow, apart from a card to cast", ArenaGlowTone.ABILITY to 0.95f,
+            ArenaCardLook.glow(bear, false, true, false, false, ability = true))
+        assertEquals("paying keeps its orange", ArenaGlowTone.PAYABLE, ArenaCardLook.glow(bear, false, true, false, true, ability = true)?.first)
         assertEquals("lands you could tap glow softer", 0.65f, ArenaCardLook.glow(card("f", "Basic Land — Forest"), false, true, false, false)!!.second, 0f)
         assertNull(ArenaCardLook.glow(bear, false, false, false, false))
         assertNull("phased out never glows", ArenaCardLook.glow(bear.copy(phasedIn = false), true, true, true, false))

@@ -12,12 +12,14 @@ import kotlin.math.min
  */
 
 /** The glow border's tones (ArenaOutlineGlow.Tone): the web board's colours, the prototype's orange and gold, a shadow. */
-enum class ArenaGlowTone { PLAYABLE, PAYABLE, TARGET, SELECTED, ATTACKING, BLOCKING, SOURCE, SHADOW }
+enum class ArenaGlowTone { PLAYABLE, ABILITY, PAYABLE, TARGET, SELECTED, ATTACKING, BLOCKING, SOURCE, SHADOW }
 
 object ArenaCardLook {
     /** The Arena board's glow on a battlefield card: what you're choosing, attackers and blockers, then what you can use,
      *  orange while paying. Lands you could tap glow softer, so a full mana row doesn't shout. */
-    fun glow(card: ZoneCard, selected: Boolean, legal: Boolean, targetable: Boolean, paying: Boolean): Pair<ArenaGlowTone, Float>? {
+    fun glow(card: ZoneCard, selected: Boolean, legal: Boolean, targetable: Boolean, paying: Boolean,
+             /** A non-mana ability XMage would let you activate now (its canPlayObjects): the yellow glow. */
+             ability: Boolean = false): Pair<ArenaGlowTone, Float>? {
         if (card.isPhasedOut) return null
         if (selected) return ArenaGlowTone.SELECTED to 1f
         if (card.isAttacking == true) return ArenaGlowTone.ATTACKING to 1f
@@ -25,6 +27,7 @@ object ArenaCardLook {
         if (targetable) return ArenaGlowTone.TARGET to 1f
         if (!legal) return null
         if (paying) return ArenaGlowTone.PAYABLE to 1f
+        if (ability) return ArenaGlowTone.ABILITY to 0.95f
         return ArenaGlowTone.PLAYABLE to if (card.card.isLand) 0.65f else 0.85f
     }
 

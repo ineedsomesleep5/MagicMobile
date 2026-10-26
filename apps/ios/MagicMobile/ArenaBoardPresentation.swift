@@ -430,6 +430,8 @@ struct ArenaBattlefieldCard: View {
     let card: ZoneCard
     var selected = false
     var legal = false
+    /// A non-mana ability XMage would let you activate now (its canPlayObjects): the yellow glow.
+    var ability = false
     var targetable = false
     let zoneName: String
     let width: CGFloat
@@ -457,6 +459,7 @@ struct ArenaBattlefieldCard: View {
         if targetable { return (.target, 1) }
         guard legal else { return nil }
         if paying { return (.payable, 1) }
+        if ability { return (.ability, 0.95) }
         return (.playable, card.card.isLand ? 0.65 : 0.85)
     }
 

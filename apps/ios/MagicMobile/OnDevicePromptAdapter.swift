@@ -156,7 +156,9 @@ enum OnDevicePromptAdapter {
                 }
                 if row["sourceCard"] == nil { row["sourceUnavailableReason"] = "Source details unavailable" }
                 let rules = item["sourceCard"]?["hideInfo"]?.bool == true ? [] : (item["sourceCard"]?["rules"]?.array?.compactMap(\.string) ?? [])
-                if let rule = EngineDisplayText.abilityRule(label: label, sourceRules: rules) { row["rulesText"] = rule }
+                if let rule = EngineDisplayText.abilityRule(label: label, sourceRules: rules, sourceName: row["sourceName"] as? String) {
+                    row["rulesText"] = rule
+                }
                 return row
             }
             if prompt.responseTypes.contains("boolean"), prompt.payload["required"]?.bool == false {
@@ -481,9 +483,12 @@ enum EngineDisplayText {
     /// abilities give without their trigger or not at all (Caleb, 2026-10-25: Wrathful Raptors read only "2."), so the
     /// line comes from the source card's rules: the one line that holds the label's text, or the card's only triggered
     /// line when the label is empty; else the label without its number. Shared cases: parity/ability-rule-cases.json.
-    static func abilityRule(label: String, sourceRules: [String]) -> String? {
+    /// `sourceName` stands in for the label's {this} (XMage's picker keeps the placeholder), so the card's line is found
+    /// and no raw "{this}" reaches the rules text, which would draw it as a symbol.
+    static func abilityRule(label: String, sourceRules: [String], sourceName: String? = nil) -> String? {
         let ns = label as NSString
-        let fragment = text(pickerNumber.stringByReplacingMatches(in: label, range: NSRange(location: 0, length: ns.length), withTemplate: ""))
+        var fragment = text(pickerNumber.stringByReplacingMatches(in: label, range: NSRange(location: 0, length: ns.length), withTemplate: ""))
+        if let sourceName, !sourceName.isEmpty { fragment = fragment.replacingOccurrences(of: "{this}", with: sourceName, options: .caseInsensitive) }
         let lines = sourceRules.flatMap { text($0).components(separatedBy: .newlines) }.filter { !$0.isEmpty }
         if !fragment.isEmpty {
             let holding = lines.filter { $0.range(of: fragment, options: .caseInsensitive) != nil }

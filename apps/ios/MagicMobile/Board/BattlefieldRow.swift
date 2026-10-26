@@ -475,12 +475,14 @@ struct BattlefieldRow: View {
         let targetable = !targetableIds.isDisjoint(with: groupIds)
         let combatHighlighted = !combatHighlightIds.isDisjoint(with: groupIds)
         let legal = group.cards.contains { legalAction(for: $0) != nil }
+        let ability = group.cards.contains(where: hasAbility)
         let peeks = arena && card.card.isLand ? min(group.count - 1, 5) : 0
 
         ArenaBattlefieldCard(
             card: card,
             selected: false,
             legal: legal,
+            ability: ability,
             targetable: targetable || combatHighlighted,
             zoneName: title,
             width: renderedCardWidth,
@@ -574,6 +576,7 @@ struct BattlefieldRow: View {
             card: card,
             selected: selectedCard?.id == card.id || isChosen(card),
             legal: action != nil,
+            ability: hasAbility(card),
             targetable: targetable || combatHighlighted,
             zoneName: title,
             width: renderedCardWidth,
@@ -640,6 +643,13 @@ struct BattlefieldRow: View {
         let visible = layout.rendered.count
         let contentWidth = 16 + CGFloat(visible) * renderedCardWidth + CGFloat(max(visible - 1, 0)) * 4
         return contentWidth > rowWidth
+    }
+
+    /// An activated ability other than mana that the engine offers for this permanent now.
+    private func hasAbility(_ card: ZoneCard) -> Bool {
+        !card.isPhasedOut && legalActions.contains {
+            $0.type == "activate_ability" && ($0.sourceInstanceId == card.instanceId || $0.cardInstanceId == card.instanceId)
+        }
     }
 
     private func legalAction(for card: ZoneCard) -> LegalAction? {

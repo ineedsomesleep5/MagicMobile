@@ -168,7 +168,7 @@ class RankedParityTest {
         assertEquals(null, play(october, PlayMode.QUICK, RankOutcome.WIN))
         assertEquals(RankPosition.make(RankTier.BRONZE, 4, 2), play(october, PlayMode.RANKED, RankOutcome.WIN)!!.after)
         play(december, PlayMode.RANKED, RankOutcome.LOSS)
-        assertEquals("2026-12", file.rank.season)
+        assertEquals("2026-11", file.rank.season) // quarterly from November 2026
         assertEquals("2026-10", file.rank.history.first().season)
         assertEquals(listOf("ai-edgar-markov-core"), file.recentAIDecks)
         // Round trip through the saved file.

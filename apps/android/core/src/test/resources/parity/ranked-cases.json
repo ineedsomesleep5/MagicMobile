@@ -340,30 +340,8 @@
    "history": []
   }
  ],
- "seasons": [
-  {
-   "millis": 1793491199000,
-   "season": "2026-10"
-  },
-  {
-   "millis": 1793491200000,
-   "season": "2026-11"
-  },
-  {
-   "millis": 1800014400000,
-   "season": "2027-01"
-  }
- ],
- "seasonEnds": [
-  {
-   "season": "2026-10",
-   "millis": 1793491200000
-  },
-  {
-   "season": "2026-12",
-   "millis": 1798761600000
-  }
- ],
+ "seasons": [{"millis": 1793491199000, "season": "2026-10"}, {"millis": 1793491200000, "season": "2026-11"}, {"millis": 1800014400000, "season": "2026-11"}, {"millis": 1801440000000, "season": "2027-02"}, {"millis": 1809043200000, "season": "2027-02"}, {"millis": 1809129600000, "season": "2027-05"}],
+ "seasonEnds": [{"season": "2026-10", "millis": 1793491200000}, {"season": "2026-11", "millis": 1801440000000}, {"season": "2027-05", "millis": 1817078400000}],
  "brackets": [
   {
    "name": "a plain list is Core",

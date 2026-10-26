@@ -1,7 +1,7 @@
 # Brackets, Quick Match, Ranked and profiles
 
 Caleb asked for this on 2026-10-04: Commander brackets for decks, a Quick Match against an AI at your
-deck's bracket, a 1v1 ranked ladder from Bronze to Mythic with monthly seasons (wins and losses both
+deck's bracket, a 1v1 ranked ladder from Bronze to Mythic with quarterly seasons (wins and losses both
 count, AI wins count, you can rank down), a full player profile, rank-up and rank-down animations, and
 better AI decks. iOS and Android match each other; `apps/android/core/src/test/resources/parity/ranked-cases.json`
 checks the shared rules on both.
@@ -35,7 +35,8 @@ intent, so the player may label their own deck higher, or call a Core list Exhib
   (Mythic can fall back to Diamond, never below Diamond IV).
 - Bonus: +1 for a win with a deck below the tier's opponent brackets ("underdog"). The old third-win streak bonus is
   gone (two-pip wins replace it). Draws change nothing and end the streak.
-- Seasons are calendar months (UTC). A new month records the season and drops everyone one tier, keeping
+- Seasons (UTC): October 2026 was a month; from November 2026 each season is three months, named by its first
+  ("2026-11" runs November to January; `mm_season_for`, `RankLadder.season`). A new season records the last one and drops everyone one tier, keeping
   the division (Mythic restarts at Diamond IV).
 
 | Tier | AI deck Power (by division IV → I) | AI deck and your deck up to | AI skill |
@@ -183,7 +184,7 @@ test accounts were made on the live project. A live two-phone ranked match has n
 could publish any rank. Now the server is the referee, using the existing database (no new server, no game simulation):
 
 - `ranked_standings` is the source of truth (points = step × 4 + pips, Mythic past 80), with the same ladder rules
-  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, monthly rollover into `ranked_season_history`.
+  as `RankLadder.swift` / `Ranked.kt`: bonuses, Bronze IV floor, season rollover into `ranked_season_history`.
   `ranked_results` records every change and why. `ranked_profiles` stays the public card; the server writes its
   rank fields and `mm_ranked_publish` now only sets the title and favourite commander (older builds keep working).
 - **Person vs person:** `mm_ranked_report` settles a match when both sides agree (win/loss or draw/draw).

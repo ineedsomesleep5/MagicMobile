@@ -245,7 +245,7 @@ export const OnDevicePromptAdapter = {
           const card = get(item, "sourceCard");
           const rules = card === undefined || bool(get(card, "hideInfo")) === true ? []
             : ((get(card, "rules") as unknown[] | undefined) ?? []).filter((rule): rule is string => typeof rule === "string");
-          const rule = EngineDisplayText.abilityRule(label, rules);
+          const rule = EngineDisplayText.abilityRule(label, rules, typeof row.sourceName === "string" ? row.sourceName : undefined);
           if (rule !== undefined) row.rulesText = rule;
           return row;
         });

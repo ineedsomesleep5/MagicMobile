@@ -77,13 +77,15 @@ struct ArenaOutlineGlow: View {
     }
 
     enum Tone {
-        case playable, payable, target, selected, attacking, blocking, source, shadow
+        case playable, ability, payable, target, selected, attacking, blocking, source, shadow
 
         /// The web board's colours (playable #7ff0ff, target #c6f8ff, selected #ffe08f, attacking #ff5a2e, blocking
         /// #ffd38a), the duel prototype's orange for a source that can pay, its gold for a spell's source.
         var color: Color {
             switch self {
             case .playable: Color(red: 0.5, green: 0.94, blue: 1)
+            // A permanent with an ability you can use now (Caleb, 2026-10-26: not the same white as a card to cast).
+            case .ability: Color(red: 1, green: 0.88, blue: 0.23)
             case .target: Color(red: 0.78, green: 0.97, blue: 1)
             case .payable: Color(red: 1, green: 0.62, blue: 0.3)
             case .selected: Color(red: 1, green: 0.88, blue: 0.56)

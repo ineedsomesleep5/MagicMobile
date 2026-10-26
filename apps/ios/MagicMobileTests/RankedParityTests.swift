@@ -231,7 +231,7 @@ final class PlayerRecordStoreTests: XCTestCase {
         // A new month: the season rolls over before the next result counts.
         now = Date(timeIntervalSince1970: 1_797_292_800) // December 2026
         _ = play(store, .ranked, .loss)
-        XCTAssertEqual(store.rank.season, "2026-12")
+        XCTAssertEqual(store.rank.season, "2026-11") // quarterly from November 2026
         XCTAssertEqual(store.rank.history.first?.season, "2026-10")
         XCTAssertEqual(store.rank.losses, 1)
         XCTAssertEqual(store.rank.wins, 0)

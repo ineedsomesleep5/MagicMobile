@@ -47,8 +47,11 @@ describe("rank ladder", () => {
     for (const item of cases.seasons) expect(RankLadder.season(item.millis)).toBe(item.season);
     for (const item of cases.seasonEnds) expect(RankLadder.seasonEnd(item.season)?.getTime()).toBe(item.millis);
     expect(RankLadder.seasonEnd("2026")).toBeUndefined();
-    expect(RankLadder.seasonEnd("2026-12")?.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+    expect(RankLadder.seasonEnd("2026-09")?.toISOString()).toBe("2026-10-01T00:00:00.000Z");
     expect(RankLadder.seasonName("2026-10", "en-US")).toBe("October 2026");
+    // Quarterly from November 2026: a season is named by its first month and spans three.
+    expect(RankLadder.seasonName("2026-11", "en-US")).toBe("Nov 2026 – Jan 2027");
+    expect(RankLadder.season(Date.UTC(2026, 11, 15))).toBe("2026-11");
     expect(RankLadder.seasonName("junk", "en-US")).toBe("junk");
     for (const item of cases.rollover) {
       const state = { ...RankState.fresh(item.season), position: position(item.position), peak: position(item.peak), wins: item.wins, losses: item.losses };
