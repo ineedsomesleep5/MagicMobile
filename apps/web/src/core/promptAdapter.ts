@@ -242,6 +242,11 @@ export const OnDevicePromptAdapter = {
             }
           }
           if (row.sourceCard === undefined) row.sourceUnavailableReason = "Source details unavailable";
+          const card = get(item, "sourceCard");
+          const rules = card === undefined || bool(get(card, "hideInfo")) === true ? []
+            : ((get(card, "rules") as unknown[] | undefined) ?? []).filter((rule): rule is string => typeof rule === "string");
+          const rule = EngineDisplayText.abilityRule(label, rules);
+          if (rule !== undefined) row.rulesText = rule;
           return row;
         });
         if (has("boolean") && bool(payload.required) === false) actions.push(action("answer_yes_no", "Cancel", { confirmed: false }));

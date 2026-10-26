@@ -119,7 +119,9 @@ fun ArenaHandFan(
         val design = ArenaHandFanLayout.slot(index, all.size, posture, layout.hand, spreadScroll)
         return ArenaHandSlot(canvas.point(design.center), design.rotation, design.scale)
     }
-    val liftedScale = when (posture) { ArenaHandPosture.SPREAD -> slot(0).scale * 1.1f; ArenaHandPosture.RAISED -> 1.24f; else -> 1.18f }
+    /** Past eight cards the fan is crowded: costs show only on the popped card, which pops larger (ArenaHandFan.swift). */
+    val crowded = cards.size + extraCards.size > 8
+    val liftedScale = when (posture) { ArenaHandPosture.SPREAD -> slot(0).scale * 1.1f; ArenaHandPosture.RAISED -> 1.24f; else -> if (crowded) 1.3f else 1.18f }
     fun liftedPoint(home: ArenaHandSlot, lifted: Boolean): BoardPoint {
         if (!lifted) return home.center
         // A spread card is already whole: it only rises a little.
@@ -411,7 +413,8 @@ fun ArenaHandFan(
                     }) {
                     CardTile(card, selected = false, pending = pendingCardInstanceId == card.instanceId, legal = playable.any { it.type == "play_land" },
                         castOffered = playable.any { it.type == "cast_spell" }, zoneName = "Hand", width = cardSize.width.dp, height = cardSize.height.dp)
-                    HandManaCost(card.card.manaCost ?: playable.firstOrNull()?.manaCost, Modifier.align(Alignment.TopCenter).offset(y = (-14).dp).clearAndSetSemantics { })
+                    if (!crowded || lifted || posture == ArenaHandPosture.SPREAD)
+                        HandManaCost(card.card.manaCost ?: playable.firstOrNull()?.manaCost, Modifier.align(Alignment.TopCenter).offset(y = (-14).dp).clearAndSetSemantics { })
                     if (extra) ArenaExtraCardShimmer(playable.firstOrNull()?.sourceZone ?: "", cardSize.width)
                 }
             }

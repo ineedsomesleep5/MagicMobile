@@ -128,8 +128,11 @@ struct ArenaHandFan: View {
                  legal: playable.contains { $0.type == "play_land" }, castOffered: playable.contains { $0.type == "cast_spell" },
                  zoneName: "Hand", width: cardSize.width, height: cardSize.height)
             .overlay(alignment: .top) {
-                HandManaCost(cost: card.card.manaCost ?? playable.first?.manaCost)
-                    .offset(y: -14).allowsHitTesting(false).accessibilityHidden(true)
+                // A crowded fan shows the cost only on the card under the finger: fourteen badges piled into one row.
+                if !crowded || lifted || posture == .spread {
+                    HandManaCost(cost: card.card.manaCost ?? playable.first?.manaCost)
+                        .offset(y: -14).allowsHitTesting(false).accessibilityHidden(true)
+                }
             }
             .overlay { if extra { ArenaExtraCardShimmer(zone: playable.first?.sourceZone ?? "") } }
             .scaleEffect(scale)
@@ -158,8 +161,11 @@ struct ArenaHandFan: View {
     /// A lifted card from a raised hand grows to read; one popped out of the tucked hand shows whole, a little larger.
     private var liftedScale: CGFloat {
         if posture == .spread { return slot(0).scale * 1.1 }
-        return posture == .raised ? 1.24 : 1.18
+        return posture == .raised ? 1.24 : crowded ? 1.3 : 1.18
     }
+
+    /// Past eight cards the fan is crowded: costs show only on the popped card, which pops larger.
+    private var crowded: Bool { cards.count + extraCards.count > 8 }
 
     private func liftedPoint(_ home: ArenaHandSlot, lifted: Bool) -> CGPoint {
         guard lifted else { return home.center }

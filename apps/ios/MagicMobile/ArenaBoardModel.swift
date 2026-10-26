@@ -465,8 +465,17 @@ enum ArenaHandFanLayout {
             let rise = max(0, hand.upY + reach - hand.upFloor)
             return ArenaHandSlot(center: CGPoint(x: x, y: hand.upY - rise + drop * offset * offset), rotation: tilt, scale: 1)
         }
-        return ArenaHandSlot(center: CGPoint(x: x, y: hand.downY + offset * offset * hand.downDrop),
-                             rotation: Double(offset) * 1.8, scale: hand.downScale)
+        // A big hand keeps a seven-card hand's gentle edge: the arc flattens past seven so the outer cards neither lean
+        // nor sink further (Caleb, 2026-10-25: fourteen cards curved too steeply to read or pick).
+        let curve = Self.restingCurve(count: count)
+        return ArenaHandSlot(center: CGPoint(x: x, y: hand.downY + offset * offset * hand.downDrop * curve * curve),
+                             rotation: Double(offset * curve) * 1.8, scale: hand.downScale)
+    }
+
+    /// 1 up to seven cards; past that, what keeps the outermost card where a seven-card hand's would be.
+    static func restingCurve(count: Int) -> CGFloat {
+        let edge = CGFloat(count - 1) / 2
+        return edge > 3 ? 3 / edge : 1
     }
 }
 
