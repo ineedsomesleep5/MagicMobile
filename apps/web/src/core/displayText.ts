@@ -101,6 +101,10 @@ export const EngineDisplayText = {
       current = next;
     }
   },
+  /** Rules as a card shows them: markup cleaned, `{this}` named (the card, else "this"). */
+  rules(source: string, cardName?: string): string {
+    return EngineDisplayText.text(source).replace(/\{this\}/gi, () => cardName ?? "this");
+  },
   label(source: string, fallback = ""): string {
     const value = EngineDisplayText.text(source).split(/\s+/).filter((part) => part.length > 0).join(" ");
     return value.length > 0 ? value : fallback;

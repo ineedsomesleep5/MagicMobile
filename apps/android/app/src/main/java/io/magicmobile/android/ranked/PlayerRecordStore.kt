@@ -99,7 +99,7 @@ class PlayerRecordStore(context: Context, private val now: () -> Long = System::
 
     /** The server's answer for a ranked AI game (PlayerRecordFile.settlingRanked). */
     fun settleRanked(ticket: String, standing: io.magicmobile.android.game.RankedStanding) {
-        val next = file.settlingRanked(ticket, standing.settlement, standing.check, standing.change)
+        val next = file.settlingRanked(ticket, standing.settlement, standing.check, standing.change, standing.points)
         if (next != file) { file = next; save() }
     }
 

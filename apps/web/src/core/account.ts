@@ -497,7 +497,7 @@ export interface RankedRecord {
   resolvePendingRankedResult(ticket: string): void;
   gameRecord(name: string): J | undefined;
   /** The server's word on a sent result: how it counted and its own move on the ladder (PlayerRecordStore.settleRanked). */
-  settleRanked?(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined): void;
+  settleRanked?(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined, points?: number): void;
   /** Takes the server's standing (see adoptStanding). */
   adopt(standing: RankedStanding): void;
 }
@@ -985,7 +985,7 @@ export class PlayerAccount {
         let standing: RankedStanding | undefined;
         try { standing = RankedStanding.parse(data); } catch { /* an older server answers without the standing */ }
         if (standing) {
-          record.settleRanked?.(pending.ticket, standing.settlement, standing.check, standing.change);
+          record.settleRanked?.(pending.ticket, standing.settlement, standing.check, standing.change, standing.points);
           record.adopt(standing);
         }
       } catch (error) {

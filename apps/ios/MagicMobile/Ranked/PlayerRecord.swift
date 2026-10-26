@@ -396,7 +396,8 @@ final class PlayerRecordStore: ObservableObject {
     }
 
     /// The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the phone's.
-    func settleRanked(ticket: UUID, settlement: String?, check: String?, change: RankedStanding.Change?) {
+    /// `points`: the server's standing now, so a win it held back shows where the player really stands.
+    func settleRanked(ticket: UUID, settlement: String?, check: String?, change: RankedStanding.Change?, points: Int? = nil) {
         guard let index = matches.firstIndex(where: { $0.rankedTicket == ticket }) else { return }
         var match = matches[index]
         match.settlement = settlement
@@ -405,7 +406,8 @@ final class PlayerRecordStore: ObservableObject {
             match.rankChange = RankChange(outcome: match.outcome, before: RankPosition(points: before), after: RankPosition(points: after),
                                           bonuses: (change?.bonuses ?? []).compactMap(RankChange.Bonus.init(rawValue:)))
         } else if RankSettlement.held(settlement), let local = match.rankChange {
-            match.rankChange = RankChange(outcome: local.outcome, before: local.before, after: local.before, bonuses: [])
+            let stands = points.map { RankPosition(points: $0) } ?? local.before
+            match.rankChange = RankChange(outcome: local.outcome, before: stands, after: stands, bonuses: [])
         }
         guard match != matches[index] else { return }
         matches[index] = match

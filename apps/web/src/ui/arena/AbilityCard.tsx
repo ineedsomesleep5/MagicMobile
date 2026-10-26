@@ -51,7 +51,7 @@ export function AbilityCard({ source, name, kind = "Ability", text, width }: {
         <div className="ab-name">{source?.card.name ?? name ?? "Ability"}</div>
         <div className="ab-art">{source ? <CardArt card={source.card} version="art_crop" /> : <span>✦</span>}</div>
         <div className="ab-type">{kind}</div>
-        <div className="ab-text"><RulesText text={rules} /></div>
+        <div className="ab-text"><RulesText text={rules} cardName={source?.card.name ?? name} /></div>
       </div>
       {cost && <div className="ab-loyalty">{cost}</div>}
     </div>

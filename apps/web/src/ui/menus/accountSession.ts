@@ -81,7 +81,7 @@ export function rankedRecordOf(record: PlayerRecordStore, changed: () => void): 
     get pendingRankedResults(): readonly PendingRankedResult[] { return record.pendingRankedResults; },
     resolvePendingRankedResult: (ticket) => { record.resolvePendingRanked(ticket); changed(); },
     gameRecord: (name) => record.gameRecord(name) as ReturnType<RankedRecord["gameRecord"]>,
-    settleRanked: (ticket, settlement, check, change) => { record.settleRanked(ticket, settlement, check, change); changed(); },
+    settleRanked: (ticket, settlement, check, change, points) => { record.settleRanked(ticket, settlement, check, change, points); changed(); },
     adopt(standing) {
       const next = adoptStanding(record.rank, standing, record.pendingRankedResults.length);
       if (next) { record.adoptRank(next); changed(); }
