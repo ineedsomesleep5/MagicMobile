@@ -675,7 +675,8 @@ data class PlayerRecordFile(
     }
 
     /** The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the phone's. */
-    fun settlingRanked(ticket: String, settlement: String?, check: String?, change: RankedStanding.Change?): PlayerRecordFile {
+    /** `points`: the server's standing now, so a win it held back shows where the player really stands. */
+    fun settlingRanked(ticket: String, settlement: String?, check: String?, change: RankedStanding.Change?, points: Int? = null): PlayerRecordFile {
         val index = matches.indexOfFirst { it.rankedTicket == ticket }
         if (index < 0) return this
         val match = matches[index]
@@ -683,7 +684,8 @@ data class PlayerRecordFile(
         val rankChange = when {
             change != null -> RankChange(match.outcome, RankPosition.ofPoints(change.pointsBefore), RankPosition.ofPoints(change.pointsAfter),
                 change.bonuses.mapNotNull { raw -> RankBonus.entries.firstOrNull { it.raw == raw } })
-            RankSettlement.held(settlement) && local != null -> RankChange(local.outcome, local.before, local.before, emptyList())
+            RankSettlement.held(settlement) && local != null -> (points?.let(RankPosition::ofPoints) ?: local.before).let { stands ->
+                RankChange(local.outcome, stands, stands, emptyList()) }
             else -> local
         }
         val settled = match.copy(settlement = settlement, settlementCheck = check, rankChange = rankChange)

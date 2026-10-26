@@ -307,6 +307,8 @@
 .alog li.event > svg { width: 12px; height: 12px; flex: none; margin: 3px 3px 0; fill: currentColor; }
 .alog li.event > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .alog .text { white-space: pre-line; overflow-wrap: anywhere; }
+/* Rules notes keep their lines (a live hint such as "Lands you control: 6" sits on its own line). */
+.ainspector .note.rules { white-space: pre-line; }
 .alog .text .player { color: #73dbd1; font-weight: 700; }
 .alog .text .card { color: #ffd675; font-style: italic; }
 .alog .text .bold { font-weight: 700; }

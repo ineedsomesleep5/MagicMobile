@@ -278,7 +278,8 @@ export class PlayerRecordStore {
   }
 
   /** The server's answer for a ranked AI game: how it counted, and its own move on the ladder in place of the browser's. */
-  settleRanked(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined): void {
+  /** `points`: the server's standing now, so a win it held back shows where the player really stands, not this browser's guess. */
+  settleRanked(ticket: string, settlement: string | undefined, check: string | undefined, change: ServerRankChange | undefined, points?: number): void {
     const index = this._matches.findIndex((m) => m.rankedTicket === ticket);
     if (index < 0) return;
     const match: MatchRecord = { ...this._matches[index] };
@@ -291,7 +292,8 @@ export class PlayerRecordStore {
         bonuses: (change.bonuses ?? []).filter((b): b is RankBonus => b === "streak" || b === "underdog"),
       };
     } else if (RankSettlement.held(settlement) && match.rankChange) {
-      match.rankChange = { ...match.rankChange, after: match.rankChange.before, bonuses: [] };
+      const stands = points !== undefined ? RankPosition.fromPoints(points) : match.rankChange.before;
+      match.rankChange = { ...match.rankChange, before: stands, after: stands, bonuses: [] };
     }
     if (JSON.stringify(match) === JSON.stringify(this._matches[index])) return;
     this._matches = this._matches.map((m, i) => (i === index ? match : m));

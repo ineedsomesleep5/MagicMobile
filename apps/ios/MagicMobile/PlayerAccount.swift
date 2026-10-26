@@ -379,7 +379,8 @@ final class PlayerAccount: ObservableObject {
                 }
                 record.resolvePendingRankedResult(pending.ticket)
                 if let standing = try? RankedStanding.parse(data) {
-                    record.settleRanked(ticket: pending.ticket, settlement: standing.settlement, check: standing.check, change: standing.change)
+                    record.settleRanked(ticket: pending.ticket, settlement: standing.settlement, check: standing.check, change: standing.change,
+                                        points: standing.points)
                     record.adopt(standing)
                 }
             } catch {

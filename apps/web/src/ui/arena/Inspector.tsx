@@ -85,7 +85,7 @@ export function Inspector({ card: held, name: heldName, battlefield, height, hol
             {glossary.length > 0 && (
               <div className="glass note">{glossary.map(([keyword, meaning]) => <p key={keyword}><b>{keyword}</b> {meaning}</p>)}</div>
             )}
-            {showsRules && <div className="glass note rules"><RulesText text={rules} /></div>}
+            {showsRules && <div className="glass note rules"><RulesText text={rules} cardName={card?.card.name} /></div>}
             {reminder && <div className="glass note"><p>{reminder}</p></div>}
             {attached.length > 0 && <div className="glass note"><b className="label">ATTACHED</b>{attached.map((c) => <span key={c.instanceId}>{c.card.name}</span>)}</div>}
           </div>

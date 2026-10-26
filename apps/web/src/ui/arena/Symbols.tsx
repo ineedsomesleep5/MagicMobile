@@ -4,6 +4,7 @@
  * crossorigin, which the page's cross-origin isolation allows; a CSS background from another origin would be blocked.
  * Until an image loads, or if it can't, a plain stand-in shows (a coloured disc, a dark back). Also Arena's count oval.
  */
+import { EngineDisplayText } from "../../core/displayText";
 import { useState } from "react";
 import { CARD_BACK_URL, manaSymbolURL, remoteManaSymbolURL } from "../cardArt";
 
@@ -25,9 +26,14 @@ export function ManaSymbol({ symbol, size, inline }: { symbol: string; size?: nu
     draggable={false} style={style} onError={() => setTries((n) => n + 1)} />;
 }
 
-/** Text with its {W}, {2}, {X} and {T} drawn as flat symbols in the line (iOS GameRulesText). */
-export function RulesText({ text }: { text: string }) {
-  return <>{text.split(/(\{[^}]+\})/g).map((part, index) => {
+/**
+ * Text with its {W}, {2}, {X} and {T} drawn as flat symbols in the line (iOS GameRulesText). XMage's rules arrive as markup
+ * (`<i>Landfall</i> &mdash;`, `<br/><hintstart/>`) with `{this}` for the card: cleaned here and named, never drawn raw or
+ * as a symbol (Caleb, 2026-10-26: a Scute Swarm token copy showed all of it).
+ */
+export function RulesText({ text, cardName }: { text: string; cardName?: string }) {
+  const clean = EngineDisplayText.rules(text, cardName);
+  return <>{clean.split(/(\{[^}]+\})/g).map((part, index) => {
     const symbol = /^\{([^}]+)\}$/.exec(part)?.[1];
     return symbol ? <ManaSymbol key={index} symbol={symbol} inline /> : part;
   })}</>;
