@@ -5,7 +5,7 @@
   "nextBuildFloor": "5000000000",
   "lastPreparedBuild": "63",
   "lastInstalledBuild": "2026091501",
-  "lastUploadedBuild": "62",
+  "lastUploadedBuild": "63",
   "uploads": [
     {
       "build": "2026062701",
@@ -609,6 +609,13 @@
       "uploadedAt": "2026-10-26T02:48:04.795Z",
       "deliveryUuid": "19f0a127-a4a6-4165-8d6c-aede7c5f9b4e",
       "ipaPath": "build_output/testflight/native-release.Ios6hE/export/MagicMobile.ipa"
+    },
+    {
+      "build": "63",
+      "marketingVersion": "0.1.1",
+      "uploadedAt": "2026-10-26T20:09:36.424Z",
+      "deliveryUuid": "a354fabc-65e7-4409-bbc2-a14a626f289f",
+      "ipaPath": "build_output/testflight/native-release.CB37qn/export/MagicMobile.ipa"
     }
   ],
   "lastPreparedAt": "2026-10-26T19:02:55.709Z",
