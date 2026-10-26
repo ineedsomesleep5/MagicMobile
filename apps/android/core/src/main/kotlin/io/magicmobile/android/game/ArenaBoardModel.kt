@@ -351,7 +351,15 @@ object ArenaHandFanLayout {
             val rise = max(0f, hand.upY + reach - hand.upFloor)
             return ArenaHandSlot(BoardPoint(x, hand.upY - rise + drop * offset * offset), tilt, 1f)
         }
-        return ArenaHandSlot(BoardPoint(x, hand.downY + offset * offset * hand.downDrop), offset * 1.8f, hand.downScale)
+        // A big hand keeps a seven-card hand's gentle edge (ArenaBoardModel.swift restingCurve).
+        val curve = restingCurve(count)
+        return ArenaHandSlot(BoardPoint(x, hand.downY + offset * offset * hand.downDrop * curve * curve), offset * curve * 1.8f, hand.downScale)
+    }
+
+    /** 1 up to seven cards; past that, what keeps the outermost card where a seven-card hand's would be. */
+    fun restingCurve(count: Int): Float {
+        val edge = (count - 1) / 2f
+        return if (edge > 3) 3 / edge else 1f
     }
 }
 

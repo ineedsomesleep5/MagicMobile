@@ -896,4 +896,16 @@ final class OnDevicePromptAdapterTests: XCTestCase {
             XCTAssertThrowsError(try OnDevicePromptAdapter.answer(for: stale, prompt: p, viewerPlayerID: viewer))
         }
     }
+
+    /// parity/ability-rule-cases.json (OnDevicePromptAdapterTest.kt, abilityRule.test.ts).
+    func testAbilityRuleCases() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("../android/core/src/test/resources/parity/ability-rule-cases.json").standardizedFileURL
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        for item in try XCTUnwrap(root["cases"] as? [[String: Any]]) {
+            let rule = EngineDisplayText.abilityRule(label: try XCTUnwrap(item["label"] as? String),
+                                                     sourceRules: try XCTUnwrap(item["rules"] as? [String]))
+            XCTAssertEqual(rule, item["expect"] as? String, item["name"] as? String ?? "")
+        }
+    }
 }

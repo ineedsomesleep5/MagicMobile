@@ -253,6 +253,8 @@ export function handPlaces(ids: string[], up: boolean, hovered?: string, geo: Ge
   // The fan keeps its distance from the board's bottom edge as the board grows taller.
   const fromBottom = (y: number) => geo.height - (STAGE.height - y) * g;
   const edge = (n - 1) / 2;
+  // A big resting hand keeps a seven-card hand's gentle edge (ArenaHandFanLayout.restingCurve).
+  const curve = edge > 3 ? 3 / edge : 1;
   const drop = edge > 0 ? Math.min(H.upDrop, H.maxDrop / (edge * edge)) : 0;
   const edgeTilt = (Math.min(H.maxTilt, edge * H.tilt) * Math.PI) / 180;
   const reach = drop * edge * edge + (card.h / 2) * Math.cos(edgeTilt) + (card.w / 2) * Math.sin(edgeTilt);
@@ -262,10 +264,10 @@ export function handPlaces(ids: string[], up: boolean, hovered?: string, geo: Ge
     const x = (up ? H.cx : restX) + off * pitch;
     let place: Place = up
       ? { x, y: fromBottom(H.upY) - rise + drop * off * off, ...card, r: Math.max(-H.maxTilt, Math.min(H.maxTilt, off * H.tilt)), s: 1, z: 440 + i }
-      : { x, y: fromBottom(H.downY) + off * off * H.downDrop, ...card, r: off * 1.8, s: 1, z: 200 + i };
+      : { x, y: fromBottom(H.downY) + off * off * H.downDrop * curve * curve, ...card, r: off * curve * 1.8, s: 1, z: 200 + i };
     // The popped card shows whole and upright (ArenaHandFan.liftedPoint): never lower than where it clears the bottom edge.
     if (id === hovered) {
-      const s = up ? 1.24 : 1.18;
+      const s = up ? 1.24 : n > 8 ? 1.3 : 1.18;
       place = { ...place, y: Math.min(place.y - (up ? H.lift : H.liftDown) * g, geo.height - (card.h * s) / 2 - 8), r: 0, s, z: 480 };
     }
     places.set(id, place);

@@ -172,6 +172,9 @@ object OnDevicePromptAdapter {
                         }
                     }
                     if (row["sourceCard"] == null) row["sourceUnavailableReason"] = s("Source details unavailable")
+                    val card = item["sourceCard"]
+                    val rules = if (card == null || card["hideInfo"].bool == true) emptyList() else card["rules"].array?.mapNotNull { it.string } ?: emptyList()
+                    EngineDisplayText.abilityRule(label!!, rules)?.let { row["rulesText"] = s(it) }
                     JsonObject(row)
                 })
                 if (prompt.responseTypes.contains("boolean") && prompt.payload["required"].bool == false) {
@@ -509,6 +512,21 @@ object OnDevicePromptAdapter {
  * No HTML renderer, network requests, attributed links, or hidden-card lookup.
  */
 object EngineDisplayText {
+    private val pickerNumber = Regex("^\\s*\\d+\\.\\s*")
+    private val triggerLine = Regex("^(?:[^—\\n]{1,40}—\\s*)?(?:When|Whenever|At)\\b")
+
+    /** The full rule a trigger or ability choice shows (abilityRule in OnDevicePromptAdapter.swift; parity/ability-rule-cases.json). */
+    fun abilityRule(label: String, sourceRules: List<String>): String? {
+        val fragment = text(label.replace(pickerNumber, ""))
+        val lines = sourceRules.flatMap { text(it).split("\n") }.filter { it.isNotEmpty() }
+        if (fragment.isNotEmpty()) {
+            val holding = lines.filter { it.contains(fragment, ignoreCase = true) }
+            if (holding.size == 1) return holding[0]
+            return fragment.replaceFirstChar { it.uppercaseChar() }
+        }
+        return lines.filter { triggerLine.containsMatchIn(it) }.singleOrNull()
+    }
+
     fun label(source: String, fallback: String = ""): String {
         val value = text(source).split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
         return value.ifEmpty { fallback }

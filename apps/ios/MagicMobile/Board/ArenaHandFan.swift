@@ -35,6 +35,8 @@ struct ArenaHandFan: View {
     @State private var spreadScroll: CGFloat = 0
     /// A touch on the spread row: where it began and the swipe then; sideways it swipes the row, up it carries the card.
     @State private var spreadTouch: (start: CGPoint, scroll: CGFloat, swiping: Bool)?
+    /// Where a hold began: pulled up off the hand, the held card is carried like a drag.
+    @State private var holdStart: CGPoint?
     @State private var known: Set<String>?
     /// Cards on their way in from the deck: 0 at the deck, 1 on show, 2 home in the fan.
     @State private var arrivals: [String: Int] = [:]
@@ -126,8 +128,11 @@ struct ArenaHandFan: View {
                  legal: playable.contains { $0.type == "play_land" }, castOffered: playable.contains { $0.type == "cast_spell" },
                  zoneName: "Hand", width: cardSize.width, height: cardSize.height)
             .overlay(alignment: .top) {
-                HandManaCost(cost: card.card.manaCost ?? playable.first?.manaCost)
-                    .offset(y: -14).allowsHitTesting(false).accessibilityHidden(true)
+                // A crowded fan shows the cost only on the card under the finger: fourteen badges piled into one row.
+                if !crowded || lifted || posture == .spread {
+                    HandManaCost(cost: card.card.manaCost ?? playable.first?.manaCost)
+                        .offset(y: -14).allowsHitTesting(false).accessibilityHidden(true)
+                }
             }
             .overlay { if extra { ArenaExtraCardShimmer(zone: playable.first?.sourceZone ?? "") } }
             .scaleEffect(scale)
@@ -156,8 +161,11 @@ struct ArenaHandFan: View {
     /// A lifted card from a raised hand grows to read; one popped out of the tucked hand shows whole, a little larger.
     private var liftedScale: CGFloat {
         if posture == .spread { return slot(0).scale * 1.1 }
-        return posture == .raised ? 1.24 : 1.18
+        return posture == .raised ? 1.24 : crowded ? 1.3 : 1.18
     }
+
+    /// Past eight cards the fan is crowded: costs show only on the popped card, which pops larger.
+    private var crowded: Bool { cards.count + extraCards.count > 8 }
 
     private func liftedPoint(_ home: ArenaHandSlot, lifted: Bool) -> CGPoint {
         guard lifted else { return home.center }
@@ -198,7 +206,7 @@ struct ArenaHandFan: View {
     private func touchSurface(_ rect: CGRect, band: CGRect) -> some View {
         ArenaHandTouch(tap: { tapped(at: rect.origin + $0) },
                        hold: { held(at: rect.origin + $0) },
-                       holdEnded: endHold,
+                       holdEnded: { endHold(at: rect.origin + $0, cancelled: $1) },
                        pan: { panned(to: rect.origin + $0, band: band) },
                        panEnded: { panEnded(at: rect.origin + $0, cancelled: $1) },
                        panStart: { panStarted(at: rect.origin + $0) })
@@ -293,15 +301,40 @@ struct ArenaHandFan: View {
         }
     }
 
-    /// A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand.
+    /// A hold magnifies the card under the finger; sliding while holding moves the magnifier along the hand. Pulled up
+    /// off the hand, the held card is picked up and carried (Caleb, 2026-10-25: a press that paused before the drag never
+    /// carried, most of all on the spread hand's large cards).
     private func held(at point: CGPoint) {
+        if var current = dragging {
+            current.offset = CGSize(width: point.x - current.start.x, height: point.y - current.start.y)
+            dragging = current
+            isOverPlayerDropZone = canvas.drops(at: point, from: current.start)
+            return
+        }
+        let start = holdStart ?? point
+        if holdStart == nil { holdStart = point }
+        if start.y - point.y >= canvas.length(36), let card = card(at: start) {
+            if let inspection { inspection.end() } else { inspectedCard = nil }
+            GameAudio.shared.play(.cardPickup)
+            carrySurface = liftedFrame
+            liftedCardID = nil
+            inspectedCard = nil
+            dragging = (card.id, start, CGSize(width: point.x - start.x, height: point.y - start.y))
+            isOverPlayerDropZone = canvas.drops(at: point, from: start)
+            interactionState.mode = .draggingCard(cardId: card.instanceId,
+                                                  legalActionIds: GameBoardInteractionState.legalPlayActions(for: card, actions: legalActions).map(\.id))
+            return
+        }
         guard let card = card(at: point), inspectedCard?.id != card.id else { return }
         if inspectedCard == nil { inspection?.begin { inspectedCard = nil } }
         inspectedCard = card
         GameHaptics.selection()
     }
 
-    private func endHold() {
+    /// A hold that carried its card plays it where it lands, as a drag does; otherwise the magnifier closes.
+    private func endHold(at point: CGPoint, cancelled: Bool) {
+        holdStart = nil
+        if dragging != nil { return panEnded(at: point, cancelled: cancelled) }
         if let inspection { inspection.end() } else { inspectedCard = nil }
     }
 
@@ -336,6 +369,9 @@ struct ArenaHandFan: View {
         // Spread, every card shows whole: a sideways swipe moves the row, a slide up carries the card it starts on.
         if posture == .spread, var touch = spreadTouch {
             let dx = point.x - touch.start.x, dy = point.y - touch.start.y
+            // The pan's first report can sit exactly on its start (it waits for the hold to fail): decide nothing until the
+            // finger has moved, or 0 >= 0 locks every drag into a swipe (Caleb, 2026-10-25: cards couldn't be carried).
+            if !touch.swiping && hypot(dx, dy) < canvas.length(6) { return }
             if touch.swiping || abs(dx) >= abs(dy) || dy > 0 {
                 touch.swiping = true
                 spreadTouch = touch
@@ -472,7 +508,8 @@ struct ArenaHandFan: View {
 struct ArenaHandTouch: UIViewRepresentable {
     var tap: (CGPoint) -> Void
     var hold: (CGPoint) -> Void
-    var holdEnded: () -> Void
+    /// Where the hold ended, and whether the system cancelled it.
+    var holdEnded: (CGPoint, Bool) -> Void
     var pan: (CGPoint) -> Void
     var panEnded: (CGPoint, Bool) -> Void
     /// Where a pan began, reported once before its first move.
@@ -498,7 +535,7 @@ struct ArenaHandTouch: UIViewRepresentable {
     final class TouchView: UIView {
         var onTap: ((CGPoint) -> Void)?
         var onHold: ((CGPoint) -> Void)?
-        var onHoldEnded: (() -> Void)?
+        var onHoldEnded: ((CGPoint, Bool) -> Void)?
         var onPan: ((CGPoint) -> Void)?
         var onPanEnded: ((CGPoint, Bool) -> Void)?
         var onPanStart: ((CGPoint) -> Void)?
@@ -529,7 +566,8 @@ struct ArenaHandTouch: UIViewRepresentable {
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
             switch gesture.state {
             case .began, .changed: onHold?(gesture.location(in: self))
-            case .ended, .cancelled, .failed: onHoldEnded?()
+            case .ended: onHoldEnded?(gesture.location(in: self), false)
+            case .cancelled, .failed: onHoldEnded?(gesture.location(in: self), true)
             default: break
             }
         }

@@ -71,7 +71,23 @@ const knownPhases: Record<string, string> = {
   BEGINNING: "Beginning", COMBAT: "Combat", ENDING: "Ending",
 };
 
+const pickerNumber = /^\s*\d+\.\s*/;
+const triggerLine = /^(?:[^—\n]{1,40}—\s*)?(?:When|Whenever|At)\b/;
+
 export const EngineDisplayText = {
+  /** The full rule a trigger or ability choice shows (abilityRule in OnDevicePromptAdapter.swift; parity/ability-rule-cases.json). */
+  abilityRule(label: string, sourceRules: string[]): string | undefined {
+    const fragment = EngineDisplayText.text(label.replace(pickerNumber, ""));
+    const lines = sourceRules.flatMap((rule) => EngineDisplayText.text(rule).split("\n")).filter((line) => line.length > 0);
+    if (fragment.length > 0) {
+      const lower = fragment.toLowerCase();
+      const holding = lines.filter((line) => line.toLowerCase().includes(lower));
+      if (holding.length === 1) return holding[0];
+      return fragment.charAt(0).toUpperCase() + fragment.slice(1);
+    }
+    const triggers = lines.filter((line) => triggerLine.test(line));
+    return triggers.length === 1 ? triggers[0] : undefined;
+  },
   text(source: string): string {
     let current = source;
     // Decode before parsing and reach a fixed point, including nested entities.
