@@ -494,6 +494,13 @@ contradicting one.
 
 ## Agent environment
 
+- 2026-10-26 (Claude, Android 42): the release build plus the emulator starved the 8 GB Mac into a watchdog kernel panic
+  ("no checkins from watchdogd in 92 seconds", compressor "100% of segments limit (BAD) … LOW swap space"), and the reboot
+  wiped `/private/tmp`, the scratchpad included. **Rule:** wait for idle and normal `memory_pressure` first, cap the Kotlin
+  daemon (`-Xmx1536m`), `gradle --stop` before the emulator, start it with `-memory 1536 -no-window -gpu host`, and run a
+  guard that kills qemu and Gradle if `kern.memorystatus_vm_pressure_level` stays at 4. Keep release scripts and evidence
+  outside `/private/tmp`. Template: `~/Documents/MagicMobile-releases/android-42/android42.sh`.
+
 - 2026-10-27 (Claude, leaderboard champions): `ranked_standings` has one row per player (primary key `user_id`); a finished
   season moves to `ranked_season_history` when the player next plays. **Rule:** last season's results are history rows plus
   standings still on that season (`mm_ranked_leaderboard` champions). In the PGlite suite players can't call
